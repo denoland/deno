@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::normalize_path;
@@ -28,6 +29,7 @@ pub use resolution::package_imports_resolve;
 pub use resolution::package_resolve;
 pub use resolution::NodeModuleKind;
 pub use resolution::DEFAULT_CONDITIONS;
+pub use resolution::TYPES_CONDITIONS;
 
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
@@ -38,6 +40,7 @@ pub trait RequireNpmResolver {
     &self,
     specifier: &str,
     referrer: &Path,
+    conditions: &[&str],
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_path(
@@ -71,10 +74,7 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   set
 });
 
-struct Unstable(pub bool);
-
 pub fn init<P: NodePermissions + 'static>(
-  unstable: bool,
   maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
 ) -> Extension {
   Extension::builder()
@@ -107,22 +107,12 @@ pub fn init<P: NodePermissions + 'static>(
       op_require_package_imports_resolve::decl::<P>(),
     ])
     .state(move |state| {
-      state.put(Unstable(unstable));
       if let Some(npm_resolver) = maybe_npm_resolver.clone() {
         state.put(npm_resolver);
       }
       Ok(())
     })
     .build()
-}
-
-fn check_unstable(state: &OpState) {
-  let unstable = state.borrow::<Unstable>();
-
-  if !unstable.0 {
-    eprintln!("Unstable API 'require'. The --unstable flag must be provided.",);
-    std::process::exit(70);
-  }
 }
 
 fn ensure_read_permission<P>(
@@ -144,9 +134,7 @@ where
 }
 
 #[op]
-pub fn op_require_init_paths(state: &mut OpState) -> Vec<String> {
-  check_unstable(state);
-
+pub fn op_require_init_paths() -> Vec<String> {
   // todo(dsherret): this code is node compat mode specific and
   // we probably don't want it for small mammal, so ignore it for now
 
@@ -203,7 +191,6 @@ pub fn op_require_node_module_paths<P>(
 where
   P: NodePermissions + 'static,
 {
-  check_unstable(state);
   // Guarantee that "from" is absolute.
   let from = deno_core::resolve_path(&from)
     .unwrap()
@@ -251,8 +238,7 @@ where
 }
 
 #[op]
-fn op_require_proxy_path(state: &mut OpState, filename: String) -> String {
-  check_unstable(state);
+fn op_require_proxy_path(filename: String) -> String {
   // Allow a directory to be passed as the filename
   let trailing_slash = if cfg!(windows) {
     filename.ends_with('\\')
@@ -269,11 +255,7 @@ fn op_require_proxy_path(state: &mut OpState, filename: String) -> String {
 }
 
 #[op]
-fn op_require_is_request_relative(
-  state: &mut OpState,
-  request: String,
-) -> bool {
-  check_unstable(state);
+fn op_require_is_request_relative(request: String) -> bool {
   if request.starts_with("./") || request.starts_with("../") || request == ".."
   {
     return true;
@@ -298,12 +280,12 @@ fn op_require_resolve_deno_dir(
   request: String,
   parent_filename: String,
 ) -> Option<String> {
-  check_unstable(state);
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
   resolver
     .resolve_package_folder_from_package(
       &request,
       &PathBuf::from(parent_filename),
+      DEFAULT_CONDITIONS,
     )
     .ok()
     .map(|p| p.to_string_lossy().to_string())
@@ -311,19 +293,16 @@ fn op_require_resolve_deno_dir(
 
 #[op]
 fn op_require_is_deno_dir_package(state: &mut OpState, path: String) -> bool {
-  check_unstable(state);
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
   resolver.in_npm_package(&PathBuf::from(path))
 }
 
 #[op]
 fn op_require_resolve_lookup_paths(
-  state: &mut OpState,
   request: String,
   maybe_parent_paths: Option<Vec<String>>,
   parent_filename: String,
 ) -> Option<Vec<String>> {
-  check_unstable(state);
   if !request.starts_with('.')
     || (request.len() > 1
       && !request.starts_with("..")
@@ -360,8 +339,7 @@ fn op_require_resolve_lookup_paths(
 }
 
 #[op]
-fn op_require_path_is_absolute(state: &mut OpState, p: String) -> bool {
-  check_unstable(state);
+fn op_require_path_is_absolute(p: String) -> bool {
   PathBuf::from(p).is_absolute()
 }
 
@@ -373,7 +351,6 @@ fn op_require_stat<P>(
 where
   P: NodePermissions + 'static,
 {
-  check_unstable(state);
   let path = PathBuf::from(path);
   ensure_read_permission::<P>(state, &path)?;
   if let Ok(metadata) = std::fs::metadata(&path) {
@@ -395,7 +372,6 @@ fn op_require_real_path<P>(
 where
   P: NodePermissions + 'static,
 {
-  check_unstable(state);
   let path = PathBuf::from(request);
   ensure_read_permission::<P>(state, &path)?;
   let mut canonicalized_path = path.canonicalize()?;
@@ -422,23 +398,28 @@ fn path_resolve(parts: Vec<String>) -> String {
 }
 
 #[op]
-fn op_require_path_resolve(state: &mut OpState, parts: Vec<String>) -> String {
-  check_unstable(state);
+fn op_require_path_resolve(parts: Vec<String>) -> String {
   path_resolve(parts)
 }
 
 #[op]
-fn op_require_path_dirname(state: &mut OpState, request: String) -> String {
-  check_unstable(state);
+fn op_require_path_dirname(request: String) -> Result<String, AnyError> {
   let p = PathBuf::from(request);
-  p.parent().unwrap().to_string_lossy().to_string()
+  if let Some(parent) = p.parent() {
+    Ok(parent.to_string_lossy().to_string())
+  } else {
+    Err(generic_error("Path doesn't have a parent"))
+  }
 }
 
 #[op]
-fn op_require_path_basename(state: &mut OpState, request: String) -> String {
-  check_unstable(state);
+fn op_require_path_basename(request: String) -> Result<String, AnyError> {
   let p = PathBuf::from(request);
-  p.file_name().unwrap().to_string_lossy().to_string()
+  if let Some(path) = p.file_name() {
+    Ok(path.to_string_lossy().to_string())
+  } else {
+    Err(generic_error("Path doesn't have a file name"))
+  }
 }
 
 #[op]
@@ -451,7 +432,6 @@ fn op_require_try_self_parent_path<P>(
 where
   P: NodePermissions + 'static,
 {
-  check_unstable(state);
   if !has_parent {
     return Ok(None);
   }
@@ -477,7 +457,6 @@ fn op_require_try_self(
   parent_path: Option<String>,
   request: String,
 ) -> Result<Option<String>, AnyError> {
-  check_unstable(state);
   if parent_path.is_none() {
     return Ok(None);
   }
@@ -536,22 +515,20 @@ fn op_require_read_file<P>(
 where
   P: NodePermissions + 'static,
 {
-  check_unstable(state);
   let file_path = PathBuf::from(file_path);
   ensure_read_permission::<P>(state, &file_path)?;
   Ok(std::fs::read_to_string(file_path)?)
 }
 
 #[op]
-pub fn op_require_as_file_path(
-  state: &mut OpState,
-  file_or_url: String,
-) -> String {
-  check_unstable(state);
-  match Url::parse(&file_or_url) {
-    Ok(url) => url.to_file_path().unwrap().to_string_lossy().to_string(),
-    Err(_) => file_or_url,
+pub fn op_require_as_file_path(file_or_url: String) -> String {
+  if let Ok(url) = Url::parse(&file_or_url) {
+    if let Ok(p) = url.to_file_path() {
+      return p.to_string_lossy().to_string();
+    }
   }
+
+  file_or_url
 }
 
 #[op]
@@ -563,7 +540,6 @@ fn op_require_resolve_exports(
   expansion: String,
   parent_path: String,
 ) -> Result<Option<String>, AnyError> {
-  check_unstable(state);
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
 
   let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path)) {
@@ -601,7 +577,6 @@ fn op_require_read_closest_package_json<P>(
 where
   P: NodePermissions + 'static,
 {
-  check_unstable(state);
   ensure_read_permission::<P>(
     state,
     PathBuf::from(&filename).parent().unwrap(),
@@ -618,7 +593,6 @@ fn op_require_read_package_scope(
   state: &mut OpState,
   package_json_path: String,
 ) -> Option<PackageJson> {
-  check_unstable(state);
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let package_json_path = PathBuf::from(package_json_path);
   PackageJson::load(&*resolver, package_json_path).ok()
@@ -633,7 +607,6 @@ fn op_require_package_imports_resolve<P>(
 where
   P: NodePermissions + 'static,
 {
-  check_unstable(state);
   let parent_path = PathBuf::from(&parent_filename);
   ensure_read_permission::<P>(state, &parent_path)?;
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();

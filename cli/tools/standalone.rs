@@ -257,6 +257,7 @@ pub fn compile_to_runtime_flags(
     allow_ffi: flags.allow_ffi.clone(),
     allow_read: flags.allow_read.clone(),
     allow_run: flags.allow_run.clone(),
+    allow_sys: flags.allow_sys.clone(),
     allow_write: flags.allow_write.clone(),
     ca_stores: flags.ca_stores.clone(),
     ca_file: flags.ca_file.clone(),
@@ -280,6 +281,7 @@ pub fn compile_to_runtime_flags(
       .unsafely_ignore_certificate_errors
       .clone(),
     no_remote: false,
+    no_lock: false,
     no_npm: false,
     no_prompt: flags.no_prompt,
     reload: false,

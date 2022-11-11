@@ -1,5 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use std::io::Write;
+
 /// A function that converts a float to a string the represents a human
 /// readable version of that number.
 pub fn human_size(size: f64) -> String {
@@ -38,6 +42,30 @@ pub fn human_elapsed(elapsed: u128) -> String {
   format!("{}m{}s", minutes, seconds_remainder)
 }
 
+pub fn write_to_stdout_ignore_sigpipe(
+  bytes: &[u8],
+) -> Result<(), std::io::Error> {
+  use std::io::ErrorKind;
+
+  match std::io::stdout().write_all(bytes) {
+    Ok(()) => Ok(()),
+    Err(e) => match e.kind() {
+      ErrorKind::BrokenPipe => Ok(()),
+      _ => Err(e),
+    },
+  }
+}
+
+pub fn write_json_to_stdout<T>(value: &T) -> Result<(), AnyError>
+where
+  T: ?Sized + serde::ser::Serialize,
+{
+  let mut writer = std::io::BufWriter::new(std::io::stdout());
+  serde_json::to_writer_pretty(&mut writer, value)?;
+  writeln!(&mut writer)?;
+  Ok(())
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -52,6 +80,8 @@ mod tests {
       human_size((24_i64 * 1024 * 1024 * 1024 * 1024) as f64),
       "24TB"
     );
+    assert_eq!(human_size(0_f64), "0B");
+    assert_eq!(human_size(-10_f64), "-10B");
   }
 
   #[test]

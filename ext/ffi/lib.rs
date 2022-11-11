@@ -10,10 +10,11 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::Future;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::v8;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -22,20 +23,23 @@ use dlopen::raw::Library;
 use libffi::middle::Arg;
 use libffi::middle::Cif;
 use serde::Deserialize;
-use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ffi::CStr;
+use std::future::IntoFuture;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_short;
 use std::path::Path;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::ptr;
 use std::rc::Rc;
 use std::sync::mpsc::sync_channel;
+use std::task::Poll;
+use std::task::Waker;
 
 mod fast_call;
 
@@ -158,7 +162,6 @@ type PendingFfiAsyncWork = Box<dyn FnOnce()>;
 struct FfiState {
   async_work_sender: mpsc::UnboundedSender<PendingFfiAsyncWork>,
   async_work_receiver: mpsc::UnboundedReceiver<PendingFfiAsyncWork>,
-  active_refed_functions: usize,
 }
 
 pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
@@ -190,6 +193,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_read_f64::decl::<P>(),
       op_ffi_unsafe_callback_create::decl::<P>(),
       op_ffi_unsafe_callback_ref::decl(),
+      op_ffi_unsafe_callback_unref::decl(),
     ])
     .event_loop_middleware(|op_state_rc, _cx| {
       // FFI callbacks coming in from other threads will call in and get queued.
@@ -209,10 +213,6 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
           maybe_scheduling = true;
         }
 
-        if ffi_state.active_refed_functions > 0 {
-          maybe_scheduling = true;
-        }
-
         drop(op_state);
       }
       while let Some(async_work_fut) = work_items.pop() {
@@ -229,7 +229,6 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
         mpsc::unbounded::<PendingFfiAsyncWork>();
 
       state.put(FfiState {
-        active_refed_functions: 0,
         async_work_receiver,
         async_work_sender,
       });
@@ -341,47 +340,14 @@ impl NativeValue {
       NativeType::I16 => Value::from(self.i16_value),
       NativeType::U32 => Value::from(self.u32_value),
       NativeType::I32 => Value::from(self.i32_value),
-      NativeType::U64 => {
-        let value = self.u64_value;
-        if value > MAX_SAFE_INTEGER as u64 {
-          json!(U32x2::from(self.u64_value))
-        } else {
-          Value::from(value)
-        }
-      }
-      NativeType::I64 => {
-        let value = self.i64_value;
-        if value > MAX_SAFE_INTEGER as i64 || value < MIN_SAFE_INTEGER as i64 {
-          json!(U32x2::from(self.i64_value as u64))
-        } else {
-          Value::from(value)
-        }
-      }
-      NativeType::USize => {
-        let value = self.usize_value;
-        if value > MAX_SAFE_INTEGER as usize {
-          json!(U32x2::from(self.usize_value as u64))
-        } else {
-          Value::from(value)
-        }
-      }
-      NativeType::ISize => {
-        let value = self.isize_value;
-        if !(MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value) {
-          json!(U32x2::from(self.isize_value as u64))
-        } else {
-          Value::from(value)
-        }
-      }
+      NativeType::U64 => Value::from(self.u64_value),
+      NativeType::I64 => Value::from(self.i64_value),
+      NativeType::USize => Value::from(self.usize_value),
+      NativeType::ISize => Value::from(self.isize_value),
       NativeType::F32 => Value::from(self.f32_value),
       NativeType::F64 => Value::from(self.f64_value),
       NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
-        let value = self.pointer as usize;
-        if value > MAX_SAFE_INTEGER as usize {
-          json!(U32x2::from(value as u64))
-        } else {
-          Value::from(value)
-        }
+        Value::from(self.pointer as usize)
       }
     }
   }
@@ -500,15 +466,6 @@ impl NativeValue {
 
 // SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for NativeValue {}
-
-#[derive(Serialize, Debug, Clone, Copy)]
-struct U32x2(u32, u32);
-
-impl From<u64> for U32x2 {
-  fn from(value: u64) -> Self {
-    Self((value >> 32) as u32, value as u32)
-  }
-}
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -749,8 +706,7 @@ fn make_sync_fn<'s>(
     |scope: &mut v8::HandleScope,
      args: v8::FunctionCallbackArguments,
      mut rv: v8::ReturnValue| {
-      let external: v8::Local<v8::External> =
-        args.data().unwrap().try_into().unwrap();
+      let external: v8::Local<v8::External> = args.data().try_into().unwrap();
       // SAFETY: The pointer will not be deallocated until the function is
       // garbage collected.
       let symbol = unsafe { &*(external.value() as *const Symbol) };
@@ -1364,11 +1320,12 @@ fn ffi_call(
 }
 
 struct UnsafeCallbackResource {
+  cancel: Rc<CancelHandle>,
   // Closure is never directly touched, but it keeps the C callback alive
   // until `close()` method is called.
   #[allow(dead_code)]
   closure: libffi::middle::Closure<'static>,
-  info: *const CallbackInfo,
+  info: *mut CallbackInfo,
 }
 
 impl Resource for UnsafeCallbackResource {
@@ -1377,15 +1334,16 @@ impl Resource for UnsafeCallbackResource {
   }
 
   fn close(self: Rc<Self>) {
+    self.cancel.cancel();
     // SAFETY: This drops the closure and the callback info associated with it.
     // Any retained function pointers to the closure become dangling pointers.
     // It is up to the user to know that it is safe to call the `close()` on the
     // UnsafeCallback instance.
     unsafe {
-      let info = Box::from_raw(self.info as *mut CallbackInfo);
+      let info = Box::from_raw(self.info);
       let isolate = info.isolate.as_mut().unwrap();
-      v8::Global::from_raw(isolate, info.callback);
-      v8::Global::from_raw(isolate, info.context);
+      let _ = v8::Global::from_raw(isolate, info.callback);
+      let _ = v8::Global::from_raw(isolate, info.context);
     }
   }
 }
@@ -1397,6 +1355,7 @@ struct CallbackInfo {
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
   pub isolate: *mut v8::Isolate,
+  pub waker: Option<Waker>,
 }
 
 unsafe extern "C" fn deno_ffi_callback(
@@ -1420,6 +1379,10 @@ unsafe extern "C" fn deno_ffi_callback(
         response_sender.send(()).unwrap();
       });
       async_work_sender.unbounded_send(fut).unwrap();
+      if let Some(waker) = info.waker.as_ref() {
+        // Make sure event loop wakes up to receive our message before we start waiting for a response.
+        waker.wake_by_ref();
+      }
       response_receiver.recv().unwrap();
     }
   });
@@ -1495,7 +1458,7 @@ unsafe fn do_ffi_callback(
         let value = *((*val) as *const u32);
         v8::Integer::new_from_unsigned(scope, value).into()
       }
-      NativeType::I64 => {
+      NativeType::I64 | NativeType::ISize => {
         let result = *((*val) as *const i64);
         if result > MAX_SAFE_INTEGER as i64 || result < MIN_SAFE_INTEGER as i64
         {
@@ -1504,7 +1467,7 @@ unsafe fn do_ffi_callback(
           v8::Number::new(scope, result as f64).into()
         }
       }
-      NativeType::U64 => {
+      NativeType::U64 | NativeType::USize => {
         let result = *((*val) as *const u64);
         if result > MAX_SAFE_INTEGER as u64 {
           v8::BigInt::new_from_u64(scope, result).into()
@@ -1520,9 +1483,7 @@ unsafe fn do_ffi_callback(
           v8::Number::new(scope, result as f64).into()
         }
       }
-      _ => {
-        unreachable!()
-      }
+      NativeType::Void => unreachable!(),
     };
     params.push(value);
   }
@@ -1771,22 +1732,30 @@ where
   let current_context = scope.get_current_context();
   let context = v8::Global::new(scope, current_context).into_raw();
 
-  let info = Box::leak(Box::new(CallbackInfo {
+  let info: *mut CallbackInfo = Box::leak(Box::new(CallbackInfo {
     parameters: args.parameters.clone(),
     result: args.result,
     async_work_sender,
     callback,
     context,
     isolate,
+    waker: None,
   }));
   let cif = Cif::new(
     args.parameters.into_iter().map(libffi::middle::Type::from),
     libffi::middle::Type::from(args.result),
   );
 
-  let closure = libffi::middle::Closure::new(cif, deno_ffi_callback, info);
+  // SAFETY: CallbackInfo is leaked, is not null and stays valid as long as the callback exists.
+  let closure = libffi::middle::Closure::new(cif, deno_ffi_callback, unsafe {
+    info.as_ref().unwrap()
+  });
   let ptr = *closure.code_ptr() as usize;
-  let resource = UnsafeCallbackResource { closure, info };
+  let resource = UnsafeCallbackResource {
+    cancel: CancelHandle::new_rc(),
+    closure,
+    info,
+  };
   let rid = state.resource_table.add(resource);
 
   let rid_local = v8::Integer::new_from_unsigned(scope, rid);
@@ -1836,15 +1805,51 @@ where
   Ok(result)
 }
 
-#[op]
-fn op_ffi_unsafe_callback_ref(state: &mut deno_core::OpState, inc_dec: bool) {
-  check_unstable(state, "Deno.dlopen");
-  let ffi_state = state.borrow_mut::<FfiState>();
-  if inc_dec {
-    ffi_state.active_refed_functions += 1;
-  } else {
-    ffi_state.active_refed_functions -= 1;
+impl Future for CallbackInfo {
+  type Output = ();
+  fn poll(
+    mut self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Self::Output> {
+    // Always replace the waker to make sure it's bound to the proper Future.
+    self.waker.replace(cx.waker().clone());
+    // The future for the CallbackInfo never resolves: It can only be canceled.
+    Poll::Pending
   }
+}
+
+#[op]
+fn op_ffi_unsafe_callback_ref(
+  state: &mut deno_core::OpState,
+  rid: ResourceId,
+) -> Result<impl Future<Output = Result<(), AnyError>>, AnyError> {
+  let callback_resource =
+    state.resource_table.get::<UnsafeCallbackResource>(rid)?;
+
+  Ok(async move {
+    let info: &mut CallbackInfo =
+    // SAFETY: CallbackInfo pointer stays valid as long as the resource is still alive.
+      unsafe { callback_resource.info.as_mut().unwrap() };
+    // Ignore cancellation rejection
+    let _ = info
+      .into_future()
+      .or_cancel(callback_resource.cancel.clone())
+      .await;
+    Ok(())
+  })
+}
+
+#[op(fast)]
+fn op_ffi_unsafe_callback_unref(
+  state: &mut deno_core::OpState,
+  rid: u32,
+) -> Result<(), AnyError> {
+  state
+    .resource_table
+    .get::<UnsafeCallbackResource>(rid)?
+    .cancel
+    .cancel();
+  Ok(())
 }
 
 #[op(v8)]
@@ -2057,12 +2062,12 @@ fn op_ffi_call_nonblocking<'scope>(
   })
 }
 
-#[op(v8)]
-fn op_ffi_ptr_of<FP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+#[op(fast)]
+fn op_ffi_ptr_of<FP>(
   state: &mut deno_core::OpState,
-  buf: serde_v8::Value<'scope>,
-) -> Result<serde_v8::Value<'scope>, AnyError>
+  buf: &[u8],
+  out: &mut [u32],
+) -> Result<(), AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -2070,34 +2075,18 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let pointer = if let Ok(value) =
-    v8::Local::<v8::ArrayBufferView>::try_from(buf.v8_value)
-  {
-    let backing_store = value
-      .buffer(scope)
-      .ok_or_else(|| {
-        type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
-      })?
-      .get_backing_store();
-    let byte_offset = value.byte_offset();
-    &backing_store[byte_offset..] as *const _ as *const u8
-  } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(buf.v8_value)
-  {
-    let backing_store = value.get_backing_store();
-    &backing_store[..] as *const _ as *const u8
-  } else {
-    return Err(type_error(
-      "Invalid FFI buffer, expected ArrayBuffer, or ArrayBufferView",
-    ));
-  };
+  let outptr = out.as_ptr() as *mut usize;
+  let length = out.len();
+  assert!(
+    length >= (std::mem::size_of::<usize>() / std::mem::size_of::<u32>())
+  );
+  assert_eq!(outptr as usize % std::mem::size_of::<usize>(), 0);
 
-  let integer: v8::Local<v8::Value> =
-    if pointer as usize > MAX_SAFE_INTEGER as usize {
-      v8::BigInt::new_from_u64(scope, pointer as u64).into()
-    } else {
-      v8::Number::new(scope, pointer as usize as f64).into()
-    };
-  Ok(integer.into())
+  // SAFETY: Out buffer was asserted to be at least large enough to hold a usize, and properly aligned.
+  let out = unsafe { &mut *outptr };
+  *out = buf.as_ptr() as usize;
+
+  Ok(())
 }
 
 unsafe extern "C" fn noop_deleter_callback(
@@ -2111,7 +2100,8 @@ unsafe extern "C" fn noop_deleter_callback(
 fn op_ffi_get_buf<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
-  src: serde_v8::Value<'scope>,
+  ptr: usize,
+  offset: usize,
   len: usize,
 ) -> Result<serde_v8::Value<'scope>, AnyError>
 where
@@ -2122,17 +2112,14 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = if let Ok(value) = v8::Local::<v8::Number>::try_from(src.v8_value) {
-    value.value() as usize as *mut c_void
-  } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(src.v8_value) {
-    value.u64_value().0 as usize as *mut c_void
-  } else {
-    return Err(type_error("Invalid FFI pointer value, expected BigInt"));
-  };
+  let ptr = ptr as *mut c_void;
 
-  if std::ptr::eq(ptr, std::ptr::null()) {
+  if ptr.is_null() {
     return Err(type_error("Invalid FFI pointer value, got nullptr"));
   }
+
+  // SAFETY: Offset is user defined.
+  let ptr = unsafe { ptr.add(offset) };
 
   // SAFETY: Trust the user to have provided a real pointer, and a valid matching size to it. Since this is a foreign pointer, we should not do any deletion.
   let backing_store = unsafe {
@@ -2149,10 +2136,11 @@ where
   Ok(array_buffer.into())
 }
 
-#[op]
+#[op(fast)]
 fn op_ffi_buf_copy_into<FP>(
   state: &mut deno_core::OpState,
   src: usize,
+  offset: usize,
   dst: &mut [u8],
   len: usize,
 ) -> Result<(), AnyError>
@@ -2169,10 +2157,14 @@ where
       "Destination length is smaller than source length",
     ))
   } else {
-    let src = src as *const u8;
+    let src = src as *const c_void;
+
+    // SAFETY: Offset is user defined.
+    let src = unsafe { src.add(offset) as *const u8 };
+
     // SAFETY: src is user defined.
     // dest is properly aligned and is valid for writes of len * size_of::<T>() bytes.
-    unsafe { ptr::copy(src, dst.as_mut_ptr(), len) };
+    unsafe { ptr::copy::<u8>(src, dst.as_mut_ptr(), len) };
     Ok(())
   }
 }
@@ -2182,6 +2174,7 @@ fn op_ffi_cstr_read<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
   ptr: usize,
+  offset: usize,
 ) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -2190,6 +2183,15 @@ where
 
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
+
+  let ptr = ptr as *const c_void;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid CString pointer, pointer is null"));
+  }
+
+  // SAFETY: Offset is user defined.
+  let ptr = unsafe { ptr.add(offset) };
 
   // SAFETY: Pointer is user provided.
   let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) }
@@ -2203,10 +2205,11 @@ where
   Ok(value.into())
 }
 
-#[op]
+#[op(fast)]
 fn op_ffi_read_bool<FP>(
   state: &mut deno_core::OpState,
   ptr: usize,
+  offset: usize,
 ) -> Result<bool, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -2216,15 +2219,22 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const bool) })
+  let ptr = ptr as *const c_void;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid bool pointer, pointer is null"));
+  }
+
+  // SAFETY: ptr and offset are user provided.
+  Ok(unsafe { ptr::read_unaligned::<bool>(ptr.add(offset) as *const bool) })
 }
 
-#[op]
+#[op(fast)]
 fn op_ffi_read_u8<FP>(
   state: &mut deno_core::OpState,
   ptr: usize,
-) -> Result<u8, AnyError>
+  offset: usize,
+) -> Result<u32, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -2233,15 +2243,22 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const u8) })
+  let ptr = ptr as *const c_void;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid u8 pointer, pointer is null"));
+  }
+
+  // SAFETY: ptr and offset are user provided.
+  Ok(unsafe { ptr::read_unaligned::<u8>(ptr.add(offset) as *const u8) as u32 })
 }
 
-#[op]
+#[op(fast)]
 fn op_ffi_read_i8<FP>(
   state: &mut deno_core::OpState,
   ptr: usize,
-) -> Result<i8, AnyError>
+  offset: usize,
+) -> Result<i32, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -2250,15 +2267,22 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const i8) })
+  let ptr = ptr as *const c_void;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid i8 pointer, pointer is null"));
+  }
+
+  // SAFETY: ptr and offset are user provided.
+  Ok(unsafe { ptr::read_unaligned::<i8>(ptr.add(offset) as *const i8) as i32 })
 }
 
-#[op]
+#[op(fast)]
 fn op_ffi_read_u16<FP>(
   state: &mut deno_core::OpState,
   ptr: usize,
-) -> Result<u16, AnyError>
+  offset: usize,
+) -> Result<u32, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -2267,15 +2291,24 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const u16) })
+  let ptr = ptr as *const c_void;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid u16 pointer, pointer is null"));
+  }
+
+  // SAFETY: ptr and offset are user provided.
+  Ok(unsafe {
+    ptr::read_unaligned::<u16>(ptr.add(offset) as *const u16) as u32
+  })
 }
 
-#[op]
+#[op(fast)]
 fn op_ffi_read_i16<FP>(
   state: &mut deno_core::OpState,
   ptr: usize,
-) -> Result<i16, AnyError>
+  offset: usize,
+) -> Result<i32, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -2284,14 +2317,23 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const i16) })
+  let ptr = ptr as *const c_void;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid i16 pointer, pointer is null"));
+  }
+
+  // SAFETY: ptr and offset are user provided.
+  Ok(unsafe {
+    ptr::read_unaligned::<i16>(ptr.add(offset) as *const i16) as i32
+  })
 }
 
-#[op]
+#[op(fast)]
 fn op_ffi_read_u32<FP>(
   state: &mut deno_core::OpState,
   ptr: usize,
+  offset: usize,
 ) -> Result<u32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -2301,14 +2343,23 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const u32) })
+  let ptr = ptr as *const c_void;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid u32 pointer, pointer is null"));
+  }
+
+  // SAFETY: ptr and offset are user provided.
+  Ok(unsafe {
+    ptr::read_unaligned::<u32>(ptr.add(offset) as *const u32) as u32
+  })
 }
 
-#[op]
+#[op(fast)]
 fn op_ffi_read_i32<FP>(
   state: &mut deno_core::OpState,
   ptr: usize,
+  offset: usize,
 ) -> Result<i32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -2318,69 +2369,96 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const i32) })
-}
+  let ptr = ptr as *const c_void;
 
-#[op(v8)]
-fn op_ffi_read_u64<FP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
-  state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<serde_v8::Value<'scope>, AnyError>
-where
-  FP: FfiPermissions + 'static,
-  'scope: 'scope,
-{
-  check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
+  if ptr.is_null() {
+    return Err(type_error("Invalid i32 pointer, pointer is null"));
+  }
 
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
-
-  // SAFETY: ptr is user provided.
-  let result = unsafe { ptr::read_unaligned(ptr as *const u64) };
-
-  let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as u64 {
-    v8::BigInt::new_from_u64(scope, result).into()
-  } else {
-    v8::Number::new(scope, result as f64).into()
-  };
-
-  Ok(integer.into())
-}
-
-#[op(v8)]
-fn op_ffi_read_i64<FP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
-  state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<serde_v8::Value<'scope>, AnyError>
-where
-  FP: FfiPermissions + 'static,
-  'scope: 'scope,
-{
-  check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
-
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
-
-  // SAFETY: ptr is user provided.
-  let result = unsafe { ptr::read_unaligned(ptr as *const i64) };
-
-  let integer: v8::Local<v8::Value> =
-    if result > MAX_SAFE_INTEGER as i64 || result < MIN_SAFE_INTEGER as i64 {
-      v8::BigInt::new_from_i64(scope, result).into()
-    } else {
-      v8::Number::new(scope, result as f64).into()
-    };
-
-  Ok(integer.into())
+  // SAFETY: ptr and offset are user provided.
+  Ok(unsafe {
+    ptr::read_unaligned::<i32>(ptr.add(offset) as *const i32) as i32
+  })
 }
 
 #[op]
+fn op_ffi_read_u64<FP>(
+  state: &mut deno_core::OpState,
+  ptr: usize,
+  offset: usize,
+  out: &mut [u32],
+) -> Result<(), AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
+
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  let outptr = out.as_mut_ptr() as *mut u64;
+
+  assert!(
+    out.len() >= (std::mem::size_of::<u64>() / std::mem::size_of::<u32>())
+  );
+  assert_eq!((outptr as usize % std::mem::size_of::<u64>()), 0);
+
+  let ptr = ptr as *const c_void;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid u64 pointer, pointer is null"));
+  }
+
+  let value =
+  // SAFETY: ptr and offset are user provided.
+    unsafe { ptr::read_unaligned::<u64>(ptr.add(offset) as *const u64) };
+
+  // SAFETY: Length and alignment of out slice were asserted to be correct.
+  unsafe { *outptr = value };
+  Ok(())
+}
+
+#[op(fast)]
+fn op_ffi_read_i64<FP>(
+  state: &mut deno_core::OpState,
+  ptr: usize,
+  offset: usize,
+  out: &mut [u32],
+) -> Result<(), AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
+
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  let outptr = out.as_mut_ptr() as *mut i64;
+
+  assert!(
+    out.len() >= (std::mem::size_of::<i64>() / std::mem::size_of::<u32>())
+  );
+  assert_eq!((outptr as usize % std::mem::size_of::<i64>()), 0);
+
+  let ptr = ptr as *const c_void;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid i64 pointer, pointer is null"));
+  }
+
+  let value =
+  // SAFETY: ptr and offset are user provided.
+    unsafe { ptr::read_unaligned::<i64>(ptr.add(offset) as *const i64) };
+  // SAFETY: Length and alignment of out slice were asserted to be correct.
+  unsafe { *outptr = value };
+  Ok(())
+}
+
+#[op(fast)]
 fn op_ffi_read_f32<FP>(
   state: &mut deno_core::OpState,
   ptr: usize,
+  offset: usize,
 ) -> Result<f32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -2390,14 +2468,21 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const f32) })
+  let ptr = ptr as *const c_void;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid f32 pointer, pointer is null"));
+  }
+
+  // SAFETY: ptr and offset are user provided.
+  Ok(unsafe { ptr::read_unaligned::<f32>(ptr.add(offset) as *const f32) })
 }
 
-#[op]
+#[op(fast)]
 fn op_ffi_read_f64<FP>(
   state: &mut deno_core::OpState,
   ptr: usize,
+  offset: usize,
 ) -> Result<f64, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -2407,8 +2492,14 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const f64) })
+  let ptr = ptr as *const c_void;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid f64 pointer, pointer is null"));
+  }
+
+  // SAFETY: ptr and offset are user provided.
+  Ok(unsafe { ptr::read_unaligned::<f64>(ptr.add(offset) as *const f64) })
 }
 
 #[cfg(test)]

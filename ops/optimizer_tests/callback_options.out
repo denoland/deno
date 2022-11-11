@@ -1,0 +1,25 @@
+struct op_fallback_fast {
+    _phantom: ::std::marker::PhantomData<()>,
+}
+impl<'scope> deno_core::v8::fast_api::FastFunction for op_fallback_fast {
+    fn function(&self) -> *const ::std::ffi::c_void {
+        op_fallback_fast_fn as *const ::std::ffi::c_void
+    }
+    fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
+        use deno_core::v8::fast_api::Type::*;
+        use deno_core::v8::fast_api::CType;
+        &[V8Value]
+    }
+    fn return_type(&self) -> deno_core::v8::fast_api::CType {
+        deno_core::v8::fast_api::CType::Void
+    }
+}
+fn op_fallback_fast_fn<'scope>(
+    _: deno_core::v8::Local<deno_core::v8::Object>,
+    options: Option<&mut FastApiCallbackOptions>,
+) -> () {
+    use deno_core::v8;
+    use deno_core::_ops;
+    let result = op_fallback::call(options);
+    result
+}

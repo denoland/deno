@@ -5,9 +5,11 @@ use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
+use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Url;
+use deno_runtime::permissions::parse_sys_kind;
 use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
@@ -154,6 +156,7 @@ pub struct LintFlags {
   pub maybe_rules_include: Option<Vec<String>>,
   pub maybe_rules_exclude: Option<Vec<String>>,
   pub json: bool,
+  pub compact: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -291,6 +294,7 @@ pub struct Flags {
   pub allow_ffi: Option<Vec<PathBuf>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
+  pub allow_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
   pub ca_stores: Option<Vec<String>>,
   pub ca_file: Option<String>,
@@ -313,6 +317,7 @@ pub struct Flags {
   pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
+  pub no_lock: bool,
   pub no_npm: bool,
   pub no_prompt: bool,
   pub reload: bool,
@@ -413,6 +418,17 @@ impl Flags {
       _ => {}
     }
 
+    match &self.allow_sys {
+      Some(sys_allowlist) if sys_allowlist.is_empty() => {
+        args.push("--allow-sys".to_string());
+      }
+      Some(sys_allowlist) => {
+        let s = format!("--allow-sys={}", sys_allowlist.join(","));
+        args.push(s)
+      }
+      _ => {}
+    }
+
     match &self.allow_ffi {
       Some(ffi_allowlist) if ffi_allowlist.is_empty() => {
         args.push("--allow-ffi".to_string());
@@ -443,7 +459,9 @@ impl Flags {
       Some(files.clone())
     } else if let Run(RunFlags { script }) = &self.subcommand {
       if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
-        if module_specifier.scheme() == "file" {
+        if module_specifier.scheme() == "file"
+          || module_specifier.scheme() == "npm"
+        {
           if let Ok(p) = module_specifier.to_file_path() {
             Some(vec![p])
           } else {
@@ -470,6 +488,7 @@ impl Flags {
       allow_ffi: self.allow_ffi.clone(),
       allow_read: self.allow_read.clone(),
       allow_run: self.allow_run.clone(),
+      allow_sys: self.allow_sys.clone(),
       allow_write: self.allow_write.clone(),
       prompt: !self.no_prompt,
     }
@@ -490,6 +509,8 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          (defaults to $HOME/.deno/bin)
     DENO_NO_PROMPT       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
+    DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
+                         available
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     DENO_JOBS            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
@@ -590,6 +611,7 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   flags.allow_env = Some(vec![]);
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
+  flags.allow_sys = Some(vec![]);
   flags.allow_write = Some(vec![]);
   flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
@@ -1193,6 +1215,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(no_config_arg())
     .arg(config_arg())
     .arg(import_map_arg())
+    .arg(local_npm_arg())
     .arg(
       Arg::new("json")
         .long("json")
@@ -1386,6 +1409,13 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .long("json")
         .help("Output lint result in JSON format")
         .takes_value(false),
+    )
+    .arg(
+      Arg::new("compact")
+        .long("compact")
+        .help("Output lint result in compact format")
+        .takes_value(false)
+        .conflicts_with("json"),
     )
     .arg(
       Arg::new("files")
@@ -1743,6 +1773,7 @@ fn compile_args(app: Command) -> Command {
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
+    .arg(no_lock_arg())
     .arg(ca_file_arg())
 }
 
@@ -1757,6 +1788,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
+    .arg(no_lock_arg())
     .arg(ca_file_arg())
 }
 
@@ -1808,6 +1840,21 @@ fn permission_args(app: Command) -> Command {
             }
           }
           Ok(())
+        }),
+    )
+    .arg(
+      Arg::new("allow-sys")
+        .long("allow-sys")
+        .min_values(0)
+        .takes_value(true)
+        .use_value_delimiter(true)
+        .require_equals(true)
+        .help("Allow access to system info")
+        .validator(|keys| {
+          for key in keys.split(',') {
+            parse_sys_kind(key)?;
+          }
+          Ok::<(), AnyError>(())
         }),
     )
     .arg(
@@ -2103,16 +2150,25 @@ fn lock_arg<'a>() -> Arg<'a> {
   Arg::new("lock")
     .long("lock")
     .value_name("FILE")
-    .help("Check the specified lock file")
+    .help("Check the specified lock file. If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .takes_value(true)
+    .min_values(0)
+    .max_values(1)
     .value_hint(ValueHint::FilePath)
 }
 
 fn lock_write_arg<'a>() -> Arg<'a> {
   Arg::new("lock-write")
     .long("lock-write")
-    .requires("lock")
-    .help("Write lock file (use with --lock)")
+    .help("Force overwriting the lock file.")
+}
+
+fn no_lock_arg<'a>() -> Arg<'a> {
+  Arg::new("no-lock")
+    .long("no-lock")
+    .help("Disable auto discovery of the lock file.")
+    .conflicts_with("lock")
+    .conflicts_with("lock-write")
 }
 
 static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
@@ -2367,6 +2423,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_env = Some(vec![]);
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
+  flags.allow_sys = Some(vec![]);
   flags.allow_write = Some(vec![]);
   flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
@@ -2470,6 +2527,7 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
+  local_npm_args_parse(flags, matches);
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.value_of("file").map(|f| f.to_string()),
@@ -2548,6 +2606,7 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     .map(|f| f.map(String::from).collect());
 
   let json = matches.is_present("json");
+  let compact = matches.is_present("compact");
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files,
     rules,
@@ -2556,6 +2615,7 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     maybe_rules_exclude,
     ignore,
     json,
+    compact,
   });
 }
 
@@ -2870,6 +2930,12 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     debug!("run allowlist: {:#?}", &flags.allow_run);
   }
 
+  if let Some(sys_wl) = matches.values_of("allow-sys") {
+    let sys_allowlist: Vec<String> = sys_wl.map(ToString::to_string).collect();
+    flags.allow_sys = Some(sys_allowlist);
+    debug!("sys info allowlist: {:#?}", &flags.allow_sys);
+  }
+
   if let Some(ffi_wl) = matches.values_of("allow-ffi") {
     let ffi_allowlist: Vec<PathBuf> = ffi_wl.map(PathBuf::from).collect();
     flags.allow_ffi = Some(ffi_allowlist);
@@ -2886,6 +2952,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_net = Some(vec![]);
     flags.allow_run = Some(vec![]);
     flags.allow_write = Some(vec![]);
+    flags.allow_sys = Some(vec![]);
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
@@ -3041,11 +3108,18 @@ fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("lock-write") {
     flags.lock_write = true;
   }
+  if matches.is_present("no-lock") {
+    flags.no_lock = true;
+  }
 }
 
 fn lock_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("lock") {
-    let lockfile = matches.value_of("lock").unwrap();
+    let lockfile = if let Some(path) = matches.value_of("lock") {
+      path
+    } else {
+      "./deno.lock"
+    };
     flags.lock = Some(PathBuf::from(lockfile));
   }
 }
@@ -3351,6 +3425,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -3642,6 +3717,7 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
+          compact: false,
           ignore: vec![],
         }),
         ..Flags::default()
@@ -3668,6 +3744,7 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
+          compact: false,
           ignore: vec![],
         }),
         watch: Some(vec![]),
@@ -3696,6 +3773,7 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
+          compact: false,
           ignore: vec![],
         }),
         watch: Some(vec![]),
@@ -3716,6 +3794,7 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
+          compact: false,
           ignore: vec![
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
@@ -3736,6 +3815,7 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
+          compact: false,
           ignore: vec![],
         }),
         ..Flags::default()
@@ -3759,6 +3839,7 @@ mod tests {
           maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
           maybe_rules_exclude: Some(svec!["no-const-assign"]),
           json: false,
+          compact: false,
           ignore: vec![],
         }),
         ..Flags::default()
@@ -3776,6 +3857,7 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: true,
+          compact: false,
           ignore: vec![],
         }),
         ..Flags::default()
@@ -3800,6 +3882,33 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: true,
+          compact: false,
+          ignore: vec![],
+        }),
+        config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--config",
+      "Deno.jsonc",
+      "--compact",
+      "script_1.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint(LintFlags {
+          files: vec![PathBuf::from("script_1.ts")],
+          rules: false,
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
+          json: false,
+          compact: true,
           ignore: vec![],
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
@@ -3978,6 +4087,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4001,6 +4111,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4025,6 +4136,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4062,6 +4174,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4092,6 +4205,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4115,6 +4229,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4151,6 +4266,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4175,6 +4291,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4203,6 +4320,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4326,6 +4444,81 @@ mod tests {
     assert!(r.is_err());
     let r =
       flags_from_vec(svec!["deno", "run", "--allow-env=H\0ME", "script.ts"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn allow_sys() {
+    let r = flags_from_vec(svec!["deno", "run", "--allow-sys", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        allow_sys: Some(vec![]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_sys_allowlist() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-sys=hostname", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        allow_sys: Some(svec!["hostname"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_sys_allowlist_multiple() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-sys=hostname,osRelease",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        allow_sys: Some(svec!["hostname", "osRelease"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_sys_allowlist_validator() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-sys=hostname", "script.ts"]);
+    assert!(r.is_ok());
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-sys=hostname,osRelease",
+      "script.ts"
+    ]);
+    assert!(r.is_ok());
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-sys=foo", "script.ts"]);
+    assert!(r.is_err());
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-sys=hostname,foo",
+      "script.ts"
+    ]);
     assert!(r.is_err());
   }
 
@@ -4931,6 +5124,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -5012,6 +5206,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -5161,6 +5356,82 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "run", "--no-lock", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        no_lock: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--lock",
+      "--lock-write",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        lock_write: true,
+        lock: Some(PathBuf::from("./deno.lock")),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--lock-write",
+      "--lock",
+      "lock.json",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        lock_write: true,
+        lock: Some(PathBuf::from("lock.json")),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "run", "--lock-write", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        lock_write: true,
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec(svec!["deno", "run", "--lock", "--no-lock", "script.ts"]);
+    assert!(r.is_err(),);
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--lock-write",
+      "--no-lock",
+      "script.ts"
+    ]);
+    assert!(r.is_err(),);
   }
 
   #[test]

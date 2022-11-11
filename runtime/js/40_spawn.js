@@ -13,15 +13,20 @@
     String,
     TypeError,
     Uint8Array,
-    PromiseAll,
+    PromisePrototypeThen,
+    SafePromiseAll,
     SymbolFor,
   } = window.__bootstrap.primordials;
-  const { readableStreamForRid, writableStreamForRid } =
-    window.__bootstrap.streamUtils;
+  const {
+    readableStreamForRidUnrefable,
+    readableStreamForRidUnrefableRef,
+    readableStreamForRidUnrefableUnref,
+    writableStreamForRid,
+  } = window.__bootstrap.streams;
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
-  function spawnChild(command, {
+  function spawnChildInner(opFn, command, apiName, {
     args = [],
     cwd = undefined,
     clearEnv = false,
@@ -32,8 +37,9 @@
     stdout = "piped",
     stderr = "piped",
     signal = undefined,
+    windowsRawArguments = false,
   } = {}) {
-    const child = ops.op_spawn_child({
+    const child = opFn({
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
       cwd: pathFromURL(cwd),
@@ -44,11 +50,18 @@
       stdin,
       stdout,
       stderr,
-    });
+      windowsRawArguments,
+    }, apiName);
     return new Child(illegalConstructorKey, {
       ...child,
       signal,
     });
+  }
+
+  function createSpawnChild(opFn) {
+    return function spawnChild(command, options = {}) {
+      return spawnChildInner(opFn, command, "Deno.spawnChild()", options);
+    };
   }
 
   async function collectOutput(readableStream) {
@@ -132,18 +145,12 @@
 
       if (stdoutRid !== null) {
         this.#stdoutRid = stdoutRid;
-        this.#stdout = readableStreamForRid(stdoutRid, (promise) => {
-          this.#stdoutPromiseId = promise[promiseIdSymbol];
-          if (this.#unrefed) core.unrefOp(this.#stdoutPromiseId);
-        });
+        this.#stdout = readableStreamForRidUnrefable(stdoutRid);
       }
 
       if (stderrRid !== null) {
         this.#stderrRid = stderrRid;
-        this.#stderr = readableStreamForRid(stderrRid, (promise) => {
-          this.#stderrPromiseId = promise[promiseIdSymbol];
-          if (this.#unrefed) core.unrefOp(this.#stderrPromiseId);
-        });
+        this.#stderr = readableStreamForRidUnrefable(stderrRid);
       }
 
       const onAbort = () => this.kill("SIGTERM");
@@ -151,7 +158,7 @@
 
       const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
       this.#waitPromiseId = waitPromise[promiseIdSymbol];
-      this.#status = waitPromise.then((res) => {
+      this.#status = PromisePrototypeThen(waitPromise, (res) => {
         this.#rid = null;
         signal?.[remove](onAbort);
         return res;
@@ -175,7 +182,7 @@
         );
       }
 
-      const [status, stdout, stderr] = await PromiseAll([
+      const [status, stdout, stderr] = await SafePromiseAll([
         this.#status,
         collectOutput(this.#stdout),
         collectOutput(this.#stderr),
@@ -204,84 +211,90 @@
       if (this.#rid === null) {
         throw new TypeError("Child process has already terminated.");
       }
-      ops.op_kill(this.#pid, signo);
+      ops.op_kill(this.#pid, signo, "Deno.Child.kill()");
     }
 
     ref() {
       this.#unrefed = false;
       core.refOp(this.#waitPromiseId);
-      if (this.#stdoutPromiseId) core.refOp(this.#stdoutPromiseId);
-      if (this.#stderrPromiseId) core.refOp(this.#stderrPromiseId);
+      if (this.#stdout) readableStreamForRidUnrefableRef(this.#stdout);
+      if (this.#stderr) readableStreamForRidUnrefableRef(this.#stderr);
     }
 
     unref() {
       this.#unrefed = true;
       core.unrefOp(this.#waitPromiseId);
-      if (this.#stdoutPromiseId) core.unrefOp(this.#stdoutPromiseId);
-      if (this.#stderrPromiseId) core.unrefOp(this.#stderrPromiseId);
+      if (this.#stdout) readableStreamForRidUnrefableUnref(this.#stdout);
+      if (this.#stderr) readableStreamForRidUnrefableUnref(this.#stderr);
     }
   }
 
-  function spawn(command, options) {
-    if (options?.stdin === "piped") {
-      throw new TypeError(
-        "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
-      );
-    }
-    return spawnChild(command, options).output();
+  function createSpawn(opFn) {
+    return function spawn(command, options) {
+      if (options?.stdin === "piped") {
+        throw new TypeError(
+          "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+        );
+      }
+      return spawnChildInner(opFn, command, "Deno.spawn()", options).output();
+    };
   }
 
-  function spawnSync(command, {
-    args = [],
-    cwd = undefined,
-    clearEnv = false,
-    env = {},
-    uid = undefined,
-    gid = undefined,
-    stdin = "null",
-    stdout = "piped",
-    stderr = "piped",
-  } = {}) {
-    if (stdin === "piped") {
-      throw new TypeError(
-        "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
-      );
-    }
-    const result = ops.op_spawn_sync({
-      cmd: pathFromURL(command),
-      args: ArrayPrototypeMap(args, String),
-      cwd: pathFromURL(cwd),
-      clearEnv,
-      env: ObjectEntries(env),
-      uid,
-      gid,
-      stdin,
-      stdout,
-      stderr,
-    });
-    return {
-      success: result.status.success,
-      code: result.status.code,
-      signal: result.status.signal,
-      get stdout() {
-        if (result.stdout == null) {
-          throw new TypeError("stdout is not piped");
-        }
-        return result.stdout;
-      },
-      get stderr() {
-        if (result.stderr == null) {
-          throw new TypeError("stderr is not piped");
-        }
-        return result.stderr;
-      },
+  function createSpawnSync(opFn) {
+    return function spawnSync(command, {
+      args = [],
+      cwd = undefined,
+      clearEnv = false,
+      env = {},
+      uid = undefined,
+      gid = undefined,
+      stdin = "null",
+      stdout = "piped",
+      stderr = "piped",
+      windowsRawArguments = false,
+    } = {}) {
+      if (stdin === "piped") {
+        throw new TypeError(
+          "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+        );
+      }
+      const result = opFn({
+        cmd: pathFromURL(command),
+        args: ArrayPrototypeMap(args, String),
+        cwd: pathFromURL(cwd),
+        clearEnv,
+        env: ObjectEntries(env),
+        uid,
+        gid,
+        stdin,
+        stdout,
+        stderr,
+        windowsRawArguments,
+      });
+      return {
+        success: result.status.success,
+        code: result.status.code,
+        signal: result.status.signal,
+        get stdout() {
+          if (result.stdout == null) {
+            throw new TypeError("stdout is not piped");
+          }
+          return result.stdout;
+        },
+        get stderr() {
+          if (result.stderr == null) {
+            throw new TypeError("stderr is not piped");
+          }
+          return result.stderr;
+        },
+      };
     };
   }
 
   window.__bootstrap.spawn = {
     Child,
-    spawnChild,
-    spawn,
-    spawnSync,
+    createSpawn,
+    createSpawnChild,
+    createSpawnSync,
   };
 })(this);

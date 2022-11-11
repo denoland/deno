@@ -7,7 +7,7 @@ import {
   BufReader,
   BufWriter,
 } from "../../../test_util/std/io/buffer.ts";
-import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
+import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
   assertEquals,
@@ -70,6 +70,7 @@ Deno.test(async function httpServerRejectsOnAddrInUse() {
     onError: createOnErrorCb(ac),
   });
 
+  await listeningPromise;
   assertRejects(
     () =>
       Deno.serve({
@@ -763,7 +764,7 @@ Deno.test(
       const tpr = new TextProtoReader(r);
       const statusLine = await tpr.readLine();
       assert(statusLine !== null);
-      const headers = await tpr.readMIMEHeader();
+      const headers = await tpr.readMimeHeader();
       assert(headers !== null);
 
       const chunkedReader = chunkedBodyReader(headers, r);
@@ -920,7 +921,7 @@ Deno.test(
       assert(m !== null, "must be matched");
       const [_, _proto, status, _ok] = m;
       assertEquals(status, "200");
-      const headers = await tpr.readMIMEHeader();
+      const headers = await tpr.readMimeHeader();
       assert(headers !== null);
     }
 
@@ -1429,12 +1430,7 @@ createServerLengthTest("autoResponseWithKnownLengthEmpty", {
 // });
 
 Deno.test(
-  {
-    // FIXME(bartlomieju): this test is hanging on Windows, needs to be
-    // investigated and fixed
-    ignore: Deno.build.os === "windows",
-    permissions: { net: true },
-  },
+  { permissions: { net: true } },
   async function httpServerGetChunkedResponseWithKa() {
     const promises = [deferred(), deferred()];
     let reqCount = 0;
@@ -1895,6 +1891,33 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServer204ResponseDoesntSendContentLength() {
+    const listeningPromise = deferred();
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler: (_request) => new Response(null, { status: 204 }),
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningPromise;
+      const resp = await fetch("http://127.0.0.1:4501/", {
+        method: "GET",
+        headers: { "connection": "close" },
+      });
+      assertEquals(resp.headers.get("Content-Length"), null);
+    } finally {
+      ac.abort();
+      await server;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServer304ResponseDoesntSendBody() {
     const promise = deferred();
     const ac = new AbortController();
@@ -2205,6 +2228,95 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function serveWithPromisePrototypeThenOverride() {
+    const originalThen = Promise.prototype.then;
+    try {
+      Promise.prototype.then = () => {
+        throw new Error();
+      };
+      const ac = new AbortController();
+      const listeningPromise = deferred();
+      const server = Deno.serve({
+        handler: (_req) => new Response("ok"),
+        hostname: "localhost",
+        port: 4501,
+        signal: ac.signal,
+        onListen: onListen(listeningPromise),
+        onError: createOnErrorCb(ac),
+      });
+      ac.abort();
+      await server;
+    } finally {
+      Promise.prototype.then = originalThen;
+    }
+  },
+);
+
+// https://github.com/denoland/deno/issues/15549
+Deno.test(
+  { permissions: { net: true } },
+  async function testIssue15549() {
+    const ac = new AbortController();
+    const promise = deferred();
+    let count = 0;
+    const server = Deno.serve(() => {
+      count++;
+      return new Response(`hello world ${count}`);
+    }, {
+      async onListen() {
+        const res1 = await fetch("http://localhost:9000/");
+        assertEquals(await res1.text(), "hello world 1");
+
+        const res2 = await fetch("http://localhost:9000/");
+        assertEquals(await res2.text(), "hello world 2");
+
+        promise.resolve();
+        ac.abort();
+      },
+      signal: ac.signal,
+    });
+
+    await promise;
+    await server;
+  },
+);
+
+// Checks large streaming response
+// https://github.com/denoland/deno/issues/16567
+Deno.test(
+  { permissions: { net: true } },
+  async function testIssue16567() {
+    const ac = new AbortController();
+    const promise = deferred();
+    const server = Deno.serve(() =>
+      new Response(
+        new ReadableStream({
+          start(c) {
+            // 2MB "a...a" response with 40 chunks
+            for (const _ of Array(40)) {
+              c.enqueue(new Uint8Array(50_000).fill(97));
+            }
+            c.close();
+          },
+        }),
+      ), {
+      async onListen() {
+        const res1 = await fetch("http://localhost:9000/");
+        assertEquals((await res1.text()).length, 40 * 50_000);
+
+        promise.resolve();
+        ac.abort();
+      },
+      signal: ac.signal,
+    });
+
+    await promise;
+    await server;
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
@@ -2291,7 +2403,7 @@ async function readTrailers(
   if (trailers == null) return;
   const trailerNames = [...trailers.keys()];
   const tp = new TextProtoReader(r);
-  const result = await tp.readMIMEHeader();
+  const result = await tp.readMimeHeader();
   if (result == null) {
     throw new Deno.errors.InvalidData("Missing trailer header.");
   }

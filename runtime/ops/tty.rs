@@ -5,9 +5,6 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::ResourceId;
-use serde::Deserialize;
-use serde::Serialize;
 use std::io::Error;
 
 #[cfg(unix)]
@@ -43,33 +40,20 @@ fn get_windows_handle(
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      op_set_raw::decl(),
+      op_stdin_set_raw::decl(),
       op_isatty::decl(),
       op_console_size::decl(),
     ])
     .build()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetRawOptions {
+#[op(fast)]
+fn op_stdin_set_raw(
+  state: &mut OpState,
+  is_raw: bool,
   cbreak: bool,
-}
-
-#[derive(Deserialize)]
-pub struct SetRawArgs {
-  rid: ResourceId,
-  mode: bool,
-  options: SetRawOptions,
-}
-
-#[op]
-fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.setRaw");
-
-  let rid = args.rid;
-  let is_raw = args.mode;
-  let cbreak = args.options.cbreak;
+) -> Result<(), AnyError> {
+  let rid = 0; // stdin is always rid=0
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
@@ -168,9 +152,13 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
   }
 }
 
-#[op]
-fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
-  let isatty: bool = StdFileResource::with_file(state, rid, move |std_file| {
+#[op(fast)]
+fn op_isatty(
+  state: &mut OpState,
+  rid: u32,
+  out: &mut [u8],
+) -> Result<(), AnyError> {
+  StdFileResource::with_file(state, rid, move |std_file| {
     #[cfg(windows)]
     {
       use winapi::shared::minwindef::FALSE;
@@ -181,7 +169,11 @@ fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
       // If I cannot get mode out of console, it is not a console.
       // TODO(bartlomieju):
       #[allow(clippy::undocumented_unsafe_blocks)]
-      Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE })
+      {
+        out[0] = unsafe {
+          consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE
+        } as u8;
+      }
     }
     #[cfg(unix)]
     {
@@ -189,70 +181,77 @@ fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
       let raw_fd = std_file.as_raw_fd();
       // TODO(bartlomieju):
       #[allow(clippy::undocumented_unsafe_blocks)]
-      Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+      {
+        out[0] = unsafe { libc::isatty(raw_fd as libc::c_int) == 1 } as u8;
+      }
     }
-  })?;
-  Ok(isatty)
+    Ok(())
+  })
 }
 
-#[derive(Serialize)]
-struct ConsoleSize {
-  columns: u32,
-  rows: u32,
-}
-
-#[op]
+#[op(fast)]
 fn op_console_size(
   state: &mut OpState,
-  rid: ResourceId,
-) -> Result<ConsoleSize, AnyError> {
-  super::check_unstable(state, "Deno.consoleSize");
+  result: &mut [u32],
+) -> Result<(), AnyError> {
+  fn check_console_size(
+    state: &mut OpState,
+    result: &mut [u32],
+    rid: u32,
+  ) -> Result<(), AnyError> {
+    StdFileResource::with_file(state, rid, move |std_file| {
+      #[cfg(windows)]
+      {
+        use std::os::windows::io::AsRawHandle;
+        let handle = std_file.as_raw_handle();
 
-  let size = StdFileResource::with_file(state, rid, move |std_file| {
-    #[cfg(windows)]
-    {
-      use std::os::windows::io::AsRawHandle;
-      let handle = std_file.as_raw_handle();
+        // SAFETY: winapi calls
+        unsafe {
+          let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+            std::mem::zeroed();
 
-      // SAFETY: winapi calls
-      unsafe {
-        let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
-          std::mem::zeroed();
-
-        if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
-          == 0
-        {
-          return Err(Error::last_os_error().into());
+          if winapi::um::wincon::GetConsoleScreenBufferInfo(
+            handle,
+            &mut bufinfo,
+          ) == 0
+          {
+            return Err(Error::last_os_error().into());
+          }
+          result[0] = bufinfo.dwSize.X as u32;
+          result[1] = bufinfo.dwSize.Y as u32;
+          Ok(())
         }
-
-        Ok(ConsoleSize {
-          columns: bufinfo.dwSize.X as u32,
-          rows: bufinfo.dwSize.Y as u32,
-        })
       }
-    }
 
-    #[cfg(unix)]
-    {
-      use std::os::unix::io::AsRawFd;
+      #[cfg(unix)]
+      {
+        use std::os::unix::io::AsRawFd;
 
-      let fd = std_file.as_raw_fd();
-      // TODO(bartlomieju):
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      unsafe {
-        let mut size: libc::winsize = std::mem::zeroed();
-        if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-          return Err(Error::last_os_error().into());
+        let fd = std_file.as_raw_fd();
+        // TODO(bartlomieju):
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+          let mut size: libc::winsize = std::mem::zeroed();
+          if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
+            return Err(Error::last_os_error().into());
+          }
+          result[0] = size.ws_col as u32;
+          result[1] = size.ws_row as u32;
+          Ok(())
         }
-
-        // TODO (caspervonb) return a tuple instead
-        Ok(ConsoleSize {
-          columns: size.ws_col as u32,
-          rows: size.ws_row as u32,
-        })
       }
-    }
-  })?;
+    })
+  }
 
-  Ok(size)
+  let mut last_result = Ok(());
+  // Since stdio might be piped we try to get the size of the console for all
+  // of them and return the first one that succeeds.
+  for rid in [0, 1, 2] {
+    last_result = check_console_size(state, result, rid);
+    if last_result.is_ok() {
+      return last_result;
+    }
+  }
+
+  last_result
 }

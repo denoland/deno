@@ -24,6 +24,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -33,6 +34,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::args::config_file::JsxImportSourceConfig;
 use crate::deno_dir::DenoDir;
@@ -61,11 +63,16 @@ pub struct CliOptions {
   // application need not concern itself with, so keep these private
   flags: Flags,
   maybe_config_file: Option<ConfigFile>,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
 }
 
 impl CliOptions {
-  pub fn new(flags: Flags, maybe_config_file: Option<ConfigFile>) -> Self {
+  pub fn new(
+    flags: Flags,
+    maybe_config_file: Option<ConfigFile>,
+    maybe_lockfile: Option<Lockfile>,
+  ) -> Self {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
     {
@@ -80,8 +87,11 @@ impl CliOptions {
       eprintln!("{}", colors::yellow(msg));
     }
 
+    let maybe_lockfile = maybe_lockfile.map(|l| Arc::new(Mutex::new(l)));
+
     Self {
       maybe_config_file,
+      maybe_lockfile,
       flags,
       overrides: Default::default(),
     }
@@ -89,7 +99,9 @@ impl CliOptions {
 
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let maybe_config_file = ConfigFile::discover(&flags)?;
-    Ok(Self::new(flags, maybe_config_file))
+    let maybe_lock_file =
+      Lockfile::discover(&flags, maybe_config_file.as_ref())?;
+    Ok(Self::new(flags, maybe_config_file, maybe_lock_file))
   }
 
   pub fn maybe_config_file_specifier(&self) -> Option<ModuleSpecifier> {
@@ -210,13 +222,8 @@ impl CliOptions {
       .map(|host| InspectorServer::new(host, version::get_user_agent()))
   }
 
-  pub fn resolve_lock_file(&self) -> Result<Option<Lockfile>, AnyError> {
-    if let Some(filename) = &self.flags.lock {
-      let lockfile = Lockfile::new(filename.clone(), self.flags.lock_write)?;
-      Ok(Some(lockfile))
-    } else {
-      Ok(None)
-    }
+  pub fn maybe_lock_file(&self) -> Option<Arc<Mutex<Lockfile>>> {
+    self.maybe_lockfile.clone()
   }
 
   pub fn resolve_tasks_config(
@@ -420,6 +427,10 @@ fn resolve_import_map_specifier(
     // and with config files, we support both local and remote config files,
     // so we have treat them differently.
     if let Some(import_map_path) = config_file.to_import_map_path() {
+      // if the import map is an absolute URL, use it as is
+      if let Ok(specifier) = deno_core::resolve_url(&import_map_path) {
+        return Ok(Some(specifier));
+      }
       let specifier =
           // with local config files, it might be common to specify an import
           // map like `"importMap": "import-map.json"`, which is resolvable if
@@ -468,6 +479,25 @@ mod test {
     assert_eq!(
       actual,
       Some(ModuleSpecifier::parse("file:///deno/import_map.json").unwrap())
+    );
+  }
+
+  #[test]
+  fn resolve_import_map_remote_config_file_local() {
+    let config_text = r#"{
+      "importMap": "https://example.com/import_map.json"
+    }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let actual = resolve_import_map_specifier(None, Some(&config_file));
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert_eq!(
+      actual,
+      Some(
+        ModuleSpecifier::parse("https://example.com/import_map.json").unwrap()
+      )
     );
   }
 
