@@ -363,8 +363,14 @@ fn import_meta_resolve(
     let module_map = module_map_rc.borrow();
     module_map.loader.clone()
   };
-  match loader.resolve(&specifier.to_rust_string_lossy(scope), &referrer, false)
-  {
+  let specifier_str = specifier.to_rust_string_lossy(scope);
+
+  if specifier_str.starts_with("npm:") {
+    throw_type_error(scope, "\"npm:\" specifiers are currently not supported in import.meta.resolve()");
+    return;
+  }
+
+  match loader.resolve(&specifier_str, &referrer, false) {
     Ok(resolved) => {
       let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();
       rv.set(resolved_val);
