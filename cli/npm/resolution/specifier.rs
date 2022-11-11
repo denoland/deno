@@ -274,7 +274,8 @@ impl NpmSpecifierTree {
   }
 }
 
-/// Resolves the npm package requirements in the order they should be resolved in.
+/// Resolves the npm package requirements from the graph. The order returned
+/// is the order they should be resolved in.
 pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
   fn get_parent_path_specifier(specifier: &ModuleSpecifier) -> ModuleSpecifier {
     let mut parent_specifier = specifier.clone();
