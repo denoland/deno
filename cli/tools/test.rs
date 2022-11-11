@@ -725,6 +725,7 @@ async fn test_specifier(
       stdout: StdioPipe::File(sender.stdout()),
       stderr: StdioPipe::File(sender.stderr()),
     },
+    true,
   )
   .await?;
 

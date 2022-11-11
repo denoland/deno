@@ -358,6 +358,7 @@ async fn bench_specifier(
     permissions,
     vec![ops::bench::init(channel.clone(), filter)],
     Default::default(),
+    true,
   )
   .await?;
 

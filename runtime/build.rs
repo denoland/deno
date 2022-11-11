@@ -5,7 +5,6 @@ use std::path::Path;
 use std::path::PathBuf;
 
 // This is a shim that allows to generate documentation on docs.rs
-#[cfg(not(feature = "docsrs"))]
 mod not_docs {
   use super::*;
   use deno_cache::SqliteBackedCache;
@@ -242,7 +241,7 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
-  let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
+  let runtime_snapshot_path = o.join("RUNTIME_SNAPSHOT.bin");
 
   // If we're building on docs.rs we just create
   // and empty snapshot file and return, because `rusty_v8`

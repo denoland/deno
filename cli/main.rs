@@ -18,6 +18,7 @@ mod fs_util;
 mod graph_util;
 mod http_cache;
 mod http_util;
+mod js;
 mod lockfile;
 mod logger;
 mod lsp;
@@ -230,6 +231,7 @@ async fn install_command(
     permissions,
     vec![],
     Default::default(),
+    false,
   )
   .await?;
   // First, fetch and compile the module; this step ensures that the module exists.
@@ -321,6 +323,7 @@ async fn eval_command(
     permissions,
     vec![],
     Default::default(),
+    false,
   )
   .await?;
   // Create a dummy source file.
@@ -600,6 +603,7 @@ async fn repl_command(
     Permissions::from_options(&ps.options.permissions_options())?,
     vec![],
     Default::default(),
+    false,
   )
   .await?;
   worker.setup_repl().await?;
@@ -621,6 +625,7 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
     Permissions::from_options(&ps.options.permissions_options())?,
     vec![],
     Default::default(),
+    false,
   )
   .await?;
 
@@ -666,6 +671,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         permissions,
         vec![],
         Default::default(),
+        false,
       )
       .await?;
       worker.run_for_watcher().await?;
@@ -724,6 +730,7 @@ async fn run_command(
     permissions,
     vec![],
     Default::default(),
+    false,
   )
   .await?;
 

@@ -1397,12 +1397,18 @@
     return testFn;
   }
 
+  window.__bootstrap.internals = {
+    ...window.__bootstrap.internals ?? {},
+    testing: {
+      runTests,
+      runBenchmarks,
+      enableTest,
+      enableBench,
+    },
+  };
+
   window.__bootstrap.testing = {
     bench,
-    enableBench,
-    enableTest,
-    runBenchmarks,
-    runTests,
     test,
   };
 })(this);
