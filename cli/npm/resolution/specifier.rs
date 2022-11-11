@@ -225,21 +225,22 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     // fill this leaf's information
     for specifier in &specifiers {
       if specifier.scheme() == "npm" {
-        if let Ok(npm_ref) = NpmPackageReference::from_specifier(&specifier) {
+        // this will error elsewhere if not the case
+        if let Ok(npm_ref) = NpmPackageReference::from_specifier(specifier) {
           leaf.reqs.insert(npm_ref.req);
         }
       } else if !specifier.as_str().starts_with(&parent_specifier.as_str()) {
         leaf
           .dependencies
-          .insert(get_parent_path_specifier(&specifier));
+          .insert(get_parent_path_specifier(specifier));
       }
     }
-    drop(leaf);
 
     // now visit all the dependencies
     for specifier in &specifiers {
-      let module = graph.get(specifier).unwrap();
-      analyze_module(module, graph, specifier_graph, seen);
+      if let Some(module) = graph.get(specifier) {
+        analyze_module(module, graph, specifier_graph, seen);
+      }
     }
   }
 
@@ -305,6 +306,7 @@ fn get_parent_path_specifier(specifier: &ModuleSpecifier) -> ModuleSpecifier {
   parent_specifier
 }
 
+#[derive(Debug)]
 enum SpecifierTreeNode {
   Parent(SpecifierTreeParentNode),
   Leaf(SpecifierTreeLeafNode),
@@ -325,6 +327,7 @@ impl SpecifierTreeNode {
   }
 }
 
+#[derive(Debug)]
 struct SpecifierTreeParentNode {
   specifier: ModuleSpecifier,
   dependencies: HashMap<String, SpecifierTreeNode>,
@@ -364,6 +367,7 @@ impl SpecifierTreeParentNode {
   }
 }
 
+#[derive(Debug)]
 struct SpecifierTreeLeafNode {
   specifier: ModuleSpecifier,
   reqs: HashSet<NpmPackageReq>,
@@ -397,7 +401,8 @@ impl SpecifierTree {
     let mut current_node = root_node;
     if !matches!(specifier.path(), "" | "/") {
       let mut current_parts = Vec::new();
-      for part in specifier.path()[1..].split('/') {
+      let path = specifier.path();
+      for part in path[1..path.len() - 1].split('/') {
         current_parts.push(part);
         match current_node {
           SpecifierTreeNode::Leaf(leaf) => return leaf,
@@ -408,7 +413,7 @@ impl SpecifierTree {
               .or_insert_with(|| {
                 SpecifierTreeNode::Parent(SpecifierTreeParentNode {
                   specifier: {
-                    let mut specifier = specifier.clone();
+                    let mut specifier = root_specifier.clone();
                     specifier.set_path(&current_parts.join("/"));
                     specifier
                   },
@@ -509,6 +514,8 @@ fn cmp_package_req(a: &NpmPackageReq, b: &NpmPackageReq) -> Ordering {
 
 #[cfg(test)]
 mod tests {
+  use deno_graph::ModuleKind;
+
   use super::*;
 
   #[test]
@@ -714,6 +721,161 @@ mod tests {
     assert_eq!(
       get("https://deno.land/test/other/test?test#other"),
       "https://deno.land/test/other/"
+    );
+  }
+
+  #[tokio::test]
+  async fn test_resolve_npm_package_reqs() {
+    let mut loader = deno_graph::source::MemoryLoader::new(
+      vec![
+        (
+          "file:///dev/local_module_a/mod.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "file:///dev/local_module_a/mod.ts".to_string(),
+            content: concat!(
+              "import 'https://deno.land/x/module_d/mod.ts';",
+              "import 'file:///dev/local_module_a/other.ts';",
+              "import 'file:///dev/local_module_b/mod.ts';",
+              "import 'https://deno.land/x/module_a/mod.ts';",
+              "import 'npm:package-a@local_module_a';",
+            )
+            .to_string(),
+            maybe_headers: None,
+          },
+        ),
+        (
+          "file:///dev/local_module_a/other.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "file:///dev/local_module_a/other.ts".to_string(),
+            content: "import 'npm:package-b@local_module_a';".to_string(),
+            maybe_headers: None,
+          },
+        ),
+        (
+          "file:///dev/local_module_b/mod.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "file:///dev/local_module_b/mod.ts".to_string(),
+            content: "export * from 'npm:package-b@local_module_b';"
+              .to_string(),
+            maybe_headers: None,
+          },
+        ),
+        (
+          "https://deno.land/x/module_d/mod.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_d/mod.ts".to_string(),
+            content: concat!(
+              "import './other.ts';",
+              "import 'npm:package-a@module_d';",
+            )
+            .to_string(),
+            maybe_headers: None,
+          },
+        ),
+        (
+          "https://deno.land/x/module_d/other.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_d/other.ts".to_string(),
+            content: "import 'npm:package-c@module_d'".to_string(),
+            maybe_headers: None,
+          },
+        ),
+        (
+          "https://deno.land/x/module_a/mod.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_a/mod.ts".to_string(),
+            content: concat!(
+              "import 'npm:package-a@module_a';",
+              "import 'npm:package-b@module_a';",
+              "import '../module_c/sub/sub/mod.ts';",
+              "import '../module_b/mod.ts';",
+            )
+            .to_string(),
+            maybe_headers: None,
+          },
+        ),
+        (
+          "https://deno.land/x/module_b/mod.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_b/mod.ts".to_string(),
+            content: "import 'npm:package-a@module_b'".to_string(),
+            maybe_headers: None,
+          },
+        ),
+        (
+          "https://deno.land/x/module_c/sub/sub/mod.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_c/sub/sub/mod.ts"
+              .to_string(),
+            content: concat!(
+              "import 'npm:package-a@module_c';",
+              "import '../../mod.ts';",
+            )
+            .to_string(),
+            maybe_headers: None,
+          },
+        ),
+        (
+          "https://deno.land/x/module_c/mod.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_c/mod.ts".to_string(),
+            content: concat!(
+              "import 'npm:package-b@module_c';",
+              "import '../module_d/sub_folder/mod.ts';",
+            )
+            .to_string(),
+            maybe_headers: None,
+          },
+        ),
+        (
+          "https://deno.land/x/module_d/sub_folder/mod.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_d/sub_folder/mod.ts"
+              .to_string(),
+            content: "import 'npm:package-b@module_d';".to_string(),
+            maybe_headers: None,
+          },
+        ),
+      ],
+      Vec::new(),
+    );
+    let analyzer = deno_graph::CapturingModuleAnalyzer::default();
+    let graph = deno_graph::create_graph(
+      vec![(
+        ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
+        ModuleKind::Esm,
+      )],
+      &mut loader,
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: None,
+        resolver: None,
+        locker: None,
+        module_analyzer: Some(&analyzer),
+        reporter: None,
+      },
+    )
+    .await;
+    let reqs = resolve_npm_package_reqs(&graph)
+      .into_iter()
+      .map(|r| r.to_string())
+      .collect::<Vec<_>>();
+
+    assert_eq!(
+      reqs,
+      vec![
+        "package-a@local_module_a",
+        "package-b@local_module_a",
+        "package-b@local_module_b",
+        "package-a@module_a",
+        "package-b@module_a",
+        "package-a@module_d",
+        "package-b@module_d",
+        "package-c@module_d",
+        "package-a@module_b",
+        "package-a@module_c",
+        "package-b@module_c",
+      ]
     );
   }
 }

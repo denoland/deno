@@ -86,11 +86,11 @@ impl GraphData {
     let mut has_npm_specifier_in_graph = false;
 
     for (specifier, result) in graph.specifiers() {
-      if specifier.scheme() == "npm" {
-        if NpmPackageReference::from_specifier(&specifier).is_ok() {
-          has_npm_specifier_in_graph = true;
-          continue;
-        }
+      if specifier.scheme() == "npm"
+        && NpmPackageReference::from_specifier(&specifier).is_ok()
+      {
+        has_npm_specifier_in_graph = true;
+        continue;
       }
 
       if !reload && self.modules.contains_key(&specifier) {
