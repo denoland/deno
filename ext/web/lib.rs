@@ -209,7 +209,7 @@ fn op_encoding_decode_utf8<'a>(
   // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
   match v8::String::new_from_utf8(scope, buf, v8::NewStringType::Normal) {
     Some(text) => Ok(serde_v8::from_v8(scope, text.into())?),
-    None => Err(range_error("string too long")),
+    None => Err(type_error("buffer exceeds maximum length")),
   }
 }
 
