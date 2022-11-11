@@ -4,6 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const __bootstrap = window.__bootstrap;
+
   __bootstrap.denoNs = {
     metrics: core.metrics,
     test: __bootstrap.testing.test,

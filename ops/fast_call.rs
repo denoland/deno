@@ -30,7 +30,14 @@ pub(crate) fn generate(
 
   // TODO(@littledivy): Use `let..else` on 1.65.0
   let output_ty = match &optimizer.fast_result {
+    // Assert that the optimizer did not set a return type.
+    //
+    // @littledivy: This *could* potentially be used to optimize resolving
+    // promises but knowing the return type at compile time instead of
+    // serde_v8 serialization.
+    Some(_) if optimizer.is_async => &FastValue::Void,
     Some(ty) => ty,
+    None if optimizer.is_async => &FastValue::Void,
     None => {
       return FastImplItems {
         impl_and_fn: TokenStream::new(),
@@ -131,7 +138,10 @@ pub(crate) fn generate(
     .collect::<Punctuated<_, Comma>>();
 
   // Apply *hard* optimizer hints.
-  if optimizer.has_fast_callback_option || optimizer.needs_opstate() {
+  if optimizer.has_fast_callback_option
+    || optimizer.needs_opstate()
+    || optimizer.is_async
+  {
     fast_fn_inputs.push(parse_quote! {
       fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions
     });
@@ -139,9 +149,20 @@ pub(crate) fn generate(
     input_variants.push(q!({ CallbackOptions }));
   }
 
+  // (recv, p_id, ...)
+  //
+  // Optimizer has already set it in the fast parameter variant list.
+  if optimizer.is_async {
+    if fast_fn_inputs.is_empty() {
+      fast_fn_inputs.push(parse_quote! { __promise_id: i32 });
+    } else {
+      fast_fn_inputs.insert(0, parse_quote! { __promise_id: i32 });
+    }
+  }
+
   let mut output_transforms = q!({});
 
-  if optimizer.needs_opstate() {
+  if optimizer.needs_opstate() || optimizer.is_async {
     // Grab the op_state identifier, the first one. ¯\_(ツ)_/¯
     let op_state = match idents.first() {
       Some(ident) if optimizer.has_opstate_in_parameters() => ident.clone(),
@@ -155,24 +176,36 @@ pub(crate) fn generate(
     // - `data` union is always initialized as the `v8::Local<v8::Value>` variant.
     // - deno_core guarantees that `data` is a v8 External pointing to an OpCtx for the
     //   isolate's lifetime.
-    let prelude = q!(
-      Vars {
-        op_state: &op_state
-      },
-      {
-        let __opts: &mut v8::fast_api::FastApiCallbackOptions =
-          unsafe { &mut *fast_api_callback_options };
-        let __ctx = unsafe {
-          &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data })
-            .value() as *const _ops::OpCtx)
-        };
-        let op_state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
-      }
-    );
+    let prelude = q!({
+      let __opts: &mut v8::fast_api::FastApiCallbackOptions =
+        unsafe { &mut *fast_api_callback_options };
+      let __ctx = unsafe {
+        &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
+          as *const _ops::OpCtx)
+      };
+    });
 
     pre_transforms.push_tokens(&prelude);
+    pre_transforms.push_tokens(&match optimizer.is_async {
+      false => q!(
+        Vars {
+          op_state: &op_state
+        },
+        {
+          let op_state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
+        }
+      ),
+      true => q!(
+        Vars {
+          op_state: &op_state
+        },
+        {
+          let op_state = __ctx.state.clone();
+        }
+      ),
+    });
 
-    if optimizer.returns_result {
+    if optimizer.returns_result && !optimizer.is_async {
       // Magic fallback 🪄
       //
       // If Result<T, E> is Ok(T), return T as fast value.
@@ -196,9 +229,42 @@ pub(crate) fn generate(
     }
   }
 
+  if optimizer.is_async {
+    // Referenced variables are declared in parent block.
+    let track_async = q!({
+      let __op_id = __ctx.id;
+      let __state = ::std::cell::RefCell::borrow(&__ctx.state);
+      __state.tracker.track_async(__op_id);
+    });
+
+    output_transforms.push_tokens(&track_async);
+
+    let queue_future = if optimizer.returns_result {
+      q!({
+        let __get_class = __state.get_error_class_fn;
+        let result = _ops::queue_fast_async_op(__ctx, async move {
+          let result = result.await;
+          (
+            __promise_id,
+            __op_id,
+            _ops::to_op_result(__get_class, result),
+          )
+        });
+      })
+    } else {
+      q!({
+        let result = _ops::queue_fast_async_op(__ctx, async move {
+          let result = result.await;
+          (__promise_id, __op_id, _ops::OpResult::Ok(result.into()))
+        });
+      })
+    };
+
+    output_transforms.push_tokens(&queue_future);
+  }
+
   if !optimizer.returns_result {
     let default_output = q!({ result });
-
     output_transforms.push_tokens(&default_output);
   }
 
@@ -360,7 +426,7 @@ fn exclude_lifetime_params(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::Op;
+  use crate::{Attributes, Op};
   use std::path::PathBuf;
 
   #[testing_macros::fixture("optimizer_tests/**/*.rs")]
@@ -371,8 +437,13 @@ mod tests {
     let source =
       std::fs::read_to_string(&input).expect("Failed to read test file");
 
+    let mut attrs = Attributes::default();
+    if source.contains("// @test-attr:fast") {
+      attrs.must_be_fast = true;
+    }
+
     let item = syn::parse_str(&source).expect("Failed to parse test file");
-    let mut op = Op::new(item, Default::default());
+    let mut op = Op::new(item, attrs);
     let mut optimizer = Optimizer::new();
     if optimizer.analyze(&mut op).is_err() {
       // Tested by optimizer::test tests.

@@ -70,6 +70,7 @@ Deno.test(async function httpServerRejectsOnAddrInUse() {
     onError: createOnErrorCb(ac),
   });
 
+  await listeningPromise;
   assertRejects(
     () =>
       Deno.serve({

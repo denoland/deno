@@ -112,9 +112,7 @@ fn op_get_env(
   state: &mut OpState,
   key: String,
 ) -> Result<Option<String>, AnyError> {
-  let skip_permission_check =
-    state.borrow::<crate::ops::UnstableChecker>().unstable
-      && NODE_ENV_VAR_ALLOWLIST.contains(&key);
+  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
 
   if !skip_permission_check {
     state.borrow_mut::<Permissions>().env.check(&key)?;

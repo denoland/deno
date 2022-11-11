@@ -8,7 +8,7 @@ use util::http_server;
 // NOTE: See how to make test npm packages at ../testdata/npm/README.md
 
 itest!(esm_module {
-  args: "run --allow-read --allow-env --unstable npm/esm/main.js",
+  args: "run --allow-read --allow-env npm/esm/main.js",
   output: "npm/esm/main.out",
   envs: env_vars(),
   http_server: true,
@@ -17,7 +17,6 @@ itest!(esm_module {
 itest!(esm_module_eval {
   args_vec: vec![
     "eval",
-    "--unstable",
     "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk esm loads'));",
   ],
   output: "npm/esm/main.out",
@@ -40,35 +39,35 @@ itest!(esm_import_cjs_default {
 });
 
 itest!(cjs_with_deps {
-  args: "run --allow-read --allow-env --unstable npm/cjs_with_deps/main.js",
+  args: "run --allow-read --allow-env npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(cjs_sub_path {
-  args: "run --allow-read --unstable npm/cjs_sub_path/main.js",
+  args: "run --allow-read npm/cjs_sub_path/main.js",
   output: "npm/cjs_sub_path/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(cjs_local_global_decls {
-  args: "run --allow-read --unstable npm/cjs_local_global_decls/main.ts",
+  args: "run --allow-read npm/cjs_local_global_decls/main.ts",
   output: "npm/cjs_local_global_decls/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(cjs_reexport_collision {
-  args: "run --unstable -A --quiet npm/cjs_reexport_collision/main.ts",
+  args: "run -A --quiet npm/cjs_reexport_collision/main.ts",
   output: "npm/cjs_reexport_collision/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(cjs_this_in_exports {
-  args: "run --allow-read --unstable --quiet npm/cjs_this_in_exports/main.js",
+  args: "run --allow-read --quiet npm/cjs_this_in_exports/main.js",
   output: "npm/cjs_this_in_exports/main.out",
   envs: env_vars(),
   http_server: true,
@@ -76,7 +75,7 @@ itest!(cjs_this_in_exports {
 });
 
 itest!(translate_cjs_to_esm {
-  args: "run --unstable -A --quiet npm/translate_cjs_to_esm/main.js",
+  args: "run -A --quiet npm/translate_cjs_to_esm/main.js",
   output: "npm/translate_cjs_to_esm/main.out",
   envs: env_vars(),
   http_server: true,
@@ -90,21 +89,21 @@ itest!(compare_globals {
 });
 
 itest!(conditional_exports {
-  args: "run --allow-read --unstable npm/conditional_exports/main.js",
+  args: "run --allow-read npm/conditional_exports/main.js",
   output: "npm/conditional_exports/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(dual_cjs_esm {
-  args: "run --unstable -A --quiet npm/dual_cjs_esm/main.ts",
+  args: "run -A --quiet npm/dual_cjs_esm/main.ts",
   output: "npm/dual_cjs_esm/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(child_process_fork_test {
-  args: "run --unstable -A --quiet npm/child_process_fork_test/main.ts",
+  args: "run -A --quiet npm/child_process_fork_test/main.ts",
   output: "npm/child_process_fork_test/main.out",
   envs: env_vars(),
   http_server: true,
@@ -127,21 +126,21 @@ itest!(cjs_module_export_assignment_number {
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {
-//   args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
+//   args: "run --allow-read --allow-env npm/dynamic_import/main.ts",
 //   output: "npm/dynamic_import/main.out",
 //   envs: env_vars(),
 //   http_server: true,
 // });
 
 itest!(env_var_re_export_dev {
-  args: "run --allow-read --allow-env --unstable --quiet npm/env_var_re_export/main.js",
+  args: "run --allow-read --allow-env --quiet npm/env_var_re_export/main.js",
   output_str: Some("dev\n"),
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(env_var_re_export_prod {
-  args: "run --allow-read --allow-env --unstable --quiet npm/env_var_re_export/main.js",
+  args: "run --allow-read --allow-env --quiet npm/env_var_re_export/main.js",
   output_str: Some("prod\n"),
   envs: {
     let mut vars = env_vars();
@@ -152,28 +151,21 @@ itest!(env_var_re_export_prod {
 });
 
 itest!(cached_only {
-  args: "run --cached-only --unstable npm/cached_only/main.ts",
+  args: "run --cached-only npm/cached_only/main.ts",
   output: "npm/cached_only/main.out",
   envs: env_vars(),
   exit_code: 1,
 });
 
-itest!(no_unstable {
-  args: "run npm/no_unstable/main.ts",
-  output: "npm/no_unstable/main.out",
-  envs: env_vars(),
-  exit_code: 1,
-});
-
 itest!(import_map {
-  args: "run --allow-read --allow-env --unstable --import-map npm/import_map/import_map.json npm/import_map/main.js",
+  args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
   output: "npm/import_map/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(lock_file {
-  args: "run --allow-read --allow-env --unstable --lock npm/lock_file/lock.json npm/lock_file/main.js",
+  args: "run --allow-read --allow-env --lock npm/lock_file/lock.json npm/lock_file/main.js",
   output: "npm/lock_file/main.out",
   envs: env_vars(),
   http_server: true,
@@ -181,21 +173,21 @@ itest!(lock_file {
 });
 
 itest!(sub_paths {
-  args: "run --unstable -A --quiet npm/sub_paths/main.jsx",
+  args: "run -A --quiet npm/sub_paths/main.jsx",
   output: "npm/sub_paths/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(tarball_with_global_header {
-  args: "run --unstable -A --quiet npm/tarball_with_global_header/main.js",
+  args: "run -A --quiet npm/tarball_with_global_header/main.js",
   output: "npm/tarball_with_global_header/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(nonexistent_file {
-  args: "run --unstable -A --quiet npm/nonexistent_file/main.js",
+  args: "run -A --quiet npm/nonexistent_file/main.js",
   output: "npm/nonexistent_file/main.out",
   envs: env_vars(),
   http_server: true,
@@ -203,21 +195,21 @@ itest!(nonexistent_file {
 });
 
 itest!(invalid_package_name {
-  args: "run --unstable -A --quiet npm/invalid_package_name/main.js",
+  args: "run -A --quiet npm/invalid_package_name/main.js",
   output: "npm/invalid_package_name/main.out",
   envs: env_vars(),
   exit_code: 1,
 });
 
 itest!(require_json {
-  args: "run --unstable -A --quiet npm/require_json/main.js",
+  args: "run -A --quiet npm/require_json/main.js",
   output: "npm/require_json/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(error_version_after_subpath {
-  args: "run --unstable -A --quiet npm/error_version_after_subpath/main.js",
+  args: "run -A --quiet npm/error_version_after_subpath/main.js",
   output: "npm/error_version_after_subpath/main.out",
   envs: env_vars(),
   http_server: true,
@@ -225,14 +217,14 @@ itest!(error_version_after_subpath {
 });
 
 itest!(deno_cache {
-  args: "cache --unstable --reload npm:chalk npm:mkdirp",
+  args: "cache --reload npm:chalk npm:mkdirp",
   output: "npm/deno_cache.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(check_all {
-  args: "check --unstable --remote npm/check_errors/main.ts",
+  args: "check --remote npm/check_errors/main.ts",
   output: "npm/check_errors/main_all.out",
   envs: env_vars(),
   http_server: true,
@@ -240,7 +232,7 @@ itest!(check_all {
 });
 
 itest!(check_local {
-  args: "check --unstable npm/check_errors/main.ts",
+  args: "check npm/check_errors/main.ts",
   output: "npm/check_errors/main_local.out",
   envs: env_vars(),
   http_server: true,
@@ -248,7 +240,7 @@ itest!(check_local {
 });
 
 itest!(types_ambient_module {
-  args: "check --unstable --quiet npm/types_ambient_module/main.ts",
+  args: "check --quiet npm/types_ambient_module/main.ts",
   output: "npm/types_ambient_module/main.out",
   envs: env_vars(),
   http_server: true,
@@ -256,7 +248,7 @@ itest!(types_ambient_module {
 });
 
 itest!(types_ambient_module_import_map {
-  args: "check --unstable --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
+  args: "check --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
   output: "npm/types_ambient_module/main_import_map.out",
   envs: env_vars(),
   http_server: true,
@@ -270,7 +262,6 @@ fn parallel_downloading() {
     vec![
       "run",
       "--allow-read",
-      "--unstable",
       "--allow-env",
       "npm/cjs_with_deps/main.js",
     ],
@@ -291,7 +282,6 @@ fn cached_only_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("npm/cached_only_after_first_run/main1.ts")
@@ -311,7 +301,6 @@ fn cached_only_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--cached-only")
@@ -335,7 +324,6 @@ fn cached_only_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--cached-only")
@@ -364,7 +352,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("npm/reload/main.ts")
@@ -384,7 +371,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--reload")
@@ -405,7 +391,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--reload=npm:")
@@ -426,7 +411,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--reload=npm:chalk")
@@ -447,7 +431,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--reload=npm:foobar")
@@ -475,7 +458,6 @@ fn no_npm_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--no-npm")
@@ -499,7 +481,6 @@ fn no_npm_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("npm/no_npm_after_first_run/main1.ts")
@@ -519,7 +500,6 @@ fn no_npm_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--no-npm")
@@ -550,7 +530,6 @@ fn deno_run_cjs_module() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--allow-write")
@@ -567,49 +546,49 @@ fn deno_run_cjs_module() {
 }
 
 itest!(deno_run_cowsay {
-  args: "run --unstable -A --quiet npm:cowsay@1.5.0 Hello",
+  args: "run -A --quiet npm:cowsay@1.5.0 Hello",
   output: "npm/deno_run_cowsay.out",
   envs: env_vars_no_sync_download(),
   http_server: true,
 });
 
 itest!(deno_run_cowsay_explicit {
-  args: "run --unstable -A --quiet npm:cowsay@1.5.0/cowsay Hello",
+  args: "run -A --quiet npm:cowsay@1.5.0/cowsay Hello",
   output: "npm/deno_run_cowsay.out",
   envs: env_vars_no_sync_download(),
   http_server: true,
 });
 
 itest!(deno_run_cowthink {
-  args: "run --unstable -A --quiet npm:cowsay@1.5.0/cowthink Hello",
+  args: "run -A --quiet npm:cowsay@1.5.0/cowthink Hello",
   output: "npm/deno_run_cowthink.out",
   envs: env_vars_no_sync_download(),
   http_server: true,
 });
 
 itest!(deno_run_bin_esm {
-  args: "run --unstable -A --quiet npm:@denotest/bin/cli-esm this is a test",
+  args: "run -A --quiet npm:@denotest/bin/cli-esm this is a test",
   output: "npm/deno_run_esm.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(deno_run_bin_no_ext {
-  args: "run --unstable -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
+  args: "run -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
   output: "npm/deno_run_no_ext.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(deno_run_bin_cjs {
-  args: "run --unstable -A --quiet npm:@denotest/bin/cli-cjs this is a test",
+  args: "run -A --quiet npm:@denotest/bin/cli-cjs this is a test",
   output: "npm/deno_run_cjs.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(deno_run_non_existent {
-  args: "run --unstable npm:mkdirp@0.5.125",
+  args: "run npm:mkdirp@0.5.125",
   output: "npm/deno_run_non_existent.out",
   envs: env_vars(),
   http_server: true,
@@ -617,7 +596,7 @@ itest!(deno_run_non_existent {
 });
 
 itest!(builtin_module_module {
-  args: "run --allow-read --quiet --unstable npm/builtin_module_module/main.js",
+  args: "run --allow-read --quiet npm/builtin_module_module/main.js",
   output: "npm/builtin_module_module/main.out",
   envs: env_vars(),
   http_server: true,
@@ -625,7 +604,7 @@ itest!(builtin_module_module {
 
 itest!(node_modules_dir_require_added_node_modules_folder {
   args:
-    "run --unstable --node-modules-dir -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
+    "run --node-modules-dir -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
   output: "npm/require_added_nm_folder/main.out",
   envs: env_vars(),
   http_server: true,
@@ -634,7 +613,7 @@ itest!(node_modules_dir_require_added_node_modules_folder {
 });
 
 itest!(node_modules_dir_with_deps {
-  args: "run --allow-read --allow-env --unstable --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
+  args: "run --allow-read --allow-env --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
   envs: env_vars(),
   http_server: true,
@@ -642,7 +621,7 @@ itest!(node_modules_dir_with_deps {
 });
 
 itest!(node_modules_dir_yargs {
-  args: "run --allow-read --allow-env --unstable --node-modules-dir $TESTDATA/npm/cjs_yargs/main.js",
+  args: "run --allow-read --allow-env --node-modules-dir $TESTDATA/npm/cjs_yargs/main.js",
   output: "npm/cjs_yargs/main.out",
   envs: env_vars(),
   http_server: true,
@@ -658,7 +637,6 @@ fn node_modules_dir_cache() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("cache")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("--quiet")
     .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
@@ -694,7 +672,6 @@ fn node_modules_dir_cache() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("--quiet")
     .arg("-A")
@@ -734,7 +711,7 @@ fn ensure_registry_files_local() {
 }
 
 itest!(compile_errors {
-  args: "compile -A --quiet --unstable npm/esm/main.js",
+  args: "compile -A --quiet npm/esm/main.js",
   output_str: Some("error: npm specifiers have not yet been implemented for deno compile (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
   exit_code: 1,
   envs: env_vars(),
@@ -742,7 +719,7 @@ itest!(compile_errors {
 });
 
 itest!(info_chalk_display {
-  args: "info --quiet --unstable npm/cjs_with_deps/main.js",
+  args: "info --quiet npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main_info.out",
   exit_code: 0,
   envs: env_vars(),
@@ -750,7 +727,7 @@ itest!(info_chalk_display {
 });
 
 itest!(info_chalk_display_node_modules_dir {
-  args: "info --quiet --unstable --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
+  args: "info --quiet --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main_info.out",
   exit_code: 0,
   envs: env_vars(),
@@ -759,7 +736,7 @@ itest!(info_chalk_display_node_modules_dir {
 });
 
 itest!(info_chalk_json {
-  args: "info --quiet --unstable --json npm/cjs_with_deps/main.js",
+  args: "info --quiet --json npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main_info_json.out",
   exit_code: 0,
   envs: env_vars(),
@@ -767,7 +744,8 @@ itest!(info_chalk_json {
 });
 
 itest!(info_chalk_json_node_modules_dir {
-  args: "info --quiet --unstable --node-modules-dir --json $TESTDATA/npm/cjs_with_deps/main.js",
+  args:
+    "info --quiet --node-modules-dir --json $TESTDATA/npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main_info_json.out",
   exit_code: 0,
   envs: env_vars(),
@@ -776,7 +754,7 @@ itest!(info_chalk_json_node_modules_dir {
 });
 
 itest!(info_cli_chalk_display {
-  args: "info --quiet --unstable npm:chalk@4",
+  args: "info --quiet npm:chalk@4",
   output: "npm/info/chalk.out",
   exit_code: 0,
   envs: env_vars(),
@@ -784,7 +762,7 @@ itest!(info_cli_chalk_display {
 });
 
 itest!(info_cli_chalk_json {
-  args: "info --quiet --unstable --json npm:chalk@4",
+  args: "info --quiet --json npm:chalk@4",
   output: "npm/info/chalk_json.out",
   exit_code: 0,
   envs: env_vars(),
@@ -985,7 +963,6 @@ fn lock_file_missing_top_level_package() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--lock")
     .arg("deno.lock")
@@ -1073,7 +1050,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("-A")
     .arg("main.ts")
     .envs(env_vars())
@@ -1105,7 +1081,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("-A")
     .arg("main.ts")
     .envs(env_vars())
@@ -1120,7 +1095,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--reload")
     .arg("-A")
     .arg("main.ts")
@@ -1137,7 +1111,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("-A")
     .arg("main.ts")
@@ -1162,7 +1135,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("-A")
     .arg("main.ts")
@@ -1179,7 +1151,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("--reload")
     .arg("-A")
@@ -1197,7 +1168,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("--no-lock")
     .arg("--reload")
@@ -1214,7 +1184,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
 }
 
 itest!(info_peer_deps {
-  args: "info --quiet --unstable npm/peer_deps_with_copied_folders/main.ts",
+  args: "info --quiet npm/peer_deps_with_copied_folders/main.ts",
   output: "npm/peer_deps_with_copied_folders/main_info.out",
   exit_code: 0,
   envs: env_vars(),
@@ -1222,8 +1192,7 @@ itest!(info_peer_deps {
 });
 
 itest!(info_peer_deps_json {
-  args:
-    "info --quiet --unstable --json npm/peer_deps_with_copied_folders/main.ts",
+  args: "info --quiet --json npm/peer_deps_with_copied_folders/main.ts",
   output: "npm/peer_deps_with_copied_folders/main_info_json.out",
   exit_code: 0,
   envs: env_vars(),

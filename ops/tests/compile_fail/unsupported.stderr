@@ -1,11 +1,3 @@
-error: fast async calls are not supported
-  --> tests/compile_fail/unsupported.rs:22:1
-   |
-22 | #[op(fast)]
-   | ^^^^^^^^^^^
-   |
-   = note: this error originates in the attribute macro `op` (in Nightly builds, run with -Z macro-backtrace for more info)
-
 error[E0277]: the trait bound `&mut FastApiCallbackOptions<'_>: Deserialize<'_>` is not satisfied
   --> tests/compile_fail/unsupported.rs:17:1
    |
