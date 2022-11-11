@@ -671,11 +671,19 @@
       }
     }
 
-    return function (V, opts = {}) {
+    return new Function(
+      "makeException",
+      "type",
+      "defaultValues",
+      "allMembers",
+      `return function (V, opts = {}) {
       const typeV = type(V);
+      let useDefault = false;
       switch (typeV) {
         case "Undefined":
         case "Null":
+          useDefault = true;
+          break;
         case "Object":
           break;
         default:
@@ -685,43 +693,16 @@
             opts,
           );
       }
-      const esDict = V;
 
-      const idlDict = ObjectAssign({}, defaultValues);
-
-      // NOTE: fast path Null and Undefined.
-      if ((V === undefined || V === null) && !hasRequiredKey) {
-        return idlDict;
+      return {
+        ${
+        allMembers.map((member, idx) =>
+          `${member.key}: (useDefault || V.${member.key} === undefined) ? defaultValues.${member.key} : allMembers[${idx}].converter(V.${member.key}, opts)`
+        ).join(",\n")
       }
-
-      for (const member of allMembers) {
-        const key = member.key;
-
-        let esMemberValue;
-        if (typeV === "Undefined" || typeV === "Null") {
-          esMemberValue = undefined;
-        } else {
-          esMemberValue = esDict[key];
-        }
-
-        if (esMemberValue !== undefined) {
-          const context = `'${key}' of '${name}'${
-            opts.context ? ` (${opts.context})` : ""
-          }`;
-          const converter = member.converter;
-          const idlMemberValue = converter(esMemberValue, { ...opts, context });
-          idlDict[key] = idlMemberValue;
-        } else if (member.required) {
-          throw makeException(
-            TypeError,
-            `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
-            opts,
-          );
-        }
-      }
-
-      return idlDict;
-    };
+      };
+    };`,
+    )(makeException, type, defaultValues, allMembers);
   }
 
   // https://heycam.github.io/webidl/#es-enumeration
