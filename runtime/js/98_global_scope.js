@@ -3,6 +3,11 @@
 
 ((window) => {
   const core = Deno.core;
+  const {
+    ObjectDefineProperties,
+    SymbolFor,
+  } = window.__bootstrap.primordials;
+
   const util = window.__bootstrap.util;
   const event = window.__bootstrap.event;
   const eventTarget = window.__bootstrap.eventTarget;
@@ -30,6 +35,9 @@
   const webidl = window.__bootstrap.webidl;
   const domException = window.__bootstrap.domException;
   const abortSignal = window.__bootstrap.abortSignal;
+  const globalInterfaces = window.__bootstrap.globalInterfaces;
+  const webStorage = window.__bootstrap.webStorage;
+  const prompt = window.__bootstrap.prompt;
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
@@ -165,8 +173,175 @@
     GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
   };
 
+  class Navigator {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
+    }
+  }
+
+  const navigator = webidl.createBranded(Navigator);
+
+  let numCpus, userAgent, language;
+
+  function setNumCpus(val) {
+    numCpus = val;
+  }
+
+  function setUserAgent(val) {
+    userAgent = val;
+  }
+
+  function setLanguage(val) {
+    language = val;
+  }
+
+  ObjectDefineProperties(Navigator.prototype, {
+    gpu: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return webgpu.gpu;
+      },
+    },
+    hardwareConcurrency: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return numCpus;
+      },
+    },
+    userAgent: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return userAgent;
+      },
+    },
+    language: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return language;
+      },
+    },
+    languages: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return [language];
+      },
+    },
+  });
+  const NavigatorPrototype = Navigator.prototype;
+
+  class WorkerNavigator {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
+    }
+  }
+
+  const workerNavigator = webidl.createBranded(WorkerNavigator);
+
+  ObjectDefineProperties(WorkerNavigator.prototype, {
+    gpu: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, WorkerNavigatorPrototype);
+        return webgpu.gpu;
+      },
+    },
+    hardwareConcurrency: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, WorkerNavigatorPrototype);
+        return numCpus;
+      },
+      language: {
+        configurable: true,
+        enumerable: true,
+        get() {
+          webidl.assertBranded(this, WorkerNavigatorPrototype);
+          return language;
+        },
+      },
+      languages: {
+        configurable: true,
+        enumerable: true,
+        get() {
+          webidl.assertBranded(this, WorkerNavigatorPrototype);
+          return [language];
+        },
+      },
+    },
+  });
+  const WorkerNavigatorPrototype = WorkerNavigator.prototype;
+
+  const mainRuntimeGlobalProperties = {
+    Location: location.locationConstructorDescriptor,
+    location: location.locationDescriptor,
+    Window: globalInterfaces.windowConstructorDescriptor,
+    window: util.readOnly(globalThis),
+    self: util.writable(globalThis),
+    Navigator: util.nonEnumerable(Navigator),
+    navigator: {
+      configurable: true,
+      enumerable: true,
+      get: () => navigator,
+    },
+    alert: util.writable(prompt.alert),
+    confirm: util.writable(prompt.confirm),
+    prompt: util.writable(prompt.prompt),
+    localStorage: {
+      configurable: true,
+      enumerable: true,
+      get: webStorage.localStorage,
+    },
+    sessionStorage: {
+      configurable: true,
+      enumerable: true,
+      get: webStorage.sessionStorage,
+    },
+    Storage: util.nonEnumerable(webStorage.Storage),
+  };
+
+  const workerRuntimeGlobalProperties = {
+    WorkerLocation: location.workerLocationConstructorDescriptor,
+    location: location.workerLocationDescriptor,
+    WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
+    DedicatedWorkerGlobalScope:
+      globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
+    WorkerNavigator: util.nonEnumerable(WorkerNavigator),
+    navigator: {
+      configurable: true,
+      enumerable: true,
+      get: () => workerNavigator,
+    },
+    self: util.readOnly(globalThis),
+  };
+
   window.__bootstrap.globalScope = {
     windowOrWorkerGlobalScope,
     unstableWindowOrWorkerGlobalScope,
+    mainRuntimeGlobalProperties,
+    workerRuntimeGlobalProperties,
+
+    setNumCpus,
+    setUserAgent,
+    setLanguage,
   };
 })(this);

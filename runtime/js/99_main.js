@@ -41,7 +41,6 @@ delete Intl.v8BreakIterator;
   const util = window.__bootstrap.util;
   const event = window.__bootstrap.event;
   const eventTarget = window.__bootstrap.eventTarget;
-  const globalInterfaces = window.__bootstrap.globalInterfaces;
   const location = window.__bootstrap.location;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
@@ -54,10 +53,7 @@ delete Intl.v8BreakIterator;
   const performance = window.__bootstrap.performance;
   const net = window.__bootstrap.net;
   const url = window.__bootstrap.url;
-  const webgpu = window.__bootstrap.webgpu;
-  const webStorage = window.__bootstrap.webStorage;
   const fetch = window.__bootstrap.fetch;
-  const prompt = window.__bootstrap.prompt;
   const messagePort = window.__bootstrap.messagePort;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
@@ -67,7 +63,15 @@ delete Intl.v8BreakIterator;
   const { defineEventHandler, reportException } = window.__bootstrap.event;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
-  const { windowOrWorkerGlobalScope, unstableWindowOrWorkerGlobalScope } = window.__bootstrap.globalScope;
+  const {
+    windowOrWorkerGlobalScope,
+    unstableWindowOrWorkerGlobalScope,
+    workerRuntimeGlobalProperties,
+    mainRuntimeGlobalProperties,
+    setNumCpus,
+    setUserAgent,
+    setLanguage,
+  } = window.__bootstrap.globalScope;
 
   let windowIsClosing = false;
 
@@ -311,160 +315,6 @@ delete Intl.v8BreakIterator;
     );
   }
 
-  class Navigator {
-    constructor() {
-      webidl.illegalConstructor();
-    }
-
-    [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({})}`;
-    }
-  }
-
-  const navigator = webidl.createBranded(Navigator);
-
-  let numCpus, userAgent, language;
-
-  ObjectDefineProperties(Navigator.prototype, {
-    gpu: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, NavigatorPrototype);
-        return webgpu.gpu;
-      },
-    },
-    hardwareConcurrency: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, NavigatorPrototype);
-        return numCpus;
-      },
-    },
-    userAgent: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, NavigatorPrototype);
-        return userAgent;
-      },
-    },
-    language: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, NavigatorPrototype);
-        return language;
-      },
-    },
-    languages: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, NavigatorPrototype);
-        return [language];
-      },
-    },
-  });
-  const NavigatorPrototype = Navigator.prototype;
-
-  class WorkerNavigator {
-    constructor() {
-      webidl.illegalConstructor();
-    }
-
-    [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({})}`;
-    }
-  }
-
-  const workerNavigator = webidl.createBranded(WorkerNavigator);
-
-  ObjectDefineProperties(WorkerNavigator.prototype, {
-    gpu: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, WorkerNavigatorPrototype);
-        return webgpu.gpu;
-      },
-    },
-    hardwareConcurrency: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, WorkerNavigatorPrototype);
-        return numCpus;
-      },
-      language: {
-        configurable: true,
-        enumerable: true,
-        get() {
-          webidl.assertBranded(this, WorkerNavigatorPrototype);
-          return language;
-        },
-      },
-      languages: {
-        configurable: true,
-        enumerable: true,
-        get() {
-          webidl.assertBranded(this, WorkerNavigatorPrototype);
-          return [language];
-        },
-      },
-    },
-  });
-  const WorkerNavigatorPrototype = WorkerNavigator.prototype;
-
-  const mainRuntimeGlobalProperties = {
-    Location: location.locationConstructorDescriptor,
-    location: location.locationDescriptor,
-    Window: globalInterfaces.windowConstructorDescriptor,
-    window: util.readOnly(globalThis),
-    self: util.writable(globalThis),
-    Navigator: util.nonEnumerable(Navigator),
-    navigator: {
-      configurable: true,
-      enumerable: true,
-      get: () => navigator,
-    },
-    close: util.writable(windowClose),
-    closed: util.getterOnly(() => windowIsClosing),
-    alert: util.writable(prompt.alert),
-    confirm: util.writable(prompt.confirm),
-    prompt: util.writable(prompt.prompt),
-    localStorage: {
-      configurable: true,
-      enumerable: true,
-      get: webStorage.localStorage,
-    },
-    sessionStorage: {
-      configurable: true,
-      enumerable: true,
-      get: webStorage.sessionStorage,
-    },
-    Storage: util.nonEnumerable(webStorage.Storage),
-  };
-
-  const workerRuntimeGlobalProperties = {
-    WorkerLocation: location.workerLocationConstructorDescriptor,
-    location: location.workerLocationDescriptor,
-    WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
-    DedicatedWorkerGlobalScope:
-      globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
-    WorkerNavigator: util.nonEnumerable(WorkerNavigator),
-    navigator: {
-      configurable: true,
-      enumerable: true,
-      get: () => workerNavigator,
-    },
-    self: util.readOnly(globalThis),
-    // TODO(bartlomieju): should be readonly?
-    close: util.nonEnumerable(workerClose),
-    postMessage: util.writable(postMessage),
-  };
-
   const pendingRejections = [];
   const pendingRejectionsReasons = new SafeWeakMap();
 
@@ -573,6 +423,10 @@ delete Intl.v8BreakIterator;
       ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
     }
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
+    ObjectDefineProperties(mainRuntimeGlobalProperties, {
+      close: util.writable(windowClose),
+      closed: util.getterOnly(() => windowIsClosing),
+    });
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
     if (runtimeOptions.inspectFlag) {
@@ -601,9 +455,9 @@ delete Intl.v8BreakIterator;
 
     runtimeStart(runtimeOptions);
 
-    numCpus = runtimeOptions.cpuCount;
-    userAgent = runtimeOptions.userAgent;
-    language = runtimeOptions.locale;
+    setNumCpus(runtimeOptions.cpuCount);
+    setUserAgent(runtimeOptions.userAgent);
+    setLanguage(runtimeOptions.locale);
 
     const internalSymbol = Symbol("Deno.internal");
 
@@ -696,7 +550,12 @@ delete Intl.v8BreakIterator;
       ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
     }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
-    ObjectDefineProperties(globalThis, { name: util.writable(name) });
+    ObjectDefineProperties(globalThis, {
+      name: util.writable(name),
+      // TODO(bartlomieju): should be readonly?
+      close: util.nonEnumerable(workerClose),
+      postMessage: util.writable(postMessage),
+    });
     if (runtimeOptions.enableTestingFeaturesFlag) {
       ObjectDefineProperty(
         globalThis,
@@ -729,8 +588,9 @@ delete Intl.v8BreakIterator;
     );
 
     location.setLocationHref(runtimeOptions.location);
-    numCpus = runtimeOptions.cpuCount;
-    language = runtimeOptions.locale;
+
+    setNumCpus(runtimeOptions.cpuCount);
+    setLanguage(runtimeOptions.locale);
 
     globalThis.pollForMessages = pollForMessages;
 
