@@ -525,7 +525,7 @@ impl StdFileResource {
     self
       .with_inner_blocking_task(move |inner| {
         let nread = inner.read(&mut buf)?;
-        Ok((nread, buf.into()))
+        Ok((nread, buf))
       })
       .await
   }
