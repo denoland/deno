@@ -912,7 +912,20 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
       Ok(b) => {
         let store = b.data() as *mut u8;
         // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
-        unsafe { ::std::slice::from_raw_parts_mut(store, b.byte_length()) }
+        let slice = unsafe { ::std::slice::from_raw_parts_mut(store, b.byte_length()) };
+
+        let bs = b.get_backing_store();
+        if bs.is_shared() {
+          // Copy SAB into a non-shared buffer
+          let bs = #core::v8::ArrayBuffer::new_backing_store_from_boxed_slice(
+            slice.to_vec().into_boxed_slice(),
+          );
+
+          // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
+          unsafe { ::std::slice::from_raw_parts_mut(bs.data().unwrap().as_mut() as *mut _ as *mut u8, bs.byte_length()) }
+        } else {
+          slice
+        }
       },
       Err(_) => {
         if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {

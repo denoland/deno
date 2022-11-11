@@ -188,7 +188,7 @@ fn op_encoding_decode_utf8<'a>(
 ) -> Result<serde_v8::Value<'a>, AnyError> {
   let buf = &zero_copy;
 
-  let buf = if ignore_bom
+  let buf = if !ignore_bom
     && buf.len() >= 3
     && buf[0] == 0xef
     && buf[1] == 0xbb
