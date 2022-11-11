@@ -13,14 +13,15 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { forgivingBase64Encode } = window.__bootstrap.infra;
+  const { ProgressEvent } = window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { decode, TextDecoder } = window.__bootstrap.encoding;
   const { parseMimeType } = window.__bootstrap.mimesniff;
   const { DOMException } = window.__bootstrap.domException;
   const {
-    ArrayPrototypeJoin,
-    ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeReduce,
     FunctionPrototypeCall,
@@ -31,7 +32,6 @@
     ObjectPrototypeIsPrototypeOf,
     queueMicrotask,
     SafeArrayIterator,
-    StringFromCodePoint,
     Symbol,
     TypedArrayPrototypeSet,
     TypeError,
@@ -168,13 +168,7 @@
                     break;
                   }
                   case "BinaryString":
-                    this[result] = ArrayPrototypeJoin(
-                      ArrayPrototypeMap(
-                        [...new Uint8Array(bytes.buffer)],
-                        (v) => StringFromCodePoint(v),
-                      ),
-                      "",
-                    );
+                    this[result] = core.ops.op_encode_binary_string(bytes);
                     break;
                   case "Text": {
                     let decoder = undefined;

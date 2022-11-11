@@ -22,6 +22,7 @@ mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
+mod napi;
 mod node;
 mod npm;
 mod ops;
@@ -69,12 +70,12 @@ use crate::file_watcher::ResolutionResult;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid;
 use crate::proc_state::ProcState;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
+use crate::resolver::CliResolver;
 use crate::tools::check;
 
 use args::CliOptions;
 use deno_ast::MediaType;
+use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -82,8 +83,6 @@ use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_runtime::colors;
@@ -95,113 +94,11 @@ use log::info;
 use npm::NpmPackageReference;
 use std::env;
 use std::io::Read;
-use std::io::Write;
 use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use worker::create_main_worker;
-
-pub fn write_to_stdout_ignore_sigpipe(
-  bytes: &[u8],
-) -> Result<(), std::io::Error> {
-  use std::io::ErrorKind;
-
-  match std::io::stdout().write_all(bytes) {
-    Ok(()) => Ok(()),
-    Err(e) => match e.kind() {
-      ErrorKind::BrokenPipe => Ok(()),
-      _ => Err(e),
-    },
-  }
-}
-
-pub fn write_json_to_stdout<T>(value: &T) -> Result<(), AnyError>
-where
-  T: ?Sized + serde::ser::Serialize,
-{
-  let mut writer = std::io::BufWriter::new(std::io::stdout());
-  serde_json::to_writer_pretty(&mut writer, value)?;
-  writeln!(&mut writer)?;
-  Ok(())
-}
-
-fn print_cache_info(
-  state: &ProcState,
-  json: bool,
-  location: Option<&deno_core::url::Url>,
-) -> Result<(), AnyError> {
-  let deno_dir = &state.dir.root;
-  let modules_cache = &state.file_fetcher.get_http_cache_location();
-  let npm_cache = &state.npm_cache.as_readonly().get_cache_location();
-  let typescript_cache = &state.dir.gen_cache.location;
-  let registry_cache =
-    &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
-  let mut origin_dir = state.dir.root.join("location_data");
-
-  if let Some(location) = &location {
-    origin_dir =
-      origin_dir.join(&checksum::gen(&[location.to_string().as_bytes()]));
-  }
-
-  let local_storage_dir = origin_dir.join("local_storage");
-
-  if json {
-    let mut output = json!({
-      "denoDir": deno_dir,
-      "modulesCache": modules_cache,
-      "npmCache": npm_cache,
-      "typescriptCache": typescript_cache,
-      "registryCache": registry_cache,
-      "originStorage": origin_dir,
-    });
-
-    if location.is_some() {
-      output["localStorage"] = serde_json::to_value(local_storage_dir)?;
-    }
-
-    write_json_to_stdout(&output)
-  } else {
-    println!(
-      "{} {}",
-      colors::bold("DENO_DIR location:"),
-      deno_dir.display()
-    );
-    println!(
-      "{} {}",
-      colors::bold("Remote modules cache:"),
-      modules_cache.display()
-    );
-    println!(
-      "{} {}",
-      colors::bold("npm modules cache:"),
-      npm_cache.display()
-    );
-    println!(
-      "{} {}",
-      colors::bold("Emitted modules cache:"),
-      typescript_cache.display()
-    );
-    println!(
-      "{} {}",
-      colors::bold("Language server registries cache:"),
-      registry_cache.display(),
-    );
-    println!(
-      "{} {}",
-      colors::bold("Origin storage:"),
-      origin_dir.display()
-    );
-    if location.is_some() {
-      println!(
-        "{} {}",
-        colors::bold("Local Storage:"),
-        local_storage_dir.display(),
-      );
-    }
-    Ok(())
-  }
-}
 
 pub fn get_types(unstable: bool) -> String {
   let mut types = vec![
@@ -217,6 +114,7 @@ pub fn get_types(unstable: bool) -> String {
     tsc::DENO_BROADCAST_CHANNEL_LIB,
     tsc::DENO_NET_LIB,
     tsc::SHARED_GLOBALS_LIB,
+    tsc::DENO_CACHE_LIB,
     tsc::WINDOW_LIB,
   ];
 
@@ -253,6 +151,21 @@ async fn compile_command(
   })?;
 
   graph.valid().unwrap();
+
+  // at the moment, we don't support npm specifiers in deno_compile, so show an error
+  let first_npm_specifier = graph
+    .specifiers()
+    .values()
+    .filter_map(|r| match r {
+      Ok((specifier, kind, _)) if *kind == deno_graph::ModuleKind::External => {
+        Some(specifier.clone())
+      }
+      _ => None,
+    })
+    .next();
+  if let Some(npm_specifier) = first_npm_specifier {
+    bail!("npm specifiers have not yet been implemented for deno compile (https://github.com/denoland/deno/issues/15960). Found: {}", npm_specifier)
+  }
 
   let parser = ps.parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
@@ -296,22 +209,7 @@ async fn info_command(
   flags: Flags,
   info_flags: InfoFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags).await?;
-  if let Some(specifier) = info_flags.file {
-    let specifier = resolve_url_or_path(&specifier)?;
-    let graph = ps
-      .create_graph(vec![(specifier, deno_graph::ModuleKind::Esm)])
-      .await?;
-
-    if info_flags.json {
-      write_json_to_stdout(&json!(graph))?;
-    } else {
-      write_to_stdout_ignore_sigpipe(graph.to_string().as_bytes())?;
-    }
-  } else {
-    // If it was just "deno info" print location of caches and exit
-    print_cache_info(&ps, info_flags.json, ps.options.location_flag())?;
-  }
+  tools::info::info(flags, info_flags).await?;
   Ok(0)
 }
 
@@ -392,6 +290,7 @@ async fn load_and_type_check(
 
   for file in files {
     let specifier = resolve_url_or_path(file)?;
+
     ps.prepare_module_load(
       vec![specifier],
       false,
@@ -461,30 +360,25 @@ async fn create_graph_and_maybe_check(
   );
   let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
   let maybe_imports = ps.options.to_maybe_imports()?;
-  let maybe_import_map_resolver =
-    ps.maybe_import_map.clone().map(ImportMapResolver::new);
-  let maybe_jsx_resolver = ps
-    .options
-    .to_maybe_jsx_import_source_config()
-    .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
-  let maybe_resolver = if maybe_jsx_resolver.is_some() {
-    maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-  } else {
-    maybe_import_map_resolver
-      .as_ref()
-      .map(|im| im.as_resolver())
-  };
+  let maybe_cli_resolver = CliResolver::maybe_new(
+    ps.options.to_maybe_jsx_import_source_config(),
+    ps.maybe_import_map.clone(),
+  );
+  let maybe_graph_resolver =
+    maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
   let analyzer = ps.parsed_source_cache.as_analyzer();
   let graph = Arc::new(
     deno_graph::create_graph(
       vec![(root, deno_graph::ModuleKind::Esm)],
-      false,
-      maybe_imports,
       &mut cache,
-      maybe_resolver,
-      maybe_locker,
-      Some(&*analyzer),
-      None,
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: maybe_imports,
+        resolver: maybe_graph_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        reporter: None,
+      },
     )
     .await,
   );
@@ -511,6 +405,7 @@ async fn create_graph_and_maybe_check(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
       &cache,
+      ps.npm_resolver.clone(),
       check::CheckOptions {
         type_check_mode: ps.options.type_check_mode(),
         debug,
@@ -810,6 +705,11 @@ async fn run_command(
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead
   let ps = ProcState::build(flags).await?;
+
+  // Run a background task that checks for available upgrades. If an earlier
+  // run of this background task found a new version of Deno.
+  tools::upgrade::check_for_upgrades(ps.dir.root.clone());
+
   let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
   {
     ModuleSpecifier::parse(&run_flags.script)?
@@ -888,13 +788,13 @@ async fn completions_command(
   _flags: Flags,
   completions_flags: CompletionsFlags,
 ) -> Result<i32, AnyError> {
-  write_to_stdout_ignore_sigpipe(&completions_flags.buf)?;
+  display::write_to_stdout_ignore_sigpipe(&completions_flags.buf)?;
   Ok(0)
 }
 
 async fn types_command(flags: Flags) -> Result<i32, AnyError> {
   let types = get_types(flags.unstable);
-  write_to_stdout_ignore_sigpipe(types.as_bytes())?;
+  display::write_to_stdout_ignore_sigpipe(types.as_bytes())?;
   Ok(0)
 }
 
@@ -1038,16 +938,22 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      let error_string = match error.downcast_ref::<JsError>() {
-        Some(e) => format_js_error(e),
-        None => format!("{:?}", error),
-      };
+      let mut error_string = format!("{:?}", error);
+      let mut error_code = 1;
+
+      if let Some(e) = error.downcast_ref::<JsError>() {
+        error_string = format_js_error(e);
+      } else if let Some(e) = error.downcast_ref::<lockfile::LockfileError>() {
+        error_string = e.to_string();
+        error_code = 10;
+      }
+
       eprintln!(
         "{}: {}",
         colors::red_bold("error"),
         error_string.trim_start_matches("error: ")
       );
-      std::process::exit(1);
+      std::process::exit(error_code);
     }
   }
 }

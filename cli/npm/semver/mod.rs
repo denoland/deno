@@ -6,10 +6,11 @@ use std::fmt;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use monch::*;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::npm::resolution::NpmVersionMatcher;
 
-use self::errors::with_failure_handling;
 use self::range::Partial;
 use self::range::VersionBoundKind;
 use self::range::VersionRange;
@@ -18,14 +19,15 @@ use self::range::VersionRangeSet;
 use self::range::XRange;
 pub use self::specifier::SpecifierVersionReq;
 
-mod errors;
 mod range;
 mod specifier;
 
 // A lot of the below is a re-implementation of parts of https://github.com/npm/node-semver
 // which is Copyright (c) Isaac Z. Schlueter and Contributors (ISC License)
 
-#[derive(Clone, Debug, PartialEq, Eq, Default, Hash)]
+#[derive(
+  Clone, Debug, PartialEq, Eq, Default, Hash, Serialize, Deserialize,
+)]
 pub struct NpmVersion {
   pub major: u64,
   pub minor: u64,
@@ -170,12 +172,12 @@ pub struct NpmVersionReq {
 }
 
 impl NpmVersionMatcher for NpmVersionReq {
-  fn matches(&self, version: &NpmVersion) -> bool {
-    self.satisfies(version)
+  fn tag(&self) -> Option<&str> {
+    None
   }
 
-  fn is_latest(&self) -> bool {
-    false
+  fn matches(&self, version: &NpmVersion) -> bool {
+    self.satisfies(version)
   }
 
   fn version_text(&self) -> String {

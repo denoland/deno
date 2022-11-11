@@ -1,15 +1,21 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Context;
-use deno_core::error::{uri_error, AnyError};
+use deno_core::error::uri_error;
+use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
+use deno_runtime::deno_node::PathClean;
 use std::borrow::Cow;
 use std::env::current_dir;
 use std::fs::OpenOptions;
-use std::io::{Error, Write};
-use std::path::{Path, PathBuf};
+use std::io::Error;
+use std::io::ErrorKind;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
 use walkdir::WalkDir;
 
 pub fn atomic_write_file<T: AsRef<[u8]>>(
@@ -73,6 +79,35 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
   return Ok(strip_unc_prefix(path));
   #[cfg(not(windows))]
   return Ok(path);
+}
+
+/// Canonicalizes a path which might be non-existent by going up the
+/// ancestors until it finds a directory that exists, canonicalizes
+/// that path, then adds back the remaining path components.
+///
+/// Note: When using this, you should be aware that a symlink may
+/// subsequently be created along this path by some other code.
+pub fn canonicalize_path_maybe_not_exists(
+  path: &Path,
+) -> Result<PathBuf, Error> {
+  let path = path.to_path_buf().clean();
+  let mut path = path.as_path();
+  let mut names_stack = Vec::new();
+  loop {
+    match canonicalize_path(path) {
+      Ok(mut canonicalized_path) => {
+        for name in names_stack.into_iter().rev() {
+          canonicalized_path = canonicalized_path.join(name);
+        }
+        return Ok(canonicalized_path);
+      }
+      Err(err) if err.kind() == ErrorKind::NotFound => {
+        names_stack.push(path.file_name().unwrap());
+        path = path.parent().unwrap();
+      }
+      Err(err) => return Err(err),
+    }
+  }
 }
 
 #[cfg(windows)]
@@ -294,6 +329,138 @@ pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
   }
 }
 
+/// Copies a directory to another directory.
+///
+/// Note: Does not handle symlinks.
+pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+  std::fs::create_dir_all(&to)
+    .with_context(|| format!("Creating {}", to.display()))?;
+  let read_dir = std::fs::read_dir(&from)
+    .with_context(|| format!("Reading {}", from.display()))?;
+
+  for entry in read_dir {
+    let entry = entry?;
+    let file_type = entry.file_type()?;
+    let new_from = from.join(entry.file_name());
+    let new_to = to.join(entry.file_name());
+
+    if file_type.is_dir() {
+      copy_dir_recursive(&new_from, &new_to).with_context(|| {
+        format!("Dir {} to {}", new_from.display(), new_to.display())
+      })?;
+    } else if file_type.is_file() {
+      std::fs::copy(&new_from, &new_to).with_context(|| {
+        format!("Copying {} to {}", new_from.display(), new_to.display())
+      })?;
+    }
+  }
+
+  Ok(())
+}
+
+/// Hardlinks the files in one directory to another directory.
+///
+/// Note: Does not handle symlinks.
+pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+  std::fs::create_dir_all(&to)
+    .with_context(|| format!("Creating {}", to.display()))?;
+  let read_dir = std::fs::read_dir(&from)
+    .with_context(|| format!("Reading {}", from.display()))?;
+
+  for entry in read_dir {
+    let entry = entry?;
+    let file_type = entry.file_type()?;
+    let new_from = from.join(entry.file_name());
+    let new_to = to.join(entry.file_name());
+
+    if file_type.is_dir() {
+      hard_link_dir_recursive(&new_from, &new_to).with_context(|| {
+        format!("Dir {} to {}", new_from.display(), new_to.display())
+      })?;
+    } else if file_type.is_file() {
+      // note: chance for race conditions here between attempting to create,
+      // then removing, then attempting to create. There doesn't seem to be
+      // a way to hard link with overwriting in Rust, but maybe there is some
+      // way with platform specific code. The workaround here is to handle
+      // scenarios where something else might create or remove files.
+      if let Err(err) = std::fs::hard_link(&new_from, &new_to) {
+        if err.kind() == ErrorKind::AlreadyExists {
+          if let Err(err) = std::fs::remove_file(&new_to) {
+            if err.kind() == ErrorKind::NotFound {
+              // Assume another process/thread created this hard link to the file we are wanting
+              // to remove then sleep a little bit to let the other process/thread move ahead
+              // faster to reduce contention.
+              std::thread::sleep(Duration::from_millis(10));
+            } else {
+              return Err(err).with_context(|| {
+                format!(
+                  "Removing file to hard link {} to {}",
+                  new_from.display(),
+                  new_to.display()
+                )
+              });
+            }
+          }
+
+          // Always attempt to recreate the hardlink. In contention scenarios, the other process
+          // might have been killed or exited after removing the file, but before creating the hardlink
+          if let Err(err) = std::fs::hard_link(&new_from, &new_to) {
+            // Assume another process/thread created this hard link to the file we are wanting
+            // to now create then sleep a little bit to let the other process/thread move ahead
+            // faster to reduce contention.
+            if err.kind() == ErrorKind::AlreadyExists {
+              std::thread::sleep(Duration::from_millis(10));
+            } else {
+              return Err(err).with_context(|| {
+                format!(
+                  "Hard linking {} to {}",
+                  new_from.display(),
+                  new_to.display()
+                )
+              });
+            }
+          }
+        } else {
+          return Err(err).with_context(|| {
+            format!(
+              "Hard linking {} to {}",
+              new_from.display(),
+              new_to.display()
+            )
+          });
+        }
+      }
+    }
+  }
+
+  Ok(())
+}
+
+pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
+  let err_mapper = |err: Error| {
+    Error::new(
+      err.kind(),
+      format!(
+        "{}, symlink '{}' -> '{}'",
+        err,
+        oldpath.display(),
+        newpath.display()
+      ),
+    )
+  };
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::symlink;
+    symlink(&oldpath, &newpath).map_err(err_mapper)?;
+  }
+  #[cfg(not(unix))]
+  {
+    use std::os::windows::fs::symlink_dir;
+    symlink_dir(&oldpath, &newpath).map_err(err_mapper)?;
+  }
+  Ok(())
+}
+
 /// Attempts to convert a specifier to a file path. By default, uses the Url
 /// crate's `to_file_path()` method, but falls back to try and resolve unix-style
 /// paths on Windows.
@@ -489,6 +656,20 @@ pub fn root_url_to_safe_local_dirname(root: &ModuleSpecifier) -> PathBuf {
   result
 }
 
+/// Gets the total size (in bytes) of a directory.
+pub fn dir_size(path: &Path) -> std::io::Result<u64> {
+  let entries = std::fs::read_dir(path)?;
+  let mut total = 0;
+  for entry in entries {
+    let entry = entry?;
+    total += match entry.metadata()? {
+      data if data.is_dir() => dir_size(&entry.path())?,
+      data => data.len(),
+    };
+  }
+  Ok(total)
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -542,8 +723,8 @@ mod tests {
     assert!(!is_supported_ext(Path::new("tests/subdir/redirects")));
     assert!(!is_supported_ext(Path::new("README.md")));
     assert!(is_supported_ext(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext(Path::new("testdata/001_hello.js")));
-    assert!(is_supported_ext(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_ext(Path::new("testdata/run/001_hello.js")));
+    assert!(is_supported_ext(Path::new("testdata/run/002_hello.ts")));
     assert!(is_supported_ext(Path::new("foo.jsx")));
     assert!(is_supported_ext(Path::new("foo.tsx")));
     assert!(is_supported_ext(Path::new("foo.TS")));
@@ -563,8 +744,12 @@ mod tests {
     assert!(is_supported_test_ext(Path::new("README.md")));
     assert!(is_supported_test_ext(Path::new("readme.MD")));
     assert!(is_supported_test_ext(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_test_ext(Path::new("testdata/001_hello.js")));
-    assert!(is_supported_test_ext(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_test_ext(Path::new(
+      "testdata/run/001_hello.js"
+    )));
+    assert!(is_supported_test_ext(Path::new(
+      "testdata/run/002_hello.ts"
+    )));
     assert!(is_supported_test_ext(Path::new("foo.jsx")));
     assert!(is_supported_test_ext(Path::new("foo.tsx")));
     assert!(is_supported_test_ext(Path::new("foo.TS")));

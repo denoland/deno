@@ -3,7 +3,7 @@ Deno.test(
 	async function responseClone() {
 		const response =
 			await fetch(
-				'http://localhost:4545/fixture.json',
+				'http://localhost:4545/assets/fixture.json',
 			);
 		const response1 =
 			response.clone();

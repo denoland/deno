@@ -109,7 +109,7 @@
       requestPath,
       "package.json",
     );
-    const pkg = core.ops.op_require_read_package_scope(packageJsonPath).main;
+    const pkg = core.ops.op_require_read_package_scope(packageJsonPath)?.main;
     if (!pkg) {
       return tryExtensions(
         pathResolve(requestPath, "index"),
@@ -351,8 +351,7 @@
         }
       }
 
-      const isDenoDirPackage = Deno.core.opSync(
-        "op_require_is_deno_dir_package",
+      const isDenoDirPackage = Deno.core.ops.op_require_is_deno_dir_package(
         curPath,
       );
       const isRelative = ops.op_require_is_request_relative(
@@ -402,9 +401,17 @@
 
   Module._resolveLookupPaths = function (request, parent) {
     const paths = [];
+
+    if (core.ops.op_require_is_request_relative(request) && parent?.filename) {
+      ArrayPrototypePush(
+        paths,
+        core.ops.op_require_path_dirname(parent.filename),
+      );
+      return paths;
+    }
+
     if (parent?.filename && parent.filename.length > 0) {
-      const denoDirPath = core.opSync(
-        "op_require_resolve_deno_dir",
+      const denoDirPath = core.ops.op_require_resolve_deno_dir(
         request,
         parent.filename,
       );
@@ -664,7 +671,7 @@
   Module.wrapper = [
     // We provide the non-standard APIs in the CommonJS wrapper
     // to avoid exposing them in global namespace.
-    "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout} = globalThis; var window = undefined; (function () {",
+    "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout} = globalThis; var window = undefined; (function () {",
     "\n}).call(this); })",
   ];
   Module.wrap = function (script) {
@@ -773,7 +780,10 @@
 
   // Native extension for .node
   Module._extensions[".node"] = function (module, filename) {
-    throw new Error("not implemented loading .node files");
+    if (filename.endsWith("fsevents.node")) {
+      throw new Error("Using fsevents module is currently not supported");
+    }
+    module.exports = ops.op_napi_open(filename);
   };
 
   function createRequireFromPath(filename) {
@@ -810,7 +820,7 @@
 
   function createRequire(filenameOrUrl) {
     // FIXME: handle URLs and validation
-    const filename = core.opSync("op_require_as_file_path", filenameOrUrl);
+    const filename = core.ops.op_require_as_file_path(filenameOrUrl);
     return createRequireFromPath(filename);
   }
 

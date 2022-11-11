@@ -671,13 +671,10 @@ interface ReadableStream<R = any> {
   cancel(reason?: any): Promise<void>;
   getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
   getReader(options?: { mode?: undefined }): ReadableStreamDefaultReader<R>;
-  pipeThrough<T>(
-    { writable, readable }: {
-      writable: WritableStream<R>;
-      readable: ReadableStream<T>;
-    },
-    options?: PipeOptions,
-  ): ReadableStream<T>;
+  pipeThrough<T>(transform: {
+    writable: WritableStream<R>;
+    readable: ReadableStream<T>;
+  }, options?: PipeOptions): ReadableStream<T>;
   pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
   tee(): [ReadableStream<R>, ReadableStream<R>];
   [Symbol.asyncIterator](options?: {
@@ -914,8 +911,8 @@ declare class MessagePort extends EventTarget {
   postMessage(message: any, transfer: Transferable[]): void;
   postMessage(message: any, options?: StructuredSerializeOptions): void;
   /**
-   * Begins dispatching messages received on the port. This is implictly called
-   * when assiging a value to `this.onmessage`.
+   * Begins dispatching messages received on the port. This is implicitly called
+   * when assigning a value to `this.onmessage`.
    */
   start(): void;
   addEventListener<K extends keyof MessagePortEventMap>(

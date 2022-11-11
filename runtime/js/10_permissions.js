@@ -2,13 +2,11 @@
 "use strict";
 
 ((window) => {
-  const {
-    Event,
-    EventTarget,
-    Deno: { core: { ops } },
-    __bootstrap: { webUtil: { illegalConstructorKey } },
-  } = window;
+  const { ops } = Deno.core;
+  const { Event } = window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { pathFromURL } = window.__bootstrap.util;
+  const { illegalConstructorKey } = window.__bootstrap.webUtil;
   const {
     ArrayIsArray,
     ArrayPrototypeIncludes,
@@ -32,12 +30,13 @@
    * @property {PermissionStatus} status
    */
 
-  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "run" | "ffi" | "hrtime">} */
+  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "hrtime">} */
   const permissionNames = [
     "read",
     "write",
     "net",
     "env",
+    "sys",
     "run",
     "ffi",
     "hrtime",
@@ -132,6 +131,8 @@
       key += `-${desc.command}&`;
     } else if (desc.name === "env" && desc.variable) {
       key += `-${desc.variable}&`;
+    } else if (desc.name === "sys" && desc.kind) {
+      key += `-${desc.kind}&`;
     } else {
       key += "$";
     }
@@ -242,7 +243,7 @@
           serializedPermissions[key] = permissions[key];
         }
       }
-      for (const key of ["env", "hrtime", "net"]) {
+      for (const key of ["env", "hrtime", "net", "sys"]) {
         if (ArrayIsArray(permissions[key])) {
           serializedPermissions[key] = ArrayPrototypeSlice(permissions[key]);
         } else {

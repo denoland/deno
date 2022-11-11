@@ -11,7 +11,7 @@ const {
 } = Deno;
 const addr = Deno.args[0] || "127.0.0.1:4500";
 const [hostname, port] = addr.split(":");
-const serverId = op_flash_serve({ hostname, port });
+const serverId = op_flash_serve({ hostname, port, reuseport: true });
 const serverPromise = opAsync("op_flash_drive_server", serverId);
 
 const fastOps = op_flash_make_request();

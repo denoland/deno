@@ -53,7 +53,7 @@ pub struct GraphData {
   npm_packages: HashSet<NpmPackageReq>,
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
-  referrer_map: HashMap<ModuleSpecifier, Range>,
+  referrer_map: HashMap<ModuleSpecifier, Box<Range>>,
   graph_imports: Vec<GraphImport>,
   cjs_esm_translations: HashMap<ModuleSpecifier, String>,
 }
@@ -81,11 +81,10 @@ impl GraphData {
         continue;
       }
       if specifier.scheme() == "npm" {
-        // the loader enforces npm specifiers are valid, so it's ok to unwrap here
-        let reference =
-          NpmPackageReference::from_specifier(&specifier).unwrap();
-        self.npm_packages.insert(reference.req);
-        continue;
+        if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+          self.npm_packages.insert(reference.req);
+          continue;
+        }
       }
       if let Some(found) = graph.redirects.get(&specifier) {
         let module_entry = ModuleEntry::Redirect(found.clone());

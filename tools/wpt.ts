@@ -679,6 +679,16 @@ function discoverTestsToRun(
 
           if (expectation === undefined) continue;
 
+          if (typeof expectation === "object") {
+            if (typeof expectation.ignore !== "undefined") {
+              assert(
+                typeof expectation.ignore === "boolean",
+                "test entry's `ignore` key must be a boolean",
+              );
+              if (expectation.ignore === true) continue;
+            }
+          }
+
           assert(
             Array.isArray(expectation) || typeof expectation == "boolean",
             "test entry must not have a folder expectation",

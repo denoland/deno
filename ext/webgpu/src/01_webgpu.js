@@ -25,15 +25,14 @@
     Error,
     MathMax,
     ObjectDefineProperty,
-    ObjectFreeze,
     ObjectPrototypeIsPrototypeOf,
     Promise,
-    PromiseAll,
     PromisePrototypeCatch,
     PromisePrototypeThen,
     PromiseReject,
     PromiseResolve,
     SafeArrayIterator,
+    SafePromiseAll,
     Set,
     SetPrototypeEntries,
     SetPrototypeForEach,
@@ -344,8 +343,8 @@
       const inner = new InnerGPUDevice({
         rid,
         adapter: this,
-        features: ObjectFreeze(features),
-        limits: ObjectFreeze(limits),
+        features: createGPUSupportedFeatures(features),
+        limits: createGPUSupportedLimits(limits),
       });
       return createGPUDevice(
         descriptor.label ?? null,
@@ -744,8 +743,8 @@
    * @typedef InnerGPUDeviceOptions
    * @property {GPUAdapter} adapter
    * @property {number | undefined} rid
-   * @property {GPUFeatureName[]} features
-   * @property {object} limits
+   * @property {GPUSupportedFeatures} features
+   * @property {GPUSupportedLimits} limits
    */
 
   class InnerGPUDevice {
@@ -753,9 +752,9 @@
     adapter;
     /** @type {number | undefined} */
     rid;
-    /** @type {GPUFeatureName[]} */
+    /** @type {GPUSupportedFeatures} */
     features;
-    /** @type {object} */
+    /** @type {GPUSupportedLimits} */
     limits;
     /** @type {WeakRef<any>[]} */
     resources;
@@ -1518,7 +1517,7 @@
           "OperationError",
         );
       }
-      const operations = PromiseAll(scope.operations);
+      const operations = SafePromiseAll(scope.operations);
       return PromisePrototypeThen(
         operations,
         () => PromiseResolve(null),

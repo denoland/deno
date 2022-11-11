@@ -9,6 +9,8 @@ use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::CreateCache;
+use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -337,6 +339,7 @@ pub struct WebWorkerOptions {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
 }
 
@@ -373,6 +376,10 @@ impl WebWorker {
         Ok(())
       })
       .build();
+    let create_cache = options.cache_storage_dir.map(|storage_dir| {
+      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
+      CreateCache(Arc::new(create_cache_fn))
+    });
 
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
@@ -392,6 +399,7 @@ impl WebWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
+      deno_cache::init::<SqliteBackedCache>(create_cache),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
@@ -423,7 +431,8 @@ impl WebWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_node::init::<Permissions>(unstable, options.npm_resolver),
+      deno_napi::init::<Permissions>(unstable),
+      deno_node::init::<Permissions>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),
       ops::process::init(),
@@ -448,6 +457,7 @@ impl WebWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      inspector: options.maybe_inspector_server.is_some(),
       ..Default::default()
     });
 
