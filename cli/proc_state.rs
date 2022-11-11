@@ -287,9 +287,9 @@ impl ProcState {
   ) -> Result<(), AnyError> {
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
-    let has_root_npm_specifier = roots
-      .iter()
-      .any(|r| NpmPackageReference::from_specifier(r).is_ok());
+    let has_root_npm_specifier = roots.iter().any(|r| {
+      r.scheme() == "npm" && NpmPackageReference::from_specifier(r).is_ok()
+    });
     let roots = roots
       .into_iter()
       .map(|s| (s, ModuleKind::Esm))
