@@ -2918,15 +2918,9 @@ itest!(nested_error {
   exit_code: 1,
 });
 
-itest!(node_env_var_allowlist_with_unstable_flag {
+itest!(node_env_var_allowlist {
   args: "run --unstable --no-prompt run/node_env_var_allowlist.ts",
-  output: "run/node_env_var_allowlist_with_unstable_flag.ts.out",
-  exit_code: 1,
-});
-
-itest!(node_env_var_allowlist_without_unstable_flag {
-  args: "run --no-prompt run/node_env_var_allowlist.ts",
-  output: "run/node_env_var_allowlist_without_unstable_flag.ts.out",
+  output: "run/node_env_var_allowlist.ts.out",
   exit_code: 1,
 });
 
