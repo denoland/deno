@@ -386,7 +386,7 @@ mod js {
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
-      deno_node::init::<Permissions>(false, None), // No --unstable.
+      deno_node::init::<Permissions>(None), // No --unstable.
       deno_ffi::init::<Permissions>(false),
       deno_net::init::<Permissions>(
         None, false, // No --unstable.
@@ -549,7 +549,8 @@ fn main() {
   ts::create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);
 
   let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
-  let js_files = get_js_files("js");
+  let mut js_files = get_js_files("js");
+  js_files.push(deno_runtime::js::get_99_main());
   js::create_cli_snapshot(&cli_snapshot_path, js_files);
 
   #[cfg(target_os = "windows")]

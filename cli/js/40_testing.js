@@ -1407,8 +1407,6 @@
     },
   };
 
-  window.__bootstrap.testing = {
-    bench,
-    test,
-  };
+  window.__bootstrap.denoNs.bench = test;
+  window.__bootstrap.denoNs.test = test;
 })(this);

@@ -220,7 +220,10 @@ mod not_docs {
         let file = dir_entry.unwrap();
         manifest_dir.join(file.path())
       })
-      .filter(|path| path.extension().unwrap_or_default() == "js")
+      .filter(|path| {
+        path.extension().unwrap_or_default() == "js"
+          && !path.ends_with("99_main.js")
+      })
       .collect::<Vec<PathBuf>>();
     js_files.sort();
     js_files

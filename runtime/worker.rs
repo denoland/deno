@@ -124,7 +124,6 @@ impl Default for WorkerOptions {
       startup_snapshot: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
-      startup_snapshot: Default::default(),
     }
   }
 }
