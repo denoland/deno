@@ -9,6 +9,7 @@
   } = window.__bootstrap.primordials;
 
   const util = window.__bootstrap.util;
+  const location = window.__bootstrap.location;
   const event = window.__bootstrap.event;
   const eventTarget = window.__bootstrap.eventTarget;
   const timers = window.__bootstrap.timers;
