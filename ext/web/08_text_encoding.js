@@ -16,8 +16,6 @@
   const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
-    ArrayBufferIsView,
-    ObjectPrototypeIsPrototypeOf,
     PromiseReject,
     PromiseResolve,
     StringPrototypeCharCodeAt,
@@ -110,19 +108,6 @@
           // This handles the case where buffer is detached too.
           input = new Uint8Array();
         }
-
-        // if (
-        //   ObjectPrototypeIsPrototypeOf(
-        //     SharedArrayBuffer.prototype,
-        //     input.buffer,
-        //   )
-        // ) {
-        //   // We clone the data into a non-shared ArrayBuffer so we can pass it
-        //   // to Rust.
-        //   // `input` is now a Uint8Array, and calling the TypedArray constructor
-        //   // with a TypedArray argument copies the data.
-        //   input = new Uint8Array(input);
-        // }
 
         // Fast path for single pass encoding.
         if (!stream && this.#rid === null) {
