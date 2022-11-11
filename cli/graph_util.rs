@@ -3,9 +3,9 @@
 use crate::colors;
 use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
-use crate::npm::resolve_npm_package_req_batches;
+use crate::npm::resolve_npm_package_reqs;
 use crate::npm::NpmPackageReference;
-use crate::npm::NpmPackageReqBatches;
+use crate::npm::NpmPackageReq;
 
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -152,9 +152,7 @@ impl GraphData {
     }
 
     if has_npm_specifier_in_graph {
-      self
-        .npm_packages
-        .extend(resolve_npm_package_req_batches(graph));
+      self.npm_packages.extend(resolve_npm_package_reqs(graph));
     }
   }
 

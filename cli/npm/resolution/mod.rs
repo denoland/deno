@@ -28,10 +28,9 @@ mod specifier;
 
 use graph::Graph;
 pub use snapshot::NpmResolutionSnapshot;
-pub use specifier::resolve_npm_package_req_batches;
+pub use specifier::resolve_npm_package_reqs;
 pub use specifier::NpmPackageReference;
 pub use specifier::NpmPackageReq;
-pub use specifier::NpmPackageReqBatches;
 
 /// The version matcher used for npm schemed urls is more strict than
 /// the one used by npm packages and so we represent either via a trait.
@@ -283,7 +282,7 @@ impl NpmResolution {
 
   async fn add_package_reqs_to_snapshot(
     &self,
-    mut package_reqs: Vec<NpmPackageReq>,
+    package_reqs: Vec<NpmPackageReq>,
     snapshot: NpmResolutionSnapshot,
   ) -> Result<NpmResolutionSnapshot, AnyError> {
     // convert the snapshot to a traversable graph
@@ -291,10 +290,10 @@ impl NpmResolution {
 
     // go over the top level package names first, then down the
     // tree one level at a time through all the branches
-    let package_req_len = package_req_batches.iter().map(|b| b.len()).sum();
-    let mut unresolved_tasks = Vec::with_capacity(package_req_len);
-    let mut resolving_package_names = HashSet::with_capacity(package_req_len);
-    for package_req in package_req_batches.iter().flatten() {
+    let mut unresolved_tasks = Vec::with_capacity(package_reqs.len());
+    let mut resolving_package_names =
+      HashSet::with_capacity(package_reqs.len());
+    for package_req in &package_reqs {
       if graph.has_package_req(package_req) {
         // skip analyzing this package, as there's already a matching top level package
         continue;
@@ -324,7 +323,8 @@ impl NpmResolution {
 
     let mut resolver = GraphDependencyResolver::new(&mut graph, &self.api);
 
-    // these package_reqs should already be sorted in the correct order
+    // These package_reqs should already be sorted in the order they should
+    // be resolved in.
     for package_req in package_reqs {
       // avoid loading the info if this is already in the graph
       if !resolver.has_package_req(&package_req) {

@@ -274,11 +274,8 @@ impl NpmSpecifierTree {
   }
 }
 
-pub type NpmPackageReqBatches = Vec<Vec<NpmPackageReq>>;
-
-pub fn resolve_npm_package_req_batches(
-  graph: &ModuleGraph,
-) -> NpmPackageReqBatches {
+/// Resolves the npm package requirements in the order they should be resolved in.
+pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
   fn get_parent_path_specifier(specifier: &ModuleSpecifier) -> ModuleSpecifier {
     let mut parent_specifier = specifier.clone();
     parent_specifier.set_query(None);
@@ -356,7 +353,7 @@ pub fn resolve_npm_package_req_batches(
   let mut result = Vec::new();
   for (specifier, _) in &graph.roots {
     match NpmPackageReference::from_specifier(specifier) {
-      Ok(npm_ref) => result.push(vec![npm_ref.req]),
+      Ok(npm_ref) => result.push(npm_ref.req),
       Err(_) => pending_specifiers.push_back(specifier.clone()),
     }
   }
@@ -366,7 +363,12 @@ pub fn resolve_npm_package_req_batches(
       continue; // already seen
     }
     let reqs = std::mem::take(&mut leaf.reqs);
-    result.push(reqs.into_iter().collect::<Vec<_>>());
+    let mut reqs = reqs.into_iter().collect::<Vec<_>>();
+    // todo(THIS PR): sort also by version
+    // The requirements for each batch should be sorted alphabetically
+    // in order to help create determinism.
+    reqs.sort_by(|a, b| a.name.cmp(&b.name));
+    result.extend(reqs);
     let mut deps = std::mem::take(&mut leaf.dependencies)
       .into_iter()
       .collect::<Vec<_>>();

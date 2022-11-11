@@ -23,7 +23,7 @@ use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::node;
 use crate::node::NodeResolution;
-use crate::npm::resolve_npm_package_req_batches;
+use crate::npm::resolve_npm_package_reqs;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
@@ -410,10 +410,7 @@ impl ProcState {
     };
 
     if !npm_package_reqs.is_empty() {
-      self
-        .npm_resolver
-        .add_package_reqs(npm_package_reqs)
-        .await?;
+      self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
       self.prepare_node_std_graph().await?;
     }
 
@@ -649,12 +646,9 @@ impl ProcState {
     .await;
 
     // add the found npm package requirements to the npm resolver and cache them
-    let npm_package_reqs = resolve_npm_package_req_batches(&graph);
+    let npm_package_reqs = resolve_npm_package_reqs(&graph);
     if !npm_package_reqs.is_empty() {
-      self
-        .npm_resolver
-        .add_package_reqs(npm_package_reqs)
-        .await?;
+      self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
     }
 
     Ok(graph)
