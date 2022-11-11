@@ -22,6 +22,8 @@
     StringPrototypeSlice,
     TypedArrayPrototypeSubarray,
     Uint8Array,
+    ObjectPrototypeIsPrototypeOf,
+    ArrayBufferIsView,
     Uint32Array,
   } = window.__bootstrap.primordials;
 
@@ -104,9 +106,25 @@
       try {
         // Note from spec: implementations are strongly encouraged to use an implementation strategy that avoids this copy.
         // When doing so they will have to make sure that changes to input do not affect future calls to decode().
-        if (input.byteLength === 0) {
-          // This handles the case where buffer is detached too.
-          input = new Uint8Array();
+        if (
+          ObjectPrototypeIsPrototypeOf(
+            SharedArrayBuffer.prototype,
+            input || input.buffer,
+          )
+        ) {
+          // We clone the data into a non-shared ArrayBuffer so we can pass it
+          // to Rust.
+          // `input` is now a Uint8Array, and calling the TypedArray constructor
+          // with a TypedArray argument copies the data.
+          if (ArrayBufferIsView(input)) {
+            input = new Uint8Array(
+              input.buffer,
+              input.byteOffset,
+              input.byteLength,
+            );
+          } else {
+            input = new Uint8Array(input);
+          }
         }
 
         // Fast path for single pass encoding.
