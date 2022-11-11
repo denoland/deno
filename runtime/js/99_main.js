@@ -423,7 +423,7 @@ delete Intl.v8BreakIterator;
       ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
     }
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
-    ObjectDefineProperties(mainRuntimeGlobalProperties, {
+    ObjectDefineProperties(globalThis, {
       close: util.writable(windowClose),
       closed: util.getterOnly(() => windowIsClosing),
     });
