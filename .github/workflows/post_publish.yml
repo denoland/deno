@@ -1,6 +1,6 @@
 name: post_publish
 
-on: released
+on: published
 
 jobs:
   update-dl-version:
