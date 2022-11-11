@@ -16,14 +16,14 @@
   const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
-    ArrayBufferIsView,
-    ObjectPrototypeIsPrototypeOf,
     PromiseReject,
     PromiseResolve,
     StringPrototypeCharCodeAt,
     StringPrototypeSlice,
     TypedArrayPrototypeSubarray,
     Uint8Array,
+    ObjectPrototypeIsPrototypeOf,
+    ArrayBufferIsView,
     Uint32Array,
   } = window.__bootstrap.primordials;
 
@@ -34,6 +34,8 @@
     #fatal;
     /** @type {boolean} */
     #ignoreBOM;
+    /** @type {boolean} */
+    #utf8SinglePass;
 
     /** @type {number | null} */
     #rid = null;
@@ -56,6 +58,7 @@
       this.#encoding = encoding;
       this.#fatal = options.fatal;
       this.#ignoreBOM = options.ignoreBOM;
+      this.#utf8SinglePass = encoding === "utf-8" && !options.fatal;
       this[webidl.brand] = webidl.brand;
     }
 
@@ -81,7 +84,7 @@
      * @param {BufferSource} [input]
      * @param {TextDecodeOptions} options
      */
-    decode(input = new Uint8Array(), options = {}) {
+    decode(input = new Uint8Array(), options = undefined) {
       webidl.assertBranded(this, TextDecoderPrototype);
       const prefix = "Failed to execute 'decode' on 'TextDecoder'";
       if (input !== undefined) {
@@ -91,13 +94,28 @@
           allowShared: true,
         });
       }
-      options = webidl.converters.TextDecodeOptions(options, {
-        prefix,
-        context: "Argument 2",
-      });
+      let stream = false;
+      if (options !== undefined) {
+        options = webidl.converters.TextDecodeOptions(options, {
+          prefix,
+          context: "Argument 2",
+        });
+        stream = options.stream;
+      }
 
       try {
-        try {
+        // Note from spec: implementations are strongly encouraged to use an implementation strategy that avoids this copy.
+        // When doing so they will have to make sure that changes to input do not affect future calls to decode().
+        if (
+          ObjectPrototypeIsPrototypeOf(
+            SharedArrayBuffer.prototype,
+            input || input.buffer,
+          )
+        ) {
+          // We clone the data into a non-shared ArrayBuffer so we can pass it
+          // to Rust.
+          // `input` is now a Uint8Array, and calling the TypedArray constructor
+          // with a TypedArray argument copies the data.
           if (ArrayBufferIsView(input)) {
             input = new Uint8Array(
               input.buffer,
@@ -107,24 +125,15 @@
           } else {
             input = new Uint8Array(input);
           }
-        } catch {
-          // If the buffer is detached, just create a new empty Uint8Array.
-          input = new Uint8Array();
-        }
-        if (
-          ObjectPrototypeIsPrototypeOf(
-            SharedArrayBuffer.prototype,
-            input.buffer,
-          )
-        ) {
-          // We clone the data into a non-shared ArrayBuffer so we can pass it
-          // to Rust.
-          // `input` is now a Uint8Array, and calling the TypedArray constructor
-          // with a TypedArray argument copies the data.
-          input = new Uint8Array(input);
         }
 
-        if (!options.stream && this.#rid === null) {
+        // Fast path for single pass encoding.
+        if (!stream && this.#rid === null) {
+          // Fast path for utf8 single pass encoding.
+          if (this.#utf8SinglePass) {
+            return ops.op_encoding_decode_utf8(input, this.#ignoreBOM);
+          }
+
           return ops.op_encoding_decode_single(
             input,
             this.#encoding,
@@ -140,9 +149,9 @@
             this.#ignoreBOM,
           );
         }
-        return ops.op_encoding_decode(input, this.#rid, options.stream);
+        return ops.op_encoding_decode(input, this.#rid, stream);
       } finally {
-        if (!options.stream && this.#rid !== null) {
+        if (!stream && this.#rid !== null) {
           core.close(this.#rid);
           this.#rid = null;
         }
