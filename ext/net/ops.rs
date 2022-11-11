@@ -53,10 +53,13 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
     crate::ops_unix::op_net_connect_unix::decl::<P>(),
     op_net_listen_tcp::decl::<P>(),
     op_net_listen_udp::decl::<P>(),
+    op_node_unstable_net_listen_udp::decl::<P>(),
     #[cfg(unix)]
     crate::ops_unix::op_net_listen_unix::decl::<P>(),
     #[cfg(unix)]
     crate::ops_unix::op_net_listen_unixpacket::decl::<P>(),
+    #[cfg(unix)]
+    crate::ops_unix::op_node_unstable_net_listen_unixpacket::decl::<P>(),
     op_net_recv_udp::decl(),
     #[cfg(unix)]
     crate::ops_unix::op_net_recv_unixpacket::decl(),
@@ -288,8 +291,7 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op]
-fn op_net_listen_udp<NP>(
+fn net_listen_udp<NP>(
   state: &mut OpState,
   addr: IpAddr,
   reuse_address: bool,
@@ -297,7 +299,6 @@ fn op_net_listen_udp<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  super::check_unstable(state, "Deno.listenDatagram");
   state
     .borrow_mut::<NP>()
     .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")?;
@@ -341,6 +342,32 @@ where
   let rid = state.resource_table.add(socket_resource);
 
   Ok((rid, IpAddr::from(local_addr)))
+}
+
+#[op]
+fn op_net_listen_udp<NP>(
+  state: &mut OpState,
+  addr: IpAddr,
+  reuse_address: bool,
+) -> Result<(ResourceId, IpAddr), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  super::check_unstable(state, "Deno.listenDatagram");
+  net_listen_udp::<NP>(state, addr, reuse_address)
+}
+
+#[op]
+fn op_node_unstable_net_listen_udp<NP>(
+  state: &mut OpState,
+  addr: IpAddr,
+  reuse_address: bool,
+) -> Result<(ResourceId, IpAddr), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  super::check_unstable(state, "Deno.listenDatagram");
+  net_listen_udp::<NP>(state, addr, reuse_address)
 }
 
 #[derive(Serialize, Eq, PartialEq, Debug)]

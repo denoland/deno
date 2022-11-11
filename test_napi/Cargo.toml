@@ -11,7 +11,7 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-napi-sys = { version = "2.2.2", default-features = false, features = ["napi4"] }
+napi-sys = { version = "2.2.2", default-features = false, features = ["napi7"] }
 
 [dev-dependencies]
 test_util = { path = "../test_util" }

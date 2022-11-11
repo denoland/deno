@@ -8,7 +8,7 @@ use util::http_server;
 // NOTE: See how to make test npm packages at ../testdata/npm/README.md
 
 itest!(esm_module {
-  args: "run --allow-read --allow-env --unstable npm/esm/main.js",
+  args: "run --allow-read --allow-env npm/esm/main.js",
   output: "npm/esm/main.out",
   envs: env_vars(),
   http_server: true,
@@ -17,7 +17,6 @@ itest!(esm_module {
 itest!(esm_module_eval {
   args_vec: vec![
     "eval",
-    "--unstable",
     "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk esm loads'));",
   ],
   output: "npm/esm/main.out",
@@ -40,35 +39,35 @@ itest!(esm_import_cjs_default {
 });
 
 itest!(cjs_with_deps {
-  args: "run --allow-read --allow-env --unstable npm/cjs_with_deps/main.js",
+  args: "run --allow-read --allow-env npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(cjs_sub_path {
-  args: "run --allow-read --unstable npm/cjs_sub_path/main.js",
+  args: "run --allow-read npm/cjs_sub_path/main.js",
   output: "npm/cjs_sub_path/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(cjs_local_global_decls {
-  args: "run --allow-read --unstable npm/cjs_local_global_decls/main.ts",
+  args: "run --allow-read npm/cjs_local_global_decls/main.ts",
   output: "npm/cjs_local_global_decls/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(cjs_reexport_collision {
-  args: "run --unstable -A --quiet npm/cjs_reexport_collision/main.ts",
+  args: "run -A --quiet npm/cjs_reexport_collision/main.ts",
   output: "npm/cjs_reexport_collision/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(cjs_this_in_exports {
-  args: "run --allow-read --unstable --quiet npm/cjs_this_in_exports/main.js",
+  args: "run --allow-read --quiet npm/cjs_this_in_exports/main.js",
   output: "npm/cjs_this_in_exports/main.out",
   envs: env_vars(),
   http_server: true,
@@ -76,7 +75,7 @@ itest!(cjs_this_in_exports {
 });
 
 itest!(translate_cjs_to_esm {
-  args: "run --unstable -A --quiet npm/translate_cjs_to_esm/main.js",
+  args: "run -A --quiet npm/translate_cjs_to_esm/main.js",
   output: "npm/translate_cjs_to_esm/main.out",
   envs: env_vars(),
   http_server: true,
@@ -90,21 +89,21 @@ itest!(compare_globals {
 });
 
 itest!(conditional_exports {
-  args: "run --allow-read --unstable npm/conditional_exports/main.js",
+  args: "run --allow-read npm/conditional_exports/main.js",
   output: "npm/conditional_exports/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(dual_cjs_esm {
-  args: "run --unstable -A --quiet npm/dual_cjs_esm/main.ts",
+  args: "run -A --quiet npm/dual_cjs_esm/main.ts",
   output: "npm/dual_cjs_esm/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(child_process_fork_test {
-  args: "run --unstable -A --quiet npm/child_process_fork_test/main.ts",
+  args: "run -A --quiet npm/child_process_fork_test/main.ts",
   output: "npm/child_process_fork_test/main.out",
   envs: env_vars(),
   http_server: true,
@@ -127,21 +126,21 @@ itest!(cjs_module_export_assignment_number {
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {
-//   args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
+//   args: "run --allow-read --allow-env npm/dynamic_import/main.ts",
 //   output: "npm/dynamic_import/main.out",
 //   envs: env_vars(),
 //   http_server: true,
 // });
 
 itest!(env_var_re_export_dev {
-  args: "run --allow-read --allow-env --unstable --quiet npm/env_var_re_export/main.js",
+  args: "run --allow-read --allow-env --quiet npm/env_var_re_export/main.js",
   output_str: Some("dev\n"),
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(env_var_re_export_prod {
-  args: "run --allow-read --allow-env --unstable --quiet npm/env_var_re_export/main.js",
+  args: "run --allow-read --allow-env --quiet npm/env_var_re_export/main.js",
   output_str: Some("prod\n"),
   envs: {
     let mut vars = env_vars();
@@ -152,28 +151,21 @@ itest!(env_var_re_export_prod {
 });
 
 itest!(cached_only {
-  args: "run --cached-only --unstable npm/cached_only/main.ts",
+  args: "run --cached-only npm/cached_only/main.ts",
   output: "npm/cached_only/main.out",
   envs: env_vars(),
   exit_code: 1,
 });
 
-itest!(no_unstable {
-  args: "run npm/no_unstable/main.ts",
-  output: "npm/no_unstable/main.out",
-  envs: env_vars(),
-  exit_code: 1,
-});
-
 itest!(import_map {
-  args: "run --allow-read --allow-env --unstable --import-map npm/import_map/import_map.json npm/import_map/main.js",
+  args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
   output: "npm/import_map/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(lock_file {
-  args: "run --allow-read --allow-env --unstable --lock npm/lock_file/lock.json npm/lock_file/main.js",
+  args: "run --allow-read --allow-env --lock npm/lock_file/lock.json npm/lock_file/main.js",
   output: "npm/lock_file/main.out",
   envs: env_vars(),
   http_server: true,
@@ -181,21 +173,21 @@ itest!(lock_file {
 });
 
 itest!(sub_paths {
-  args: "run --unstable -A --quiet npm/sub_paths/main.jsx",
+  args: "run -A --quiet npm/sub_paths/main.jsx",
   output: "npm/sub_paths/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(tarball_with_global_header {
-  args: "run --unstable -A --quiet npm/tarball_with_global_header/main.js",
+  args: "run -A --quiet npm/tarball_with_global_header/main.js",
   output: "npm/tarball_with_global_header/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(nonexistent_file {
-  args: "run --unstable -A --quiet npm/nonexistent_file/main.js",
+  args: "run -A --quiet npm/nonexistent_file/main.js",
   output: "npm/nonexistent_file/main.out",
   envs: env_vars(),
   http_server: true,
@@ -203,21 +195,21 @@ itest!(nonexistent_file {
 });
 
 itest!(invalid_package_name {
-  args: "run --unstable -A --quiet npm/invalid_package_name/main.js",
+  args: "run -A --quiet npm/invalid_package_name/main.js",
   output: "npm/invalid_package_name/main.out",
   envs: env_vars(),
   exit_code: 1,
 });
 
 itest!(require_json {
-  args: "run --unstable -A --quiet npm/require_json/main.js",
+  args: "run -A --quiet npm/require_json/main.js",
   output: "npm/require_json/main.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(error_version_after_subpath {
-  args: "run --unstable -A --quiet npm/error_version_after_subpath/main.js",
+  args: "run -A --quiet npm/error_version_after_subpath/main.js",
   output: "npm/error_version_after_subpath/main.out",
   envs: env_vars(),
   http_server: true,
@@ -225,14 +217,14 @@ itest!(error_version_after_subpath {
 });
 
 itest!(deno_cache {
-  args: "cache --unstable --reload npm:chalk npm:mkdirp",
+  args: "cache --reload npm:chalk npm:mkdirp",
   output: "npm/deno_cache.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(check_all {
-  args: "check --unstable --remote npm/check_errors/main.ts",
+  args: "check --remote npm/check_errors/main.ts",
   output: "npm/check_errors/main_all.out",
   envs: env_vars(),
   http_server: true,
@@ -240,7 +232,7 @@ itest!(check_all {
 });
 
 itest!(check_local {
-  args: "check --unstable npm/check_errors/main.ts",
+  args: "check npm/check_errors/main.ts",
   output: "npm/check_errors/main_local.out",
   envs: env_vars(),
   http_server: true,
@@ -248,7 +240,7 @@ itest!(check_local {
 });
 
 itest!(types_ambient_module {
-  args: "check --unstable --quiet npm/types_ambient_module/main.ts",
+  args: "check --quiet npm/types_ambient_module/main.ts",
   output: "npm/types_ambient_module/main.out",
   envs: env_vars(),
   http_server: true,
@@ -256,7 +248,7 @@ itest!(types_ambient_module {
 });
 
 itest!(types_ambient_module_import_map {
-  args: "check --unstable --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
+  args: "check --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
   output: "npm/types_ambient_module/main_import_map.out",
   envs: env_vars(),
   http_server: true,
@@ -270,7 +262,6 @@ fn parallel_downloading() {
     vec![
       "run",
       "--allow-read",
-      "--unstable",
       "--allow-env",
       "npm/cjs_with_deps/main.js",
     ],
@@ -291,7 +282,6 @@ fn cached_only_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("npm/cached_only_after_first_run/main1.ts")
@@ -311,7 +301,6 @@ fn cached_only_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--cached-only")
@@ -335,7 +324,6 @@ fn cached_only_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--cached-only")
@@ -364,7 +352,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("npm/reload/main.ts")
@@ -384,7 +371,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--reload")
@@ -405,7 +391,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--reload=npm:")
@@ -426,7 +411,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--reload=npm:chalk")
@@ -447,7 +431,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--reload=npm:foobar")
@@ -475,7 +458,6 @@ fn no_npm_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--no-npm")
@@ -499,7 +481,6 @@ fn no_npm_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("npm/no_npm_after_first_run/main1.ts")
@@ -519,7 +500,6 @@ fn no_npm_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--no-npm")
@@ -550,7 +530,6 @@ fn deno_run_cjs_module() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--allow-write")
@@ -567,49 +546,49 @@ fn deno_run_cjs_module() {
 }
 
 itest!(deno_run_cowsay {
-  args: "run --unstable -A --quiet npm:cowsay@1.5.0 Hello",
+  args: "run -A --quiet npm:cowsay@1.5.0 Hello",
   output: "npm/deno_run_cowsay.out",
   envs: env_vars_no_sync_download(),
   http_server: true,
 });
 
 itest!(deno_run_cowsay_explicit {
-  args: "run --unstable -A --quiet npm:cowsay@1.5.0/cowsay Hello",
+  args: "run -A --quiet npm:cowsay@1.5.0/cowsay Hello",
   output: "npm/deno_run_cowsay.out",
   envs: env_vars_no_sync_download(),
   http_server: true,
 });
 
 itest!(deno_run_cowthink {
-  args: "run --unstable -A --quiet npm:cowsay@1.5.0/cowthink Hello",
+  args: "run -A --quiet npm:cowsay@1.5.0/cowthink Hello",
   output: "npm/deno_run_cowthink.out",
   envs: env_vars_no_sync_download(),
   http_server: true,
 });
 
 itest!(deno_run_bin_esm {
-  args: "run --unstable -A --quiet npm:@denotest/bin/cli-esm this is a test",
+  args: "run -A --quiet npm:@denotest/bin/cli-esm this is a test",
   output: "npm/deno_run_esm.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(deno_run_bin_no_ext {
-  args: "run --unstable -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
+  args: "run -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
   output: "npm/deno_run_no_ext.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(deno_run_bin_cjs {
-  args: "run --unstable -A --quiet npm:@denotest/bin/cli-cjs this is a test",
+  args: "run -A --quiet npm:@denotest/bin/cli-cjs this is a test",
   output: "npm/deno_run_cjs.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(deno_run_non_existent {
-  args: "run --unstable npm:mkdirp@0.5.125",
+  args: "run npm:mkdirp@0.5.125",
   output: "npm/deno_run_non_existent.out",
   envs: env_vars(),
   http_server: true,
@@ -617,7 +596,7 @@ itest!(deno_run_non_existent {
 });
 
 itest!(builtin_module_module {
-  args: "run --allow-read --quiet --unstable npm/builtin_module_module/main.js",
+  args: "run --allow-read --quiet npm/builtin_module_module/main.js",
   output: "npm/builtin_module_module/main.out",
   envs: env_vars(),
   http_server: true,
@@ -625,7 +604,7 @@ itest!(builtin_module_module {
 
 itest!(node_modules_dir_require_added_node_modules_folder {
   args:
-    "run --unstable --node-modules-dir -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
+    "run --node-modules-dir -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
   output: "npm/require_added_nm_folder/main.out",
   envs: env_vars(),
   http_server: true,
@@ -634,8 +613,16 @@ itest!(node_modules_dir_require_added_node_modules_folder {
 });
 
 itest!(node_modules_dir_with_deps {
-  args: "run --allow-read --allow-env --unstable --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
+  args: "run --allow-read --allow-env --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
+  envs: env_vars(),
+  http_server: true,
+  temp_cwd: true,
+});
+
+itest!(node_modules_dir_yargs {
+  args: "run --allow-read --allow-env --node-modules-dir $TESTDATA/npm/cjs_yargs/main.js",
+  output: "npm/cjs_yargs/main.out",
   envs: env_vars(),
   http_server: true,
   temp_cwd: true,
@@ -650,7 +637,6 @@ fn node_modules_dir_cache() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("cache")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("--quiet")
     .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
@@ -686,7 +672,6 @@ fn node_modules_dir_cache() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("--quiet")
     .arg("-A")
@@ -726,9 +711,490 @@ fn ensure_registry_files_local() {
 }
 
 itest!(compile_errors {
-  args: "compile -A --quiet --unstable npm/esm/main.js",
+  args: "compile -A --quiet npm/esm/main.js",
   output_str: Some("error: npm specifiers have not yet been implemented for deno compile (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
   exit_code: 1,
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(info_chalk_display {
+  args: "info --quiet npm/cjs_with_deps/main.js",
+  output: "npm/cjs_with_deps/main_info.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(info_chalk_display_node_modules_dir {
+  args: "info --quiet --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
+  output: "npm/cjs_with_deps/main_info.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+  temp_cwd: true,
+});
+
+itest!(info_chalk_json {
+  args: "info --quiet --json npm/cjs_with_deps/main.js",
+  output: "npm/cjs_with_deps/main_info_json.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(info_chalk_json_node_modules_dir {
+  args:
+    "info --quiet --node-modules-dir --json $TESTDATA/npm/cjs_with_deps/main.js",
+  output: "npm/cjs_with_deps/main_info_json.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+  temp_cwd: true,
+});
+
+itest!(info_cli_chalk_display {
+  args: "info --quiet npm:chalk@4",
+  output: "npm/info/chalk.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(info_cli_chalk_json {
+  args: "info --quiet --json npm:chalk@4",
+  output: "npm/info/chalk_json.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
+#[test]
+fn lock_file_missing_top_level_package() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+  let temp_dir = util::TempDir::new();
+
+  // write empty config file
+  temp_dir.write("deno.json", "{}");
+
+  // Lock file that is automatically picked up has been intentionally broken,
+  // by removing "cowsay" package from it. This test ensures that npm resolver
+  // snapshot can be successfully hydrated in such situation
+  let lock_file_content = r#"{
+    "version": "2",
+    "remote": {},
+    "npm": {
+      "specifiers": { "cowsay": "cowsay@1.5.0" },
+      "packages": {
+        "ansi-regex@3.0.1": {
+          "integrity": "sha512-+O9Jct8wf++lXxxFc4hc8LsjaSq0HFzzL7cVsw8pRDIPdjKD2mT4ytDZlLuSBZ4cLKZFXIrMGO7DbQCtMJJMKw==",
+          "dependencies": {}
+        },
+        "ansi-regex@5.0.1": {
+          "integrity": "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==",
+          "dependencies": {}
+        },
+        "ansi-styles@4.3.0": {
+          "integrity": "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==",
+          "dependencies": { "color-convert": "color-convert@2.0.1" }
+        },
+        "camelcase@5.3.1": {
+          "integrity": "sha512-L28STB170nwWS63UjtlEOE3dldQApaJXZkOI1uMFfzf3rRuPegHaHesyee+YxQ+W6SvRDQV6UrdOdRiR153wJg==",
+          "dependencies": {}
+        },
+        "cliui@6.0.0": {
+          "integrity": "sha512-t6wbgtoCXvAzst7QgXxJYqPt0usEfbgQdftEPbLL/cvv6HPE5VgvqCuAIDR0NgU52ds6rFwqrgakNLrHEjCbrQ==",
+          "dependencies": {
+            "string-width": "string-width@4.2.3",
+            "strip-ansi": "strip-ansi@6.0.1",
+            "wrap-ansi": "wrap-ansi@6.2.0"
+          }
+        },
+        "color-convert@2.0.1": {
+          "integrity": "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==",
+          "dependencies": { "color-name": "color-name@1.1.4" }
+        },
+        "color-name@1.1.4": {
+          "integrity": "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==",
+          "dependencies": {}
+        },
+        "decamelize@1.2.0": {
+          "integrity": "sha512-z2S+W9X73hAUUki+N+9Za2lBlun89zigOyGrsax+KUQ6wKW4ZoWpEYBkGhQjwAjjDCkWxhY0VKEhk8wzY7F5cA==",
+          "dependencies": {}
+        },
+        "emoji-regex@8.0.0": {
+          "integrity": "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==",
+          "dependencies": {}
+        },
+        "find-up@4.1.0": {
+          "integrity": "sha512-PpOwAdQ/YlXQ2vj8a3h8IipDuYRi3wceVQQGYWxNINccq40Anw7BlsEXCMbt1Zt+OLA6Fq9suIpIWD0OsnISlw==",
+          "dependencies": {
+            "locate-path": "locate-path@5.0.0",
+            "path-exists": "path-exists@4.0.0"
+          }
+        },
+        "get-caller-file@2.0.5": {
+          "integrity": "sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==",
+          "dependencies": {}
+        },
+        "get-stdin@8.0.0": {
+          "integrity": "sha512-sY22aA6xchAzprjyqmSEQv4UbAAzRN0L2dQB0NlN5acTTK9Don6nhoc3eAbUnpZiCANAMfd/+40kVdKfFygohg==",
+          "dependencies": {}
+        },
+        "is-fullwidth-code-point@2.0.0": {
+          "integrity": "sha512-VHskAKYM8RfSFXwee5t5cbN5PZeq1Wrh6qd5bkyiXIf6UQcN6w/A0eXM9r6t8d+GYOh+o6ZhiEnb88LN/Y8m2w==",
+          "dependencies": {}
+        },
+        "is-fullwidth-code-point@3.0.0": {
+          "integrity": "sha512-zymm5+u+sCsSWyD9qNaejV3DFvhCKclKdizYaJUuHA83RLjb7nSuGnddCHGv0hk+KY7BMAlsWeK4Ueg6EV6XQg==",
+          "dependencies": {}
+        },
+        "locate-path@5.0.0": {
+          "integrity": "sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g==",
+          "dependencies": { "p-locate": "p-locate@4.1.0" }
+        },
+        "p-limit@2.3.0": {
+          "integrity": "sha512-//88mFWSJx8lxCzwdAABTJL2MyWB12+eIY7MDL2SqLmAkeKU9qxRvWuSyTjm3FUmpBEMuFfckAIqEaVGUDxb6w==",
+          "dependencies": { "p-try": "p-try@2.2.0" }
+        },
+        "p-locate@4.1.0": {
+          "integrity": "sha512-R79ZZ/0wAxKGu3oYMlz8jy/kbhsNrS7SKZ7PxEHBgJ5+F2mtFW2fK2cOtBh1cHYkQsbzFV7I+EoRKe6Yt0oK7A==",
+          "dependencies": { "p-limit": "p-limit@2.3.0" }
+        },
+        "p-try@2.2.0": {
+          "integrity": "sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==",
+          "dependencies": {}
+        },
+        "path-exists@4.0.0": {
+          "integrity": "sha512-ak9Qy5Q7jYb2Wwcey5Fpvg2KoAc/ZIhLSLOSBmRmygPsGwkVVt0fZa0qrtMz+m6tJTAHfZQ8FnmB4MG4LWy7/w==",
+          "dependencies": {}
+        },
+        "require-directory@2.1.1": {
+          "integrity": "sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q==",
+          "dependencies": {}
+        },
+        "require-main-filename@2.0.0": {
+          "integrity": "sha512-NKN5kMDylKuldxYLSUfrbo5Tuzh4hd+2E8NPPX02mZtn1VuREQToYe/ZdlJy+J3uCpfaiGF05e7B8W0iXbQHmg==",
+          "dependencies": {}
+        },
+        "set-blocking@2.0.0": {
+          "integrity": "sha512-KiKBS8AnWGEyLzofFfmvKwpdPzqiy16LvQfK3yv/fVH7Bj13/wl3JSR1J+rfgRE9q7xUJK4qvgS8raSOeLUehw==",
+          "dependencies": {}
+        },
+        "string-width@2.1.1": {
+          "integrity": "sha512-nOqH59deCq9SRHlxq1Aw85Jnt4w6KvLKqWVik6oA9ZklXLNIOlqg4F2yrT1MVaTjAqvVwdfeZ7w7aCvJD7ugkw==",
+          "dependencies": {
+            "is-fullwidth-code-point": "is-fullwidth-code-point@2.0.0",
+            "strip-ansi": "strip-ansi@4.0.0"
+          }
+        },
+        "string-width@4.2.3": {
+          "integrity": "sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==",
+          "dependencies": {
+            "emoji-regex": "emoji-regex@8.0.0",
+            "is-fullwidth-code-point": "is-fullwidth-code-point@3.0.0",
+            "strip-ansi": "strip-ansi@6.0.1"
+          }
+        },
+        "strip-ansi@4.0.0": {
+          "integrity": "sha512-4XaJ2zQdCzROZDivEVIDPkcQn8LMFSa8kj8Gxb/Lnwzv9A8VctNZ+lfivC/sV3ivW8ElJTERXZoPBRrZKkNKow==",
+          "dependencies": { "ansi-regex": "ansi-regex@3.0.1" }
+        },
+        "strip-ansi@6.0.1": {
+          "integrity": "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==",
+          "dependencies": { "ansi-regex": "ansi-regex@5.0.1" }
+        },
+        "strip-final-newline@2.0.0": {
+          "integrity": "sha512-BrpvfNAE3dcvq7ll3xVumzjKjZQ5tI1sEUIKr3Uoks0XUl45St3FlatVqef9prk4jRDzhW6WZg+3bk93y6pLjA==",
+          "dependencies": {}
+        },
+        "which-module@2.0.0": {
+          "integrity": "sha512-B+enWhmw6cjfVC7kS8Pj9pCrKSc5txArRyaYGe088shv/FGWH+0Rjx/xPgtsWfsUtS27FkP697E4DDhgrgoc0Q==",
+          "dependencies": {}
+        },
+        "wrap-ansi@6.2.0": {
+          "integrity": "sha512-r6lPcBGxZXlIcymEu7InxDMhdW0KDxpLgoFLcguasxCaJ/SOIZwINatK9KY/tf+ZrlywOKU0UDj3ATXUBfxJXA==",
+          "dependencies": {
+            "ansi-styles": "ansi-styles@4.3.0",
+            "string-width": "string-width@4.2.3",
+            "strip-ansi": "strip-ansi@6.0.1"
+          }
+        },
+        "y18n@4.0.3": {
+          "integrity": "sha512-JKhqTOwSrqNA1NY5lSztJ1GrBiUodLMmIZuLiDaMRJ+itFd+ABVE8XBjOvIWL+rSqNDC74LCSFmlb/U4UZ4hJQ==",
+          "dependencies": {}
+        },
+        "yargs-parser@18.1.3": {
+          "integrity": "sha512-o50j0JeToy/4K6OZcaQmW6lyXXKhq7csREXcDwk2omFPJEwUNOVtJKvmDr9EI1fAJZUyZcRF7kxGBWmRXudrCQ==",
+          "dependencies": {
+            "camelcase": "camelcase@5.3.1",
+            "decamelize": "decamelize@1.2.0"
+          }
+        },
+        "yargs@15.4.1": {
+          "integrity": "sha512-aePbxDmcYW++PaqBsJ+HYUFwCdv4LVvdnhBy78E57PIor8/OVvhMrADFFEDh8DHDFRv/O9i3lPhsENjO7QX0+A==",
+          "dependencies": {
+            "cliui": "cliui@6.0.0",
+            "decamelize": "decamelize@1.2.0",
+            "find-up": "find-up@4.1.0",
+            "get-caller-file": "get-caller-file@2.0.5",
+            "require-directory": "require-directory@2.1.1",
+            "require-main-filename": "require-main-filename@2.0.0",
+            "set-blocking": "set-blocking@2.0.0",
+            "string-width": "string-width@4.2.3",
+            "which-module": "which-module@2.0.0",
+            "y18n": "y18n@4.0.3",
+            "yargs-parser": "yargs-parser@18.1.3"
+          }
+        }
+      }
+    }
+  }
+  "#;
+  temp_dir.write("deno.lock", lock_file_content);
+  let main_contents = r#"
+  import cowsay from "npm:cowsay";
+  console.log(cowsay);
+  "#;
+  temp_dir.write("main.ts", main_contents);
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--quiet")
+    .arg("--lock")
+    .arg("deno.lock")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(!output.status.success());
+
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert_eq!(
+    stderr,
+    "error: failed reading lockfile 'deno.lock'\n\nCaused by:\n    the lockfile is corrupt. You can recreate it with --lock-write\n"
+  );
+}
+
+#[test]
+fn auto_discover_lock_file() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+  let temp_dir = util::TempDir::new();
+
+  // write empty config file
+  temp_dir.write("deno.json", "{}");
+
+  // write a lock file with borked integrity
+  let lock_file_content = r#"{
+    "version": "2",
+    "remote": {},
+    "npm": {
+      "specifiers": { "@denotest/bin": "@denotest/bin@1.0.0" },
+      "packages": {
+        "@denotest/bin@1.0.0": {
+          "integrity": "sha512-foobar",
+          "dependencies": {}
+        }
+      }
+    }
+  }"#;
+  temp_dir.write("deno.lock", lock_file_content);
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("-A")
+    .arg("npm:@denotest/bin/cli-esm")
+    .arg("test")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(!output.status.success());
+  assert_eq!(output.status.code(), Some(10));
+
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.contains(
+    "Integrity check failed for npm package: \"@denotest/bin@1.0.0\""
+  ));
+}
+
+#[test]
+fn peer_deps_with_copied_folders_and_lockfile() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+  let temp_dir = util::TempDir::new();
+
+  // write empty config file
+  temp_dir.write("deno.json", "{}");
+  let test_folder_path = test_util::testdata_path()
+    .join("npm")
+    .join("peer_deps_with_copied_folders");
+  let main_contents =
+    std::fs::read_to_string(test_folder_path.join("main.ts")).unwrap();
+  temp_dir.write("./main.ts", main_contents);
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  let expected_output =
+    std::fs::read_to_string(test_folder_path.join("main.out")).unwrap();
+
+  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output);
+
+  assert!(temp_dir.path().join("deno.lock").exists());
+  let grandchild_path = deno_dir
+    .path()
+    .join("npm")
+    .join("localhost_4545")
+    .join("npm")
+    .join("registry")
+    .join("@denotest")
+    .join("peer-dep-test-grandchild");
+  assert!(grandchild_path.join("1.0.0").exists());
+  assert!(grandchild_path.join("1.0.0_1").exists()); // copy folder, which is hardlinked
+
+  // run again
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
+  assert!(output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--reload")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output);
+  assert!(output.status.success());
+
+  // now run with local node modules
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--node-modules-dir")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
+  assert!(output.status.success());
+
+  let deno_folder = temp_dir.path().join("node_modules").join(".deno");
+  assert!(deno_folder
+    .join("@denotest+peer-dep-test-grandchild@1.0.0")
+    .exists());
+  assert!(deno_folder
+    .join("@denotest+peer-dep-test-grandchild@1.0.0_1")
+    .exists()); // copy folder
+
+  // now again run with local node modules
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--node-modules-dir")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+  assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
+
+  // now ensure it works with reloading
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--node-modules-dir")
+    .arg("--reload")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output);
+
+  // now ensure it works with reloading and no lockfile
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--node-modules-dir")
+    .arg("--no-lock")
+    .arg("--reload")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output,);
+  assert!(output.status.success());
+}
+
+itest!(info_peer_deps {
+  args: "info --quiet npm/peer_deps_with_copied_folders/main.ts",
+  output: "npm/peer_deps_with_copied_folders/main_info.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(info_peer_deps_json {
+  args: "info --quiet --json npm/peer_deps_with_copied_folders/main.ts",
+  output: "npm/peer_deps_with_copied_folders/main_info_json.out",
+  exit_code: 0,
   envs: env_vars(),
   http_server: true,
 });

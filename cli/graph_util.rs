@@ -53,7 +53,7 @@ pub struct GraphData {
   npm_packages: HashSet<NpmPackageReq>,
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
-  referrer_map: HashMap<ModuleSpecifier, Range>,
+  referrer_map: HashMap<ModuleSpecifier, Box<Range>>,
   graph_imports: Vec<GraphImport>,
   cjs_esm_translations: HashMap<ModuleSpecifier, String>,
 }

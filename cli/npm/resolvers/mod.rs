@@ -6,6 +6,7 @@ mod local;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -27,9 +28,10 @@ use crate::lockfile::Lockfile;
 use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 use super::NpmCache;
+use super::NpmPackageId;
 use super::NpmPackageReq;
-use super::NpmRegistryApi;
 use super::NpmResolutionSnapshot;
+use super::RealNpmRegistryApi;
 
 const RESOLUTION_STATE_ENV_VAR_NAME: &str =
   "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
@@ -66,11 +68,10 @@ impl NpmProcessState {
 
 #[derive(Clone)]
 pub struct NpmPackageResolver {
-  unstable: bool,
   no_npm: bool,
   inner: Arc<dyn InnerNpmPackageResolver>,
   local_node_modules_path: Option<PathBuf>,
-  api: NpmRegistryApi,
+  api: RealNpmRegistryApi,
   cache: NpmCache,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
@@ -78,7 +79,6 @@ pub struct NpmPackageResolver {
 impl std::fmt::Debug for NpmPackageResolver {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("NpmPackageResolver")
-      .field("unstable", &self.unstable)
       .field("no_npm", &self.no_npm)
       .field("inner", &"<omitted>")
       .field("local_node_modules_path", &self.local_node_modules_path)
@@ -89,15 +89,13 @@ impl std::fmt::Debug for NpmPackageResolver {
 impl NpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: NpmRegistryApi,
-    unstable: bool,
+    api: RealNpmRegistryApi,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
   ) -> Self {
     Self::new_with_maybe_snapshot(
       cache,
       api,
-      unstable,
       no_npm,
       local_node_modules_path,
       None,
@@ -111,7 +109,14 @@ impl NpmPackageResolver {
     lockfile: Arc<Mutex<Lockfile>>,
   ) -> Result<(), AnyError> {
     let snapshot =
-      NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &self.api).await?;
+      NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &self.api)
+        .await
+        .with_context(|| {
+          format!(
+            "failed reading lockfile '{}'",
+            lockfile.lock().filename.display()
+          )
+        })?;
     self.maybe_lockfile = Some(lockfile);
     if let Some(node_modules_folder) = &self.local_node_modules_path {
       self.inner = Arc::new(LocalNpmPackageResolver::new(
@@ -132,8 +137,7 @@ impl NpmPackageResolver {
 
   fn new_with_maybe_snapshot(
     cache: NpmCache,
-    api: NpmRegistryApi,
-    unstable: bool,
+    api: RealNpmRegistryApi,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
     initial_snapshot: Option<NpmResolutionSnapshot>,
@@ -161,7 +165,6 @@ impl NpmPackageResolver {
       )),
     };
     Self {
-      unstable,
       no_npm,
       inner,
       local_node_modules_path,
@@ -212,6 +215,14 @@ impl NpmPackageResolver {
     Ok(path)
   }
 
+  /// Attempts to get the package size in bytes.
+  pub fn package_size(
+    &self,
+    package_id: &NpmPackageId,
+  ) -> Result<u64, AnyError> {
+    self.inner.package_size(package_id)
+  }
+
   /// Gets if the provided specifier is in an npm package.
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     self
@@ -231,12 +242,6 @@ impl NpmPackageResolver {
   ) -> Result<(), AnyError> {
     if packages.is_empty() {
       return Ok(());
-    }
-
-    if !self.unstable {
-      bail!(
-        "Unstable use of npm specifiers. The --unstable flag must be provided."
-      )
     }
 
     if self.no_npm {
@@ -298,11 +303,14 @@ impl NpmPackageResolver {
     Self::new_with_maybe_snapshot(
       self.cache.clone(),
       self.api.clone(),
-      self.unstable,
       self.no_npm,
       self.local_node_modules_path.clone(),
-      Some(self.inner.snapshot()),
+      Some(self.snapshot()),
     )
+  }
+
+  pub fn snapshot(&self) -> NpmResolutionSnapshot {
+    self.inner.snapshot()
   }
 
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {

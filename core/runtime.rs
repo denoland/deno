@@ -32,6 +32,7 @@ use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
+use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -745,64 +746,28 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Grab a Global handle to a v8 value returned by the expression
-  pub(crate) fn grab<'s, T>(
+  pub fn eval<'s, T>(
     scope: &mut v8::HandleScope<'s>,
-    root: v8::Local<'s, v8::Value>,
-    path: &str,
+    code: &str,
   ) -> Option<v8::Local<'s, T>>
   where
     v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
   {
-    path
-      .split('.')
-      .fold(Some(root), |p, k| {
-        let p = v8::Local::<v8::Object>::try_from(p?).ok()?;
-        let k = v8::String::new(scope, k)?;
-        p.get(scope, k.into())
-      })?
-      .try_into()
-      .ok()
-  }
-
-  pub fn grab_global<'s, T>(
-    scope: &mut v8::HandleScope<'s>,
-    path: &str,
-  ) -> Option<v8::Local<'s, T>>
-  where
-    v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
-  {
-    let context = scope.get_current_context();
-    let global = context.global(scope);
-    Self::grab(scope, global.into(), path)
-  }
-
-  pub(crate) fn ensure_objs<'s>(
-    scope: &mut v8::HandleScope<'s>,
-    root: v8::Local<'s, v8::Object>,
-    path: &str,
-  ) -> Option<v8::Local<'s, v8::Object>> {
-    path.split('.').fold(Some(root), |p, k| {
-      let k = v8::String::new(scope, k)?.into();
-      match p?.get(scope, k) {
-        Some(v) if !v.is_null_or_undefined() => v.try_into().ok(),
-        _ => {
-          let o = v8::Object::new(scope);
-          p?.set(scope, k, o.into());
-          Some(o)
-        }
-      }
-    })
+    let scope = &mut v8::EscapableHandleScope::new(scope);
+    let source = v8::String::new(scope, code).unwrap();
+    let script = v8::Script::compile(scope, source, None).unwrap();
+    let v = script.run(scope)?;
+    scope.escape(v).try_into().ok()
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
     let scope = &mut self.handle_scope();
     let recv_cb =
-      Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
+      Self::eval::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
     let recv_cb = v8::Global::new(scope, recv_cb);
     let build_custom_error_cb =
-      Self::grab_global::<v8::Function>(scope, "Deno.core.buildCustomError")
+      Self::eval::<v8::Function>(scope, "Deno.core.buildCustomError")
         .expect("Deno.core.buildCustomError is undefined in the realm");
     let build_custom_error_cb = v8::Global::new(scope, build_custom_error_cb);
     // Put global handles in state
@@ -854,7 +819,7 @@ impl JsRuntime {
     // TODO(@AaronO): make ops stable across snapshots
     {
       let scope = &mut self.handle_scope();
-      let o = Self::grab_global::<v8::Object>(scope, "Deno.core.ops").unwrap();
+      let o = Self::eval::<v8::Object>(scope, "Deno.core.ops").unwrap();
       let names = o.get_own_property_names(scope, Default::default()).unwrap();
       for i in 0..names.length() {
         let key = names.get_index(scope, i).unwrap();
@@ -2008,10 +1973,13 @@ impl JsRuntime {
   // Send finished responses to JS
   fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
     let isolate = self.v8_isolate.as_mut().unwrap();
-
-    let js_recv_cb_handle = self.state.borrow().js_recv_cb.clone().unwrap();
-    let global_realm = self.state.borrow().global_realm.clone().unwrap();
-    let scope = &mut global_realm.handle_scope(isolate);
+    let scope = &mut self
+      .state
+      .borrow()
+      .global_realm
+      .as_ref()
+      .unwrap()
+      .handle_scope(isolate);
 
     // We return async responses to JS in unbounded batches (may change),
     // each batch is a flat vector of tuples:
@@ -2020,7 +1988,10 @@ impl JsRuntime {
     // which contains a value OR an error, encoded as a tuple.
     // This batch is received in JS via the special `arguments` variable
     // and then each tuple is used to resolve or reject promises
-    let mut args: Vec<v8::Local<v8::Value>> = vec![];
+    //
+    // This can handle 16 promises (32 / 2) futures in a single batch without heap
+    // allocations.
+    let mut args: SmallVec<[v8::Local<v8::Value>; 32]> = SmallVec::new();
 
     // Now handle actual ops.
     {
@@ -2046,6 +2017,7 @@ impl JsRuntime {
       return Ok(());
     }
 
+    let js_recv_cb_handle = self.state.borrow().js_recv_cb.clone().unwrap();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let js_recv_cb = js_recv_cb_handle.open(tc_scope);
     let this = v8::undefined(tc_scope).into();
@@ -2228,6 +2200,22 @@ impl JsRealm {
   }
 
   // TODO(andreubotella): `mod_evaluate`, `load_main_module`, `load_side_module`
+}
+
+#[inline]
+pub fn queue_fast_async_op(
+  ctx: &OpCtx,
+  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
+) {
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // atleast 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
+
+  let mut state = runtime_state.borrow_mut();
+  state.pending_ops.push(OpCall::lazy(op));
+  state.have_unpolled_ops = true;
 }
 
 #[inline]
