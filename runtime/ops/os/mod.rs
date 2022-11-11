@@ -190,7 +190,6 @@ fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
 fn op_network_interfaces(
   state: &mut OpState,
 ) -> Result<Vec<NetworkInterface>, AnyError> {
-  super::check_unstable(state, "Deno.networkInterfaces");
   state
     .borrow_mut::<Permissions>()
     .sys
@@ -246,7 +245,6 @@ impl From<netif::Interface> for NetworkInterface {
 fn op_system_memory_info(
   state: &mut OpState,
 ) -> Result<Option<sys_info::MemInfo>, AnyError> {
-  super::check_unstable(state, "Deno.systemMemoryInfo");
   state
     .borrow_mut::<Permissions>()
     .sys
@@ -257,7 +255,6 @@ fn op_system_memory_info(
 #[cfg(not(windows))]
 #[op]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.gid");
   state
     .borrow_mut::<Permissions>()
     .sys
@@ -272,7 +269,6 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[cfg(windows)]
 #[op]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.gid");
   state
     .borrow_mut::<Permissions>()
     .sys
@@ -283,7 +279,6 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[cfg(not(windows))]
 #[op]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.uid");
   state
     .borrow_mut::<Permissions>()
     .sys
@@ -298,7 +293,6 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[cfg(windows)]
 #[op]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.uid");
   state
     .borrow_mut::<Permissions>()
     .sys

@@ -26,7 +26,7 @@ use crate::node::NodeResolution;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
+use crate::npm::RealNpmRegistryApi;
 use crate::progress_bar::ProgressBar;
 use crate::resolver::CliResolver;
 use crate::tools::check;
@@ -211,13 +211,13 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
-    let registry_url = NpmRegistryApi::default_url();
+    let registry_url = RealNpmRegistryApi::default_url();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       progress_bar.clone(),
     );
-    let api = NpmRegistryApi::new(
+    let api = RealNpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
       cli_options.cache_setting(),
@@ -228,9 +228,6 @@ impl ProcState {
     let mut npm_resolver = NpmPackageResolver::new(
       npm_cache.clone(),
       api,
-      cli_options.unstable()
-        // don't do the unstable error when in the lsp
-        || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
       cli_options.no_npm(),
       cli_options
         .resolve_local_node_modules_folder()
@@ -277,6 +274,7 @@ impl ProcState {
   /// module before attempting to `load()` it from a `JsRuntime`. It will
   /// populate `self.graph_data` in memory with the necessary source code, write
   /// emits where necessary or report any module graph / type checking errors.
+  #[allow(clippy::too_many_arguments)]
   pub async fn prepare_module_load(
     &self,
     roots: Vec<ModuleSpecifier>,

@@ -16,6 +16,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::args::ConfigFile;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 use crate::tools::fmt::format_json;
@@ -40,7 +41,7 @@ pub struct NpmPackageInfo {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct NpmContent {
-  /// Mapping between requests for npm packages and resolved specifiers, eg.
+  /// Mapping between requests for npm packages and resolved packages, eg.
   /// {
   ///   "chalk": "chalk@5.0.0"
   ///   "react@17": "react@17.0.1"
@@ -98,6 +99,10 @@ impl Lockfile {
     flags: &Flags,
     maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<Lockfile>, AnyError> {
+    if flags.no_lock {
+      return Ok(None);
+    }
+
     let filename = match flags.lock {
       Some(ref lock) => PathBuf::from(lock),
       None => match maybe_config_file {
@@ -217,6 +222,9 @@ impl Lockfile {
     specifier: &str,
     code: &str,
   ) -> bool {
+    if !(specifier.starts_with("http:") || specifier.starts_with("https:")) {
+      return true;
+    }
     if self.overwrite {
       // In case --lock-write is specified check always passes
       self.insert(specifier, code);
@@ -242,9 +250,6 @@ impl Lockfile {
   /// Checks the given module is included, if so verify the checksum. If module
   /// is not included, insert it.
   fn check_or_insert(&mut self, specifier: &str, code: &str) -> bool {
-    if specifier.starts_with("file:") {
-      return true;
-    }
     if let Some(lockfile_checksum) = self.content.remote.get(specifier) {
       let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
       lockfile_checksum == &compiled_checksum
@@ -255,9 +260,6 @@ impl Lockfile {
   }
 
   fn insert(&mut self, specifier: &str, code: &str) {
-    if specifier.starts_with("file:") {
-      return;
-    }
     let checksum = crate::checksum::gen(&[code.as_bytes()]);
     self.content.remote.insert(specifier.to_string(), checksum);
     self.has_content_changed = true;
@@ -267,7 +269,7 @@ impl Lockfile {
     &mut self,
     package: &NpmResolutionPackage,
   ) -> Result<(), LockfileError> {
-    let specifier = package.id.serialize_for_lock_file();
+    let specifier = package.id.as_serialized();
     if let Some(package_info) = self.content.npm.packages.get(&specifier) {
       let integrity = package
         .dist
@@ -284,7 +286,7 @@ This could be caused by:
   * the source itself may be corrupt
 
 Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
-          package.id, self.filename.display()
+          package.id.display(), self.filename.display()
         )));
       }
     } else {
@@ -298,7 +300,7 @@ Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
     let dependencies = package
       .dependencies
       .iter()
-      .map(|(name, id)| (name.to_string(), id.serialize_for_lock_file()))
+      .map(|(name, id)| (name.to_string(), id.as_serialized()))
       .collect::<BTreeMap<String, String>>();
 
     let integrity = package
@@ -307,7 +309,7 @@ Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
       .as_ref()
       .unwrap_or(&package.dist.shasum);
     self.content.npm.packages.insert(
-      package.id.serialize_for_lock_file(),
+      package.id.as_serialized(),
       NpmPackageInfo {
         integrity: integrity.to_string(),
         dependencies,
@@ -319,12 +321,13 @@ Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
   pub fn insert_npm_specifier(
     &mut self,
     package_req: &NpmPackageReq,
-    version: String,
+    package_id: &NpmPackageId,
   ) {
-    self.content.npm.specifiers.insert(
-      package_req.to_string(),
-      format!("{}@{}", package_req.name, version),
-    );
+    self
+      .content
+      .npm
+      .specifiers
+      .insert(package_req.to_string(), package_id.as_serialized());
     self.has_content_changed = true;
   }
 }
@@ -557,10 +560,12 @@ mod tests {
       id: NpmPackageId {
         name: "nanoid".to_string(),
         version: NpmVersion::parse("3.3.4").unwrap(),
+        peer_dependencies: Vec::new(),
       },
+      copy_index: 0,
       dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(), 
-        shasum: "foo".to_string(), 
+        tarball: "foo".to_string(),
+        shasum: "foo".to_string(),
         integrity: Some("sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==".to_string())
       },
       dependencies: HashMap::new(),
@@ -572,10 +577,12 @@ mod tests {
       id: NpmPackageId {
         name: "picocolors".to_string(),
         version: NpmVersion::parse("1.0.0").unwrap(),
+        peer_dependencies: Vec::new(),
       },
+      copy_index: 0,
       dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(), 
-        shasum: "foo".to_string(), 
+        tarball: "foo".to_string(),
+        shasum: "foo".to_string(),
         integrity: Some("sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==".to_string())
       },
       dependencies: HashMap::new(),
@@ -588,10 +595,12 @@ mod tests {
       id: NpmPackageId {
         name: "source-map-js".to_string(),
         version: NpmVersion::parse("1.0.2").unwrap(),
+        peer_dependencies: Vec::new(),
       },
+      copy_index: 0,
       dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(), 
-        shasum: "foo".to_string(), 
+        tarball: "foo".to_string(),
+        shasum: "foo".to_string(),
         integrity: Some("sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==".to_string())
       },
       dependencies: HashMap::new(),
@@ -604,7 +613,9 @@ mod tests {
       id: NpmPackageId {
         name: "source-map-js".to_string(),
         version: NpmVersion::parse("1.0.2").unwrap(),
+        peer_dependencies: Vec::new(),
       },
+      copy_index: 0,
       dist: NpmPackageVersionDistInfo {
         tarball: "foo".to_string(),
         shasum: "foo".to_string(),

@@ -371,8 +371,6 @@
           }
         } else {
           const reader = respBody.getReader();
-          const { value, done } = await reader.read();
-          // Best case: sends headers + first chunk in a single go.
           writeFixedResponse(
             serverId,
             i,
@@ -387,21 +385,14 @@
             false,
             respondFast,
           );
-          await respondChunked(
-            i,
-            value,
-            done,
-          );
-          if (!done) {
-            while (true) {
-              const chunk = await reader.read();
-              await respondChunked(
-                i,
-                chunk.value,
-                chunk.done,
-              );
-              if (chunk.done) break;
-            }
+          while (true) {
+            const { value, done } = await reader.read();
+            await respondChunked(
+              i,
+              value,
+              done,
+            );
+            if (done) break;
           }
         }
       }
@@ -431,248 +422,241 @@
     })();
   }
 
-  async function serve(arg1, arg2) {
-    let options = undefined;
-    let handler = undefined;
-    if (arg1 instanceof Function) {
-      handler = arg1;
-      options = arg2;
-    } else if (arg2 instanceof Function) {
-      handler = arg2;
-      options = arg1;
-    } else {
-      options = arg1;
-    }
-    if (handler === undefined) {
-      if (options === undefined) {
-        throw new TypeError(
-          "No handler was provided, so an options bag is mandatory.",
-        );
+  function createServe(opFn) {
+    return async function serve(arg1, arg2) {
+      let options = undefined;
+      let handler = undefined;
+      if (arg1 instanceof Function) {
+        handler = arg1;
+        options = arg2;
+      } else if (arg2 instanceof Function) {
+        handler = arg2;
+        options = arg1;
+      } else {
+        options = arg1;
       }
-      handler = options.handler;
-    }
-    if (!(handler instanceof Function)) {
-      throw new TypeError("A handler function must be provided.");
-    }
-    if (options === undefined) {
-      options = {};
-    }
-
-    const signal = options.signal;
-
-    const onError = options.onError ?? function (error) {
-      console.error(error);
-      return new Response("Internal Server Error", { status: 500 });
-    };
-
-    const onListen = options.onListen ?? function ({ port }) {
-      console.log(
-        `Listening on http://${
-          hostnameForDisplay(listenOpts.hostname)
-        }:${port}/`,
-      );
-    };
-
-    const listenOpts = {
-      hostname: options.hostname ?? "127.0.0.1",
-      port: options.port ?? 9000,
-      reuseport: options.reusePort ?? false,
-    };
-    if (options.cert || options.key) {
-      if (!options.cert || !options.key) {
-        throw new TypeError(
-          "Both cert and key must be provided to enable HTTPS.",
-        );
-      }
-      listenOpts.cert = options.cert;
-      listenOpts.key = options.key;
-    }
-
-    const serverId = core.ops.op_flash_serve(listenOpts);
-    const serverPromise = core.opAsync("op_flash_drive_server", serverId);
-
-    PromisePrototypeCatch(
-      PromisePrototypeThen(
-        core.opAsync("op_flash_wait_for_listening", serverId),
-        (port) => {
-          onListen({ hostname: listenOpts.hostname, port });
-        },
-      ),
-      () => {},
-    );
-    const finishedPromise = PromisePrototypeCatch(serverPromise, () => {});
-
-    const server = {
-      id: serverId,
-      transport: listenOpts.cert && listenOpts.key ? "https" : "http",
-      hostname: listenOpts.hostname,
-      port: listenOpts.port,
-      closed: false,
-      finished: finishedPromise,
-      async close() {
-        if (server.closed) {
-          return;
+      if (handler === undefined) {
+        if (options === undefined) {
+          throw new TypeError(
+            "No handler was provided, so an options bag is mandatory.",
+          );
         }
-        server.closed = true;
-        await core.opAsync("op_flash_close_server", serverId);
-        await server.finished;
-      },
-      async serve() {
-        let offset = 0;
-        while (true) {
-          if (server.closed) {
-            break;
-          }
+        handler = options.handler;
+      }
+      if (!(handler instanceof Function)) {
+        throw new TypeError("A handler function must be provided.");
+      }
+      if (options === undefined) {
+        options = {};
+      }
 
-          let tokens = nextRequestSync();
-          if (tokens === 0) {
-            tokens = await core.opAsync("op_flash_next_async", serverId);
+      const signal = options.signal;
+
+      const onError = options.onError ?? function (error) {
+        console.error(error);
+        return new Response("Internal Server Error", { status: 500 });
+      };
+
+      const onListen = options.onListen ?? function ({ port }) {
+        console.log(
+          `Listening on http://${
+            hostnameForDisplay(listenOpts.hostname)
+          }:${port}/`,
+        );
+      };
+
+      const listenOpts = {
+        hostname: options.hostname ?? "127.0.0.1",
+        port: options.port ?? 9000,
+        reuseport: options.reusePort ?? false,
+      };
+      if (options.cert || options.key) {
+        if (!options.cert || !options.key) {
+          throw new TypeError(
+            "Both cert and key must be provided to enable HTTPS.",
+          );
+        }
+        listenOpts.cert = options.cert;
+        listenOpts.key = options.key;
+      }
+
+      const serverId = opFn(listenOpts);
+      const serverPromise = core.opAsync("op_flash_drive_server", serverId);
+
+      PromisePrototypeCatch(
+        PromisePrototypeThen(
+          core.opAsync("op_flash_wait_for_listening", serverId),
+          (port) => {
+            onListen({ hostname: listenOpts.hostname, port });
+          },
+        ),
+        () => {},
+      );
+      const finishedPromise = PromisePrototypeCatch(serverPromise, () => {});
+
+      const server = {
+        id: serverId,
+        transport: listenOpts.cert && listenOpts.key ? "https" : "http",
+        hostname: listenOpts.hostname,
+        port: listenOpts.port,
+        closed: false,
+        finished: finishedPromise,
+        async close() {
+          if (server.closed) {
+            return;
+          }
+          server.closed = true;
+          await core.opAsync("op_flash_close_server", serverId);
+          await server.finished;
+        },
+        async serve() {
+          let offset = 0;
+          while (true) {
             if (server.closed) {
               break;
             }
-          }
 
-          for (let i = offset; i < offset + tokens; i++) {
-            let body = null;
-            // There might be a body, but we don't expose it for GET/HEAD requests.
-            // It will be closed automatically once the request has been handled and
-            // the response has been sent.
-            const method = getMethodSync(i);
-            let hasBody = method > 2; // Not GET/HEAD/CONNECT
-            if (hasBody) {
-              body = createRequestBodyStream(serverId, i);
-              if (body === null) {
-                hasBody = false;
+            let tokens = nextRequestSync();
+            if (tokens === 0) {
+              tokens = await core.opAsync("op_flash_next_async", serverId);
+              if (server.closed) {
+                break;
               }
             }
 
-            const req = fromFlashRequest(
-              serverId,
-              /* streamRid */
-              i,
-              body,
-              /* methodCb */
-              () => methods[method],
-              /* urlCb */
-              () => {
-                const path = core.ops.op_flash_path(serverId, i);
-                return `${server.transport}://${server.hostname}:${server.port}${path}`;
-              },
-              /* headersCb */
-              () => core.ops.op_flash_headers(serverId, i),
-            );
-
-            let resp;
-            try {
-              resp = handler(req);
-              if (resp instanceof Promise) {
-                PromisePrototypeCatch(
-                  PromisePrototypeThen(
-                    resp,
-                    (resp) =>
-                      handleResponse(
-                        req,
-                        resp,
-                        body,
-                        hasBody,
-                        method,
-                        serverId,
-                        i,
-                        respondFast,
-                        respondChunked,
-                      ),
-                  ),
-                  onError,
-                );
-                continue;
-              } else if (typeof resp?.then === "function") {
-                resp.then((resp) =>
-                  handleResponse(
-                    req,
-                    resp,
-                    body,
-                    hasBody,
-                    method,
-                    serverId,
-                    i,
-                    respondFast,
-                    respondChunked,
-                  )
-                ).catch(onError);
-                continue;
+            for (let i = offset; i < offset + tokens; i++) {
+              let body = null;
+              // There might be a body, but we don't expose it for GET/HEAD requests.
+              // It will be closed automatically once the request has been handled and
+              // the response has been sent.
+              const method = getMethodSync(i);
+              let hasBody = method > 2; // Not GET/HEAD/CONNECT
+              if (hasBody) {
+                body = createRequestBodyStream(serverId, i);
+                if (body === null) {
+                  hasBody = false;
+                }
               }
-            } catch (e) {
-              resp = await onError(e);
+
+              const req = fromFlashRequest(
+                serverId,
+                /* streamRid */
+                i,
+                body,
+                /* methodCb */
+                () => methods[method],
+                /* urlCb */
+                () => {
+                  const path = core.ops.op_flash_path(serverId, i);
+                  return `${server.transport}://${server.hostname}:${server.port}${path}`;
+                },
+                /* headersCb */
+                () => core.ops.op_flash_headers(serverId, i),
+              );
+
+              let resp;
+              try {
+                resp = handler(req);
+                if (resp instanceof Promise) {
+                  PromisePrototypeCatch(
+                    PromisePrototypeThen(
+                      resp,
+                      (resp) =>
+                        handleResponse(
+                          req,
+                          resp,
+                          body,
+                          hasBody,
+                          method,
+                          serverId,
+                          i,
+                          respondFast,
+                          respondChunked,
+                        ),
+                    ),
+                    onError,
+                  );
+                  continue;
+                } else if (typeof resp?.then === "function") {
+                  resp.then((resp) =>
+                    handleResponse(
+                      req,
+                      resp,
+                      body,
+                      hasBody,
+                      method,
+                      serverId,
+                      i,
+                      respondFast,
+                      respondChunked,
+                    )
+                  ).catch(onError);
+                  continue;
+                }
+              } catch (e) {
+                resp = await onError(e);
+              }
+
+              handleResponse(
+                req,
+                resp,
+                body,
+                hasBody,
+                method,
+                serverId,
+                i,
+                respondFast,
+                respondChunked,
+              );
             }
 
-            handleResponse(
-              req,
-              resp,
-              body,
-              hasBody,
-              method,
-              serverId,
-              i,
-              respondFast,
-              respondChunked,
-            );
+            offset += tokens;
           }
+          await server.finished;
+        },
+      };
 
-          offset += tokens;
-        }
-        await server.finished;
-      },
-    };
+      signal?.addEventListener("abort", () => {
+        clearInterval(dateInterval);
+        PromisePrototypeThen(server.close(), () => {}, () => {});
+      }, {
+        once: true,
+      });
 
-    signal?.addEventListener("abort", () => {
-      clearInterval(dateInterval);
-      PromisePrototypeThen(server.close(), () => {}, () => {});
-    }, {
-      once: true,
-    });
-
-    function respondChunked(token, chunk, shutdown) {
-      const nwritten = core.ops.op_try_flash_respond_chuncked(
-        serverId,
-        token,
-        chunk ?? new Uint8Array(),
-        shutdown,
-      );
-      if (nwritten > 0) {
+      function respondChunked(token, chunk, shutdown) {
         return core.opAsync(
           "op_flash_respond_chuncked",
           serverId,
           token,
           chunk,
           shutdown,
-          nwritten,
         );
       }
-    }
 
-    const fastOp = prepareFastCalls();
-    let nextRequestSync = () => fastOp.nextRequest();
-    let getMethodSync = (token) => fastOp.getMethod(token);
-    let respondFast = (token, response, shutdown) =>
-      fastOp.respond(token, response, shutdown);
-    if (serverId > 0) {
-      nextRequestSync = () => core.ops.op_flash_next_server(serverId);
-      getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
-      respondFast = (token, response, shutdown) =>
-        core.ops.op_flash_respond(serverId, token, response, null, shutdown);
-    }
+      const fastOp = prepareFastCalls();
+      let nextRequestSync = () => fastOp.nextRequest();
+      let getMethodSync = (token) => fastOp.getMethod(token);
+      let respondFast = (token, response, shutdown) =>
+        fastOp.respond(token, response, shutdown);
+      if (serverId > 0) {
+        nextRequestSync = () => core.ops.op_flash_next_server(serverId);
+        getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
+        respondFast = (token, response, shutdown) =>
+          core.ops.op_flash_respond(serverId, token, response, null, shutdown);
+      }
 
-    if (!dateInterval) {
-      date = new Date().toUTCString();
-      dateInterval = setInterval(() => {
+      if (!dateInterval) {
         date = new Date().toUTCString();
-      }, 1000);
-    }
+        dateInterval = setInterval(() => {
+          date = new Date().toUTCString();
+        }, 1000);
+      }
 
-    await SafePromiseAll([
-      PromisePrototypeCatch(server.serve(), console.error),
-      serverPromise,
-    ]);
+      await SafePromiseAll([
+        PromisePrototypeCatch(server.serve(), console.error),
+        serverPromise,
+      ]);
+    };
   }
 
   function createRequestBodyStream(serverId, token) {
@@ -740,7 +724,7 @@
   }
 
   window.__bootstrap.flash = {
-    serve,
+    createServe,
     upgradeHttpRaw,
   };
 })(this);
