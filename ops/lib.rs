@@ -912,31 +912,23 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
       Ok(b) => {
         // Handles detached buffers.
         let byte_length = b.byte_length();
-        if byte_length == 0 {
-          &mut []
-        } else {
-          let store = b.data() as *mut u8;
-          // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
-          unsafe { ::std::slice::from_raw_parts_mut(store, byte_length) }
-        }
+        let store = b.data() as *mut u8;
+        // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
+        unsafe { ::std::slice::from_raw_parts_mut(store, byte_length) }
       },
       Err(_) => {
         if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
           let len = view.byte_length();
-          if len == 0 {
-            &mut []
-          } else {
-            let offset = view.byte_offset();
-            let buffer = match view.buffer(scope) {
-                Some(v) => v,
-                None => {
-                  return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
-                }
-            };
-            let store = buffer.data() as *mut u8;
-            // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
-            unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
-          }
+          let offset = view.byte_offset();
+          let buffer = match view.buffer(scope) {
+              Some(v) => v,
+              None => {
+                return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+              }
+          };
+          let store = buffer.data() as *mut u8;
+          // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
+          unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
         } else {
           return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
         }
