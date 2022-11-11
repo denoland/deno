@@ -166,10 +166,10 @@ pub fn op_wasm_streaming_set_url(
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: &mut [u8],
+  buf: ZeroCopyBuf,
 ) -> Result<u32, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
-  let view = BufMutView::from_slice(buf);
+  let view = BufMutView::from(buf);
   resource.read_byob(view).await.map(|(n, _)| n as u32)
 }
 

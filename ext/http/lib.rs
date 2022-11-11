@@ -340,7 +340,7 @@ impl Resource for HttpStreamResource {
     "httpStream".into()
   }
 
-  fn read<'s>(self: Rc<Self>, limit: usize) -> AsyncResult<'s, BufView> {
+  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(async move {
       let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
 
