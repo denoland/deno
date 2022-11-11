@@ -686,6 +686,12 @@ itest!(lock_v2_check_err2 {
   http_server: true,
 });
 
+itest!(lock_only_http_and_https {
+  args: "run --lock=run/lock_only_http_and_https/deno.lock run/lock_only_http_and_https/main.ts",
+  output: "run/lock_only_http_and_https/main.out",
+  http_server: true,
+});
+
 itest!(mts_dmts_mjs {
   args: "run subdir/import.mts",
   output: "run/mts_dmts_mjs.out",
@@ -3630,7 +3636,7 @@ fn websocket_server_idletimeout() {
 }
 
 itest!(auto_discover_lockfile {
-  args: "run --unstable run/auto_discover_lockfile/main.ts",
+  args: "run run/auto_discover_lockfile/main.ts",
   output: "run/auto_discover_lockfile/main.out",
   http_server: true,
   exit_code: 10,

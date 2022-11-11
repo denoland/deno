@@ -70,13 +70,19 @@ pub async fn cache_packages(
     // and we want the output to be deterministic
     packages.sort_by(|a, b| a.id.cmp(&b.id));
   }
+
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
+    assert_eq!(package.copy_index, 0); // the caller should not provide any of these
     let cache = cache.clone();
     let registry_url = registry_url.clone();
     let handle = tokio::task::spawn(async move {
       cache
-        .ensure_package(&package.id, &package.dist, &registry_url)
+        .ensure_package(
+          (package.id.name.as_str(), &package.id.version),
+          &package.dist,
+          &registry_url,
+        )
         .await
     });
     if sync_download {

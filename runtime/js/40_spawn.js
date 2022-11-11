@@ -26,7 +26,7 @@
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
-  function spawnChildInner(command, apiName, {
+  function spawnChildInner(opFn, command, apiName, {
     args = [],
     cwd = undefined,
     clearEnv = false,
@@ -39,7 +39,7 @@
     signal = undefined,
     windowsRawArguments = false,
   } = {}) {
-    const child = ops.op_spawn_child({
+    const child = opFn({
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
       cwd: pathFromURL(cwd),
@@ -58,8 +58,10 @@
     });
   }
 
-  function spawnChild(command, options = {}) {
-    return spawnChildInner(command, "Deno.spawnChild()", options);
+  function createSpawnChild(opFn) {
+    return function spawnChild(command, options = {}) {
+      return spawnChildInner(opFn, command, "Deno.spawnChild()", options);
+    };
   }
 
   async function collectOutput(readableStream) {
@@ -227,68 +229,72 @@
     }
   }
 
-  function spawn(command, options) {
-    if (options?.stdin === "piped") {
-      throw new TypeError(
-        "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
-      );
-    }
-    return spawnChildInner(command, "Deno.spawn()", options).output();
+  function createSpawn(opFn) {
+    return function spawn(command, options) {
+      if (options?.stdin === "piped") {
+        throw new TypeError(
+          "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+        );
+      }
+      return spawnChildInner(opFn, command, "Deno.spawn()", options).output();
+    };
   }
 
-  function spawnSync(command, {
-    args = [],
-    cwd = undefined,
-    clearEnv = false,
-    env = {},
-    uid = undefined,
-    gid = undefined,
-    stdin = "null",
-    stdout = "piped",
-    stderr = "piped",
-    windowsRawArguments = false,
-  } = {}) {
-    if (stdin === "piped") {
-      throw new TypeError(
-        "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
-      );
-    }
-    const result = ops.op_spawn_sync({
-      cmd: pathFromURL(command),
-      args: ArrayPrototypeMap(args, String),
-      cwd: pathFromURL(cwd),
-      clearEnv,
-      env: ObjectEntries(env),
-      uid,
-      gid,
-      stdin,
-      stdout,
-      stderr,
-      windowsRawArguments,
-    });
-    return {
-      success: result.status.success,
-      code: result.status.code,
-      signal: result.status.signal,
-      get stdout() {
-        if (result.stdout == null) {
-          throw new TypeError("stdout is not piped");
-        }
-        return result.stdout;
-      },
-      get stderr() {
-        if (result.stderr == null) {
-          throw new TypeError("stderr is not piped");
-        }
-        return result.stderr;
-      },
+  function createSpawnSync(opFn) {
+    return function spawnSync(command, {
+      args = [],
+      cwd = undefined,
+      clearEnv = false,
+      env = {},
+      uid = undefined,
+      gid = undefined,
+      stdin = "null",
+      stdout = "piped",
+      stderr = "piped",
+      windowsRawArguments = false,
+    } = {}) {
+      if (stdin === "piped") {
+        throw new TypeError(
+          "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+        );
+      }
+      const result = opFn({
+        cmd: pathFromURL(command),
+        args: ArrayPrototypeMap(args, String),
+        cwd: pathFromURL(cwd),
+        clearEnv,
+        env: ObjectEntries(env),
+        uid,
+        gid,
+        stdin,
+        stdout,
+        stderr,
+        windowsRawArguments,
+      });
+      return {
+        success: result.status.success,
+        code: result.status.code,
+        signal: result.status.signal,
+        get stdout() {
+          if (result.stdout == null) {
+            throw new TypeError("stdout is not piped");
+          }
+          return result.stdout;
+        },
+        get stderr() {
+          if (result.stderr == null) {
+            throw new TypeError("stderr is not piped");
+          }
+          return result.stderr;
+        },
+      };
     };
   }
 
   window.__bootstrap.spawn = {
     Child,
-    spawnChild,
-    spawn,
-    spawnSync,
+    createSpawn,
+    createSpawnChild,
+    createSpawnSync,
   };
 })(this);

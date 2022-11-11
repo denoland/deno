@@ -34,6 +34,7 @@
   const {
     ArrayPrototypeMap,
     ArrayPrototypePush,
+    ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
     RangeError,
     RegExp,
@@ -287,7 +288,7 @@
      * @param {ResponseInit} init
      * @returns {Response}
      */
-    static json(data, init = {}) {
+    static json(data = undefined, init = {}) {
       const prefix = "Failed to call 'Response.json'";
       data = webidl.converters.any(data);
       init = webidl.converters["ResponseInit_fast"](init, {
@@ -435,6 +436,11 @@
   }
 
   webidl.configurePrototype(Response);
+  ObjectDefineProperties(Response, {
+    json: { enumerable: true },
+    redirect: { enumerable: true },
+    error: { enumerable: true },
+  });
   const ResponsePrototype = Response.prototype;
   mixinBody(ResponsePrototype, _body, _mimeType);
 

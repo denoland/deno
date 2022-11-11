@@ -146,6 +146,7 @@ pub fn hostname() -> String {
     let mut name: Vec<u16> = vec![0u16; namelen];
     // Start winsock to make `GetHostNameW` work correctly
     // https://github.com/retep998/winapi-rs/issues/296
+    // SAFETY: winapi call
     WINSOCKET_INIT.call_once(|| unsafe {
       let mut data = mem::zeroed();
       let wsa_startup_result = WSAStartup(MAKEWORD(2, 2), &mut data);
