@@ -79,7 +79,6 @@ impl Op {
       Err(BailoutReason::FastUnsupportedParamType) => {
         optimizer.fast_compatible = false;
       }
-      Err(err) => return quote!(compile_error!(#err);),
     };
 
     let Self {
