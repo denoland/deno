@@ -295,7 +295,7 @@
 
     #child;
 
-    #outputted;
+    #consumed;
 
     constructor(key = null, command, options) {
       this.#command = command;
@@ -304,33 +304,41 @@
 
     output() {
       if (this.#child) {
-        throw new TypeError("Was spawned");
+        return this.#child.output();
+      } else {
+        if (this.#consumed) {
+          throw new TypeError(
+            "Command instance is being or has already been consumed.",
+          );
+        }
+
+        this.#consumed = true;
+        return spawn(this.#command, this.#options);
       }
-
-      this.#outputted = true;
-
-      return spawn(this.#command, this.#options);
     }
 
     outputSync() {
+      if (this.#consumed) {
+        throw new TypeError(
+          "Command instance is being or has already been consumed.",
+        );
+      }
       if (this.#child) {
         throw new TypeError("Was spawned");
       }
-      if (this.#outputted) {
-        throw new TypeError("output() was called");
-      }
 
+      this.#consumed = true;
       return spawnSync(this.#command, this.#options);
     }
 
     spawn() {
-      if (this.#child) {
-        throw new TypeError("Already spawned");
-      }
-      if (this.#outputted) {
-        throw new TypeError("output() was called");
+      if (this.#consumed) {
+        throw new TypeError(
+          "Command instance is being or has already been consumed.",
+        );
       }
 
+      this.#consumed = true;
       this.#child = spawnChild(this.#command, this.#options);
     }
 
@@ -364,6 +372,14 @@
       }
 
       return this.#child.status;
+    }
+
+    get pid() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      return this.#child.pid;
     }
 
     kill(signo = "SIGTERM") {
