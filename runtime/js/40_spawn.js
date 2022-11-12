@@ -304,6 +304,9 @@
     #consumed;
 
     constructor(key = null, command, options) {
+      if (key !== illegalConstructorKey) {
+        throw new TypeError("Illegal constructor.");
+      }
       this.#command = command;
       this.#options = options;
     }
