@@ -1407,6 +1407,6 @@
     },
   };
 
-  window.__bootstrap.denoNs.bench = test;
+  window.__bootstrap.denoNs.bench = bench;
   window.__bootstrap.denoNs.test = test;
 })(this);
