@@ -40,27 +40,3 @@ pub fn get_99_main() -> PathBuf {
   let path = PathBuf::from(manifest);
   path.join("js").join("99_main.js")
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn runtime_snapshot() {
-    let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
-      startup_snapshot: Some(deno_isolate_init()),
-      ..Default::default()
-    });
-    js_runtime
-      .execute_script(
-        "<anon>",
-        r#"
-      if (!(bootstrap.mainRuntime && bootstrap.workerRuntime)) {
-        throw Error("bad");
-      }
-      console.log("we have console.log!!!");
-    "#,
-      )
-      .unwrap();
-  }
-}
