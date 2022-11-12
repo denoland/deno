@@ -35,10 +35,9 @@ impl NpmPackageReference {
     let specifier = match specifier.strip_prefix("npm:") {
       Some(s) => s,
       None => {
-        return Err(generic_error(format!(
-          "Not an npm specifier: {}",
-          specifier
-        )));
+        // don't allocate a string here and instead use a static string
+        // because this is hit a lot when a url is not an npm specifier
+        return Err(generic_error("Not an npm specifier"));
       }
     };
     let parts = specifier.split('/').collect::<Vec<_>>();
@@ -244,11 +243,8 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
 
     // fill this leaf's information
     for specifier in &specifiers {
-      if specifier.scheme() == "npm" {
-        // this will error elsewhere if not the case
-        if let Ok(npm_ref) = NpmPackageReference::from_specifier(specifier) {
-          leaf.reqs.insert(npm_ref.req);
-        }
+      if let Ok(npm_ref) = NpmPackageReference::from_specifier(specifier) {
+        leaf.reqs.insert(npm_ref.req);
       } else if !specifier.as_str().starts_with(&parent_specifier.as_str()) {
         leaf
           .dependencies
