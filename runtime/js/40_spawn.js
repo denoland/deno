@@ -320,6 +320,11 @@
             "Command instance is being or has already been consumed.",
           );
         }
+        if (this.#options?.stdin === "piped") {
+          throw new TypeError(
+            "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
+          );
+        }
 
         this.#consumed = true;
         return Deno.spawn(this.#command, this.#options);
@@ -334,6 +339,11 @@
       }
       if (this.#child) {
         throw new TypeError("Was spawned");
+      }
+      if (this.#options?.stdin === "piped") {
+        throw new TypeError(
+          "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
+        );
       }
 
       this.#consumed = true;
