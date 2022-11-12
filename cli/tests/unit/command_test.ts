@@ -36,7 +36,8 @@ tryExit();
       args: ["run", "--allow-read", programFile],
       stdout: "inherit",
       stderr: "inherit",
-    }).spawn();
+    });
+    child.spawn();
 
     // Write the expected exit code *after* starting deno.
     // This is how we verify that `Child` is actually asynchronous.
@@ -62,7 +63,8 @@ Deno.test(
       stdin: "piped",
       stdout: "null",
       stderr: "null",
-    }).spawn();
+    });
+    child.spawn();
 
     assertThrows(() => child.stdout, TypeError, "stdout is not piped");
     assertThrows(() => child.stderr, TypeError, "stderr is not piped");
@@ -89,7 +91,8 @@ Deno.test(
         "await Deno.stdout.write(new TextEncoder().encode('hello'))",
       ],
       stderr: "null",
-    }).spawn();
+    });
+    child.spawn();
 
     assertThrows(() => child.stdin, TypeError, "stdin is not piped");
     assertThrows(() => child.stderr, TypeError, "stderr is not piped");
@@ -121,7 +124,8 @@ Deno.test(
         "await Deno.stderr.write(new TextEncoder().encode('hello'))",
       ],
       stdout: "null",
-    }).spawn();
+    });
+    child.spawn();
 
     assertThrows(() => child.stdin, TypeError, "stdin is not piped");
     assertThrows(() => child.stdout, TypeError, "stdout is not piped");
@@ -159,7 +163,8 @@ Deno.test(
         "eval",
         "Deno.stderr.write(new TextEncoder().encode('error\\n')); Deno.stdout.write(new TextEncoder().encode('output\\n'));",
       ],
-    }).spawn();
+    });
+    child.spawn();
     await child.stdout.pipeTo(file.writable, {
       preventClose: true,
     });
@@ -192,7 +197,8 @@ Deno.test(
       stdin: "piped",
       stdout: "null",
       stderr: "null",
-    }).spawn();
+    });
+    child.spawn();
     await file.readable.pipeTo(child.stdin, {
       preventClose: true,
     });
@@ -210,7 +216,8 @@ Deno.test(
       args: ["eval", "setTimeout(() => {}, 10000)"],
       stdout: "null",
       stderr: "null",
-    }).spawn();
+    });
+    child.spawn();
 
     child.kill("SIGKILL");
     const status = await child.status;
@@ -233,7 +240,8 @@ Deno.test(
       args: ["eval", "setTimeout(() => {}, 5000)"],
       stdout: "null",
       stderr: "null",
-    }).spawn();
+    });
+    child.spawn();
 
     assertThrows(() => {
       // @ts-expect-error testing runtime error of bad signal
@@ -251,7 +259,8 @@ Deno.test(
       args: ["eval", "setTimeout(() => {}, 10000)"],
       stdout: "null",
       stderr: "null",
-    }).spawn();
+    });
+    child.spawn();
 
     child.kill();
     const status = await child.status;
@@ -279,7 +288,8 @@ Deno.test(
       signal: ac.signal,
       stdout: "null",
       stderr: "null",
-    }).spawn();
+    });
+    child.spawn();
     queueMicrotask(() => ac.abort());
     const status = await child.status;
     assertEquals(status.success, false);
@@ -730,7 +740,7 @@ const child = await Deno.command(Deno.execPath(), {
   cwd: Deno.args[0],
   stdout: "piped",
   args: ["run", "-A", "--unstable", Deno.args[1]],
-}).spawn();
+});child.spawn();
 const readable = child.stdout.pipeThrough(new TextDecoderStream());
 const reader = readable.getReader();
 // set up an interval that will end after reading a few messages from stdout,

@@ -1616,7 +1616,7 @@ declare namespace Deno {
    * needs to be closed manually.
    *
    * ```ts
-   * const command = Deno.Command(Deno.execPath(), {
+   * const command = Deno.command(Deno.execPath(), {
    *   args: [
    *     "eval",
    *     "console.log('Hello World')",
