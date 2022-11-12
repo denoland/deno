@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::BenchConfig;
 use crate::args::BenchFlags;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
@@ -9,6 +10,7 @@ use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_bench_path;
+use crate::fs_util::specifier_to_file_path;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::ops;
@@ -476,9 +478,13 @@ pub async fn run_benchmarks(
   let ps = ProcState::build(flags).await?;
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
+
+  let selection =
+    select_include_ignore(&bench_flags, ps.options.to_bench_config()?);
+
   let specifiers = collect_specifiers(
-    bench_flags.include.unwrap_or_else(|| vec![".".to_string()]),
-    &bench_flags.ignore.clone(),
+    selection.include,
+    &selection.ignore,
     is_supported_bench_path,
   )?;
 
@@ -510,9 +516,11 @@ pub async fn run_benchmarks_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let include = bench_flags.include.unwrap_or_else(|| vec![".".to_string()]);
-  let ignore = bench_flags.ignore.clone();
-  let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
+  let selection =
+    select_include_ignore(&bench_flags, ps.options.to_bench_config()?);
+
+  let paths_to_watch: Vec<_> =
+    selection.include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
@@ -520,8 +528,8 @@ pub async fn run_benchmarks_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = include.clone();
-    let ignore = ignore.clone();
+    let include = selection.include.clone();
+    let ignore = selection.ignore.clone();
     let ps = ps.clone();
 
     async move {
@@ -636,8 +644,8 @@ pub async fn run_benchmarks_with_watch(
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
     let filter = bench_flags.filter.clone();
-    let include = include.clone();
-    let ignore = ignore.clone();
+    let include = selection.include.clone();
+    let ignore = selection.ignore.clone();
     let permissions = permissions.clone();
     let ps = ps.clone();
 
@@ -672,4 +680,43 @@ pub async fn run_benchmarks_with_watch(
   .await?;
 
   Ok(())
+}
+
+struct IncludeIgnoreSelection {
+  include: Vec<String>,
+  ignore: Vec<PathBuf>,
+}
+
+fn select_include_ignore(
+  bench_flags: &BenchFlags,
+  maybe_bench_config: Option<BenchConfig>,
+) -> IncludeIgnoreSelection {
+  let mut include = bench_flags.include.clone().unwrap_or_else(Vec::new);
+  let mut ignore = bench_flags.ignore.clone();
+
+  if let Some(bench_config) = maybe_bench_config {
+    if include.is_empty() {
+      include = bench_config
+        .files
+        .include
+        .iter()
+        .map(|u| u.to_string())
+        .collect::<Vec<_>>();
+    }
+
+    if ignore.is_empty() {
+      ignore = bench_config
+        .files
+        .exclude
+        .iter()
+        .filter_map(|u| specifier_to_file_path(u).ok())
+        .collect::<Vec<_>>();
+    }
+  }
+
+  if include.is_empty() {
+    include.push(".".to_string());
+  }
+
+  IncludeIgnoreSelection { include, ignore }
 }
