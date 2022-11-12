@@ -14,14 +14,11 @@ use std::fmt;
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
 const UNSTABLE_DENO_PROPS: &[&str] = &[
-  "BenchDefinition",
   "CreateHttpClientOptions",
   "DatagramConn",
   "HttpClient",
-  "SystemMemoryInfo",
   "UnixConnectOptions",
   "UnixListenOptions",
-  "bench",
   "connect",
   "createHttpClient",
   "kill",
@@ -31,7 +28,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "ppid",
   "removeSignalListener",
   "shutdown",
-  "systemMemoryInfo",
   "umask",
   "spawnChild",
   "Child",

@@ -686,6 +686,12 @@ itest!(lock_v2_check_err2 {
   http_server: true,
 });
 
+itest!(lock_only_http_and_https {
+  args: "run --lock=run/lock_only_http_and_https/deno.lock run/lock_only_http_and_https/main.ts",
+  output: "run/lock_only_http_and_https/main.out",
+  http_server: true,
+});
+
 itest!(mts_dmts_mjs {
   args: "run subdir/import.mts",
   output: "run/mts_dmts_mjs.out",
@@ -2912,15 +2918,9 @@ itest!(nested_error {
   exit_code: 1,
 });
 
-itest!(node_env_var_allowlist_with_unstable_flag {
+itest!(node_env_var_allowlist {
   args: "run --unstable --no-prompt run/node_env_var_allowlist.ts",
-  output: "run/node_env_var_allowlist_with_unstable_flag.ts.out",
-  exit_code: 1,
-});
-
-itest!(node_env_var_allowlist_without_unstable_flag {
-  args: "run --no-prompt run/node_env_var_allowlist.ts",
-  output: "run/node_env_var_allowlist_without_unstable_flag.ts.out",
+  output: "run/node_env_var_allowlist.ts.out",
   exit_code: 1,
 });
 
@@ -3630,7 +3630,7 @@ fn websocket_server_idletimeout() {
 }
 
 itest!(auto_discover_lockfile {
-  args: "run --unstable run/auto_discover_lockfile/main.ts",
+  args: "run run/auto_discover_lockfile/main.ts",
   output: "run/auto_discover_lockfile/main.out",
   http_server: true,
   exit_code: 10,
