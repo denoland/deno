@@ -197,7 +197,6 @@ fn v8_init(
   v8::icu::set_common_data_71(&ICU_DATA.0).unwrap();
 
   let flags = concat!(
-    " --experimental-wasm-threads",
     " --wasm-test-streaming",
     " --harmony-import-assertions",
     " --no-validate-asm",
