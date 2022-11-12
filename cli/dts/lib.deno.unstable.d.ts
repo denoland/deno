@@ -1396,6 +1396,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.command API instead.
+   *
    * Options which can be set when calling {@linkcode Deno.spawn},
    * {@linkcode Deno.spawnSync}, and {@linkcode Deno.spawnChild}.
    *
@@ -1455,6 +1457,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.command API instead.
+   *
    * Spawns a child process.
    *
    * If any stdio options are not set to `"piped"`, accessing the corresponding
@@ -1489,6 +1493,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.command API instead.
+   *
    * The interface for handling a child process returned from
    * {@linkcode Deno.spawnChild}.
    *
@@ -1519,6 +1525,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.command API instead.
+   *
    * Executes a subprocess, waiting for it to finish and collecting all of its
    * output.
    *
@@ -1547,6 +1555,8 @@ declare namespace Deno {
   ): Promise<SpawnOutput>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @deprecated Use the Deno.command API instead.
    *
    * Synchronously executes a subprocess, waiting for it to finish and
    * collecting all of its output.
@@ -1577,6 +1587,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.command API instead.
+   *
    * @category Sub Process
    */
   export interface ChildStatus {
@@ -1591,6 +1603,8 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @deprecated Use the Deno.command API instead.
    *
    * The interface returned from calling {@linkcode Deno.spawn} or
    * {@linkcode Deno.spawnSync} which represents the result of spawning the
