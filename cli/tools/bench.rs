@@ -691,7 +691,7 @@ fn select_include_ignore(
   bench_flags: &BenchFlags,
   maybe_bench_config: Option<BenchConfig>,
 ) -> IncludeIgnoreSelection {
-  let mut include = bench_flags.include.clone().unwrap_or_else(Vec::new);
+  let mut include = bench_flags.include.clone().unwrap_or_default();
   let mut ignore = bench_flags.ignore.clone();
 
   if let Some(bench_config) = maybe_bench_config {
