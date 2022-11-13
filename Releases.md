@@ -6,6 +6,29 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.28.0 / 2022.11.13
+
+- feat(lock): don't require --unstable for auto discovery (#16582)
+- feat(npm): require --unstable for npm specifiers in remote modules (#16612)
+- feat(ops): implement fast lazy async ops (#16579)
+- feat(runtime): support creating workers with custom v8 snapshots (#16553)
+- feat(unstable): "Deno.Command()" API (#16516)
+- feat(unstable/npm): module graph derived npm specifier resolution order
+  (#16602)
+- feat: don't require --unstable flag for npm programs (#16520)
+- feat: remove --unstable flag requirement for npm: specifiers (#16473)
+- feat: stabilize Deno.bench() and 'deno bench' subcommand (#16485)
+- feat: stabilize Deno.networkInterfaces() (#16451)
+- feat: stabilize Deno.systemMemoryInfo() (#16445)
+- feat: stabilize Deno.uid() and Deno.gid() (#16424)
+- fix(ext/flash): revert #16284 and add test case (#16576)
+- fix(ext/response): make error, json, redirect enumerable (#16497)
+- fix(npm): disable npm specifiers in import.meta.resolve() (#16599)
+- fix: update latest release version after github release publish (#16603)
+- perf(core): minimize trivial heap allocations in `resolve_async_ops` (#16584)
+- perf(web): optimize single pass utf8 decoding (#16593)
+- perf: more efficient `deno cache` and npm package info usage (#16592)
+
 ### 1.27.2 / 2022.11.08
 
 - feat(unstable/npm): support peer dependencies (#16561)
