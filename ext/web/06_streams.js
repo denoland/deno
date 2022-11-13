@@ -4457,25 +4457,22 @@
         };
 
         readableStreamDefaultReaderRead(reader, readRequest);
-        return promise.promise.then(
-          (result) => {
-            reader[_iteratorNext] = null;
-            if (result.done === true) {
-              reader[_iteratorFinished] = true;
-              return createIteratorResult(undefined, true);
-            }
-            return result;
-          },
-          (reason) => {
-            reader[_iteratorNext] = null;
+        return PromisePrototypeThen(promise.promise, (result) => {
+          reader[_iteratorNext] = null;
+          if (result.done === true) {
             reader[_iteratorFinished] = true;
-            throw reason;
-          },
-        );
+            return createIteratorResult(undefined, true);
+          }
+          return result;
+        }, (reason) => {
+          reader[_iteratorNext] = null;
+          reader[_iteratorFinished] = true;
+          throw reason;
+        });
       }
 
       reader[_iteratorNext] = reader[_iteratorNext]
-        ? reader[_iteratorNext].then(nextSteps, nextSteps)
+        ? PromisePrototypeThen(reader[_iteratorNext], nextSteps, nextSteps)
         : nextSteps();
 
       return reader[_iteratorNext];
@@ -4507,9 +4504,12 @@
       };
 
       const returnPromise = reader[_iteratorNext]
-        ? reader[_iteratorNext].then(returnSteps, returnSteps)
+        ? PromisePrototypeThen(reader[_iteratorNext], returnSteps, returnSteps)
         : returnSteps();
-      return returnPromise.then(() => createIteratorResult(arg, true));
+      return PromisePrototypeThen(
+        returnPromise,
+        () => createIteratorResult(arg, true),
+      );
     },
   }, asyncIteratorPrototype);
 
