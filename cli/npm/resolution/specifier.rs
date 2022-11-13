@@ -196,19 +196,10 @@ impl NpmVersionMatcher for NpmPackageReq {
 /// Then it would resolve the npm specifiers in each of those groups according
 /// to that tree going by tree depth.
 pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
-  fn analyze_module(
-    module: &deno_graph::Module,
-    graph: &ModuleGraph,
-    specifier_graph: &mut SpecifierTree,
-    seen: &mut HashSet<ModuleSpecifier>,
-  ) {
-    if !seen.insert(module.specifier.clone()) {
-      return; // already visited
-    }
-
-    let parent_specifier = get_parent_path_specifier(&module.specifier);
-    let leaf = specifier_graph.get_leaf(&parent_specifier);
-
+  fn collect_specifiers<'a>(
+    graph: &'a ModuleGraph,
+    module: &'a deno_graph::Module,
+  ) -> Vec<&'a ModuleSpecifier> {
     let mut specifiers = Vec::with_capacity(module.dependencies.len() * 2 + 1);
     let maybe_types = module.maybe_types_dependency.as_ref().map(|(_, r)| r);
     if let Some(Resolved::Ok { specifier, .. }) = &maybe_types {
@@ -222,6 +213,35 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
         }
       }
     }
+
+    // flatten any data urls into this list of specifiers
+    for i in (0..specifiers.len()).rev() {
+      if specifiers[i].scheme() == "data" {
+        let data_specifier = specifiers.swap_remove(i);
+        if let Some(module) = graph.get(data_specifier) {
+          specifiers.extend(collect_specifiers(graph, module));
+        }
+      }
+    }
+
+    specifiers
+  }
+
+  fn analyze_module(
+    module: &deno_graph::Module,
+    graph: &ModuleGraph,
+    specifier_graph: &mut SpecifierTree,
+    seen: &mut HashSet<ModuleSpecifier>,
+  ) {
+    if !seen.insert(module.specifier.clone()) {
+      return; // already visited
+    }
+
+    let parent_specifier = get_folder_path_specifier(&module.specifier);
+    let leaf = specifier_graph.get_leaf(&parent_specifier);
+
+    let specifiers = collect_specifiers(graph, module);
+
     // fill this leaf's information
     for specifier in &specifiers {
       if specifier.scheme() == "npm" {
@@ -232,7 +252,7 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
       } else if !specifier.as_str().starts_with(&parent_specifier.as_str()) {
         leaf
           .dependencies
-          .insert(get_parent_path_specifier(specifier));
+          .insert(get_folder_path_specifier(specifier));
       }
     }
 
@@ -260,7 +280,7 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     match NpmPackageReference::from_specifier(specifier) {
       Ok(npm_ref) => result.push(npm_ref.req),
       Err(_) => {
-        pending_specifiers.push_back(get_parent_path_specifier(specifier))
+        pending_specifiers.push_back(get_folder_path_specifier(specifier))
       }
     }
   }
@@ -289,21 +309,20 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
   result
 }
 
-fn get_parent_path_specifier(specifier: &ModuleSpecifier) -> ModuleSpecifier {
-  let mut parent_specifier = specifier.clone();
-  parent_specifier.set_query(None);
-  parent_specifier.set_fragment(None);
-  // remove the last path part, but keep the trailing slash
-  let mut path_parts = parent_specifier.path().split('/').collect::<Vec<_>>();
-  if path_parts[path_parts.len() - 1].is_empty() {
-    path_parts.pop();
+fn get_folder_path_specifier(specifier: &ModuleSpecifier) -> ModuleSpecifier {
+  let mut specifier = specifier.clone();
+  specifier.set_query(None);
+  specifier.set_fragment(None);
+  if !specifier.path().ends_with('/') {
+    // remove the last path part, but keep the trailing slash
+    let mut path_parts = specifier.path().split('/').collect::<Vec<_>>();
+    let path_parts_len = path_parts.len(); // make borrow checker happy for some reason
+    if path_parts_len > 0 {
+      path_parts[path_parts_len - 1] = "";
+    }
+    specifier.set_path(&path_parts.join("/"));
   }
-  let path_parts_len = path_parts.len(); // make borrow checker happy for some reason
-  if path_parts_len > 0 {
-    path_parts[path_parts_len - 1] = "";
-  }
-  parent_specifier.set_path(&path_parts.join("/"));
-  parent_specifier
+  specifier
 }
 
 #[derive(Debug)]
@@ -515,6 +534,7 @@ fn cmp_package_req(a: &NpmPackageReq, b: &NpmPackageReq) -> Ordering {
 #[cfg(test)]
 mod tests {
   use deno_graph::ModuleKind;
+  use pretty_assertions::assert_eq;
 
   use super::*;
 
@@ -701,22 +721,22 @@ mod tests {
   }
 
   #[test]
-  fn test_get_parent_path_specifier() {
+  fn test_get_folder_path_specifier() {
     fn get(a: &str) -> String {
-      get_parent_path_specifier(&ModuleSpecifier::parse(a).unwrap()).to_string()
+      get_folder_path_specifier(&ModuleSpecifier::parse(a).unwrap()).to_string()
     }
 
     assert_eq!(get("https://deno.land/"), "https://deno.land/");
     assert_eq!(get("https://deno.land"), "https://deno.land/");
     assert_eq!(get("https://deno.land/test"), "https://deno.land/");
-    assert_eq!(get("https://deno.land/test/"), "https://deno.land/");
+    assert_eq!(get("https://deno.land/test/"), "https://deno.land/test/");
     assert_eq!(
       get("https://deno.land/test/other"),
       "https://deno.land/test/"
     );
     assert_eq!(
       get("https://deno.land/test/other/"),
-      "https://deno.land/test/"
+      "https://deno.land/test/other/"
     );
     assert_eq!(
       get("https://deno.land/test/other/test?test#other"),
@@ -738,6 +758,7 @@ mod tests {
               "import 'file:///dev/local_module_b/mod.ts';",
               "import 'https://deno.land/x/module_a/mod.ts';",
               "import 'npm:package-a@local_module_a';",
+              "import 'https://deno.land/x/module_e/';",
             )
             .to_string(),
             maybe_headers: None,
@@ -755,8 +776,10 @@ mod tests {
           "file:///dev/local_module_b/mod.ts".to_string(),
           deno_graph::source::Source::Module {
             specifier: "file:///dev/local_module_b/mod.ts".to_string(),
-            content: "export * from 'npm:package-b@local_module_b';"
-              .to_string(),
+            content: concat!(
+              "export * from 'npm:package-b@local_module_b';",
+              "import * as test from 'data:application/typescript,export%20*%20from%20%22npm:package-data%40local_module_b%22;';",
+            ).to_string(),
             maybe_headers: None,
           },
         ),
@@ -836,6 +859,19 @@ mod tests {
             maybe_headers: None,
           },
         ),
+        (
+          // ensure a module at a directory is treated as being at a directory
+          "https://deno.land/x/module_e/".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_e/"
+              .to_string(),
+            content: "import 'npm:package-a@module_e';".to_string(),
+            maybe_headers: Some(vec![(
+              "content-type".to_string(),
+              "application/javascript".to_string(),
+            )]),
+          },
+        ),
       ],
       Vec::new(),
     );
@@ -867,11 +903,13 @@ mod tests {
         "package-a@local_module_a",
         "package-b@local_module_a",
         "package-b@local_module_b",
+        "package-data@local_module_b",
         "package-a@module_a",
         "package-b@module_a",
         "package-a@module_d",
         "package-b@module_d",
         "package-c@module_d",
+        "package-a@module_e",
         "package-a@module_b",
         "package-a@module_c",
         "package-b@module_c",
