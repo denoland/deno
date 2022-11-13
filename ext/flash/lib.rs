@@ -419,9 +419,16 @@ fn op_flash_drive_server(
 }
 
 #[op]
-fn op_flash_close_server(state: &mut OpState, server_id: u32) {
-  let flash_ctx = state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.remove(&server_id).unwrap();
+async fn op_flash_close_server(state: Rc<RefCell<OpState>>, server_id: u32) {
+  let ctx = {
+    let op_state = &mut state.borrow_mut();
+    let flash_ctx = op_state.borrow_mut::<FlashContext>();
+    flash_ctx.servers.remove(&server_id).unwrap()
+  };
+
+  deno_core::futures::pending!();
+
+  ctx.cancel_handle.cancel();
   let _ = ctx.waker.wake();
 }
 
