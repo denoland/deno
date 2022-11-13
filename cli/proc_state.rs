@@ -524,6 +524,15 @@ impl ProcState {
         Some(Resolved::Ok { specifier, .. }) => {
           if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
           {
+            if !self.options.unstable()
+              && matches!(found_referrer.scheme(), "http" | "https")
+            {
+              return Err(custom_error(
+                "NotSupported",
+                format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {})", found_referrer),
+              ));
+            }
+
             return self
               .handle_node_resolve_result(node::node_resolve_npm_reference(
                 &reference,

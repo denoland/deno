@@ -1,0 +1,23 @@
+name: post_publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-dl-version:
+    name: update dl.deno.land version
+    runs-on: ubuntu-20.04
+    if: github.repository == 'denoland/deno'
+    steps:
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v0
+        with:
+          project_id: denoland
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Upload version file to dl.deno.land
+        run: |
+          echo ${GITHUB_REF#refs/*/} > release-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
