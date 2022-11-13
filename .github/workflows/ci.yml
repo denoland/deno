@@ -549,8 +549,6 @@ jobs:
           startsWith(github.ref, 'refs/tags/')
         run: |
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
-          echo ${GITHUB_REF#refs/*/} > release-latest.txt
-          gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
       - name: Upload release to dl.deno.land (windows)
         if: |
@@ -564,8 +562,6 @@ jobs:
         shell: bash
         run: |
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
-          echo ${GITHUB_REF#refs/*/} > release-latest.txt
-          gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
       - name: Create release notes
         shell: bash

@@ -1,0 +1,53 @@
+struct op_read_fast {
+    _phantom: ::std::marker::PhantomData<()>,
+}
+impl<'scope> deno_core::v8::fast_api::FastFunction for op_read_fast {
+    fn function(&self) -> *const ::std::ffi::c_void {
+        op_read_fast_fn as *const ::std::ffi::c_void
+    }
+    fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
+        use deno_core::v8::fast_api::Type::*;
+        use deno_core::v8::fast_api::CType;
+        &[V8Value, Int32, Uint32, TypedArray(CType::Uint8), CallbackOptions]
+    }
+    fn return_type(&self) -> deno_core::v8::fast_api::CType {
+        deno_core::v8::fast_api::CType::Void
+    }
+}
+fn op_read_fast_fn<'scope>(
+    _: deno_core::v8::Local<deno_core::v8::Object>,
+    __promise_id: i32,
+    rid: ResourceId,
+    buf: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,
+    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
+) -> () {
+    use deno_core::v8;
+    use deno_core::_ops;
+    let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
+        &mut *fast_api_callback_options
+    };
+    let __ctx = unsafe {
+        &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
+            as *const _ops::OpCtx)
+    };
+    let state = __ctx.state.clone();
+    let buf = match unsafe { &*buf }.get_storage_if_aligned() {
+        Some(v) => v,
+        None => {
+            unsafe { &mut *fast_api_callback_options }.fallback = true;
+            return Default::default();
+        }
+    };
+    let result = op_read::call(state, rid, buf);
+    let __op_id = __ctx.id;
+    let __state = ::std::cell::RefCell::borrow(&__ctx.state);
+    __state.tracker.track_async(__op_id);
+    let __get_class = __state.get_error_class_fn;
+    let result = _ops::queue_fast_async_op(
+        __ctx,
+        async move {
+            let result = result.await;
+            (__promise_id, __op_id, _ops::to_op_result(__get_class, result))
+        },
+    );
+}

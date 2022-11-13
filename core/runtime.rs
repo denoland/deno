@@ -32,6 +32,7 @@ use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
+use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -196,14 +197,10 @@ fn v8_init(
   v8::icu::set_common_data_71(&ICU_DATA.0).unwrap();
 
   let flags = concat!(
-    " --experimental-wasm-threads",
     " --wasm-test-streaming",
     " --harmony-import-assertions",
     " --no-validate-asm",
     " --turbo_fast_api_calls",
-    // This flag prevents "unresolved external reference" panic during
-    // build, which started happening in V8 10.6
-    " --noexperimental-async-stack-tagging-api",
     " --harmony-change-array-by-copy",
   );
 
@@ -1972,10 +1969,13 @@ impl JsRuntime {
   // Send finished responses to JS
   fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
     let isolate = self.v8_isolate.as_mut().unwrap();
-
-    let js_recv_cb_handle = self.state.borrow().js_recv_cb.clone().unwrap();
-    let global_realm = self.state.borrow().global_realm.clone().unwrap();
-    let scope = &mut global_realm.handle_scope(isolate);
+    let scope = &mut self
+      .state
+      .borrow()
+      .global_realm
+      .as_ref()
+      .unwrap()
+      .handle_scope(isolate);
 
     // We return async responses to JS in unbounded batches (may change),
     // each batch is a flat vector of tuples:
@@ -1984,7 +1984,10 @@ impl JsRuntime {
     // which contains a value OR an error, encoded as a tuple.
     // This batch is received in JS via the special `arguments` variable
     // and then each tuple is used to resolve or reject promises
-    let mut args: Vec<v8::Local<v8::Value>> = vec![];
+    //
+    // This can handle 16 promises (32 / 2) futures in a single batch without heap
+    // allocations.
+    let mut args: SmallVec<[v8::Local<v8::Value>; 32]> = SmallVec::new();
 
     // Now handle actual ops.
     {
@@ -2010,6 +2013,7 @@ impl JsRuntime {
       return Ok(());
     }
 
+    let js_recv_cb_handle = self.state.borrow().js_recv_cb.clone().unwrap();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let js_recv_cb = js_recv_cb_handle.open(tc_scope);
     let this = v8::undefined(tc_scope).into();
@@ -2192,6 +2196,22 @@ impl JsRealm {
   }
 
   // TODO(andreubotella): `mod_evaluate`, `load_main_module`, `load_side_module`
+}
+
+#[inline]
+pub fn queue_fast_async_op(
+  ctx: &OpCtx,
+  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
+) {
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // atleast 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
+
+  let mut state = runtime_state.borrow_mut();
+  state.pending_ops.push(OpCall::lazy(op));
+  state.have_unpolled_ops = true;
 }
 
 #[inline]

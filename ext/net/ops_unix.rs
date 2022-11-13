@@ -209,8 +209,7 @@ where
   Ok((rid, pathname))
 }
 
-#[op]
-pub fn op_net_listen_unixpacket<NP>(
+pub fn net_listen_unixpacket<NP>(
   state: &mut OpState,
   path: String,
 ) -> Result<(ResourceId, Option<String>), AnyError>
@@ -218,7 +217,6 @@ where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  super::check_unstable(state, "Deno.listenDatagram");
   let permissions = state.borrow_mut::<NP>();
   permissions.check_read(address_path, "Deno.listenDatagram()")?;
   permissions.check_write(address_path, "Deno.listenDatagram()")?;
@@ -231,6 +229,29 @@ where
   };
   let rid = state.resource_table.add(datagram_resource);
   Ok((rid, pathname))
+}
+
+#[op]
+pub fn op_net_listen_unixpacket<NP>(
+  state: &mut OpState,
+  path: String,
+) -> Result<(ResourceId, Option<String>), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  super::check_unstable(state, "Deno.listenDatagram");
+  net_listen_unixpacket::<NP>(state, path)
+}
+
+#[op]
+pub fn op_node_unstable_net_listen_unixpacket<NP>(
+  state: &mut OpState,
+  path: String,
+) -> Result<(ResourceId, Option<String>), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  net_listen_unixpacket::<NP>(state, path)
 }
 
 pub fn pathstring(pathname: &Path) -> Result<String, AnyError> {
