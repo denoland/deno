@@ -291,10 +291,6 @@
     };
   }
 
-  function command(command, options = {}) {
-    return new Command(illegalConstructorKey, command, options);
-  }
-
   class Command {
     #command;
     #options;
@@ -303,10 +299,7 @@
 
     #consumed;
 
-    constructor(key = null, command, options) {
-      if (key !== illegalConstructorKey) {
-        throw new TypeError("Illegal constructor.");
-      }
+    constructor(command, options) {
       this.#command = command;
       this.#options = options;
     }
@@ -427,7 +420,7 @@
 
   window.__bootstrap.spawn = {
     Child,
-    command,
+    Command,
     createSpawn,
     createSpawnChild,
     createSpawnSync,

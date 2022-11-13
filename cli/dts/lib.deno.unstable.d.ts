@@ -1396,7 +1396,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @deprecated Use the Deno.command API instead.
+   * @deprecated Use the Deno.Command API instead.
    *
    * Options which can be set when calling {@linkcode Deno.spawn},
    * {@linkcode Deno.spawnSync}, and {@linkcode Deno.spawnChild}.
@@ -1457,7 +1457,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @deprecated Use the Deno.command API instead.
+   * @deprecated Use the Deno.Command API instead.
    *
    * Spawns a child process.
    *
@@ -1493,7 +1493,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @deprecated Use the Deno.command API instead.
+   * @deprecated Use the Deno.Command API instead.
    *
    * The interface for handling a child process returned from
    * {@linkcode Deno.spawnChild}.
@@ -1525,7 +1525,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @deprecated Use the Deno.command API instead.
+   * @deprecated Use the Deno.Command API instead.
    *
    * Executes a subprocess, waiting for it to finish and collecting all of its
    * output.
@@ -1556,7 +1556,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @deprecated Use the Deno.command API instead.
+   * @deprecated Use the Deno.Command API instead.
    *
    * Synchronously executes a subprocess, waiting for it to finish and
    * collecting all of its output.
@@ -1587,7 +1587,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @deprecated Use the Deno.command API instead.
+   * @deprecated Use the Deno.Command API instead.
    *
    * @category Sub Process
    */
@@ -1604,7 +1604,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @deprecated Use the Deno.command API instead.
+   * @deprecated Use the Deno.Command API instead.
    *
    * The interface returned from calling {@linkcode Deno.spawn} or
    * {@linkcode Deno.spawnSync} which represents the result of spawning the
@@ -1630,7 +1630,7 @@ declare namespace Deno {
    * needs to be closed manually.
    *
    * ```ts
-   * const command = Deno.command(Deno.execPath(), {
+   * const command = new Deno.Command(Deno.execPath(), {
    *   args: [
    *     "eval",
    *     "console.log('Hello World')",
@@ -1648,7 +1648,7 @@ declare namespace Deno {
    * ```
    *
    * ```ts
-   * const command = Deno.command(Deno.execPath(), {
+   * const command = new Deno.Command(Deno.execPath(), {
    *   args: [
    *     "eval",
    *     "console.log('hello'); console.error('world')",
@@ -1661,7 +1661,7 @@ declare namespace Deno {
    * ```
    *
    * ```ts
-   * const command = Deno.command(Deno.execPath(), {
+   * const command = new Deno.Command(Deno.execPath(), {
    *   args: [
    *     "eval",
    *     "console.log('hello'); console.error('world')",
@@ -1675,11 +1675,6 @@ declare namespace Deno {
    *
    * @category Sub Process
    */
-  export function command(
-    command: string | URL,
-    options?: CommandOptions,
-  ): Command;
-
   export class Command {
     get stdin(): WritableStream<Uint8Array>;
     get stdout(): ReadableStream<Uint8Array>;
@@ -1688,6 +1683,7 @@ declare namespace Deno {
     /** Get the status of the child process. */
     readonly status: Promise<CommandStatus>;
 
+    constructor(command: string | URL, options?: CommandOptions);
     /**
      * Executes the {@linkcode Deno.Command}, waiting for it to finish and
      * collecting all of its output.
