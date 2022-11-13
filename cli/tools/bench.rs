@@ -480,7 +480,7 @@ pub async fn run_benchmarks(
     Permissions::from_options(&ps.options.permissions_options())?;
 
   let selection =
-    select_include_ignore(&bench_flags, ps.options.to_bench_config()?);
+    collect_include_ignore(&bench_flags, ps.options.to_bench_config()?);
 
   let specifiers = collect_specifiers(
     selection.include,
@@ -517,7 +517,7 @@ pub async fn run_benchmarks_with_watch(
     Permissions::from_options(&ps.options.permissions_options())?;
 
   let selection =
-    select_include_ignore(&bench_flags, ps.options.to_bench_config()?);
+    collect_include_ignore(&bench_flags, ps.options.to_bench_config()?);
 
   let paths_to_watch: Vec<_> =
     selection.include.iter().map(PathBuf::from).collect();
@@ -682,15 +682,15 @@ pub async fn run_benchmarks_with_watch(
   Ok(())
 }
 
-struct IncludeIgnoreSelection {
+struct IncludeIgnoreCollection {
   include: Vec<String>,
   ignore: Vec<PathBuf>,
 }
 
-fn select_include_ignore(
+fn collect_include_ignore(
   bench_flags: &BenchFlags,
   maybe_bench_config: Option<BenchConfig>,
-) -> IncludeIgnoreSelection {
+) -> IncludeIgnoreCollection {
   let mut include = bench_flags.include.clone().unwrap_or_default();
   let mut ignore = bench_flags.ignore.clone();
 
@@ -700,7 +700,7 @@ fn select_include_ignore(
         .files
         .include
         .iter()
-        .map(|u| u.to_string())
+        .map(|s| s.to_string())
         .collect::<Vec<_>>();
     }
 
@@ -709,7 +709,7 @@ fn select_include_ignore(
         .files
         .exclude
         .iter()
-        .filter_map(|u| specifier_to_file_path(u).ok())
+        .filter_map(|s| specifier_to_file_path(s).ok())
         .collect::<Vec<_>>();
     }
   }
@@ -718,5 +718,5 @@ fn select_include_ignore(
     include.push(".".to_string());
   }
 
-  IncludeIgnoreSelection { include, ignore }
+  IncludeIgnoreCollection { include, ignore }
 }
