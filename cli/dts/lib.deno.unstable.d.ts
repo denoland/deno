@@ -617,6 +617,8 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * These are unstable options which can be used with {@linkcode Deno.run}.
+   *
+   * @category Sub Process
    */
   interface UnstableRunOptions extends RunOptions {
     /** If `true`, clears the environment variables before executing the
