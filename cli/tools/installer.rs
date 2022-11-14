@@ -398,8 +398,10 @@ fn resolve_shim_data(
     ));
   }
 
-  if flags.lock.is_some()
-    // always use a lockfile for an npm entrypoint
+  if flags.no_lock {
+    executable_args.push("--no-lock".to_string());
+  } else if flags.lock.is_some()
+    // always use a lockfile for an npm entrypoint unless --no-lock
     || NpmPackageReference::from_specifier(&module_url).is_ok()
   {
     let mut copy_path = file_path.clone();
@@ -764,6 +766,32 @@ mod tests {
     assert_eq!(
       shim_data.args,
       vec!["run", "--allow-all", "--lock", &lock_path, "npm:cowsay"]
+    );
+    assert_eq!(shim_data.extra_files, vec![]);
+  }
+
+  #[test]
+  fn install_npm_no_lock() {
+    let temp_dir = env::temp_dir();
+    let shim_data = resolve_shim_data(
+      &Flags {
+        allow_all: true,
+        no_lock: true,
+        ..Flags::default()
+      },
+      &InstallFlags {
+        module_url: "npm:cowsay".to_string(),
+        args: vec![],
+        name: None,
+        root: Some(temp_dir.clone()),
+        force: false,
+      },
+    )
+    .unwrap();
+
+    assert_eq!(
+      shim_data.args,
+      vec!["run", "--allow-all", "--no-lock", "npm:cowsay"]
     );
     assert_eq!(shim_data.extra_files, vec![]);
   }
