@@ -150,22 +150,10 @@ async fn compile_command(
     generic_error("There should only be one reference to ModuleGraph")
   })?;
 
-  graph.valid().unwrap();
-
   // at the moment, we don't support npm specifiers in deno_compile, so show an error
-  let first_npm_specifier = graph
-    .specifiers()
-    .values()
-    .filter_map(|r| match r {
-      Ok((specifier, kind, _)) if *kind == deno_graph::ModuleKind::External => {
-        Some(specifier.clone())
-      }
-      _ => None,
-    })
-    .next();
-  if let Some(npm_specifier) = first_npm_specifier {
-    bail!("npm specifiers have not yet been implemented for deno compile (https://github.com/denoland/deno/issues/15960). Found: {}", npm_specifier)
-  }
+  error_for_any_npm_specifier(&graph)?;
+
+  graph.valid().unwrap();
 
   let parser = ps.parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
@@ -500,6 +488,9 @@ async fn bundle_command(
   let operation = |(ps, graph): (ProcState, Arc<deno_graph::ModuleGraph>)| {
     let out_file = bundle_flags.out_file.clone();
     async move {
+      // at the moment, we don't support npm specifiers in deno bundle, so show an error
+      error_for_any_npm_specifier(&graph)?;
+
       let bundle_output = bundle_module_graph(graph.as_ref(), &ps)?;
       debug!(">>>>> bundle END");
 
@@ -559,6 +550,26 @@ async fn bundle_command(
   }
 
   Ok(0)
+}
+
+fn error_for_any_npm_specifier(
+  graph: &deno_graph::ModuleGraph,
+) -> Result<(), AnyError> {
+  let first_npm_specifier = graph
+    .specifiers()
+    .values()
+    .filter_map(|r| match r {
+      Ok((specifier, kind, _)) if *kind == deno_graph::ModuleKind::External => {
+        Some(specifier.clone())
+      }
+      _ => None,
+    })
+    .next();
+  if let Some(npm_specifier) = first_npm_specifier {
+    bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", npm_specifier)
+  } else {
+    Ok(())
+  }
 }
 
 async fn doc_command(
