@@ -5,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 // This is a shim that allows to generate documentation on docs.rs
+#[cfg(not(feature = "docsrs"))]
 mod not_docs {
   use super::*;
   use deno_cache::SqliteBackedCache;
