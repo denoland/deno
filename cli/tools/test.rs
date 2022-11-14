@@ -5,7 +5,6 @@ use crate::args::TestFlags;
 use crate::args::TypeCheckMode;
 use crate::checksum;
 use crate::colors;
-use crate::worker::create_main_worker_for_testing_or_benching;
 use crate::display;
 use crate::file_fetcher::File;
 use crate::file_watcher;
@@ -18,6 +17,7 @@ use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
+use crate::worker::create_main_worker_for_testing_or_benching;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;

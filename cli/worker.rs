@@ -418,7 +418,8 @@ pub async fn create_main_worker(
     vec![],
     Default::default(),
     false,
-  ).await
+  )
+  .await
 }
 
 pub async fn create_main_worker_for_testing_or_benching(
@@ -435,7 +436,8 @@ pub async fn create_main_worker_for_testing_or_benching(
     custom_extensions,
     stdio,
     true,
-  ).await
+  )
+  .await
 }
 
 async fn create_main_worker_internal(

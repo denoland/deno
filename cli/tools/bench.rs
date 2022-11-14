@@ -4,7 +4,6 @@ use crate::args::BenchFlags;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::colors;
-use crate::worker::create_main_worker_for_testing_or_benching;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::fs_util::collect_specifiers;
@@ -15,6 +14,7 @@ use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
+use crate::worker::create_main_worker_for_testing_or_benching;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
