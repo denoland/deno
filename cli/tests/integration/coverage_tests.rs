@@ -211,6 +211,7 @@ fn no_snaps_included(test_name: &str, extension: &str) {
     .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--unstable")
+    .arg("--include=no_snaps_included.ts")
     .arg(format!("{}/", tempdir.to_str().unwrap()))
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
