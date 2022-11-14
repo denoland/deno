@@ -48,6 +48,7 @@ use std::intrinsics::transmute;
 use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
+use std::marker::PhantomPinned;
 use std::mem::replace;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
@@ -948,6 +949,7 @@ fn run_server(
                 read_lock: Arc::new(Mutex::new(())),
                 parse_done: ParseStatus::None,
                 buffer: UnsafeCell::new(vec![0_u8; 1024]),
+                _pinned: PhantomPinned,
               });
 
               trace!("New connection: {}", token.0);

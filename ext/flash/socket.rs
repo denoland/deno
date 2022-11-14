@@ -4,6 +4,7 @@ use std::{
   cell::UnsafeCell,
   future::Future,
   io::{Read, Write},
+  marker::PhantomPinned,
   pin::Pin,
   sync::{Arc, Mutex},
 };
@@ -26,6 +27,7 @@ pub struct Stream {
   pub parse_done: ParseStatus,
   pub buffer: UnsafeCell<Vec<u8>>,
   pub read_lock: Arc<Mutex<()>>,
+  pub _pinned: PhantomPinned,
 }
 
 impl Stream {
