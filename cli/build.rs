@@ -1,72 +1,29 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::Extension;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::snapshot_util::*;
+use deno_runtime::deno_cache::SqliteBackedCache;
+use deno_runtime::permissions::Permissions;
 use deno_runtime::*;
 
 mod ts {
   use super::*;
   use crate::deno_webgpu_get_declaration;
-  use deno_core::error::{custom_error, AnyError};
-  use deno_core::{op, Extension, JsRuntime, OpState, RuntimeOptions};
+  use deno_core::error::custom_error;
+  use deno_core::error::AnyError;
+  use deno_core::op;
+  use deno_core::OpState;
   use regex::Regex;
   use serde::Deserialize;
-  use serde_json::{json, Value};
+  use serde_json::json;
+  use serde_json::Value;
   use std::collections::HashMap;
-
-  // TODO(bartlomieju): this module contains a lot of duplicated
-  // logic with `runtime/build.rs`, factor out to `deno_core`.
-  fn create_snapshot(
-    mut js_runtime: JsRuntime,
-    snapshot_path: &Path,
-    files: Vec<PathBuf>,
-  ) {
-    // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
-    // workspace root.
-    let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    for file in files {
-      println!("cargo:rerun-if-changed={}", file.display());
-      let display_path = file.strip_prefix(display_root).unwrap();
-      let display_path_str = display_path.display().to_string();
-      js_runtime
-        .execute_script(
-          &("deno:".to_string() + &display_path_str.replace('\\', "/")),
-          &std::fs::read_to_string(&file).unwrap(),
-        )
-        .unwrap();
-    }
-
-    let snapshot = js_runtime.snapshot();
-    let snapshot_slice: &[u8] = &*snapshot;
-    println!("Snapshot size: {}", snapshot_slice.len());
-
-    let compressed_snapshot_with_size = {
-      let mut vec = vec![];
-
-      vec.extend_from_slice(
-        &u32::try_from(snapshot.len())
-          .expect("snapshot larger than 4gb")
-          .to_le_bytes(),
-      );
-
-      vec.extend_from_slice(
-        &zstd::bulk::compress(snapshot_slice, 22)
-          .expect("snapshot compression failed"),
-      );
-
-      vec
-    };
-
-    println!(
-      "Snapshot compressed size: {}",
-      compressed_snapshot_with_size.len()
-    );
-
-    std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
-    println!("Snapshot written to: {} ", snapshot_path.display());
-  }
+  use std::path::Path;
+  use std::path::PathBuf;
 
   #[derive(Debug, Deserialize)]
   struct LoadArgs {
@@ -75,7 +32,7 @@ mod ts {
   }
 
   pub fn create_compiler_snapshot(
-    snapshot_path: &Path,
+    snapshot_path: PathBuf,
     files: Vec<PathBuf>,
     cwd: &Path,
   ) {
@@ -264,8 +221,11 @@ mod ts {
         ))
       }
     }
-    let js_runtime = JsRuntime::new(RuntimeOptions {
-      will_snapshot: true,
+
+    create_snapshot(CreateSnapshotOptions {
+      cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
+      snapshot_path,
+      startup_snapshot: None,
       extensions: vec![Extension::builder()
         .ops(vec![
           op_build_info::decl(),
@@ -283,10 +243,14 @@ mod ts {
           Ok(())
         })
         .build()],
-      ..Default::default()
+      additional_files: files,
+      compression_cb: Box::new(|vec, snapshot_slice| {
+        vec.extend_from_slice(
+          &zstd::bulk::compress(snapshot_slice, 22)
+            .expect("snapshot compression failed"),
+        );
+      }),
     });
-
-    create_snapshot(js_runtime, snapshot_path, files);
   }
 
   pub(crate) fn version() -> String {
@@ -304,107 +268,52 @@ mod ts {
   }
 }
 
-mod js {
-  use super::*;
-  use deno_cache::SqliteBackedCache;
-  use deno_core::Extension;
-  use deno_core::JsRuntime;
-  use deno_core::RuntimeOptions;
-  use permissions::Permissions;
+fn create_cli_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
+  let extensions: Vec<Extension> = vec![
+    deno_webidl::init(),
+    deno_console::init(),
+    deno_url::init(),
+    deno_tls::init(),
+    deno_web::init::<Permissions>(
+      deno_web::BlobStore::default(),
+      Default::default(),
+    ),
+    deno_fetch::init::<Permissions>(Default::default()),
+    deno_cache::init::<SqliteBackedCache>(None),
+    deno_websocket::init::<Permissions>("".to_owned(), None, None),
+    deno_webstorage::init(None),
+    deno_crypto::init(None),
+    deno_webgpu::init(false),
+    deno_broadcast_channel::init(
+      deno_broadcast_channel::InMemoryBroadcastChannel::default(),
+      false, // No --unstable.
+    ),
+    deno_node::init::<Permissions>(None), // No --unstable.
+    deno_ffi::init::<Permissions>(false),
+    deno_net::init::<Permissions>(
+      None, false, // No --unstable.
+      None,
+    ),
+    deno_napi::init::<Permissions>(false),
+    deno_http::init(),
+    deno_flash::init::<Permissions>(false), // No --unstable
+  ];
 
-  // TODO(bartlomieju): this module contains a lot of duplicated
-  // logic with `cli/build.rs`, factor out to `deno_core`.
-  fn create_snapshot(
-    mut js_runtime: JsRuntime,
-    snapshot_path: &Path,
-    files: Vec<PathBuf>,
-  ) {
-    // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
-    // workspace root.
-    let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    for file in files {
-      println!("cargo:rerun-if-changed={}", file.display());
-      let display_path = file.strip_prefix(display_root).unwrap();
-      let display_path_str = display_path.display().to_string();
-      js_runtime
-        .execute_script(
-          &("deno:".to_string() + &display_path_str.replace('\\', "/")),
-          &std::fs::read_to_string(&file).unwrap(),
-        )
-        .unwrap();
-    }
-
-    let snapshot = js_runtime.snapshot();
-    let snapshot_slice: &[u8] = &*snapshot;
-    println!("Snapshot size: {}", snapshot_slice.len());
-
-    let compressed_snapshot_with_size = {
-      let mut vec = vec![];
-
-      vec.extend_from_slice(
-        &u32::try_from(snapshot.len())
-          .expect("snapshot larger than 4gb")
-          .to_le_bytes(),
-      );
-
+  create_snapshot(CreateSnapshotOptions {
+    cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
+    snapshot_path,
+    startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
+    extensions,
+    additional_files: files,
+    compression_cb: Box::new(|vec, snapshot_slice| {
       lzzzz::lz4_hc::compress_to_vec(
         snapshot_slice,
-        &mut vec,
+        vec,
         lzzzz::lz4_hc::CLEVEL_MAX,
       )
       .expect("snapshot compression failed");
-
-      vec
-    };
-
-    println!(
-      "Snapshot compressed size: {}",
-      compressed_snapshot_with_size.len()
-    );
-
-    std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
-    println!("Snapshot written to: {} ", snapshot_path.display());
-  }
-
-  pub fn create_cli_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
-    let extensions: Vec<Extension> = vec![
-      deno_webidl::init(),
-      deno_console::init(),
-      deno_url::init(),
-      deno_tls::init(),
-      deno_web::init::<Permissions>(
-        deno_web::BlobStore::default(),
-        Default::default(),
-      ),
-      deno_fetch::init::<Permissions>(Default::default()),
-      deno_cache::init::<SqliteBackedCache>(None),
-      deno_websocket::init::<Permissions>("".to_owned(), None, None),
-      deno_webstorage::init(None),
-      deno_crypto::init(None),
-      deno_webgpu::init(false),
-      deno_broadcast_channel::init(
-        deno_broadcast_channel::InMemoryBroadcastChannel::default(),
-        false, // No --unstable.
-      ),
-      deno_node::init::<Permissions>(None), // No --unstable.
-      deno_ffi::init::<Permissions>(false),
-      deno_net::init::<Permissions>(
-        None, false, // No --unstable.
-        None,
-      ),
-      deno_napi::init::<Permissions>(false),
-      deno_http::init(),
-      deno_flash::init::<Permissions>(false), // No --unstable
-    ];
-
-    let js_runtime = JsRuntime::new(RuntimeOptions {
-      will_snapshot: true,
-      extensions,
-      startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
-      ..Default::default()
-    });
-    create_snapshot(js_runtime, snapshot_path, files);
-  }
+    }),
+  })
 }
 
 fn git_commit_hash() -> String {
@@ -545,13 +454,13 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
-  let js_files = get_js_files("tsc");
-  ts::create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);
+  let js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "tsc");
+  ts::create_compiler_snapshot(compiler_snapshot_path, js_files, &c);
 
   let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
-  let mut js_files = get_js_files("js");
+  let mut js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js");
   js_files.push(deno_runtime::js::get_99_main());
-  js::create_cli_snapshot(&cli_snapshot_path, js_files);
+  create_cli_snapshot(cli_snapshot_path, js_files);
 
   #[cfg(target_os = "windows")]
   {
@@ -568,18 +477,4 @@ fn main() {
 fn deno_webgpu_get_declaration() -> PathBuf {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   manifest_dir.join("dts").join("lib.deno_webgpu.d.ts")
-}
-
-fn get_js_files(d: &str) -> Vec<PathBuf> {
-  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  let mut js_files = std::fs::read_dir(d)
-    .unwrap()
-    .map(|dir_entry| {
-      let file = dir_entry.unwrap();
-      manifest_dir.join(file.path())
-    })
-    .filter(|path| path.extension().unwrap_or_default() == "js")
-    .collect::<Vec<PathBuf>>();
-  js_files.sort();
-  js_files
 }
