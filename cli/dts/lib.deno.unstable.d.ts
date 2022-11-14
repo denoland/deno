@@ -617,6 +617,8 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * These are unstable options which can be used with {@linkcode Deno.run}.
+   *
+   * @category Sub Process
    */
   interface UnstableRunOptions extends RunOptions {
     /** If `true`, clears the environment variables before executing the
@@ -1396,6 +1398,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * Options which can be set when calling {@linkcode Deno.spawn},
    * {@linkcode Deno.spawnSync}, and {@linkcode Deno.spawnChild}.
    *
@@ -1455,6 +1459,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * Spawns a child process.
    *
    * If any stdio options are not set to `"piped"`, accessing the corresponding
@@ -1489,6 +1495,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * The interface for handling a child process returned from
    * {@linkcode Deno.spawnChild}.
    *
@@ -1519,6 +1527,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * Executes a subprocess, waiting for it to finish and collecting all of its
    * output.
    *
@@ -1531,7 +1541,7 @@ declare namespace Deno {
    * const { code, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
    *   args: [
    *     "eval",
-   *        "console.log('hello'); console.error('world')",
+   *     "console.log('hello'); console.error('world')",
    *   ],
    * });
    * console.assert(code === 0);
@@ -1548,6 +1558,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * Synchronously executes a subprocess, waiting for it to finish and
    * collecting all of its output.
    *
@@ -1560,7 +1572,7 @@ declare namespace Deno {
    * const { code, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
    *   args: [
    *     "eval",
-   *       "console.log('hello'); console.error('world')",
+   *     "console.log('hello'); console.error('world')",
    *   ],
    * });
    * console.assert(code === 0);
@@ -1577,6 +1589,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * @category Sub Process
    */
   export interface ChildStatus {
@@ -1592,6 +1606,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * The interface returned from calling {@linkcode Deno.spawn} or
    * {@linkcode Deno.spawnSync} which represents the result of spawning the
    * child process.
@@ -1602,6 +1618,197 @@ declare namespace Deno {
     /** The buffered output from the child processes `stdout`. */
     readonly stdout: Uint8Array;
     /** The buffered output from the child processes `stderr`. */
+    readonly stderr: Uint8Array;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Create a child process.
+   *
+   * If any stdio options are not set to `"piped"`, accessing the corresponding
+   * field on the `Command` or its `CommandOutput` will throw a `TypeError`.
+   *
+   * If `stdin` is set to `"piped"`, the `stdin` {@linkcode WritableStream}
+   * needs to be closed manually.
+   *
+   * ```ts
+   * const command = new Deno.Command(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   *   stdin: "piped",
+   * });
+   * command.spawn();
+   *
+   * // open a file and pipe the subprocess output to it.
+   * command.stdout.pipeTo(Deno.openSync("output").writable);
+   *
+   * // manually close stdin
+   * command.stdin.close();
+   * const status = await command.status;
+   * ```
+   *
+   * ```ts
+   * const command = new Deno.Command(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * const { code, stdout, stderr } = await command.output();
+   * console.assert(code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   *
+   * ```ts
+   * const command = new Deno.Command(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * const { code, stdout, stderr } = command.outputSync();
+   * console.assert(code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   *
+   * @category Sub Process
+   */
+  export class Command {
+    get stdin(): WritableStream<Uint8Array>;
+    get stdout(): ReadableStream<Uint8Array>;
+    get stderr(): ReadableStream<Uint8Array>;
+    readonly pid: number;
+    /** Get the status of the child process. */
+    readonly status: Promise<CommandStatus>;
+
+    constructor(command: string | URL, options?: CommandOptions);
+    /**
+     * Executes the {@linkcode Deno.Command}, waiting for it to finish and
+     * collecting all of its output.
+     * If `spawn()` was called, calling this function will collect the remaining
+     * output.
+     *
+     * Will throw an error if `stdin: "piped"` is set.
+     *
+     * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
+     * corresponding field on {@linkcode Deno.CommandOutput} will throw a `TypeError`.
+     */
+    output(): Promise<CommandOutput>;
+    /**
+     * Synchronously executes the {@linkcode Deno.Command}, waiting for it to
+     * finish and collecting all of its output.
+     *
+     * Will throw an error if `stdin: "piped"` is set.
+     *
+     * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
+     * corresponding field on {@linkcode Deno.CommandOutput} will throw a `TypeError`.
+     */
+    outputSync(): CommandOutput;
+    /**
+     * Spawns a streamable subprocess, allowing to use the other methods.
+     */
+    spawn(): void;
+
+    /** Kills the process with given {@linkcode Deno.Signal}. Defaults to
+     * `"SIGTERM"`. */
+    kill(signo?: Signal): void;
+
+    /** Ensure that the status of the child process prevents the Deno process
+     * from exiting. */
+    ref(): void;
+    /** Ensure that the status of the child process does not block the Deno
+     * process from exiting. */
+    unref(): void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Options which can be set when calling {@linkcode Deno.command}.
+   *
+   * @category Sub Process
+   */
+  export interface CommandOptions {
+    /** Arguments to pass to the process. */
+    args?: string[];
+    /**
+     * The working directory of the process.
+     *
+     * If not specified, the `cwd` of the parent process is used.
+     */
+    cwd?: string | URL;
+    /**
+     * Clear environmental variables from parent process.
+     *
+     * Doesn't guarantee that only `env` variables are present, as the OS may
+     * set environmental variables for processes.
+     */
+    clearEnv?: boolean;
+    /** Environmental variables to pass to the subprocess. */
+    env?: Record<string, string>;
+    /**
+     * Sets the child process’s user ID. This translates to a setuid call in the
+     * child process. Failure in the set uid call will cause the spawn to fail.
+     */
+    uid?: number;
+    /** Similar to `uid`, but sets the group ID of the child process. */
+    gid?: number;
+    /**
+     * An {@linkcode AbortSignal} that allows closing the process using the
+     * corresponding {@linkcode AbortController} by sending the process a
+     * SIGTERM signal.
+     *
+     * Ignored by {@linkcode Command.outputSync}.
+     */
+    signal?: AbortSignal;
+
+    /** How `stdin` of the spawned process should be handled.
+     *
+     * Defaults to `"null"`. */
+    stdin?: "piped" | "inherit" | "null";
+    /** How `stdout` of the spawned process should be handled.
+     *
+     * Defaults to `"piped"`. */
+    stdout?: "piped" | "inherit" | "null";
+    /** How `stderr` of the spawned process should be handled.
+     *
+     * Defaults to "piped". */
+    stderr?: "piped" | "inherit" | "null";
+
+    /** Skips quoting and escaping of the arguments on Windows. This option
+     * is ignored on non-windows platforms. Defaults to `false`. */
+    windowsRawArguments?: boolean;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Sub Process
+   */
+  export interface CommandStatus {
+    /** If the child process exits with a 0 status code, `success` will be set
+     * to `true`, otherwise `false`. */
+    success: boolean;
+    /** The exit code of the child process. */
+    code: number;
+    /** The signal associated with the child process. */
+    signal: Signal | null;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * The interface returned from calling {@linkcode Command.output} or
+   * {@linkcode Command.outputSync} which represents the result of spawning the
+   * child process.
+   *
+   * @category Sub Process
+   */
+  export interface CommandOutput extends ChildStatus {
+    /** The buffered output from the child process' `stdout`. */
+    readonly stdout: Uint8Array;
+    /** The buffered output from the child process' `stderr`. */
     readonly stderr: Uint8Array;
   }
 }
