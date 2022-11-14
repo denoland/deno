@@ -1098,10 +1098,14 @@ mod tests {
     }
 
     // create extra files
-    file_path = file_path.with_extension("tsconfig.json");
-    File::create(&file_path).unwrap();
-    file_path = file_path.with_extension("lock.json");
-    File::create(&file_path).unwrap();
+    {
+      let file_path = file_path.with_extension("tsconfig.json");
+      File::create(&file_path).unwrap();
+    }
+    {
+      let file_path = file_path.with_extension("lock.json");
+      File::create(&file_path).unwrap();
+    }
 
     uninstall("echo_test".to_string(), Some(temp_dir.path().to_path_buf()))
       .unwrap();
