@@ -180,7 +180,7 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
     }
   }
 
-  let mut file_path = installation_dir.join(&name);
+  let file_path = installation_dir.join(&name);
 
   let mut removed = false;
 
@@ -191,7 +191,7 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
   };
 
   if cfg!(windows) {
-    file_path = file_path.with_extension("cmd");
+    let file_path = file_path.with_extension("cmd");
     if file_path.exists() {
       fs::remove_file(&file_path)?;
       println!("deleted {}", file_path.to_string_lossy());
@@ -205,7 +205,7 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
 
   // There might be some extra files to delete
   for ext in ["tsconfig.json", "lock.json"] {
-    file_path = file_path.with_extension(ext);
+    let file_path = file_path.with_extension(ext);
     if file_path.exists() {
       fs::remove_file(&file_path)?;
       println!("deleted {}", file_path.to_string_lossy());
