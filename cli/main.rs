@@ -68,7 +68,6 @@ use crate::emit::TsConfigType;
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
 use crate::graph_util::graph_lock_or_exit;
-use crate::graph_util::graph_valid;
 use crate::proc_state::ProcState;
 use crate::resolver::CliResolver;
 use crate::tools::check;
@@ -89,6 +88,7 @@ use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_local;
+use graph_util::GraphData;
 use log::debug;
 use log::info;
 use npm::NpmPackageReference;
@@ -372,11 +372,18 @@ async fn create_graph_and_maybe_check(
   );
 
   let check_js = ps.options.check_js();
-  graph_valid(
-    &graph,
-    ps.options.type_check_mode() != TypeCheckMode::None,
-    check_js,
-  )?;
+  let mut graph_data = GraphData::default();
+  graph_data.add_graph(&graph, false);
+  graph_data
+    .check(
+      &graph.roots,
+      ps.options.type_check_mode() != TypeCheckMode::None,
+      check_js,
+    )
+    .unwrap()?;
+  ps.npm_resolver
+    .add_package_reqs(graph_data.npm_package_reqs().clone())
+    .await?;
   graph_lock_or_exit(&graph);
 
   if ps.options.type_check_mode() != TypeCheckMode::None {
@@ -391,7 +398,7 @@ async fn create_graph_and_maybe_check(
     let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
     let check_result = check::check(
       &graph.roots,
-      Arc::new(RwLock::new(graph.as_ref().into())),
+      Arc::new(RwLock::new(graph_data)),
       &cache,
       ps.npm_resolver.clone(),
       check::CheckOptions {

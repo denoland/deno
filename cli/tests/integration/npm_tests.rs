@@ -719,7 +719,7 @@ fn ensure_registry_files_local() {
 }
 
 itest!(compile_errors {
-  args: "compile -A --quiet npm/esm/main.js",
+  args: "compile -A --quiet npm/cached_only/main.ts",
   output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
   exit_code: 1,
   envs: env_vars(),
