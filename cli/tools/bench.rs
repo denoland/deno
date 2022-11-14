@@ -4,7 +4,7 @@ use crate::args::BenchFlags;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::colors;
-use crate::create_main_worker;
+use crate::worker::create_main_worker_for_testing_or_benching;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::fs_util::collect_specifiers;
@@ -352,13 +352,12 @@ async fn bench_specifier(
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
   let filter = TestFilter::from_flag(&options.filter);
-  let mut worker = create_main_worker(
+  let mut worker = create_main_worker_for_testing_or_benching(
     &ps,
     specifier.clone(),
     permissions,
     vec![ops::bench::init(channel.clone(), filter)],
     Default::default(),
-    true,
   )
   .await?;
 

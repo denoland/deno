@@ -410,6 +410,38 @@ pub async fn create_main_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
   permissions: Permissions,
+) -> Result<CliMainWorker, AnyError> {
+  create_main_worker_internal(
+    ps,
+    main_module,
+    permissions,
+    vec![],
+    Default::default(),
+    false,
+  ).await
+}
+
+pub async fn create_main_worker_for_testing_or_benching(
+  ps: &ProcState,
+  main_module: ModuleSpecifier,
+  permissions: Permissions,
+  custom_extensions: Vec<Extension>,
+  stdio: deno_runtime::ops::io::Stdio,
+) -> Result<CliMainWorker, AnyError> {
+  create_main_worker_internal(
+    ps,
+    main_module,
+    permissions,
+    custom_extensions,
+    stdio,
+    true,
+  ).await
+}
+
+async fn create_main_worker_internal(
+  ps: &ProcState,
+  main_module: ModuleSpecifier,
+  permissions: Permissions,
   mut custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
   bench_or_test: bool,

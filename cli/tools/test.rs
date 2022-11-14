@@ -5,7 +5,7 @@ use crate::args::TestFlags;
 use crate::args::TypeCheckMode;
 use crate::checksum;
 use crate::colors;
-use crate::create_main_worker;
+use crate::worker::create_main_worker_for_testing_or_benching;
 use crate::display;
 use crate::file_fetcher::File;
 use crate::file_watcher;
@@ -715,7 +715,7 @@ async fn test_specifier(
   sender: &TestEventSender,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let mut worker = create_main_worker(
+  let mut worker = create_main_worker_for_testing_or_benching(
     &ps,
     specifier.clone(),
     permissions,
@@ -725,7 +725,6 @@ async fn test_specifier(
       stdout: StdioPipe::File(sender.stdout()),
       stderr: StdioPipe::File(sender.stderr()),
     },
-    true,
   )
   .await?;
 

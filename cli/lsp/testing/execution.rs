@@ -7,7 +7,7 @@ use super::lsp_custom;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::checksum;
-use crate::create_main_worker;
+use crate::worker::create_main_worker_for_testing_or_benching;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
@@ -154,7 +154,7 @@ async fn test_specifier(
   filter: test::TestFilter,
 ) -> Result<(), AnyError> {
   if !token.is_cancelled() {
-    let mut worker = create_main_worker(
+    let mut worker = create_main_worker_for_testing_or_benching(
       &ps,
       specifier.clone(),
       permissions,
@@ -164,7 +164,6 @@ async fn test_specifier(
         stdout: StdioPipe::File(sender.stdout()),
         stderr: StdioPipe::File(sender.stderr()),
       },
-      true,
     )
     .await?;
     worker.run_lsp_test_specifier(mode).await?;

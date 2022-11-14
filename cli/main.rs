@@ -225,15 +225,7 @@ async fn install_command(
     Permissions::from_options(&preload_flags.permissions_options())?;
   let ps = ProcState::build(preload_flags).await?;
   let main_module = resolve_url_or_path(&install_flags.module_url)?;
-  let mut worker = create_main_worker(
-    &ps,
-    main_module,
-    permissions,
-    vec![],
-    Default::default(),
-    false,
-  )
-  .await?;
+  let mut worker = create_main_worker(&ps, main_module, permissions).await?;
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_main_module().await?;
   tools::installer::install(flags, install_flags)?;
@@ -317,15 +309,8 @@ async fn eval_command(
     resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext))?;
   let permissions = Permissions::from_options(&flags.permissions_options())?;
   let ps = ProcState::build(flags).await?;
-  let mut worker = create_main_worker(
-    &ps,
-    main_module.clone(),
-    permissions,
-    vec![],
-    Default::default(),
-    false,
-  )
-  .await?;
+  let mut worker =
+    create_main_worker(&ps, main_module.clone(), permissions).await?;
   // Create a dummy source file.
   let source_code = if eval_flags.print {
     format!("console.log({})", eval_flags.code)
@@ -601,9 +586,6 @@ async fn repl_command(
     &ps,
     main_module.clone(),
     Permissions::from_options(&ps.options.permissions_options())?,
-    vec![],
-    Default::default(),
-    false,
   )
   .await?;
   worker.setup_repl().await?;
@@ -623,9 +605,6 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
     &ps.clone(),
     main_module.clone(),
     Permissions::from_options(&ps.options.permissions_options())?,
-    vec![],
-    Default::default(),
-    false,
   )
   .await?;
 
@@ -665,15 +644,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       let ps =
         ProcState::build_for_file_watcher((*flags).clone(), sender.clone())
           .await?;
-      let worker = create_main_worker(
-        &ps,
-        main_module.clone(),
-        permissions,
-        vec![],
-        Default::default(),
-        false,
-      )
-      .await?;
+      let worker =
+        create_main_worker(&ps, main_module.clone(), permissions).await?;
       worker.run_for_watcher().await?;
 
       Ok(())
@@ -724,15 +696,8 @@ async fn run_command(
   };
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
-  let mut worker = create_main_worker(
-    &ps,
-    main_module.clone(),
-    permissions,
-    vec![],
-    Default::default(),
-    false,
-  )
-  .await?;
+  let mut worker =
+    create_main_worker(&ps, main_module.clone(), permissions).await?;
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
