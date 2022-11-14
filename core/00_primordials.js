@@ -35,28 +35,23 @@
   const primordials = {};
 
   const {
+    apply: ReflectApply,
     defineProperty: ReflectDefineProperty,
     getOwnPropertyDescriptor: ReflectGetOwnPropertyDescriptor,
     ownKeys: ReflectOwnKeys,
   } = Reflect;
 
-  // `uncurryThis` is equivalent to `func => Function.prototype.call.bind(func)`.
-  // It is using `bind.bind(call)` to avoid using `Function.prototype.bind`
-  // and `Function.prototype.call` after it may have been mutated by users.
-  const { apply, bind, call } = Function.prototype;
-  const uncurryThis = bind.bind(call);
+  const uncurryThis = (func) => (thisArg, ...args) =>
+    ReflectApply(func, thisArg, args);
   primordials.uncurryThis = uncurryThis;
 
-  // `applyBind` is equivalent to `func => Function.prototype.apply.bind(func)`.
-  // It is using `bind.bind(apply)` to avoid using `Function.prototype.bind`
-  // and `Function.prototype.apply` after it may have been mutated by users.
-  const applyBind = bind.bind(apply);
+  const applyBind = (func) => (thisArg, argArray) =>
+    ReflectApply(func, thisArg, argArray);
   primordials.applyBind = applyBind;
 
   // Methods that accept a variable number of arguments, and thus it's useful to
-  // also create `${prefix}${key}Apply`, which uses `Function.prototype.apply`,
-  // instead of `Function.prototype.call`, and thus doesn't require iterator
-  // destructuring.
+  // also create `${prefix}${key}Apply`, which uses `applyBind`,
+  // instead of `uncurryThis`, and thus doesn't require iterator destructuring.
   const varargsMethods = [
     // 'ArrayPrototypeConcat' is omitted, because it performs the spread
     // on its own for arrays and array-likes with a truthy
