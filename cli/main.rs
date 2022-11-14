@@ -217,23 +217,9 @@ async fn install_command(
   flags: Flags,
   install_flags: InstallFlags,
 ) -> Result<i32, AnyError> {
-  let mut preload_flags = flags.clone();
-  preload_flags.inspect = None;
-  preload_flags.inspect_brk = None;
-  let permissions =
-    Permissions::from_options(&preload_flags.permissions_options())?;
-  let ps = ProcState::build(preload_flags).await?;
-  let main_module = resolve_url_or_path(&install_flags.module_url)?;
-  let mut worker = create_main_worker(
-    &ps,
-    main_module,
-    permissions,
-    vec![],
-    Default::default(),
-  )
-  .await?;
-  // First, fetch and compile the module; this step ensures that the module exists.
-  worker.preload_main_module().await?;
+  let ps = ProcState::build(flags.clone()).await?;
+  // ensure the module is cached
+  load_and_type_check(&ps, &[install_flags.module_url.clone()]).await?;
   tools::installer::install(flags, install_flags)?;
   Ok(0)
 }
