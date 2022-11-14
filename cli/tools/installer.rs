@@ -783,7 +783,7 @@ mod tests {
         module_url: "npm:cowsay".to_string(),
         args: vec![],
         name: None,
-        root: Some(temp_dir.clone()),
+        root: Some(temp_dir),
         force: false,
       },
     )
