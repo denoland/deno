@@ -14,6 +14,7 @@ pub use cache::NpmCache;
 pub use registry::NpmPackageVersionDistInfo;
 pub use registry::NpmRegistryApi;
 pub use registry::RealNpmRegistryApi;
+pub use resolution::resolve_npm_package_reqs;
 pub use resolution::NpmPackageId;
 pub use resolution::NpmPackageReference;
 pub use resolution::NpmPackageReq;

@@ -121,7 +121,9 @@ pub mod _ops {
   pub use super::error_codes::get_error_code;
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;
+  pub use super::ops::OpResult;
   pub use super::runtime::queue_async_op;
+  pub use super::runtime::queue_fast_async_op;
   pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
   pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
 }

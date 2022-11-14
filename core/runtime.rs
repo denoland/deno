@@ -197,14 +197,10 @@ fn v8_init(
   v8::icu::set_common_data_71(&ICU_DATA.0).unwrap();
 
   let flags = concat!(
-    " --experimental-wasm-threads",
     " --wasm-test-streaming",
     " --harmony-import-assertions",
     " --no-validate-asm",
     " --turbo_fast_api_calls",
-    // This flag prevents "unresolved external reference" panic during
-    // build, which started happening in V8 10.6
-    " --noexperimental-async-stack-tagging-api",
     " --harmony-change-array-by-copy",
   );
 
@@ -2200,6 +2196,22 @@ impl JsRealm {
   }
 
   // TODO(andreubotella): `mod_evaluate`, `load_main_module`, `load_side_module`
+}
+
+#[inline]
+pub fn queue_fast_async_op(
+  ctx: &OpCtx,
+  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
+) {
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // atleast 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
+
+  let mut state = runtime_state.borrow_mut();
+  state.pending_ops.push(OpCall::lazy(op));
+  state.have_unpolled_ops = true;
 }
 
 #[inline]

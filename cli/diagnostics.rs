@@ -14,13 +14,11 @@ use std::fmt;
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
 const UNSTABLE_DENO_PROPS: &[&str] = &[
-  "BenchDefinition",
   "CreateHttpClientOptions",
   "DatagramConn",
   "HttpClient",
   "UnixConnectOptions",
   "UnixListenOptions",
-  "bench",
   "connect",
   "createHttpClient",
   "kill",
@@ -35,8 +33,14 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "Child",
   "spawn",
   "spawnSync",
+  "SpawnOptions",
   "ChildStatus",
   "SpawnOutput",
+  "command",
+  "Command",
+  "CommandOptions",
+  "CommandStatus",
+  "CommandOutput",
   "serve",
   "ServeInit",
   "ServeTlsInit",

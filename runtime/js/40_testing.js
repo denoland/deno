@@ -737,7 +737,6 @@
       return;
     }
 
-    ops.op_bench_check_unstable();
     let benchDesc;
     const defaults = {
       ignore: false,
