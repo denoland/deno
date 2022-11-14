@@ -14,11 +14,13 @@ use crate::ParseStatus;
 
 type TlsTcpStream = rustls::StreamOwned<rustls::ServerConnection, TcpStream>;
 
+#[derive(Debug)]
 pub enum InnerStream {
   Tcp(TcpStream),
   Tls(Box<TlsTcpStream>),
 }
 
+#[derive(Debug)]
 pub struct Stream {
   pub inner: InnerStream,
   pub detached: bool,

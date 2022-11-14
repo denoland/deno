@@ -502,7 +502,7 @@
             return;
           }
           server.closed = true;
-          await core.opAsync("op_flash_close_server", serverId);
+          core.ops.op_flash_close_server(serverId);
           await server.finished;
         },
         async serve() {

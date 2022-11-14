@@ -58,6 +58,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Context;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 mod chunked;
@@ -140,13 +141,13 @@ async fn op_flash_respond_async(
 
     match shutdown {
       true => {
-        let tx = ctx.requests.remove(&token).unwrap();
+        let mut tx = ctx.requests.remove(&token).unwrap();
         close = !tx.keep_alive;
         tx.socket()
       }
       // In case of a websocket upgrade or streaming response.
       false => {
-        let tx = ctx.requests.get(&token).unwrap();
+        let tx = ctx.requests.get_mut(&token).unwrap();
         tx.socket()
       }
     }
@@ -179,12 +180,12 @@ async fn op_flash_respond_chuncked(
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   let sock = match shutdown {
     true => {
-      let tx = ctx.requests.remove(&token).unwrap();
+      let mut tx = ctx.requests.remove(&token).unwrap();
       tx.socket()
     }
     // In case of a websocket upgrade or streaming response.
     false => {
-      let tx = ctx.requests.get(&token).unwrap();
+      let tx = ctx.requests.get_mut(&token).unwrap();
       tx.socket()
     }
   };
@@ -316,7 +317,7 @@ fn flash_respond(
   shutdown: bool,
   response: &[u8],
 ) -> u32 {
-  let tx = ctx.requests.get(&token).unwrap();
+  let tx = ctx.requests.get_mut(&token).unwrap();
   let sock = tx.socket();
 
   sock.read_tx.take();
@@ -420,14 +421,13 @@ fn op_flash_drive_server(
 }
 
 #[op]
-async fn op_flash_close_server(state: Rc<RefCell<OpState>>, server_id: u32) {
-  let ctx = {
-    let op_state = &mut state.borrow_mut();
-    let flash_ctx = op_state.borrow_mut::<FlashContext>();
-    flash_ctx.servers.remove(&server_id).unwrap()
-  };
+fn op_flash_close_server(state: &mut OpState, server_id: u32) {
+  let flash_ctx = state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get(&server_id).unwrap();
 
-  deno_core::futures::pending!();
+  // NOTE: We don't drop ServerContext associated with the given `server_id`,
+  // because it may still be in use by some unsettled promise after the flash
+  // thread is finished.
 
   ctx.cancel_handle.cancel();
   let _ = ctx.waker.wake();
@@ -620,7 +620,7 @@ fn op_flash_make_request<'scope>(
 }
 
 #[inline]
-fn has_body_stream(req: &Request) -> bool {
+fn has_body_stream(req: &mut Request) -> bool {
   let sock = req.socket();
   sock.read_rx.is_some()
 }
@@ -907,6 +907,7 @@ fn run_server(
     .blocking_send(Ok(listener.local_addr().unwrap().port()))
     .unwrap();
   let mut sockets = HashMap::with_capacity(1000);
+  let mut socket_senders = HashMap::with_capacity(1000);
   let mut counter: usize = 2;
   let mut events = Events::with_capacity(1024);
   'outer: loop {
@@ -966,7 +967,6 @@ fn run_server(
             let mut_ref: Pin<&mut Stream> = Pin::as_mut(socket);
             Pin::get_unchecked_mut(mut_ref)
           };
-          let sock_ptr = socket as *mut _;
 
           if socket.detached {
             match &mut socket.inner {
@@ -980,6 +980,7 @@ fn run_server(
 
             let boxed = sockets.remove(&token).unwrap();
             std::mem::forget(boxed);
+            socket_senders.remove(&token);
             trace!("Socket detached: {}", token.0);
             continue;
           }
@@ -1165,8 +1166,10 @@ fn run_server(
             continue 'events;
           }
 
+          let (socket_tx, socket_rx) = oneshot::channel();
+
           tx.blocking_send(Request {
-            socket: sock_ptr,
+            socket: socket as *mut _,
             // SAFETY: headers backing buffer outlives the mio event loop ('static)
             inner: inner_req,
             keep_alive,
@@ -1175,10 +1178,24 @@ fn run_server(
             content_read: 0,
             content_length,
             expect_continue,
+            socket_rx,
+            owned_socket: None,
           })
           .ok();
+
+          socket_senders.insert(token, socket_tx);
         }
       }
+    }
+  }
+
+  // Now the flash thread is about to finish, but there may be some unsettled
+  // promises in the main thread that will use the socket. To make the socket
+  // alive longer enough, we move its ownership to the main thread.
+  for (tok, socket) in sockets {
+    if let Some(sender) = socket_senders.remove(&tok) {
+      // Do nothing if the receiver has already been dropped.
+      _ = sender.send(socket);
     }
   }
 
@@ -1438,7 +1455,7 @@ pub fn detach_socket(
   //      dropped on the server thread.
   //   * conversion from mio::net::TcpStream -> tokio::net::TcpStream.  There is no public API so we
   //      use raw fds.
-  let tx = ctx
+  let mut tx = ctx
     .requests
     .remove(&token)
     .ok_or_else(|| type_error("request closed"))?;
