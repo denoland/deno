@@ -2,7 +2,6 @@
 use crate::Op;
 use pmutil::{q, Quote};
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fmt::Formatter;
@@ -18,22 +17,6 @@ pub(crate) enum BailoutReason {
   // Recoverable errors
   MustBeSingleSegment,
   FastUnsupportedParamType,
-
-  FastAsync,
-}
-
-impl ToTokens for BailoutReason {
-  fn to_tokens(&self, tokens: &mut TokenStream) {
-    match self {
-      BailoutReason::FastAsync => {
-        tokens.extend(quote! { "fast async calls are not supported" });
-      }
-      BailoutReason::MustBeSingleSegment
-      | BailoutReason::FastUnsupportedParamType => {
-        unreachable!("error not recovered");
-      }
-    }
-  }
 }
 
 #[derive(Debug, PartialEq)]
@@ -197,6 +180,8 @@ pub(crate) struct Optimizer {
 
   pub(crate) transforms: HashMap<usize, Transform>,
   pub(crate) fast_compatible: bool,
+
+  pub(crate) is_async: bool,
 }
 
 impl Debug for Optimizer {
@@ -213,6 +198,8 @@ impl Debug for Optimizer {
     writeln!(f, "fast_result: {:?}", self.fast_result)?;
     writeln!(f, "fast_parameters: {:?}", self.fast_parameters)?;
     writeln!(f, "transforms: {:?}", self.transforms)?;
+    writeln!(f, "is_async: {}", self.is_async)?;
+    writeln!(f, "fast_compatible: {}", self.fast_compatible)?;
     Ok(())
   }
 }
@@ -231,16 +218,18 @@ impl Optimizer {
   }
 
   pub(crate) fn analyze(&mut self, op: &mut Op) -> Result<(), BailoutReason> {
-    if op.is_async && op.attrs.must_be_fast {
-      self.fast_compatible = false;
-      return Err(BailoutReason::FastAsync);
-    }
-
-    if op.attrs.is_v8 || op.is_async {
+    // Fast async ops are opt-in as they have a lazy polling behavior.
+    if op.is_async && !op.attrs.must_be_fast {
       self.fast_compatible = false;
       return Ok(());
     }
 
+    if op.attrs.is_v8 {
+      self.fast_compatible = false;
+      return Ok(());
+    }
+
+    self.is_async = op.is_async;
     self.fast_compatible = true;
     let sig = &op.item.sig;
 
@@ -253,11 +242,28 @@ impl Optimizer {
       Signature {
         output: ReturnType::Type(_, ty),
         ..
-      } => self.analyze_return_type(ty)?,
+      } if !self.is_async => self.analyze_return_type(ty)?,
+
+      // No need to error on the return type for async ops, its OK if
+      // it's not a fast value.
+      Signature {
+        output: ReturnType::Type(_, ty),
+        ..
+      } => {
+        let _ = self.analyze_return_type(ty);
+        // Recover.
+        self.fast_result = None;
+        self.fast_compatible = true;
+      }
     };
 
     // The reciever, which we don't actually care about.
     self.fast_parameters.push(FastValue::V8Value);
+
+    if self.is_async {
+      // The promise ID.
+      self.fast_parameters.push(FastValue::I32);
+    }
 
     // Analyze parameters
     for (index, param) in sig.inputs.iter().enumerate() {
@@ -406,7 +412,9 @@ impl Optimizer {
                     let segment = single_segment(segments)?;
                     match segment {
                       // -> Rc<RefCell<T>>
-                      PathSegment { ident, .. } if ident == "RefCell" => {
+                      PathSegment {
+                        ident, arguments, ..
+                      } if ident == "RefCell" => {
                         if let PathArguments::AngleBracketed(
                           AngleBracketedGenericArguments { args, .. },
                         ) = arguments
@@ -543,7 +551,7 @@ fn double_segment(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::Op;
+  use crate::{Attributes, Op};
   use std::path::PathBuf;
   use syn::parse_quote;
 
@@ -573,8 +581,13 @@ mod tests {
     let expected = std::fs::read_to_string(input.with_extension("expected"))
       .expect("Failed to read expected file");
 
+    let mut attrs = Attributes::default();
+    if source.contains("// @test-attr:fast") {
+      attrs.must_be_fast = true;
+    }
+
     let item = syn::parse_str(&source).expect("Failed to parse test file");
-    let mut op = Op::new(item, Default::default());
+    let mut op = Op::new(item, attrs);
     let mut optimizer = Optimizer::new();
     if let Err(e) = optimizer.analyze(&mut op) {
       let e_str = format!("{:?}", e);

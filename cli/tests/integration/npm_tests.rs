@@ -179,6 +179,14 @@ itest!(sub_paths {
   http_server: true,
 });
 
+itest!(remote_npm_specifier {
+  args: "run --quiet npm/remote_npm_specifier/main.ts",
+  output: "npm/remote_npm_specifier/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
 itest!(tarball_with_global_header {
   args: "run -A --quiet npm/tarball_with_global_header/main.js",
   output: "npm/tarball_with_global_header/main.out",

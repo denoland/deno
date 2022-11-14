@@ -79,7 +79,6 @@ impl Op {
       Err(BailoutReason::FastUnsupportedParamType) => {
         optimizer.fast_compatible = false;
       }
-      Err(err) => return quote!(compile_error!(#err);),
     };
 
     let Self {
@@ -450,13 +449,16 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
     let value = args.get(#idx as i32);
     match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
       Ok(b) => {
+        // Handles detached buffers.
+        let byte_length = b.byte_length();
         let store = b.data() as *mut u8;
         // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
-        unsafe { ::std::slice::from_raw_parts_mut(store, b.byte_length()) }
+        unsafe { ::std::slice::from_raw_parts_mut(store, byte_length) }
       },
       Err(_) => {
         if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
-          let (offset, len) = (view.byte_offset(), view.byte_length());
+          let len = view.byte_length();
+          let offset = view.byte_offset();
           let buffer = match view.buffer(scope) {
               Some(v) => v,
               None => {
