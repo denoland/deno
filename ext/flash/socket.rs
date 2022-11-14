@@ -1,13 +1,13 @@
 use deno_core::error::AnyError;
 use mio::net::TcpStream;
-use std::{
-  cell::UnsafeCell,
-  future::Future,
-  io::{Read, Write},
-  marker::PhantomPinned,
-  pin::Pin,
-  sync::{Arc, Mutex},
-};
+use std::cell::UnsafeCell;
+use std::future::Future;
+use std::io::Read;
+use std::io::Write;
+use std::marker::PhantomPinned;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::Mutex;
 use tokio::sync::mpsc;
 
 use crate::ParseStatus;
