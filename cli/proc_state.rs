@@ -23,6 +23,7 @@ use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::node;
 use crate::node::NodeResolution;
+use crate::npm::resolve_npm_package_reqs;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
@@ -285,19 +286,16 @@ impl ProcState {
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
     let _pb_clear_guard = self.progress_bar.clear_guard();
-    let mut npm_package_reqs = vec![];
 
-    for root in &roots {
-      if let Ok(package_ref) = NpmPackageReference::from_specifier(root) {
-        npm_package_reqs.push(package_ref.req);
-      }
-    }
+    let has_root_npm_specifier = roots.iter().any(|r| {
+      r.scheme() == "npm" && NpmPackageReference::from_specifier(r).is_ok()
+    });
     let roots = roots
       .into_iter()
       .map(|s| (s, ModuleKind::Esm))
       .collect::<Vec<_>>();
 
-    if !reload_on_watch && npm_package_reqs.is_empty() {
+    if !reload_on_watch && !has_root_npm_specifier {
       let graph_data = self.graph_data.read();
       if self.options.type_check_mode() == TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
@@ -395,7 +393,7 @@ impl ProcState {
       graph_data.entries().map(|(s, _)| s).cloned().collect()
     };
 
-    {
+    let npm_package_reqs = {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph, reload_on_watch);
       let check_js = self.options.check_js();
@@ -406,7 +404,7 @@ impl ProcState {
           check_js,
         )
         .unwrap()?;
-      npm_package_reqs.extend(graph_data.npm_package_reqs());
+      graph_data.npm_package_reqs().clone()
     };
 
     if !npm_package_reqs.is_empty() {
@@ -526,6 +524,15 @@ impl ProcState {
         Some(Resolved::Ok { specifier, .. }) => {
           if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
           {
+            if !self.options.unstable()
+              && matches!(found_referrer.scheme(), "http" | "https")
+            {
+              return Err(custom_error(
+                "NotSupported",
+                format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {})", found_referrer),
+              ));
+            }
+
             return self
               .handle_node_resolve_result(node::node_resolve_npm_reference(
                 &reference,
@@ -645,15 +652,10 @@ impl ProcState {
     )
     .await;
 
-    // add the found npm package references to the npm resolver and cache them
-    let mut package_reqs = Vec::new();
-    for (specifier, _) in graph.specifiers() {
-      if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
-        package_reqs.push(reference.req);
-      }
-    }
-    if !package_reqs.is_empty() {
-      self.npm_resolver.add_package_reqs(package_reqs).await?;
+    // add the found npm package requirements to the npm resolver and cache them
+    let npm_package_reqs = resolve_npm_package_reqs(&graph);
+    if !npm_package_reqs.is_empty() {
+      self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
     }
 
     Ok(graph)

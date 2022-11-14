@@ -197,14 +197,10 @@ fn v8_init(
   v8::icu::set_common_data_71(&ICU_DATA.0).unwrap();
 
   let flags = concat!(
-    " --experimental-wasm-threads",
     " --wasm-test-streaming",
     " --harmony-import-assertions",
     " --no-validate-asm",
     " --turbo_fast_api_calls",
-    // This flag prevents "unresolved external reference" panic during
-    // build, which started happening in V8 10.6
-    " --noexperimental-async-stack-tagging-api",
     " --harmony-change-array-by-copy",
   );
 

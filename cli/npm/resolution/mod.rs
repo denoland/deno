@@ -3,10 +3,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
@@ -23,14 +20,17 @@ use super::cache::NpmPackageCacheFolderId;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::RealNpmRegistryApi;
 use super::semver::NpmVersion;
-use super::semver::SpecifierVersionReq;
 use super::NpmRegistryApi;
 
 mod graph;
 mod snapshot;
+mod specifier;
 
 use graph::Graph;
 pub use snapshot::NpmResolutionSnapshot;
+pub use specifier::resolve_npm_package_reqs;
+pub use specifier::NpmPackageReference;
+pub use specifier::NpmPackageReq;
 
 /// The version matcher used for npm schemed urls is more strict than
 /// the one used by npm packages and so we represent either via a trait.
@@ -38,137 +38,6 @@ pub trait NpmVersionMatcher {
   fn tag(&self) -> Option<&str>;
   fn matches(&self, version: &NpmVersion) -> bool;
   fn version_text(&self) -> String;
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct NpmPackageReference {
-  pub req: NpmPackageReq,
-  pub sub_path: Option<String>,
-}
-
-impl NpmPackageReference {
-  pub fn from_specifier(
-    specifier: &ModuleSpecifier,
-  ) -> Result<NpmPackageReference, AnyError> {
-    Self::from_str(specifier.as_str())
-  }
-
-  pub fn from_str(specifier: &str) -> Result<NpmPackageReference, AnyError> {
-    let specifier = match specifier.strip_prefix("npm:") {
-      Some(s) => s,
-      None => {
-        bail!("Not an npm specifier: {}", specifier);
-      }
-    };
-    let parts = specifier.split('/').collect::<Vec<_>>();
-    let name_part_len = if specifier.starts_with('@') { 2 } else { 1 };
-    if parts.len() < name_part_len {
-      return Err(generic_error(format!("Not a valid package: {}", specifier)));
-    }
-    let name_parts = &parts[0..name_part_len];
-    let last_name_part = &name_parts[name_part_len - 1];
-    let (name, version_req) = if let Some(at_index) = last_name_part.rfind('@')
-    {
-      let version = &last_name_part[at_index + 1..];
-      let last_name_part = &last_name_part[..at_index];
-      let version_req = SpecifierVersionReq::parse(version)
-        .with_context(|| "Invalid version requirement.")?;
-      let name = if name_part_len == 1 {
-        last_name_part.to_string()
-      } else {
-        format!("{}/{}", name_parts[0], last_name_part)
-      };
-      (name, Some(version_req))
-    } else {
-      (name_parts.join("/"), None)
-    };
-    let sub_path = if parts.len() == name_parts.len() {
-      None
-    } else {
-      Some(parts[name_part_len..].join("/"))
-    };
-
-    if let Some(sub_path) = &sub_path {
-      if let Some(at_index) = sub_path.rfind('@') {
-        let (new_sub_path, version) = sub_path.split_at(at_index);
-        let msg = format!(
-          "Invalid package specifier 'npm:{}/{}'. Did you mean to write 'npm:{}{}/{}'?",
-          name, sub_path, name, version, new_sub_path
-        );
-        return Err(generic_error(msg));
-      }
-    }
-
-    Ok(NpmPackageReference {
-      req: NpmPackageReq { name, version_req },
-      sub_path,
-    })
-  }
-}
-
-impl std::fmt::Display for NpmPackageReference {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    if let Some(sub_path) = &self.sub_path {
-      write!(f, "npm:{}/{}", self.req, sub_path)
-    } else {
-      write!(f, "npm:{}", self.req)
-    }
-  }
-}
-
-#[derive(
-  Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
-pub struct NpmPackageReq {
-  pub name: String,
-  pub version_req: Option<SpecifierVersionReq>,
-}
-
-impl std::fmt::Display for NpmPackageReq {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match &self.version_req {
-      Some(req) => write!(f, "{}@{}", self.name, req),
-      None => write!(f, "{}", self.name),
-    }
-  }
-}
-
-impl NpmPackageReq {
-  pub fn from_str(text: &str) -> Result<Self, AnyError> {
-    // probably should do something more targetted in the future
-    let reference = NpmPackageReference::from_str(&format!("npm:{}", text))?;
-    Ok(reference.req)
-  }
-}
-
-impl NpmVersionMatcher for NpmPackageReq {
-  fn tag(&self) -> Option<&str> {
-    match &self.version_req {
-      Some(version_req) => version_req.tag(),
-      None => Some("latest"),
-    }
-  }
-
-  fn matches(&self, version: &NpmVersion) -> bool {
-    match self.version_req.as_ref() {
-      Some(req) => {
-        assert_eq!(self.tag(), None);
-        match req.range() {
-          Some(range) => range.satisfies(version),
-          None => false,
-        }
-      }
-      None => version.pre.is_empty(),
-    }
-  }
-
-  fn version_text(&self) -> String {
-    self
-      .version_req
-      .as_ref()
-      .map(|v| format!("{}", v))
-      .unwrap_or_else(|| "non-prerelease".to_string())
-  }
 }
 
 #[derive(
@@ -413,51 +282,62 @@ impl NpmResolution {
 
   async fn add_package_reqs_to_snapshot(
     &self,
-    mut package_reqs: Vec<NpmPackageReq>,
+    package_reqs: Vec<NpmPackageReq>,
     snapshot: NpmResolutionSnapshot,
   ) -> Result<NpmResolutionSnapshot, AnyError> {
     // convert the snapshot to a traversable graph
     let mut graph = Graph::from_snapshot(snapshot);
 
-    // multiple packages are resolved in alphabetical order
-    package_reqs.sort_by(|a, b| a.name.cmp(&b.name));
-
-    // go over the top level packages first, then down the
+    // go over the top level package names first, then down the
     // tree one level at a time through all the branches
     let mut unresolved_tasks = Vec::with_capacity(package_reqs.len());
-    for package_req in package_reqs {
-      if graph.has_package_req(&package_req) {
+    let mut resolving_package_names =
+      HashSet::with_capacity(package_reqs.len());
+    for package_req in &package_reqs {
+      if graph.has_package_req(package_req) {
         // skip analyzing this package, as there's already a matching top level package
         continue;
       }
+      if !resolving_package_names.insert(package_req.name.clone()) {
+        continue; // already resolving
+      }
 
-      // no existing best version, so resolve the current packages
-      let api = self.api.clone();
-      let maybe_info = if should_sync_download() {
+      // cache the package info up front in parallel
+      if should_sync_download() {
         // for deterministic test output
-        Some(api.package_info(&package_req.name).await)
+        self.api.package_info(&package_req.name).await?;
       } else {
-        None
+        let api = self.api.clone();
+        let package_name = package_req.name.clone();
+        unresolved_tasks.push(tokio::task::spawn(async move {
+          // This is ok to call because api will internally cache
+          // the package information in memory.
+          api.package_info(&package_name).await
+        }));
       };
-      unresolved_tasks.push(tokio::task::spawn(async move {
-        let info = match maybe_info {
-          Some(info) => info?,
-          None => api.package_info(&package_req.name).await?,
-        };
-        Result::<_, AnyError>::Ok((package_req, info))
-      }));
+    }
+
+    for result in futures::future::join_all(unresolved_tasks).await {
+      result??; // surface the first error
     }
 
     let mut resolver = GraphDependencyResolver::new(&mut graph, &self.api);
 
-    for result in futures::future::join_all(unresolved_tasks).await {
-      let (package_req, info) = result??;
-      resolver.add_package_req(&package_req, info)?;
+    // These package_reqs should already be sorted in the order they should
+    // be resolved in.
+    for package_req in package_reqs {
+      // avoid loading the info if this is already in the graph
+      if !resolver.has_package_req(&package_req) {
+        let info = self.api.package_info(&package_req.name).await?;
+        resolver.add_package_req(&package_req, &info)?;
+      }
     }
 
     resolver.resolve_pending().await?;
 
-    graph.into_snapshot(&self.api).await
+    let result = graph.into_snapshot(&self.api).await;
+    self.api.clear_memory_cache();
+    result
   }
 
   pub fn resolve_package_from_id(
@@ -536,105 +416,6 @@ impl NpmResolution {
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  #[test]
-  fn parse_npm_package_ref() {
-    assert_eq!(
-      NpmPackageReference::from_str("npm:@package/test").unwrap(),
-      NpmPackageReference {
-        req: NpmPackageReq {
-          name: "@package/test".to_string(),
-          version_req: None,
-        },
-        sub_path: None,
-      }
-    );
-
-    assert_eq!(
-      NpmPackageReference::from_str("npm:@package/test@1").unwrap(),
-      NpmPackageReference {
-        req: NpmPackageReq {
-          name: "@package/test".to_string(),
-          version_req: Some(SpecifierVersionReq::parse("1").unwrap()),
-        },
-        sub_path: None,
-      }
-    );
-
-    assert_eq!(
-      NpmPackageReference::from_str("npm:@package/test@~1.1/sub_path").unwrap(),
-      NpmPackageReference {
-        req: NpmPackageReq {
-          name: "@package/test".to_string(),
-          version_req: Some(SpecifierVersionReq::parse("~1.1").unwrap()),
-        },
-        sub_path: Some("sub_path".to_string()),
-      }
-    );
-
-    assert_eq!(
-      NpmPackageReference::from_str("npm:@package/test/sub_path").unwrap(),
-      NpmPackageReference {
-        req: NpmPackageReq {
-          name: "@package/test".to_string(),
-          version_req: None,
-        },
-        sub_path: Some("sub_path".to_string()),
-      }
-    );
-
-    assert_eq!(
-      NpmPackageReference::from_str("npm:test").unwrap(),
-      NpmPackageReference {
-        req: NpmPackageReq {
-          name: "test".to_string(),
-          version_req: None,
-        },
-        sub_path: None,
-      }
-    );
-
-    assert_eq!(
-      NpmPackageReference::from_str("npm:test@^1.2").unwrap(),
-      NpmPackageReference {
-        req: NpmPackageReq {
-          name: "test".to_string(),
-          version_req: Some(SpecifierVersionReq::parse("^1.2").unwrap()),
-        },
-        sub_path: None,
-      }
-    );
-
-    assert_eq!(
-      NpmPackageReference::from_str("npm:test@~1.1/sub_path").unwrap(),
-      NpmPackageReference {
-        req: NpmPackageReq {
-          name: "test".to_string(),
-          version_req: Some(SpecifierVersionReq::parse("~1.1").unwrap()),
-        },
-        sub_path: Some("sub_path".to_string()),
-      }
-    );
-
-    assert_eq!(
-      NpmPackageReference::from_str("npm:@package/test/sub_path").unwrap(),
-      NpmPackageReference {
-        req: NpmPackageReq {
-          name: "@package/test".to_string(),
-          version_req: None,
-        },
-        sub_path: Some("sub_path".to_string()),
-      }
-    );
-
-    assert_eq!(
-      NpmPackageReference::from_str("npm:@package")
-        .err()
-        .unwrap()
-        .to_string(),
-      "Not a valid package: @package"
-    );
-  }
 
   #[test]
   fn serialize_npm_package_id() {

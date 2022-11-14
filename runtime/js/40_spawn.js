@@ -291,8 +291,136 @@
     };
   }
 
+  class Command {
+    #command;
+    #options;
+
+    #child;
+
+    #consumed;
+
+    constructor(command, options) {
+      this.#command = command;
+      this.#options = options;
+    }
+
+    output() {
+      if (this.#child) {
+        return this.#child.output();
+      } else {
+        if (this.#consumed) {
+          throw new TypeError(
+            "Command instance is being or has already been consumed.",
+          );
+        }
+        if (this.#options?.stdin === "piped") {
+          throw new TypeError(
+            "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
+          );
+        }
+
+        this.#consumed = true;
+        return Deno.spawn(this.#command, this.#options);
+      }
+    }
+
+    outputSync() {
+      if (this.#consumed) {
+        throw new TypeError(
+          "Command instance is being or has already been consumed.",
+        );
+      }
+      if (this.#child) {
+        throw new TypeError("Was spawned");
+      }
+      if (this.#options?.stdin === "piped") {
+        throw new TypeError(
+          "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
+        );
+      }
+
+      this.#consumed = true;
+      return Deno.spawnSync(this.#command, this.#options);
+    }
+
+    spawn() {
+      if (this.#consumed) {
+        throw new TypeError(
+          "Command instance is being or has already been consumed.",
+        );
+      }
+
+      this.#consumed = true;
+      this.#child = Deno.spawnChild(this.#command, this.#options);
+    }
+
+    get stdin() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      return this.#child.stdin;
+    }
+
+    get stdout() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      return this.#child.stdout;
+    }
+
+    get stderr() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      return this.#child.stderr;
+    }
+
+    get status() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      return this.#child.status;
+    }
+
+    get pid() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      return this.#child.pid;
+    }
+
+    kill(signo = "SIGTERM") {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+      this.#child.kill(signo);
+    }
+
+    ref() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      this.#child.ref();
+    }
+
+    unref() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      this.#child.unref();
+    }
+  }
+
   window.__bootstrap.spawn = {
     Child,
+    Command,
     createSpawn,
     createSpawnChild,
     createSpawnSync,
