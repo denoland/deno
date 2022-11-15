@@ -768,12 +768,12 @@
     return stream;
   }
 
-  function readableStreamUnrefable(stream) {
+  function readableStreamIsUnrefable(stream) {
     return _isUnref in stream;
   }
 
   function readableStreamForRidUnrefableRef(stream) {
-    if (!readableStreamUnrefable(stream)) {
+    if (!readableStreamIsUnrefable(stream)) {
       throw new TypeError("Not an unrefable stream");
     }
     stream[_isUnref] = false;
@@ -783,7 +783,7 @@
   }
 
   function readableStreamForRidUnrefableUnref(stream) {
-    if (!readableStreamUnrefable(stream)) {
+    if (!readableStreamIsUnrefable(stream)) {
       throw new TypeError("Not an unrefable stream");
     }
     stream[_isUnref] = true;
@@ -810,7 +810,7 @@
       try {
         readableStreamDisturb(stream);
         const promise = core.opAsync("op_read_all", resourceBacking.rid);
-        if (readableStreamUnrefable(stream)) {
+        if (readableStreamIsUnrefable(stream)) {
           const promiseId = stream[promiseIdSymbol] = promise[promiseIdSymbol];
           if (stream[_isUnref]) core.unrefOp(promiseId);
         }
@@ -4604,6 +4604,8 @@
   }
 
   const _resourceBacking = Symbol("[[resourceBacking]]");
+  // This distinction exists to prevent unrefable streams being used in
+  // regular fast streams that are unaware of refability
   const _resourceBackingUnrefable = Symbol("[[resourceBackingUnrefable]]");
   /** @template R */
   class ReadableStream {
