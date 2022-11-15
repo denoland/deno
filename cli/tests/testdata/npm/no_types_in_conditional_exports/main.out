@@ -1,0 +1,307 @@
+Download http://localhost:4545/npm/registry/sinon
+Download http://localhost:4545/npm/registry/@sinonjs/commons
+Download http://localhost:4545/npm/registry/@sinonjs/fake-timers
+Download http://localhost:4545/npm/registry/@sinonjs/samsam
+Download http://localhost:4545/npm/registry/diff
+Download http://localhost:4545/npm/registry/nise
+Download http://localhost:4545/npm/registry/supports-color
+Download http://localhost:4545/npm/registry/type-detect
+Download http://localhost:4545/npm/registry/lodash.get
+Download http://localhost:4545/npm/registry/@sinonjs/text-encoding
+Download http://localhost:4545/npm/registry/just-extend
+Download http://localhost:4545/npm/registry/path-to-regexp
+Download http://localhost:4545/npm/registry/has-flag
+Download http://localhost:4545/npm/registry/isarray
+Download http://localhost:4545/npm/registry/@sinonjs/commons/commons-1.8.5.tgz
+Download http://localhost:4545/npm/registry/@sinonjs/commons/commons-2.0.0.tgz
+Download http://localhost:4545/npm/registry/@sinonjs/fake-timers/fake-timers-7.1.2.tgz
+Download http://localhost:4545/npm/registry/@sinonjs/fake-timers/fake-timers-9.1.2.tgz
+Download http://localhost:4545/npm/registry/@sinonjs/samsam/samsam-7.0.1.tgz
+Download http://localhost:4545/npm/registry/@sinonjs/text-encoding/text-encoding-0.7.2.tgz
+Download http://localhost:4545/npm/registry/diff/diff-5.1.0.tgz
+Download http://localhost:4545/npm/registry/has-flag/has-flag-4.0.0.tgz
+Download http://localhost:4545/npm/registry/isarray/isarray-0.0.1.tgz
+Download http://localhost:4545/npm/registry/just-extend/just-extend-4.2.1.tgz
+Download http://localhost:4545/npm/registry/lodash.get/lodash.get-4.4.2.tgz
+Download http://localhost:4545/npm/registry/nise/nise-5.1.2.tgz
+Download http://localhost:4545/npm/registry/path-to-regexp/path-to-regexp-1.8.0.tgz
+Download http://localhost:4545/npm/registry/sinon/sinon-14.0.2.tgz
+Download http://localhost:4545/npm/registry/supports-color/supports-color-7.2.0.tgz
+Download http://localhost:4545/npm/registry/type-detect/type-detect-4.0.8.tgz
+Check [WILDCARD]/no_types_in_conditional_exports/main.ts
+[WILDCARD]
+Sandbox {
+  leakThreshold: 10000,
+  assert: {
+    failException: "AssertError",
+    fail: [Function: fail],
+    pass: [Function: pass],
+    callOrder: [Function: assertCallOrder],
+    callCount: [Function: assertCallCount],
+    expose: [Function: expose],
+    match: [Function: match],
+    called: [Function],
+    notCalled: [Function],
+    calledOnce: [Function],
+    calledTwice: [Function],
+    calledThrice: [Function],
+    calledOn: [Function],
+    alwaysCalledOn: [Function],
+    calledWithNew: [Function],
+    alwaysCalledWithNew: [Function],
+    calledWith: [Function],
+    calledWithMatch: [Function],
+    alwaysCalledWith: [Function],
+    alwaysCalledWithMatch: [Function],
+    calledWithExactly: [Function],
+    calledOnceWithExactly: [Function],
+    calledOnceWithMatch: [Function],
+    alwaysCalledWithExactly: [Function],
+    neverCalledWith: [Function],
+    neverCalledWithMatch: [Function],
+    threw: [Function],
+    alwaysThrew: [Function],
+    createAssertObject: [Function: createAssertObject]
+  },
+  serverPrototype: {
+    create: [Function: create],
+    configure: [Function: configure],
+    addRequest: [Function: addRequest],
+    getHTTPMethod: [Function: getHTTPMethod],
+    handleRequest: [Function: handleRequest],
+    logger: [Function: logger],
+    logError: [Function: logError],
+    log: [Function: log],
+    respondWith: [Function: respondWith],
+    respond: [Function: respond],
+    respondAll: [Function: respondAll],
+    processRequest: [Function: processRequest],
+    restore: [Function: restore],
+    getRequest: [Function: getRequest],
+    reset: [Function: reset],
+    resetBehavior: [Function: resetBehavior],
+    resetHistory: [Function: resetHistory]
+  },
+  getFakes: [Function: getFakes],
+  getRestorers: [Function],
+  createStubInstance: [Function: createStubInstance],
+  inject: [Function: inject],
+  mock: [Function: mock],
+  reset: [Function: reset],
+  resetBehavior: [Function: resetBehavior],
+  resetHistory: [Function: resetHistory],
+  restore: [Function: restore],
+  restoreContext: [Function: restoreContext],
+  replace: [Function: replace],
+  replaceGetter: [Function: replaceGetter],
+  replaceSetter: [Function: replaceSetter],
+  spy: [Function: spy],
+  stub: [Function: stub],
+  fake: [Function: fake] {
+    returns: [Function],
+    throws: [Function],
+    resolves: [Function],
+    rejects: [Function],
+    usingPromise: [Function],
+    yields: [Function],
+    yieldsAsync: [Function]
+  },
+  useFakeTimers: [Function: useFakeTimers],
+  verify: [Function: verify],
+  verifyAndRestore: [Function: verifyAndRestore],
+  useFakeServer: [Function: useFakeServer],
+  useFakeXMLHttpRequest: [Function: useFakeXMLHttpRequest],
+  usingPromise: [Function: usingPromise],
+  createSandbox: [Function: createSandbox],
+  match: [Function: createMatcher] {
+    isMatcher: [Function: isMatcher],
+    any: { test: [Function], message: "any" },
+    defined: { test: [Function], message: "defined" },
+    truthy: { test: [Function], message: "truthy" },
+    falsy: { test: [Function], message: "falsy" },
+    same: [Function],
+    in: [Function],
+    typeOf: [Function],
+    instanceOf: [Function],
+    has: [Function],
+    hasOwn: [Function],
+    hasNested: [Function],
+    json: [Function],
+    every: [Function],
+    some: [Function],
+    array: {
+      test: [Function],
+      message: 'typeOf("array")',
+      deepEquals: [Function],
+      startsWith: [Function],
+      endsWith: [Function],
+      contains: [Function]
+    },
+    map: {
+      test: [Function],
+      message: 'typeOf("map")',
+      deepEquals: [Function: mapDeepEquals],
+      contains: [Function: mapContains]
+    },
+    set: {
+      test: [Function],
+      message: 'typeOf("set")',
+      deepEquals: [Function: setDeepEquals],
+      contains: [Function: setContains]
+    },
+    bool: { test: [Function], message: 'typeOf("boolean")' },
+    number: { test: [Function], message: 'typeOf("number")' },
+    string: { test: [Function], message: 'typeOf("string")' },
+    object: { test: [Function], message: 'typeOf("object")' },
+    func: { test: [Function], message: 'typeOf("function")' },
+    regexp: { test: [Function], message: 'typeOf("regexp")' },
+    date: { test: [Function], message: 'typeOf("date")' },
+    symbol: { test: [Function], message: 'typeOf("symbol")' }
+  },
+  restoreObject: [Function: restoreObject],
+  expectation: {
+    minCalls: 1,
+    maxCalls: 1,
+    create: [Function: create],
+    invoke: [Function: invoke],
+    atLeast: [Function: atLeast],
+    atMost: [Function: atMost],
+    never: [Function: never],
+    once: [Function: once],
+    twice: [Function: twice],
+    thrice: [Function: thrice],
+    exactly: [Function: exactly],
+    met: [Function: met],
+    verifyCallAllowed: [Function: verifyCallAllowed],
+    allowsCall: [Function: allowsCall],
+    withArgs: [Function: withArgs],
+    withExactArgs: [Function: withExactArgs],
+    on: [Function: on],
+    toString: [Function: toString],
+    verify: [Function: verify],
+    pass: [Function: pass],
+    fail: [Function: fail]
+  },
+  defaultConfig: {
+    injectInto: null,
+    properties: [
+      "spy",
+      "stub",
+      "mock",
+      "clock",
+      "server",
+      "requests",
+      "fake",
+      "replace",
+      "replaceSetter",
+      "replaceGetter",
+      "createStubInstance"
+    ],
+    useFakeTimers: true,
+    useFakeServer: true
+  },
+  setFormatter: [Function],
+  timers: {
+    setTimeout: [Function: setTimeout] { [Symbol(nodejs.util.promisify.custom)]: [Function: value] },
+    clearTimeout: [Function: clearTimeout],
+    setInterval: [Function: setInterval],
+    clearInterval: [Function: clearInterval],
+    Date: [Function: Date],
+    setImmediate: [Function: setImmediate],
+    clearImmediate: [Function: clearTimeout]
+  },
+  xhr: {
+    XMLHttpRequest: undefined,
+    GlobalXMLHttpRequest: undefined,
+    GlobalActiveXObject: undefined,
+    supportsActiveX: false,
+    supportsXHR: false,
+    workingXHR: false,
+    supportsTimeout: false,
+    supportsCORS: false
+  },
+  FakeXMLHttpRequest: [Function: FakeXMLHttpRequest] {
+    filters: [],
+    addFilter: [Function: addFilter],
+    defake: [Function: defake],
+    useFilters: false,
+    parseXML: [Function: parseXML],
+    statusCodes: {
+      "100": "Continue",
+      "101": "Switching Protocols",
+      "200": "OK",
+      "201": "Created",
+      "202": "Accepted",
+      "203": "Non-Authoritative Information",
+      "204": "No Content",
+      "205": "Reset Content",
+      "206": "Partial Content",
+      "207": "Multi-Status",
+      "300": "Multiple Choice",
+      "301": "Moved Permanently",
+      "302": "Found",
+      "303": "See Other",
+      "304": "Not Modified",
+      "305": "Use Proxy",
+      "307": "Temporary Redirect",
+      "400": "Bad Request",
+      "401": "Unauthorized",
+      "402": "Payment Required",
+      "403": "Forbidden",
+      "404": "Not Found",
+      "405": "Method Not Allowed",
+      "406": "Not Acceptable",
+      "407": "Proxy Authentication Required",
+      "408": "Request Timeout",
+      "409": "Conflict",
+      "410": "Gone",
+      "411": "Length Required",
+      "412": "Precondition Failed",
+      "413": "Request Entity Too Large",
+      "414": "Request-URI Too Long",
+      "415": "Unsupported Media Type",
+      "416": "Requested Range Not Satisfiable",
+      "417": "Expectation Failed",
+      "422": "Unprocessable Entity",
+      "500": "Internal Server Error",
+      "501": "Not Implemented",
+      "502": "Bad Gateway",
+      "503": "Service Unavailable",
+      "504": "Gateway Timeout",
+      "505": "HTTP Version Not Supported"
+    },
+    UNSENT: 0,
+    OPENED: 1,
+    HEADERS_RECEIVED: 2,
+    LOADING: 3,
+    DONE: 4
+  },
+  fakeServer: {
+    create: [Function: create],
+    configure: [Function: configure],
+    addRequest: [Function: addRequest],
+    getHTTPMethod: [Function: getHTTPMethod],
+    handleRequest: [Function: handleRequest],
+    logger: [Function: logger],
+    logError: [Function: logError],
+    log: [Function: log],
+    respondWith: [Function: respondWith],
+    respond: [Function: respond],
+    respondAll: [Function: respondAll],
+    processRequest: [Function: processRequest],
+    restore: [Function: restore],
+    getRequest: [Function: getRequest],
+    reset: [Function: reset],
+    resetBehavior: [Function: resetBehavior],
+    resetHistory: [Function: resetHistory]
+  },
+  fakeServerWithClock: {
+    addRequest: [Function: addRequest],
+    respond: [Function: respond],
+    restore: [Function: restore]
+  },
+  createFakeServer: [Function: bound create],
+  createFakeServerWithClock: [Function: bound create],
+  addBehavior: [Function: addBehavior],
+  promise: [Function: promise]
+}
