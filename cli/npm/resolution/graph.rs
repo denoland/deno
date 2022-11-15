@@ -777,7 +777,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // We didn't find anything by searching the ancestor siblings, so we need
     // to resolve based on the package info and will treat this just like any
     // other dependency when not optional
-    if !peer_dep.kind.is_optional() {
+    if !peer_dep.kind.is_optional()
+    // only
+      && existing_dep_id.is_none()
+    {
       self.analyze_dependency(
         peer_dep,
         peer_package_info,
