@@ -1178,8 +1178,8 @@ fn file_extension_probe(
 ) -> Result<PathBuf, AnyError> {
   let p = p.clean();
   if p.exists() {
-    let mut p_js = p.clone();
-    p_js.set_extension("js");
+    let file_name = p.file_name().unwrap();
+    let p_js = p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
     if p_js.exists() && p_js.is_file() {
       return Ok(p_js);
     } else if p.is_dir() {
@@ -1188,10 +1188,12 @@ fn file_extension_probe(
       return Ok(p);
     }
   } else {
-    let mut p_js = p.clone();
-    p_js.set_extension("js");
-    if p_js.exists() && p_js.is_file() {
-      return Ok(p_js);
+    if let Some(file_name) = p.file_name() {
+      let p_js =
+        p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
+      if p_js.exists() && p_js.is_file() {
+        return Ok(p_js);
+      }
     }
   }
   Err(not_found(&p.to_string_lossy(), referrer))
