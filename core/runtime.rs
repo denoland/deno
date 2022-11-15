@@ -1115,6 +1115,8 @@ impl JsRuntime {
       state.waker.wake();
     }
 
+    drop(state);
+
     if pending_state.has_pending_module_evaluation {
       if pending_state.has_pending_refed_ops
         || pending_state.has_pending_dyn_imports
@@ -1125,11 +1127,52 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else {
-        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promises.";
+        let scope = &mut self.handle_scope();
+        let module_map = Self::module_map(scope);
+        let module_map = module_map.borrow();
+        let mut root_module_id = None;
+        for module_info in module_map.info.values() {
+          if module_info.main {
+            root_module_id = Some(module_info.id);
+            break;
+          }
+        }
+        assert!(root_module_id.is_some());
+        let module_handle =
+          module_map.handles_by_id.get(&root_module_id.unwrap()).unwrap();
+        
+        let module = v8::Local::new(scope, module_handle);
+        let mut msg = "Module evaluation is still pending but there are no pending ops or dynamic imports.\n".to_string();
+
+        let stalled = module.get_stalled_top_level_await_message(scope);
+        for (_, message) in stalled {
+          let message_str = message.get(scope);
+          msg.push_str(&format!(
+            "  {} in {}:{}:{}\n",
+            message_str.to_rust_string_lossy(scope),
+            message
+              .get_script_resource_name(scope)
+              .unwrap()
+              .to_rust_string_lossy(scope),
+            message
+              .get_line_number(scope)
+              .unwrap(),
+            message
+              .get_start_column(),
+          ));
+          msg.push_str(&format!(
+            "\n    {}",
+            message
+              .get_source_line(scope)
+              .unwrap()
+              .to_rust_string_lossy(scope)
+          ));
+        }
         return Poll::Ready(Err(generic_error(msg)));
       }
     }
-
+  
+    let mut state = self.state.borrow_mut();
     if pending_state.has_pending_dyn_module_evaluation {
       if pending_state.has_pending_refed_ops
         || pending_state.has_pending_dyn_imports
