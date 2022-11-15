@@ -1187,13 +1187,10 @@ fn file_extension_probe(
     } else {
       return Ok(p);
     }
-  } else {
-    if let Some(file_name) = p.file_name() {
-      let p_js =
-        p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if p_js.exists() && p_js.is_file() {
-        return Ok(p_js);
-      }
+  } else if let Some(file_name) = p.file_name() {
+    let p_js = p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
+    if p_js.exists() && p_js.is_file() {
+      return Ok(p_js);
     }
   }
   Err(not_found(&p.to_string_lossy(), referrer))
