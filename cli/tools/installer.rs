@@ -742,7 +742,7 @@ mod tests {
 
   #[test]
   fn install_npm_lockfile_default() {
-    let temp_dir = env::temp_dir();
+    let temp_dir = fs_util::canonicalize_path(&env::temp_dir()).unwrap();
     let shim_data = resolve_shim_data(
       &Flags {
         allow_all: true,
@@ -772,7 +772,6 @@ mod tests {
 
   #[test]
   fn install_npm_no_lock() {
-    let temp_dir = env::temp_dir();
     let shim_data = resolve_shim_data(
       &Flags {
         allow_all: true,
@@ -783,7 +782,7 @@ mod tests {
         module_url: "npm:cowsay".to_string(),
         args: vec![],
         name: None,
-        root: Some(temp_dir),
+        root: Some(env::temp_dir()),
         force: false,
       },
     )
