@@ -188,8 +188,8 @@
     return str;
   }
 
-  function prepareFastCalls(serverId) {
-    return core.ops.op_flash_make_request(serverId);
+  function prepareFastCalls() {
+    return core.ops.op_flash_make_request();
   }
 
   function hostnameForDisplay(hostname) {
@@ -482,11 +482,15 @@
 
       const serverId = opFn(listenOpts);
       const serverPromise = core.opAsync("op_flash_drive_server", serverId);
-      const listenPromise = PromisePrototypeThen(
-        core.opAsync("op_flash_wait_for_listening", serverId),
-        (port) => {
-          onListen({ hostname: listenOpts.hostname, port });
-        },
+
+      PromisePrototypeCatch(
+        PromisePrototypeThen(
+          core.opAsync("op_flash_wait_for_listening", serverId),
+          (port) => {
+            onListen({ hostname: listenOpts.hostname, port });
+          },
+        ),
+        () => {},
       );
       const finishedPromise = PromisePrototypeCatch(serverPromise, () => {});
 
@@ -502,7 +506,7 @@
             return;
           }
           server.closed = true;
-          core.ops.op_flash_close_server(serverId);
+          await core.opAsync("op_flash_close_server", serverId);
           await server.finished;
         },
         async serve() {
@@ -614,7 +618,7 @@
 
       signal?.addEventListener("abort", () => {
         clearInterval(dateInterval);
-        server.close();
+        PromisePrototypeThen(server.close(), () => {}, () => {});
       }, {
         once: true,
       });
@@ -629,7 +633,7 @@
         );
       }
 
-      const fastOp = prepareFastCalls(serverId);
+      const fastOp = prepareFastCalls();
       let nextRequestSync = () => fastOp.nextRequest();
       let getMethodSync = (token) => fastOp.getMethod(token);
       let respondFast = (token, response, shutdown) =>
@@ -649,8 +653,8 @@
       }
 
       await SafePromiseAll([
-        listenPromise,
         PromisePrototypeCatch(server.serve(), console.error),
+        serverPromise,
       ]);
     };
   }
