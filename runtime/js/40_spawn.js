@@ -12,12 +12,12 @@
     ObjectEntries,
     String,
     TypeError,
-    Uint8Array,
     PromisePrototypeThen,
     SafePromiseAll,
     SymbolFor,
   } = window.__bootstrap.primordials;
   const {
+    readableStreamCollectIntoUint8Array,
     readableStreamForRidUnrefable,
     readableStreamForRidUnrefableRef,
     readableStreamForRidUnrefableUnref,
@@ -64,26 +64,12 @@
     };
   }
 
-  async function collectOutput(readableStream) {
+  function collectOutput(readableStream) {
     if (!(readableStream instanceof ReadableStream)) {
       return null;
     }
 
-    const bufs = [];
-    let size = 0;
-    for await (const chunk of readableStream) {
-      bufs.push(chunk);
-      size += chunk.byteLength;
-    }
-
-    const buffer = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of bufs) {
-      buffer.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-
-    return buffer;
+    return readableStreamCollectIntoUint8Array(readableStream);
   }
 
   class Child {
