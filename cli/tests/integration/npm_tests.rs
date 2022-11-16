@@ -263,6 +263,14 @@ itest!(types_ambient_module_import_map {
   exit_code: 1,
 });
 
+itest!(no_types_in_conditional_exports {
+  args: "run --check --unstable npm/no_types_in_conditional_exports/main.ts",
+  output: "npm/no_types_in_conditional_exports/main.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
