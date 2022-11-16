@@ -39,15 +39,14 @@ pub fn path_to_declaration_path(
   {
     return path;
   }
-  let file_stem = path.file_stem().unwrap().to_string_lossy();
   let specific_dts_path = match referrer_kind {
-    NodeModuleKind::Cjs => path.with_file_name(format!("{}.d.cts", file_stem)),
-    NodeModuleKind::Esm => path.with_file_name(format!("{}.d.mts", file_stem)),
+    NodeModuleKind::Cjs => path.with_extension("d.cts"),
+    NodeModuleKind::Esm => path.with_extension("d.mts"),
   };
   if specific_dts_path.exists() {
     specific_dts_path
   } else {
-    let dts_path = path.with_file_name(format!("{}.d.ts", file_stem));
+    let dts_path = path.with_extension("d.ts");
     if dts_path.exists() {
       dts_path
     } else {
@@ -832,7 +831,6 @@ pub fn legacy_main_resolve(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use temp_dir::TempDir;
 
   #[test]
   fn test_parse_package_name() {
@@ -854,84 +852,6 @@ mod tests {
         "./dist/highlighter".to_string(),
         true
       )
-    );
-  }
-
-  #[test]
-  fn test_path_to_declaration_path() {
-    let dir = TempDir::new().unwrap();
-
-    let path = dir.path().join("foo.ts");
-    let path_with_stem_no_ext = dir.path().join("foo.service");
-
-    {
-      let p = path.with_extension("d.cts");
-      std::fs::write(&p, "").unwrap();
-      assert!(
-        path_to_declaration_path(path.clone(), NodeModuleKind::Cjs)
-        .ends_with("foo.d.cts")
-      );
-      std::fs::remove_file(&p).unwrap()
-    }
-    
-    {
-      let p = path.with_extension("d.mts");
-      std::fs::write(&p, "").unwrap();
-      assert!(
-        path_to_declaration_path(path.clone(), NodeModuleKind::Esm)
-        .ends_with("foo.d.mts")
-      );
-      std::fs::remove_file(&p).unwrap()
-    }
-    
-    {
-      let p = path.with_extension("d.ts");
-      std::fs::write(&p, "").unwrap();
-      assert!(
-        path_to_declaration_path(path.clone(), NodeModuleKind::Cjs)
-        .ends_with("foo.d.ts")
-      );
-      std::fs::remove_file(&p).unwrap()
-    }
-    
-    assert!(
-      path_to_declaration_path(path.clone(), NodeModuleKind::Cjs)
-      .ends_with("foo.ts")
-    );
-
-    {
-      let p = format!("{}.d.cts", path_with_stem_no_ext.to_string_lossy());
-      std::fs::write(&p, "").unwrap();
-      assert!(
-        path_to_declaration_path(path_with_stem_no_ext.clone(), NodeModuleKind::Cjs)
-        .ends_with("foo.service.d.cts")
-      );
-      std::fs::remove_file(&p).unwrap()
-    }
-    
-    {
-      let p = format!("{}.d.mts", path_with_stem_no_ext.to_string_lossy());
-      std::fs::write(&p, "").unwrap();
-      assert!(
-        path_to_declaration_path(path_with_stem_no_ext.clone(), NodeModuleKind::Esm)
-        .ends_with("foo.service.d.mts")
-      );
-      std::fs::remove_file(&p).unwrap()
-    }
-    
-    {
-      let p = format!("{}.d.ts", path_with_stem_no_ext.to_string_lossy());
-      std::fs::write(&p, "").unwrap();
-      assert!(
-        path_to_declaration_path(path_with_stem_no_ext.clone(), NodeModuleKind::Cjs)
-        .ends_with("foo.service.d.ts")
-      );
-      std::fs::remove_file(&p).unwrap()
-    }
-    
-    assert!(
-      path_to_declaration_path(path_with_stem_no_ext.clone(), NodeModuleKind::Cjs)
-      .ends_with("foo.service.service")
     );
   }
 }
