@@ -587,11 +587,15 @@ delete Intl.v8BreakIterator;
       configurable: true,
       enumerable: true,
       get: webStorage.localStorage,
+      // Makes this reassignable to make astro work
+      set: () => {},
     },
     sessionStorage: {
       configurable: true,
       enumerable: true,
       get: webStorage.sessionStorage,
+      // Makes this reassignable to make astro work
+      set: () => {},
     },
     Storage: util.nonEnumerable(webStorage.Storage),
   };
