@@ -6,6 +6,25 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.28.1 / 2022.11.16
+
+- fix(bundle): explicit error when using an npm specifier with deno bundle
+  (#16637)
+- fix(cli): add a jsdoc tag for `UnstableRunOptions` (#16525)
+- fix(ext/webstorage): make web storages re-assignable (#16661)
+- fix(install): support npm specifiers (#16634)
+- fix(lock): ensure npm dependencies are written with --lock-write (#16668)
+- fix(npm): don't fail if conditional exports don't contains types (#16651)
+- fix(npm): handle peer dep being resolved without resolved dep higher in tree
+  and then with (#16640)
+- fix(npm): probing for files that have a file stem (#16641)
+- fix(npm): properly handle getting `@types` package for scoped packages
+  (#16655)
+- fix(npm): support dist tags specified in npm package dependencies (#16652)
+- fix(npm): support non-all lowercase package names (#16669)
+- fix(npm): using types for packages with subpath (#16656)
+- perf(runtime/spawn): collect output using `op_read_all` (#16596)
+
 ### 1.28.0 / 2022.11.13
 
 - feat(lock): don't require --unstable for auto discovery (#16582)
