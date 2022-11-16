@@ -263,6 +263,14 @@ itest!(types_ambient_module_import_map {
   exit_code: 1,
 });
 
+itest!(no_types_in_conditional_exports {
+  args: "run --check --unstable npm/no_types_in_conditional_exports/main.ts",
+  output: "npm/no_types_in_conditional_exports/main.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
@@ -719,8 +727,16 @@ fn ensure_registry_files_local() {
 }
 
 itest!(compile_errors {
-  args: "compile -A --quiet npm/esm/main.js",
-  output_str: Some("error: npm specifiers have not yet been implemented for deno compile (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
+  args: "compile -A --quiet npm/cached_only/main.ts",
+  output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
+  exit_code: 1,
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(bundle_errors {
+  args: "bundle --quiet npm/esm/main.js",
+  output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
   exit_code: 1,
   envs: env_vars(),
   http_server: true,
