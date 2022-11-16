@@ -104,10 +104,16 @@ impl NpmPackageResolver {
 
   /// This function will replace current resolver with a new one built from a
   /// snapshot created out of the lockfile.
-  pub async fn add_lockfile(
+  pub async fn add_lockfile_and_maybe_regenerate_snapshot(
     &mut self,
     lockfile: Arc<Mutex<Lockfile>>,
   ) -> Result<(), AnyError> {
+    self.maybe_lockfile = Some(lockfile.clone());
+
+    if lockfile.lock().overwrite {
+      return Ok(());
+    }
+
     let snapshot =
       NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &self.api)
         .await
@@ -117,7 +123,6 @@ impl NpmPackageResolver {
             lockfile.lock().filename.display()
           )
         })?;
-    self.maybe_lockfile = Some(lockfile);
     if let Some(node_modules_folder) = &self.local_node_modules_path {
       self.inner = Arc::new(LocalNpmPackageResolver::new(
         self.cache.clone(),
