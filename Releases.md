@@ -6,6 +6,69 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.28.0 / 2022.11.13
+
+- feat(lock): don't require --unstable for auto discovery (#16582)
+- feat(npm): require --unstable for npm specifiers in remote modules (#16612)
+- feat(ops): implement fast lazy async ops (#16579)
+- feat(runtime): support creating workers with custom v8 snapshots (#16553)
+- feat(unstable): "Deno.Command()" API (#16516)
+- feat(unstable/npm): module graph derived npm specifier resolution order
+  (#16602)
+- feat: don't require --unstable flag for npm programs (#16520)
+- feat: remove --unstable flag requirement for npm: specifiers (#16473)
+- feat: stabilize Deno.bench() and 'deno bench' subcommand (#16485)
+- feat: stabilize Deno.networkInterfaces() (#16451)
+- feat: stabilize Deno.systemMemoryInfo() (#16445)
+- feat: stabilize Deno.uid() and Deno.gid() (#16424)
+- fix(ext/flash): revert #16284 and add test case (#16576)
+- fix(ext/response): make error, json, redirect enumerable (#16497)
+- fix(npm): disable npm specifiers in import.meta.resolve() (#16599)
+- fix: update latest release version after github release publish (#16603)
+- perf(core): minimize trivial heap allocations in `resolve_async_ops` (#16584)
+- perf(web): optimize single pass utf8 decoding (#16593)
+- perf: more efficient `deno cache` and npm package info usage (#16592)
+
+### 1.27.2 / 2022.11.08
+
+- feat(unstable/npm): support peer dependencies (#16561)
+- fix(ext/http): flush chunk when streaming resource (#16536)
+- fix(lock): only store integrities for http: and https: imports (#16558)
+- fix(npm): fix CJS resolution with local node_modules dir (#16547)
+- fix(upgrade): don't prompt if current version has changed (#16542)
+
+### 1.27.1 / 2022.11.03
+
+- feat(core): support creating snapshots from existing snapshots (#14744)
+- feat(unstable): support npm specifiers in `deno info` for display text output
+  only (#16470)
+- feat(unstable/lock): autodiscovery of lockfile (#16498)
+- feat(unstable/lock): require --unstable flag to auto discover lockfile
+  (#16524)
+- feat(unstable/npm): `deno info --json` support for npm specifiers (#16472)
+- fix: change default locale value (#16463)
+- fix: finish stabilizing Deno.osRelease() (#16447)
+- fix: update env to sys permission in jsdoc for Deno.osRelease (#16483)
+- fix(cli/dts): add typings for Change Array by copy proposal (#16499)
+- fix(core): fix APIs not to be affected by `Promise.prototype.then`
+  modification (#16326)
+- fix(ext/crypto): fix HMAC jwk import "use" check (#16465)
+- fix(ext/websocket): make try_send ops infallible (#16454)
+- fix(lock): add --no-lock flag to disable auto discovery of lock file (#16526)
+- fix(lock): Additive lock file (#16500)
+- fix(lock): error if a referenced package id doesn't exist in list of packages
+  (#16509)
+- fix(lsp): add ServerCapabilities::encoding (#16444)
+- fix(lsp): correct `parameterNames.suppressWhenArgumentMatchesName` and
+  `variableTypes.suppressWhenTypeMatchesName` (#16469)
+- fix(napi): fix is_detached_arraybuffer (#16478)
+- fix(npm): add `console` global for node environment (#16519)
+- fix(runtime): fix Deno.hostname on windows (#16530)
+- fix(test): add slice method to filename to make them portable (#16482)
+- fix(tools): show correct upgrade command for upgrading canary (#16486)
+- fix(upgrade): don't prompt if latest version is older than current binary
+  (#16464)
+
 ### 1.27.0 / 2022.10.27
 
 - feat(core): enable --harmony-change-array-by-copy V8 flag (#16429)

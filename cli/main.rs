@@ -69,10 +69,8 @@ use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
 use crate::fs_util::resolve_url_or_path_at_cwd;
 use crate::graph_util::graph_lock_or_exit;
-use crate::graph_util::graph_valid;
 use crate::proc_state::ProcState;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
+use crate::resolver::CliResolver;
 use crate::tools::check;
 
 use args::CliOptions;
@@ -90,6 +88,7 @@ use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_local;
+use graph_util::GraphData;
 use log::debug;
 use log::info;
 use npm::NpmPackageReference;
@@ -152,22 +151,10 @@ async fn compile_command(
     generic_error("There should only be one reference to ModuleGraph")
   })?;
 
-  graph.valid().unwrap();
-
   // at the moment, we don't support npm specifiers in deno_compile, so show an error
-  let first_npm_specifier = graph
-    .specifiers()
-    .values()
-    .filter_map(|r| match r {
-      Ok((specifier, kind, _)) if *kind == deno_graph::ModuleKind::External => {
-        Some(specifier.clone())
-      }
-      _ => None,
-    })
-    .next();
-  if let Some(npm_specifier) = first_npm_specifier {
-    bail!("npm specifiers have not yet been implemented for deno compile (https://github.com/denoland/deno/issues/15960). Found: {}", npm_specifier)
-  }
+  error_for_any_npm_specifier(&graph)?;
+
+  graph.valid().unwrap();
 
   let parser = ps.parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
@@ -219,23 +206,9 @@ async fn install_command(
   flags: Flags,
   install_flags: InstallFlags,
 ) -> Result<i32, AnyError> {
-  let mut preload_flags = flags.clone();
-  preload_flags.inspect = None;
-  preload_flags.inspect_brk = None;
-  let permissions =
-    Permissions::from_options(&preload_flags.permissions_options())?;
-  let ps = ProcState::build(preload_flags).await?;
-  let main_module = resolve_url_or_path_at_cwd(&install_flags.module_url)?;
-  let mut worker = create_main_worker(
-    &ps,
-    main_module,
-    permissions,
-    vec![],
-    Default::default(),
-  )
-  .await?;
-  // First, fetch and compile the module; this step ensures that the module exists.
-  worker.preload_main_module().await?;
+  let ps = ProcState::build(flags.clone()).await?;
+  // ensure the module is cached
+  load_and_type_check(&ps, &[install_flags.module_url.clone()]).await?;
   tools::installer::install(flags, install_flags)?;
   Ok(0)
 }
@@ -286,23 +259,23 @@ async fn check_command(
 
 async fn load_and_type_check(
   ps: &ProcState,
-  files: &Vec<String>,
+  files: &[String],
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
 
-  for file in files {
-    let specifier = resolve_url_or_path_at_cwd(file)?;
-
-    ps.prepare_module_load(
-      vec![specifier],
-      false,
-      lib,
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-      false,
-    )
-    .await?;
-  }
+  let specifiers = files
+    .iter()
+    .map(|file| resolve_url_or_path_at_cwdfile(file))
+    .collect::<Result<Vec<_>, _>>()?;
+  ps.prepare_module_load(
+    specifiers,
+    false,
+    lib,
+    Permissions::allow_all(),
+    Permissions::allow_all(),
+    false,
+  )
+  .await?;
 
   Ok(())
 }
@@ -362,19 +335,12 @@ async fn create_graph_and_maybe_check(
   );
   let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
   let maybe_imports = ps.options.to_maybe_imports()?;
-  let maybe_import_map_resolver =
-    ps.maybe_import_map.clone().map(ImportMapResolver::new);
-  let maybe_jsx_resolver = ps
-    .options
-    .to_maybe_jsx_import_source_config()
-    .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
-  let maybe_resolver = if maybe_jsx_resolver.is_some() {
-    maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-  } else {
-    maybe_import_map_resolver
-      .as_ref()
-      .map(|im| im.as_resolver())
-  };
+  let maybe_cli_resolver = CliResolver::maybe_new(
+    ps.options.to_maybe_jsx_import_source_config(),
+    ps.maybe_import_map.clone(),
+  );
+  let maybe_graph_resolver =
+    maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
   let analyzer = ps.parsed_source_cache.as_analyzer();
   let graph = Arc::new(
     deno_graph::create_graph(
@@ -383,7 +349,7 @@ async fn create_graph_and_maybe_check(
       deno_graph::GraphOptions {
         is_dynamic: false,
         imports: maybe_imports,
-        resolver: maybe_resolver,
+        resolver: maybe_graph_resolver,
         locker: maybe_locker,
         module_analyzer: Some(&*analyzer),
         reporter: None,
@@ -393,11 +359,18 @@ async fn create_graph_and_maybe_check(
   );
 
   let check_js = ps.options.check_js();
-  graph_valid(
-    &graph,
-    ps.options.type_check_mode() != TypeCheckMode::None,
-    check_js,
-  )?;
+  let mut graph_data = GraphData::default();
+  graph_data.add_graph(&graph, false);
+  graph_data
+    .check(
+      &graph.roots,
+      ps.options.type_check_mode() != TypeCheckMode::None,
+      check_js,
+    )
+    .unwrap()?;
+  ps.npm_resolver
+    .add_package_reqs(graph_data.npm_package_reqs().clone())
+    .await?;
   graph_lock_or_exit(&graph);
 
   if ps.options.type_check_mode() != TypeCheckMode::None {
@@ -412,7 +385,7 @@ async fn create_graph_and_maybe_check(
     let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
     let check_result = check::check(
       &graph.roots,
-      Arc::new(RwLock::new(graph.as_ref().into())),
+      Arc::new(RwLock::new(graph_data)),
       &cache,
       ps.npm_resolver.clone(),
       check::CheckOptions {
@@ -509,6 +482,9 @@ async fn bundle_command(
   let operation = |(ps, graph): (ProcState, Arc<deno_graph::ModuleGraph>)| {
     let out_file = bundle_flags.out_file.clone();
     async move {
+      // at the moment, we don't support npm specifiers in deno bundle, so show an error
+      error_for_any_npm_specifier(&graph)?;
+
       let bundle_output = bundle_module_graph(graph.as_ref(), &ps)?;
       debug!(">>>>> bundle END");
 
@@ -568,6 +544,26 @@ async fn bundle_command(
   }
 
   Ok(0)
+}
+
+fn error_for_any_npm_specifier(
+  graph: &deno_graph::ModuleGraph,
+) -> Result<(), AnyError> {
+  let first_npm_specifier = graph
+    .specifiers()
+    .values()
+    .filter_map(|r| match r {
+      Ok((specifier, kind, _)) if *kind == deno_graph::ModuleKind::External => {
+        Some(specifier.clone())
+      }
+      _ => None,
+    })
+    .next();
+  if let Some(npm_specifier) = first_npm_specifier {
+    bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", npm_specifier)
+  } else {
+    Ok(())
+  }
 }
 
 async fn doc_command(

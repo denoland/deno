@@ -1,0 +1,39 @@
+struct op_foo_fast<SP> {
+    _phantom: ::std::marker::PhantomData<SP>,
+}
+impl<'scope, SP> deno_core::v8::fast_api::FastFunction for op_foo_fast<SP>
+where
+    SP: SomePermission + 'static,
+{
+    fn function(&self) -> *const ::std::ffi::c_void {
+        op_foo_fast_fn::<SP> as *const ::std::ffi::c_void
+    }
+    fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
+        use deno_core::v8::fast_api::Type::*;
+        use deno_core::v8::fast_api::CType;
+        &[V8Value, CallbackOptions]
+    }
+    fn return_type(&self) -> deno_core::v8::fast_api::CType {
+        deno_core::v8::fast_api::CType::Void
+    }
+}
+fn op_foo_fast_fn<'scope, SP>(
+    _: deno_core::v8::Local<deno_core::v8::Object>,
+    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
+) -> ()
+where
+    SP: SomePermission + 'static,
+{
+    use deno_core::v8;
+    use deno_core::_ops;
+    let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
+        &mut *fast_api_callback_options
+    };
+    let __ctx = unsafe {
+        &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
+            as *const _ops::OpCtx)
+    };
+    let state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
+    let result = op_foo::call::<SP>(state);
+    result
+}

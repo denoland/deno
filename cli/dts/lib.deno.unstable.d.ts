@@ -8,249 +8,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * The interface for defining a benchmark test using {@linkcode Deno.bench}.
-   *
-   * @category Testing
-   */
-  export interface BenchDefinition {
-    /** The test function which will be benchmarked. */
-    fn: () => void | Promise<void>;
-    /** The name of the test, which will be used in displaying the results. */
-    name: string;
-    /** If truthy, the benchmark test will be ignored/skipped. */
-    ignore?: boolean;
-    /** Group name for the benchmark.
-     *
-     * Grouped benchmarks produce a group time summary, where the difference
-     * in performance between each test of the group is compared. */
-    group?: string;
-    /** Benchmark should be used as the baseline for other benchmarks.
-     *
-     * If there are multiple baselines in a group, the first one is used as the
-     * baseline. */
-    baseline?: boolean;
-    /** If at least one bench has `only` set to true, only run benches that have
-     * `only` set to `true` and fail the bench suite. */
-    only?: boolean;
-    /** Ensure the bench case does not prematurely cause the process to exit,
-     * for example via a call to {@linkcode Deno.exit}. Defaults to `true`. */
-    sanitizeExit?: boolean;
-    /** Specifies the permissions that should be used to run the bench.
-     *
-     * Set this to `"inherit"` to keep the calling thread's permissions.
-     *
-     * Set this to `"none"` to revoke all permissions.
-     *
-     * Defaults to "inherit".
-     */
-    permissions?: Deno.PermissionOptions;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Register a benchmark test which will be run when `deno bench` is used on
-   * the command line and the containing module looks like a bench module.
-   *
-   * If the test function (`fn`) returns a promise or is async, the test runner
-   * will await resolution to consider the test complete.
-   *
-   * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-   *
-   * Deno.bench({
-   *   name: "example test",
-   *   fn() {
-   *     assertEquals("world", "world");
-   *   },
-   * });
-   *
-   * Deno.bench({
-   *   name: "example ignored test",
-   *   ignore: Deno.build.os === "windows",
-   *   fn() {
-   *     // This test is ignored only on Windows machines
-   *   },
-   * });
-   *
-   * Deno.bench({
-   *   name: "example async test",
-   *   async fn() {
-   *     const decoder = new TextDecoder("utf-8");
-   *     const data = await Deno.readFile("hello_world.txt");
-   *     assertEquals(decoder.decode(data), "Hello world");
-   *   }
-   * });
-   * ```
-   *
-   * @category Testing
-   */
-  export function bench(t: BenchDefinition): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Register a benchmark test which will be run when `deno bench` is used on
-   * the command line and the containing module looks like a bench module.
-   *
-   * If the test function (`fn`) returns a promise or is async, the test runner
-   * will await resolution to consider the test complete.
-   *
-   * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-   *
-   * Deno.bench("My test description", () => {
-   *   assertEquals("hello", "hello");
-   * });
-   *
-   * Deno.bench("My async test description", async () => {
-   *   const decoder = new TextDecoder("utf-8");
-   *   const data = await Deno.readFile("hello_world.txt");
-   *   assertEquals(decoder.decode(data), "Hello world");
-   * });
-   * ```
-   *
-   * @category Testing
-   */
-  export function bench(
-    name: string,
-    fn: () => void | Promise<void>,
-  ): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Register a benchmark test which will be run when `deno bench` is used on
-   * the command line and the containing module looks like a bench module.
-   *
-   * If the test function (`fn`) returns a promise or is async, the test runner
-   * will await resolution to consider the test complete.
-   *
-   * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-   *
-   * Deno.bench(function myTestName() {
-   *   assertEquals("hello", "hello");
-   * });
-   *
-   * Deno.bench(async function myOtherTestName() {
-   *   const decoder = new TextDecoder("utf-8");
-   *   const data = await Deno.readFile("hello_world.txt");
-   *   assertEquals(decoder.decode(data), "Hello world");
-   * });
-   * ```
-   *
-   * @category Testing
-   */
-  export function bench(fn: () => void | Promise<void>): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Register a benchmark test which will be run when `deno bench` is used on
-   * the command line and the containing module looks like a bench module.
-   *
-   * If the test function (`fn`) returns a promise or is async, the test runner
-   * will await resolution to consider the test complete.
-   *
-   * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-   *
-   * Deno.bench(
-   *   "My test description",
-   *   { permissions: { read: true } },
-   *   () => {
-   *    assertEquals("hello", "hello");
-   *   }
-   * );
-   *
-   * Deno.bench(
-   *   "My async test description",
-   *   { permissions: { read: false } },
-   *   async () => {
-   *     const decoder = new TextDecoder("utf-8");
-   *     const data = await Deno.readFile("hello_world.txt");
-   *     assertEquals(decoder.decode(data), "Hello world");
-   *   }
-   * );
-   * ```
-   *
-   * @category Testing
-   */
-  export function bench(
-    name: string,
-    options: Omit<BenchDefinition, "fn" | "name">,
-    fn: () => void | Promise<void>,
-  ): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Register a benchmark test which will be run when `deno bench` is used on
-   * the command line and the containing module looks like a bench module.
-   *
-   * If the test function (`fn`) returns a promise or is async, the test runner
-   * will await resolution to consider the test complete.
-   *
-   * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-   *
-   * Deno.bench(
-   *   { name: "My test description", permissions: { read: true } },
-   *   () => {
-   *     assertEquals("hello", "hello");
-   *   }
-   * );
-   *
-   * Deno.bench(
-   *   { name: "My async test description", permissions: { read: false } },
-   *   async () => {
-   *     const decoder = new TextDecoder("utf-8");
-   *     const data = await Deno.readFile("hello_world.txt");
-   *     assertEquals(decoder.decode(data), "Hello world");
-   *   }
-   * );
-   * ```
-   *
-   * @category Testing
-   */
-  export function bench(
-    options: Omit<BenchDefinition, "fn">,
-    fn: () => void | Promise<void>,
-  ): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Register a benchmark test which will be run when `deno bench` is used on
-   * the command line and the containing module looks like a bench module.
-   *
-   * If the test function (`fn`) returns a promise or is async, the test runner
-   * will await resolution to consider the test complete.
-   *
-   * ```ts
-   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-   *
-   * Deno.bench(
-   *   { permissions: { read: true } },
-   *   function myTestName() {
-   *     assertEquals("hello", "hello");
-   *   }
-   * );
-   *
-   * Deno.bench(
-   *   { permissions: { read: false } },
-   *   async function myOtherTestName() {
-   *     const decoder = new TextDecoder("utf-8");
-   *     const data = await Deno.readFile("hello_world.txt");
-   *     assertEquals(decoder.decode(data), "Hello world");
-   *   }
-   * );
-   * ```
-   *
-   * @category Testing
-   */
-  export function bench(
-    options: Omit<BenchDefinition, "fn" | "name">,
-    fn: () => void | Promise<void>,
-  ): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Retrieve the process umask.  If `mask` is provided, sets the process umask.
    * This call always returns what the umask was before the call.
    *
@@ -268,122 +25,6 @@ declare namespace Deno {
    * @category File System
    */
   export function umask(mask?: number): number;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Displays the total amount of free and used physical and swap memory in the
-   * system, as well as the buffers and caches used by the kernel.
-   *
-   * This is similar to the `free` command in Linux
-   *
-   * ```ts
-   * console.log(Deno.systemMemoryInfo());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * @tags allow-sys
-   * @category Runtime Environment
-   */
-  export function systemMemoryInfo(): SystemMemoryInfo;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Information returned from a call to {@linkcode Deno.systemMemoryInfo}.
-   *
-   * @category Runtime Environment
-   */
-  export interface SystemMemoryInfo {
-    /** Total installed memory in bytes. */
-    total: number;
-    /** Unused memory in bytes. */
-    free: number;
-    /** Estimation of how much memory, in bytes, is available for starting new
-     * applications, without swapping. Unlike the data provided by the cache or
-     * free fields, this field takes into account page cache and also that not
-     * all reclaimable memory will be reclaimed due to items being in use.
-     */
-    available: number;
-    /** Memory used by kernel buffers. */
-    buffers: number;
-    /** Memory used by the page cache and slabs. */
-    cached: number;
-    /** Total swap memory. */
-    swapTotal: number;
-    /** Unused swap memory. */
-    swapFree: number;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The information for a network interface returned from a call to
-   * {@linkcode Deno.networkInterfaces}.
-   *
-   * @category Network
-   */
-  export interface NetworkInterfaceInfo {
-    /** The network interface name. */
-    name: string;
-    /** The IP protocol version. */
-    family: "IPv4" | "IPv6";
-    /** The IP address bound to the interface. */
-    address: string;
-    /** The netmask applied to the interface. */
-    netmask: string;
-    /** The IPv6 scope id or `null`. */
-    scopeid: number | null;
-    /** The CIDR range. */
-    cidr: string;
-    /** The MAC address. */
-    mac: string;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Returns an array of the network interface information.
-   *
-   * ```ts
-   * console.log(Deno.networkInterfaces());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * @tags allow-sys
-   * @category Network
-   */
-  export function networkInterfaces(): NetworkInterfaceInfo[];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Returns the user id of the Deno process on POSIX platforms. Returns `null`
-   * on Windows.
-   *
-   * ```ts
-   * console.log(Deno.uid());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * @tags allow-sys
-   * @category Runtime Environment
-   */
-  export function uid(): number | null;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Returns the group id of the process on POSIX platforms. Returns `null` on
-   * Windows.
-   *
-   * ```ts
-   * console.log(Deno.gid());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * @tags allow-sys
-   * @category Runtime Environment
-   */
-  export function gid(): number | null;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -976,6 +617,8 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * These are unstable options which can be used with {@linkcode Deno.run}.
+   *
+   * @category Sub Process
    */
   interface UnstableRunOptions extends RunOptions {
     /** If `true`, clears the environment variables before executing the
@@ -1755,6 +1398,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * Options which can be set when calling {@linkcode Deno.spawn},
    * {@linkcode Deno.spawnSync}, and {@linkcode Deno.spawnChild}.
    *
@@ -1814,6 +1459,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * Spawns a child process.
    *
    * If any stdio options are not set to `"piped"`, accessing the corresponding
@@ -1848,6 +1495,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * The interface for handling a child process returned from
    * {@linkcode Deno.spawnChild}.
    *
@@ -1878,6 +1527,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * Executes a subprocess, waiting for it to finish and collecting all of its
    * output.
    *
@@ -1890,7 +1541,7 @@ declare namespace Deno {
    * const { code, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
    *   args: [
    *     "eval",
-   *        "console.log('hello'); console.error('world')",
+   *     "console.log('hello'); console.error('world')",
    *   ],
    * });
    * console.assert(code === 0);
@@ -1907,6 +1558,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * Synchronously executes a subprocess, waiting for it to finish and
    * collecting all of its output.
    *
@@ -1919,7 +1572,7 @@ declare namespace Deno {
    * const { code, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
    *   args: [
    *     "eval",
-   *       "console.log('hello'); console.error('world')",
+   *     "console.log('hello'); console.error('world')",
    *   ],
    * });
    * console.assert(code === 0);
@@ -1936,6 +1589,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * @category Sub Process
    */
   export interface ChildStatus {
@@ -1951,6 +1606,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @deprecated Use the Deno.Command API instead.
+   *
    * The interface returned from calling {@linkcode Deno.spawn} or
    * {@linkcode Deno.spawnSync} which represents the result of spawning the
    * child process.
@@ -1961,6 +1618,197 @@ declare namespace Deno {
     /** The buffered output from the child processes `stdout`. */
     readonly stdout: Uint8Array;
     /** The buffered output from the child processes `stderr`. */
+    readonly stderr: Uint8Array;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Create a child process.
+   *
+   * If any stdio options are not set to `"piped"`, accessing the corresponding
+   * field on the `Command` or its `CommandOutput` will throw a `TypeError`.
+   *
+   * If `stdin` is set to `"piped"`, the `stdin` {@linkcode WritableStream}
+   * needs to be closed manually.
+   *
+   * ```ts
+   * const command = new Deno.Command(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   *   stdin: "piped",
+   * });
+   * command.spawn();
+   *
+   * // open a file and pipe the subprocess output to it.
+   * command.stdout.pipeTo(Deno.openSync("output").writable);
+   *
+   * // manually close stdin
+   * command.stdin.close();
+   * const status = await command.status;
+   * ```
+   *
+   * ```ts
+   * const command = new Deno.Command(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * const { code, stdout, stderr } = await command.output();
+   * console.assert(code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   *
+   * ```ts
+   * const command = new Deno.Command(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * const { code, stdout, stderr } = command.outputSync();
+   * console.assert(code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   *
+   * @category Sub Process
+   */
+  export class Command {
+    get stdin(): WritableStream<Uint8Array>;
+    get stdout(): ReadableStream<Uint8Array>;
+    get stderr(): ReadableStream<Uint8Array>;
+    readonly pid: number;
+    /** Get the status of the child process. */
+    readonly status: Promise<CommandStatus>;
+
+    constructor(command: string | URL, options?: CommandOptions);
+    /**
+     * Executes the {@linkcode Deno.Command}, waiting for it to finish and
+     * collecting all of its output.
+     * If `spawn()` was called, calling this function will collect the remaining
+     * output.
+     *
+     * Will throw an error if `stdin: "piped"` is set.
+     *
+     * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
+     * corresponding field on {@linkcode Deno.CommandOutput} will throw a `TypeError`.
+     */
+    output(): Promise<CommandOutput>;
+    /**
+     * Synchronously executes the {@linkcode Deno.Command}, waiting for it to
+     * finish and collecting all of its output.
+     *
+     * Will throw an error if `stdin: "piped"` is set.
+     *
+     * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
+     * corresponding field on {@linkcode Deno.CommandOutput} will throw a `TypeError`.
+     */
+    outputSync(): CommandOutput;
+    /**
+     * Spawns a streamable subprocess, allowing to use the other methods.
+     */
+    spawn(): void;
+
+    /** Kills the process with given {@linkcode Deno.Signal}. Defaults to
+     * `"SIGTERM"`. */
+    kill(signo?: Signal): void;
+
+    /** Ensure that the status of the child process prevents the Deno process
+     * from exiting. */
+    ref(): void;
+    /** Ensure that the status of the child process does not block the Deno
+     * process from exiting. */
+    unref(): void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Options which can be set when calling {@linkcode Deno.command}.
+   *
+   * @category Sub Process
+   */
+  export interface CommandOptions {
+    /** Arguments to pass to the process. */
+    args?: string[];
+    /**
+     * The working directory of the process.
+     *
+     * If not specified, the `cwd` of the parent process is used.
+     */
+    cwd?: string | URL;
+    /**
+     * Clear environmental variables from parent process.
+     *
+     * Doesn't guarantee that only `env` variables are present, as the OS may
+     * set environmental variables for processes.
+     */
+    clearEnv?: boolean;
+    /** Environmental variables to pass to the subprocess. */
+    env?: Record<string, string>;
+    /**
+     * Sets the child process’s user ID. This translates to a setuid call in the
+     * child process. Failure in the set uid call will cause the spawn to fail.
+     */
+    uid?: number;
+    /** Similar to `uid`, but sets the group ID of the child process. */
+    gid?: number;
+    /**
+     * An {@linkcode AbortSignal} that allows closing the process using the
+     * corresponding {@linkcode AbortController} by sending the process a
+     * SIGTERM signal.
+     *
+     * Ignored by {@linkcode Command.outputSync}.
+     */
+    signal?: AbortSignal;
+
+    /** How `stdin` of the spawned process should be handled.
+     *
+     * Defaults to `"null"`. */
+    stdin?: "piped" | "inherit" | "null";
+    /** How `stdout` of the spawned process should be handled.
+     *
+     * Defaults to `"piped"`. */
+    stdout?: "piped" | "inherit" | "null";
+    /** How `stderr` of the spawned process should be handled.
+     *
+     * Defaults to "piped". */
+    stderr?: "piped" | "inherit" | "null";
+
+    /** Skips quoting and escaping of the arguments on Windows. This option
+     * is ignored on non-windows platforms. Defaults to `false`. */
+    windowsRawArguments?: boolean;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Sub Process
+   */
+  export interface CommandStatus {
+    /** If the child process exits with a 0 status code, `success` will be set
+     * to `true`, otherwise `false`. */
+    success: boolean;
+    /** The exit code of the child process. */
+    code: number;
+    /** The signal associated with the child process. */
+    signal: Signal | null;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * The interface returned from calling {@linkcode Command.output} or
+   * {@linkcode Command.outputSync} which represents the result of spawning the
+   * child process.
+   *
+   * @category Sub Process
+   */
+  export interface CommandOutput extends ChildStatus {
+    /** The buffered output from the child process' `stdout`. */
+    readonly stdout: Uint8Array;
+    /** The buffered output from the child process' `stderr`. */
     readonly stderr: Uint8Array;
   }
 }

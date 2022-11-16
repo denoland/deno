@@ -609,12 +609,6 @@ itest!(private_field_presence_no_check {
   output: "run/private_field_presence.ts.out",
 });
 
-itest!(lock_write_requires_lock {
-  args: "run --lock-write some_file.ts",
-  output: "run/lock_write_requires_lock.out",
-  exit_code: 1,
-});
-
 // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(lock_write_fetch {
   args:
@@ -689,6 +683,12 @@ itest!(lock_v2_check_err2 {
   args: "run --lock=run/lock_v2_check_err2.json run/019_media_types.ts",
   output: "run/lock_v2_check_err2.out",
   exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_only_http_and_https {
+  args: "run --lock=run/lock_only_http_and_https/deno.lock run/lock_only_http_and_https/main.ts",
+  output: "run/lock_only_http_and_https/main.out",
   http_server: true,
 });
 
@@ -1338,27 +1338,27 @@ itest!(jsx_import_source_pragma {
 
 itest!(jsx_import_source_pragma_with_config {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc run/jsx_import_source_pragma.tsx",
+    "run --reload --config jsx/deno-jsx.jsonc --no-lock run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_with_dev_config {
   args:
-    "run --reload --config jsx/deno-jsxdev.jsonc run/jsx_import_source_pragma.tsx",
+    "run --reload --config jsx/deno-jsxdev.jsonc --no-lock run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc run/jsx_import_source_no_pragma.tsx",
+    "run --reload --config jsx/deno-jsx.jsonc --no-lock run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma_dev {
-  args: "run --reload --config jsx/deno-jsxdev.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --config jsx/deno-jsxdev.jsonc --no-lock run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_dev.out",
   http_server: true,
 });
@@ -1376,25 +1376,25 @@ itest!(jsx_import_source_pragma_import_map_dev {
 });
 
 itest!(jsx_import_source_import_map {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_dev {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_scoped {
-  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_scoped_dev {
-  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
@@ -1406,14 +1406,14 @@ itest!(jsx_import_source_pragma_no_check {
 });
 
 itest!(jsx_import_source_pragma_with_config_no_check {
-  args: "run --reload --config jsx/deno-jsx.jsonc --no-check run/jsx_import_source_pragma.tsx",
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma_no_check {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
+    "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
@@ -1425,7 +1425,7 @@ itest!(jsx_import_source_pragma_import_map_no_check {
 });
 
 itest!(jsx_import_source_import_map_no_check {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
@@ -2918,15 +2918,9 @@ itest!(nested_error {
   exit_code: 1,
 });
 
-itest!(node_env_var_allowlist_with_unstable_flag {
+itest!(node_env_var_allowlist {
   args: "run --unstable --no-prompt run/node_env_var_allowlist.ts",
-  output: "run/node_env_var_allowlist_with_unstable_flag.ts.out",
-  exit_code: 1,
-});
-
-itest!(node_env_var_allowlist_without_unstable_flag {
-  args: "run --no-prompt run/node_env_var_allowlist.ts",
-  output: "run/node_env_var_allowlist_without_unstable_flag.ts.out",
+  output: "run/node_env_var_allowlist.ts.out",
   exit_code: 1,
 });
 
@@ -3634,3 +3628,23 @@ fn websocket_server_idletimeout() {
 
   assert!(child.wait().unwrap().success());
 }
+
+itest!(auto_discover_lockfile {
+  args: "run run/auto_discover_lockfile/main.ts",
+  output: "run/auto_discover_lockfile/main.out",
+  http_server: true,
+  exit_code: 10,
+});
+
+itest!(no_lock_flag {
+  args: "run --no-lock run/no_lock_flag/main.ts",
+  output: "run/no_lock_flag/main.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+// Check https://github.com/denoland/deno_std/issues/2882
+itest!(flash_shutdown {
+  args: "run --unstable --allow-net run/flash_shutdown/main.ts",
+  exit_code: 0,
+});

@@ -44,6 +44,7 @@ async fn main() -> Result<(), AnyError> {
       inspect: false,
     },
     extensions: vec![],
+    startup_snapshot: None,
     unsafely_ignore_certificate_errors: None,
     root_cert_store: None,
     seed: None,

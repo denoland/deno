@@ -45,10 +45,6 @@ impl CliMainWorker {
     self.worker
   }
 
-  pub async fn preload_main_module(&mut self) -> Result<ModuleId, AnyError> {
-    self.worker.preload_main_module(&self.main_module).await
-  }
-
   pub async fn setup_repl(&mut self) -> Result<(), AnyError> {
     self.worker.run_event_loop(false).await?;
     Ok(())
@@ -430,6 +426,7 @@ pub async fn create_main_worker(
       inspect: ps.options.is_inspecting(),
     },
     extensions,
+    startup_snapshot: None,
     unsafely_ignore_certificate_errors: ps
       .options
       .unsafely_ignore_certificate_errors()
