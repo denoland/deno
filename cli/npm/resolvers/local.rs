@@ -2,6 +2,7 @@
 
 //! Code for local node_modules resolution.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fs;
@@ -23,6 +24,7 @@ use tokio::task::JoinHandle;
 
 use crate::fs_util;
 use crate::lockfile::Lockfile;
+use crate::npm::cache::mixed_case_package_name_encode;
 use crate::npm::cache::should_sync_download;
 use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
@@ -438,7 +440,12 @@ fn get_package_folder_id_folder_name(id: &NpmPackageCacheFolderId) -> String {
   } else {
     format!("_{}", id.copy_index)
   };
-  format!("{}@{}{}", id.name, id.version, copy_str).replace('/', "+")
+  let name = if id.name.to_lowercase() == id.name {
+    Cow::Borrowed(&id.name)
+  } else {
+    Cow::Owned(format!("_{}", mixed_case_package_name_encode(&id.name)))
+  };
+  format!("{}@{}{}", name, id.version, copy_str).replace('/', "+")
 }
 
 fn symlink_package_dir(
