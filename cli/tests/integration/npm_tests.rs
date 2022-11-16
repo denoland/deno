@@ -123,6 +123,24 @@ itest!(cjs_module_export_assignment_number {
   http_server: true,
 });
 
+itest!(mixed_case_package_name_global_dir {
+  args: "run npm/mixed_case_package_name/global.ts",
+  output: "npm/mixed_case_package_name/global.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(mixed_case_package_name_local_dir {
+  args:
+    "run --node-modules-dir -A $TESTDATA/npm/mixed_case_package_name/local.ts",
+  output: "npm/mixed_case_package_name/local.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+  temp_cwd: true,
+});
+
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {

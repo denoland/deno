@@ -61,6 +61,7 @@ deno_task_shell = "0.7.2"
 napi_sym = { path = "./napi_sym", version = "0.7.0" }
 
 atty = "=0.2.14"
+base32 = "=0.4.0"
 base64 = "=0.13.1"
 cache_control = "=0.2.0"
 chrono = { version = "=0.4.22", default-features = false, features = ["clock"] }
