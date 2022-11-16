@@ -688,6 +688,8 @@ fn package_config_resolve(
         legacy_main_resolve(&package_config, referrer_kind, conditions)
       {
         return Ok(Some(path));
+      } else {
+        return Ok(None);
       }
     }
     return package_exports_resolve(
