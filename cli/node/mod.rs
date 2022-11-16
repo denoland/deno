@@ -25,6 +25,7 @@ use deno_runtime::deno_node::legacy_main_resolve;
 use deno_runtime::deno_node::package_exports_resolve;
 use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
+use deno_runtime::deno_node::path_to_declaration_path;
 use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
@@ -545,34 +546,6 @@ fn mode_conditions(mode: NodeResolutionMode) -> &'static [&'static str] {
   match mode {
     NodeResolutionMode::Execution => DEFAULT_CONDITIONS,
     NodeResolutionMode::Types => TYPES_CONDITIONS,
-  }
-}
-
-/// Checks if the resolved file has a corresponding declaration file.
-fn path_to_declaration_path(
-  path: PathBuf,
-  referrer_kind: NodeModuleKind,
-) -> PathBuf {
-  let lowercase_path = path.to_string_lossy().to_lowercase();
-  if lowercase_path.ends_with(".d.ts")
-    || lowercase_path.ends_with(".d.cts")
-    || lowercase_path.ends_with(".d.ts")
-  {
-    return path;
-  }
-  let specific_dts_path = match referrer_kind {
-    NodeModuleKind::Cjs => path.with_extension("d.cts"),
-    NodeModuleKind::Esm => path.with_extension("d.mts"),
-  };
-  if specific_dts_path.exists() {
-    specific_dts_path
-  } else {
-    let dts_path = path.with_extension("d.ts");
-    if dts_path.exists() {
-      dts_path
-    } else {
-      path
-    }
   }
 }
 

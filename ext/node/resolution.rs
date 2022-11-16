@@ -27,6 +27,34 @@ pub enum NodeModuleKind {
   Cjs,
 }
 
+/// Checks if the resolved file has a corresponding declaration file.
+pub fn path_to_declaration_path(
+  path: PathBuf,
+  referrer_kind: NodeModuleKind,
+) -> PathBuf {
+  let lowercase_path = path.to_string_lossy().to_lowercase();
+  if lowercase_path.ends_with(".d.ts")
+    || lowercase_path.ends_with(".d.cts")
+    || lowercase_path.ends_with(".d.ts")
+  {
+    return path;
+  }
+  let specific_dts_path = match referrer_kind {
+    NodeModuleKind::Cjs => path.with_extension("d.cts"),
+    NodeModuleKind::Esm => path.with_extension("d.mts"),
+  };
+  if specific_dts_path.exists() {
+    specific_dts_path
+  } else {
+    let dts_path = path.with_extension("d.ts");
+    if dts_path.exists() {
+      dts_path
+    } else {
+      path
+    }
+  }
+}
+
 fn to_specifier_display_string(url: &ModuleSpecifier) -> String {
   if let Ok(path) = url.to_file_path() {
     path.display().to_string()
@@ -659,9 +687,14 @@ pub fn package_resolve(
     return legacy_main_resolve(&package_json, referrer_kind, conditions);
   }
 
-  Ok(Some(
-    package_json.path.parent().unwrap().join(&package_subpath),
-  ))
+  let file_path = package_json.path.parent().unwrap().join(&package_subpath);
+
+  if conditions == TYPES_CONDITIONS {
+    let declaration_path = path_to_declaration_path(file_path, referrer_kind);
+    Ok(Some(declaration_path))
+  } else {
+    Ok(Some(file_path))
+  }
 }
 
 pub fn get_package_scope_config(

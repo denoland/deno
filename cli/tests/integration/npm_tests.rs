@@ -266,6 +266,14 @@ itest!(check_local {
   exit_code: 1,
 });
 
+itest!(types {
+  args: "check --quiet npm/types/main.ts",
+  output: "npm/types/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
 itest!(types_ambient_module {
   args: "check --quiet npm/types_ambient_module/main.ts",
   output: "npm/types_ambient_module/main.out",
