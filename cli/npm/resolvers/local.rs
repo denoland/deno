@@ -34,6 +34,7 @@ use crate::npm::NpmResolutionPackage;
 use crate::npm::RealNpmRegistryApi;
 
 use super::common::ensure_registry_read_permission;
+use super::common::types_package_name;
 use super::common::InnerNpmPackageResolver;
 
 /// Resolver that creates a local node_modules directory
@@ -172,7 +173,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
       // if doing type resolution, check for the existance of a @types package
       if conditions == TYPES_CONDITIONS && !name.starts_with("@types/") {
         let sub_dir =
-          join_package_name(current_folder, &format!("@types/{}", name));
+          join_package_name(current_folder, &types_package_name(name));
         if sub_dir.is_dir() {
           return Ok(sub_dir);
         }
