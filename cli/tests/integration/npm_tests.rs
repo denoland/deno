@@ -1008,6 +1008,60 @@ fn lock_file_missing_top_level_package() {
 }
 
 #[test]
+fn lock_file_lock_write() {
+  // https://github.com/denoland/deno/issues/16666
+  // Ensure that --lock-write still adds npm packages to the lockfile
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+  let temp_dir = util::TempDir::new();
+
+  // write empty config file
+  temp_dir.write("deno.json", "{}");
+
+  // write a lock file with borked integrity
+  let lock_file_content = r#"{
+  "version": "2",
+  "remote": {},
+  "npm": {
+    "specifiers": { "@denotest/bin": "@denotest/bin@1.0.0" },
+    "packages": {
+      "@denotest/bin@1.0.0": {
+        "integrity": "sha512-qha7xgfrpc9qil84assb0shkejvn7/a09zefumef0arcm8y3ps5aoh7ghep4lsi+4/fzyziln1ontz5h9/7zkw==",
+        "dependencies": {}
+      }
+    }
+  }
+}
+"#;
+  temp_dir.write("deno.lock", lock_file_content);
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("cache")
+    .arg("--lock-write")
+    .arg("--quiet")
+    .arg("npm:@denotest/bin/cli-esm")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.status.code(), Some(0));
+
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  assert!(stdout.is_empty());
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.is_empty());
+  assert_eq!(
+    lock_file_content,
+    std::fs::read_to_string(temp_dir.path().join("deno.lock")).unwrap()
+  );
+}
+
+#[test]
 fn auto_discover_lock_file() {
   let _server = http_server();
 
