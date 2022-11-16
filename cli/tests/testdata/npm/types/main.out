@@ -1,0 +1,51 @@
+error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+  bar: 1,
+  ~~~
+    at [WILDCARD]/npm/types/main.ts:7:3
+
+    The expected type comes from property 'bar' which is declared here on type 'Foobar'
+        bar: string;
+        ~~~
+        at [WILDCARD]/@denotest/types_imported/1.0.0/subpath.d.ts:3:5
+
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+  prop: 1,
+  ~~~~
+    at [WILDCARD]/npm/types/main.ts:11:3
+
+    The expected type comes from property 'prop' which is declared here on type 'SomeInterface'
+        prop: string;
+        ~~~~
+        at [WILDCARD]/@denotest/types_imported/1.0.0/index.d.ts:2:5
+
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+  prop2: "asdf",
+  ~~~~~
+    at [WILDCARD]/npm/types/main.ts:12:3
+
+    The expected type comes from property 'prop2' which is declared here on type 'SomeInterface'
+        prop2: number;
+        ~~~~~
+        at [WILDCARD]/@denotest/types_imported/1.0.0/index.d.ts:3:5
+
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+  fizz: 1,
+  ~~~~
+    at [WILDCARD]/npm/types/main.ts:16:3
+
+    The expected type comes from property 'fizz' which is declared here on type 'Fizzbuzz'
+      fizz: string;
+      ~~~~
+        at [WILDCARD]/@denotest/types/1.0.0/index.d.ts:2:3
+
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+  buzz: 2,
+  ~~~~
+    at [WILDCARD]/npm/types/main.ts:17:3
+
+    The expected type comes from property 'buzz' which is declared here on type 'Fizzbuzz'
+      buzz: string;
+      ~~~~
+        at [WILDCARD]/@denotest/types/1.0.0/index.d.ts:3:3
+
+Found 5 errors.
