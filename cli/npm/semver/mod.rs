@@ -25,6 +25,14 @@ mod specifier;
 // A lot of the below is a re-implementation of parts of https://github.com/npm/node-semver
 // which is Copyright (c) Isaac Z. Schlueter and Contributors (ISC License)
 
+pub fn is_valid_npm_tag(value: &str) -> bool {
+  // a valid tag is anything that doesn't get url encoded
+  // https://github.com/npm/npm-package-arg/blob/103c0fda8ed8185733919c7c6c73937cfb2baf3a/lib/npa.js#L399-L401
+  value
+    .chars()
+    .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '~'))
+}
+
 #[derive(
   Clone, Debug, PartialEq, Eq, Default, Hash, Serialize, Deserialize,
 )]
@@ -164,20 +172,35 @@ fn parse_npm_version(input: &str) -> ParseResult<NpmVersion> {
   ))
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum NpmVersionReqInner {
+  RangeSet(VersionRangeSet),
+  Tag(String),
+}
+
 /// A version requirement found in an npm package's dependencies.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NpmVersionReq {
   raw_text: String,
-  range_set: VersionRangeSet,
+  inner: NpmVersionReqInner,
 }
 
 impl NpmVersionMatcher for NpmVersionReq {
   fn tag(&self) -> Option<&str> {
-    None
+    match &self.inner {
+      NpmVersionReqInner::RangeSet(_) => None,
+      NpmVersionReqInner::Tag(tag) => Some(tag.as_str()),
+    }
   }
 
   fn matches(&self, version: &NpmVersion) -> bool {
-    self.satisfies(version)
+    match &self.inner {
+      NpmVersionReqInner::RangeSet(range_set) => range_set.satisfies(version),
+      NpmVersionReqInner::Tag(_) => panic!(
+        "programming error: cannot use matches with a tag: {}",
+        self.raw_text
+      ),
+    }
   }
 
   fn version_text(&self) -> String {
@@ -197,16 +220,12 @@ impl NpmVersionReq {
     with_failure_handling(parse_npm_version_req)(text)
       .with_context(|| format!("Invalid npm version requirement '{}'.", text))
   }
-
-  pub fn satisfies(&self, version: &NpmVersion) -> bool {
-    self.range_set.satisfies(version)
-  }
 }
 
 fn parse_npm_version_req(input: &str) -> ParseResult<NpmVersionReq> {
-  map(range_set, |set| NpmVersionReq {
+  map(inner, |inner| NpmVersionReq {
     raw_text: input.to_string(),
-    range_set: set,
+    inner,
   })(input)
 }
 
@@ -229,14 +248,97 @@ fn parse_npm_version_req(input: &str) -> ParseResult<NpmVersionReq> {
 // part       ::= nr | [-0-9A-Za-z]+
 
 // range-set ::= range ( logical-or range ) *
-fn range_set(input: &str) -> ParseResult<VersionRangeSet> {
+fn inner(input: &str) -> ParseResult<NpmVersionReqInner> {
   if input.is_empty() {
-    return Ok((input, VersionRangeSet(vec![VersionRange::all()])));
+    return Ok((
+      input,
+      NpmVersionReqInner::RangeSet(VersionRangeSet(vec![VersionRange::all()])),
+    ));
   }
-  map(if_not_empty(separated_list(range, logical_or)), |ranges| {
-    // filter out the ranges that won't match anything for the tests
-    VersionRangeSet(ranges.into_iter().filter(|r| !r.is_none()).collect())
-  })(input)
+
+  let (input, mut ranges) =
+    separated_list(range_or_invalid, logical_or)(input)?;
+
+  if ranges.len() == 1 {
+    match ranges.remove(0) {
+      RangeOrInvalid::Invalid(invalid) => {
+        if is_valid_npm_tag(invalid.text) {
+          return Ok((
+            input,
+            NpmVersionReqInner::Tag(invalid.text.to_string()),
+          ));
+        } else {
+          return Err(invalid.failure);
+        }
+      }
+      RangeOrInvalid::Range(range) => {
+        // add it back
+        ranges.push(RangeOrInvalid::Range(range));
+      }
+    }
+  }
+
+  let ranges = ranges
+    .into_iter()
+    .filter_map(|r| r.into_range())
+    .collect::<Vec<_>>();
+  Ok((input, NpmVersionReqInner::RangeSet(VersionRangeSet(ranges))))
+}
+
+enum RangeOrInvalid<'a> {
+  Range(VersionRange),
+  Invalid(InvalidRange<'a>),
+}
+
+impl<'a> RangeOrInvalid<'a> {
+  pub fn into_range(self) -> Option<VersionRange> {
+    match self {
+      RangeOrInvalid::Range(r) => {
+        if r.is_none() {
+          None
+        } else {
+          Some(r)
+        }
+      }
+      RangeOrInvalid::Invalid(_) => None,
+    }
+  }
+}
+
+struct InvalidRange<'a> {
+  failure: ParseError<'a>,
+  text: &'a str,
+}
+
+fn range_or_invalid(input: &str) -> ParseResult<RangeOrInvalid> {
+  let range_result =
+    map_res(map(range, RangeOrInvalid::Range), |result| match result {
+      Ok((input, range)) => {
+        let is_end = input.is_empty() || logical_or(input).is_ok();
+        if is_end {
+          Ok((input, range))
+        } else {
+          ParseError::backtrace()
+        }
+      }
+      Err(err) => Err(err),
+    })(input);
+  match range_result {
+    Ok(result) => Ok(result),
+    Err(failure) => {
+      let (input, text) = invalid_range(input)?;
+      Ok((
+        input,
+        RangeOrInvalid::Invalid(InvalidRange { failure, text }),
+      ))
+    }
+  }
+}
+
+fn invalid_range(input: &str) -> ParseResult<&str> {
+  let end_index = input.find("||").unwrap_or(input.len());
+  let text = input[..end_index].trim();
+  Ok((&input[end_index..], text))
 }
 
 // range ::= hyphen | simple ( ' ' simple ) * | ''
@@ -505,7 +607,9 @@ mod tests {
 
   #[test]
   pub fn npm_version_req_ranges() {
-    let tester = NpmVersionReqTester::new(">= 2.1.2 < 3.0.0 || 5.x");
+    let tester = NpmVersionReqTester::new(
+      ">= 2.1.2 < 3.0.0 || 5.x || ignored-invalid-range || $#$%^#$^#$^%@#$%SDF|||",
+    );
     assert!(!tester.matches("2.1.1"));
     assert!(tester.matches("2.1.2"));
     assert!(tester.matches("2.9.9"));
@@ -513,6 +617,12 @@ mod tests {
     assert!(tester.matches("5.0.0"));
     assert!(tester.matches("5.1.0"));
     assert!(!tester.matches("6.1.0"));
+  }
+
+  #[test]
+  pub fn npm_version_req_with_tag() {
+    let req = NpmVersionReq::parse("latest").unwrap();
+    assert_eq!(req.inner, NpmVersionReqInner::Tag("latest".to_string()));
   }
 
   macro_rules! assert_cmp {
@@ -729,7 +839,7 @@ mod tests {
       let range = NpmVersionReq::parse(range_text).unwrap();
       let expected_range = NpmVersionReq::parse(expected).unwrap();
       assert_eq!(
-        range.range_set, expected_range.range_set,
+        range.inner, expected_range.inner,
         "failed for {} and {}",
         range_text, expected
       );
@@ -853,7 +963,7 @@ mod tests {
       let req = NpmVersionReq::parse(req_text).unwrap();
       let version = NpmVersion::parse(version_text).unwrap();
       assert!(
-        req.satisfies(&version),
+        req.matches(&version),
         "Checking {} satisfies {}",
         req_text,
         version_text
@@ -952,7 +1062,7 @@ mod tests {
       let req = NpmVersionReq::parse(req_text).unwrap();
       let version = NpmVersion::parse(version_text).unwrap();
       assert!(
-        !req.satisfies(&version),
+        !req.matches(&version),
         "Checking {} not satisfies {}",
         req_text,
         version_text
