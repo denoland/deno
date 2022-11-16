@@ -119,7 +119,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/'))
-        uses: google-github-actions/setup-gcloud@v0
+        uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: denoland
           service_account_key: ${{ secrets.GCP_SA_KEY }}
@@ -133,7 +133,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/'))
-        uses: google-github-actions/setup-gcloud@v0
+        uses: google-github-actions/setup-gcloud@v1
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
         with:
@@ -600,7 +600,7 @@ jobs:
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     steps:
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v0
+        uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: denoland
           service_account_key: ${{ secrets.GCP_SA_KEY }}
