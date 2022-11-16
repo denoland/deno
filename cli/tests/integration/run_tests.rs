@@ -1338,27 +1338,27 @@ itest!(jsx_import_source_pragma {
 
 itest!(jsx_import_source_pragma_with_config {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc run/jsx_import_source_pragma.tsx",
+    "run --reload --config jsx/deno-jsx.jsonc --no-lock run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_with_dev_config {
   args:
-    "run --reload --config jsx/deno-jsxdev.jsonc run/jsx_import_source_pragma.tsx",
+    "run --reload --config jsx/deno-jsxdev.jsonc --no-lock run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc run/jsx_import_source_no_pragma.tsx",
+    "run --reload --config jsx/deno-jsx.jsonc --no-lock run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma_dev {
-  args: "run --reload --config jsx/deno-jsxdev.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --config jsx/deno-jsxdev.jsonc --no-lock run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_dev.out",
   http_server: true,
 });
@@ -1376,25 +1376,25 @@ itest!(jsx_import_source_pragma_import_map_dev {
 });
 
 itest!(jsx_import_source_import_map {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_dev {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_scoped {
-  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_scoped_dev {
-  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
@@ -1406,14 +1406,14 @@ itest!(jsx_import_source_pragma_no_check {
 });
 
 itest!(jsx_import_source_pragma_with_config_no_check {
-  args: "run --reload --config jsx/deno-jsx.jsonc --no-check run/jsx_import_source_pragma.tsx",
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma_no_check {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
+    "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
@@ -1425,7 +1425,7 @@ itest!(jsx_import_source_pragma_import_map_no_check {
 });
 
 itest!(jsx_import_source_import_map_no_check {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });

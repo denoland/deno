@@ -411,19 +411,19 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     }
   }
 
-  fn resolve_best_package_version_and_info(
+  fn resolve_best_package_version_and_info<'info>(
     &self,
     name: &str,
     version_matcher: &impl NpmVersionMatcher,
-    package_info: &NpmPackageInfo,
-  ) -> Result<VersionAndInfo, AnyError> {
+    package_info: &'info NpmPackageInfo,
+  ) -> Result<VersionAndInfo<'info>, AnyError> {
     if let Some(version) =
       self.resolve_best_package_version(name, version_matcher)
     {
       match package_info.versions.get(&version.to_string()) {
         Some(version_info) => Ok(VersionAndInfo {
           version,
-          info: version_info.clone(),
+          info: version_info,
         }),
         None => {
           bail!("could not find version '{}' for '{}'", version, name)
@@ -475,6 +475,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       &package_req.name,
       package_req,
       package_info,
+      None,
     )?;
     self.graph.set_child_parent(
       &package_req.to_string(),
@@ -506,6 +507,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         }
       },
       package_info,
+      Some(parent_id),
     )?;
     self.graph.set_child_parent(
       &entry.bare_specifier,
@@ -541,6 +543,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     name: &str,
     version_matcher: &impl NpmVersionMatcher,
     package_info: &NpmPackageInfo,
+    parent_id: Option<&NpmPackageId>,
   ) -> Result<Arc<Mutex<Node>>, AnyError> {
     let version_and_info = self.resolve_best_package_version_and_info(
       name,
@@ -553,10 +556,14 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       peer_dependencies: Vec::new(),
     };
     debug!(
-      "Resolved {}@{} to {}",
+      "{} - Resolved {}@{} to {}",
+      match parent_id {
+        Some(id) => id.as_serialized(),
+        None => "<package-req>".to_string(),
+      },
       name,
       version_matcher.version_text(),
-      id.as_serialized()
+      id.as_serialized(),
     );
     let (created, node) = self.graph.get_or_create_for_id(&id);
     if created {
@@ -580,13 +587,18 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       while let Some((visited_versions, parent_node)) =
         self.pending_unresolved_nodes.pop_front()
       {
-        let (mut parent_id, deps) = {
+        let (mut parent_id, deps, existing_children) = {
           let parent_node = parent_node.lock();
           if parent_node.forgotten {
             // todo(dsherret): we should try to reproduce this scenario and write a test
             continue;
           }
-          (parent_node.id.clone(), parent_node.deps.clone())
+
+          (
+            parent_node.id.clone(),
+            parent_node.deps.clone(),
+            parent_node.children.clone(),
+          )
         };
 
         // cache all the dependencies' registry infos in parallel if should
@@ -630,6 +642,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 dep,
                 &package_info,
                 &visited_versions,
+                existing_children.get(&dep.bare_specifier),
               )?;
               if let Some(new_parent_id) = maybe_new_parent_id {
                 assert_eq!(
@@ -653,19 +666,25 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     peer_dep: &NpmDependencyEntry,
     peer_package_info: &NpmPackageInfo,
     visited_ancestor_versions: &Arc<VisitedVersionsPath>,
+    existing_dep_id: Option<&NpmPackageId>,
   ) -> Result<Option<NpmPackageId>, AnyError> {
     fn find_matching_child<'a>(
       peer_dep: &NpmDependencyEntry,
+      peer_package_info: &NpmPackageInfo,
       children: impl Iterator<Item = &'a NpmPackageId>,
-    ) -> Option<NpmPackageId> {
+    ) -> Result<Option<NpmPackageId>, AnyError> {
       for child_id in children {
         if child_id.name == peer_dep.name
-          && peer_dep.version_req.satisfies(&child_id.version)
+          && version_req_satisfies(
+            &peer_dep.version_req,
+            &child_id.version,
+            peer_package_info,
+          )?
         {
-          return Some(child_id.clone());
+          return Ok(Some(child_id.clone()));
         }
       }
-      None
+      Ok(None)
     }
 
     // Peer dependencies are resolved based on its ancestors' siblings.
@@ -698,8 +717,11 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       match &ancestor {
         NodeParent::Node(ancestor_node_id) => {
           let maybe_peer_dep_id = if ancestor_node_id.name == peer_dep.name
-            && peer_dep.version_req.satisfies(&ancestor_node_id.version)
-          {
+            && version_req_satisfies(
+              &peer_dep.version_req,
+              &ancestor_node_id.version,
+              peer_package_info,
+            )? {
             Some(ancestor_node_id.clone())
           } else {
             let ancestor = self.graph.borrow_node(ancestor_node_id);
@@ -717,9 +739,17 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 }
               }
             }
-            find_matching_child(peer_dep, ancestor.children.values())
+            find_matching_child(
+              peer_dep,
+              peer_package_info,
+              ancestor.children.values(),
+            )?
           };
           if let Some(peer_dep_id) = maybe_peer_dep_id {
+            if existing_dep_id == Some(&peer_dep_id) {
+              return Ok(None); // do nothing, there's already an existing child dep id for this
+            }
+
             let parents =
               self.graph.borrow_node(ancestor_node_id).parents.clone();
             return Ok(Some(self.set_new_peer_dep(
@@ -733,9 +763,15 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         }
         NodeParent::Req => {
           // in this case, the parent is the root so the children are all the package requirements
-          if let Some(child_id) =
-            find_matching_child(peer_dep, self.graph.package_reqs.values())
-          {
+          if let Some(child_id) = find_matching_child(
+            peer_dep,
+            peer_package_info,
+            self.graph.package_reqs.values(),
+          )? {
+            if existing_dep_id == Some(&child_id) {
+              return Ok(None); // do nothing, there's already an existing child dep id for this
+            }
+
             let specifier = path.specifier.to_string();
             let path = path.pop().unwrap(); // go back down one level from the package requirement
             let old_id =
@@ -755,7 +791,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // We didn't find anything by searching the ancestor siblings, so we need
     // to resolve based on the package info and will treat this just like any
     // other dependency when not optional
-    if !peer_dep.kind.is_optional() {
+    if !peer_dep.kind.is_optional()
+      // prefer the existing dep id if it exists
+      && existing_dep_id.is_none()
+    {
       self.analyze_dependency(
         peer_dep,
         peer_package_info,
@@ -777,7 +816,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   ) -> NpmPackageId {
     let mut peer_dep_id = Cow::Borrowed(peer_dep_id);
     let old_id = node_id;
-    let (new_id, old_node_children) =
+    let (new_id, mut old_node_children) =
       if old_id.peer_dependencies.contains(&peer_dep_id) {
         // the parent has already resolved to using this peer dependency
         // via some other path, so we don't need to update its ids,
@@ -852,7 +891,22 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         &new_id.as_serialized(),
         &peer_dep_id.as_serialized(),
       );
-      assert!(!old_node_children.contains_key(next_specifier));
+
+      // handle this node having a previous child due to another peer dependency
+      if let Some(child_id) = old_node_children.remove(next_specifier) {
+        if let Some(node) = self.graph.packages.get(&child_id) {
+          let is_orphan = {
+            let mut node = node.lock();
+            node
+              .remove_parent(next_specifier, &NodeParent::Node(new_id.clone()));
+            node.parents.is_empty()
+          };
+          if is_orphan {
+            self.graph.forget_orphan(&child_id);
+          }
+        }
+      }
+
       let node = self.graph.get_or_create_for_id(&peer_dep_id).1;
       self.try_add_pending_unresolved_node(
         Some(visited_ancestor_versions),
@@ -877,18 +931,17 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 }
 
 #[derive(Clone)]
-struct VersionAndInfo {
+struct VersionAndInfo<'a> {
   version: NpmVersion,
-  info: NpmPackageVersionInfo,
+  info: &'a NpmPackageVersionInfo,
 }
 
-fn get_resolved_package_version_and_info(
+fn get_resolved_package_version_and_info<'a>(
   pkg_name: &str,
   version_matcher: &impl NpmVersionMatcher,
-  info: &NpmPackageInfo,
+  info: &'a NpmPackageInfo,
   parent: Option<&NpmPackageId>,
-) -> Result<VersionAndInfo, AnyError> {
-  let mut maybe_best_version: Option<VersionAndInfo> = None;
+) -> Result<VersionAndInfo<'a>, AnyError> {
   if let Some(tag) = version_matcher.tag() {
     // For when someone just specifies @types/node, we want to pull in a
     // "known good" version of @types/node that works well with Deno and
@@ -906,26 +959,9 @@ fn get_resolved_package_version_and_info(
       );
     }
 
-    if let Some(version) = info.dist_tags.get(tag) {
-      match info.versions.get(version) {
-        Some(info) => {
-          return Ok(VersionAndInfo {
-            version: NpmVersion::parse(version)?,
-            info: info.clone(),
-          });
-        }
-        None => {
-          bail!(
-            "Could not find version '{}' referenced in dist-tag '{}'.",
-            version,
-            tag,
-          )
-        }
-      }
-    } else {
-      bail!("Could not find dist-tag '{}'.", tag)
-    }
+    tag_to_version_info(info, tag)
   } else {
+    let mut maybe_best_version: Option<VersionAndInfo> = None;
     for version_info in info.versions.values() {
       let version = NpmVersion::parse(&version_info.version)?;
       if version_matcher.matches(&version) {
@@ -936,36 +972,73 @@ fn get_resolved_package_version_and_info(
         if is_best_version {
           maybe_best_version = Some(VersionAndInfo {
             version,
-            info: version_info.clone(),
+            info: version_info,
           });
         }
       }
     }
-  }
 
-  match maybe_best_version {
-    Some(v) => Ok(v),
-    // If the package isn't found, it likely means that the user needs to use
-    // `--reload` to get the latest npm package information. Although it seems
-    // like we could make this smart by fetching the latest information for
-    // this package here, we really need a full restart. There could be very
-    // interesting bugs that occur if this package's version was resolved by
-    // something previous using the old information, then now being smart here
-    // causes a new fetch of the package information, meaning this time the
-    // previous resolution of this package's version resolved to an older
-    // version, but next time to a different version because it has new information.
-    None => bail!(
-      concat!(
-        "Could not find npm package '{}' matching {}{}. ",
-        "Try retrieving the latest npm package information by running with --reload",
+    match maybe_best_version {
+      Some(v) => Ok(v),
+      // If the package isn't found, it likely means that the user needs to use
+      // `--reload` to get the latest npm package information. Although it seems
+      // like we could make this smart by fetching the latest information for
+      // this package here, we really need a full restart. There could be very
+      // interesting bugs that occur if this package's version was resolved by
+      // something previous using the old information, then now being smart here
+      // causes a new fetch of the package information, meaning this time the
+      // previous resolution of this package's version resolved to an older
+      // version, but next time to a different version because it has new information.
+      None => bail!(
+        concat!(
+          "Could not find npm package '{}' matching {}{}. ",
+          "Try retrieving the latest npm package information by running with --reload",
+        ),
+        pkg_name,
+        version_matcher.version_text(),
+        match parent {
+          Some(id) => format!(" as specified in {}", id.display()),
+          None => String::new(),
+        }
       ),
-      pkg_name,
-      version_matcher.version_text(),
-      match parent {
-        Some(id) => format!(" as specified in {}", id.display()),
-        None => String::new(),
+    }
+  }
+}
+
+fn version_req_satisfies(
+  version_req: &NpmVersionReq,
+  version: &NpmVersion,
+  package_info: &NpmPackageInfo,
+) -> Result<bool, AnyError> {
+  match version_req.tag() {
+    Some(tag) => {
+      let tag_version = tag_to_version_info(package_info, tag)?.version;
+      Ok(tag_version == *version)
+    }
+    None => Ok(version_req.matches(version)),
+  }
+}
+
+fn tag_to_version_info<'a>(
+  info: &'a NpmPackageInfo,
+  tag: &str,
+) -> Result<VersionAndInfo<'a>, AnyError> {
+  if let Some(version) = info.dist_tags.get(tag) {
+    match info.versions.get(version) {
+      Some(info) => Ok(VersionAndInfo {
+        version: NpmVersion::parse(version)?,
+        info,
+      }),
+      None => {
+        bail!(
+          "Could not find version '{}' referenced in dist-tag '{}'.",
+          version,
+          tag,
+        )
       }
-    ),
+    }
+  } else {
+    bail!("Could not find dist-tag '{}'.", tag)
   }
 }
 
@@ -982,17 +1055,18 @@ mod test {
   fn test_get_resolved_package_version_and_info() {
     // dist tag where version doesn't exist
     let package_ref = NpmPackageReference::from_str("npm:test").unwrap();
+    let package_info = NpmPackageInfo {
+      name: "test".to_string(),
+      versions: HashMap::new(),
+      dist_tags: HashMap::from([(
+        "latest".to_string(),
+        "1.0.0-alpha".to_string(),
+      )]),
+    };
     let result = get_resolved_package_version_and_info(
       "test",
       &package_ref.req,
-      &NpmPackageInfo {
-        name: "test".to_string(),
-        versions: HashMap::new(),
-        dist_tags: HashMap::from([(
-          "latest".to_string(),
-          "1.0.0-alpha".to_string(),
-        )]),
-      },
+      &package_info,
       None,
     );
     assert_eq!(
@@ -1002,26 +1076,27 @@ mod test {
 
     // dist tag where version is a pre-release
     let package_ref = NpmPackageReference::from_str("npm:test").unwrap();
+    let package_info = NpmPackageInfo {
+      name: "test".to_string(),
+      versions: HashMap::from([
+        ("0.1.0".to_string(), NpmPackageVersionInfo::default()),
+        (
+          "1.0.0-alpha".to_string(),
+          NpmPackageVersionInfo {
+            version: "0.1.0-alpha".to_string(),
+            ..Default::default()
+          },
+        ),
+      ]),
+      dist_tags: HashMap::from([(
+        "latest".to_string(),
+        "1.0.0-alpha".to_string(),
+      )]),
+    };
     let result = get_resolved_package_version_and_info(
       "test",
       &package_ref.req,
-      &NpmPackageInfo {
-        name: "test".to_string(),
-        versions: HashMap::from([
-          ("0.1.0".to_string(), NpmPackageVersionInfo::default()),
-          (
-            "1.0.0-alpha".to_string(),
-            NpmPackageVersionInfo {
-              version: "0.1.0-alpha".to_string(),
-              ..Default::default()
-            },
-          ),
-        ]),
-        dist_tags: HashMap::from([(
-          "latest".to_string(),
-          "1.0.0-alpha".to_string(),
-        )]),
-      },
+      &package_info,
       None,
     );
     assert_eq!(result.unwrap().version.to_string(), "1.0.0-alpha");
@@ -2006,6 +2081,258 @@ mod test {
         ]
       );
     }
+  }
+
+  #[tokio::test]
+  async fn resolve_dep_with_peer_deps_dep_then_peer() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.ensure_package_version("package-c", "1.0.0");
+    api.ensure_package_version("package-peer", "1.0.0");
+    api.add_peer_dependency(("package-b", "1.0.0"), ("package-peer", "1"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-c", "1"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-peer", "1"));
+    api.add_peer_dependency(("package-c", "1.0.0"), ("package-b", "1"));
+
+    let (packages, package_reqs) = run_resolver_and_get_output(
+      api,
+      vec!["npm:package-a@1.0", "npm:package-b@1.0"],
+    )
+    .await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-a@1.0.0_package-b@1.0.0")
+            .unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([
+            (
+              "package-c".to_string(),
+              NpmPackageId::from_serialized("package-c@1.0.0_package-b@1.0.0")
+                .unwrap(),
+            ),
+            (
+              "package-peer".to_string(),
+              NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
+            )
+          ]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-b@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-peer".to_string(),
+            NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-c@1.0.0_package-b@1.0.0")
+            .unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-b".to_string(),
+            NpmPackageId::from_serialized("package-b@1.0.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([]),
+          dist: Default::default(),
+        },
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![
+        (
+          "package-a@1.0".to_string(),
+          "package-a@1.0.0_package-b@1.0.0".to_string()
+        ),
+        ("package-b@1.0".to_string(), "package-b@1.0.0".to_string())
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_dep_with_peer_deps_dep_then_different_peer() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.ensure_package_version("package-c", "1.0.0");
+    api.ensure_package_version("package-peer", "1.1.0");
+    api.ensure_package_version("package-peer", "1.2.0");
+    api.add_peer_dependency(("package-a", "1.0.0"), ("package-peer", "*")); // should select 1.2.0
+    api.add_dependency(("package-b", "1.0.0"), ("package-c", "1"));
+    api.add_dependency(("package-b", "1.0.0"), ("package-peer", "=1.1.0"));
+    api.add_peer_dependency(("package-c", "1.0.0"), ("package-a", "1"));
+
+    let (packages, package_reqs) = run_resolver_and_get_output(
+      api,
+      vec!["npm:package-a@1.0", "npm:package-b@1.0"],
+    )
+    .await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-peer".to_string(),
+            NpmPackageId::from_serialized("package-peer@1.2.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized(
+            "package-a@1.0.0_package-peer@1.1.0"
+          )
+          .unwrap(),
+          copy_index: 1,
+          dependencies: HashMap::from([(
+            "package-peer".to_string(),
+            NpmPackageId::from_serialized("package-peer@1.1.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized(
+            "package-b@1.0.0_package-a@1.0.0_package-peer@1.1.0"
+          )
+          .unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([
+            (
+              "package-c".to_string(),
+              NpmPackageId::from_serialized(
+                "package-c@1.0.0_package-a@1.0.0_package-peer@1.1.0"
+              )
+              .unwrap(),
+            ),
+            (
+              "package-peer".to_string(),
+              NpmPackageId::from_serialized("package-peer@1.1.0").unwrap(),
+            )
+          ]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized(
+            "package-c@1.0.0_package-a@1.0.0_package-peer@1.1.0"
+          )
+          .unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-a".to_string(),
+            NpmPackageId::from_serialized("package-a@1.0.0_package-peer@1.1.0")
+              .unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-peer@1.1.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-peer@1.2.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([]),
+          dist: Default::default(),
+        },
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![
+        ("package-a@1.0".to_string(), "package-a@1.0.0".to_string()),
+        (
+          "package-b@1.0".to_string(),
+          "package-b@1.0.0_package-a@1.0.0_package-peer@1.1.0".to_string()
+        )
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_dep_and_peer_dist_tag() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "2.0.0");
+    api.ensure_package_version("package-b", "3.0.0");
+    api.ensure_package_version("package-c", "1.0.0");
+    api.ensure_package_version("package-d", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "some-tag"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-d", "1.0.0"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-c", "1.0.0"));
+    api.add_peer_dependency(("package-c", "1.0.0"), ("package-d", "other-tag"));
+    api.add_dist_tag("package-b", "some-tag", "2.0.0");
+    api.add_dist_tag("package-d", "other-tag", "1.0.0");
+
+    let (packages, package_reqs) =
+      run_resolver_and_get_output(api, vec!["npm:package-a@1.0"]).await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-a@1.0.0_package-d@1.0.0")
+            .unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([
+            (
+              "package-b".to_string(),
+              NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
+            ),
+            (
+              "package-c".to_string(),
+              NpmPackageId::from_serialized("package-c@1.0.0_package-d@1.0.0")
+                .unwrap(),
+            ),
+            (
+              "package-d".to_string(),
+              NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
+            ),
+          ]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::new(),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-c@1.0.0_package-d@1.0.0")
+            .unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-d".to_string(),
+            NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
+          ),]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::new(),
+          dist: Default::default(),
+        },
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![(
+        "package-a@1.0".to_string(),
+        "package-a@1.0.0_package-d@1.0.0".to_string()
+      ),]
+    );
   }
 
   async fn run_resolver_and_get_output(

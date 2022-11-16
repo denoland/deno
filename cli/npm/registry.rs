@@ -518,6 +518,12 @@ impl TestNpmRegistryApi {
       .insert(package_to.0.to_string(), package_to.1.to_string());
   }
 
+  pub fn add_dist_tag(&self, package_name: &str, tag: &str, version: &str) {
+    let mut infos = self.package_infos.lock();
+    let info = infos.get_mut(package_name).unwrap();
+    info.dist_tags.insert(tag.to_string(), version.to_string());
+  }
+
   pub fn add_peer_dependency(
     &self,
     package_from: (&str, &str),
