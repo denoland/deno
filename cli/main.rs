@@ -265,7 +265,7 @@ async fn load_and_type_check(
 
   let specifiers = files
     .iter()
-    .map(|file| resolve_url_or_path_at_cwdfile(file))
+    .map(|file| resolve_url_or_path_at_cwd(file))
     .collect::<Result<Vec<_>, _>>()?;
   ps.prepare_module_load(
     specifiers,
