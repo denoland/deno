@@ -237,9 +237,7 @@ jobs:
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
-        # TODO(kt3k): Change the version to the released version
-        # when https://github.com/actions/cache/pull/489 (or 571) is merged.
-        uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
+        uses: actions/cache@v3
         if: (matrix.profile == 'release' || matrix.profile == 'fastci') &&
             github.ref == 'refs/heads/main'
         with:
@@ -253,9 +251,7 @@ jobs:
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
-        # TODO(kt3k): Change the version to the released version
-        # when https://github.com/actions/cache/pull/489 (or 571) is merged.
-        uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
+        uses: actions/cache@v3
         if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         with:
           path: |
