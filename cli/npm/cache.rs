@@ -215,7 +215,7 @@ impl ReadonlyNpmCache {
     } else {
       // ensure backslashes are used on windows
       for part in name.split('/') {
-        dir = dir.join(&*part);
+        dir = dir.join(part);
       }
       dir
     }
@@ -260,9 +260,9 @@ impl ReadonlyNpmCache {
       return None;
     }
 
-    // base32 decode the url if it's in the underscore directory
+    // base32 decode the url if it starts with an underscore
     // * Ex. _{base32(package_name)}/
-    if let Some(end_url) = relative_url.strip_prefix("_") {
+    if let Some(end_url) = relative_url.strip_prefix('_') {
       let mut parts = end_url
         .split('/')
         .map(ToOwned::to_owned)
