@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -208,24 +207,18 @@ impl ReadonlyNpmCache {
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
     let mut dir = self.registry_folder(registry_url);
-    let parts = name.split('/').map(Cow::Borrowed).collect::<Vec<_>>();
     if name.to_lowercase() != name {
-      // Lowercase package names introduce complications.
-      // When implementing this ensure:
-      // 1. It works on case insensitive filesystems. ex. JSON should not
-      //    conflict with json... yes you read that right, those are separate
-      //    packages.
-      // 2. We can figure out the package id from the path. This is used
-      //    in resolve_package_id_from_specifier
-      // Probably use a hash of the package name at `npm/-/<hash>` then create
-      // a mapping for these package names.
-      todo!("deno currently doesn't support npm package names that are not all lowercase");
+      let encoded_name = mixed_case_package_name_encode(name);
+      // Using the encoded directory may have a collision with an actual package name
+      // so prefix it with an underscore since npm packages can't start with that
+      dir.join(format!("_{}", encoded_name))
+    } else {
+      // ensure backslashes are used on windows
+      for part in name.split('/') {
+        dir = dir.join(part);
+      }
+      dir
     }
-    // ensure backslashes are used on windows
-    for part in parts {
-      dir = dir.join(&*part);
-    }
-    dir
   }
 
   pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
@@ -262,9 +255,25 @@ impl ReadonlyNpmCache {
       ))
       // this not succeeding indicates a fatal issue, so unwrap
       .unwrap();
-    let relative_url = registry_root_dir.make_relative(specifier)?;
+    let mut relative_url = registry_root_dir.make_relative(specifier)?;
     if relative_url.starts_with("../") {
       return None;
+    }
+
+    // base32 decode the url if it starts with an underscore
+    // * Ex. _{base32(package_name)}/
+    if let Some(end_url) = relative_url.strip_prefix('_') {
+      let mut parts = end_url
+        .split('/')
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+      match mixed_case_package_name_decode(&parts[0]) {
+        Some(part) => {
+          parts[0] = part;
+        }
+        None => return None,
+      }
+      relative_url = parts.join("/");
     }
 
     // examples:
@@ -473,6 +482,21 @@ impl NpmCache {
   }
 }
 
+pub fn mixed_case_package_name_encode(name: &str) -> String {
+  // use base32 encoding because it's reversable and the character set
+  // only includes the characters within 0-9 and A-Z so it can be lower cased
+  base32::encode(
+    base32::Alphabet::RFC4648 { padding: false },
+    name.as_bytes(),
+  )
+  .to_lowercase()
+}
+
+pub fn mixed_case_package_name_decode(name: &str) -> Option<String> {
+  base32::decode(base32::Alphabet::RFC4648 { padding: false }, name)
+    .and_then(|b| String::from_utf8(b).ok())
+}
+
 #[cfg(test)]
 mod test {
   use deno_core::url::Url;
@@ -482,7 +506,7 @@ mod test {
   use crate::npm::semver::NpmVersion;
 
   #[test]
-  fn should_get_lowercase_package_folder() {
+  fn should_get_package_folder() {
     let root_dir = crate::deno_dir::DenoDir::new(None).unwrap().root;
     let cache = ReadonlyNpmCache::new(root_dir.clone());
     let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
@@ -515,6 +539,36 @@ mod test {
         .join("registry.npmjs.org")
         .join("json")
         .join("1.2.5_1"),
+    );
+
+    assert_eq!(
+      cache.package_folder_for_id(
+        &NpmPackageCacheFolderId {
+          name: "JSON".to_string(),
+          version: NpmVersion::parse("2.1.5").unwrap(),
+          copy_index: 0,
+        },
+        &registry_url,
+      ),
+      root_dir
+        .join("registry.npmjs.org")
+        .join("_jjju6tq")
+        .join("2.1.5"),
+    );
+
+    assert_eq!(
+      cache.package_folder_for_id(
+        &NpmPackageCacheFolderId {
+          name: "@types/JSON".to_string(),
+          version: NpmVersion::parse("2.1.5").unwrap(),
+          copy_index: 0,
+        },
+        &registry_url,
+      ),
+      root_dir
+        .join("registry.npmjs.org")
+        .join("_ib2hs4dfomxuuu2pjy")
+        .join("2.1.5"),
     );
   }
 }
