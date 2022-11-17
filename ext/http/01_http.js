@@ -438,15 +438,15 @@
     return r;
   }
 
-  function isH1Request(request) {
-    return toInnerRequest(request).httpVersion === 1;
+  function isH2Request(request) {
+    return toInnerRequest(request).httpVersion === 2;
   }
 
   function upgradeWebSocket(request, options = {}) {
-    const innerResp = isH1Request(request)
-      ? h1WsUpgrade(request)
-      : h2WsUpgrade(request);
-    const ownsConn = isH1Request(request); // conn ownership is only transferred on h1
+    const innerResp = isH2Request(request)
+      ? h2WsUpgrade(request)
+      : h1WsUpgrade(request);
+    const ownsConn = !isH2Request(request); // conn ownership is only transferred on h1
 
     const protocolsStr = request.headers.get("sec-websocket-protocol") || "";
     const protocols = StringPrototypeSplit(protocolsStr, ", ");
