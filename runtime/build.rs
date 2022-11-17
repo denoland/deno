@@ -36,7 +36,7 @@ mod not_docs {
     }
 
     let snapshot = js_runtime.snapshot();
-    let snapshot_slice: &[u8] = &*snapshot;
+    let snapshot_slice: &[u8] = &snapshot;
     println!("Snapshot size: {}", snapshot_slice.len());
 
     let compressed_snapshot_with_size = {
@@ -63,7 +63,7 @@ mod not_docs {
       compressed_snapshot_with_size.len()
     );
 
-    std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
+    std::fs::write(snapshot_path, compressed_snapshot_with_size).unwrap();
     println!("Snapshot written to: {} ", snapshot_path.display());
   }
 

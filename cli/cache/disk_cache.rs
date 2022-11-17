@@ -40,7 +40,7 @@ impl DiskCache {
     if path.is_dir() {
       return Ok(());
     }
-    fs::create_dir_all(&path).map_err(|e| {
+    fs::create_dir_all(path).map_err(|e| {
       io::Error::new(e.kind(), format!(
         "Could not create TypeScript compiler cache location: {:?}\nCheck the permission of the directory.",
         path

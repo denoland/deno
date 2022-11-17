@@ -72,7 +72,7 @@ impl<'rt> RangeTree<'rt> {
   }
 
   pub fn normalize<'a>(
-    rta: &'a RangeTreeArena<'a>,
+    _rta: &'a RangeTreeArena<'a>,
     tree: &'a mut RangeTree<'a>,
   ) -> &'a mut RangeTree<'a> {
     tree.children = {
@@ -96,7 +96,7 @@ impl<'rt> RangeTree<'rt> {
               head.children.push(sub_child);
             }
           }
-          children.push(RangeTree::normalize(rta, head));
+          children.push(RangeTree::normalize(_rta, head));
         }
         chain.push(child)
       }
@@ -110,7 +110,7 @@ impl<'rt> RangeTree<'rt> {
             head.children.push(sub_child);
           }
         }
-        children.push(RangeTree::normalize(rta, head));
+        children.push(RangeTree::normalize(_rta, head));
       }
 
       if children.len() == 1

@@ -165,7 +165,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<hyper::Error>().map(get_hyper_error_class))
     .or_else(|| {
       e.downcast_ref::<Arc<hyper::Error>>()
-        .map(|e| get_hyper_error_class(&**e))
+        .map(|e| get_hyper_error_class(e))
     })
     .or_else(|| {
       e.downcast_ref::<deno_core::Canceled>().map(|e| {

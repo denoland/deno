@@ -113,7 +113,7 @@ fn validate_options(
     .and_then(|p| fs_util::canonicalize_path(&p).ok())
   {
     // make the output directory in order to canonicalize it for the check below
-    std::fs::create_dir_all(&output_dir)?;
+    std::fs::create_dir_all(output_dir)?;
     let output_dir =
       fs_util::canonicalize_path(output_dir).with_context(|| {
         format!("Failed to canonicalize: {}", output_dir.display())
@@ -248,7 +248,7 @@ fn update_config_text(
 }
 
 fn is_dir_empty(dir_path: &Path) -> Result<bool, AnyError> {
-  match std::fs::read_dir(&dir_path) {
+  match std::fs::read_dir(dir_path) {
     Ok(mut dir) => Ok(dir.next().is_none()),
     Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(true),
     Err(err) => {
