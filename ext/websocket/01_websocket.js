@@ -79,6 +79,7 @@
   const _binaryType = Symbol("[[binaryType]]");
   const _bufferedAmount = Symbol("[[bufferedAmount]]");
   const _eventLoop = Symbol("[[eventLoop]]");
+  const _ownsConn = Symbol("[[ownsConn]]");
 
   const _server = Symbol("[[server]]");
   const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
@@ -87,6 +88,7 @@
   class WebSocket extends EventTarget {
     [_rid];
 
+    [_ownsConn] = true;
     [_readyState] = CONNECTING;
     get readyState() {
       webidl.assertBranded(this, WebSocketPrototype);
@@ -579,6 +581,7 @@
     _rid,
     _readyState,
     _eventLoop,
+    _ownsConn,
     _protocol,
     _server,
     _idleTimeoutDuration,

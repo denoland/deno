@@ -51,6 +51,7 @@ use hyper::Body;
 use hyper::HeaderMap;
 use hyper::Request;
 use hyper::Response;
+use hyper::Version;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -130,6 +131,7 @@ impl HttpConnResource {
 
     let conn_fut = Http::new()
       .with_executor(LocalExecutor)
+      .http2_enable_connect_protocol()
       .serve_connection(io, service)
       .with_upgrades();
 
@@ -168,7 +170,7 @@ impl HttpConnResource {
   // Accepts a new incoming HTTP request.
   async fn accept(
     self: &Rc<Self>,
-  ) -> Result<Option<(HttpStreamResource, String, String)>, AnyError> {
+  ) -> Result<Option<(HttpStreamResource, String, String, u8)>, AnyError> {
     let fut = async {
       let (request_tx, request_rx) = oneshot::channel();
       let (response_tx, response_rx) = oneshot::channel();
@@ -190,11 +192,17 @@ impl HttpConnResource {
           .unwrap_or(Encoding::Identity)
       };
 
+      let version = match request.version() {
+        Version::HTTP_2 => 2,
+        Version::HTTP_3 => 3,
+        // Version::HTTP_09 | Version::HTTP_10 | Version::HTTP_11
+        _ => 1,
+      };
       let method = request.method().to_string();
       let url = req_url(&request, self.scheme, &self.addr);
       let stream =
         HttpStreamResource::new(self, request, response_tx, accept_encoding);
-      Some((stream, method, url))
+      Some((stream, method, url, version))
     };
 
     async {
@@ -437,6 +445,9 @@ struct NextRequestResponse(
   String,
   // url:
   String,
+  // http_version:
+  // major version, so 1/2
+  u8,
 );
 
 #[op]
@@ -447,10 +458,10 @@ async fn op_http_accept(
   let conn = state.borrow().resource_table.get::<HttpConnResource>(rid)?;
 
   match conn.accept().await {
-    Ok(Some((stream, method, url))) => {
+    Ok(Some((stream, method, url, version))) => {
       let stream_rid =
         state.borrow_mut().resource_table.add_rc(Rc::new(stream));
-      let r = NextRequestResponse(stream_rid, method, url);
+      let r = NextRequestResponse(stream_rid, method, url, version);
       Ok(Some(r))
     }
     Ok(None) => Ok(None),

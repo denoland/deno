@@ -10,6 +10,7 @@
   const {
     ResponsePrototype,
     fromInnerRequest,
+    toInnerRequest,
     toInnerResponse,
     newInnerRequest,
     newInnerResponse,
@@ -25,6 +26,7 @@
     _rid,
     _readyState,
     _eventLoop,
+    _ownsConn,
     _protocol,
     _server,
     _idleTimeoutDuration,
@@ -115,7 +117,7 @@
         return null;
       }
 
-      const [streamRid, method, url] = nextRequest;
+      const [streamRid, method, url, httpVersion] = nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
@@ -133,6 +135,7 @@
         () => ops.op_http_headers(streamRid),
         body !== null ? new InnerBody(body) : null,
         false,
+        httpVersion,
       );
       const signal = abortSignal.newSignal();
       const request = fromInnerRequest(innerRequest, signal, "immutable");
@@ -355,7 +358,9 @@
           ws[_rid] = wsRid;
           ws[_protocol] = resp.headers.get("sec-websocket-protocol");
 
-          httpConn.close();
+          if (ws[_ownsConn]) {
+            httpConn.close();
+          }
 
           ws[_readyState] = WebSocket.OPEN;
           const event = new Event("open");
@@ -380,7 +385,17 @@
 
   const _ws = Symbol("[[associated_ws]]");
 
-  function upgradeWebSocket(request, options = {}) {
+  function h2WsUpgrade(request) {
+    if (request.method !== "CONNECT") {
+      throw new TypeError(
+        "Invalid Method: ws over h2 should use :method = CONNECT",
+      );
+    }
+    // TODO(somebody): validate :protocol, pseudo-header
+    return newInnerResponse(200);
+  }
+
+  function h1WsUpgrade(request) {
     const upgrade = request.headers.get("upgrade");
     const upgradeHasWebSocketOption = upgrade !== null &&
       ArrayPrototypeSome(
@@ -420,6 +435,18 @@
       ["connection", "Upgrade"],
       ["sec-websocket-accept", accept],
     ];
+    return r;
+  }
+
+  function isH1Request(request) {
+    return toInnerRequest(request).httpVersion === 1;
+  }
+
+  function upgradeWebSocket(request, options = {}) {
+    const innerResp = isH1Request(request)
+      ? h1WsUpgrade(request)
+      : h2WsUpgrade(request);
+    const ownsConn = isH1Request(request); // conn ownership is only transferred on h1
 
     const protocolsStr = request.headers.get("sec-websocket-protocol") || "";
     const protocols = StringPrototypeSplit(protocolsStr, ", ");
@@ -436,11 +463,12 @@
       }
     }
 
-    const response = fromInnerResponse(r, "immutable");
+    const response = fromInnerResponse(innerResp, "immutable");
 
     const socket = webidl.createBranded(WebSocket);
     setEventTargetData(socket);
     socket[_server] = true;
+    socket[_ownsConn] = ownsConn;
     response[_ws] = socket;
     socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
     socket[_idleTimeoutTimeout] = null;

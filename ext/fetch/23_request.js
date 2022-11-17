@@ -85,9 +85,17 @@
    * @param {() => [string, string][]} headerList
    * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
    * @param {boolean} maybeBlob
+   * @param {number} httpVersion
    * @returns {InnerRequest}
    */
-  function newInnerRequest(method, url, headerList, body, maybeBlob) {
+  function newInnerRequest(
+    method,
+    url,
+    headerList,
+    body,
+    maybeBlob,
+    httpVersion,
+  ) {
     let blobUrlEntry = null;
     if (maybeBlob && typeof url === "string" && url.startsWith("blob:")) {
       blobUrlEntry = blobFromObjectUrl(url);
@@ -149,6 +157,7 @@
         }
         return this.urlListProcessed[currentIndex];
       },
+      httpVersion,
     };
   }
 

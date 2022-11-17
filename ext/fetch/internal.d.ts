@@ -91,6 +91,8 @@ declare namespace globalThis {
         url: any,
         headerList?: [string, string][],
         body?: globalThis.__bootstrap.fetchBody.InnerBody,
+        maybeBlob?: boolean,
+        httpVersion?: number,
       ): InnerResponse;
       function toInnerResponse(response: Response): InnerResponse;
       function fromInnerResponse(
