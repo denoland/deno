@@ -73,11 +73,6 @@ pub fn url_to_filename(url: &Url) -> Option<PathBuf> {
   Some(cache_filename)
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct HttpCache {
-  pub location: PathBuf,
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct Metadata {
   pub headers: HeadersMap,
@@ -105,6 +100,11 @@ impl Metadata {
   pub fn filename(cache_filename: &Path) -> PathBuf {
     cache_filename.with_extension("metadata.json")
   }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct HttpCache {
+  pub location: PathBuf,
 }
 
 impl HttpCache {
