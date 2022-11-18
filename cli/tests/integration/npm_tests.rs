@@ -251,7 +251,7 @@ itest!(deno_cache {
 });
 
 itest!(check_all {
-  args: "check --remote npm/check_errors/main.ts",
+  args: "check --all npm/check_errors/main.ts",
   output: "npm/check_errors/main_all.out",
   envs: env_vars(),
   http_server: true,
