@@ -653,7 +653,7 @@ fn raw_chmod(path: &Path, _raw_mode: u32) -> Result<(), AnyError> {
   #[cfg(not(unix))]
   {
     // Still check file/dir exists on Windows
-    let _metadata = std::fs::metadata(&path).map_err(err_mapper)?;
+    let _metadata = std::fs::metadata(path).map_err(err_mapper)?;
     Err(not_supported())
   }
 }
