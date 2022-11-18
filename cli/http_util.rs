@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::auth_tokens::AuthToken;
+use crate::version::get_user_agent;
 
 use cache_control::Cachability;
 use cache_control::CacheControl;
@@ -8,13 +9,15 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_runtime::deno_fetch::create_http_client;
+use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
 use deno_runtime::deno_fetch::reqwest::header::ACCEPT;
 use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
 use deno_runtime::deno_fetch::reqwest::header::IF_NONE_MATCH;
 use deno_runtime::deno_fetch::reqwest::header::LOCATION;
-use deno_runtime::deno_fetch::reqwest::Client;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
+use deno_runtime::deno_tls::rustls::RootCertStore;
 use log::debug;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -208,97 +211,125 @@ pub enum FetchOnceResult {
 
 #[derive(Debug)]
 pub struct FetchOnceArgs {
-  pub client: Client,
   pub url: Url,
   pub maybe_accept: Option<String>,
   pub maybe_etag: Option<String>,
   pub maybe_auth_token: Option<AuthToken>,
 }
 
-/// Asynchronously fetches the given HTTP URL one pass only.
-/// If no redirect is present and no error occurs,
-/// yields Code(ResultPayload).
-/// If redirect occurs, does not follow and
-/// yields Redirect(url).
-pub async fn fetch_once(
-  args: FetchOnceArgs,
-) -> Result<FetchOnceResult, AnyError> {
-  let mut request = args.client.get(args.url.clone());
+#[derive(Debug, Clone)]
+pub struct HttpClient(reqwest::Client);
 
-  if let Some(etag) = args.maybe_etag {
-    let if_none_match_val = HeaderValue::from_str(&etag)?;
-    request = request.header(IF_NONE_MATCH, if_none_match_val);
-  }
-  if let Some(auth_token) = args.maybe_auth_token {
-    let authorization_val = HeaderValue::from_str(&auth_token.to_string())?;
-    request = request.header(AUTHORIZATION, authorization_val);
-  }
-  if let Some(accept) = args.maybe_accept {
-    let accepts_val = HeaderValue::from_str(&accept)?;
-    request = request.header(ACCEPT, accepts_val);
-  }
-  let response = request.send().await?;
-
-  if response.status() == StatusCode::NOT_MODIFIED {
-    return Ok(FetchOnceResult::NotModified);
+impl HttpClient {
+  pub fn new(
+    root_cert_store: Option<RootCertStore>,
+    unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  ) -> Result<Self, AnyError> {
+    Ok(HttpClient::from_client(create_http_client(
+      get_user_agent(),
+      root_cert_store,
+      vec![],
+      None,
+      unsafely_ignore_certificate_errors,
+      None,
+    )?))
   }
 
-  let mut headers_: HashMap<String, String> = HashMap::new();
-  let headers = response.headers();
-
-  if let Some(warning) = headers.get("X-Deno-Warning") {
-    eprintln!(
-      "{} {}",
-      crate::colors::yellow("Warning"),
-      warning.to_str().unwrap()
-    );
+  pub fn from_client(client: reqwest::Client) -> Self {
+    Self(client)
   }
 
-  for key in headers.keys() {
-    let key_str = key.to_string();
-    let values = headers.get_all(key);
-    let values_str = values
-      .iter()
-      .map(|e| e.to_str().unwrap().to_string())
-      .collect::<Vec<String>>()
-      .join(",");
-    headers_.insert(key_str, values_str);
+  pub fn get<U: reqwest::IntoUrl>(&self, url: U) -> reqwest::RequestBuilder {
+    self.0.get(url)
   }
 
-  if response.status().is_redirection() {
-    if let Some(location) = response.headers().get(LOCATION) {
-      let location_string = location.to_str().unwrap();
-      debug!("Redirecting to {:?}...", &location_string);
-      let new_url = resolve_url_from_location(&args.url, location_string);
-      return Ok(FetchOnceResult::Redirect(new_url, headers_));
-    } else {
-      return Err(generic_error(format!(
-        "Redirection from '{}' did not provide location header",
-        args.url
-      )));
+  /// Asynchronously fetches the given HTTP URL one pass only.
+  /// If no redirect is present and no error occurs,
+  /// yields Code(ResultPayload).
+  /// If redirect occurs, does not follow and
+  /// yields Redirect(url).
+  pub async fn fetch_once(
+    &self,
+    args: FetchOnceArgs,
+  ) -> Result<FetchOnceResult, AnyError> {
+    let mut request = self.get(args.url.clone());
+
+    if let Some(etag) = args.maybe_etag {
+      let if_none_match_val = HeaderValue::from_str(&etag)?;
+      request = request.header(IF_NONE_MATCH, if_none_match_val);
     }
+    if let Some(auth_token) = args.maybe_auth_token {
+      let authorization_val = HeaderValue::from_str(&auth_token.to_string())?;
+      request = request.header(AUTHORIZATION, authorization_val);
+    }
+    if let Some(accept) = args.maybe_accept {
+      let accepts_val = HeaderValue::from_str(&accept)?;
+      request = request.header(ACCEPT, accepts_val);
+    }
+    let response = request.send().await?;
+
+    if response.status() == StatusCode::NOT_MODIFIED {
+      return Ok(FetchOnceResult::NotModified);
+    }
+
+    let mut result_headers = HashMap::new();
+    let response_headers = response.headers();
+
+    if let Some(warning) = response_headers.get("X-Deno-Warning") {
+      eprintln!(
+        "{} {}",
+        crate::colors::yellow("Warning"),
+        warning.to_str().unwrap()
+      );
+    }
+
+    for key in response_headers.keys() {
+      let key_str = key.to_string();
+      let values = response_headers.get_all(key);
+      let values_str = values
+        .iter()
+        .map(|e| e.to_str().unwrap().to_string())
+        .collect::<Vec<String>>()
+        .join(",");
+      result_headers.insert(key_str, values_str);
+    }
+
+    if response.status().is_redirection() {
+      if let Some(location) = response.headers().get(LOCATION) {
+        let location_string = location.to_str().unwrap();
+        debug!("Redirecting to {:?}...", &location_string);
+        let new_url = resolve_url_from_location(&args.url, location_string);
+        return Ok(FetchOnceResult::Redirect(new_url, result_headers));
+      } else {
+        return Err(generic_error(format!(
+          "Redirection from '{}' did not provide location header",
+          args.url
+        )));
+      }
+    }
+
+    if response.status().is_client_error()
+      || response.status().is_server_error()
+    {
+      let err = if response.status() == StatusCode::NOT_FOUND {
+        custom_error(
+          "NotFound",
+          format!("Import '{}' failed, not found.", args.url),
+        )
+      } else {
+        generic_error(format!(
+          "Import '{}' failed: {}",
+          args.url,
+          response.status()
+        ))
+      };
+      return Err(err);
+    }
+
+    let body = response.bytes().await?.to_vec();
+
+    Ok(FetchOnceResult::Code(body, result_headers))
   }
-
-  if response.status().is_client_error() || response.status().is_server_error()
-  {
-    let err = if response.status() == StatusCode::NOT_FOUND {
-      custom_error(
-        "NotFound",
-        format!("Import '{}' failed, not found.", args.url),
-      )
-    } else {
-      generic_error(format!(
-        "Import '{}' failed: {}",
-        args.url,
-        response.status()
-      ))
-    };
-    return Err(err);
-  }
-
-  let body = response.bytes().await?.to_vec();
-
-  Ok(FetchOnceResult::Code(body, headers_))
 }
 
 #[cfg(test)]
@@ -308,16 +339,18 @@ mod tests {
   use deno_runtime::deno_fetch::create_http_client;
   use std::fs::read;
 
-  fn create_test_client() -> Client {
-    create_http_client(
-      "test_client".to_string(),
-      None,
-      vec![],
-      None,
-      None,
-      None,
+  fn create_test_client() -> HttpClient {
+    HttpClient::from_client(
+      create_http_client(
+        "test_client".to_string(),
+        None,
+        vec![],
+        None,
+        None,
+        None,
+      )
+      .unwrap(),
     )
-    .unwrap()
   }
 
   #[tokio::test]
@@ -326,14 +359,14 @@ mod tests {
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/assets/fixture.json").unwrap();
     let client = create_test_client();
-    let result = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: None,
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(headers.get("content-type").unwrap(), "application/json");
@@ -351,14 +384,14 @@ mod tests {
     let url = Url::parse("http://127.0.0.1:4545/run/import_compression/gziped")
       .unwrap();
     let client = create_test_client();
-    let result = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: None,
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
       assert_eq!(
@@ -377,14 +410,14 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
     let client = create_test_client();
-    let result = fetch_once(FetchOnceArgs {
-      client: client.clone(),
-      url: url.clone(),
-      maybe_accept: None,
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url: url.clone(),
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
@@ -397,14 +430,14 @@ mod tests {
       panic!();
     }
 
-    let res = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: None,
-      maybe_etag: Some("33a64df551425fcc55e".to_string()),
-      maybe_auth_token: None,
-    })
-    .await;
+    let res = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: Some("33a64df551425fcc55e".to_string()),
+        maybe_auth_token: None,
+      })
+      .await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
   }
 
@@ -415,14 +448,14 @@ mod tests {
     let url = Url::parse("http://127.0.0.1:4545/run/import_compression/brotli")
       .unwrap();
     let client = create_test_client();
-    let result = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: None,
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
@@ -443,14 +476,14 @@ mod tests {
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/echo_accept").unwrap();
     let client = create_test_client();
-    let result = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: Some("application/json".to_string()),
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: Some("application/json".to_string()),
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
     if let Ok(FetchOnceResult::Code(body, _)) = result {
       assert_eq!(body, r#"{"accept":"application/json"}"#.as_bytes());
     } else {
@@ -467,14 +500,14 @@ mod tests {
     let target_url =
       Url::parse("http://localhost:4545/assets/fixture.json").unwrap();
     let client = create_test_client();
-    let result = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: None,
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
     if let Ok(FetchOnceResult::Redirect(url, _)) = result {
       assert_eq!(url, target_url);
     } else {
@@ -526,29 +559,31 @@ mod tests {
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("https://localhost:5545/assets/fixture.json").unwrap();
 
-    let client = create_http_client(
-      version::get_user_agent(),
-      None,
-      vec![read(
-        test_util::testdata_path()
-          .join("tls/RootCA.pem")
-          .to_str()
-          .unwrap(),
+    let client = HttpClient::from_client(
+      create_http_client(
+        version::get_user_agent(),
+        None,
+        vec![read(
+          test_util::testdata_path()
+            .join("tls/RootCA.pem")
+            .to_str()
+            .unwrap(),
+        )
+        .unwrap()],
+        None,
+        None,
+        None,
       )
-      .unwrap()],
-      None,
-      None,
-      None,
-    )
-    .unwrap();
-    let result = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: None,
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+      .unwrap(),
+    );
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(headers.get("content-type").unwrap(), "application/json");
@@ -564,24 +599,26 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server with a valid mozilla root CA cert.
     let url = Url::parse("https://deno.land").unwrap();
-    let client = create_http_client(
-      version::get_user_agent(),
-      None, // This will load mozilla certs by default
-      vec![],
-      None,
-      None,
-      None,
-    )
-    .unwrap();
+    let client = HttpClient::from_client(
+      create_http_client(
+        version::get_user_agent(),
+        None, // This will load mozilla certs by default
+        vec![],
+        None,
+        None,
+        None,
+      )
+      .unwrap(),
+    );
 
-    let result = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: None,
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
 
     println!("{:?}", result);
     if let Ok(FetchOnceResult::Code(body, _headers)) = result {
@@ -601,24 +638,20 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server with a valid mozilla root CA cert.
     let url = Url::parse("https://deno.land").unwrap();
-    let client = create_http_client(
-      version::get_user_agent(),
+    let client = HttpClient::new(
       Some(RootCertStore::empty()), // no certs loaded at all
-      vec![],
-      None,
-      None,
       None,
     )
     .unwrap();
 
-    let result = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: None,
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
 
     if let Ok(FetchOnceResult::Code(_body, _headers)) = result {
       // This test is expected to fail since to CA certs have been loaded
@@ -633,29 +666,31 @@ mod tests {
     let url =
       Url::parse("https://localhost:5545/run/import_compression/gziped")
         .unwrap();
-    let client = create_http_client(
-      version::get_user_agent(),
-      None,
-      vec![read(
-        test_util::testdata_path()
-          .join("tls/RootCA.pem")
-          .to_str()
-          .unwrap(),
+    let client = HttpClient::from_client(
+      create_http_client(
+        version::get_user_agent(),
+        None,
+        vec![read(
+          test_util::testdata_path()
+            .join("tls/RootCA.pem")
+            .to_str()
+            .unwrap(),
+        )
+        .unwrap()],
+        None,
+        None,
+        None,
       )
-      .unwrap()],
-      None,
-      None,
-      None,
-    )
-    .unwrap();
-    let result = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: None,
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+      .unwrap(),
+    );
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
       assert_eq!(
@@ -673,29 +708,31 @@ mod tests {
   async fn test_fetch_with_cafile_with_etag() {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
-    let client = create_http_client(
-      version::get_user_agent(),
-      None,
-      vec![read(
-        test_util::testdata_path()
-          .join("tls/RootCA.pem")
-          .to_str()
-          .unwrap(),
+    let client = HttpClient::from_client(
+      create_http_client(
+        version::get_user_agent(),
+        None,
+        vec![read(
+          test_util::testdata_path()
+            .join("tls/RootCA.pem")
+            .to_str()
+            .unwrap(),
+        )
+        .unwrap()],
+        None,
+        None,
+        None,
       )
-      .unwrap()],
-      None,
-      None,
-      None,
-    )
-    .unwrap();
-    let result = fetch_once(FetchOnceArgs {
-      client: client.clone(),
-      url: url.clone(),
-      maybe_accept: None,
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+      .unwrap(),
+    );
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url: url.clone(),
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
@@ -709,14 +746,14 @@ mod tests {
       panic!();
     }
 
-    let res = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: None,
-      maybe_etag: Some("33a64df551425fcc55e".to_string()),
-      maybe_auth_token: None,
-    })
-    .await;
+    let res = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: Some("33a64df551425fcc55e".to_string()),
+        maybe_auth_token: None,
+      })
+      .await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
   }
 
@@ -727,29 +764,31 @@ mod tests {
     let url =
       Url::parse("https://localhost:5545/run/import_compression/brotli")
         .unwrap();
-    let client = create_http_client(
-      version::get_user_agent(),
-      None,
-      vec![read(
-        test_util::testdata_path()
-          .join("tls/RootCA.pem")
-          .to_str()
-          .unwrap(),
+    let client = HttpClient::from_client(
+      create_http_client(
+        version::get_user_agent(),
+        None,
+        vec![read(
+          test_util::testdata_path()
+            .join("tls/RootCA.pem")
+            .to_str()
+            .unwrap(),
+        )
+        .unwrap()],
+        None,
+        None,
+        None,
       )
-      .unwrap()],
-      None,
-      None,
-      None,
-    )
-    .unwrap();
-    let result = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: None,
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+      .unwrap(),
+    );
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
@@ -770,14 +809,14 @@ mod tests {
     let url_str = "http://127.0.0.1:4545/bad_redirect";
     let url = Url::parse(url_str).unwrap();
     let client = create_test_client();
-    let result = fetch_once(FetchOnceArgs {
-      client,
-      url,
-      maybe_accept: None,
-      maybe_etag: None,
-      maybe_auth_token: None,
-    })
-    .await;
+    let result = client
+      .fetch_once(FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+      })
+      .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     // Check that the error message contains the original URL
