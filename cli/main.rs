@@ -772,7 +772,7 @@ async fn test_command(
   test_flags: TestFlags,
 ) -> Result<i32, AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
-    std::fs::create_dir_all(&coverage_dir)?;
+    std::fs::create_dir_all(coverage_dir)?;
     env::set_var(
       "DENO_UNSTABLE_COVERAGE_DIR",
       PathBuf::from(coverage_dir).canonicalize()?,
@@ -994,7 +994,7 @@ pub fn main() {
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
     };
     if !flags.v8_flags.is_empty() {
-      init_v8_flags(&*flags.v8_flags);
+      init_v8_flags(&flags.v8_flags);
     }
 
     logger::init(flags.log_level);

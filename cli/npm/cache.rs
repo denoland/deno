@@ -78,7 +78,7 @@ pub fn with_folder_sync_lock(
   match inner(output_folder, action) {
     Ok(()) => Ok(()),
     Err(err) => {
-      if let Err(remove_err) = fs::remove_dir_all(&output_folder) {
+      if let Err(remove_err) = fs::remove_dir_all(output_folder) {
         if remove_err.kind() != std::io::ErrorKind::NotFound {
           bail!(
             concat!(
@@ -156,7 +156,7 @@ impl ReadonlyNpmCache {
       root_dir: &Path,
     ) -> Result<PathBuf, AnyError> {
       if !root_dir.exists() {
-        std::fs::create_dir_all(&root_dir)
+        std::fs::create_dir_all(root_dir)
           .with_context(|| format!("Error creating {}", root_dir.display()))?;
       }
       Ok(crate::fs_util::canonicalize_path(root_dir)?)
