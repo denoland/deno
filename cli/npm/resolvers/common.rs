@@ -104,7 +104,7 @@ pub fn ensure_registry_read_permission(
   path: &Path,
 ) -> Result<(), AnyError> {
   // allow reading if it's in the node_modules
-  if path.starts_with(&registry_path)
+  if path.starts_with(registry_path)
     && path
       .components()
       .all(|c| !matches!(c, std::path::Component::ParentDir))

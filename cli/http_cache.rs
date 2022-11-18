@@ -123,7 +123,7 @@ impl HttpCache {
     if path.is_dir() {
       return Ok(());
     }
-    fs::create_dir_all(&path).map_err(|e| {
+    fs::create_dir_all(path).map_err(|e| {
       io::Error::new(
         e.kind(),
         format!(

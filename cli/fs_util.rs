@@ -333,9 +333,9 @@ pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
 ///
 /// Note: Does not handle symlinks.
 pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
-  std::fs::create_dir_all(&to)
+  std::fs::create_dir_all(to)
     .with_context(|| format!("Creating {}", to.display()))?;
-  let read_dir = std::fs::read_dir(&from)
+  let read_dir = std::fs::read_dir(from)
     .with_context(|| format!("Reading {}", from.display()))?;
 
   for entry in read_dir {
@@ -362,9 +362,9 @@ pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
 ///
 /// Note: Does not handle symlinks.
 pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
-  std::fs::create_dir_all(&to)
+  std::fs::create_dir_all(to)
     .with_context(|| format!("Creating {}", to.display()))?;
-  let read_dir = std::fs::read_dir(&from)
+  let read_dir = std::fs::read_dir(from)
     .with_context(|| format!("Reading {}", from.display()))?;
 
   for entry in read_dir {
@@ -451,7 +451,7 @@ pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
   #[cfg(unix)]
   {
     use std::os::unix::fs::symlink;
-    symlink(&oldpath, &newpath).map_err(err_mapper)?;
+    symlink(oldpath, newpath).map_err(err_mapper)?;
   }
   #[cfg(not(unix))]
   {
