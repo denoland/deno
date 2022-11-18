@@ -139,9 +139,10 @@ struct Node {
   pub parents: BTreeMap<String, BTreeSet<NodeParent>>,
   pub children: BTreeMap<String, NpmPackageId>,
   pub deps: Arc<Vec<NpmDependencyEntry>>,
-  /// If the node has been demonstrated to have no peer
-  /// dependencies in its descendants. If this is true
-  /// then we can skip analyzing this node again.
+  /// Whether the node has demonstrated to have no peer dependencies in its
+  /// descendants. If this is true then we can skip analyzing this node
+  /// again when we encounter it another time in the dependency tree, which
+  /// is much faster.
   pub no_peers: bool,
 }
 
