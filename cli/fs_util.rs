@@ -456,7 +456,7 @@ pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
   #[cfg(not(unix))]
   {
     use std::os::windows::fs::symlink_dir;
-    symlink_dir(&oldpath, &newpath).map_err(err_mapper)?;
+    symlink_dir(oldpath, newpath).map_err(err_mapper)?;
   }
   Ok(())
 }
