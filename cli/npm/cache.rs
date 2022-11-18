@@ -10,11 +10,11 @@ use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_runtime::deno_fetch::reqwest;
 
 use crate::deno_dir::DenoDir;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
+use crate::http_util::HttpClient;
 use crate::progress_bar::ProgressBar;
 
 use super::registry::NpmPackageVersionDistInfo;
@@ -315,6 +315,7 @@ impl ReadonlyNpmCache {
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   cache_setting: CacheSetting,
+  http_client: HttpClient,
   progress_bar: ProgressBar,
 }
 
@@ -322,11 +323,13 @@ impl NpmCache {
   pub fn from_deno_dir(
     dir: &DenoDir,
     cache_setting: CacheSetting,
+    http_client: HttpClient,
     progress_bar: ProgressBar,
   ) -> Self {
     Self {
       readonly: ReadonlyNpmCache::from_deno_dir(dir),
       cache_setting,
+      http_client,
       progress_bar,
     }
   }
@@ -383,7 +386,7 @@ impl NpmCache {
     }
 
     let _guard = self.progress_bar.update(&dist.tarball);
-    let response = reqwest::get(&dist.tarball).await?;
+    let response = self.http_client.get(&dist.tarball).send().await?;
 
     if response.status() == 404 {
       bail!("Could not find npm package tarball at: {}", dist.tarball);

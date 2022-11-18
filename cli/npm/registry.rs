@@ -18,12 +18,12 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::colors;
-use deno_runtime::deno_fetch::reqwest;
 use serde::Serialize;
 
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::http_cache::CACHE_PERM;
+use crate::http_util::HttpClient;
 use crate::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
@@ -249,6 +249,7 @@ impl RealNpmRegistryApi {
     base_url: Url,
     cache: NpmCache,
     cache_setting: CacheSetting,
+    http_client: HttpClient,
     progress_bar: ProgressBar,
   ) -> Self {
     Self(Arc::new(RealNpmRegistryApiInner {
@@ -256,6 +257,7 @@ impl RealNpmRegistryApi {
       cache,
       mem_cache: Default::default(),
       cache_setting,
+      http_client,
       progress_bar,
     }))
   }
@@ -285,6 +287,7 @@ struct RealNpmRegistryApiInner {
   cache: NpmCache,
   mem_cache: Mutex<HashMap<String, Option<Arc<NpmPackageInfo>>>>,
   cache_setting: CacheSetting,
+  http_client: HttpClient,
   progress_bar: ProgressBar,
 }
 
@@ -420,7 +423,7 @@ impl RealNpmRegistryApiInner {
     let package_url = self.get_package_url(name);
     let _guard = self.progress_bar.update(package_url.as_str());
 
-    let response = match reqwest::get(package_url).await {
+    let response = match self.http_client.get(package_url).send().await {
       Ok(response) => response,
       Err(err) => {
         // attempt to use the local cache
