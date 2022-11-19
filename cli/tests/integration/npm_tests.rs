@@ -1470,6 +1470,14 @@ itest!(info_peer_deps_json {
   http_server: true,
 });
 
+itest!(create_require {
+  args: "run --reload npm/create_require/main.ts",
+  output: "npm/create_require/main.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
 fn env_vars_no_sync_download() -> Vec<(String, String)> {
   vec![
     ("DENO_NODE_COMPAT_URL".to_string(), util::std_file_url()),
