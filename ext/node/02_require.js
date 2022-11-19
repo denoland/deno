@@ -820,7 +820,6 @@
 
   function createRequire(filenameOrUrl) {
     let fileUrlStr;
-    // TODO(kt3k): Support node.js Url object
     if (filenameOrUrl instanceof URL) {
       if (filenameOrUrl.protocol !== "file:") {
         throw new Error(
