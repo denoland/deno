@@ -32,6 +32,25 @@ pub fn path_to_declaration_path(
   path: PathBuf,
   referrer_kind: NodeModuleKind,
 ) -> PathBuf {
+  fn probe_extensions(
+    path: &Path,
+    referrer_kind: NodeModuleKind,
+  ) -> Option<PathBuf> {
+    let specific_dts_path = match referrer_kind {
+      NodeModuleKind::Cjs => with_known_extension(path, "d.cts"),
+      NodeModuleKind::Esm => with_known_extension(path, "d.mts"),
+    };
+    if specific_dts_path.exists() {
+      return Some(specific_dts_path);
+    }
+    let dts_path = with_known_extension(path, "d.ts");
+    if dts_path.exists() {
+      Some(dts_path)
+    } else {
+      None
+    }
+  }
+
   let lowercase_path = path.to_string_lossy().to_lowercase();
   if lowercase_path.ends_with(".d.ts")
     || lowercase_path.ends_with(".d.cts")
@@ -39,20 +58,54 @@ pub fn path_to_declaration_path(
   {
     return path;
   }
-  let specific_dts_path = match referrer_kind {
-    NodeModuleKind::Cjs => path.with_extension("d.cts"),
-    NodeModuleKind::Esm => path.with_extension("d.mts"),
-  };
-  if specific_dts_path.exists() {
-    specific_dts_path
-  } else {
-    let dts_path = path.with_extension("d.ts");
-    if dts_path.exists() {
-      dts_path
-    } else {
-      path
+  if let Some(path) = probe_extensions(&path, referrer_kind) {
+    return path;
+  }
+  if path.is_dir() {
+    if let Some(path) = probe_extensions(&path.join("index"), referrer_kind) {
+      return path;
     }
   }
+  path
+}
+
+/// Alternate `PathBuf::with_extension` that will handle known extensions
+/// more intelligently.
+pub fn with_known_extension(path: &Path, ext: &str) -> PathBuf {
+  const NON_DECL_EXTS: &[&str] = &["cjs", "js", "json", "jsx", "mjs", "tsx"];
+  const DECL_EXTS: &[&str] = &["cts", "mts", "ts"];
+
+  let file_name = match path.file_name() {
+    Some(value) => value.to_string_lossy(),
+    None => return path.to_path_buf(),
+  };
+  let lowercase_file_name = file_name.to_lowercase();
+  let period_index = lowercase_file_name.rfind('.').and_then(|period_index| {
+    let ext = &lowercase_file_name[period_index + 1..];
+    if DECL_EXTS.contains(&ext) {
+      if let Some(next_period_index) =
+        lowercase_file_name[..period_index].rfind('.')
+      {
+        if &lowercase_file_name[next_period_index + 1..period_index] == "d" {
+          Some(next_period_index)
+        } else {
+          Some(period_index)
+        }
+      } else {
+        Some(period_index)
+      }
+    } else if NON_DECL_EXTS.contains(&ext) {
+      Some(period_index)
+    } else {
+      None
+    }
+  });
+
+  let file_name = match period_index {
+    Some(period_index) => &file_name[..period_index],
+    None => &file_name,
+  };
+  path.with_file_name(format!("{}.{}", file_name, ext))
 }
 
 fn to_specifier_display_string(url: &ModuleSpecifier) -> String {
@@ -853,5 +906,19 @@ mod tests {
         true
       )
     );
+  }
+
+  #[test]
+  fn test_with_known_extension() {
+    let cases = &[
+      ("test", "d.ts", "test.d.ts"),
+      ("test.d.ts", "ts", "test.ts"),
+      ("test.worker", "d.ts", "test.worker.d.ts"),
+      ("test.d.mts", "js", "test.js"),
+    ];
+    for (path, ext, expected) in cases {
+      let actual = with_known_extension(&PathBuf::from(path), ext);
+      assert_eq!(actual.to_string_lossy(), *expected);
+    }
   }
 }
