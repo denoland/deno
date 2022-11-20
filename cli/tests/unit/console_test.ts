@@ -2103,3 +2103,9 @@ Deno.test(async function inspectAggregateError() {
     );
   }
 });
+
+Deno.test(function inspectorMethods() {
+  console.timeStamp("test");
+  console.profile("test");
+  console.profileEnd("test");
+});

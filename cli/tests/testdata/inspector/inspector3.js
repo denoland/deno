@@ -1,9 +1,10 @@
+// deno-lint-ignore-file
+
 // check that console methods provided by V8 are available in the inspector
 console.timeStamp("foo");
 console.profile("foo");
 console.profileEnd("foo");
 
-// deno-lint-ignore-file
 for (let i = 0; i < 128; i++) {
   console.log(i);
   debugger;

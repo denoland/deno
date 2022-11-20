@@ -2239,6 +2239,12 @@
       this.error(err.stack);
     };
 
+    // These methods are noops, but when the inspector is connected, they
+    // call into V8.
+    profile = (_label) => {};
+    profileEnd = (_label) => {};
+    timeStamp = (_label) => {};
+
     static [SymbolHasInstance](instance) {
       return instance[isConsoleInstance];
     }
