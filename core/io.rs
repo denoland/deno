@@ -3,10 +3,10 @@
 use std::ops::Deref;
 use std::ops::DerefMut;
 
-use serde_v8::ZeroCopyBuf;
+use serde_v8::DetachedBuffer;
 
 /// BufView is a wrapper around an underlying contiguous chunk  of bytes. It can
-/// be created from a [ZeroCopyBuf], [bytes::Bytes], or [Vec<u8>] and implements
+/// be created from a [DetachedBuffer], [bytes::Bytes], or [Vec<u8>] and implements
 /// `Deref<[u8]>` and `AsRef<[u8]>`.
 ///
 /// The wrapper has the ability to constrain the exposed view to a sub-region of
@@ -21,7 +21,7 @@ pub struct BufView {
 enum BufViewInner {
   Empty,
   Bytes(bytes::Bytes),
-  ZeroCopy(ZeroCopyBuf),
+  Detached(DetachedBuffer),
   Vec(Vec<u8>),
 }
 
@@ -40,7 +40,7 @@ impl BufView {
     match &self.inner {
       BufViewInner::Empty => 0,
       BufViewInner::Bytes(bytes) => bytes.len() - self.cursor,
-      BufViewInner::ZeroCopy(zero_copy) => zero_copy.len() - self.cursor,
+      BufViewInner::Detached(detached) => detached.len() - self.cursor,
       BufViewInner::Vec(vec) => vec.len() - self.cursor,
     }
   }
@@ -63,6 +63,13 @@ impl BufView {
     self.cursor = 0;
     old
   }
+
+  pub fn unwrap_detached_buffer(self) -> DetachedBuffer {
+    match self.inner {
+      BufViewInner::Detached(detached) => detached,
+      _ => panic!("Cannot unwrap into a DetachedBuffer"),
+    }
+  }
 }
 
 impl Deref for BufView {
@@ -72,7 +79,7 @@ impl Deref for BufView {
     let buf = match &self.inner {
       BufViewInner::Empty => &[],
       BufViewInner::Bytes(bytes) => bytes.deref(),
-      BufViewInner::ZeroCopy(zero_copy) => zero_copy.deref(),
+      BufViewInner::Detached(detached) => detached.deref(),
       BufViewInner::Vec(vec) => vec.deref(),
     };
     &buf[self.cursor..]
@@ -85,9 +92,9 @@ impl AsRef<[u8]> for BufView {
   }
 }
 
-impl From<ZeroCopyBuf> for BufView {
-  fn from(buf: ZeroCopyBuf) -> Self {
-    Self::from_inner(BufViewInner::ZeroCopy(buf))
+impl From<DetachedBuffer> for BufView {
+  fn from(buf: DetachedBuffer) -> Self {
+    Self::from_inner(BufViewInner::Detached(buf))
   }
 }
 
@@ -108,14 +115,14 @@ impl From<BufView> for bytes::Bytes {
     match buf.inner {
       BufViewInner::Empty => bytes::Bytes::new(),
       BufViewInner::Bytes(bytes) => bytes,
-      BufViewInner::ZeroCopy(zero_copy) => zero_copy.into(),
+      BufViewInner::Detached(detached) => detached.into(),
       BufViewInner::Vec(vec) => vec.into(),
     }
   }
 }
 
 /// BufMutView is a wrapper around an underlying contiguous chunk of writable
-/// bytes. It can be created from a `ZeroCopyBuf` or a `Vec<u8>` and implements
+/// bytes. It can be created from a `DetachedBuffer` or a `Vec<u8>` and implements
 /// `DerefMut<[u8]>` and `AsMut<[u8]>`.
 ///
 /// The wrapper has the ability to constrain the exposed view to a sub-region of
@@ -130,7 +137,7 @@ pub struct BufMutView {
 }
 
 enum BufMutViewInner {
-  ZeroCopy(ZeroCopyBuf),
+  Detached(DetachedBuffer),
   Vec(Vec<u8>),
 }
 
@@ -147,7 +154,7 @@ impl BufMutView {
   /// buffer minus the cursor position.
   pub fn len(&self) -> usize {
     match &self.inner {
-      BufMutViewInner::ZeroCopy(zero_copy) => zero_copy.len() - self.cursor,
+      BufMutViewInner::Detached(detached) => detached.len() - self.cursor,
       BufMutViewInner::Vec(vec) => vec.len() - self.cursor,
     }
   }
@@ -174,7 +181,7 @@ impl BufMutView {
   /// Turn this `BufMutView` into a `BufView`.
   pub fn into_view(self) -> BufView {
     let inner = match self.inner {
-      BufMutViewInner::ZeroCopy(zero_copy) => BufViewInner::ZeroCopy(zero_copy),
+      BufMutViewInner::Detached(detached) => BufViewInner::Detached(detached),
       BufMutViewInner::Vec(vec) => BufViewInner::Vec(vec),
     };
     BufView {
@@ -186,24 +193,33 @@ impl BufMutView {
   /// Unwrap the underlying buffer into a `Vec<u8>`, consuming the `BufMutView`.
   ///
   /// This method panics when called on a `BufMutView` that was created from a
-  /// `ZeroCopyBuf`.
+  /// `DetachedBuffer`.
   pub fn unwrap_vec(self) -> Vec<u8> {
     match self.inner {
-      BufMutViewInner::ZeroCopy(_) => {
-        panic!("Cannot unwrap a ZeroCopyBuf backed BufMutView into a Vec");
+      BufMutViewInner::Detached(_) => {
+        panic!("Cannot unwrap a DetachedBuffer backed BufMutView into a Vec");
       }
       BufMutViewInner::Vec(vec) => vec,
+    }
+  }
+
+  pub fn unwrap_detached_buffer(self) -> DetachedBuffer {
+    match self.inner {
+      BufMutViewInner::Detached(detached) => detached,
+      BufMutViewInner::Vec(_) => {
+        panic!("Cannot unwrap a Vec-backed ButMutView into a DetachedBuffer");
+      }
     }
   }
 
   /// Get a mutable reference to an underlying `Vec<u8>`.
   ///
   /// This method panics when called on a `BufMutView` that was created from a
-  /// `ZeroCopyBuf`.
+  /// `DetachedBuffer`.
   pub fn get_mut_vec(&mut self) -> &mut Vec<u8> {
     match &mut self.inner {
-      BufMutViewInner::ZeroCopy(_) => {
-        panic!("Cannot unwrap a ZeroCopyBuf backed BufMutView into a Vec");
+      BufMutViewInner::Detached(_) => {
+        panic!("Cannot unwrap a DetachedBuffer backed BufMutView into a Vec");
       }
       BufMutViewInner::Vec(vec) => vec,
     }
@@ -215,7 +231,7 @@ impl Deref for BufMutView {
 
   fn deref(&self) -> &[u8] {
     let buf = match &self.inner {
-      BufMutViewInner::ZeroCopy(zero_copy) => zero_copy.deref(),
+      BufMutViewInner::Detached(detached) => detached.deref(),
       BufMutViewInner::Vec(vec) => vec.deref(),
     };
     &buf[self.cursor..]
@@ -225,7 +241,7 @@ impl Deref for BufMutView {
 impl DerefMut for BufMutView {
   fn deref_mut(&mut self) -> &mut [u8] {
     let buf = match &mut self.inner {
-      BufMutViewInner::ZeroCopy(zero_copy) => zero_copy.deref_mut(),
+      BufMutViewInner::Detached(detached) => detached.deref_mut(),
       BufMutViewInner::Vec(vec) => vec.deref_mut(),
     };
     &mut buf[self.cursor..]
@@ -244,9 +260,9 @@ impl AsMut<[u8]> for BufMutView {
   }
 }
 
-impl From<ZeroCopyBuf> for BufMutView {
-  fn from(buf: ZeroCopyBuf) -> Self {
-    Self::from_inner(BufMutViewInner::ZeroCopy(buf))
+impl From<DetachedBuffer> for BufMutView {
+  fn from(buf: DetachedBuffer) -> Self {
+    Self::from_inner(BufMutViewInner::Detached(buf))
   }
 }
 

@@ -686,14 +686,13 @@
             return;
           }
 
-          const bytesRead = await core.read(rid, v);
+          const [newViewUntrimmed, bytesRead] = await core.read(rid, v);
           if (bytesRead === 0) {
             tryClose();
             controller.close();
-            controller.byobRequest.respond(0);
-          } else {
-            controller.byobRequest.respond(bytesRead);
           }
+          const newView = newViewUntrimmed.subarray(0, bytesRead);
+          controller.byobRequest.respondWithNewView(newView);
         } catch (e) {
           controller.error(e);
           tryClose();
@@ -739,15 +738,14 @@
           const promise = core.read(rid, v);
           const promiseId = stream[promiseIdSymbol] = promise[promiseIdSymbol];
           if (stream[_isUnref]) core.unrefOp(promiseId);
-          const bytesRead = await promise;
+          const [newViewUntrimmed, bytesRead] = await promise;
           stream[promiseIdSymbol] = undefined;
           if (bytesRead === 0) {
             core.tryClose(rid);
             controller.close();
-            controller.byobRequest.respond(0);
-          } else {
-            controller.byobRequest.respond(bytesRead);
           }
+          const newView = newViewUntrimmed.subarray(0, bytesRead);
+          controller.byobRequest.respondWithNewView(newView);
         } catch (e) {
           controller.error(e);
           core.tryClose(rid);
@@ -809,7 +807,7 @@
       // fast path, read whole body in a single op call
       try {
         readableStreamDisturb(stream);
-        const promise = core.opAsync("op_read_all", resourceBacking.rid);
+        const promise = core.readAll(resourceBacking.rid);
         if (readableStreamIsUnrefable(stream)) {
           const promiseId = stream[promiseIdSymbol] = promise[promiseIdSymbol];
           if (stream[_isUnref]) core.unrefOp(promiseId);

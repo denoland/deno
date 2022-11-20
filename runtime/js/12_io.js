@@ -102,17 +102,24 @@
       return 0;
     }
 
-    const nread = await core.read(rid, buffer);
-
-    return nread === 0 ? null : nread;
+    const temp = new Uint8Array(buffer.length);
+    const [temp2, nread] = await core.read(rid, temp);
+    if (nread === 0) {
+      return null;
+    } else {
+      buffer.set(temp2.subarray(0, nread), 0);
+      return nread;
+    }
   }
 
   function writeSync(rid, data) {
     return ops.op_write_sync(rid, data);
   }
 
-  function write(rid, data) {
-    return core.write(rid, data);
+  async function write(rid, data) {
+    const copy = new Uint8Array(data);
+    const [_, nwritten] = await ops.op_write(rid, copy);
+    return nwritten;
   }
 
   const READ_PER_ITER = 64 * 1024; // 64kb

@@ -9,9 +9,11 @@ use crate::resources::ResourceId;
 use crate::Extension;
 use crate::OpState;
 use crate::Resource;
+use crate::WriteOutcome;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
+use serde_v8::DetachedBuffer;
 use std::cell::RefCell;
 use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
@@ -166,11 +168,12 @@ pub fn op_wasm_streaming_set_url(
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
-) -> Result<u32, Error> {
+  buf: DetachedBuffer,
+) -> Result<(DetachedBuffer, u32), Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   let view = BufMutView::from(buf);
-  resource.read_byob(view).await.map(|(n, _)| n as u32)
+  let (read, view) = resource.read_byob(view).await?;
+  Ok((view.unwrap_detached_buffer(), read as u32))
 }
 
 #[op]
@@ -246,19 +249,24 @@ async fn op_read_all(
 async fn op_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
-) -> Result<u32, Error> {
+  buf: DetachedBuffer,
+) -> Result<(Option<DetachedBuffer>, u32), Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   let view = BufView::from(buf);
   let resp = resource.write(view).await?;
-  Ok(resp.nwritten() as u32)
+  Ok(match resp {
+    WriteOutcome::Partial { nwritten, view } => {
+      (Some(view.unwrap_detached_buffer()), nwritten as u32)
+    }
+    WriteOutcome::Full { nwritten } => (None, nwritten as u32),
+  })
 }
 
 #[op]
 async fn op_write_all(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
+  buf: DetachedBuffer,
 ) -> Result<(), Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   let view = BufView::from(buf);

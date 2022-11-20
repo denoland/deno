@@ -26,12 +26,21 @@
     if (buffer.length === 0) {
       return 0;
     }
-    const nread = await core.read(rid, buffer);
-    return nread === 0 ? null : nread;
+
+    const temp = new Uint8Array(buffer.length);
+    const [tempView, nread] = await core.read(rid, temp);
+    if (nread === 0) {
+      return null;
+    } else {
+      buffer.set(tempView.subarray(0, nread), 0);
+      return nread;
+    }
   }
 
   async function write(rid, data) {
-    return await core.write(rid, data);
+    const copy = new Uint8Array(data);
+    const [_, nwritten] = await core.write(rid, copy);
+    return nwritten;
   }
 
   function shutdown(rid) {
