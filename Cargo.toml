@@ -68,13 +68,13 @@ deno_web = { version = "0.109.0", path = "./ext/web" }
 deno_webgpu = { version = "0.79.0", path = "./ext/webgpu" }
 deno_webidl = { version = "0.78.0", path = "./ext/webidl" }
 deno_websocket = { version = "0.83.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.83.0", path = "./ext/webstorage" }
+deno_webstorage = { version = "0.73.0", path = "./ext/webstorage" }
 deno_napi = { version = "0.8.0", path = "./ext/napi" }
 
 anyhow = "1.0.57"
 async-trait = "0.1.51"
 atty = "=0.2.14"
-base64 = "=0.13.0"
+base64 = "=0.13.1"
 bencher = "0.1"
 bytes = "=1.2.1"
 cache_control = "=0.2.0"
