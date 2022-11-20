@@ -15,6 +15,9 @@
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
+    ArrayBuffer,
+    ArrayBufferIsView,
+    DataView,
   } = window.__bootstrap.primordials;
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
@@ -23,22 +26,38 @@
     rid,
     buffer,
   ) {
-    if (buffer.length === 0) {
+    if (buffer.byteLength === 0) {
       return 0;
     }
 
-    const temp = new Uint8Array(buffer.length);
+    if (!(buffer instanceof ArrayBuffer) && !ArrayBufferIsView(buffer)) {
+      throw new TypeError("Expected an ArrayBuffer or an ArrayBufferView");
+    }
+    const temp = new Uint8Array(buffer.byteLength);
     const [tempView, nread] = await core.read(rid, temp);
     if (nread === 0) {
       return null;
     } else {
-      buffer.set(tempView.subarray(0, nread), 0);
+      const bufferView = new Uint8Array(
+        buffer instanceof ArrayBuffer ? buffer : buffer.buffer,
+      );
+      bufferView.set(tempView.subarray(0, nread));
       return nread;
     }
   }
 
   async function write(rid, data) {
-    const copy = new Uint8Array(data);
+    let copy;
+    if (data instanceof ArrayBuffer || data instanceof DataView) {
+      copy = new Uint8Array(data.byteLength);
+      copy.set(
+        new Uint8Array(data instanceof ArrayBuffer ? data : data.buffer),
+      );
+    } else if (ArrayBufferIsView(data)) {
+      copy = new Uint8Array(data);
+    } else {
+      throw new TypeError("Expected an ArrayBuffer or an ArrayBufferView");
+    }
     const [_, nwritten] = await core.write(rid, copy);
     return nwritten;
   }
