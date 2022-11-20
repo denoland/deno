@@ -17,6 +17,7 @@
     ArrayBuffer,
     ArrayBufferIsView,
     DataView,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   const DEFAULT_BUFFER_SIZE = 32 * 1024;
