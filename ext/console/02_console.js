@@ -2332,6 +2332,9 @@
           consoleFromV8[key],
           consoleFromDeno[key],
         );
+      } else {
+        // Add additional console APIs from the inspector
+        consoleFromDeno[key] = consoleFromV8[key];
       }
     }
   }
