@@ -7,7 +7,6 @@
   const { fromFlashRequest, toInnerResponse, _flash } =
     window.__bootstrap.fetch;
   const core = window.Deno.core;
-  const { Event } = window.__bootstrap.event;
   const {
     ReadableStream,
     ReadableStreamPrototype,
@@ -15,17 +14,7 @@
     readableStreamClose,
     _state,
   } = window.__bootstrap.streams;
-  const {
-    WebSocket,
-    _rid,
-    _readyState,
-    _eventLoop,
-    _protocol,
-    _idleTimeoutDuration,
-    _idleTimeoutTimeout,
-    _serverHandleIdleTimeout,
-  } = window.__bootstrap.webSocket;
-  const { _ws } = window.__bootstrap.http;
+  const { _ws, handleWS } = window.__bootstrap.http;
   const {
     Function,
     ObjectPrototypeIsPrototypeOf,
@@ -397,28 +386,10 @@
         }
       }
 
-      if (ws) {
-        const wsRid = await core.opAsync(
-          "op_flash_upgrade_websocket",
-          serverId,
-          i,
-        );
-        ws[_rid] = wsRid;
-        ws[_protocol] = resp.headers.get("sec-websocket-protocol");
-
-        ws[_readyState] = WebSocket.OPEN;
-        const event = new Event("open");
-        ws.dispatchEvent(event);
-
-        ws[_eventLoop]();
-        if (ws[_idleTimeoutDuration]) {
-          ws.addEventListener(
-            "close",
-            () => clearTimeout(ws[_idleTimeoutTimeout]),
-          );
-        }
-        ws[_serverHandleIdleTimeout]();
-      }
+      await handleWS(
+        resp,
+        () => core.opAsync("op_flash_upgrade_websocket", serverId, i),
+      );
     })();
   }
 

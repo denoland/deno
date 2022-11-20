@@ -1396,6 +1396,23 @@ declare namespace Deno {
    */
   export function upgradeHttpRaw(request: Request): [Deno.Conn, Uint8Array];
 
+  /** The object that is returned from a {@linkcode Deno.upgradeWebSocket}
+   * request.
+   *
+   * @category Web Sockets */
+  export interface WebSocketUpgrade {
+    /** The response object that represents the HTTP response to the client,
+     * which should be used to the {@linkcode RequestEvent} `.respondWith()` for
+     * the upgrade to be successful. */
+    response: Response;
+    /** The {@linkcode WebSocket} interface to communicate to the client via a
+     * web socket. */
+    socket: WebSocket;
+    /** The {@linkcode WebSocketStream} interface to communicate to the client via a
+     * web socket. */
+    stream: WebSocketStream;
+  }
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @deprecated Use the Deno.Command API instead.

@@ -30,6 +30,10 @@
     _idleTimeoutDuration,
     _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
+    _connection,
+    _closed,
+    _closeSent,
+    _createWebSocketStreams,
   } = window.__bootstrap.webSocket;
   const { TcpConn, UnixConn } = window.__bootstrap.net;
   const { TlsConn } = window.__bootstrap.tls;
@@ -346,30 +350,11 @@
 
           deferred.resolve([conn, res.readBuf]);
         }
-        const ws = resp[_ws];
-        if (ws) {
-          const wsRid = await core.opAsync(
-            "op_http_upgrade_websocket",
-            streamRid,
-          );
-          ws[_rid] = wsRid;
-          ws[_protocol] = resp.headers.get("sec-websocket-protocol");
-
-          httpConn.close();
-
-          ws[_readyState] = WebSocket.OPEN;
-          const event = new Event("open");
-          ws.dispatchEvent(event);
-
-          ws[_eventLoop]();
-          if (ws[_idleTimeoutDuration]) {
-            ws.addEventListener(
-              "close",
-              () => clearTimeout(ws[_idleTimeoutTimeout]),
-            );
-          }
-          ws[_serverHandleIdleTimeout]();
-        }
+        await handleWS(
+          resp,
+          () => core.opAsync("op_http_upgrade_websocket", streamRid),
+          httpConn,
+        );
       } finally {
         if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
           core.close(streamRid);
@@ -379,6 +364,48 @@
   }
 
   const _ws = Symbol("[[associated_ws]]");
+
+  async function handleWS(resp, getWSRid, httpConn) {
+    if (resp[_ws]) {
+      if (resp[_ws].kind === null) {
+        throw new Error(
+          "No websocket was used from Deno.upgradeWebSocket() call",
+        );
+      }
+      const ws = resp[_ws].kind === "socket"
+        ? resp[_ws].socket
+        : resp[_ws].stream;
+
+      ws[_rid] = await getWSRid();
+
+      httpConn?.close();
+
+      if (ws instanceof WebSocket) {
+        ws[_protocol] = resp.headers.get("sec-websocket-protocol");
+
+        ws[_readyState] = WebSocket.OPEN;
+        const event = new Event("open");
+        ws.dispatchEvent(event);
+
+        ws[_eventLoop]();
+        if (ws[_idleTimeoutDuration]) {
+          ws.addEventListener(
+            "close",
+            () => clearTimeout(ws[_idleTimeoutTimeout]),
+          );
+        }
+        ws[_serverHandleIdleTimeout]();
+      } else {
+        const { readable, writable } = ws[_createWebSocketStreams]();
+        ws[_connection].resolve({
+          readable,
+          writable,
+          extensions: "",
+          protocol: resp.headers.get("sec-websocket-protocol"),
+        });
+      }
+    }
+  }
 
   function upgradeWebSocket(request, options = {}) {
     const upgrade = request.headers.get("upgrade");
@@ -441,11 +468,37 @@
     const socket = webidl.createBranded(WebSocket);
     setEventTargetData(socket);
     socket[_server] = true;
-    response[_ws] = socket;
     socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
     socket[_idleTimeoutTimeout] = null;
 
-    return { response, socket };
+    const stream = webidl.createBranded(WebSocketStream);
+    stream[_server] = true;
+    stream[_idleTimeoutDuration] = options.idleTimeout ?? 120;
+    stream[_idleTimeoutTimeout] = null;
+    stream[_connection] = new Deferred();
+    stream[_closeSent] = new Deferred();
+    stream[_closed] = new Deferred();
+
+    const webSocketSelector = { kind: null, socket, stream };
+    response[_ws] = webSocketSelector;
+
+    return {
+      response,
+      get socket() {
+        if (webSocketSelector.kind === "stream") {
+          throw new TypeError("Websocket already taken as WebSocketStream");
+        }
+        webSocketSelector.kind = "socket";
+        return socket;
+      },
+      get stream() {
+        if (webSocketSelector.kind === "socket") {
+          throw new TypeError("Websocket already taken as WebSocket");
+        }
+        webSocketSelector.kind = "stream";
+        return stream;
+      },
+    };
   }
 
   function upgradeHttp(req) {
@@ -463,6 +516,7 @@
     HttpConn,
     upgradeWebSocket,
     upgradeHttp,
+    handleWS,
     _ws,
   };
 })(this);
