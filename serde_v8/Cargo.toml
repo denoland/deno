@@ -18,7 +18,7 @@ bytes.workspace = true
 derive_more = "0.99.17"
 serde.workspace = true
 serde_bytes.workspace = true
-smallvec = { version = "1.8", features = ["union"] }
+smallvec = { workspace = true, features = ["union"] }
 v8.workspace = true
 
 [dev-dependencies]
