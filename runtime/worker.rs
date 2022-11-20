@@ -7,6 +7,8 @@ use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::CreateCache;
+use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
@@ -16,6 +18,7 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
+use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
@@ -24,6 +27,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
@@ -71,6 +75,7 @@ pub struct MainWorker {
 pub struct WorkerOptions {
   pub bootstrap: BootstrapOptions,
   pub extensions: Vec<Extension>,
+  pub startup_snapshot: Option<Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
@@ -85,6 +90,7 @@ pub struct WorkerOptions {
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
@@ -97,9 +103,45 @@ fn grab_cb(
   scope: &mut v8::HandleScope,
   path: &str,
 ) -> v8::Global<v8::Function> {
-  let cb = JsRuntime::grab_global::<v8::Function>(scope, path)
+  let cb = JsRuntime::eval::<v8::Function>(scope, path)
     .unwrap_or_else(|| panic!("{} must be defined", path));
   v8::Global::new(scope, cb)
+}
+
+impl Default for WorkerOptions {
+  fn default() -> Self {
+    Self {
+      web_worker_preload_module_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
+      web_worker_pre_execute_module_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
+      create_web_worker_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
+      module_loader: Rc::new(FsModuleLoader),
+      seed: None,
+      unsafely_ignore_certificate_errors: Default::default(),
+      should_break_on_first_statement: Default::default(),
+      compiled_wasm_module_store: Default::default(),
+      shared_array_buffer_store: Default::default(),
+      maybe_inspector_server: Default::default(),
+      format_js_error_fn: Default::default(),
+      get_error_class_fn: Default::default(),
+      origin_storage_dir: Default::default(),
+      cache_storage_dir: Default::default(),
+      broadcast_channel: Default::default(),
+      source_map_getter: Default::default(),
+      root_cert_store: Default::default(),
+      npm_resolver: Default::default(),
+      blob_store: Default::default(),
+      extensions: Default::default(),
+      startup_snapshot: Default::default(),
+      bootstrap: Default::default(),
+      stdio: Default::default(),
+    }
+  }
 }
 
 impl MainWorker {
@@ -131,6 +173,10 @@ impl MainWorker {
       })
       .build();
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
+    let create_cache = options.cache_storage_dir.map(|storage_dir| {
+      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
+      CreateCache(Arc::new(create_cache_fn))
+    });
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
@@ -151,6 +197,7 @@ impl MainWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
+      deno_cache::init::<SqliteBackedCache>(create_cache),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
@@ -181,7 +228,8 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_node::init::<Permissions>(unstable, options.npm_resolver),
+      deno_napi::init::<Permissions>(unstable),
+      deno_node::init::<Permissions>(options.npm_resolver),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
@@ -197,12 +245,17 @@ impl MainWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(js::deno_isolate_init()),
+      startup_snapshot: Some(
+        options
+          .startup_snapshot
+          .unwrap_or_else(js::deno_isolate_init),
+      ),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      inspector: options.maybe_inspector_server.is_some(),
       ..Default::default()
     });
 
@@ -396,6 +449,7 @@ impl MainWorker {
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
+    self.js_runtime.maybe_init_inspector();
     self.js_runtime.inspector().borrow().create_local_session()
   }
 
@@ -504,6 +558,7 @@ mod tests {
         cpu_count: 1,
         debug_flag: false,
         enable_testing_features: false,
+        locale: deno_core::v8::icu::get_language_tag(),
         location: None,
         no_color: true,
         is_tty: false,
@@ -514,6 +569,7 @@ mod tests {
         inspect: false,
       },
       extensions: vec![],
+      startup_snapshot: None,
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
       seed: None,
@@ -524,9 +580,10 @@ mod tests {
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
-      module_loader: Rc::new(deno_core::FsModuleLoader),
+      module_loader: Rc::new(FsModuleLoader),
       npm_resolver: None,
       get_error_class_fn: None,
+      cache_storage_dir: None,
       origin_storage_dir: None,
       blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),

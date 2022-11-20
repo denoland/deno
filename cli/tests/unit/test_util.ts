@@ -6,6 +6,7 @@ import { resolve } from "../../../test_util/std/path/mod.ts";
 export {
   assert,
   assertEquals,
+  assertFalse,
   assertMatch,
   assertNotEquals,
   assertRejects,
@@ -19,7 +20,7 @@ export {
 export { deferred } from "../../../test_util/std/async/deferred.ts";
 export type { Deferred } from "../../../test_util/std/async/deferred.ts";
 export { delay } from "../../../test_util/std/async/delay.ts";
-export { readLines } from "../../../test_util/std/io/bufio.ts";
+export { readLines } from "../../../test_util/std/io/buffer.ts";
 export { parse as parseArgs } from "../../../test_util/std/flags/mod.ts";
 
 export function pathToAbsoluteFileUrl(path: string): URL {

@@ -458,6 +458,13 @@ async fn generate_lint_diagnostics(
         break;
       }
 
+      // ignore any npm package files
+      if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+        if npm_resolver.in_npm_package(document.specifier()) {
+          continue;
+        }
+      }
+
       let version = document.maybe_lsp_version();
       diagnostics_vec.push((
         document.specifier().clone(),
@@ -597,6 +604,8 @@ pub enum DenoDiagnostic {
   NoCacheBlob,
   /// A data module was not found in the cache.
   NoCacheData(ModuleSpecifier),
+  /// A remote npm package reference was not found in the cache.
+  NoCacheNpm(NpmPackageReference, ModuleSpecifier),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
   /// The specifier resolved to a remote specifier that was redirected to
@@ -622,6 +631,7 @@ impl DenoDiagnostic {
       Self::NoCache(_) => "no-cache",
       Self::NoCacheBlob => "no-cache-blob",
       Self::NoCacheData(_) => "no-cache-data",
+      Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
       Self::Redirect { .. } => "redirect",
       Self::ResolutionError(err) => match err {
@@ -690,16 +700,17 @@ impl DenoDiagnostic {
           }),
           ..Default::default()
         },
-        "no-cache" | "no-cache-data" => {
+        "no-cache" | "no-cache-data" | "no-cache-npm" => {
           let data = diagnostic
             .data
             .clone()
             .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
           let data: DiagnosticDataSpecifier = serde_json::from_value(data)?;
-          let title = if code == "no-cache" {
-            format!("Cache \"{}\" and its dependencies.", data.specifier)
-          } else {
-            "Cache the data URL and its dependencies.".to_string()
+          let title = match code.as_str() {
+            "no-cache" | "no-cache-npm" => {
+              format!("Cache \"{}\" and its dependencies.", data.specifier)
+            }
+            _ => "Cache the data URL and its dependencies.".to_string(),
           };
           lsp::CodeAction {
             title,
@@ -757,6 +768,7 @@ impl DenoDiagnostic {
         code.as_str(),
         "import-map-remap"
           | "no-cache"
+          | "no-cache-npm"
           | "no-cache-data"
           | "no-assert-type"
           | "redirect"
@@ -777,6 +789,7 @@ impl DenoDiagnostic {
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{}\".", specifier), Some(json!({ "specifier": specifier }))),
       Self::NoCacheBlob => (lsp::DiagnosticSeverity::ERROR, "Uncached blob URL.".to_string(), None),
       Self::NoCacheData(specifier) => (lsp::DiagnosticSeverity::ERROR, "Uncached data URL.".to_string(), Some(json!({ "specifier": specifier }))),
+      Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: \"{}\".", pkg_ref.req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{}\" was redirected to \"{}\".", from, to), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => (lsp::DiagnosticSeverity::ERROR, err.to_string(), None),
@@ -847,8 +860,20 @@ fn diagnose_resolved(
               .push(DenoDiagnostic::NoAssertType.to_lsp_diagnostic(&range)),
           }
         }
-      } else if NpmPackageReference::from_specifier(specifier).is_ok() {
-        // ignore npm specifiers for now
+      } else if let Ok(pkg_ref) = NpmPackageReference::from_specifier(specifier)
+      {
+        if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+          // show diagnostics for npm package references that aren't cached
+          if npm_resolver
+            .resolve_package_folder_from_deno_module(&pkg_ref.req)
+            .is_err()
+          {
+            diagnostics.push(
+              DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone())
+                .to_lsp_diagnostic(&range),
+            );
+          }
+        }
       } else {
         // When the document is not available, it means that it cannot be found
         // in the cache or locally on the disk, so we want to issue a diagnostic
@@ -882,6 +907,12 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
+  if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+    if npm_resolver.in_npm_package(referrer) {
+      return; // ignore, surface typescript errors instead
+    }
+  }
+
   if let Some(import_map) = &snapshot.maybe_import_map {
     if let Resolved::Ok {
       specifier, range, ..
@@ -938,8 +969,8 @@ async fn generate_deno_diagnostics(
           &mut diagnostics,
           snapshot,
           specifier,
-          &dependency_key,
-          &dependency,
+          dependency_key,
+          dependency,
         );
       }
     }

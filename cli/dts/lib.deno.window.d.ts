@@ -6,6 +6,7 @@
 /// <reference lib="deno.webgpu" />
 /// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
+/// <reference lib="deno.cache" />
 
 /** @category Web APIs */
 interface WindowEventMap {
@@ -20,6 +21,7 @@ declare class Window extends EventTarget {
   readonly self: Window & typeof globalThis;
   onerror: ((this: Window, ev: ErrorEvent) => any) | null;
   onload: ((this: Window, ev: Event) => any) | null;
+  onbeforeunload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
   onunhandledrejection:
     | ((this: Window, ev: PromiseRejectionEvent) => any)
@@ -36,6 +38,7 @@ declare class Window extends EventTarget {
   location: Location;
   localStorage: Storage;
   sessionStorage: Storage;
+  caches: CacheStorage;
 
   addEventListener<K extends keyof WindowEventMap>(
     type: K,
@@ -74,6 +77,8 @@ declare var onerror: ((this: Window, ev: ErrorEvent) => any) | null;
 /** @category DOM Events */
 declare var onload: ((this: Window, ev: Event) => any) | null;
 /** @category DOM Events */
+declare var onbeforeunload: ((this: Window, ev: Event) => any) | null;
+/** @category DOM Events */
 declare var onunload: ((this: Window, ev: Event) => any) | null;
 /** @category Observability */
 declare var onunhandledrejection:
@@ -83,6 +88,8 @@ declare var onunhandledrejection:
 declare var localStorage: Storage;
 /** @category Web Storage API */
 declare var sessionStorage: Storage;
+/** @category Cache API */
+declare var caches: CacheStorage;
 
 /** @category Web APIs */
 declare class Navigator {
@@ -90,6 +97,8 @@ declare class Navigator {
   readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
+  readonly language: string;
+  readonly languages: string[];
 }
 
 /** @category Web APIs */

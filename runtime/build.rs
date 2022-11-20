@@ -8,6 +8,7 @@ use std::path::PathBuf;
 #[cfg(not(feature = "docsrs"))]
 mod not_docs {
   use super::*;
+  use deno_cache::SqliteBackedCache;
   use deno_core::Extension;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
@@ -35,7 +36,7 @@ mod not_docs {
     }
 
     let snapshot = js_runtime.snapshot();
-    let snapshot_slice: &[u8] = &*snapshot;
+    let snapshot_slice: &[u8] = &snapshot;
     println!("Snapshot size: {}", snapshot_slice.len());
 
     let compressed_snapshot_with_size = {
@@ -62,7 +63,7 @@ mod not_docs {
       compressed_snapshot_with_size.len()
     );
 
-    std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
+    std::fs::write(snapshot_path, compressed_snapshot_with_size).unwrap();
     println!("Snapshot written to: {} ", snapshot_path.display());
   }
 
@@ -72,6 +73,7 @@ mod not_docs {
     fn check_net_url(
       &mut self,
       _url: &deno_core::url::Url,
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -79,6 +81,7 @@ mod not_docs {
     fn check_read(
       &mut self,
       _p: &Path,
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -88,6 +91,7 @@ mod not_docs {
     fn check_net_url(
       &mut self,
       _url: &deno_core::url::Url,
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -116,10 +120,20 @@ mod not_docs {
     }
   }
 
+  impl deno_napi::NapiPermissions for Permissions {
+    fn check(
+      &mut self,
+      _path: Option<&Path>,
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
+  }
+
   impl deno_flash::FlashPermissions for Permissions {
     fn check_net<T: AsRef<str>>(
       &mut self,
       _host: &(T, Option<u16>),
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -138,6 +152,7 @@ mod not_docs {
     fn check_net<T: AsRef<str>>(
       &mut self,
       _host: &(T, Option<u16>),
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -145,6 +160,7 @@ mod not_docs {
     fn check_read(
       &mut self,
       _p: &Path,
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -152,6 +168,7 @@ mod not_docs {
     fn check_write(
       &mut self,
       _p: &Path,
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -168,6 +185,7 @@ mod not_docs {
         Default::default(),
       ),
       deno_fetch::init::<Permissions>(Default::default()),
+      deno_cache::init::<SqliteBackedCache>(None),
       deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),
       deno_crypto::init(None),
@@ -176,12 +194,13 @@ mod not_docs {
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
-      deno_node::init::<Permissions>(false, None), // No --unstable.
+      deno_node::init::<Permissions>(None),
       deno_ffi::init::<Permissions>(false),
       deno_net::init::<Permissions>(
         None, false, // No --unstable.
         None,
       ),
+      deno_napi::init::<Permissions>(false),
       deno_http::init(),
       deno_flash::init::<Permissions>(false), // No --unstable
     ];

@@ -5,13 +5,16 @@ resolver = "2"
 members = [
   "bench_util",
   "cli",
+  "cli/napi_sym",
   "core",
   "ops",
   "runtime",
   "serde_v8",
   "test_ffi",
+  "test_napi",
   "test_util",
   "ext/broadcast_channel",
+  "ext/cache",
   "ext/console",
   "ext/crypto",
   "ext/fetch",
@@ -26,6 +29,7 @@ members = [
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
+  "ext/napi",
 ]
 exclude = ["test_util/std/hash/_wasm"]
 
@@ -34,14 +38,14 @@ exclude = ["test_util/std/hash/_wasm"]
 codegen-units = 1
 incremental = true
 lto = true
-opt-level = 3 # Optimize for speed
+opt-level = 'z' # Optimize for size
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.bench]
 codegen-units = 1
 incremental = true
 lto = true
-opt-level = 3 # Optimize for speed
+opt-level = 'z' # Optimize for size
 
 # Key generation is too slow on `debug`
 [profile.dev.package.num-bigint-dig]
@@ -152,6 +156,10 @@ opt-level = 3
 [profile.release.package.deno_tls]
 opt-level = 3
 [profile.release.package.deno_websocket]
+opt-level = 3
+[profile.release.package.deno_napi]
+opt-level = 3
+[profile.release.package.test_napi]
 opt-level = 3
 [profile.release.package.num-bigint-dig]
 opt-level = 3

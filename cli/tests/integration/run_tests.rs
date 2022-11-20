@@ -609,12 +609,6 @@ itest!(private_field_presence_no_check {
   output: "run/private_field_presence.ts.out",
 });
 
-itest!(lock_write_requires_lock {
-  args: "run --lock-write some_file.ts",
-  output: "run/lock_write_requires_lock.out",
-  exit_code: 1,
-});
-
 // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(lock_write_fetch {
   args:
@@ -655,6 +649,46 @@ itest!(lock_check_err2 {
   args: "run --lock=run/lock_check_err2.json run/019_media_types.ts",
   output: "run/lock_check_err2.out",
   exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_v2_check_ok {
+  args:
+    "run --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+  output: "run/003_relative_import.ts.out",
+  http_server: true,
+});
+
+itest!(lock_v2_check_ok2 {
+  args: "run --lock=run/lock_v2_check_ok2.json run/019_media_types.ts",
+  output: "run/019_media_types.ts.out",
+  http_server: true,
+});
+
+itest!(lock_v2_dynamic_imports {
+  args: "run --lock=run/lock_v2_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/run/013_dynamic_import.ts",
+  output: "run/lock_v2_dynamic_imports.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_v2_check_err {
+  args: "run --lock=run/lock_v2_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
+  output: "run/lock_v2_check_err.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_v2_check_err2 {
+  args: "run --lock=run/lock_v2_check_err2.json run/019_media_types.ts",
+  output: "run/lock_v2_check_err2.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_only_http_and_https {
+  args: "run --lock=run/lock_only_http_and_https/deno.lock run/lock_only_http_and_https/main.ts",
+  output: "run/lock_only_http_and_https/main.out",
   http_server: true,
 });
 
@@ -1255,11 +1289,6 @@ itest!(fix_emittable_skipped {
   output: "run/fix_emittable_skipped.ts.out",
 });
 
-itest!(fix_exotic_specifiers {
-  args: "run --quiet --reload run/fix_exotic_specifiers.ts",
-  output: "run/fix_exotic_specifiers.ts.out",
-});
-
 itest!(fix_js_import_js {
   args: "run --quiet --reload run/fix_js_import_js.ts",
   output: "run/fix_js_import_js.ts.out",
@@ -1309,27 +1338,27 @@ itest!(jsx_import_source_pragma {
 
 itest!(jsx_import_source_pragma_with_config {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc run/jsx_import_source_pragma.tsx",
+    "run --reload --config jsx/deno-jsx.jsonc --no-lock run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_with_dev_config {
   args:
-    "run --reload --config jsx/deno-jsxdev.jsonc run/jsx_import_source_pragma.tsx",
+    "run --reload --config jsx/deno-jsxdev.jsonc --no-lock run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc run/jsx_import_source_no_pragma.tsx",
+    "run --reload --config jsx/deno-jsx.jsonc --no-lock run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma_dev {
-  args: "run --reload --config jsx/deno-jsxdev.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --config jsx/deno-jsxdev.jsonc --no-lock run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_dev.out",
   http_server: true,
 });
@@ -1347,25 +1376,25 @@ itest!(jsx_import_source_pragma_import_map_dev {
 });
 
 itest!(jsx_import_source_import_map {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_dev {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_scoped {
-  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_scoped_dev {
-  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
@@ -1377,14 +1406,14 @@ itest!(jsx_import_source_pragma_no_check {
 });
 
 itest!(jsx_import_source_pragma_with_config_no_check {
-  args: "run --reload --config jsx/deno-jsx.jsonc --no-check run/jsx_import_source_pragma.tsx",
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma_no_check {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
+    "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
@@ -1396,7 +1425,7 @@ itest!(jsx_import_source_pragma_import_map_no_check {
 });
 
 itest!(jsx_import_source_import_map_no_check {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
@@ -1674,8 +1703,7 @@ fn exec_path() {
     .unwrap();
   assert!(output.status.success());
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
-  let actual =
-    std::fs::canonicalize(&std::path::Path::new(stdout_str)).unwrap();
+  let actual = std::fs::canonicalize(std::path::Path::new(stdout_str)).unwrap();
   let expected = std::fs::canonicalize(util::deno_exe_path()).unwrap();
   assert_eq!(expected, actual);
 }
@@ -2382,6 +2410,59 @@ itest!(eval_context_throw_dom_exception {
   output: "run/eval_context_throw_dom_exception.js.out",
 });
 
+#[test]
+#[cfg(unix)]
+fn navigator_language_unix() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_language.ts",
+    None,
+    Some(vec![("LC_ALL".to_owned(), "pl_PL".to_owned())]),
+    false,
+  );
+  assert_eq!(res, "pl-PL\n")
+}
+
+#[test]
+fn navigator_language() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_language.ts",
+    None,
+    None,
+    false,
+  );
+  assert!(!res.is_empty())
+}
+
+#[test]
+#[cfg(unix)]
+fn navigator_languages_unix() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_languages.ts",
+    None,
+    Some(vec![
+      ("LC_ALL".to_owned(), "pl_PL".to_owned()),
+      ("NO_COLOR".to_owned(), "1".to_owned()),
+    ]),
+    false,
+  );
+  assert_eq!(res, "[ \"pl-PL\" ]\n")
+}
+
+#[test]
+fn navigator_languages() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_languages.ts",
+    None,
+    None,
+    false,
+  );
+  assert!(!res.is_empty())
+}
+
 /// Regression test for https://github.com/denoland/deno/issues/12740.
 #[test]
 fn issue12740() {
@@ -2836,15 +2917,9 @@ itest!(nested_error {
   exit_code: 1,
 });
 
-itest!(node_env_var_allowlist_with_unstable_flag {
+itest!(node_env_var_allowlist {
   args: "run --unstable --no-prompt run/node_env_var_allowlist.ts",
-  output: "run/node_env_var_allowlist_with_unstable_flag.ts.out",
-  exit_code: 1,
-});
-
-itest!(node_env_var_allowlist_without_unstable_flag {
-  args: "run --no-prompt run/node_env_var_allowlist.ts",
-  output: "run/node_env_var_allowlist_without_unstable_flag.ts.out",
+  output: "run/node_env_var_allowlist.ts.out",
   exit_code: 1,
 });
 
@@ -3302,8 +3377,7 @@ async fn http2_request_url() {
 fn set_raw_should_not_panic_on_no_tty() {
   let output = util::deno_cmd()
     .arg("eval")
-    .arg("--unstable")
-    .arg("Deno.setRaw(Deno.stdin.rid, true)")
+    .arg("Deno.stdin.setRaw(true)")
     // stdin set to piped so it certainly does not refer to TTY
     .stdin(std::process::Stdio::piped())
     // stderr is piped so we can capture output.
@@ -3376,6 +3450,18 @@ fn broken_stdout() {
 itest!(error_cause {
   args: "run run/error_cause.ts",
   output: "run/error_cause.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_cause_recursive_aggregate {
+  args: "run error_cause_recursive_aggregate.ts",
+  output: "error_cause_recursive_aggregate.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_cause_recursive_tail {
+  args: "run error_cause_recursive_tail.ts",
+  output: "error_cause_recursive_tail.ts.out",
   exit_code: 1,
 });
 
@@ -3541,3 +3627,23 @@ fn websocket_server_idletimeout() {
 
   assert!(child.wait().unwrap().success());
 }
+
+itest!(auto_discover_lockfile {
+  args: "run run/auto_discover_lockfile/main.ts",
+  output: "run/auto_discover_lockfile/main.out",
+  http_server: true,
+  exit_code: 10,
+});
+
+itest!(no_lock_flag {
+  args: "run --no-lock run/no_lock_flag/main.ts",
+  output: "run/no_lock_flag/main.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+// Check https://github.com/denoland/deno_std/issues/2882
+itest!(flash_shutdown {
+  args: "run --unstable --allow-net run/flash_shutdown/main.ts",
+  exit_code: 0,
+});

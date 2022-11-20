@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::bindings::script_origin;
+use crate::error::custom_error;
 use crate::error::is_instance_of_error;
 use crate::error::range_error;
 use crate::error::type_error;
@@ -8,7 +9,6 @@ use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url_or_path;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map as apply_source_map_;
-use crate::JsRealm;
 use crate::JsRuntime;
 use crate::OpDecl;
 use crate::ZeroCopyBuf;
@@ -37,6 +37,7 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_decode::decl(),
     op_serialize::decl(),
     op_deserialize::decl(),
+    op_set_promise_hooks::decl(),
     op_get_promise_details::decl(),
     op_get_proxy_details::decl(),
     op_memory_usage::decl(),
@@ -51,6 +52,7 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_store_pending_promise_exception::decl(),
     op_remove_pending_promise_exception::decl(),
     op_has_pending_promise_exception::decl(),
+    op_arraybuffer_was_detached::decl(),
   ]
 }
 
@@ -63,16 +65,24 @@ fn to_v8_fn(
     .map_err(|err| type_error(err.to_string()))
 }
 
+#[inline]
+fn to_v8_local_fn(
+  value: serde_v8::Value,
+) -> Result<v8::Local<v8::Function>, Error> {
+  v8::Local::<v8::Function>::try_from(value.v8_value)
+    .map_err(|err| type_error(err.to_string()))
+}
+
 #[op(v8)]
 fn op_ref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  let context_state = JsRealm::state_from_scope(scope);
-  context_state.borrow_mut().unrefed_ops.remove(&promise_id);
+  let state_rc = JsRuntime::state(scope);
+  state_rc.borrow_mut().unrefed_ops.remove(&promise_id);
 }
 
 #[op(v8)]
 fn op_unref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  let context_state = JsRealm::state_from_scope(scope);
-  context_state.borrow_mut().unrefed_ops.insert(promise_id);
+  let state_rc = JsRuntime::state(scope);
+  state_rc.borrow_mut().unrefed_ops.insert(promise_id);
 }
 
 #[op(v8)]
@@ -103,8 +113,8 @@ fn op_set_promise_reject_callback<'a>(
   cb: serde_v8::Value,
 ) -> Result<Option<serde_v8::Value<'a>>, Error> {
   let cb = to_v8_fn(scope, cb)?;
-  let realm_state_rc = JsRealm::state_from_scope(scope);
-  let old = realm_state_rc.borrow_mut().js_promise_reject_cb.replace(cb);
+  let state_rc = JsRuntime::state(scope);
+  let old = state_rc.borrow_mut().js_promise_reject_cb.replace(cb);
   let old = old.map(|v| v8::Local::new(scope, v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
 }
@@ -195,9 +205,7 @@ fn op_queue_microtask(
   scope: &mut v8::HandleScope,
   cb: serde_v8::Value,
 ) -> Result<(), Error> {
-  let cb = to_v8_fn(scope, cb)?;
-  let cb = v8::Local::new(scope, cb);
-  scope.enqueue_microtask(cb);
+  scope.enqueue_microtask(to_v8_local_fn(cb)?);
   Ok(())
 }
 
@@ -442,24 +450,29 @@ fn op_serialize(
   if let Some(transferred_array_buffers) = transferred_array_buffers {
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
-    for i in 0..transferred_array_buffers.length() {
-      let i = v8::Number::new(scope, i as f64).into();
+    for index in 0..transferred_array_buffers.length() {
+      let i = v8::Number::new(scope, index as f64).into();
       let buf = transferred_array_buffers.get(scope, i).unwrap();
       let buf = v8::Local::<v8::ArrayBuffer>::try_from(buf).map_err(|_| {
         type_error("item in transferredArrayBuffers not an ArrayBuffer")
       })?;
       if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store
       {
-        // TODO(lucacasonato): we need to check here that the buffer is not
-        // already detached. We can not do that because V8 does not provide
-        // a way to check if a buffer is already detached.
         if !buf.is_detachable() {
           return Err(type_error(
             "item in transferredArrayBuffers is not transferable",
           ));
         }
+
+        if buf.was_detached() {
+          return Err(custom_error(
+            "DOMExceptionOperationError",
+            format!("ArrayBuffer at index {} is already detached", index),
+          ));
+        }
+
         let backing_store = buf.get_backing_store();
-        buf.detach();
+        buf.detach(v8::undefined(scope).into());
         let id = shared_array_buffer_store.insert(backing_store);
         value_serializer.transfer_array_buffer(id, buf);
         let id = v8::Number::new(scope, id as f64).into();
@@ -575,6 +588,33 @@ fn op_get_promise_details<'a>(
   }
 }
 
+#[op(v8)]
+fn op_set_promise_hooks<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  init_cb: serde_v8::Value,
+  before_cb: serde_v8::Value,
+  after_cb: serde_v8::Value,
+  resolve_cb: serde_v8::Value,
+) -> Result<(), Error> {
+  let init_hook_global = to_v8_fn(scope, init_cb)?;
+  let before_hook_global = to_v8_fn(scope, before_cb)?;
+  let after_hook_global = to_v8_fn(scope, after_cb)?;
+  let resolve_hook_global = to_v8_fn(scope, resolve_cb)?;
+  let init_hook = v8::Local::new(scope, init_hook_global);
+  let before_hook = v8::Local::new(scope, before_hook_global);
+  let after_hook = v8::Local::new(scope, after_hook_global);
+  let resolve_hook = v8::Local::new(scope, resolve_hook_global);
+
+  scope.get_current_context().set_promise_hooks(
+    init_hook,
+    before_hook,
+    after_hook,
+    resolve_hook,
+  );
+
+  Ok(())
+}
+
 // Based on https://github.com/nodejs/node/blob/1e470510ff74391d7d4ec382909ea8960d2d2fbc/src/node_util.cc
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -641,28 +681,22 @@ fn op_set_wasm_streaming_callback(
   cb: serde_v8::Value,
 ) -> Result<(), Error> {
   let cb = to_v8_fn(scope, cb)?;
-  let realm_state_rc = JsRealm::state_from_scope(scope);
-  let mut realm_state = realm_state_rc.borrow_mut();
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
   // The callback to pass to the v8 API has to be a unit type, so it can't
   // borrow or move any local variables. Therefore, we're storing the JS
   // callback in a JsRuntimeState slot.
-  if realm_state.js_wasm_streaming_cb.is_some() {
+  if state.js_wasm_streaming_cb.is_some() {
     return Err(type_error("op_set_wasm_streaming_callback already called"));
   }
-  realm_state.js_wasm_streaming_cb = Some(cb);
+  state.js_wasm_streaming_cb = Some(cb);
 
   scope.set_wasm_streaming_callback(|scope, arg, wasm_streaming| {
     let (cb_handle, streaming_rid) = {
-      let realm_state_rc = JsRealm::state_from_scope(scope);
-      let cb_handle = realm_state_rc
-        .borrow()
-        .js_wasm_streaming_cb
-        .as_ref()
-        .unwrap()
-        .clone();
       let state_rc = JsRuntime::state(scope);
-      let streaming_rid = state_rc
-        .borrow()
+      let state = state_rc.borrow();
+      let cb_handle = state.js_wasm_streaming_cb.as_ref().unwrap().clone();
+      let streaming_rid = state
         .op_state
         .borrow_mut()
         .resource_table
@@ -732,6 +766,10 @@ fn op_dispatch_exception(
     .dispatched_exceptions
     .push_front(v8::Global::new(scope, exception.v8_value));
   // Only terminate execution if there are no inspector sessions.
+  if state.inspector.is_none() {
+    scope.terminate_execution();
+    return;
+  }
   match state.inspector().try_borrow() {
     Ok(inspector) if !inspector.has_active_sessions() => {
       scope.terminate_execution();
@@ -795,18 +833,15 @@ fn op_set_format_exception_callback<'a>(
   cb: serde_v8::Value<'a>,
 ) -> Result<Option<serde_v8::Value<'a>>, Error> {
   let cb = to_v8_fn(scope, cb)?;
-  let realm_state_rc = JsRealm::state_from_scope(scope);
-  let old = realm_state_rc
-    .borrow_mut()
-    .js_format_exception_cb
-    .replace(cb);
+  let state_rc = JsRuntime::state(scope);
+  let old = state_rc.borrow_mut().js_format_exception_cb.replace(cb);
   let old = old.map(|v| v8::Local::new(scope, v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
 }
 
 #[op(v8)]
 fn op_event_loop_has_more_work(scope: &mut v8::HandleScope) -> bool {
-  JsRuntime::event_loop_pending_state(scope).is_pending()
+  JsRuntime::event_loop_pending_state_from_isolate(scope).is_pending()
 }
 
 #[op(v8)]
@@ -852,4 +887,13 @@ fn op_has_pending_promise_exception<'a>(
   state
     .pending_promise_exceptions
     .contains_key(&promise_global)
+}
+
+#[op(v8)]
+fn op_arraybuffer_was_detached<'a>(
+  _scope: &mut v8::HandleScope<'a>,
+  input: serde_v8::Value<'a>,
+) -> Result<bool, Error> {
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(input.v8_value)?;
+  Ok(ab.was_detached())
 }

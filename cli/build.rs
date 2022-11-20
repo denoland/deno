@@ -39,7 +39,7 @@ fn create_snapshot(
   }
 
   let snapshot = js_runtime.snapshot();
-  let snapshot_slice: &[u8] = &*snapshot;
+  let snapshot_slice: &[u8] = &snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
 
   let compressed_snapshot_with_size = {
@@ -64,7 +64,7 @@ fn create_snapshot(
     compressed_snapshot_with_size.len()
   );
 
-  std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
+  std::fs::write(snapshot_path, compressed_snapshot_with_size).unwrap();
   println!("Snapshot written to: {} ", snapshot_path.display());
 }
 
@@ -81,6 +81,7 @@ fn create_compiler_snapshot(
 ) {
   // libs that are being provided by op crates.
   let mut op_crate_libs = HashMap::new();
+  op_crate_libs.insert("deno.cache", deno_cache::get_declaration());
   op_crate_libs.insert("deno.console", deno_console::get_declaration());
   op_crate_libs.insert("deno.url", deno_url::get_declaration());
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
@@ -201,6 +202,11 @@ fn create_compiler_snapshot(
   }
 
   #[op]
+  fn op_is_node_file() -> bool {
+    false
+  }
+
+  #[op]
   fn op_script_version(
     _state: &mut OpState,
     _args: Value,
@@ -265,6 +271,7 @@ fn create_compiler_snapshot(
         op_build_info::decl(),
         op_cwd::decl(),
         op_exists::decl(),
+        op_is_node_file::decl(),
         op_load::decl(),
         op_script_version::decl(),
       ])
@@ -330,6 +337,44 @@ fn main() {
   if target != host {
     panic!("Cross compiling with snapshot is not supported.");
   }
+
+  let symbols_path = std::path::Path::new(
+    format!("generated_symbol_exports_list_{}.def", env::consts::OS).as_str(),
+  )
+  .canonicalize()
+  .expect(
+    "Missing symbols list! Generate using tools/napi/generate_symbols_lists.js",
+  );
+
+  #[cfg(target_os = "windows")]
+  println!(
+    "cargo:rustc-link-arg-bin=deno=/DEF:{}",
+    symbols_path.display()
+  );
+
+  #[cfg(target_os = "macos")]
+  println!(
+    "cargo:rustc-link-arg-bin=deno=-Wl,-exported_symbols_list,{}",
+    symbols_path.display()
+  );
+
+  #[cfg(target_os = "linux")]
+  {
+    let ver = glibc_version::get_version().unwrap();
+
+    // If a custom compiler is set, the glibc version is not reliable.
+    // Here, we assume that if a custom compiler is used, that it will be modern enough to support a dynamic symbol list.
+    if env::var("CC").is_err() && ver.major <= 2 && ver.minor < 35 {
+      println!("cargo:warning=Compiling with all symbols exported, this will result in a larger binary. Please use glibc 2.35 or later for an optimised build.");
+      println!("cargo:rustc-link-arg-bin=deno=-rdynamic");
+    } else {
+      println!(
+        "cargo:rustc-link-arg-bin=deno=-Wl,--export-dynamic-symbol-list={}",
+        symbols_path.display()
+      );
+    }
+  }
+
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
@@ -371,6 +416,10 @@ fn main() {
   println!(
     "cargo:rustc-env=DENO_WEBSTORAGE_LIB_PATH={}",
     deno_webstorage::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_CACHE_LIB_PATH={}",
+    deno_cache::get_declaration().display()
   );
   println!(
     "cargo:rustc-env=DENO_CRYPTO_LIB_PATH={}",

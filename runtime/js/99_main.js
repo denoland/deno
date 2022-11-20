@@ -39,6 +39,7 @@ delete Intl.v8BreakIterator;
     WeakMapPrototypeSet,
   } = window.__bootstrap.primordials;
   const util = window.__bootstrap.util;
+  const event = window.__bootstrap.event;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
   const location = window.__bootstrap.location;
@@ -50,12 +51,14 @@ delete Intl.v8BreakIterator;
   const encoding = window.__bootstrap.encoding;
   const colors = window.__bootstrap.colors;
   const Console = window.__bootstrap.console.Console;
+  const caches = window.__bootstrap.caches;
   const inspectArgs = window.__bootstrap.console.inspectArgs;
   const quoteString = window.__bootstrap.console.quoteString;
   const compression = window.__bootstrap.compression;
   const worker = window.__bootstrap.worker;
   const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
+  const net = window.__bootstrap.net;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
   const urlPattern = window.__bootstrap.urlPattern;
@@ -76,6 +79,7 @@ delete Intl.v8BreakIterator;
   const errors = window.__bootstrap.errors.errors;
   const webidl = window.__bootstrap.webidl;
   const domException = window.__bootstrap.domException;
+  const abortSignal = window.__bootstrap.abortSignal;
   const { defineEventHandler, reportException } = window.__bootstrap.event;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
@@ -154,7 +158,7 @@ delete Intl.v8BreakIterator;
       const message = v[0];
       const transferables = v[1];
 
-      const msgEvent = new MessageEvent("message", {
+      const msgEvent = new event.MessageEvent("message", {
         cancelable: false,
         data: message,
         ports: transferables.filter((t) =>
@@ -165,7 +169,7 @@ delete Intl.v8BreakIterator;
       try {
         globalDispatchEvent(msgEvent);
       } catch (e) {
-        const errorEvent = new ErrorEvent("error", {
+        const errorEvent = new event.ErrorEvent("error", {
           cancelable: true,
           message: e.message,
           lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
@@ -252,8 +256,10 @@ delete Intl.v8BreakIterator;
     );
     build.setBuildInfo(runtimeOptions.target);
     util.setLogDebug(runtimeOptions.debugFlag, source);
+    colors.setNoColor(runtimeOptions.noColor || !runtimeOptions.isTty);
     // deno-lint-ignore prefer-primordials
     Error.prepareStackTrace = core.prepareStackTrace;
+    registerErrors();
   }
 
   function registerErrors() {
@@ -332,7 +338,7 @@ delete Intl.v8BreakIterator;
 
   const navigator = webidl.createBranded(Navigator);
 
-  let numCpus, userAgent;
+  let numCpus, userAgent, language;
 
   ObjectDefineProperties(Navigator.prototype, {
     gpu: {
@@ -357,6 +363,22 @@ delete Intl.v8BreakIterator;
       get() {
         webidl.assertBranded(this, NavigatorPrototype);
         return userAgent;
+      },
+    },
+    language: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return language;
+      },
+    },
+    languages: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return [language];
       },
     },
   });
@@ -390,39 +412,57 @@ delete Intl.v8BreakIterator;
         webidl.assertBranded(this, WorkerNavigatorPrototype);
         return numCpus;
       },
+      language: {
+        configurable: true,
+        enumerable: true,
+        get() {
+          webidl.assertBranded(this, WorkerNavigatorPrototype);
+          return language;
+        },
+      },
+      languages: {
+        configurable: true,
+        enumerable: true,
+        get() {
+          webidl.assertBranded(this, WorkerNavigatorPrototype);
+          return [language];
+        },
+      },
     },
   });
   const WorkerNavigatorPrototype = WorkerNavigator.prototype;
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
+    AbortController: util.nonEnumerable(abortSignal.AbortController),
+    AbortSignal: util.nonEnumerable(abortSignal.AbortSignal),
     Blob: util.nonEnumerable(file.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
       streams.ByteLengthQueuingStrategy,
     ),
-    CloseEvent: util.nonEnumerable(CloseEvent),
+    CloseEvent: util.nonEnumerable(event.CloseEvent),
     CompressionStream: util.nonEnumerable(compression.CompressionStream),
     CountQueuingStrategy: util.nonEnumerable(
       streams.CountQueuingStrategy,
     ),
     CryptoKey: util.nonEnumerable(crypto.CryptoKey),
-    CustomEvent: util.nonEnumerable(CustomEvent),
+    CustomEvent: util.nonEnumerable(event.CustomEvent),
     DecompressionStream: util.nonEnumerable(compression.DecompressionStream),
     DOMException: util.nonEnumerable(domException.DOMException),
-    ErrorEvent: util.nonEnumerable(ErrorEvent),
-    Event: util.nonEnumerable(Event),
-    EventTarget: util.nonEnumerable(EventTarget),
+    ErrorEvent: util.nonEnumerable(event.ErrorEvent),
+    Event: util.nonEnumerable(event.Event),
+    EventTarget: util.nonEnumerable(eventTarget.EventTarget),
     File: util.nonEnumerable(file.File),
     FileReader: util.nonEnumerable(fileReader.FileReader),
     FormData: util.nonEnumerable(formData.FormData),
     Headers: util.nonEnumerable(headers.Headers),
-    MessageEvent: util.nonEnumerable(MessageEvent),
+    MessageEvent: util.nonEnumerable(event.MessageEvent),
     Performance: util.nonEnumerable(performance.Performance),
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
     PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
-    PromiseRejectionEvent: util.nonEnumerable(PromiseRejectionEvent),
-    ProgressEvent: util.nonEnumerable(ProgressEvent),
+    PromiseRejectionEvent: util.nonEnumerable(event.PromiseRejectionEvent),
+    ProgressEvent: util.nonEnumerable(event.ProgressEvent),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
     ReadableStreamDefaultReader: util.nonEnumerable(
       streams.ReadableStreamDefaultReader,
@@ -467,6 +507,13 @@ delete Intl.v8BreakIterator;
     btoa: util.writable(base64.btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
+    caches: {
+      enumerable: true,
+      configurable: true,
+      get: caches.cacheStorage,
+    },
+    CacheStorage: util.nonEnumerable(caches.CacheStorage),
+    Cache: util.nonEnumerable(caches.Cache),
     console: util.nonEnumerable(
       new Console((msg, level) => core.print(msg, level > 1)),
     ),
@@ -475,9 +522,12 @@ delete Intl.v8BreakIterator;
     SubtleCrypto: util.nonEnumerable(crypto.SubtleCrypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),
+    reportError: util.writable(event.reportError),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
     structuredClone: util.writable(messagePort.structuredClone),
+    // Branding as a WebIDL object
+    [webidl.brand]: util.nonEnumerable(webidl.brand),
   };
 
   const unstableWindowOrWorkerGlobalScope = {
@@ -537,11 +587,15 @@ delete Intl.v8BreakIterator;
       configurable: true,
       enumerable: true,
       get: webStorage.localStorage,
+      // Makes this reassignable to make astro work
+      set: () => {},
     },
     sessionStorage: {
       configurable: true,
       enumerable: true,
       get: webStorage.sessionStorage,
+      // Makes this reassignable to make astro work
+      set: () => {},
     },
     Storage: util.nonEnumerable(webStorage.Storage),
   };
@@ -605,11 +659,14 @@ delete Intl.v8BreakIterator;
         continue;
       }
 
-      const event = new PromiseRejectionEvent("unhandledrejection", {
-        cancelable: true,
-        promise,
-        reason,
-      });
+      const rejectionEvent = new event.PromiseRejectionEvent(
+        "unhandledrejection",
+        {
+          cancelable: true,
+          promise,
+          reason,
+        },
+      );
 
       const errorEventCb = (event) => {
         if (event.error === reason) {
@@ -620,12 +677,12 @@ delete Intl.v8BreakIterator;
       // if error is thrown during dispatch of "unhandledrejection"
       // event.
       globalThis.addEventListener("error", errorEventCb);
-      globalThis.dispatchEvent(event);
+      globalThis.dispatchEvent(rejectionEvent);
       globalThis.removeEventListener("error", errorEventCb);
 
       // If event was not prevented (or "unhandledrejection" listeners didn't
       // throw) we will let Rust side handle it.
-      if (event.defaultPrevented) {
+      if (rejectionEvent.defaultPrevented) {
         ops.op_remove_pending_promise_exception(promise);
       }
     }
@@ -639,24 +696,15 @@ delete Intl.v8BreakIterator;
       throw new Error("Worker runtime already bootstrapped");
     }
 
-    const {
-      args,
-      location: locationHref,
-      noColor,
-      isTty,
-      pid,
-      ppid,
-      unstableFlag,
-      cpuCount,
-      inspectFlag,
-      userAgent: userAgentInfo,
-    } = runtimeOptions;
-
+    core.initializeAsyncOps();
     performance.setTimeOrigin(DateNow());
+    net.setup(runtimeOptions.unstableFlag);
+
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
     // Remove bootstrapping data from the global scope
+    const __bootstrap = globalThis.__bootstrap;
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
     util.log("bootstrapMainRuntime");
@@ -665,12 +713,12 @@ delete Intl.v8BreakIterator;
     // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
     // writable, so that they can mock it themselves if they like. If the flag was
     // set, define `globalThis.location`, using the provided value.
-    if (locationHref == null) {
+    if (runtimeOptions.location == null) {
       mainRuntimeGlobalProperties.location = {
         writable: true,
       };
     } else {
-      location.setLocationHref(locationHref);
+      location.setLocationHref(runtimeOptions.location);
     }
 
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
@@ -680,7 +728,7 @@ delete Intl.v8BreakIterator;
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
-    if (inspectFlag) {
+    if (runtimeOptions.inspectFlag) {
       const consoleFromDeno = globalThis.console;
       wrapConsole(consoleFromDeno, consoleFromV8);
     }
@@ -706,12 +754,32 @@ delete Intl.v8BreakIterator;
 
     runtimeStart(runtimeOptions);
 
-    colors.setNoColor(noColor || !isTty);
-    numCpus = cpuCount;
-    userAgent = userAgentInfo;
-    registerErrors();
+    numCpus = runtimeOptions.cpuCount;
+    userAgent = runtimeOptions.userAgent;
+    language = runtimeOptions.locale;
 
     const internalSymbol = Symbol("Deno.internal");
+
+    // These have to initialized here and not in `90_deno_ns.js` because
+    // the op function that needs to be passed will be invalidated by creating
+    // a snapshot
+    ObjectAssign(internals, {
+      nodeUnstable: {
+        spawnChild: __bootstrap.spawn.createSpawnChild(
+          ops.op_node_unstable_spawn_child,
+        ),
+        spawn: __bootstrap.spawn.createSpawn(ops.op_node_unstable_spawn_child),
+        spawnSync: __bootstrap.spawn.createSpawnSync(
+          ops.op_node_unstable_spawn_sync,
+        ),
+        serve: __bootstrap.flash.createServe(ops.op_node_unstable_flash_serve),
+        upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
+        listenDatagram: __bootstrap.net.createListenDatagram(
+          ops.op_node_unstable_net_listen_udp,
+          ops.op_node_unstable_net_listen_unixpacket,
+        ),
+      },
+    });
 
     const finalDenoNs = {
       core,
@@ -722,15 +790,28 @@ delete Intl.v8BreakIterator;
       ...denoNs,
     };
     ObjectDefineProperties(finalDenoNs, {
-      pid: util.readOnly(pid),
-      ppid: util.readOnly(ppid),
-      noColor: util.readOnly(noColor),
-      args: util.readOnly(ObjectFreeze(args)),
+      pid: util.readOnly(runtimeOptions.pid),
+      ppid: util.readOnly(runtimeOptions.ppid),
+      noColor: util.readOnly(runtimeOptions.noColor),
+      args: util.readOnly(ObjectFreeze(runtimeOptions.args)),
       mainModule: util.getterOnly(opMainModule),
     });
 
-    if (unstableFlag) {
+    if (runtimeOptions.unstableFlag) {
       ObjectAssign(finalDenoNs, denoNsUnstable);
+      // These have to initialized here and not in `90_deno_ns.js` because
+      // the op function that needs to be passed will be invalidated by creating
+      // a snapshot
+      ObjectAssign(finalDenoNs, {
+        spawnChild: __bootstrap.spawn.createSpawnChild(ops.op_spawn_child),
+        spawn: __bootstrap.spawn.createSpawn(ops.op_spawn_child),
+        spawnSync: __bootstrap.spawn.createSpawnSync(ops.op_spawn_sync),
+        serve: __bootstrap.flash.createServe(ops.op_flash_serve),
+        listenDatagram: __bootstrap.net.createListenDatagram(
+          ops.op_net_listen_udp,
+          ops.op_net_listen_unixpacket,
+        ),
+      });
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -738,7 +819,7 @@ delete Intl.v8BreakIterator;
     ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
     ObjectFreeze(globalThis.Deno.core);
 
-    util.log("args", args);
+    util.log("args", runtimeOptions.args);
   }
 
   function bootstrapWorkerRuntime(
@@ -750,11 +831,15 @@ delete Intl.v8BreakIterator;
       throw new Error("Worker runtime already bootstrapped");
     }
 
+    core.initializeAsyncOps();
     performance.setTimeOrigin(DateNow());
+    net.setup(runtimeOptions.unstableFlag);
+
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
     // Remove bootstrapping data from the global scope
+    const __bootstrap = globalThis.__bootstrap;
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
     util.log("bootstrapWorkerRuntime");
@@ -795,24 +880,35 @@ delete Intl.v8BreakIterator;
       runtimeOptions,
       internalName ?? name,
     );
-    const {
-      unstableFlag,
-      pid,
-      noColor,
-      isTty,
-      args,
-      location: locationHref,
-      cpuCount,
-    } = runtimeOptions;
 
-    colors.setNoColor(noColor || !isTty);
-    location.setLocationHref(locationHref);
-    numCpus = cpuCount;
-    registerErrors();
+    location.setLocationHref(runtimeOptions.location);
+    numCpus = runtimeOptions.cpuCount;
+    language = runtimeOptions.locale;
 
     globalThis.pollForMessages = pollForMessages;
 
     const internalSymbol = Symbol("Deno.internal");
+
+    // These have to initialized here and not in `90_deno_ns.js` because
+    // the op function that needs to be passed will be invalidated by creating
+    // a snapshot
+    ObjectAssign(internals, {
+      nodeUnstable: {
+        spawnChild: __bootstrap.spawn.createSpawnChild(
+          ops.op_node_unstable_spawn_child,
+        ),
+        spawn: __bootstrap.spawn.createSpawn(ops.op_node_unstable_spawn_child),
+        spawnSync: __bootstrap.spawn.createSpawnSync(
+          ops.op_node_unstable_spawn_sync,
+        ),
+        serve: __bootstrap.flash.createServe(ops.op_node_unstable_flash_serve),
+        upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
+        listenDatagram: __bootstrap.net.createListenDatagram(
+          ops.op_node_unstable_net_listen_udp,
+          ops.op_node_unstable_net_listen_unixpacket,
+        ),
+      },
+    });
 
     const finalDenoNs = {
       core,
@@ -822,13 +918,26 @@ delete Intl.v8BreakIterator;
       close: core.close,
       ...denoNs,
     };
-    if (unstableFlag) {
+    if (runtimeOptions.unstableFlag) {
       ObjectAssign(finalDenoNs, denoNsUnstable);
+      // These have to initialized here and not in `90_deno_ns.js` because
+      // the op function that needs to be passed will be invalidated by creating
+      // a snapshot
+      ObjectAssign(finalDenoNs, {
+        spawnChild: __bootstrap.spawn.createSpawnChild(ops.op_spawn_child),
+        spawn: __bootstrap.spawn.createSpawn(ops.op_spawn_child),
+        spawnSync: __bootstrap.spawn.createSpawnSync(ops.op_spawn_sync),
+        serve: __bootstrap.flash.createServe(ops.op_flash_serve),
+        listenDatagram: __bootstrap.net.createListenDatagram(
+          ops.op_net_listen_udp,
+          ops.op_net_listen_unixpacket,
+        ),
+      });
     }
     ObjectDefineProperties(finalDenoNs, {
-      pid: util.readOnly(pid),
-      noColor: util.readOnly(noColor),
-      args: util.readOnly(ObjectFreeze(args)),
+      pid: util.readOnly(runtimeOptions.pid),
+      noColor: util.readOnly(runtimeOptions.noColor),
+      args: util.readOnly(ObjectFreeze(runtimeOptions.args)),
     });
     // Setup `Deno` global - we're actually overriding already
     // existing global `Deno` with `Deno` namespace from "./deno.ts".

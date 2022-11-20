@@ -37,6 +37,7 @@ use mio::Poll;
 use mio::Token;
 use serde::Deserialize;
 use serde::Serialize;
+use socket2::Socket;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
@@ -204,16 +205,20 @@ async fn op_flash_write_resource(
   server_id: u32,
   token: u32,
   resource_id: deno_core::ResourceId,
+  auto_close: bool,
 ) -> Result<(), AnyError> {
-  let resource = op_state.borrow_mut().resource_table.take_any(resource_id)?;
-  let sock = {
+  let (resource, sock) = {
     let op_state = &mut op_state.borrow_mut();
+    let resource = if auto_close {
+      op_state.resource_table.take_any(resource_id)?
+    } else {
+      op_state.resource_table.get_any(resource_id)?
+    };
     let flash_ctx = op_state.borrow_mut::<FlashContext>();
     let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-    ctx.requests.remove(&token).unwrap().socket()
+    (resource, ctx.requests.remove(&token).unwrap().socket())
   };
 
-  drop(op_state);
   let _ = sock.write(&response);
 
   #[cfg(unix)]
@@ -248,20 +253,16 @@ async fn op_flash_write_resource(
           .write_all(b"Transfer-Encoding: chunked\r\n\r\n")
           .await?;
         loop {
-          let vec = vec![0u8; 64 * 1024]; // 64KB
-          let buf = ZeroCopyBuf::new_temp(vec);
-          let (nread, buf) = resource.clone().read_return(buf).await?;
-          if nread == 0 {
+          let view = resource.clone().read(64 * 1024).await?; // 64KB
+          if view.is_empty() {
             stream.write_all(b"0\r\n\r\n").await?;
             break;
           }
-
-          let response = &buf[..nread];
           // TODO(@littledivy): use vectored writes.
           stream
-            .write_all(format!("{:x}\r\n", response.len()).as_bytes())
+            .write_all(format!("{:x}\r\n", view.len()).as_bytes())
             .await?;
-          stream.write_all(response).await?;
+          stream.write_all(&view).await?;
           stream.write_all(b"\r\n").await?;
         }
         resource.close();
@@ -499,8 +500,7 @@ fn op_flash_make_request<'scope>(
       |_: &mut v8::HandleScope,
        args: v8::FunctionCallbackArguments,
        mut rv: v8::ReturnValue| {
-        let external: v8::Local<v8::External> =
-          args.data().unwrap().try_into().unwrap();
+        let external: v8::Local<v8::External> = args.data().try_into().unwrap();
         // SAFETY: This external is guaranteed to be a pointer to a ServerContext
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
         rv.set_uint32(next_request_sync(ctx));
@@ -521,8 +521,7 @@ fn op_flash_make_request<'scope>(
       |scope: &mut v8::HandleScope,
        args: v8::FunctionCallbackArguments,
        mut rv: v8::ReturnValue| {
-        let external: v8::Local<v8::External> =
-          args.data().unwrap().try_into().unwrap();
+        let external: v8::Local<v8::External> = args.data().try_into().unwrap();
         // SAFETY: This external is guaranteed to be a pointer to a ServerContext
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
         let token = args.get(0).uint32_value(scope).unwrap();
@@ -545,8 +544,7 @@ fn op_flash_make_request<'scope>(
       |scope: &mut v8::HandleScope,
        args: v8::FunctionCallbackArguments,
        mut rv: v8::ReturnValue| {
-        let external: v8::Local<v8::External> =
-          args.data().unwrap().try_into().unwrap();
+        let external: v8::Local<v8::External> = args.data().try_into().unwrap();
         // SAFETY: This external is guaranteed to be a pointer to a ServerContext
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
 
@@ -806,6 +804,7 @@ pub struct ListenOpts {
   key: Option<String>,
   hostname: String,
   port: u16,
+  reuseport: bool,
 }
 
 fn run_server(
@@ -815,8 +814,29 @@ fn run_server(
   addr: SocketAddr,
   maybe_cert: Option<String>,
   maybe_key: Option<String>,
+  reuseport: bool,
 ) -> Result<(), AnyError> {
-  let mut listener = TcpListener::bind(addr)?;
+  let domain = if addr.is_ipv4() {
+    socket2::Domain::IPV4
+  } else {
+    socket2::Domain::IPV6
+  };
+  let socket = Socket::new(domain, socket2::Type::STREAM, None)?;
+
+  #[cfg(not(windows))]
+  socket.set_reuse_address(true)?;
+  if reuseport {
+    #[cfg(target_os = "linux")]
+    socket.set_reuse_port(true)?;
+  }
+
+  let socket_addr = socket2::SockAddr::from(addr);
+  socket.bind(&socket_addr)?;
+  socket.listen(128)?;
+  socket.set_nonblocking(true)?;
+  let std_listener: std::net::TcpListener = socket.into();
+  let mut listener = TcpListener::from_std(std_listener);
+
   let mut poll = Poll::new()?;
   let token = Token(0);
   poll
@@ -875,6 +895,7 @@ fn run_server(
                 .registry()
                 .register(&mut socket, token, Interest::READABLE)
                 .unwrap();
+
               let socket = match tls_context {
                 Some(ref tls_conf) => {
                   let connection =
@@ -963,22 +984,48 @@ fn run_server(
                 // sockets.remove(&token);
                 continue 'events;
               }
-              Ok(read) => match req.parse(&buffer[..offset + read]) {
-                Ok(httparse::Status::Complete(n)) => {
-                  body_offset = n;
-                  body_len = offset + read;
-                  socket.parse_done = ParseStatus::None;
-                  break;
+              Ok(read) => {
+                match req.parse(&buffer[..offset + read]) {
+                  Ok(httparse::Status::Complete(n)) => {
+                    body_offset = n;
+                    body_len = offset + read;
+                    socket.parse_done = ParseStatus::None;
+                    // On Windows, We must keep calling socket.read() until it fails with WouldBlock.
+                    //
+                    // Mio tries to emulate edge triggered events on Windows.
+                    // AFAICT it only rearms the event on WouldBlock, but it doesn't when a partial read happens.
+                    // https://github.com/denoland/deno/issues/15549
+                    #[cfg(target_os = "windows")]
+                    match &mut socket.inner {
+                      InnerStream::Tcp(ref mut socket) => {
+                        poll
+                          .registry()
+                          .reregister(socket, token, Interest::READABLE)
+                          .unwrap();
+                      }
+                      InnerStream::Tls(ref mut socket) => {
+                        poll
+                          .registry()
+                          .reregister(
+                            &mut socket.sock,
+                            token,
+                            Interest::READABLE,
+                          )
+                          .unwrap();
+                      }
+                    };
+                    break;
+                  }
+                  Ok(httparse::Status::Partial) => {
+                    socket.parse_done = ParseStatus::Ongoing(offset + read);
+                    continue;
+                  }
+                  Err(_) => {
+                    let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                    continue 'events;
+                  }
                 }
-                Ok(httparse::Status::Partial) => {
-                  socket.parse_done = ParseStatus::Ongoing(offset + read);
-                  continue;
-                }
-                Err(_) => {
-                  let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
-                  continue 'events;
-                }
-              },
+              }
               Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 break 'events
               }
@@ -1124,18 +1171,16 @@ pub fn resolve_addr_sync(
   Ok(result)
 }
 
-#[op]
-fn op_flash_serve<P>(
+fn flash_serve<P>(
   state: &mut OpState,
   opts: ListenOpts,
 ) -> Result<u32, AnyError>
 where
   P: FlashPermissions + 'static,
 {
-  check_unstable(state, "Deno.serve");
   state
     .borrow_mut::<P>()
-    .check_net(&(&opts.hostname, Some(opts.port)))?;
+    .check_net(&(&opts.hostname, Some(opts.port)), "Deno.serve()")?;
 
   let addr = resolve_addr_sync(&opts.hostname, opts.port)?
     .next()
@@ -1156,8 +1201,17 @@ where
   let tx = ctx.tx.clone();
   let maybe_cert = opts.cert;
   let maybe_key = opts.key;
+  let reuseport = opts.reuseport;
   let join_handle = tokio::task::spawn_blocking(move || {
-    run_server(tx, listening_tx, close_rx, addr, maybe_cert, maybe_key)
+    run_server(
+      tx,
+      listening_tx,
+      close_rx,
+      addr,
+      maybe_cert,
+      maybe_key,
+      reuseport,
+    )
   });
   let flash_ctx = state.borrow_mut::<FlashContext>();
   let server_id = flash_ctx.next_server_id;
@@ -1165,6 +1219,29 @@ where
   flash_ctx.join_handles.insert(server_id, join_handle);
   flash_ctx.servers.insert(server_id, ctx);
   Ok(server_id)
+}
+
+#[op]
+fn op_flash_serve<P>(
+  state: &mut OpState,
+  opts: ListenOpts,
+) -> Result<u32, AnyError>
+where
+  P: FlashPermissions + 'static,
+{
+  check_unstable(state, "Deno.serve");
+  flash_serve::<P>(state, opts)
+}
+
+#[op]
+fn op_node_unstable_flash_serve<P>(
+  state: &mut OpState,
+  opts: ListenOpts,
+) -> Result<u32, AnyError>
+where
+  P: FlashPermissions + 'static,
+{
+  flash_serve::<P>(state, opts)
 }
 
 #[op]
@@ -1377,6 +1454,7 @@ pub trait FlashPermissions {
   fn check_net<T: AsRef<str>>(
     &mut self,
     _host: &(T, Option<u16>),
+    _api_name: &str,
   ) -> Result<(), AnyError>;
 }
 
@@ -1388,6 +1466,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
     ))
     .ops(vec![
       op_flash_serve::decl::<P>(),
+      op_node_unstable_flash_serve::decl::<P>(),
       op_flash_respond::decl(),
       op_flash_respond_async::decl(),
       op_flash_respond_chuncked::decl(),

@@ -18,6 +18,7 @@ use crate::cache::TypeCheckCache;
 use crate::diagnostics::Diagnostics;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
+use crate::npm::NpmPackageResolver;
 use crate::tsc;
 use crate::tsc::Stats;
 use crate::version;
@@ -57,6 +58,7 @@ pub fn check(
   roots: &[(ModuleSpecifier, ModuleKind)],
   graph_data: Arc<RwLock<GraphData>>,
   cache: &TypeCheckCache,
+  npm_resolver: NpmPackageResolver,
   options: CheckOptions,
 ) -> Result<CheckResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
@@ -106,6 +108,7 @@ pub fn check(
     graph_data,
     hash_data,
     maybe_config_specifier: options.maybe_config_specifier,
+    maybe_npm_resolver: Some(npm_resolver.clone()),
     maybe_tsbuildinfo,
     root_names,
   })?;
@@ -114,6 +117,9 @@ pub fn check(
     response.diagnostics.filter(|d| {
       if let Some(file_name) = &d.file_name {
         !file_name.starts_with("http")
+          && ModuleSpecifier::parse(file_name)
+            .map(|specifier| !npm_resolver.in_npm_package(&specifier))
+            .unwrap_or(true)
       } else {
         true
       }
