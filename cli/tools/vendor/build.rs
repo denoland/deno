@@ -502,7 +502,7 @@ mod test {
     let output = builder
       .with_loader(|loader| {
         loader
-          .add("/mod.ts", &mod_file_text)
+          .add("/mod.ts", mod_file_text)
           .add("https://localhost/mod.ts", "export class Example {}");
       })
       .build()

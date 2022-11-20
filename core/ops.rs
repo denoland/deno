@@ -4,6 +4,7 @@ use crate::error::AnyError;
 use crate::gotham_state::GothamState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
+use crate::runtime::JsRuntimeState;
 use crate::OpDecl;
 use crate::OpsTracker;
 use anyhow::Error;
@@ -19,6 +20,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::rc::Weak;
 use std::task::Context;
 use std::task::Poll;
 
@@ -131,7 +133,7 @@ impl OpError {
   pub fn new(get_class: GetErrorClassFn, err: Error) -> Self {
     Self {
       class_name: (get_class)(&err),
-      message: err.to_string(),
+      message: format!("{:#}", err),
       code: crate::error_codes::get_error_code(&err),
     }
   }
@@ -152,6 +154,7 @@ pub struct OpCtx {
   pub id: OpId,
   pub state: Rc<RefCell<OpState>>,
   pub decl: OpDecl,
+  pub runtime_state: Weak<RefCell<JsRuntimeState>>,
 }
 
 /// Maintains the resources and ops inside a JS runtime.

@@ -3,6 +3,7 @@
 use crate::colors;
 use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
+use crate::npm::resolve_npm_package_reqs;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
 
@@ -50,10 +51,10 @@ pub enum ModuleEntry {
 #[derive(Debug, Default)]
 pub struct GraphData {
   modules: HashMap<ModuleSpecifier, ModuleEntry>,
-  npm_packages: HashSet<NpmPackageReq>,
+  npm_packages: Vec<NpmPackageReq>,
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
-  referrer_map: HashMap<ModuleSpecifier, Range>,
+  referrer_map: HashMap<ModuleSpecifier, Box<Range>>,
   graph_imports: Vec<GraphImport>,
   cjs_esm_translations: HashMap<ModuleSpecifier, String>,
 }
@@ -76,16 +77,18 @@ impl GraphData {
       self.graph_imports.push(graph_import.clone())
     }
 
+    let mut has_npm_specifier_in_graph = false;
+
     for (specifier, result) in graph.specifiers() {
+      if NpmPackageReference::from_specifier(&specifier).is_ok() {
+        has_npm_specifier_in_graph = true;
+        continue;
+      }
+
       if !reload && self.modules.contains_key(&specifier) {
         continue;
       }
-      if specifier.scheme() == "npm" {
-        if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
-          self.npm_packages.insert(reference.req);
-          continue;
-        }
-      }
+
       if let Some(found) = graph.redirects.get(&specifier) {
         let module_entry = ModuleEntry::Redirect(found.clone());
         self.modules.insert(specifier.clone(), module_entry);
@@ -139,6 +142,10 @@ impl GraphData {
         }
       }
     }
+
+    if has_npm_specifier_in_graph {
+      self.npm_packages.extend(resolve_npm_package_reqs(graph));
+    }
   }
 
   pub fn entries(
@@ -147,9 +154,10 @@ impl GraphData {
     self.modules.iter()
   }
 
-  /// Gets the unique npm package requirements from all the encountered graphs.
-  pub fn npm_package_reqs(&self) -> Vec<NpmPackageReq> {
-    self.npm_packages.iter().cloned().collect()
+  /// Gets the npm package requirements from all the encountered graphs
+  /// in the order that they should be resolved.
+  pub fn npm_package_reqs(&self) -> &Vec<NpmPackageReq> {
+    &self.npm_packages
   }
 
   /// Walk dependencies from `roots` and return every encountered specifier.

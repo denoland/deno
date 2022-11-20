@@ -30,7 +30,7 @@ pub static CLI_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
 
 pub fn deno_isolate_init() -> Snapshot {
   debug!("Deno isolate init with snapshots.");
-  Snapshot::Static(&*CLI_SNAPSHOT)
+  Snapshot::Static(&CLI_SNAPSHOT)
 }
 
 #[cfg(test)]

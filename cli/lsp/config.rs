@@ -168,14 +168,14 @@ pub struct InlayHintsVarTypesOptions {
   #[serde(default)]
   pub enabled: bool,
   #[serde(default = "is_true")]
-  pub suppress_when_argument_matches_name: bool,
+  pub suppress_when_type_matches_name: bool,
 }
 
 impl Default for InlayHintsVarTypesOptions {
   fn default() -> Self {
     Self {
       enabled: false,
-      suppress_when_argument_matches_name: true,
+      suppress_when_type_matches_name: true,
     }
   }
 }
@@ -685,7 +685,7 @@ mod tests {
           parameter_types: InlayHintsParamTypesOptions { enabled: false },
           variable_types: InlayHintsVarTypesOptions {
             enabled: false,
-            suppress_when_argument_matches_name: true
+            suppress_when_type_matches_name: true
           },
           property_declaration_types: InlayHintsPropDeclTypesOptions {
             enabled: false

@@ -37,6 +37,7 @@ tar.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
 tokio-tungstenite.workspace = true
+url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 
 [target.'cfg(unix)'.dependencies]
 pty = "0.2.2"

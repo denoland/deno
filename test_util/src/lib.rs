@@ -49,6 +49,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
+use url::Url;
 
 pub mod assertions;
 pub mod lsp;
@@ -120,8 +121,17 @@ pub fn napi_tests_path() -> PathBuf {
   root_path().join("test_napi")
 }
 
+/// Test server registry url.
+pub fn npm_registry_url() -> String {
+  "http://localhost:4545/npm/registry/".to_string()
+}
+
 pub fn std_path() -> PathBuf {
   root_path().join("test_util").join("std")
+}
+
+pub fn std_file_url() -> String {
+  Url::from_directory_path(std_path()).unwrap().to_string()
 }
 
 pub fn target_dir() -> PathBuf {
@@ -1078,7 +1088,7 @@ async fn download_npm_registry_file(
       .into_bytes()
   };
   std::fs::create_dir_all(file_path.parent().unwrap())?;
-  std::fs::write(&file_path, bytes)?;
+  std::fs::write(file_path, bytes)?;
   Ok(())
 }
 
@@ -1908,7 +1918,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       command.env_clear();
     }
     command.envs(self.envs.clone());
-    command.current_dir(&cwd);
+    command.current_dir(cwd);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();
     command.stderr(writer_clone);
@@ -2153,13 +2163,13 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   let mut latency = None;
 
   for line in output.lines() {
-    if requests == None {
+    if requests.is_none() {
       if let Some(cap) = REQUESTS_RX.captures(line) {
         requests =
           Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
       }
     }
-    if latency == None {
+    if latency.is_none() {
       if let Some(cap) = LATENCY_RX.captures(line) {
         let time = cap.get(1).unwrap();
         let unit = cap.get(2).unwrap();

@@ -85,9 +85,9 @@ async fn download_base_binary(
     std::process::exit(1)
   };
 
-  std::fs::create_dir_all(&output_directory)?;
+  std::fs::create_dir_all(output_directory)?;
   let output_path = output_directory.join(binary_path_suffix);
-  std::fs::create_dir_all(&output_path.parent().unwrap())?;
+  std::fs::create_dir_all(output_path.parent().unwrap())?;
   tokio::fs::write(output_path, binary_content).await?;
   Ok(())
 }
@@ -281,6 +281,7 @@ pub fn compile_to_runtime_flags(
       .unsafely_ignore_certificate_errors
       .clone(),
     no_remote: false,
+    no_lock: false,
     no_npm: false,
     no_prompt: flags.no_prompt,
     reload: false,

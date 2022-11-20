@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.81.0"
+version = "0.86.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -86,7 +86,6 @@ regex.workspace = true
 ring.workspace = true
 serde.workspace = true
 signal-hook-registry = "1.4.0"
-sys-info = "0.9.1"
 termcolor = "1.1.3"
 tokio.workspace = true
 uuid.workspace = true
@@ -94,6 +93,7 @@ uuid.workspace = true
 [target.'cfg(windows)'.dependencies]
 fwdansi.workspace = true
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+ntapi = "0.4.0"
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true

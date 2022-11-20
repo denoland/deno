@@ -70,6 +70,17 @@ declare namespace globalThis {
       EventTarget: typeof EventTarget;
     };
 
+    declare var event: {
+      Event: typeof event;
+      ErrorEvent: typeof ErrorEvent;
+      CloseEvent: typeof CloseEvent;
+      MessageEvent: typeof MessageEvent;
+      CustomEvent: typeof CustomEvent;
+      ProgressEvent: typeof ProgressEvent;
+      PromiseRejectionEvent: typeof PromiseRejectionEvent;
+      reportError: typeof reportError;
+    };
+
     declare var location: {
       getLocationHref(): string | undefined;
     };
