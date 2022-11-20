@@ -27,4 +27,4 @@ syn.workspace = true
 deno_core.workspace = true
 prettyplease = "0.1.21"
 testing_macros = "0.2.7"
-trybuild = "1.0.61"
+trybuild = "1.0.71"
