@@ -50,7 +50,6 @@ use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
-use super::registries::ModuleRegistryOptions;
 use super::testing;
 use super::text;
 use super::tsc;
@@ -65,10 +64,13 @@ use crate::args::FmtConfig;
 use crate::args::LintConfig;
 use crate::args::TsConfig;
 use crate::deno_dir;
+use crate::deno_dir::DenoDir;
+use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::graph_util::graph_valid;
+use crate::http_util::HttpClient;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
 use crate::npm::RealNpmRegistryApi;
@@ -235,17 +237,43 @@ impl LanguageServer {
   }
 }
 
+fn create_lsp_npm_resolver(
+  dir: &DenoDir,
+  http_client: HttpClient,
+) -> NpmPackageResolver {
+  let registry_url = RealNpmRegistryApi::default_url();
+  // Use an "only" cache setting in order to make the
+  // user do an explicit "cache" command and prevent
+  // the cache from being filled with lots of packages while
+  // the user is typing.
+  let cache_setting = CacheSetting::Only;
+  let progress_bar = ProgressBar::default();
+  let npm_cache = NpmCache::from_deno_dir(
+    dir,
+    cache_setting.clone(),
+    http_client.clone(),
+    progress_bar.clone(),
+  );
+  let api = RealNpmRegistryApi::new(
+    registry_url,
+    npm_cache.clone(),
+    cache_setting,
+    http_client,
+    progress_bar,
+  );
+  NpmPackageResolver::new(npm_cache, api, false, None)
+}
+
 impl Inner {
   fn new(client: Client) -> Self {
     let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(maybe_custom_root)
       .expect("could not access DENO_DIR");
     let module_registries_location = dir.root.join(REGISTRIES_PATH);
-    let module_registries = ModuleRegistry::new(
-      &module_registries_location,
-      ModuleRegistryOptions::default(),
-    )
-    .expect("could not create module registries");
+    let http_client = HttpClient::new(None, None).unwrap();
+    let module_registries =
+      ModuleRegistry::new(&module_registries_location, http_client.clone())
+        .unwrap();
     let location = dir.root.join(CACHE_PATH);
     let documents = Documents::new(&location);
     let cache_metadata = cache::CacheMetadata::new(&location);
@@ -258,25 +286,7 @@ impl Inner {
       ts_server.clone(),
     );
     let assets = Assets::new(ts_server.clone());
-    let registry_url = RealNpmRegistryApi::default_url();
-    // Use an "only" cache setting in order to make the
-    // user do an explicit "cache" command and prevent
-    // the cache from being filled with lots of packages while
-    // the user is typing.
-    let cache_setting = CacheSetting::Only;
-    let progress_bar = ProgressBar::default();
-    let npm_cache = NpmCache::from_deno_dir(
-      &dir,
-      cache_setting.clone(),
-      progress_bar.clone(),
-    );
-    let api = RealNpmRegistryApi::new(
-      registry_url,
-      npm_cache.clone(),
-      cache_setting,
-      progress_bar,
-    );
-    let npm_resolver = NpmPackageResolver::new(npm_cache, api, false, None);
+    let npm_resolver = create_lsp_npm_resolver(&dir, http_client);
 
     Self {
       assets,
@@ -498,33 +508,45 @@ impl Inner {
       None
     };
     if self.maybe_cache_path != maybe_cache_path {
-      let maybe_custom_root = maybe_cache_path
-        .clone()
-        .or_else(|| env::var("DENO_DIR").map(String::into).ok());
-      let dir = deno_dir::DenoDir::new(maybe_custom_root)?;
-      let module_registries_location = dir.root.join(REGISTRIES_PATH);
-      let workspace_settings = self.config.get_workspace_settings();
-      let maybe_root_path = self
-        .config
-        .root_uri
-        .as_ref()
-        .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
-      self.module_registries = ModuleRegistry::new(
-        &module_registries_location,
-        ModuleRegistryOptions {
-          maybe_root_path,
-          maybe_ca_stores: workspace_settings.certificate_stores.clone(),
-          maybe_ca_file: workspace_settings.tls_certificate.clone(),
-          unsafely_ignore_certificate_errors: workspace_settings
-            .unsafely_ignore_certificate_errors,
-        },
-      )?;
-      self.module_registries_location = module_registries_location;
-      let location = dir.root.join(CACHE_PATH);
-      self.documents.set_location(&location);
-      self.cache_metadata.set_location(&location);
-      self.maybe_cache_path = maybe_cache_path;
+      self.recreate_http_client_and_dependents(maybe_cache_path)?;
     }
+    Ok(())
+  }
+
+  /// Recreates the http client and all dependent structs.
+  fn recreate_http_client_and_dependents(
+    &mut self,
+    new_cache_path: Option<PathBuf>,
+  ) -> Result<(), AnyError> {
+    let maybe_custom_root = new_cache_path
+      .clone()
+      .or_else(|| env::var("DENO_DIR").map(String::into).ok());
+    let dir = deno_dir::DenoDir::new(maybe_custom_root)?;
+    let workspace_settings = self.config.get_workspace_settings();
+    let maybe_root_path = self
+      .config
+      .root_uri
+      .as_ref()
+      .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
+    let root_cert_store = Some(get_root_cert_store(
+      maybe_root_path,
+      workspace_settings.certificate_stores.clone(),
+      workspace_settings.tls_certificate.clone(),
+    )?);
+    let client = HttpClient::new(
+      root_cert_store,
+      workspace_settings.unsafely_ignore_certificate_errors,
+    )?;
+    let module_registries_location = dir.root.join(REGISTRIES_PATH);
+    self.module_registries =
+      ModuleRegistry::new(&module_registries_location, client.clone())?;
+    self.module_registries_location = module_registries_location;
+    self.npm_resolver = create_lsp_npm_resolver(&dir, client);
+    // update the cache path
+    let location = dir.root.join(CACHE_PATH);
+    self.documents.set_location(&location);
+    self.cache_metadata.set_location(&location);
+    self.maybe_cache_path = new_cache_path;
     Ok(())
   }
 
@@ -627,23 +649,8 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_registries", None::<()>);
+    self.recreate_http_client_and_dependents(self.maybe_cache_path.clone())?;
     let workspace_settings = self.config.get_workspace_settings();
-    let maybe_root_path = self
-      .config
-      .root_uri
-      .as_ref()
-      .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
-    self.module_registries = ModuleRegistry::new(
-      &self.module_registries_location,
-      ModuleRegistryOptions {
-        maybe_root_path,
-        maybe_ca_stores: workspace_settings.certificate_stores.clone(),
-        maybe_ca_file: workspace_settings.tls_certificate.clone(),
-        unsafely_ignore_certificate_errors: workspace_settings
-          .unsafely_ignore_certificate_errors
-          .clone(),
-      },
-    )?;
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
       if *enabled {
         lsp_log!("Enabling import suggestions for: {}", registry);

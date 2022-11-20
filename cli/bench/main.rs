@@ -343,7 +343,7 @@ fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
 
   for (name, args, return_code) in EXEC_TIME_BENCHMARKS {
     let proc = Command::new("time")
-      .args(&["-v", deno_exe.to_str().unwrap()])
+      .args(["-v", deno_exe.to_str().unwrap()])
       .args(args.iter())
       .stdout(Stdio::null())
       .stderr(Stdio::piped())
@@ -501,7 +501,7 @@ async fn main() -> Result<()> {
       let mut file = secure_tempfile::NamedTempFile::new()?;
 
       let exit_status = Command::new("strace")
-        .args(&[
+        .args([
           "-c",
           "-f",
           "-o",

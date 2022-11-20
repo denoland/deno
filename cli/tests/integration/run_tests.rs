@@ -1703,8 +1703,7 @@ fn exec_path() {
     .unwrap();
   assert!(output.status.success());
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
-  let actual =
-    std::fs::canonicalize(&std::path::Path::new(stdout_str)).unwrap();
+  let actual = std::fs::canonicalize(std::path::Path::new(stdout_str)).unwrap();
   let expected = std::fs::canonicalize(util::deno_exe_path()).unwrap();
   assert_eq!(expected, actual);
 }

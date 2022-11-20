@@ -3,13 +3,12 @@
 use crate::auth_tokens::AuthTokens;
 use crate::colors;
 use crate::http_cache::HttpCache;
-use crate::http_util::fetch_once;
 use crate::http_util::CacheSemantics;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
+use crate::http_util::HttpClient;
 use crate::progress_bar::ProgressBar;
 use crate::text_encoding;
-use crate::version::get_user_agent;
 
 use data_url::DataUrl;
 use deno_ast::MediaType;
@@ -22,8 +21,6 @@ use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
-use deno_runtime::deno_fetch::create_http_client;
-use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
@@ -333,7 +330,7 @@ pub struct FileFetcher {
   cache: FileCache,
   cache_setting: CacheSetting,
   pub http_cache: HttpCache,
-  http_client: reqwest::Client,
+  http_client: HttpClient,
   blob_store: BlobStore,
   download_log_level: log::Level,
   progress_bar: Option<ProgressBar>,
@@ -344,9 +341,8 @@ impl FileFetcher {
     http_cache: HttpCache,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    root_cert_store: Option<RootCertStore>,
+    http_client: HttpClient,
     blob_store: BlobStore,
-    unsafely_ignore_certificate_errors: Option<Vec<String>>,
     progress_bar: Option<ProgressBar>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
@@ -355,14 +351,7 @@ impl FileFetcher {
       cache: Default::default(),
       cache_setting,
       http_cache,
-      http_client: create_http_client(
-        get_user_agent(),
-        root_cert_store,
-        vec![],
-        None,
-        unsafely_ignore_certificate_errors,
-        None,
-      )?,
+      http_client,
       blob_store,
       download_log_level: log::Level::Info,
       progress_bar,
@@ -628,14 +617,14 @@ impl FileFetcher {
     let file_fetcher = self.clone();
     // A single pass of fetch either yields code or yields a redirect.
     async move {
-      match fetch_once(FetchOnceArgs {
-        client,
-        url: specifier.clone(),
-        maybe_accept: maybe_accept.clone(),
-        maybe_etag,
-        maybe_auth_token,
-      })
-      .await?
+      match client
+        .fetch_once(FetchOnceArgs {
+          url: specifier.clone(),
+          maybe_accept: maybe_accept.clone(),
+          maybe_etag,
+          maybe_auth_token,
+        })
+        .await?
       {
         FetchOnceResult::NotModified => {
           let file = file_fetcher.fetch_cached(&specifier, 10)?.unwrap();
@@ -765,6 +754,8 @@ impl FileFetcher {
 
 #[cfg(test)]
 mod tests {
+  use crate::http_util::HttpClient;
+
   use super::*;
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
@@ -793,9 +784,8 @@ mod tests {
       HttpCache::new(&location),
       cache_setting,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       blob_store.clone(),
-      None,
       None,
     )
     .unwrap();
@@ -1232,9 +1222,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::ReloadAll,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1259,9 +1248,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1287,9 +1275,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1431,9 +1418,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1461,9 +1447,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1562,9 +1547,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       false,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1589,9 +1573,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Only,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1599,9 +1582,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();

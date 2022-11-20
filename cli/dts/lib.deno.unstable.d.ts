@@ -1805,7 +1805,7 @@ declare namespace Deno {
    *
    * @category Sub Process
    */
-  export interface CommandOutput extends ChildStatus {
+  export interface CommandOutput extends CommandStatus {
     /** The buffered output from the child process' `stdout`. */
     readonly stdout: Uint8Array;
     /** The buffered output from the child process' `stderr`. */

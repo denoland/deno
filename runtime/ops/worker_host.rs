@@ -184,7 +184,7 @@ fn op_create_worker(
   state.put::<WorkerId>(worker_id.next().unwrap());
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
-  let worker_name = args_name.unwrap_or_else(|| "".to_string());
+  let worker_name = args_name.unwrap_or_default();
 
   let (handle_sender, handle_receiver) = std::sync::mpsc::sync_channel::<
     Result<SendableWebWorkerHandle, AnyError>,
