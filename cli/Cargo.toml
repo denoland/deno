@@ -26,24 +26,15 @@ harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
 [build-dependencies]
-deno_broadcast_channel = { version = "0.72.0", path = "../ext/broadcast_channel" }
-deno_cache = { version = "0.10.0", path = "../ext/cache" }
-deno_console = { version = "0.78.0", path = "../ext/console" }
+deno_runtime = { version = "0.86.0", path = "../runtime" }
 deno_core = { version = "0.160.0", path = "../core" }
-deno_crypto = { version = "0.92.0", path = "../ext/crypto" }
-deno_fetch = { version = "0.101.0", path = "../ext/fetch" }
-deno_net = { version = "0.70.0", path = "../ext/net" }
-deno_node = { version = "0.15.0", path = "../ext/node" }
-deno_url = { version = "0.78.0", path = "../ext/url" }
-deno_web = { version = "0.109.0", path = "../ext/web" }
-deno_webgpu = { version = "0.79.0", path = "../ext/webgpu" }
-deno_websocket = { version = "0.83.0", path = "../ext/websocket" }
-deno_webstorage = { version = "0.73.0", path = "../ext/webstorage" }
 regex = "=1.6.0"
 serde = { version = "=1.0.144", features = ["derive"] }
 serde_json = "1.0.64"
 zstd = '=0.11.2'
 glibc_version = "0.1.2"
+
+lzzzz = '1.0'
 
 [target.'cfg(windows)'.build-dependencies]
 winapi = "=0.3.9"
@@ -86,6 +77,7 @@ jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc = "=0.2.126"
 log = { version = "=0.4.17", features = ["serde"] }
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
+lzzzz = '1.0'
 mitata = "=0.0.7"
 monch = "=0.4.0"
 notify = "=5.0.0"
