@@ -501,6 +501,7 @@ impl Flags {
       || self.allow_ffi.is_some()
       || self.allow_net.is_some()
       || self.allow_read.is_some()
+      || self.allow_run.is_some()
       || self.allow_sys.is_some()
       || self.allow_write.is_some()
   }
@@ -510,6 +511,7 @@ impl Flags {
       arg == "--allow-all"
         || arg == "--allow-hrtime"
         || arg.starts_with("--allow-env")
+        || arg.starts_with("--allow-ffi")
         || arg.starts_with("--allow-net")
         || arg.starts_with("--allow-read")
         || arg.starts_with("--allow-run")
