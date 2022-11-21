@@ -22,6 +22,7 @@
   const abortSignal = window.__bootstrap.abortSignal;
   const {
     WebSocket,
+    WebSocketStream,
     _rid,
     _readyState,
     _eventLoop,
@@ -492,6 +493,7 @@
         return socket;
       },
       get stream() {
+        ops.op_check_unstable("WebSocketStream");
         if (webSocketSelector.kind === "socket") {
           throw new TypeError("Websocket already taken as WebSocket");
         }

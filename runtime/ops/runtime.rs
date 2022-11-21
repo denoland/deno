@@ -10,7 +10,7 @@ use deno_core::OpState;
 
 pub fn init(main_module: ModuleSpecifier) -> Extension {
   Extension::builder()
-    .ops(vec![op_main_module::decl()])
+    .ops(vec![op_main_module::decl(), op_check_unstable::decl()])
     .state(move |state| {
       state.put::<ModuleSpecifier>(main_module.clone());
       Ok(())
@@ -93,4 +93,13 @@ pub fn ppid() -> i64 {
     use std::os::unix::process::parent_id;
     parent_id().into()
   }
+}
+
+#[op]
+fn op_check_unstable(
+  state: &mut OpState,
+  api_name: String,
+) -> Result<(), AnyError> {
+  super::check_unstable(state, &api_name);
+  Ok(())
 }

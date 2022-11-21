@@ -339,7 +339,6 @@
             }
           });
 
-          console.log(this[_closeSent]);
           PromisePrototypeThen(this[_closeSent].promise, () => {
             if (this[_closed].state === "pending") {
               return pull(controller);
