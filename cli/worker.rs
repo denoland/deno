@@ -559,49 +559,33 @@ async fn create_main_worker_internal(
     js_enable_test_callback,
     js_enable_bench_callback,
   ) = if bench_or_test {
-    let a = worker
-      .js_runtime
-      .execute_script(
-        &located_script_name!(),
-        "Deno[Deno.internal].testing.runTests",
-      )
-      .unwrap();
-    let b = worker
-      .js_runtime
-      .execute_script(
-        &located_script_name!(),
+    let scope = &mut worker.js_runtime.handle_scope();
+    let js_run_tests_callback = deno_core::JsRuntime::eval::<v8::Function>(
+      scope,
+      "Deno[Deno.internal].testing.runTests",
+    )
+    .unwrap();
+    let js_run_benchmarks_callback =
+      deno_core::JsRuntime::eval::<v8::Function>(
+        scope,
         "Deno[Deno.internal].testing.runBenchmarks",
       )
       .unwrap();
-    let c = worker
-      .js_runtime
-      .execute_script(
-        &located_script_name!(),
-        "Deno[Deno.internal].testing.enableTest",
-      )
-      .unwrap();
-    let d = worker
-      .js_runtime
-      .execute_script(
-        &located_script_name!(),
-        "Deno[Deno.internal].testing.enableBench",
-      )
-      .unwrap();
-
-    let scope = &mut worker.js_runtime.handle_scope();
-    let a: v8::Local<v8::Function> =
-      v8::Local::new(scope, a).try_into().unwrap();
-    let b: v8::Local<v8::Function> =
-      v8::Local::new(scope, b).try_into().unwrap();
-    let c: v8::Local<v8::Function> =
-      v8::Local::new(scope, c).try_into().unwrap();
-    let d: v8::Local<v8::Function> =
-      v8::Local::new(scope, d).try_into().unwrap();
+    let js_enable_tests_callback = deno_core::JsRuntime::eval::<v8::Function>(
+      scope,
+      "Deno[Deno.internal].testing.enableTest",
+    )
+    .unwrap();
+    let js_enable_bench_callback = deno_core::JsRuntime::eval::<v8::Function>(
+      scope,
+      "Deno[Deno.internal].testing.enableBench",
+    )
+    .unwrap();
     (
-      Some(v8::Global::new(scope, a)),
-      Some(v8::Global::new(scope, b)),
-      Some(v8::Global::new(scope, c)),
-      Some(v8::Global::new(scope, d)),
+      Some(v8::Global::new(scope, js_run_tests_callback)),
+      Some(v8::Global::new(scope, js_run_benchmarks_callback)),
+      Some(v8::Global::new(scope, js_enable_tests_callback)),
+      Some(v8::Global::new(scope, js_enable_bench_callback)),
     )
   } else {
     (None, None, None, None)
