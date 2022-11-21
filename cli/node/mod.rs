@@ -319,9 +319,6 @@ static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
   CURRENT_STD_URL.clone()
 });
 
-pub static MODULE_ALL_URL: Lazy<Url> =
-  Lazy::new(|| NODE_COMPAT_URL.join("node/module_all.ts").unwrap());
-
 fn find_builtin_node_module(specifier: &str) -> Option<&NodeModulePolyfill> {
   SUPPORTED_MODULES.iter().find(|m| m.name == specifier)
 }
@@ -399,18 +396,10 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
   ])
 });
 
+// TODO(bartlomieju): simplify, this could be done ad-hoc when creating a worker
 pub async fn initialize_runtime(
   js_runtime: &mut JsRuntime,
 ) -> Result<(), AnyError> {
-  // let source_code = &format!(
-  //   r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName) {{
-  //     const moduleAll = await import(moduleAllUrl);
-  //     Deno[Deno.internal].node.initialize(moduleAll.default, nodeGlobalThisName);
-  //   }})('{}', '{}');"#,
-  //   MODULE_ALL_URL.as_str(),
-  //   NODE_GLOBAL_THIS_NAME.as_str(),
-  // );
-
   let source_code = &format!(
     r#"(function loadBuiltinNodeModules(nodeGlobalThisName) {{
       Deno[Deno.internal].node.initialize(

@@ -63,8 +63,6 @@ use log::warn;
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
@@ -97,7 +95,6 @@ pub struct Inner {
   pub npm_resolver: NpmPackageResolver,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
   progress_bar: ProgressBar,
-  node_std_graph_prepared: AtomicBool,
 }
 
 impl Deref for ProcState {
@@ -274,7 +271,6 @@ impl ProcState {
       npm_resolver,
       cjs_resolutions: Default::default(),
       progress_bar,
-      node_std_graph_prepared: AtomicBool::new(false),
     })))
   }
 
@@ -416,7 +412,6 @@ impl ProcState {
 
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
-      self.prepare_node_std_graph().await?;
     }
 
     drop(_pb_clear_guard);
@@ -464,20 +459,6 @@ impl ProcState {
       g.write()?;
     }
 
-    Ok(())
-  }
-
-  /// Add the builtin node modules to the graph data.
-  pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
-    if self.node_std_graph_prepared.load(Ordering::Relaxed) {
-      return Ok(());
-    }
-
-    let node_std_graph = self
-      .create_graph(vec![(node::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
-      .await?;
-    self.graph_data.write().add_graph(&node_std_graph, false);
-    self.node_std_graph_prepared.store(true, Ordering::Relaxed);
     Ok(())
   }
 
