@@ -701,6 +701,21 @@ async fn run_command(
     return run_from_stdin(flags).await;
   }
 
+  if flags.to_permission_args().is_empty()
+    && flags.argv.iter().any(|arg| {
+      arg.contains("--allow-env")
+        || arg.contains("--allow-hrtime")
+        || arg.contains("--allow-net")
+        || arg.contains("--allow-read")
+        || arg.contains("--allow-run")
+        || arg.contains("--allow-sys")
+        || arg.contains("--allow-write")
+        || arg.contains("--allow-all")
+    })
+  {
+    log::warn!("Permission flags have likely been incorrectly set after the script location. To grant permissions, define them before the script location.")
+  }
+
   if flags.watch.is_some() {
     return run_with_watch(flags, run_flags.script).await;
   }
