@@ -769,7 +769,7 @@ mod tests {
         "run",
         "--allow-all",
         "--lock",
-        &lock_path.to_string_lossy().to_string(),
+        &lock_path.to_string_lossy(),
         "npm:cowsay"
       ]
     );
