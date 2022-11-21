@@ -32,7 +32,7 @@ pub static RUNTIME_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
 
 pub fn deno_isolate_init() -> Snapshot {
   debug!("Deno isolate init with snapshots.");
-  Snapshot::Static(&*RUNTIME_SNAPSHOT)
+  Snapshot::Static(&RUNTIME_SNAPSHOT)
 }
 
 pub fn get_99_main() -> PathBuf {

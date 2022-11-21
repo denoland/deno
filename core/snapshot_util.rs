@@ -41,7 +41,7 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   }
 
   let snapshot = js_runtime.snapshot();
-  let snapshot_slice: &[u8] = &*snapshot;
+  let snapshot_slice: &[u8] = &snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
 
   let compressed_snapshot_with_size = {
@@ -64,7 +64,7 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   );
 
   std::fs::write(
-    &create_snapshot_options.snapshot_path,
+    create_snapshot_options.snapshot_path,
     compressed_snapshot_with_size,
   )
   .unwrap();

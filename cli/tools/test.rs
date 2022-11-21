@@ -742,9 +742,7 @@ fn extract_files_from_regex_blocks(
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
-      if block.get(1) == None {
-        return None;
-      }
+      block.get(1)?;
 
       let maybe_attributes: Option<Vec<_>> = block
         .get(1)
