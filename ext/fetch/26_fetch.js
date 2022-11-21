@@ -309,6 +309,16 @@
   }
 
   /**
+   * @param {URL} a
+   * @param {URL} b
+   * @returns {boolean}
+   */
+  function isSameOrigin(a, b) {
+    if (a.origin === null) return false;
+    return a.origin === b.origin;
+  }
+
+  /**
    * @param {InnerRequest} request
    * @param {InnerResponse} response
    * @param {AbortSignal} terminator
@@ -361,6 +371,14 @@
             byteLowerCase(request.headerList[i][0]),
           )
         ) {
+          ArrayPrototypeSplice(request.headerList, i, 1);
+          i--;
+        }
+      }
+    }
+    if (!isSameOrigin(request.currentUrl(), locationURL)) {
+      for (let i = 0; i < request.headerList.length; i++) {
+        if (byteLowerCase(request.headerList[i][0]) == "authorization") {
           ArrayPrototypeSplice(request.headerList, i, 1);
           i--;
         }
