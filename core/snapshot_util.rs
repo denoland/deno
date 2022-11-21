@@ -64,7 +64,7 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   );
 
   std::fs::write(
-    create_snapshot_options.snapshot_path,
+    &create_snapshot_options.snapshot_path,
     compressed_snapshot_with_size,
   )
   .unwrap();
