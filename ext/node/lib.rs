@@ -83,6 +83,7 @@ pub fn init<P: NodePermissions + 'static>(
       prefix "deno:ext/node",
       "01_node.js",
       "02_require.js",
+      "03_std_node.js",
     ))
     .ops(vec![
       op_require_init_paths::decl(),
