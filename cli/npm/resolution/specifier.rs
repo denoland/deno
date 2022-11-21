@@ -245,7 +245,7 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     for specifier in &specifiers {
       if let Ok(npm_ref) = NpmPackageReference::from_specifier(specifier) {
         leaf.reqs.insert(npm_ref.req);
-      } else if !specifier.as_str().starts_with(&parent_specifier.as_str()) {
+      } else if !specifier.as_str().starts_with(parent_specifier.as_str()) {
         leaf
           .dependencies
           .insert(get_folder_path_specifier(specifier));

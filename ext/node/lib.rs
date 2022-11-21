@@ -27,6 +27,7 @@ pub use resolution::legacy_main_resolve;
 pub use resolution::package_exports_resolve;
 pub use resolution::package_imports_resolve;
 pub use resolution::package_resolve;
+pub use resolution::path_to_declaration_path;
 pub use resolution::NodeModuleKind;
 pub use resolution::DEFAULT_CONDITIONS;
 pub use resolution::TYPES_CONDITIONS;

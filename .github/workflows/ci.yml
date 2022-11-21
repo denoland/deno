@@ -157,15 +157,15 @@ jobs:
           # to complete.
           sudo apt-get remove --purge -y man-db
 
-          # Install clang-14, lld-14, and debootstrap.
-          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-14.list
+          # Install clang-15, lld-15, and debootstrap.
+          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-15.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           sudo apt-get install --no-install-recommends debootstrap     \
-                                                       clang-14 lld-14
+                                                       clang-15 lld-15
 
           # Create ubuntu-16.04 sysroot environment, which is used to avoid
           # depending on a very recent version of glibc.
@@ -190,8 +190,8 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-14
-            -C link-arg=-fuse-ld=lld-14
+            -C linker=clang-15
+            -C link-arg=-fuse-ld=lld-15
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -200,15 +200,15 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-14
-            -C link-arg=-fuse-ld=lld-14
+            -C linker=clang-15
+            -C link-arg=-fuse-ld=lld-15
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
             ${{ env.RUSTFLAGS }}
           __1
-          CC=clang-14
+          CC=clang-15
           CFLAGS=-flto=thin --sysroot=/sysroot
           __0
 

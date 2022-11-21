@@ -2888,7 +2888,7 @@ pub mod tests {
         ..Default::default()
       });
       runtime.execute_script("a.js", "a = 1 + 2").unwrap();
-      let snap: &[u8] = &*runtime.snapshot();
+      let snap: &[u8] = &runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 
@@ -4051,7 +4051,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
         will_snapshot: true,
         ..Default::default()
       });
-      let snap: &[u8] = &*runtime.snapshot();
+      let snap: &[u8] = &runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 

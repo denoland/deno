@@ -1088,7 +1088,7 @@ async fn download_npm_registry_file(
       .into_bytes()
   };
   std::fs::create_dir_all(file_path.parent().unwrap())?;
-  std::fs::write(&file_path, bytes)?;
+  std::fs::write(file_path, bytes)?;
   Ok(())
 }
 
@@ -1918,7 +1918,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       command.env_clear();
     }
     command.envs(self.envs.clone());
-    command.current_dir(&cwd);
+    command.current_dir(cwd);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();
     command.stderr(writer_clone);
@@ -2163,13 +2163,13 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   let mut latency = None;
 
   for line in output.lines() {
-    if requests == None {
+    if requests.is_none() {
       if let Some(cap) = REQUESTS_RX.captures(line) {
         requests =
           Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
       }
     }
-    if latency == None {
+    if latency.is_none() {
       if let Some(cap) = LATENCY_RX.captures(line) {
         let time = cap.get(1).unwrap();
         let unit = cap.get(2).unwrap();

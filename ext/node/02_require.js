@@ -819,8 +819,27 @@
   }
 
   function createRequire(filenameOrUrl) {
-    // FIXME: handle URLs and validation
-    const filename = core.ops.op_require_as_file_path(filenameOrUrl);
+    let fileUrlStr;
+    if (filenameOrUrl instanceof URL) {
+      if (filenameOrUrl.protocol !== "file:") {
+        throw new Error(
+          `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+        );
+      }
+      fileUrlStr = filenameOrUrl.toString();
+    } else if (typeof filenameOrUrl === "string") {
+      if (!filenameOrUrl.startsWith("file:")) {
+        throw new Error(
+          `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+        );
+      }
+      fileUrlStr = filenameOrUrl;
+    } else {
+      throw new Error(
+        `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+      );
+    }
+    const filename = core.ops.op_require_as_file_path(fileUrlStr);
     return createRequireFromPath(filename);
   }
 

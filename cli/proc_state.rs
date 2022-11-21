@@ -19,6 +19,7 @@ use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::http_cache;
+use crate::http_util::HttpClient;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::node;
@@ -157,15 +158,18 @@ impl ProcState {
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
     let progress_bar = ProgressBar::default();
+    let http_client = HttpClient::new(
+      Some(root_cert_store.clone()),
+      cli_options
+        .unsafely_ignore_certificate_errors()
+        .map(ToOwned::to_owned),
+    )?;
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
       !cli_options.no_remote(),
-      Some(root_cert_store.clone()),
+      http_client.clone(),
       blob_store.clone(),
-      cli_options
-        .unsafely_ignore_certificate_errors()
-        .map(ToOwned::to_owned),
       Some(progress_bar.clone()),
     )?;
 
@@ -216,16 +220,17 @@ impl ProcState {
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
+      http_client.clone(),
       progress_bar.clone(),
     );
     let api = RealNpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
       cli_options.cache_setting(),
+      http_client,
       progress_bar.clone(),
     );
-    let maybe_lockfile =
-      lockfile.as_ref().filter(|l| !l.lock().overwrite).cloned();
+    let maybe_lockfile = lockfile.as_ref().cloned();
     let mut npm_resolver = NpmPackageResolver::new(
       npm_cache.clone(),
       api,
@@ -235,7 +240,9 @@ impl ProcState {
         .with_context(|| "Resolving local node_modules folder.")?,
     );
     if let Some(lockfile) = maybe_lockfile.clone() {
-      npm_resolver.add_lockfile(lockfile).await?;
+      npm_resolver
+        .add_lockfile_and_maybe_regenerate_snapshot(lockfile)
+        .await?;
     }
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
