@@ -701,18 +701,7 @@ async fn run_command(
     return run_from_stdin(flags).await;
   }
 
-  if flags.to_permission_args().is_empty()
-    && flags.argv.iter().any(|arg| {
-      arg.contains("--allow-env")
-        || arg.contains("--allow-hrtime")
-        || arg.contains("--allow-net")
-        || arg.contains("--allow-read")
-        || arg.contains("--allow-run")
-        || arg.contains("--allow-sys")
-        || arg.contains("--allow-write")
-        || arg.contains("--allow-all")
-    })
-  {
+  if !flags.has_permission() && flags.has_permission_in_argv() {
     log::warn!("Permission flags have likely been incorrectly set after the module name. To grant permissions, define them before the module name.")
   }
 
