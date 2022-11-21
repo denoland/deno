@@ -591,7 +591,7 @@ fn resolve_bin_entry_value<'a>(
     Value::Object(o) => {
       if let Some(bin_name) = bin_name {
         o.get(bin_name)
-      } else if o.len() == 1 {
+      } else if o.len() == 1 || o.len() > 1 && o.values().all(|v| v == o.values().next().unwrap()) {
         o.values().next()
       } else {
         o.get(&pkg_req.name)
@@ -1293,6 +1293,21 @@ mod tests {
         " * npm:asdf@1.2/bin2\n",
         " * npm:asdf@1.2/test"
       )
+    );
+
+    // should resolve since all the values are the same
+    let value = json!({
+      "bin1": "./value",
+      "bin2": "./value",
+    });
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageReq::from_str("test").unwrap(),
+        None,
+        &value
+      )
+      .unwrap(),
+      "./value"
     );
 
     // should not resolve when specified and is a string
