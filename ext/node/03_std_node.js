@@ -57282,6 +57282,7 @@ ${groupIndent}`,
       zlib: zlib_default,
     };
 
+    Deno[Deno.internal].nodePolyfills = module_all_default;
     return module_all_default;
   }
 

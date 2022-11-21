@@ -54,7 +54,10 @@ pub trait RequireNpmResolver {
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
 }
 
-pub const MODULE_ES_SHIM: &str = include_str!("./module_es_shim.js");
+pub const MODULE_ES_SHIM: &str = include_str!("./es_shims/module.js");
+pub const PROCESS_ES_SHIM: &str = include_str!("./es_shims/process.js");
+pub const OS_ES_SHIM: &str = include_str!("./es_shims/os.js");
+pub const TTY_ES_SHIM: &str = include_str!("./es_shims/tty.js");
 
 pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
   let now = std::time::SystemTime::now();

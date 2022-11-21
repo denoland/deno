@@ -6,14 +6,12 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::cache::NodeAnalysisCache;
-use crate::deno_std::CURRENT_STD_URL;
 use deno_ast::CjsAnalysis;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::serde_json::Value;
@@ -114,236 +112,60 @@ pub enum NodeResolutionMode {
   Types,
 }
 
-struct NodeModulePolyfill {
-  /// Name of the module like "assert" or "timers/promises"
-  name: &'static str,
-
-  /// Specifier relative to the root of `deno_std` repo, like "node/asser.ts"
-  specifier: &'static str,
-}
-
-static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
-  NodeModulePolyfill {
-    name: "assert",
-    specifier: "node/assert.ts",
-  },
-  NodeModulePolyfill {
-    name: "assert/strict",
-    specifier: "node/assert/strict.ts",
-  },
-  NodeModulePolyfill {
-    name: "async_hooks",
-    specifier: "node/async_hooks.ts",
-  },
-  NodeModulePolyfill {
-    name: "buffer",
-    specifier: "node/buffer.ts",
-  },
-  NodeModulePolyfill {
-    name: "child_process",
-    specifier: "node/child_process.ts",
-  },
-  NodeModulePolyfill {
-    name: "cluster",
-    specifier: "node/cluster.ts",
-  },
-  NodeModulePolyfill {
-    name: "console",
-    specifier: "node/console.ts",
-  },
-  NodeModulePolyfill {
-    name: "constants",
-    specifier: "node/constants.ts",
-  },
-  NodeModulePolyfill {
-    name: "crypto",
-    specifier: "node/crypto.ts",
-  },
-  NodeModulePolyfill {
-    name: "dgram",
-    specifier: "node/dgram.ts",
-  },
-  NodeModulePolyfill {
-    name: "dns",
-    specifier: "node/dns.ts",
-  },
-  NodeModulePolyfill {
-    name: "dns/promises",
-    specifier: "node/dns/promises.ts",
-  },
-  NodeModulePolyfill {
-    name: "domain",
-    specifier: "node/domain.ts",
-  },
-  NodeModulePolyfill {
-    name: "events",
-    specifier: "node/events.ts",
-  },
-  NodeModulePolyfill {
-    name: "fs",
-    specifier: "node/fs.ts",
-  },
-  NodeModulePolyfill {
-    name: "fs/promises",
-    specifier: "node/fs/promises.ts",
-  },
-  NodeModulePolyfill {
-    name: "http",
-    specifier: "node/http.ts",
-  },
-  NodeModulePolyfill {
-    name: "https",
-    specifier: "node/https.ts",
-  },
-  NodeModulePolyfill {
-    name: "module",
-    // NOTE(bartlomieju): `module` is special, because we don't want to use
-    // `deno_std/node/module.ts`, but instead use a special shim that we
-    // provide in `ext/node`.
-    specifier: "[USE `deno_node::MODULE_ES_SHIM` to get this module]",
-  },
-  NodeModulePolyfill {
-    name: "net",
-    specifier: "node/net.ts",
-  },
-  NodeModulePolyfill {
-    name: "os",
-    specifier: "node/os.ts",
-  },
-  NodeModulePolyfill {
-    name: "path",
-    specifier: "node/path.ts",
-  },
-  NodeModulePolyfill {
-    name: "path/posix",
-    specifier: "node/path/posix.ts",
-  },
-  NodeModulePolyfill {
-    name: "path/win32",
-    specifier: "node/path/win32.ts",
-  },
-  NodeModulePolyfill {
-    name: "perf_hooks",
-    specifier: "node/perf_hooks.ts",
-  },
-  NodeModulePolyfill {
-    name: "process",
-    specifier: "node/process.ts",
-  },
-  NodeModulePolyfill {
-    name: "querystring",
-    specifier: "node/querystring.ts",
-  },
-  NodeModulePolyfill {
-    name: "readline",
-    specifier: "node/readline.ts",
-  },
-  NodeModulePolyfill {
-    name: "stream",
-    specifier: "node/stream.ts",
-  },
-  NodeModulePolyfill {
-    name: "stream/consumers",
-    specifier: "node/stream/consumers.mjs",
-  },
-  NodeModulePolyfill {
-    name: "stream/promises",
-    specifier: "node/stream/promises.mjs",
-  },
-  NodeModulePolyfill {
-    name: "stream/web",
-    specifier: "node/stream/web.ts",
-  },
-  NodeModulePolyfill {
-    name: "string_decoder",
-    specifier: "node/string_decoder.ts",
-  },
-  NodeModulePolyfill {
-    name: "sys",
-    specifier: "node/sys.ts",
-  },
-  NodeModulePolyfill {
-    name: "timers",
-    specifier: "node/timers.ts",
-  },
-  NodeModulePolyfill {
-    name: "timers/promises",
-    specifier: "node/timers/promises.ts",
-  },
-  NodeModulePolyfill {
-    name: "tls",
-    specifier: "node/tls.ts",
-  },
-  NodeModulePolyfill {
-    name: "tty",
-    specifier: "node/tty.ts",
-  },
-  NodeModulePolyfill {
-    name: "url",
-    specifier: "node/url.ts",
-  },
-  NodeModulePolyfill {
-    name: "util",
-    specifier: "node/util.ts",
-  },
-  NodeModulePolyfill {
-    name: "util/types",
-    specifier: "node/util/types.ts",
-  },
-  NodeModulePolyfill {
-    name: "v8",
-    specifier: "node/v8.ts",
-  },
-  NodeModulePolyfill {
-    name: "vm",
-    specifier: "node/vm.ts",
-  },
-  NodeModulePolyfill {
-    name: "worker_threads",
-    specifier: "node/worker_threads.ts",
-  },
-  NodeModulePolyfill {
-    name: "zlib",
-    specifier: "node/zlib.ts",
-  },
+static SUPPORTED_MODULES: &[&str] = &[
+  "assert",
+  "assert/strict",
+  "async_hooks",
+  "buffer",
+  "child_process",
+  "cluster",
+  "console",
+  "constants",
+  "crypto",
+  "dgram",
+  "dns",
+  "dns/promises",
+  "domain",
+  "events",
+  "fs",
+  "fs/promises",
+  "http",
+  "https",
+  "module",
+  "net",
+  "os",
+  "path",
+  "path/posix",
+  "path/win32",
+  "perf_hooks",
+  "process",
+  "querystring",
+  "readline",
+  "stream",
+  "stream/consumers",
+  "stream/promises",
+  "stream/web",
+  "string_decoder",
+  "sys",
+  "timers",
+  "timers/promises",
+  "tls",
+  "tty",
+  "url",
+  "util",
+  "util/types",
+  "v8",
+  "vm",
+  "worker_threads",
+  "zlib",
 ];
 
-static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
-  if let Ok(url_str) = std::env::var("DENO_NODE_COMPAT_URL") {
-    let url = Url::parse(&url_str).expect(
-      "Malformed DENO_NODE_COMPAT_URL value, make sure it's a file URL ending with a slash"
-    );
-    return url;
-  }
-
-  CURRENT_STD_URL.clone()
-});
-
-fn find_builtin_node_module(specifier: &str) -> Option<&NodeModulePolyfill> {
-  SUPPORTED_MODULES.iter().find(|m| m.name == specifier)
+fn find_builtin_node_module(specifier: &str) -> Option<&str> {
+  SUPPORTED_MODULES.iter().find(|m| **m == specifier).copied()
 }
 
 fn is_builtin_node_module(specifier: &str) -> bool {
   find_builtin_node_module(specifier).is_some()
-}
-
-pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
-  // NOTE(bartlomieju): `module` is special, because we don't want to use
-  // `deno_std/node/module.ts`, but instead use a special shim that we
-  // provide in `ext/node`.
-  if specifier == "module" {
-    return Ok(Url::parse("node:module").unwrap());
-  }
-
-  if let Some(module) = find_builtin_node_module(specifier) {
-    let module_url = NODE_COMPAT_URL.join(module.specifier).unwrap();
-    return Ok(module_url);
-  }
-
-  Err(generic_error(format!(
-    "Unknown built-in Node module: {}",
-    specifier
-  )))
 }
 
 static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {

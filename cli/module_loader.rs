@@ -70,6 +70,24 @@ impl CliModuleLoader {
         found_url: specifier.to_owned(),
         media_type: MediaType::JavaScript,
       });
+    } else if specifier.as_str() == "node:process" {
+      return Ok(ModuleCodeSource {
+        code: deno_runtime::deno_node::PROCESS_ES_SHIM.to_string(),
+        found_url: specifier.to_owned(),
+        media_type: MediaType::JavaScript,
+      });
+    } else if specifier.as_str() == "node:os" {
+      return Ok(ModuleCodeSource {
+        code: deno_runtime::deno_node::OS_ES_SHIM.to_string(),
+        found_url: specifier.to_owned(),
+        media_type: MediaType::JavaScript,
+      });
+    } else if specifier.as_str() == "node:tty" {
+      return Ok(ModuleCodeSource {
+        code: deno_runtime::deno_node::TTY_ES_SHIM.to_string(),
+        found_url: specifier.to_owned(),
+        media_type: MediaType::JavaScript,
+      });
     }
     let graph_data = self.ps.graph_data.read();
     let found_url = graph_data.follow_redirect(specifier);

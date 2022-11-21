@@ -474,7 +474,7 @@ impl ProcState {
       // remember that this was a common js resolution
       self.cjs_resolutions.lock().insert(specifier.clone());
     } else if let NodeResolution::BuiltIn(specifier) = &response {
-      return node::resolve_builtin_node_module(specifier);
+      return Ok(Url::parse(&format!("node:{}", specifier)).unwrap());
     }
     Ok(response.into_url())
   }
