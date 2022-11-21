@@ -713,7 +713,7 @@ async fn run_command(
         || arg.contains("--allow-all")
     })
   {
-    log::warn!("Permission flags have likely been incorrectly set after the script location. To grant permissions, define them before the script location.")
+    log::warn!("Permission flags have likely been incorrectly set after the module name. To grant permissions, define them before the module name.")
   }
 
   if flags.watch.is_some() {
