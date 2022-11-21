@@ -15,7 +15,7 @@ use crate::ops;
 use crate::proc_state;
 use crate::tools::test;
 use crate::tools::test::TestEventSender;
-use crate::worker::create_main_worker_for_testing_or_benching;
+use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -154,7 +154,7 @@ async fn test_specifier(
   filter: test::TestFilter,
 ) -> Result<(), AnyError> {
   if !token.is_cancelled() {
-    let mut worker = create_main_worker_for_testing_or_benching(
+    let mut worker = create_main_worker_for_test_or_bench(
       &ps,
       specifier.clone(),
       permissions,

@@ -418,7 +418,7 @@ pub async fn create_main_worker(
   .await
 }
 
-pub async fn create_main_worker_for_testing_or_benching(
+pub async fn create_main_worker_for_test_or_bench(
   ps: &ProcState,
   main_module: ModuleSpecifier,
   permissions: Permissions,

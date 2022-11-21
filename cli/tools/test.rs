@@ -17,7 +17,7 @@ use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
-use crate::worker::create_main_worker_for_testing_or_benching;
+use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
@@ -715,7 +715,7 @@ async fn test_specifier(
   sender: &TestEventSender,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let mut worker = create_main_worker_for_testing_or_benching(
+  let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier.clone(),
     permissions,

@@ -14,7 +14,7 @@ use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
-use crate::worker::create_main_worker_for_testing_or_benching;
+use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -352,7 +352,7 @@ async fn bench_specifier(
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
   let filter = TestFilter::from_flag(&options.filter);
-  let mut worker = create_main_worker_for_testing_or_benching(
+  let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier.clone(),
     permissions,
