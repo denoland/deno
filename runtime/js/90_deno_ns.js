@@ -7,8 +7,6 @@
 
   __bootstrap.denoNs = {
     metrics: core.metrics,
-    test: __bootstrap.testing.test,
-    bench: __bootstrap.testing.bench,
     Process: __bootstrap.process.Process,
     run: __bootstrap.process.run,
     isatty: __bootstrap.tty.isatty,

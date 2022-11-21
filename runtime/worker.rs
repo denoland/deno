@@ -13,9 +13,6 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
-use deno_core::serde_json::json;
-use deno_core::serde_v8;
-use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::FsModuleLoader;
@@ -66,10 +63,6 @@ pub struct MainWorker {
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
   exit_code: ExitCode,
-  js_run_tests_callback: v8::Global<v8::Function>,
-  js_run_benchmarks_callback: v8::Global<v8::Function>,
-  js_enable_test_callback: v8::Global<v8::Function>,
-  js_enable_bench_callback: v8::Global<v8::Function>,
 }
 
 pub struct WorkerOptions {
@@ -97,15 +90,6 @@ pub struct WorkerOptions {
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
-}
-
-fn grab_cb(
-  scope: &mut v8::HandleScope,
-  path: &str,
-) -> v8::Global<v8::Function> {
-  let cb = JsRuntime::eval::<v8::Function>(scope, path)
-    .unwrap_or_else(|| panic!("{} must be defined", path));
-  v8::Global::new(scope, cb)
 }
 
 impl Default for WorkerOptions {
@@ -267,29 +251,10 @@ impl MainWorker {
       );
     }
 
-    let (
-      js_run_tests_callback,
-      js_run_benchmarks_callback,
-      js_enable_test_callback,
-      js_enable_bench_callback,
-    ) = {
-      let scope = &mut js_runtime.handle_scope();
-      (
-        grab_cb(scope, "__bootstrap.testing.runTests"),
-        grab_cb(scope, "__bootstrap.testing.runBenchmarks"),
-        grab_cb(scope, "__bootstrap.testing.enableTest"),
-        grab_cb(scope, "__bootstrap.testing.enableBench"),
-      )
-    };
-
     Self {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
       exit_code,
-      js_run_tests_callback,
-      js_run_benchmarks_callback,
-      js_enable_test_callback,
-      js_enable_bench_callback,
     }
   }
 
@@ -375,65 +340,6 @@ impl MainWorker {
   ) -> Result<(), AnyError> {
     let id = self.preload_main_module(module_specifier).await?;
     self.evaluate_module(id).await
-  }
-
-  /// Run tests declared with `Deno.test()`. Test events will be dispatched
-  /// by calling ops which are currently only implemented in the CLI crate.
-  // TODO(nayeemrmn): Move testing ops to deno_runtime and redesign/unhide.
-  #[doc(hidden)]
-  pub async fn run_tests(
-    &mut self,
-    shuffle: &Option<u64>,
-  ) -> Result<(), AnyError> {
-    let promise = {
-      let scope = &mut self.js_runtime.handle_scope();
-      let cb = self.js_run_tests_callback.open(scope);
-      let this = v8::undefined(scope).into();
-      let options =
-        serde_v8::to_v8(scope, json!({ "shuffle": shuffle })).unwrap();
-      let promise = cb.call(scope, this, &[options]).unwrap();
-      v8::Global::new(scope, promise)
-    };
-    self.js_runtime.resolve_value(promise).await?;
-    Ok(())
-  }
-
-  /// Run benches declared with `Deno.bench()`. Bench events will be dispatched
-  /// by calling ops which are currently only implemented in the CLI crate.
-  // TODO(nayeemrmn): Move benchmark ops to deno_runtime and redesign/unhide.
-  #[doc(hidden)]
-  pub async fn run_benchmarks(&mut self) -> Result<(), AnyError> {
-    let promise = {
-      let scope = &mut self.js_runtime.handle_scope();
-      let cb = self.js_run_benchmarks_callback.open(scope);
-      let this = v8::undefined(scope).into();
-      let promise = cb.call(scope, this, &[]).unwrap();
-      v8::Global::new(scope, promise)
-    };
-    self.js_runtime.resolve_value(promise).await?;
-    Ok(())
-  }
-
-  /// Enable `Deno.test()`. If this isn't called before executing user code,
-  /// `Deno.test()` calls will noop.
-  // TODO(nayeemrmn): Move testing ops to deno_runtime and redesign/unhide.
-  #[doc(hidden)]
-  pub fn enable_test(&mut self) {
-    let scope = &mut self.js_runtime.handle_scope();
-    let cb = self.js_enable_test_callback.open(scope);
-    let this = v8::undefined(scope).into();
-    cb.call(scope, this, &[]).unwrap();
-  }
-
-  /// Enable `Deno.bench()`. If this isn't called before executing user code,
-  /// `Deno.bench()` calls will noop.
-  // TODO(nayeemrmn): Move benchmark ops to deno_runtime and redesign/unhide.
-  #[doc(hidden)]
-  pub fn enable_bench(&mut self) {
-    let scope = &mut self.js_runtime.handle_scope();
-    let cb = self.js_enable_bench_callback.open(scope);
-    let this = v8::undefined(scope).into();
-    cb.call(scope, this, &[]).unwrap();
   }
 
   fn wait_for_inspector_session(&mut self) {
@@ -540,109 +446,5 @@ impl MainWorker {
     )?;
     let local_value = value.open(&mut self.js_runtime.handle_scope());
     Ok(local_value.is_false())
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use deno_core::resolve_url_or_path;
-
-  fn create_test_worker() -> MainWorker {
-    let main_module = resolve_url_or_path("./hello.js").unwrap();
-    let permissions = Permissions::default();
-
-    let options = WorkerOptions {
-      bootstrap: BootstrapOptions {
-        args: vec![],
-        cpu_count: 1,
-        debug_flag: false,
-        enable_testing_features: false,
-        locale: deno_core::v8::icu::get_language_tag(),
-        location: None,
-        no_color: true,
-        is_tty: false,
-        runtime_version: "x".to_string(),
-        ts_version: "x".to_string(),
-        unstable: false,
-        user_agent: "x".to_string(),
-        inspect: false,
-      },
-      extensions: vec![],
-      startup_snapshot: None,
-      unsafely_ignore_certificate_errors: None,
-      root_cert_store: None,
-      seed: None,
-      format_js_error_fn: None,
-      source_map_getter: None,
-      web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
-      web_worker_pre_execute_module_cb: Arc::new(|_| unreachable!()),
-      create_web_worker_cb: Arc::new(|_| unreachable!()),
-      maybe_inspector_server: None,
-      should_break_on_first_statement: false,
-      module_loader: Rc::new(FsModuleLoader),
-      npm_resolver: None,
-      get_error_class_fn: None,
-      cache_storage_dir: None,
-      origin_storage_dir: None,
-      blob_store: BlobStore::default(),
-      broadcast_channel: InMemoryBroadcastChannel::default(),
-      shared_array_buffer_store: None,
-      compiled_wasm_module_store: None,
-      stdio: Default::default(),
-    };
-
-    MainWorker::bootstrap_from_options(main_module, permissions, options)
-  }
-
-  #[tokio::test]
-  async fn execute_mod_esm_imports_a() {
-    let p = test_util::testdata_path().join("runtime/esm_imports_a.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let mut worker = create_test_worker();
-    let result = worker.execute_main_module(&module_specifier).await;
-    if let Err(err) = result {
-      eprintln!("execute_mod err {:?}", err);
-    }
-    if let Err(e) = worker.run_event_loop(false).await {
-      panic!("Future got unexpected error: {:?}", e);
-    }
-  }
-
-  #[tokio::test]
-  async fn execute_mod_circular() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("tests/circular1.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let mut worker = create_test_worker();
-    let result = worker.execute_main_module(&module_specifier).await;
-    if let Err(err) = result {
-      eprintln!("execute_mod err {:?}", err);
-    }
-    if let Err(e) = worker.run_event_loop(false).await {
-      panic!("Future got unexpected error: {:?}", e);
-    }
-  }
-
-  #[tokio::test]
-  async fn execute_mod_resolve_error() {
-    // "foo" is not a valid module specifier so this should return an error.
-    let mut worker = create_test_worker();
-    let module_specifier = resolve_url_or_path("does-not-exist").unwrap();
-    let result = worker.execute_main_module(&module_specifier).await;
-    assert!(result.is_err());
-  }
-
-  #[tokio::test]
-  async fn execute_mod_002_hello() {
-    // This assumes cwd is project root (an assumption made throughout the
-    // tests).
-    let mut worker = create_test_worker();
-    let p = test_util::testdata_path().join("run/001_hello.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let result = worker.execute_main_module(&module_specifier).await;
-    assert!(result.is_ok());
   }
 }
