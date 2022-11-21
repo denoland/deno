@@ -507,14 +507,14 @@ impl Flags {
 
   pub fn has_permission_in_argv(&self) -> bool {
     self.argv.iter().any(|arg| {
-      arg.starts_with("--allow-env")
-        || arg.starts_with("--allow-hrtime")
+      arg == "--allow-all"
+        || arg == "--allow-hrtime"
+        || arg.starts_with("--allow-env")
         || arg.starts_with("--allow-net")
         || arg.starts_with("--allow-read")
         || arg.starts_with("--allow-run")
         || arg.starts_with("--allow-sys")
         || arg.starts_with("--allow-write")
-        || arg.starts_with("--allow-all")
     })
   }
 }
