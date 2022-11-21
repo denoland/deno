@@ -834,6 +834,40 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketExclusive() {
+        const promise = (async () => {
+const listener = Deno.listen({ port: 4501 });
+    const conn = await listener.accept();
+    listener.close();
+    const httpConn = Deno.serveHttp(conn);
+    const reqEvent = await httpConn.nextRequest();
+    assert(reqEvent);
+    const { request, respondWith } = reqEvent;
+    const upgrade = Deno.upgradeWebSocket(request);
+    const socket = upgrade.socket;
+    assertThrows(() => upgrade.stream);
+    socket.onerror = () => fail();
+    socket.onmessage = (m) => {
+      socket.send(m.data);
+      socket.close(1001);
+    };
+    await respondWith(upgrade.response);
+    })();
+
+    const def = deferred();
+    const ws = new WebSocket("ws://localhost:4501");
+  ws.onmessage = (m) => assertEquals(m.data, "foo");
+  ws.onerror = () => fail();
+  ws.onclose = () => def.resolve();
+  ws.onopen = () => ws.send("foo");
+    await def;
+    await promise;
+
+  },
+);
+
 Deno.test(function httpUpgradeWebSocket() {
   const request = new Request("https://deno.land/", {
     headers: {
