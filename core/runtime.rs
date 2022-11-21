@@ -3317,6 +3317,65 @@ assertEquals(1, notify_return_value);
   }
 
   #[test]
+  fn test_pump_message_loop_2() {
+    run_in_task(|cx| {
+      let mut runtime = JsRuntime::new(RuntimeOptions::default());
+      runtime
+        .execute_script(
+          "pump_message_loop.js",
+          r#"
+blob = new Blob([`
+  self.onmessage = (msg) => {
+    i32a = msg.data
+    Atomics.store(i32a, 0, 1);
+    const notify_return_value = Atomics.notify(i32a, 0, 1);
+    assertEquals(1, notify_return_value);
+  };
+`], { type:'text/javascript' })
+w = new Worker(URL.createObjectURL(blob), { type: "module" });
+function assertEquals(a, b) {
+  if (a === b) return;
+  throw a + " does not equal " + b;
+}
+const sab = new SharedArrayBuffer(16);
+const i32a = new Int32Array(sab);
+globalThis.resolved = false;
+(function() {
+  const result = Atomics.waitAsync(i32a, 0, 0);
+  assertEquals(true, result.async);
+  result.value.then(
+    (value) => {
+      assertEquals("ok", value); assertEquals(1, Atomics.load(i32a, 0)); globalThis.resolved = true;
+    },
+    () => { assertUnreachable();
+  });
+})();
+w.postMessage(i32a);
+"#,
+        )
+        .unwrap();
+
+      match runtime.poll_event_loop(cx, false) {
+        Poll::Ready(Ok(())) => {}
+        _ => panic!(),
+      };
+
+      // noop script, will resolve promise from first script
+      runtime
+        .execute_script("pump_message_loop2.js", r#"assertEquals(1, 1);"#)
+        .unwrap();
+
+      // check that promise from `Atomics.waitAsync` has been resolved
+      runtime
+        .execute_script(
+          "pump_message_loop3.js",
+          r#"assertEquals(globalThis.resolved, true);"#,
+        )
+        .unwrap();
+    })
+  }
+
+  #[test]
   fn test_core_js_stack_frame() {
     let mut runtime = JsRuntime::new(RuntimeOptions::default());
     // Call non-existent op so we get error from `core.js`
