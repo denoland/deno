@@ -13,7 +13,7 @@ pub struct CreateSnapshotOptions {
   pub startup_snapshot: Option<Snapshot>,
   pub extensions: Vec<Extension>,
   pub additional_files: Vec<PathBuf>,
-  pub compression_cb: Box<CompressionCb>,
+  pub compression_cb: Option<Box<CompressionCb>>,
 }
 
 pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
@@ -44,28 +44,28 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   let snapshot_slice: &[u8] = &snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
 
-  let compressed_snapshot_with_size = {
-    let mut vec = vec![];
+  let maybe_compressed_snapshot: Box<dyn AsRef<[u8]>> =
+    if let Some(compression_cb) = create_snapshot_options.compression_cb {
+      let mut vec = vec![];
 
-    vec.extend_from_slice(
-      &u32::try_from(snapshot.len())
-        .expect("snapshot larger than 4gb")
-        .to_le_bytes(),
-    );
+      vec.extend_from_slice(
+        &u32::try_from(snapshot.len())
+          .expect("snapshot larger than 4gb")
+          .to_le_bytes(),
+      );
 
-    (create_snapshot_options.compression_cb)(&mut vec, snapshot_slice);
+      (compression_cb)(&mut vec, snapshot_slice);
 
-    vec
-  };
+      println!("Snapshot compressed size: {}", vec.len());
 
-  println!(
-    "Snapshot compressed size: {}",
-    compressed_snapshot_with_size.len()
-  );
+      Box::new(vec)
+    } else {
+      Box::new(snapshot_slice)
+    };
 
   std::fs::write(
     &create_snapshot_options.snapshot_path,
-    compressed_snapshot_with_size,
+    &*maybe_compressed_snapshot,
   )
   .unwrap();
   println!(

@@ -244,12 +244,12 @@ mod ts {
         })
         .build()],
       additional_files: files,
-      compression_cb: Box::new(|vec, snapshot_slice| {
+      compression_cb: Some(Box::new(|vec, snapshot_slice| {
         vec.extend_from_slice(
           &zstd::bulk::compress(snapshot_slice, 22)
             .expect("snapshot compression failed"),
         );
-      }),
+      })),
     });
   }
 
@@ -305,14 +305,14 @@ fn create_cli_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
     startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
     extensions,
     additional_files: files,
-    compression_cb: Box::new(|vec, snapshot_slice| {
+    compression_cb: Some(Box::new(|vec, snapshot_slice| {
       lzzzz::lz4_hc::compress_to_vec(
         snapshot_slice,
         vec,
         lzzzz::lz4_hc::CLEVEL_MAX,
       )
       .expect("snapshot compression failed");
-    }),
+    })),
   })
 }
 

@@ -156,14 +156,14 @@ mod not_docs {
       startup_snapshot: None,
       extensions,
       additional_files: files,
-      compression_cb: Box::new(|vec, snapshot_slice| {
+      compression_cb: Some(Box::new(|vec, snapshot_slice| {
         lzzzz::lz4_hc::compress_to_vec(
           snapshot_slice,
           vec,
           lzzzz::lz4_hc::CLEVEL_MAX,
         )
         .expect("snapshot compression failed");
-      }),
+      })),
     });
   }
 
