@@ -554,19 +554,6 @@ pub fn node_resolve_binary_export(
   bin_name: Option<&str>,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<NodeResolution, AnyError> {
-  fn get_package_display_name(package_json: &PackageJson) -> String {
-    package_json
-      .name
-      .as_ref()
-      .and_then(|name| {
-        package_json
-          .version
-          .as_ref()
-          .map(|version| format!("{}@{}", name, version))
-      })
-      .unwrap_or_else(|| format!("{}", package_json.path.display()))
-  }
-
   let package_folder =
     npm_resolver.resolve_package_folder_from_deno_module(pkg_req)?;
   let package_json_path = package_folder.join("package.json");
@@ -574,10 +561,25 @@ pub fn node_resolve_binary_export(
   let bin = match &package_json.bin {
     Some(bin) => bin,
     None => bail!(
-      "package {} did not have a 'bin' property in its package.json",
-      get_package_display_name(&package_json),
+      "package '{}' did not have a bin property in its package.json",
+      &pkg_req.name,
     ),
   };
+  let bin_entry = resolve_bin_entry_value(pkg_req, bin_name, bin)?;
+  let url =
+    ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
+
+  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
+  // TODO(bartlomieju): skipped checking errors for commonJS resolution and
+  // "preserveSymlinksMain"/"preserveSymlinks" options.
+  Ok(resolve_response)
+}
+
+fn resolve_bin_entry_value<'a>(
+  pkg_req: &NpmPackageReq,
+  bin_name: Option<&str>,
+  bin: &'a Value,
+) -> Result<&'a str, AnyError> {
   let bin_entry = match bin {
     Value::String(_) => {
       if bin_name.is_some() && bin_name.unwrap() != pkg_req.name {
@@ -589,37 +591,45 @@ pub fn node_resolve_binary_export(
     Value::Object(o) => {
       if let Some(bin_name) = bin_name {
         o.get(bin_name)
-      } else if o.len() == 1 {
+      } else if o.len() == 1 || o.len() > 1 && o.values().all(|v| v == o.values().next().unwrap()) {
         o.values().next()
       } else {
         o.get(&pkg_req.name)
       }
     },
-    _ => bail!("package {} did not have a 'bin' property with a string or object value in its package.json", get_package_display_name(&package_json)),
+    _ => bail!("package '{}' did not have a bin property with a string or object value in its package.json", pkg_req.name),
   };
   let bin_entry = match bin_entry {
     Some(e) => e,
-    None => bail!(
-      "package {} did not have a 'bin' entry for {} in its package.json",
-      get_package_display_name(&package_json),
-      bin_name.unwrap_or(&pkg_req.name),
-    ),
+    None => {
+      let keys = bin
+        .as_object()
+        .map(|o| {
+          o.keys()
+            .into_iter()
+            .map(|k| format!(" * npm:{}/{}", pkg_req, k))
+            .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+      bail!(
+        "package '{}' did not have a bin entry for '{}' in its package.json{}",
+        pkg_req.name,
+        bin_name.unwrap_or(&pkg_req.name),
+        if keys.is_empty() {
+          "".to_string()
+        } else {
+          format!("\n\nPossibilities:\n{}", keys.join("\n"))
+        }
+      )
+    }
   };
-  let bin_entry = match bin_entry {
-    Value::String(s) => s,
+  match bin_entry {
+    Value::String(s) => Ok(s),
     _ => bail!(
-      "package {} had a non-string sub property of 'bin' in its package.json",
-      get_package_display_name(&package_json),
+      "package '{}' had a non-string sub property of bin in its package.json",
+      pkg_req.name,
     ),
-  };
-
-  let url =
-    ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
-
-  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
-  // TODO(bartlomieju): skipped checking errors for commonJS resolution and
-  // "preserveSymlinksMain"/"preserveSymlinks" options.
-  Ok(resolve_response)
+  }
 }
 
 pub fn load_cjs_module_from_ext_node(
@@ -1182,6 +1192,8 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
 
 #[cfg(test)]
 mod tests {
+  use deno_core::serde_json::json;
+
   use super::*;
 
   #[test]
@@ -1211,6 +1223,105 @@ mod tests {
     assert_eq!(
       parse_specifier("@some-package/core/actions"),
       Some(("@some-package/core".to_string(), "./actions".to_string()))
+    );
+  }
+
+  #[test]
+  fn test_resolve_bin_entry_value() {
+    // should resolve the specified value
+    let value = json!({
+      "bin1": "./value1",
+      "bin2": "./value2",
+      "test": "./value3",
+    });
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageReq::from_str("test").unwrap(),
+        Some("bin1"),
+        &value
+      )
+      .unwrap(),
+      "./value1"
+    );
+
+    // should resolve the value with the same name when not specified
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageReq::from_str("test").unwrap(),
+        None,
+        &value
+      )
+      .unwrap(),
+      "./value3"
+    );
+
+    // should not resolve when specified value does not exist
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageReq::from_str("test").unwrap(),
+        Some("other"),
+        &value
+      )
+      .err()
+      .unwrap()
+      .to_string(),
+      concat!(
+        "package 'test' did not have a bin entry for 'other' in its package.json\n",
+        "\n",
+        "Possibilities:\n",
+        " * npm:test/bin1\n",
+        " * npm:test/bin2\n",
+        " * npm:test/test"
+      )
+    );
+
+    // should not resolve when default value can't be determined
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageReq::from_str("asdf@1.2").unwrap(),
+        None,
+        &value
+      )
+      .err()
+      .unwrap()
+      .to_string(),
+      concat!(
+        "package 'asdf' did not have a bin entry for 'asdf' in its package.json\n",
+        "\n",
+        "Possibilities:\n",
+        " * npm:asdf@1.2/bin1\n",
+        " * npm:asdf@1.2/bin2\n",
+        " * npm:asdf@1.2/test"
+      )
+    );
+
+    // should resolve since all the values are the same
+    let value = json!({
+      "bin1": "./value",
+      "bin2": "./value",
+    });
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageReq::from_str("test").unwrap(),
+        None,
+        &value
+      )
+      .unwrap(),
+      "./value"
+    );
+
+    // should not resolve when specified and is a string
+    let value = json!("./value");
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageReq::from_str("test").unwrap(),
+        Some("path"),
+        &value
+      )
+      .err()
+      .unwrap()
+      .to_string(),
+      "package 'test' did not have a bin entry for 'path' in its package.json"
     );
   }
 }

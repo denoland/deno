@@ -18,6 +18,7 @@ mod fs_util;
 mod graph_util;
 mod http_cache;
 mod http_util;
+mod js;
 mod lockfile;
 mod logger;
 mod lsp;
@@ -289,14 +290,8 @@ async fn eval_command(
     resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext))?;
   let permissions = Permissions::from_options(&flags.permissions_options())?;
   let ps = ProcState::build(flags).await?;
-  let mut worker = create_main_worker(
-    &ps,
-    main_module.clone(),
-    permissions,
-    vec![],
-    Default::default(),
-  )
-  .await?;
+  let mut worker =
+    create_main_worker(&ps, main_module.clone(), permissions).await?;
   // Create a dummy source file.
   let source_code = if eval_flags.print {
     format!("console.log({})", eval_flags.code)
@@ -602,8 +597,6 @@ async fn repl_command(
     &ps,
     main_module.clone(),
     Permissions::from_options(&ps.options.permissions_options())?,
-    vec![],
-    Default::default(),
   )
   .await?;
   worker.setup_repl().await?;
@@ -623,8 +616,6 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
     &ps.clone(),
     main_module.clone(),
     Permissions::from_options(&ps.options.permissions_options())?,
-    vec![],
-    Default::default(),
   )
   .await?;
 
@@ -664,14 +655,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       let ps =
         ProcState::build_for_file_watcher((*flags).clone(), sender.clone())
           .await?;
-      let worker = create_main_worker(
-        &ps,
-        main_module.clone(),
-        permissions,
-        vec![],
-        Default::default(),
-      )
-      .await?;
+      let worker =
+        create_main_worker(&ps, main_module.clone(), permissions).await?;
       worker.run_for_watcher().await?;
 
       Ok(())
@@ -722,14 +707,8 @@ async fn run_command(
   };
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
-  let mut worker = create_main_worker(
-    &ps,
-    main_module.clone(),
-    permissions,
-    vec![],
-    Default::default(),
-  )
-  .await?;
+  let mut worker =
+    create_main_worker(&ps, main_module.clone(), permissions).await?;
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
