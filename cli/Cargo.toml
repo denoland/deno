@@ -26,24 +26,15 @@ harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
 [build-dependencies]
+deno_runtime.workspace = true
 deno_core.workspace = true
-deno_broadcast_channel.workspace = true
-deno_cache.workspace = true
-deno_console.workspace = true
-deno_crypto.workspace = true
-deno_fetch.workspace = true
-deno_net.workspace = true
-deno_node.workspace = true
-deno_url.workspace = true
-deno_web.workspace = true
-deno_webgpu.workspace = true
-deno_websocket.workspace = true
-deno_webstorage.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 zstd.workspace = true
 glibc_version = "0.1.2"
+
+lzzzz = '1.0'
 
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
@@ -52,7 +43,7 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core.workspace = true
-deno_doc = "0.49.0"
+deno_doc = "0.49.1"
 deno_emit = "0.11.0"
 deno_graph = "0.38.0"
 deno_lint = { version = "0.35.0", features = ["docs"] }
@@ -79,13 +70,14 @@ eszip = "=0.30.0"
 fancy-regex = "=0.10.0"
 flate2.workspace = true
 http.workspace = true
-import_map = "=0.12.1"
+import_map = "=0.13.0"
 indexmap = "=1.9.1"
 indicatif = "=0.17.1"
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
+lzzzz = '1.0'
 mitata = "=0.0.7"
 monch = "=0.4.0"
 notify.workspace = true
