@@ -4,10 +4,9 @@
 ((window) => {
   const core = window.Deno.core;
   const __bootstrap = window.__bootstrap;
+
   __bootstrap.denoNs = {
     metrics: core.metrics,
-    test: __bootstrap.testing.test,
-    bench: __bootstrap.testing.bench,
     Process: __bootstrap.process.Process,
     run: __bootstrap.process.run,
     isatty: __bootstrap.tty.isatty,
@@ -121,15 +120,15 @@
     unrefTimer: __bootstrap.timers.unrefTimer,
     osRelease: __bootstrap.os.osRelease,
     hostname: __bootstrap.os.hostname,
+    systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
+    networkInterfaces: __bootstrap.os.networkInterfaces,
     consoleSize: __bootstrap.tty.consoleSize,
+    gid: __bootstrap.os.gid,
+    uid: __bootstrap.os.uid,
   };
 
   __bootstrap.denoNsUnstable = {
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
-    systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
-    networkInterfaces: __bootstrap.os.networkInterfaces,
-    gid: __bootstrap.os.gid,
-    uid: __bootstrap.os.uid,
     listenDatagram: __bootstrap.net.listenDatagram,
     umask: __bootstrap.fs.umask,
     HttpClient: __bootstrap.fetch.HttpClient,
@@ -148,6 +147,7 @@
     spawnChild: __bootstrap.spawn.spawnChild,
     spawn: __bootstrap.spawn.spawn,
     spawnSync: __bootstrap.spawn.spawnSync,
+    Command: __bootstrap.spawn.Command,
     serve: __bootstrap.flash.serve,
     upgradeHttp: __bootstrap.http.upgradeHttp,
     upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,

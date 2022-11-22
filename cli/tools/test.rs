@@ -5,7 +5,6 @@ use crate::args::TestFlags;
 use crate::args::TypeCheckMode;
 use crate::checksum;
 use crate::colors;
-use crate::create_main_worker;
 use crate::display;
 use crate::file_fetcher::File;
 use crate::file_watcher;
@@ -18,6 +17,7 @@ use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
+use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
@@ -715,7 +715,7 @@ async fn test_specifier(
   sender: &TestEventSender,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let mut worker = create_main_worker(
+  let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier.clone(),
     permissions,
@@ -742,9 +742,7 @@ fn extract_files_from_regex_blocks(
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
-      if block.get(1) == None {
-        return None;
-      }
+      block.get(1)?;
 
       let maybe_attributes: Option<Vec<_>> = block
         .get(1)

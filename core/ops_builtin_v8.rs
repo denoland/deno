@@ -472,7 +472,7 @@ fn op_serialize(
         }
 
         let backing_store = buf.get_backing_store();
-        buf.detach();
+        buf.detach(v8::undefined(scope).into());
         let id = shared_array_buffer_store.insert(backing_store);
         value_serializer.transfer_array_buffer(id, buf);
         let id = v8::Number::new(scope, id as f64).into();

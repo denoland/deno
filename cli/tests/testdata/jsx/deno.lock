@@ -1,7 +1,0 @@
-{
-  "version": "2",
-  "remote": {
-    "http://localhost:4545/jsx/jsx-dev-runtime": "7cac3d940791b3c8e671b24f9678ca37d87d40487ed2b3720a2a40891aa6173d",
-    "http://localhost:4545/jsx/jsx-runtime": "7cac3d940791b3c8e671b24f9678ca37d87d40487ed2b3720a2a40891aa6173d"
-  }
-}

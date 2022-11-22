@@ -637,7 +637,7 @@ fn clap_root(version: &str) -> Command {
         .help("Set log level")
         .hide(true)
         .takes_value(true)
-        .possible_values(&["debug", "info"])
+        .possible_values(["debug", "info"])
         .global(true),
     )
     .arg(
@@ -811,7 +811,7 @@ fn compile_subcommand<'a>() -> Command<'a> {
         .long("target")
         .help("Target OS architecture")
         .takes_value(true)
-        .possible_values(&[
+        .possible_values([
           "x86_64-unknown-linux-gnu",
           "x86_64-pc-windows-msvc",
           "x86_64-apple-darwin",
@@ -848,7 +848,7 @@ fn completions_subcommand<'a>() -> Command<'a> {
     .disable_help_subcommand(true)
     .arg(
       Arg::new("shell")
-        .possible_values(&["bash", "fish", "powershell", "zsh", "fig"])
+        .possible_values(["bash", "fish", "powershell", "zsh", "fig"])
         .required(true),
     )
     .about("Generate shell completions")
@@ -1049,7 +1049,7 @@ This command has implicit access to all permissions (--allow-all).",
         .help("Set standard input (stdin) content type")
         .takes_value(true)
         .default_value("js")
-        .possible_values(&["ts", "tsx", "js", "jsx"]),
+        .possible_values(["ts", "tsx", "js", "jsx"]),
     )
     .arg(
       Arg::new("print")
@@ -1106,7 +1106,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .help("Set standard input (stdin) content type")
         .takes_value(true)
         .default_value("ts")
-        .possible_values(&["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
+        .possible_values(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
     )
     .arg(
       Arg::new("ignore")
@@ -1165,7 +1165,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       Arg::new("options-prose-wrap")
         .long("options-prose-wrap")
         .takes_value(true)
-        .possible_values(&["always", "never", "preserve"])
+        .possible_values(["always", "never", "preserve"])
         .help("Define how prose should be wrapped. Defaults to always."),
     )
 }
