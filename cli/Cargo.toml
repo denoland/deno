@@ -43,7 +43,7 @@ winres = "=0.1.12"
 [dependencies]
 deno_ast = { version = "0.21.0", features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
 deno_core = { version = "0.160.0", path = "../core" }
-deno_doc = "0.49.0"
+deno_doc = "0.49.1"
 deno_emit = "0.11.0"
 deno_graph = "0.38.0"
 deno_lint = { version = "0.35.0", features = ["docs"] }
@@ -70,7 +70,7 @@ eszip = "=0.30.0"
 fancy-regex = "=0.10.0"
 flate2 = "=1.0.24"
 http = "=0.2.8"
-import_map = "=0.12.1"
+import_map = "=0.13.0"
 indexmap = "=1.9.1"
 indicatif = "=0.17.1"
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
