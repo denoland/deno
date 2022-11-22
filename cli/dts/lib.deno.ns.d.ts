@@ -967,7 +967,7 @@ declare namespace Deno {
      *
      * Defaults to "inherit".
      */
-    permissions?: Deno.PermissionOptions;
+    permissions?: PermissionOptions;
   }
 
   /**
