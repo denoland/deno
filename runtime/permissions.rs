@@ -1211,14 +1211,20 @@ impl UnaryPermission<FfiDescriptor> {
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
-        Some(path) => self.denied_list.contains(&FfiDescriptor(path.clone())),
+        Some(path) => self
+          .denied_list
+          .iter()
+          .any(|path_| path_.0.starts_with(path)),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match path.as_ref() {
         None => false,
-        Some(path) => self.granted_list.contains(&FfiDescriptor(path.clone())),
+        Some(path) => self
+          .granted_list
+          .iter()
+          .any(|path_| path.starts_with(&path_.0)),
       }
     {
       PermissionState::Granted
