@@ -79,7 +79,7 @@ pub async fn run(
   maybe_eval_files: Option<Vec<String>>,
   maybe_eval: Option<String>,
 ) -> Result<i32, AnyError> {
-  let mut repl_session = ReplSession::initialize(worker).await?;
+  let mut repl_session = ReplSession::initialize(worker, ps.clone()).await?;
   let mut rustyline_channel = rustyline_channel();
   let mut should_exit_on_interrupt = false;
 

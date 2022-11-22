@@ -5,12 +5,19 @@ use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
+use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
 use deno_runtime::worker::MainWorker;
+use crate::ProcState;
+use deno_ast::swc::ast as swc_ast;
+use crate::emit::TsTypeLib;
+use deno_ast::swc::visit::noop_visit_type;
+use deno_ast::swc::visit::Visit;
+use deno_ast::swc::visit::VisitWith;
 
 static PRELUDE: &str = r#"
 Object.defineProperty(globalThis, "_", {
@@ -69,10 +76,11 @@ pub struct ReplSession {
   session: LocalInspectorSession,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
+  ps: ProcState,
 }
 
 impl ReplSession {
-  pub async fn initialize(mut worker: MainWorker) -> Result<Self, AnyError> {
+  pub async fn initialize(mut worker: MainWorker, ps: ProcState) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
     let mut session = worker.create_inspector_session().await;
 
@@ -108,6 +116,7 @@ impl ReplSession {
       session,
       context_id,
       language_server,
+      ps,
     };
 
     // inject prelude
@@ -345,6 +354,21 @@ impl ReplSession {
       scope_analysis: false,
     })?;
 
+
+    use crate::Permissions;
+    let mut collector = ImportCollector::new();
+    parsed_module.program().visit_with(&mut collector);
+
+    let npm_imports = collector.imports.iter().filter(|i| i.starts_with("npm:")).map(|i| ModuleSpecifier::parse(i).unwrap()).collect::<Vec<ModuleSpecifier>>();
+    self.ps.prepare_module_load(
+      npm_imports,
+      false,
+      TsTypeLib::DenoWindow,
+      Permissions::allow_all(),
+      Permissions::allow_all(),
+      false,
+    ).await?;
+
     let transpiled_src = parsed_module
       .transpile(&deno_ast::EmitOptions {
         emit_metadata: false,
@@ -403,5 +427,54 @@ impl ReplSession {
       )
       .await
       .and_then(|res| serde_json::from_value(res).map_err(|e| e.into()))
+  }
+}
+
+/// Walk an AST and get all import specifiers for analysis.
+pub struct ImportCollector {
+  pub imports: Vec<String> 
+}
+
+impl ImportCollector {
+  pub fn new() -> Self {
+    Self {
+      imports: vec![],
+    }
+  }
+}
+
+impl Visit for ImportCollector {
+  noop_visit_type!();
+
+  fn visit_call_expr(
+    &mut self,
+    call_expr: &swc_ast::CallExpr,
+  ) {
+    if !matches!(call_expr.callee, swc_ast::Callee::Import(_)) {
+      return;
+    }
+
+
+  }
+
+  fn visit_module_item(
+    &mut self,
+    module_item: &swc_ast::ModuleItem,
+  ) {
+    use deno_ast::swc::ast::*;
+
+    match module_item {
+      ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) => {
+        // Handle type only imports
+        if import_decl.type_only {
+          return;
+        }
+
+        self.imports.push(
+          import_decl.src.value.to_string()
+        );
+      }
+      _ => {},
+    }
   }
 }
