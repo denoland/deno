@@ -81,8 +81,8 @@ pub struct ReplSession {
 
 impl ReplSession {
   pub async fn initialize(
-    mut worker: MainWorker,
     proc_state: ProcState,
+    mut worker: MainWorker,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
     let mut session = worker.create_inspector_session().await;
