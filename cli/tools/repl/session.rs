@@ -367,17 +367,19 @@ impl ReplSession {
       .filter(|i| i.starts_with("npm:"))
       .flat_map(|i| ModuleSpecifier::parse(i))
       .collect::<Vec<ModuleSpecifier>>();
-    self
-      .proc_state
-      .prepare_module_load(
-        npm_imports,
-        false,
-        TsTypeLib::DenoWindow,
-        Permissions::allow_all(),
-        Permissions::allow_all(),
-        false,
-      )
-      .await?;
+    if !npm_imports.is_empty() {
+      self
+        .proc_state
+        .prepare_module_load(
+          npm_imports,
+          false,
+          TsTypeLib::DenoWindow,
+          Permissions::allow_all(),
+          Permissions::allow_all(),
+          false,
+        )
+        .await?;
+    }
 
     let transpiled_src = parsed_module
       .transpile(&deno_ast::EmitOptions {
@@ -472,7 +474,6 @@ impl Visit for ImportCollector {
     use deno_ast::swc::ast::*;
 
     if let ModuleDecl::Import(import_decl) = module_decl {
-      // Handle type only imports
       if import_decl.type_only {
         return;
       }

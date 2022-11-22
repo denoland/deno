@@ -413,6 +413,7 @@ impl ProcState {
         .unwrap()?;
       graph_data.npm_package_reqs().clone()
     };
+
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
       self.prepare_node_std_graph().await?;
@@ -571,15 +572,6 @@ impl ProcState {
       // FIXME(bartlomieju): this is another hack way to provide NPM specifier
       // support in REPL. This should be fixed.
       if let Ok(reference) = NpmPackageReference::from_str(specifier) {
-        if !self.options.unstable()
-          && matches!(referrer.scheme(), "http" | "https")
-        {
-          return Err(custom_error(
-            "NotSupported",
-            format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {})", referrer),
-          ));
-        }
-
         return self
           .handle_node_resolve_result(node::node_resolve_npm_reference(
             &reference,
