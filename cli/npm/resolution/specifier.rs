@@ -33,7 +33,10 @@ impl NpmPackageReference {
 
   pub fn from_str(specifier: &str) -> Result<NpmPackageReference, AnyError> {
     let specifier = match specifier.strip_prefix("npm:") {
-      Some(s) => s,
+      Some(s) => {
+        // Strip leading slash, which might come from import map
+        s.strip_prefix('/').unwrap_or(s)
+      },
       None => {
         // don't allocate a string here and instead use a static string
         // because this is hit a lot when a url is not an npm specifier
