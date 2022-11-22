@@ -193,6 +193,7 @@ pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
   ) -> BoxFuture<'static, Result<Arc<NpmPackageInfo>, AnyError>> {
     let api = self.clone();
     let name = name.to_string();
+    panic!();
     async move {
       let maybe_package_info = api.maybe_package_info(&name).await?;
       match maybe_package_info {
