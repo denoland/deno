@@ -23,11 +23,16 @@ function accept(serverRid) {
   return ops.op_accept(serverRid);
 }
 
+function read(serverRid, buf) {
+  return ops.op_read_socket(serverRid, buf);
+}
+
 async function serve(rid) {
   try {
     while (true) {
-      await Deno.core.read(rid, requestBuf);
+      await read(rid, requestBuf);
       if (!ops.op_try_write(rid, responseBuf)) {
+        console.log("write failed");
         await Deno.core.writeAll(rid, responseBuf);
       }
     }

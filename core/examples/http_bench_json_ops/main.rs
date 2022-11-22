@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use deno_core::anyhow::Error;
 use deno_core::op;
+use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::JsRuntime;
 use deno_core::OpState;
@@ -48,27 +49,27 @@ impl TryFrom<std::net::TcpListener> for TcpListener {
 }
 
 struct TcpStream {
-  rd: RefCell<tokio::net::tcp::OwnedReadHalf>,
-  wr: RefCell<tokio::net::tcp::OwnedWriteHalf>,
+  rd: AsyncRefCell<tokio::net::tcp::OwnedReadHalf>,
+  wr: AsyncRefCell<tokio::net::tcp::OwnedWriteHalf>,
 }
 
 impl TcpStream {
   async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, Error> {
-    let mut rd = self.rd.borrow_mut();
+    let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     let nread = rd.read(data).await?;
     Ok(nread)
   }
 
-  #[allow(clippy::await_holding_refcell_ref)]
   async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
-    let mut wr = self.wr.borrow_mut();
+    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
     let nwritten = wr.write(data).await?;
     Ok(nwritten)
   }
 
-  #[allow(clippy::await_holding_refcell_ref)]
   fn try_write(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
-    let wr = self.wr.borrow();
+    let wr = RcRef::map(self, |r| &r.wr)
+      .try_borrow_mut()
+      .ok_or_else(|| Error::msg("Failed to acquire lock on TcpStream"))?;
     let nwritten = wr.try_write(data)?;
     Ok(nwritten)
   }
@@ -97,13 +98,26 @@ fn create_js_runtime() -> JsRuntime {
       op_listen::decl(),
       op_accept::decl(),
       op_try_write::decl(),
+      op_read_socket::decl(),
     ])
     .build();
 
   JsRuntime::new(deno_core::RuntimeOptions {
     extensions: vec![ext],
+    will_snapshot: false,
     ..Default::default()
   })
+}
+
+#[op(fast)]
+async fn op_read_socket(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  data: &mut [u8],
+) -> Result<u32, Error> {
+  let resource = state.borrow_mut().resource_table.get::<TcpStream>(rid)?;
+  let nread = resource.read(data).await?;
+  Ok(nread as u32)
 }
 
 #[op]
