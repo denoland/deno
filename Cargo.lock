@@ -1012,9 +1012,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.49.0"
+version = "0.49.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e931d1563eb790b350742ee522f8a8693e00affc9814c4ecaf0de8fc13e0dd2"
+checksum = "fa3bb0abda350b6523cfc96e0b14c55037fd7b5a901fcc40cb87ef9a1abb6d92"
 dependencies = [
  "cfg-if",
  "deno_ast 0.21.0",
@@ -2330,10 +2330,11 @@ checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 
 [[package]]
 name = "import_map"
-version = "0.12.1"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b827962ca5aa6d5bbe313c14e73d7cc517487fa3bad380bb6bdbd8421e591a29"
+checksum = "64dbcf9b111359e69cf9a0004e9d1c9f6697ea620d378006e9452f5e54267e45"
 dependencies = [
+ "cfg-if",
  "indexmap",
  "log",
  "serde",
