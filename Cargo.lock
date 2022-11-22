@@ -802,7 +802,7 @@ dependencies = [
  "fwdansi",
  "glibc_version",
  "http",
- "import_map 0.13.0",
+ "import_map",
  "indexmap",
  "indicatif",
  "jsonc-parser",
@@ -1020,7 +1020,7 @@ dependencies = [
  "deno_ast 0.21.0",
  "deno_graph",
  "futures",
- "import_map 0.12.1",
+ "import_map",
  "lazy_static",
  "regex",
  "serde",
@@ -2327,20 +2327,6 @@ name = "if_chain"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
-
-[[package]]
-name = "import_map"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64dbcf9b111359e69cf9a0004e9d1c9f6697ea620d378006e9452f5e54267e45"
-dependencies = [
- "cfg-if",
- "indexmap",
- "log",
- "serde",
- "serde_json",
- "url",
-]
 
 [[package]]
 name = "import_map"
