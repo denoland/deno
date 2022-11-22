@@ -413,7 +413,7 @@ impl ProcState {
         .unwrap()?;
       graph_data.npm_package_reqs().clone()
     };
-
+    eprintln!("npm package reqs {:?}", npm_package_reqs);
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
       self.prepare_node_std_graph().await?;
@@ -571,6 +571,27 @@ impl ProcState {
     } else {
       deno_core::resolve_url_or_path(referrer).unwrap()
     };
+
+    if let Ok(reference) = NpmPackageReference::from_str(specifier) {
+      if !self.options.unstable()
+        && matches!(referrer.scheme(), "http" | "https")
+      {
+        return Err(custom_error(
+            "NotSupported",
+            format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {})", referrer),
+          ));
+      }
+
+      let r = self
+        .handle_node_resolve_result(node::node_resolve_npm_reference(
+          &reference,
+          node::NodeResolutionMode::Execution,
+          &self.npm_resolver,
+        ))
+        .with_context(|| format!("Could not resolve '{}'.", reference));
+      eprintln!("result {:#?}", r);
+      return r;
+    }
 
     if let Some(resolver) = &self.maybe_resolver {
       resolver.resolve(specifier, &referrer).to_result()

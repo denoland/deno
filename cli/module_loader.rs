@@ -136,6 +136,10 @@ impl CliModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleSource, AnyError> {
+    eprintln!(
+      "in npm package {:#?}",
+      self.ps.npm_resolver.in_npm_package(specifier)
+    );
     let code_source = if self.ps.npm_resolver.in_npm_package(specifier) {
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path).with_context(|| {
@@ -202,6 +206,7 @@ impl ModuleLoader for CliModuleLoader {
     referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
+    eprintln!("resolve {} {}", specifier, referrer);
     self.ps.resolve(specifier, referrer)
   }
 
@@ -226,6 +231,7 @@ impl ModuleLoader for CliModuleLoader {
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+    eprintln!("prepare load {}", specifier.as_str());
     if self.ps.npm_resolver.in_npm_package(specifier) {
       // nothing to prepare
       return Box::pin(deno_core::futures::future::ready(Ok(())));
