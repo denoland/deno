@@ -336,6 +336,9 @@ Deno.test(function consoleTestStringifyCircular() {
   groupEnd: [Function: groupEnd],
   clear: [Function: clear],
   trace: [Function: trace],
+  profile: [Function: profile],
+  profileEnd: [Function: profileEnd],
+  timeStamp: [Function: timeStamp],
   indentLevel: 0,
   [Symbol(isConsoleInstance)]: true
 }`,

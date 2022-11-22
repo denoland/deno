@@ -4126,7 +4126,7 @@ mod tests {
     assert!(result.is_ok());
     let response: CompletionInfo =
       serde_json::from_value(result.unwrap()).unwrap();
-    assert_eq!(response.entries.len(), 19);
+    assert_eq!(response.entries.len(), 22);
     let result = request(
       &mut runtime,
       state_snapshot,
