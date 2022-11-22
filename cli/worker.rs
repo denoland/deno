@@ -61,7 +61,6 @@ impl CliMainWorker {
   }
 
   pub async fn run(&mut self) -> Result<i32, AnyError> {
-    node::initialize_runtime(&mut self.worker.js_runtime).await?;
     let mut maybe_coverage_collector =
       self.maybe_setup_coverage_collector().await?;
     log::debug!("main_module {}", self.main_module);
@@ -624,9 +623,9 @@ fn create_web_worker_pre_execute_module_callback(
     let ps = ps.clone();
     let fut = async move {
       // this will be up to date after pre-load
-      // if ps.npm_resolver.has_packages() {
-      node::initialize_runtime(&mut worker.js_runtime).await?;
-      // }
+      if ps.npm_resolver.has_packages() {
+        node::initialize_runtime(&mut worker.js_runtime).await?;
+      }
 
       Ok(worker)
     };

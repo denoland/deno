@@ -567,31 +567,33 @@ impl ProcState {
     let referrer = if referrer.is_empty()
       && matches!(self.options.sub_command(), DenoSubcommand::Repl(_))
     {
-      deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()
-    } else {
-      deno_core::resolve_url_or_path(referrer).unwrap()
-    };
+      let referrer = deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap();
 
-    if let Ok(reference) = NpmPackageReference::from_str(specifier) {
-      if !self.options.unstable()
-        && matches!(referrer.scheme(), "http" | "https")
-      {
-        return Err(custom_error(
+      // FIXME(bartlomieju): this is another hack way to provide NPM specifier
+      // support in REPL. This should be fixed.
+      if let Ok(reference) = NpmPackageReference::from_str(specifier) {
+        if !self.options.unstable()
+          && matches!(referrer.scheme(), "http" | "https")
+        {
+          return Err(custom_error(
             "NotSupported",
             format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {})", referrer),
           ));
+        }
+
+        return self
+          .handle_node_resolve_result(node::node_resolve_npm_reference(
+            &reference,
+            node::NodeResolutionMode::Execution,
+            &self.npm_resolver,
+          ))
+          .with_context(|| format!("Could not resolve '{}'.", reference));
       }
 
-      let r = self
-        .handle_node_resolve_result(node::node_resolve_npm_reference(
-          &reference,
-          node::NodeResolutionMode::Execution,
-          &self.npm_resolver,
-        ))
-        .with_context(|| format!("Could not resolve '{}'.", reference));
-      // eprintln!("result {:#?}", r);
-      return r;
-    }
+      referrer
+    } else {
+      deno_core::resolve_url_or_path(referrer).unwrap()
+    };
 
     if let Some(resolver) = &self.maybe_resolver {
       resolver.resolve(specifier, &referrer).to_result()

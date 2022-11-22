@@ -2,7 +2,13 @@
 
 use crate::cdp;
 use crate::colors;
+use crate::emit::TsTypeLib;
 use crate::lsp::ReplLanguageServer;
+use crate::ProcState;
+use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::visit::noop_visit_type;
+use deno_ast::swc::visit::Visit;
+use deno_ast::swc::visit::VisitWith;
 use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleSpecifier;
@@ -12,12 +18,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
 use deno_runtime::worker::MainWorker;
-use crate::ProcState;
-use deno_ast::swc::ast as swc_ast;
-use crate::emit::TsTypeLib;
-use deno_ast::swc::visit::noop_visit_type;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitWith;
 
 static PRELUDE: &str = r#"
 Object.defineProperty(globalThis, "_", {
@@ -72,15 +72,18 @@ struct TsEvaluateResponse {
 }
 
 pub struct ReplSession {
+  proc_state: ProcState,
   pub worker: MainWorker,
   session: LocalInspectorSession,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
-  ps: ProcState,
 }
 
 impl ReplSession {
-  pub async fn initialize(mut worker: MainWorker, ps: ProcState) -> Result<Self, AnyError> {
+  pub async fn initialize(
+    mut worker: MainWorker,
+    proc_state: ProcState,
+  ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
     let mut session = worker.create_inspector_session().await;
 
@@ -112,11 +115,11 @@ impl ReplSession {
     }
 
     let mut repl_session = ReplSession {
+      proc_state,
       worker,
       session,
       context_id,
       language_server,
-      ps,
     };
 
     // inject prelude
@@ -354,20 +357,27 @@ impl ReplSession {
       scope_analysis: false,
     })?;
 
-
     use crate::Permissions;
     let mut collector = ImportCollector::new();
     parsed_module.program().visit_with(&mut collector);
 
-    let npm_imports = collector.imports.iter().filter(|i| i.starts_with("npm:")).map(|i| ModuleSpecifier::parse(i).unwrap()).collect::<Vec<ModuleSpecifier>>();
-    self.ps.prepare_module_load(
-      npm_imports,
-      false,
-      TsTypeLib::DenoWindow,
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-      false,
-    ).await?;
+    let npm_imports = collector
+      .imports
+      .iter()
+      .filter(|i| i.starts_with("npm:"))
+      .flat_map(|i| ModuleSpecifier::parse(i))
+      .collect::<Vec<ModuleSpecifier>>();
+    self
+      .proc_state
+      .prepare_module_load(
+        npm_imports,
+        false,
+        TsTypeLib::DenoWindow,
+        Permissions::allow_all(),
+        Permissions::allow_all(),
+        false,
+      )
+      .await?;
 
     let transpiled_src = parsed_module
       .transpile(&deno_ast::EmitOptions {
@@ -430,51 +440,44 @@ impl ReplSession {
   }
 }
 
-/// Walk an AST and get all import specifiers for analysis.
+/// Walk an AST and get all import specifiers for analysis if any of them is
+/// an NPM specifier.
 pub struct ImportCollector {
-  pub imports: Vec<String> 
+  pub imports: Vec<String>,
 }
 
 impl ImportCollector {
   pub fn new() -> Self {
-    Self {
-      imports: vec![],
-    }
+    Self { imports: vec![] }
   }
 }
 
 impl Visit for ImportCollector {
   noop_visit_type!();
 
-  fn visit_call_expr(
-    &mut self,
-    call_expr: &swc_ast::CallExpr,
-  ) {
+  fn visit_call_expr(&mut self, call_expr: &swc_ast::CallExpr) {
     if !matches!(call_expr.callee, swc_ast::Callee::Import(_)) {
       return;
     }
 
-
+    if !call_expr.args.is_empty() {
+      let arg = &call_expr.args[0];
+      if let swc_ast::Expr::Lit(swc_ast::Lit::Str(str_lit)) = &*arg.expr {
+        self.imports.push(str_lit.value.to_string());
+      }
+    }
   }
 
-  fn visit_module_item(
-    &mut self,
-    module_item: &swc_ast::ModuleItem,
-  ) {
+  fn visit_module_decl(&mut self, module_decl: &swc_ast::ModuleDecl) {
     use deno_ast::swc::ast::*;
 
-    match module_item {
-      ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) => {
-        // Handle type only imports
-        if import_decl.type_only {
-          return;
-        }
-
-        self.imports.push(
-          import_decl.src.value.to_string()
-        );
+    if let ModuleDecl::Import(import_decl) = module_decl {
+      // Handle type only imports
+      if import_decl.type_only {
+        return;
       }
-      _ => {},
+
+      self.imports.push(import_decl.src.value.to_string());
     }
   }
 }
