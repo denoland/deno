@@ -243,6 +243,7 @@
     i,
     respondFast,
     respondChunked,
+    tryRespondChunked,
   ) {
     // there might've been an HTTP upgrade.
     if (resp === undefined) {
@@ -371,6 +372,9 @@
           }
         } else {
           const reader = respBody.getReader();
+
+          // Best case: sends headers + first chunk in a single go.
+          const { value, done } = await reader.read();
           writeFixedResponse(
             serverId,
             i,
@@ -385,14 +389,23 @@
             false,
             respondFast,
           );
-          while (true) {
-            const { value, done } = await reader.read();
-            await respondChunked(
-              i,
-              value,
-              done,
-            );
-            if (done) break;
+
+          await tryRespondChunked(
+            i,
+            value,
+            done,
+          );
+
+          if (!done) {
+            while (true) {
+              const chunk = await reader.read();
+              await respondChunked(
+                i,
+                chunk.value,
+                chunk.done,
+              );
+              if (chunk.done) break;
+            }
           }
         }
       }
@@ -568,6 +581,7 @@
                           i,
                           respondFast,
                           respondChunked,
+                          tryRespondChunked,
                         ),
                     ),
                     onError,
@@ -585,6 +599,7 @@
                       i,
                       respondFast,
                       respondChunked,
+                      tryRespondChunked,
                     )
                   ).catch(onError);
                   continue;
@@ -603,6 +618,7 @@
                 i,
                 respondFast,
                 respondChunked,
+                tryRespondChunked,
               );
             }
 
@@ -618,6 +634,25 @@
       }, {
         once: true,
       });
+
+      function tryRespondChunked(token, chunk, shutdown) {
+        const nwritten = core.ops.op_try_flash_respond_chuncked(
+          serverId,
+          token,
+          chunk ?? new Uint8Array(),
+          shutdown,
+        );
+        if (nwritten > 0) {
+          return core.opAsync(
+            "op_flash_respond_chuncked",
+            serverId,
+            token,
+            chunk,
+            shutdown,
+            nwritten,
+          );
+        }
+      }
 
       function respondChunked(token, chunk, shutdown) {
         return core.opAsync(
