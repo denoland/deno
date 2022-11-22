@@ -287,6 +287,7 @@ impl NpmResolution {
   ) -> Result<NpmResolutionSnapshot, AnyError> {
     // convert the snapshot to a traversable graph
     let mut graph = Graph::from_snapshot(snapshot);
+
     // go over the top level package names first, then down the
     // tree one level at a time through all the branches
     let mut unresolved_tasks = Vec::with_capacity(package_reqs.len());
