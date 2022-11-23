@@ -1442,6 +1442,11 @@ itest!(jsx_import_source_error {
 //   output: "run/single_compile_with_reload.ts.out",
 // });
 
+itest!(proto_accessor {
+  args: "run run/proto_accessor.js",
+  output: "run/proto_accessor.js.out",
+});
+
 itest!(proto_exploit {
   args: "run run/proto_exploit.js",
   output: "run/proto_exploit.js.out",
