@@ -3647,3 +3647,13 @@ itest!(flash_shutdown {
   args: "run --unstable --allow-net run/flash_shutdown/main.ts",
   exit_code: 0,
 });
+
+itest!(permission_args {
+  args: "run run/001_hello.js --allow-net",
+  output: "run/permission_args.out",
+});
+
+itest!(permission_args_quiet {
+  args: "run --quiet run/001_hello.js --allow-net",
+  output: "run/001_hello.js.out",
+});
