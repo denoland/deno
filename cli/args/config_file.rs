@@ -431,6 +431,12 @@ pub struct TestConfig {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub enum LockConfig {
+  Bool(bool),
+  String(String),
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
@@ -439,6 +445,7 @@ pub struct ConfigFileJson {
   pub fmt: Option<Value>,
   pub tasks: Option<Value>,
   pub test: Option<Value>,
+  pub lock: Option<LockConfig>,
 }
 
 #[derive(Clone, Debug)]
@@ -759,6 +766,10 @@ impl ConfigFile {
     } else {
       bail!("No tasks found in configuration file")
     }
+  }
+
+  pub fn to_lock_config(self) -> Option<LockConfig> {
+    return self.json.lock;
   }
 }
 

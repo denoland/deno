@@ -317,7 +317,7 @@ pub struct Flags {
   pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
-  pub no_lock: bool,
+  pub no_lock: Option<bool>,
   pub no_npm: bool,
   pub no_prompt: bool,
   pub reload: bool,
@@ -3109,7 +3109,7 @@ fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.lock_write = true;
   }
   if matches.is_present("no-lock") {
-    flags.no_lock = true;
+    flags.no_lock = Some(true);
   }
 }
 
@@ -5364,7 +5364,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        no_lock: true,
+        no_lock: Some(true),
         ..Flags::default()
       }
     );

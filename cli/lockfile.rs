@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::args::config_file::LockConfig;
 use crate::args::ConfigFile;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
@@ -99,8 +100,21 @@ impl Lockfile {
     flags: &Flags,
     maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<Lockfile>, AnyError> {
-    if flags.no_lock {
-      return Ok(None);
+    if let Some(no_lock) = flags.no_lock {
+      if no_lock {
+        return Ok(None);
+      }
+    } else if let Some(config_file) = maybe_config_file {
+      if let Some(lock_config) = config_file.clone().to_lock_config() {
+        match lock_config {
+          LockConfig::Bool(lock) => {
+            if !lock {
+              return Ok(None);
+            }
+          }
+          _ => (),
+        }
+      }
     }
 
     let filename = match flags.lock {

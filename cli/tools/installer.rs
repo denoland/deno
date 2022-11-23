@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::config_file::LockConfig;
+use crate::args::CliOptions;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
@@ -398,7 +400,20 @@ fn resolve_shim_data(
     ));
   }
 
-  if flags.no_lock {
+  let config = CliOptions::from_flags(flags.clone())?;
+
+  let no_lock = if let Some(no_lock) = flags.no_lock {
+    no_lock
+  } else if let Some(lock_config) = config.to_lock_config() {
+    match lock_config {
+      LockConfig::Bool(lock) => !lock,
+      _ => true,
+    }
+  } else {
+    false
+  };
+
+  if no_lock {
     executable_args.push("--no-lock".to_string());
   } else if flags.lock.is_some()
     // always use a lockfile for an npm entrypoint unless --no-lock
@@ -781,7 +796,7 @@ mod tests {
     let shim_data = resolve_shim_data(
       &Flags {
         allow_all: true,
-        no_lock: true,
+        no_lock: Some(true),
         ..Flags::default()
       },
       &InstallFlags {

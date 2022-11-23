@@ -48,6 +48,8 @@ use crate::fs_util;
 use crate::lockfile::Lockfile;
 use crate::version;
 
+use self::config_file::LockConfig;
+
 /// Overrides for the options below that when set will
 /// use these values over the values derived from the
 /// CLI flags or config file.
@@ -405,6 +407,14 @@ impl CliOptions {
 
   pub fn watch_paths(&self) -> Option<&Vec<PathBuf>> {
     self.flags.watch.as_ref()
+  }
+
+  pub fn to_lock_config(&self) -> Option<LockConfig> {
+    if let Some(config) = &self.maybe_config_file {
+      config.clone().to_lock_config()
+    } else {
+      None
+    }
   }
 }
 
