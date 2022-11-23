@@ -79,6 +79,7 @@ impl Op {
       Err(BailoutReason::FastUnsupportedParamType) => {
         optimizer.fast_compatible = false;
       }
+      Err(BailoutReason::MissingWasmMemory) => todo!(),
     };
 
     let Self {
@@ -384,7 +385,9 @@ fn codegen_arg(
   let ident = quote::format_ident!("{name}");
   let (pat, ty) = match arg {
     syn::FnArg::Typed(pat) => {
-      if is_optional_fast_callback_option(&pat.ty) {
+      if is_optional_fast_callback_option(&pat.ty)
+        || is_optional_wasm_memory(&pat.ty)
+      {
         return quote! { let #ident = None; };
       }
       (&pat.pat, &pat.ty)
@@ -603,6 +606,10 @@ fn is_u32_slice_mut(ty: impl ToTokens) -> bool {
 
 fn is_optional_fast_callback_option(ty: impl ToTokens) -> bool {
   tokens(&ty).contains("Option < & mut FastApiCallbackOptions")
+}
+
+fn is_optional_wasm_memory(ty: impl ToTokens) -> bool {
+  tokens(&ty).contains("Option < & mut [u8]")
 }
 
 /// Detects if the type can be set using `rv.set_uint32` fast path

@@ -18,7 +18,6 @@ fn op_read_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     __promise_id: i32,
     rid: ResourceId,
-    buf: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,
     fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
 ) -> () {
     use deno_core::v8;

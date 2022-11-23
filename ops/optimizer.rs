@@ -17,6 +17,7 @@ pub(crate) enum BailoutReason {
   // Recoverable errors
   MustBeSingleSegment,
   FastUnsupportedParamType,
+  MissingWasmMemory,
 }
 
 #[derive(Debug, PartialEq)]
@@ -25,6 +26,7 @@ enum TransformKind {
   V8Value,
   SliceU32(bool),
   SliceU8(bool),
+  WasmMemory,
 }
 
 impl Transform {
@@ -45,6 +47,13 @@ impl Transform {
   fn slice_u8(index: usize, is_mut: bool) -> Self {
     Transform {
       kind: TransformKind::SliceU8(is_mut),
+      index,
+    }
+  }
+
+  fn wasm_memory(index: usize) -> Self {
+    Transform {
+      kind: TransformKind::WasmMemory,
       index,
     }
   }
@@ -116,6 +125,16 @@ impl Transform {
           };
         })
       }
+      TransformKind::WasmMemory => {
+        // Note: `ty` is correctly set to __opts by the fast call tier.
+        q!(Vars { var: &ident, core }, {
+          let var = unsafe {
+            &*(__opts.wasm_memory
+              as *const core::v8::fast_api::FastApiTypedArray<u8>)
+          }
+          .get_storage_if_aligned();
+        })
+      }
     }
   }
 }
@@ -175,6 +194,8 @@ pub(crate) struct Optimizer {
 
   pub(crate) has_fast_callback_option: bool,
 
+  pub(crate) has_wasm_memory: bool,
+
   pub(crate) fast_result: Option<FastValue>,
   pub(crate) fast_parameters: Vec<FastValue>,
 
@@ -231,6 +252,9 @@ impl Optimizer {
 
     self.is_async = op.is_async;
     self.fast_compatible = true;
+    // Just assume for now. We will validate later.
+    self.has_wasm_memory = op.attrs.is_wasm;
+
     let sig = &op.item.sig;
 
     // Analyze return type
@@ -377,6 +401,31 @@ impl Optimizer {
                   TypeReference { elem, .. },
                 ))) = args.last()
                 {
+                  // -> Option<&mut [u8]>
+                  if let Type::Slice(TypeSlice { elem, .. }) = &**elem {
+                    if let Type::Path(TypePath {
+                      path: Path { segments, .. },
+                      ..
+                    }) = &**elem
+                    {
+                      let segment = single_segment(segments)?;
+
+                      match segment {
+                        // Is `T` a u8?
+                        PathSegment { ident, .. } if ident == "u8" => {
+                          self.has_fast_callback_option = true;
+                          assert!(self
+                            .transforms
+                            .insert(index, Transform::wasm_memory(index))
+                            .is_none());
+                        }
+                        _ => {
+                          return Err(BailoutReason::FastUnsupportedParamType)
+                        }
+                      }
+                    }
+                  }
+
                   if let Type::Path(TypePath {
                     path: Path { segments, .. },
                     ..
@@ -384,9 +433,9 @@ impl Optimizer {
                   {
                     let segment = single_segment(segments)?;
                     match segment {
-                      // Is `T` a FastApiCallbackOption?
+                      // Is `T` a FastApiCallbackOptions?
                       PathSegment { ident, .. }
-                        if ident == "FastApiCallbackOption" =>
+                        if ident == "FastApiCallbackOptions" =>
                       {
                         self.has_fast_callback_option = true;
                       }
@@ -582,6 +631,10 @@ mod tests {
       .expect("Failed to read expected file");
 
     let mut attrs = Attributes::default();
+    if source.contains("// @test-attr:wasm") {
+      attrs.must_be_fast = true;
+      attrs.is_wasm = true;
+    }
     if source.contains("// @test-attr:fast") {
       attrs.must_be_fast = true;
     }

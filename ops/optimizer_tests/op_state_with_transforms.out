@@ -19,7 +19,6 @@ where
 }
 fn op_now_fast_fn<'scope, TP>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
-    buf: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,
     fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
 ) -> ()
 where
