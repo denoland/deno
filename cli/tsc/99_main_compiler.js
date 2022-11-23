@@ -8,22 +8,11 @@
 // that is created when Deno needs to type check TypeScript, and in some
 // instances convert TypeScript to JavaScript.
 
-// Disables setting `__proto__` and emits a warning instead, for security reasons.
+// Removes the `__proto__` for security reasons.
 // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-// deno-lint-ignore prefer-primordials
-Object.defineProperty(Object.prototype, "__proto__", {
-  configurable: true,
-  enumerable: false,
-  get() {
-    // deno-lint-ignore prefer-primordials
-    return Object.getPrototypeOf(this);
-  },
-  set(_) {
-    console.warn(
-      "Prototype access via __proto__ attempted; __proto__ is not implemented in Deno due to security reasons. Use Object.setPrototypeOf instead.",
-    );
-  },
-})((window) => {
+delete Object.prototype.__proto__;
+
+((window) => {
   /** @type {DenoCore} */
   const core = window.Deno.core;
   const ops = core.ops;
