@@ -13,4 +13,9 @@ fn op_fast_str(string: &str) {
   println!("{}", string);
 }
 
+#[op(fast)]
+fn op_fast_str_owned(string: &str) {
+  println!("{}", string);
+}
+
 fn main() {}
