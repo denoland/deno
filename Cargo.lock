@@ -1433,9 +1433,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.15.6"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7b6ffd969606d66570c259fea202ae6ba15f8e13ae285c8de604a07131ca1c8"
+checksum = "447c6f9ceae26cafa063a53b59710735576ade0c17dee4603a59ee18b5dbcdff"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -1446,9 +1446,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.14.1"
+version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d1219016fc87c5dbd1dda4560831ea92da8a1a2df612e62843e741c98b668c3"
+checksum = "49cf3bc0cb9cc526a894b1d5af07c2ce2af1fa56b765990845ec781ab4cd1c91"
 dependencies = [
  "anyhow",
  "dprint-core",
