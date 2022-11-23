@@ -54,8 +54,6 @@ impl CliMainWorker {
   }
 
   pub async fn setup_repl(&mut self) -> Result<(), AnyError> {
-    self.ps.prepare_node_std_graph().await?;
-    node::initialize_runtime(&mut self.worker.js_runtime).await?;
     self.worker.run_event_loop(false).await?;
     Ok(())
   }

@@ -4,6 +4,7 @@ use crate::cdp;
 use crate::colors;
 use crate::emit::TsTypeLib;
 use crate::lsp::ReplLanguageServer;
+use crate::Permissions;
 use crate::ProcState;
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::visit::noop_visit_type;
@@ -18,6 +19,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
 use deno_runtime::worker::MainWorker;
+use std::sync::Arc;
 
 static PRELUDE: &str = r#"
 Object.defineProperty(globalThis, "_", {
@@ -357,29 +359,7 @@ impl ReplSession {
       scope_analysis: false,
     })?;
 
-    use crate::Permissions;
-    let mut collector = ImportCollector::new();
-    parsed_module.program().visit_with(&mut collector);
-
-    let npm_imports = collector
-      .imports
-      .iter()
-      .filter(|i| i.starts_with("npm:"))
-      .flat_map(|i| ModuleSpecifier::parse(i))
-      .collect::<Vec<ModuleSpecifier>>();
-    if !npm_imports.is_empty() {
-      self
-        .proc_state
-        .prepare_module_load(
-          npm_imports,
-          false,
-          TsTypeLib::DenoWindow,
-          Permissions::allow_all(),
-          Permissions::allow_all(),
-          false,
-        )
-        .await?;
-    }
+    self.check_for_npm_imports(parsed_module.program()).await?;
 
     let transpiled_src = parsed_module
       .transpile(&deno_ast::EmitOptions {
@@ -410,6 +390,38 @@ impl ReplSession {
       ts_code: expression.to_string(),
       value,
     })
+  }
+
+  async fn check_for_npm_imports(
+    &mut self,
+    program: Arc<swc_ast::Program>,
+  ) -> Result<(), AnyError> {
+    let mut collector = ImportCollector::new();
+    program.visit_with(&mut collector);
+
+    let npm_imports = collector
+      .imports
+      .iter()
+      .filter(|i| i.starts_with("npm:"))
+      .flat_map(|i| ModuleSpecifier::parse(i))
+      .collect::<Vec<ModuleSpecifier>>();
+    if !npm_imports.is_empty() {
+      self.proc_state.prepare_node_std_graph().await?;
+      crate::node::initialize_runtime(&mut self.worker.js_runtime).await?;
+
+      self
+        .proc_state
+        .prepare_module_load(
+          npm_imports,
+          false,
+          TsTypeLib::DenoWindow,
+          Permissions::allow_all(),
+          Permissions::allow_all(),
+          false,
+        )
+        .await?;
+    }
+    Ok(())
   }
 
   async fn evaluate_expression(
