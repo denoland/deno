@@ -130,7 +130,7 @@ fn op_try_flash_respond_chuncked(
 ) -> u32 {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  let tx = ctx.requests.get(&token).unwrap();
+  let tx = ctx.requests.get_mut(&token).unwrap();
   let sock = tx.socket();
 
   // TODO(@littledivy): Use writev when `UnixIoSlice` lands.
