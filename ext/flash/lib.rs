@@ -106,6 +106,39 @@ fn op_flash_respond(
   flash_respond(ctx, token, shutdown, &response)
 }
 
+#[op(fast)]
+fn op_try_flash_respond_chuncked(
+  op_state: &mut OpState,
+  server_id: u32,
+  token: u32,
+  response: &[u8],
+  shutdown: bool,
+) -> u32 {
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+  let tx = ctx.requests.get(&token).unwrap();
+  let sock = tx.socket();
+
+  // TODO(@littledivy): Use writev when `UnixIoSlice` lands.
+  // https://github.com/denoland/deno/pull/15629
+  let h = format!("{:x}\r\n", response.len());
+
+  let concat = [h.as_bytes(), response, b"\r\n"].concat();
+  let expected = sock.try_write(&concat);
+  if expected != concat.len() {
+    if expected > 2 {
+      return expected as u32;
+    }
+    return expected as u32;
+  }
+
+  if shutdown {
+    // Best case: We've written everything and the stream is done too.
+    let _ = ctx.requests.remove(&token).unwrap();
+  }
+  0
+}
+
 #[op]
 async fn op_flash_respond_async(
   state: Rc<RefCell<OpState>>,
@@ -148,34 +181,6 @@ async fn op_flash_respond_async(
     sock.shutdown();
   }
   Ok(())
-}
-
-#[op(fast)]
-fn op_try_flash_respond_chuncked(
-  op_state: &mut OpState,
-  server_id: u32,
-  token: u32,
-  response: &[u8],
-  shutdown: bool,
-) -> u32 {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  let tx = ctx.requests.get(&token).unwrap();
-  let sock = tx.socket();
-
-  // TODO(@littledivy): Use writev when `UnixIoSlice` lands.
-  // https://github.com/denoland/deno/pull/15629
-  let h = format!("{:x}\r\n", response.len());
-  let concat = [h.as_bytes(), response, b"\r\n"].concat();
-  let expected = sock.try_write(&concat);
-  if expected != concat.len() {
-    return expected as u32;
-  }
-  if shutdown {
-    // Best case: We've written everything and the stream is done too.
-    let _ = ctx.requests.remove(&token).unwrap();
-  }
-  0
 }
 
 #[op]
@@ -1210,15 +1215,13 @@ pub fn resolve_addr_sync(
   Ok(result)
 }
 
-#[op]
-fn op_flash_serve<P>(
+fn flash_serve<P>(
   state: &mut OpState,
   opts: ListenOpts,
 ) -> Result<u32, AnyError>
 where
   P: FlashPermissions + 'static,
 {
-  check_unstable(state, "Deno.serve");
   state
     .borrow_mut::<P>()
     .check_net(&(&opts.hostname, Some(opts.port)), "Deno.serve()")?;
@@ -1260,6 +1263,29 @@ where
   flash_ctx.join_handles.insert(server_id, join_handle);
   flash_ctx.servers.insert(server_id, ctx);
   Ok(server_id)
+}
+
+#[op]
+fn op_flash_serve<P>(
+  state: &mut OpState,
+  opts: ListenOpts,
+) -> Result<u32, AnyError>
+where
+  P: FlashPermissions + 'static,
+{
+  check_unstable(state, "Deno.serve");
+  flash_serve::<P>(state, opts)
+}
+
+#[op]
+fn op_node_unstable_flash_serve<P>(
+  state: &mut OpState,
+  opts: ListenOpts,
+) -> Result<u32, AnyError>
+where
+  P: FlashPermissions + 'static,
+{
+  flash_serve::<P>(state, opts)
 }
 
 #[op]
@@ -1484,10 +1510,10 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
     ))
     .ops(vec![
       op_flash_serve::decl::<P>(),
+      op_node_unstable_flash_serve::decl::<P>(),
       op_flash_respond::decl(),
       op_flash_respond_async::decl(),
       op_flash_respond_chuncked::decl(),
-      op_try_flash_respond_chuncked::decl(),
       op_flash_method::decl(),
       op_flash_path::decl(),
       op_flash_headers::decl(),
@@ -1503,6 +1529,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
       op_flash_close_server::decl(),
       op_flash_make_request::decl(),
       op_flash_write_resource::decl(),
+      op_try_flash_respond_chuncked::decl(),
     ])
     .state(move |op_state| {
       op_state.put(Unstable(unstable));

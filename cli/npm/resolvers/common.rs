@@ -70,13 +70,19 @@ pub async fn cache_packages(
     // and we want the output to be deterministic
     packages.sort_by(|a, b| a.id.cmp(&b.id));
   }
+
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
+    assert_eq!(package.copy_index, 0); // the caller should not provide any of these
     let cache = cache.clone();
     let registry_url = registry_url.clone();
     let handle = tokio::task::spawn(async move {
       cache
-        .ensure_package(&package.id, &package.dist, &registry_url)
+        .ensure_package(
+          (package.id.name.as_str(), &package.id.version),
+          &package.dist,
+          &registry_url,
+        )
         .await
     });
     if sync_download {
@@ -98,7 +104,7 @@ pub fn ensure_registry_read_permission(
   path: &Path,
 ) -> Result<(), AnyError> {
   // allow reading if it's in the node_modules
-  if path.starts_with(&registry_path)
+  if path.starts_with(registry_path)
     && path
       .components()
       .all(|c| !matches!(c, std::path::Component::ParentDir))
@@ -121,4 +127,26 @@ pub fn ensure_registry_read_permission(
     "PermissionDenied",
     format!("Reading {} is not allowed", path.display()),
   ))
+}
+
+/// Gets the corresponding @types package for the provided package name.
+pub fn types_package_name(package_name: &str) -> String {
+  debug_assert!(!package_name.starts_with("@types/"));
+  // Scoped packages will get two underscores for each slash
+  // https://github.com/DefinitelyTyped/DefinitelyTyped/tree/15f1ece08f7b498f4b9a2147c2a46e94416ca777#what-about-scoped-packages
+  format!("@types/{}", package_name.replace('/', "__"))
+}
+
+#[cfg(test)]
+mod test {
+  use super::types_package_name;
+
+  #[test]
+  fn test_types_package_name() {
+    assert_eq!(types_package_name("name"), "@types/name");
+    assert_eq!(
+      types_package_name("@scoped/package"),
+      "@types/@scoped__package"
+    );
+  }
 }

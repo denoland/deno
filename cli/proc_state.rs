@@ -19,14 +19,16 @@ use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::http_cache;
+use crate::http_util::HttpClient;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::node;
 use crate::node::NodeResolution;
+use crate::npm::resolve_npm_package_reqs;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
+use crate::npm::RealNpmRegistryApi;
 use crate::progress_bar::ProgressBar;
 use crate::resolver::CliResolver;
 use crate::tools::check;
@@ -156,15 +158,18 @@ impl ProcState {
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
     let progress_bar = ProgressBar::default();
+    let http_client = HttpClient::new(
+      Some(root_cert_store.clone()),
+      cli_options
+        .unsafely_ignore_certificate_errors()
+        .map(ToOwned::to_owned),
+    )?;
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
       !cli_options.no_remote(),
-      Some(root_cert_store.clone()),
+      http_client.clone(),
       blob_store.clone(),
-      cli_options
-        .unsafely_ignore_certificate_errors()
-        .map(ToOwned::to_owned),
       Some(progress_bar.clone()),
     )?;
 
@@ -210,33 +215,33 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
-    let registry_url = NpmRegistryApi::default_url();
+    let registry_url = RealNpmRegistryApi::default_url();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
+      http_client.clone(),
       progress_bar.clone(),
     );
-    let api = NpmRegistryApi::new(
+    let api = RealNpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
       cli_options.cache_setting(),
+      http_client,
       progress_bar.clone(),
     );
-    let maybe_lockfile =
-      lockfile.as_ref().filter(|l| !l.lock().overwrite).cloned();
+    let maybe_lockfile = lockfile.as_ref().cloned();
     let mut npm_resolver = NpmPackageResolver::new(
       npm_cache.clone(),
       api,
-      cli_options.unstable()
-        // don't do the unstable error when in the lsp
-        || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
       cli_options.no_npm(),
       cli_options
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
     );
     if let Some(lockfile) = maybe_lockfile.clone() {
-      npm_resolver.add_lockfile(lockfile).await?;
+      npm_resolver
+        .add_lockfile_and_maybe_regenerate_snapshot(lockfile)
+        .await?;
     }
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
@@ -276,6 +281,7 @@ impl ProcState {
   /// module before attempting to `load()` it from a `JsRuntime`. It will
   /// populate `self.graph_data` in memory with the necessary source code, write
   /// emits where necessary or report any module graph / type checking errors.
+  #[allow(clippy::too_many_arguments)]
   pub async fn prepare_module_load(
     &self,
     roots: Vec<ModuleSpecifier>,
@@ -285,20 +291,18 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
-    let mut npm_package_reqs = vec![];
 
-    for root in &roots {
-      if let Ok(package_ref) = NpmPackageReference::from_specifier(root) {
-        npm_package_reqs.push(package_ref.req);
-      }
-    }
+    let has_root_npm_specifier = roots.iter().any(|r| {
+      r.scheme() == "npm" && NpmPackageReference::from_specifier(r).is_ok()
+    });
     let roots = roots
       .into_iter()
       .map(|s| (s, ModuleKind::Esm))
       .collect::<Vec<_>>();
 
-    if !reload_on_watch && npm_package_reqs.is_empty() {
+    if !reload_on_watch && !has_root_npm_specifier {
       let graph_data = self.graph_data.read();
       if self.options.type_check_mode() == TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
@@ -370,6 +374,7 @@ impl ProcState {
       };
 
     let analyzer = self.parsed_source_cache.as_analyzer();
+    log::debug!("Creating module graph.");
     let graph = create_graph(
       roots.clone(),
       &mut loader,
@@ -395,7 +400,7 @@ impl ProcState {
       graph_data.entries().map(|(s, _)| s).cloned().collect()
     };
 
-    {
+    let npm_package_reqs = {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph, reload_on_watch);
       let check_js = self.options.check_js();
@@ -406,7 +411,7 @@ impl ProcState {
           check_js,
         )
         .unwrap()?;
-      npm_package_reqs.extend(graph_data.npm_package_reqs());
+      graph_data.npm_package_reqs().clone()
     };
 
     if !npm_package_reqs.is_empty() {
@@ -418,6 +423,7 @@ impl ProcState {
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
+      log::debug!("Type checking.");
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
       let roots = roots.clone();
       let options = check::CheckOptions {
@@ -458,6 +464,8 @@ impl ProcState {
       let g = lockfile.lock();
       g.write()?;
     }
+
+    log::debug!("Prepared module load.");
 
     Ok(())
   }
@@ -526,6 +534,15 @@ impl ProcState {
         Some(Resolved::Ok { specifier, .. }) => {
           if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
           {
+            if !self.options.unstable()
+              && matches!(found_referrer.scheme(), "http" | "https")
+            {
+              return Err(custom_error(
+                "NotSupported",
+                format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {})", found_referrer),
+              ));
+            }
+
             return self
               .handle_node_resolve_result(node::node_resolve_npm_reference(
                 &reference,
@@ -638,15 +655,10 @@ impl ProcState {
     )
     .await;
 
-    // add the found npm package references to the npm resolver and cache them
-    let mut package_reqs = Vec::new();
-    for (specifier, _) in graph.specifiers() {
-      if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
-        package_reqs.push(reference.req);
-      }
-    }
-    if !package_reqs.is_empty() {
-      self.npm_resolver.add_package_reqs(package_reqs).await?;
+    // add the found npm package requirements to the npm resolver and cache them
+    let npm_package_reqs = resolve_npm_package_reqs(&graph);
+    if !npm_package_reqs.is_empty() {
+      self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
     }
 
     Ok(graph)

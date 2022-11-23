@@ -469,7 +469,7 @@ fn get_workspace_completions(
   specifier_strings
     .into_iter()
     .filter_map(|label| {
-      if label.starts_with(&current) {
+      if label.starts_with(current) {
         let detail = Some(
           if label.starts_with("http:") || label.starts_with("https:") {
             "(remote)".to_string()
