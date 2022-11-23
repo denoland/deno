@@ -3,9 +3,11 @@
 [package]
 name = "test_napi"
 version = "0.1.0"
-authors = ["the deno authors"]
-edition = "2021"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 publish = false
+repository.workspace = true
 
 [lib]
 crate-type = ["cdylib"]
@@ -14,7 +16,7 @@ crate-type = ["cdylib"]
 napi-sys = { version = "2.2.2", default-features = false, features = ["napi7"] }
 
 [dev-dependencies]
-test_util = { path = "../test_util" }
+test_util.workspace = true
 
 [build-dependencies]
 napi-build = "1"
