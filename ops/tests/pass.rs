@@ -8,4 +8,9 @@ fn op_fallback(options: Option<&mut FastApiCallbackOptions>) {
   }
 }
 
+#[op(fast)]
+fn op_fast_str(string: &str) {
+  println!("{}", string);
+}
+
 fn main() {}

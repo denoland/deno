@@ -25,6 +25,7 @@ enum TransformKind {
   V8Value,
   SliceU32(bool),
   SliceU8(bool),
+  SeqOneByteString,
 }
 
 impl Transform {
@@ -45,6 +46,13 @@ impl Transform {
   fn slice_u8(index: usize, is_mut: bool) -> Self {
     Transform {
       kind: TransformKind::SliceU8(is_mut),
+      index,
+    }
+  }
+
+  fn seq_one_byte_string(index: usize) -> Self {
+    Transform {
+      kind: TransformKind::SeqOneByteString,
       index,
     }
   }
@@ -116,6 +124,14 @@ impl Transform {
           };
         })
       }
+      // &str
+      TransformKind::SeqOneByteString => {
+        *ty = parse_quote! { *const #core::v8::fast_api::FastApiOneByteString };
+
+        q!(Vars { var: &ident }, {
+          let var = unsafe { &*var }.as_str();
+        })
+      }
     }
   }
 }
@@ -157,6 +173,7 @@ pub(crate) enum FastValue {
   V8Value,
   Uint8Array,
   Uint32Array,
+  SeqOneByteString,
 }
 
 impl Default for FastValue {
@@ -479,6 +496,14 @@ impl Optimizer {
               // Is `T` a OpState?
               PathSegment { ident, .. } if ident == "OpState" => {
                 self.has_ref_opstate = true;
+              }
+              // Is `T` a str?
+              PathSegment { ident, .. } if ident == "str" => {
+                self.fast_parameters.push(FastValue::SeqOneByteString);
+                assert!(self
+                  .transforms
+                  .insert(index, Transform::seq_one_byte_string(index))
+                  .is_none());
               }
               _ => return Err(BailoutReason::FastUnsupportedParamType),
             }

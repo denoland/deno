@@ -396,7 +396,12 @@ fn codegen_arg(
     return quote! { let #ident = (); };
   }
   // Fast path for `String`
-  if is_string(&**ty) {
+  if let Some(is_ref) = is_string(&**ty) {
+    let ref_block = if is_ref {
+      quote! { let #ident = #ident.as_ref(); }
+    } else {
+      quote! {}
+    };
     return quote! {
       let #ident = match #core::v8::Local::<#core::v8::String>::try_from(args.get(#idx as i32)) {
         Ok(v8_string) => #core::serde_v8::to_utf8(v8_string, scope),
@@ -404,6 +409,7 @@ fn codegen_arg(
           return #core::_ops::throw_type_error(scope, format!("Expected string at position {}", #idx));
         }
       };
+      #ref_block
     };
   }
   // Fast path for `Option<String>`
@@ -562,8 +568,15 @@ fn is_result(ty: impl ToTokens) -> bool {
   }
 }
 
-fn is_string(ty: impl ToTokens) -> bool {
-  tokens(ty) == "String"
+fn is_string(ty: impl ToTokens) -> Option<bool> {
+  let toks = tokens(ty);
+  if toks == "String" {
+    return Some(false);
+  }
+  if toks == "& str" {
+    return Some(true);
+  }
+  None
 }
 
 fn is_option_string(ty: impl ToTokens) -> bool {
