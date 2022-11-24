@@ -81,7 +81,9 @@ delete Intl.v8BreakIterator;
     },
     set(_) {
       console.warn(
-        "Prototype access via __proto__ attempted; __proto__ is not implemented in Deno due to security reasons. Use Object.setPrototypeOf instead.",
+        new Error(
+          "Prototype access via __proto__ attempted; __proto__ is not implemented in Deno due to security reasons. Use Object.setPrototypeOf instead.",
+        ),
       );
     },
   });
