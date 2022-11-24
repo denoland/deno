@@ -17,6 +17,7 @@ pub struct TypeCheckCache(Option<Connection>);
 
 impl TypeCheckCache {
   pub fn new(db_file_path: &Path) -> Self {
+    log::debug!("Loading type check cache.");
     match Self::try_new(db_file_path) {
       Ok(cache) => cache,
       Err(err) => {

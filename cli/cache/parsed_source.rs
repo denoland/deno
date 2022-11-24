@@ -143,6 +143,7 @@ impl ParsedSourceCacheModuleAnalyzer {
     cli_version: String,
     sources: ParsedSourceCacheSources,
   ) -> Result<Self, AnyError> {
+    log::debug!("Loading cached module analyzer.");
     let conn = match db_file_path {
       Some(path) => Connection::open(path)?,
       None => Connection::open_in_memory()?,
