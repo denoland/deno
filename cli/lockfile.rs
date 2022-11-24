@@ -120,7 +120,13 @@ impl Lockfile {
             if let Some(LockConfig::PathBuf(lock)) =
               config_file.clone().to_lock_config()?
             {
-              config_file.specifier.to_file_path().unwrap().parent().unwrap().join(lock)
+              config_file
+                .specifier
+                .to_file_path()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join(lock)
             } else {
               let mut path = config_file.specifier.to_file_path().unwrap();
               path.set_file_name("deno.lock");
