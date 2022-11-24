@@ -8,13 +8,12 @@ https://github.com/denoland/deno_install
 
 ### 1.28.2 / 2022.11.24
 
-- Reland "perf(ext/flash): optimize response streaming" (#16660)
-- Revert "fix(ext/websocket): make try_send ops infallible (#16454)" (#16743)
 - feat(cli): add warning for incorrectly ordered flags (#16734)
 - feat(core): Ability to create snapshots from existing snapshots (#16597)
 - fix(ext/flash): graceful server startup/shutdown with unsettled promises in
   mind (#16616)
 - fix(ext/node): handle URL in createRequire (#16682)
+- fix(ext/websocket): uncatchable errors on send (#16743)
 - fix(fmt/markdown): scenario where whitespace was being incorrectly stripped in
   inline links (#16769)
 - fix(info): handle circular npm dependencies (#16692)
@@ -34,6 +33,7 @@ https://github.com/denoland/deno_install
   (#16791)
 - fix(types/unstable): change interface base for `CommandOutput` (#16696)
 - fix: Make npm packages works with import maps (#16754)
+- perf(ext/flash): optimize response streaming (#16660)
 - perf(npm): make dependency resolution faster (#16694)
 
 ### 1.28.1 / 2022.11.16
