@@ -381,7 +381,7 @@ fn codegen_arg(
   name: &str,
   idx: usize,
 ) -> TokenStream2 {
-  let is_async = item.sig.asyncness.is_some() || is_future(&item.sig.output);
+  let is_async = arg.sig.asyncness.is_some() || is_future(&arg.sig.output);
   let ident = quote::format_ident!("{name}");
   let (pat, ty) = match arg {
     syn::FnArg::Typed(pat) => {
