@@ -3651,6 +3651,7 @@ itest!(flash_shutdown {
 itest!(permission_args {
   args: "run run/001_hello.js --allow-net",
   output: "run/permission_args.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
 
 itest!(permission_args_quiet {
