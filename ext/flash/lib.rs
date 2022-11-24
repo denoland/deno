@@ -56,6 +56,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Context;
 use std::time::Duration;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -70,9 +72,10 @@ use request::Request;
 use socket::InnerStream;
 use socket::Stream;
 
+type FutHandle = Pin<Box<dyn Future<Output = Result<(), AnyError>> + 'static>>;
 pub struct FlashContext {
   next_server_id: u32,
-  join_handles: HashMap<u32, JoinHandle<Result<(), AnyError>>>,
+  join_handles: HashMap<u32, FutHandle>,
   pub servers: HashMap<u32, ServerContext>,
 }
 
@@ -169,13 +172,7 @@ async fn op_flash_respond_async(
     }
   };
 
-  sock
-    .with_async_stream(|stream| {
-      Box::pin(async move {
-        Ok(tokio::io::AsyncWriteExt::write(stream, &response).await?)
-      })
-    })
-    .await?;
+  sock.inner.write(&response).await?;
   // server is done writing and request doesn't want to kept alive.
   if shutdown && close {
     sock.shutdown();
@@ -208,37 +205,30 @@ async fn op_flash_respond_chuncked(
   };
 
   drop(op_state);
-  sock
-    .with_async_stream(|stream| {
-      Box::pin(async move {
-        use tokio::io::AsyncWriteExt;
-        // TODO(@littledivy): Use writev when `UnixIoSlice` lands.
-        // https://github.com/denoland/deno/pull/15629
-        macro_rules! write_whats_not_written {
-          ($e:expr) => {
-            let e = $e;
-            let n = nwritten as usize;
-            if n < e.len() {
-              stream.write_all(&e[n..]).await?;
-            }
-          };
-        }
-        if let Some(response) = response {
-          let h = format!("{:x}\r\n", response.len());
-          write_whats_not_written!(h.as_bytes());
-          write_whats_not_written!(&response);
-          write_whats_not_written!(b"\r\n");
-        }
 
-        // The last chunk
-        if shutdown {
-          write_whats_not_written!(b"0\r\n\r\n");
-        }
+  // TODO(@littledivy): Use writev when `UnixIoSlice` lands.
+  // https://github.com/denoland/deno/pull/15629
+  macro_rules! write_whats_not_written {
+    ($e:expr) => {
+      let e = $e;
+      let n = nwritten as usize;
+      if n < e.len() {
+        sock.inner.write_all(&e[n..]).await?;
+      }
+    };
+  }
+  if let Some(response) = response {
+    let h = format!("{:x}\r\n", response.len());
+    write_whats_not_written!(h.as_bytes());
+    write_whats_not_written!(&response);
+    write_whats_not_written!(b"\r\n");
+  }
 
-        Ok(())
-      })
-    })
-    .await?;
+  // The last chunk
+  if shutdown {
+    write_whats_not_written!(b"0\r\n\r\n");
+  }
+
   Ok(())
 }
 
@@ -265,55 +255,50 @@ async fn op_flash_write_resource(
 
   let _ = sock.write(&response);
 
-  #[cfg(unix)]
-  {
-    use std::os::unix::io::AsRawFd;
-    if let InnerStream::Tcp(stream_handle) = &sock.inner {
-      let stream_handle = stream_handle.as_raw_fd();
-      if let Some(fd) = resource.clone().backing_fd() {
-        // SAFETY: all-zero byte-pattern is a valid value for libc::stat.
-        let mut stat: libc::stat = unsafe { std::mem::zeroed() };
-        // SAFETY: call to libc::fstat.
-        if unsafe { libc::fstat(fd, &mut stat) } >= 0 {
-          let _ = sock.write(
-            format!("Content-Length: {}\r\n\r\n", stat.st_size).as_bytes(),
-          );
-          let tx = sendfile::SendFile {
-            io: (fd, stream_handle),
-            written: 0,
-          };
-          tx.await?;
-          return Ok(());
-        }
-      }
-    }
-  }
+  // #[cfg(unix)]
+  // {
+  //   use std::os::unix::io::AsRawFd;
+  //   if let InnerStream::Tcp(stream_handle) = &sock.inner {
+  //     let stream_handle = stream_handle.as_raw_fd();
+  //     if let Some(fd) = resource.clone().backing_fd() {
+  //       // SAFETY: all-zero byte-pattern is a valid value for libc::stat.
+  //       let mut stat: libc::stat = unsafe { std::mem::zeroed() };
+  //       // SAFETY: call to libc::fstat.
+  //       if unsafe { libc::fstat(fd, &mut stat) } >= 0 {
+  //         let _ = sock.write(
+  //           format!("Content-Length: {}\r\n\r\n", stat.st_size).as_bytes(),
+  //         );
+  //         let tx = sendfile::SendFile {
+  //           io: (fd, stream_handle),
+  //           written: 0,
+  //         };
+  //         tx.await?;
+  //         return Ok(());
+  //       }
+  //     }
+  //   }
+  // }
 
   sock
-    .with_async_stream(|stream| {
-      Box::pin(async move {
-        use tokio::io::AsyncWriteExt;
-        stream
-          .write_all(b"Transfer-Encoding: chunked\r\n\r\n")
-          .await?;
-        loop {
-          let view = resource.clone().read(64 * 1024).await?; // 64KB
-          if view.is_empty() {
-            stream.write_all(b"0\r\n\r\n").await?;
-            break;
-          }
-          // TODO(@littledivy): use vectored writes.
-          stream
-            .write_all(format!("{:x}\r\n", view.len()).as_bytes())
-            .await?;
-          stream.write_all(&view).await?;
-          stream.write_all(b"\r\n").await?;
-        }
-        resource.close();
-        Ok(())
-      })
-    })
+    .inner
+    .write_all(b"Transfer-Encoding: chunked\r\n\r\n")
     .await?;
+  loop {
+    let view = resource.clone().read(64 * 1024).await?; // 64KB
+    if view.is_empty() {
+      sock.inner.write_all(b"0\r\n\r\n").await?;
+      break;
+    }
+    // TODO(@littledivy): use vectored writes.
+    sock
+      .inner
+      .write_all(format!("{:x}\r\n", view.len()).as_bytes())
+      .await?;
+    sock.inner.write_all(&view).await?;
+    sock.inner.write_all(b"\r\n").await?;
+  }
+  resource.close();
+
   Ok(())
 }
 
@@ -350,8 +335,8 @@ fn flash_respond(
   sock.read_tx.take();
   sock.read_rx.take();
 
-  let nwritten = sock.try_write(response);
-
+  let nwritten = sock.inner.try_write(response).unwrap();
+  dbg!(nwritten);
   if shutdown && nwritten == response.len() {
     if !tx.keep_alive {
       sock.shutdown();
@@ -851,7 +836,7 @@ pub struct ListenOpts {
   reuseport: bool,
 }
 
-fn run_server(
+async fn run_server(
   tx: mpsc::Sender<Request>,
   listening_tx: mpsc::Sender<u16>,
   mut close_rx: mpsc::Receiver<()>,
@@ -879,78 +864,19 @@ fn run_server(
   socket.listen(128)?;
   socket.set_nonblocking(true)?;
   let std_listener: std::net::TcpListener = socket.into();
-  let mut listener = TcpListener::from_std(std_listener);
+  let mut listener = tokio::net::TcpListener::from_std(std_listener)?;
 
-  let mut poll = Poll::new()?;
-  let token = Token(0);
-  poll
-    .registry()
-    .register(&mut listener, token, Interest::READABLE)
-    .unwrap();
-
-  let tls_context: Option<Arc<rustls::ServerConfig>> = {
-    if let Some(cert) = maybe_cert {
-      let key = maybe_key.unwrap();
-      let certificate_chain: Vec<rustls::Certificate> =
-        load_certs(&mut BufReader::new(cert.as_bytes()))?;
-      let private_key = load_private_keys(key.as_bytes())?.remove(0);
-
-      let config = rustls::ServerConfig::builder()
-        .with_safe_defaults()
-        .with_no_client_auth()
-        .with_single_cert(certificate_chain, private_key)
-        .expect("invalid key or certificate");
-      Some(Arc::new(config))
-    } else {
-      None
-    }
-  };
-
-  listening_tx
-    .blocking_send(listener.local_addr().unwrap().port())
-    .unwrap();
-  let mut sockets = HashMap::with_capacity(1000);
-  let mut counter: usize = 1;
-  let mut events = Events::with_capacity(1024);
-  'outer: loop {
-    let result = close_rx.try_recv();
-    if result.is_ok() {
-      break 'outer;
-    }
-    // FIXME(bartlomieju): how does Tokio handle it? I just put random 100ms
-    // timeout here to handle close signal.
-    match poll.poll(&mut events, Some(Duration::from_millis(100))) {
-      Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-      Err(e) => panic!("{}", e),
-      Ok(()) => (),
-    }
-    'events: for event in &events {
-      if close_rx.try_recv().is_ok() {
-        break 'outer;
+  loop {
+    tokio::select! {
+      _ = close_rx.recv() => {
+        break;
       }
-      let token = event.token();
-      match token {
-        Token(0) => loop {
-          match listener.accept() {
-            Ok((mut socket, _)) => {
-              counter += 1;
-              let token = Token(counter);
-              poll
-                .registry()
-                .register(&mut socket, token, Interest::READABLE)
-                .unwrap();
-
-              let socket = match tls_context {
-                Some(ref tls_conf) => {
-                  let connection =
-                    rustls::ServerConnection::new(tls_conf.clone()).unwrap();
-                  InnerStream::Tls(Box::new(rustls::StreamOwned::new(
-                    connection, socket,
-                  )))
-                }
-                None => InnerStream::Tcp(socket),
-              };
-              let stream = Box::pin(Stream {
+      maybe_conn = listener.accept() => {
+        match maybe_conn {
+          Ok((socket, _)) => {
+            let tx = tx.clone();
+            tokio::task::spawn_local(async move {
+              let mut socket_og = Box::pin(Stream {
                 inner: socket,
                 detached: false,
                 read_rx: None,
@@ -959,232 +885,163 @@ fn run_server(
                 parse_done: ParseStatus::None,
                 buffer: UnsafeCell::new(vec![0_u8; 1024]),
               });
+              let socket = unsafe {
+                let mut_ref: Pin<&mut Stream> = Pin::as_mut(&mut socket_og);
+                Pin::get_unchecked_mut(mut_ref)
+              };
+              let sock_ptr = socket as *mut _;
+              let mut headers = vec![httparse::EMPTY_HEADER; 40];
+              let mut req = httparse::Request::new(&mut headers);
+              let body_offset;
+              let body_len;
 
-              trace!("New connection: {}", token.0);
-              sockets.insert(token, stream);
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-            Err(_) => break,
-          }
-        },
-        token => {
-          let socket = sockets.get_mut(&token).unwrap();
-          // SAFETY: guarantee that we will never move the data out of the mutable reference.
-          let socket = unsafe {
-            let mut_ref: Pin<&mut Stream> = Pin::as_mut(socket);
-            Pin::get_unchecked_mut(mut_ref)
-          };
-          let sock_ptr = socket as *mut _;
-
-          if socket.detached {
-            match &mut socket.inner {
-              InnerStream::Tcp(ref mut socket) => {
-                poll.registry().deregister(socket).unwrap();
-              }
-              InnerStream::Tls(_) => {
-                todo!("upgrade tls not implemented");
-              }
-            }
-
-            let boxed = sockets.remove(&token).unwrap();
-            std::mem::forget(boxed);
-            trace!("Socket detached: {}", token.0);
-            continue;
-          }
-
-          debug_assert!(event.is_readable());
-
-          trace!("Socket readable: {}", token.0);
-          if let Some(tx) = &socket.read_tx {
-            {
-              let _l = socket.read_lock.lock().unwrap();
-            }
-            trace!("Sending readiness notification: {}", token.0);
-            let _ = tx.blocking_send(());
-
-            continue;
-          }
-
-          let mut headers = vec![httparse::EMPTY_HEADER; 40];
-          let mut req = httparse::Request::new(&mut headers);
-          let body_offset;
-          let body_len;
-          loop {
-            // SAFETY: It is safe for the read buf to be mutable here.
-            let buffer = unsafe { &mut *socket.buffer.get() };
-            let offset = match socket.parse_done {
-              ParseStatus::None => 0,
-              ParseStatus::Ongoing(offset) => offset,
-            };
-            if offset >= buffer.len() {
-              buffer.resize(offset * 2, 0);
-            }
-            let nread = socket.read(&mut buffer[offset..]);
-
-            match nread {
-              Ok(0) => {
-                trace!("Socket closed: {}", token.0);
-                // FIXME: don't remove while JS is writing!
-                // sockets.remove(&token);
-                continue 'events;
-              }
-              Ok(read) => {
-                match req.parse(&buffer[..offset + read]) {
-                  Ok(httparse::Status::Complete(n)) => {
-                    body_offset = n;
-                    body_len = offset + read;
-                    socket.parse_done = ParseStatus::None;
-                    // On Windows, We must keep calling socket.read() until it fails with WouldBlock.
-                    //
-                    // Mio tries to emulate edge triggered events on Windows.
-                    // AFAICT it only rearms the event on WouldBlock, but it doesn't when a partial read happens.
-                    // https://github.com/denoland/deno/issues/15549
-                    #[cfg(target_os = "windows")]
-                    match &mut socket.inner {
-                      InnerStream::Tcp(ref mut socket) => {
-                        poll
-                          .registry()
-                          .reregister(socket, token, Interest::READABLE)
-                          .unwrap();
-                      }
-                      InnerStream::Tls(ref mut socket) => {
-                        poll
-                          .registry()
-                          .reregister(
-                            &mut socket.sock,
-                            token,
-                            Interest::READABLE,
-                          )
-                          .unwrap();
-                      }
-                    };
-                    break;
-                  }
-                  Ok(httparse::Status::Partial) => {
-                    socket.parse_done = ParseStatus::Ongoing(offset + read);
-                    continue;
-                  }
-                  Err(_) => {
-                    let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
-                    continue 'events;
-                  }
-                }
-              }
-              Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                break 'events
-              }
-              Err(_) => break 'events,
-            }
-          }
-
-          debug_assert_eq!(socket.parse_done, ParseStatus::None);
-          if let Some(method) = &req.method {
-            if method == &"POST" || method == &"PUT" {
-              let (tx, rx) = mpsc::channel(100);
-              socket.read_tx = Some(tx);
-              socket.read_rx = Some(rx);
-            }
-          }
-
-          // SAFETY: It is safe for the read buf to be mutable here.
-          let buffer = unsafe { &mut *socket.buffer.get() };
-          let inner_req = InnerRequest {
-            // SAFETY: backing buffer is pinned and lives as long as the request.
-            req: unsafe { transmute::<httparse::Request<'_, '_>, _>(req) },
-            // SAFETY: backing buffer is pinned and lives as long as the request.
-            _headers: unsafe {
-              transmute::<Vec<httparse::Header<'_>>, _>(headers)
-            },
-            buffer: Pin::new(
-              replace(buffer, vec![0_u8; 1024]).into_boxed_slice(),
-            ),
-            body_offset,
-            body_len,
-          };
-          // h1
-          // https://github.com/tiny-http/tiny-http/blob/master/src/client.rs#L177
-          // https://github.com/hyperium/hyper/blob/4545c3ef191ce9b5f5d250ee27c4c96f9b71d2c6/src/proto/h1/role.rs#L127
-          let mut keep_alive = inner_req.req.version.unwrap() == 1;
-          let mut expect_continue = false;
-          let mut te = false;
-          let mut te_chunked = false;
-          let mut content_length = None;
-          for header in inner_req.req.headers.iter() {
-            match HeaderName::from_bytes(header.name.as_bytes()) {
-              Ok(CONNECTION) => {
-                // SAFETY: illegal bytes are validated by httparse.
-                let value = unsafe {
-                  HeaderValue::from_maybe_shared_unchecked(header.value)
+              loop {
+                // SAFETY: It is safe for the read buf to be mutable here.
+                let buffer = unsafe { &mut *socket.buffer.get() };
+                let offset = match socket.parse_done {
+                  ParseStatus::None => 0,
+                  ParseStatus::Ongoing(offset) => offset,
                 };
-                if keep_alive {
-                  // 1.1
-                  keep_alive = !connection_has(&value, "close");
-                } else {
-                  // 1.0
-                  keep_alive = connection_has(&value, "keep-alive");
+                if offset >= buffer.len() {
+                  buffer.resize(offset * 2, 0);
                 }
-              }
-              Ok(TRANSFER_ENCODING) => {
-                // https://tools.ietf.org/html/rfc7230#section-3.3.3
-                debug_assert!(inner_req.req.version.unwrap() == 1);
-                // Two states for Transfer-Encoding because we want to make sure Content-Length handling knows it.
-                te = true;
-                content_length = None;
-                // SAFETY: illegal bytes are validated by httparse.
-                let value = unsafe {
-                  HeaderValue::from_maybe_shared_unchecked(header.value)
-                };
-                if let Ok(Some(encoding)) =
-                  value.to_str().map(|s| s.rsplit(',').next())
-                {
-                  // Chunked must always be the last encoding
-                  if encoding.trim().eq_ignore_ascii_case("chunked") {
-                    te_chunked = true;
+                let nread = socket.inner.read(&mut buffer[offset..]).await;
+
+                // Parse the HTTP request
+                match nread {
+                  Ok(0) => {
+                    return;
                   }
-                }
-              }
-              // Transfer-Encoding overrides the Content-Length.
-              Ok(CONTENT_LENGTH) if !te => {
-                if let Some(len) = from_digits(header.value) {
-                  if let Some(prev) = content_length {
-                    if prev != len {
-                      let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
-                      continue 'events;
+                  Ok(read) => {
+                    match req.parse(&buffer[..offset + read]) {
+                      Ok(httparse::Status::Complete(n)) => {
+                        body_offset = n;
+                        body_len = offset + read;
+                        socket.parse_done = ParseStatus::None;
+                        break;
+                      }
+                      Ok(httparse::Status::Partial) => {
+                        socket.parse_done = ParseStatus::Ongoing(offset + read);
+                        continue;
+                      }
+                      Err(_) => {
+                        let _ = socket.inner.write(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
+                      }
                     }
-                    continue;
                   }
-                  content_length = Some(len);
-                } else {
-                  let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
-                  continue 'events;
+                  Err(_) => {},
                 }
               }
-              Ok(EXPECT) if inner_req.req.version.unwrap() != 0 => {
-                expect_continue =
-                  header.value.eq_ignore_ascii_case(b"100-continue");
-              }
-              _ => {}
-            }
-          }
 
-          // There is Transfer-Encoding but its not chunked.
-          if te && !te_chunked {
-            let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
-            continue 'events;
-          }
 
-          tx.blocking_send(Request {
-            socket: sock_ptr,
-            // SAFETY: headers backing buffer outlives the mio event loop ('static)
-            inner: inner_req,
-            keep_alive,
-            te_chunked,
-            remaining_chunk_size: None,
-            content_read: 0,
-            content_length,
-            expect_continue,
-          })
-          .ok();
+                // Create InnerRequest
+                //
+                // SAFETY: It is safe for the read buf to be mutable here.
+                let buffer = unsafe { &mut *socket.buffer.get() };
+                let inner_req = InnerRequest {
+                  // SAFETY: backing buffer is pinned and lives as long as the request.
+                  req: unsafe { transmute::<httparse::Request<'_, '_>, _>(req) },
+                  // SAFETY: backing buffer is pinned and lives as long as the request.
+                  _headers: unsafe {
+                    transmute::<Vec<httparse::Header<'_>>, _>(headers)
+                  },
+                  buffer: Pin::new(
+                    replace(buffer, vec![0_u8; 1024]).into_boxed_slice(),
+                  ),
+                  body_offset,
+                  body_len,
+                };
+
+                // Setup JS header map
+                //
+                // https://github.com/tiny-http/tiny-http/blob/master/src/client.rs#L177
+                // https://github.com/hyperium/hyper/blob/4545c3ef191ce9b5f5d250ee27c4c96f9b71d2c6/src/proto/h1/role.rs#L127
+                let mut keep_alive = inner_req.req.version.unwrap() == 1;
+                let mut expect_continue = false;
+                let mut te = false;
+                let mut te_chunked = false;
+                let mut content_length = None;
+                for header in inner_req.req.headers.iter() {
+                  match HeaderName::from_bytes(header.name.as_bytes()) {
+                    Ok(CONNECTION) => {
+                      // SAFETY: illegal bytes are validated by httparse.
+                      let value = unsafe {
+                        HeaderValue::from_maybe_shared_unchecked(header.value)
+                      };
+                      if keep_alive {
+                        // 1.1
+                        keep_alive = !connection_has(&value, "close");
+                      } else {
+                        // 1.0
+                        keep_alive = connection_has(&value, "keep-alive");
+                      }
+                    }
+                    Ok(TRANSFER_ENCODING) => {
+                      // https://tools.ietf.org/html/rfc7230#section-3.3.3
+                      debug_assert!(inner_req.req.version.unwrap() == 1);
+                      // Two states for Transfer-Encoding because we want to make sure Content-Length handling knows it.
+                      te = true;
+                      content_length = None;
+                      // SAFETY: illegal bytes are validated by httparse.
+                      let value = unsafe {
+                        HeaderValue::from_maybe_shared_unchecked(header.value)
+                      };
+                      if let Ok(Some(encoding)) =
+                        value.to_str().map(|s| s.rsplit(',').next())
+                      {
+                        // Chunked must always be the last encoding
+                        if encoding.trim().eq_ignore_ascii_case("chunked") {
+                          te_chunked = true;
+                        }
+                      }
+                    }
+                    // Transfer-Encoding overrides the Content-Length.
+                    Ok(CONTENT_LENGTH) if !te => {
+                      if let Some(len) = from_digits(header.value) {
+                        if let Some(prev) = content_length {
+                          if prev != len {
+                            let _ = socket.inner.write(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
+                            return;
+                          }
+                          continue;
+                        }
+                        content_length = Some(len);
+                      } else {
+                        let _ = socket.inner.write(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
+                        return;
+                      }
+                    }
+                    Ok(EXPECT) if inner_req.req.version.unwrap() != 0 => {
+                      expect_continue =
+                        header.value.eq_ignore_ascii_case(b"100-continue");
+                    }
+                    _ => {}
+                  }
+                }
+
+                // There is Transfer-Encoding but its not chunked.
+                if te && !te_chunked {
+                  let _ = socket.inner.write(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
+                  return;
+                }
+
+                // Send the request via the channel.
+                tx.send(Request {
+                  socket: sock_ptr,
+                  // SAFETY: headers backing buffer outlives the mio event loop ('static)
+                  inner: inner_req,
+                  keep_alive,
+                  te_chunked,
+                  remaining_chunk_size: None,
+                  content_read: 0,
+                  content_length,
+                  expect_continue,
+                })
+                .await;
+                std::mem::forget(socket_og); // TODO
+            });
+          }
+          Err(_) => panic!("accept error"),
         }
       }
     }
@@ -1192,6 +1049,348 @@ fn run_server(
 
   Ok(())
 }
+
+// fn run_server(
+//   tx: mpsc::Sender<Request>,
+//   listening_tx: mpsc::Sender<u16>,
+//   mut close_rx: mpsc::Receiver<()>,
+//   addr: SocketAddr,
+//   maybe_cert: Option<String>,
+//   maybe_key: Option<String>,
+//   reuseport: bool,
+// ) -> Result<(), AnyError> {
+//   let domain = if addr.is_ipv4() {
+//     socket2::Domain::IPV4
+//   } else {
+//     socket2::Domain::IPV6
+//   };
+//   let socket = Socket::new(domain, socket2::Type::STREAM, None)?;
+
+//   #[cfg(not(windows))]
+//   socket.set_reuse_address(true)?;
+//   if reuseport {
+//     #[cfg(target_os = "linux")]
+//     socket.set_reuse_port(true)?;
+//   }
+
+//   let socket_addr = socket2::SockAddr::from(addr);
+//   socket.bind(&socket_addr)?;
+//   socket.listen(128)?;
+//   socket.set_nonblocking(true)?;
+//   let std_listener: std::net::TcpListener = socket.into();
+//   let mut listener = TcpListener::from_std(std_listener);
+
+//   let mut poll = Poll::new()?;
+//   let token = Token(0);
+//   poll
+//     .registry()
+//     .register(&mut listener, token, Interest::READABLE)
+//     .unwrap();
+
+//   let tls_context: Option<Arc<rustls::ServerConfig>> = {
+//     if let Some(cert) = maybe_cert {
+//       let key = maybe_key.unwrap();
+//       let certificate_chain: Vec<rustls::Certificate> =
+//         load_certs(&mut BufReader::new(cert.as_bytes()))?;
+//       let private_key = load_private_keys(key.as_bytes())?.remove(0);
+
+//       let config = rustls::ServerConfig::builder()
+//         .with_safe_defaults()
+//         .with_no_client_auth()
+//         .with_single_cert(certificate_chain, private_key)
+//         .expect("invalid key or certificate");
+//       Some(Arc::new(config))
+//     } else {
+//       None
+//     }
+//   };
+
+//   listening_tx
+//     .blocking_send(listener.local_addr().unwrap().port())
+//     .unwrap();
+//   let mut sockets = HashMap::with_capacity(1000);
+//   let mut counter: usize = 1;
+//   let mut events = Events::with_capacity(1024);
+//   'outer: loop {
+//     let result = close_rx.try_recv();
+//     if result.is_ok() {
+//       break 'outer;
+//     }
+//     // FIXME(bartlomieju): how does Tokio handle it? I just put random 100ms
+//     // timeout here to handle close signal.
+//     match poll.poll(&mut events, Some(Duration::from_millis(100))) {
+//       Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+//       Err(e) => panic!("{}", e),
+//       Ok(()) => (),
+//     }
+//     'events: for event in &events {
+//       if close_rx.try_recv().is_ok() {
+//         break 'outer;
+//       }
+//       let token = event.token();
+//       match token {
+//         Token(0) => loop {
+//           match listener.accept() {
+//             Ok((mut socket, _)) => {
+//               counter += 1;
+//               let token = Token(counter);
+//               poll
+//                 .registry()
+//                 .register(&mut socket, token, Interest::READABLE)
+//                 .unwrap();
+
+//               let socket = match tls_context {
+//                 Some(ref tls_conf) => {
+//                   let connection =
+//                     rustls::ServerConnection::new(tls_conf.clone()).unwrap();
+//                   InnerStream::Tls(Box::new(rustls::StreamOwned::new(
+//                     connection, socket,
+//                   )))
+//                 }
+//                 None => InnerStream::Tcp(socket),
+//               };
+//               let stream = Box::pin(Stream {
+//                 inner: socket,
+//                 detached: false,
+//                 read_rx: None,
+//                 read_tx: None,
+//                 read_lock: Arc::new(Mutex::new(())),
+//                 parse_done: ParseStatus::None,
+//                 buffer: UnsafeCell::new(vec![0_u8; 1024]),
+//               });
+
+//               trace!("New connection: {}", token.0);
+//               sockets.insert(token, stream);
+//             }
+//             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+//             Err(_) => break,
+//           }
+//         },
+//         token => {
+//           let socket = sockets.get_mut(&token).unwrap();
+//           // SAFETY: guarantee that we will never move the data out of the mutable reference.
+//           let socket = unsafe {
+//             let mut_ref: Pin<&mut Stream> = Pin::as_mut(socket);
+//             Pin::get_unchecked_mut(mut_ref)
+//           };
+//           let sock_ptr = socket as *mut _;
+
+//           if socket.detached {
+//             match &mut socket.inner {
+//               InnerStream::Tcp(ref mut socket) => {
+//                 poll.registry().deregister(socket).unwrap();
+//               }
+//               InnerStream::Tls(_) => {
+//                 todo!("upgrade tls not implemented");
+//               }
+//             }
+
+//             let boxed = sockets.remove(&token).unwrap();
+//             std::mem::forget(boxed);
+//             trace!("Socket detached: {}", token.0);
+//             continue;
+//           }
+
+//           debug_assert!(event.is_readable());
+
+//           trace!("Socket readable: {}", token.0);
+//           if let Some(tx) = &socket.read_tx {
+//             {
+//               let _l = socket.read_lock.lock().unwrap();
+//             }
+//             trace!("Sending readiness notification: {}", token.0);
+//             let _ = tx.blocking_send(());
+
+//             continue;
+//           }
+
+//           let mut headers = vec![httparse::EMPTY_HEADER; 40];
+//           let mut req = httparse::Request::new(&mut headers);
+//           let body_offset;
+//           let body_len;
+//           loop {
+//             // SAFETY: It is safe for the read buf to be mutable here.
+//             let buffer = unsafe { &mut *socket.buffer.get() };
+//             let offset = match socket.parse_done {
+//               ParseStatus::None => 0,
+//               ParseStatus::Ongoing(offset) => offset,
+//             };
+//             if offset >= buffer.len() {
+//               buffer.resize(offset * 2, 0);
+//             }
+//             let nread = socket.read(&mut buffer[offset..]);
+
+//             match nread {
+//               Ok(0) => {
+//                 trace!("Socket closed: {}", token.0);
+//                 // FIXME: don't remove while JS is writing!
+//                 // sockets.remove(&token);
+//                 continue 'events;
+//               }
+//               Ok(read) => {
+//                 match req.parse(&buffer[..offset + read]) {
+//                   Ok(httparse::Status::Complete(n)) => {
+//                     body_offset = n;
+//                     body_len = offset + read;
+//                     socket.parse_done = ParseStatus::None;
+//                     // On Windows, We must keep calling socket.read() until it fails with WouldBlock.
+//                     //
+//                     // Mio tries to emulate edge triggered events on Windows.
+//                     // AFAICT it only rearms the event on WouldBlock, but it doesn't when a partial read happens.
+//                     // https://github.com/denoland/deno/issues/15549
+//                     #[cfg(target_os = "windows")]
+//                     match &mut socket.inner {
+//                       InnerStream::Tcp(ref mut socket) => {
+//                         poll
+//                           .registry()
+//                           .reregister(socket, token, Interest::READABLE)
+//                           .unwrap();
+//                       }
+//                       InnerStream::Tls(ref mut socket) => {
+//                         poll
+//                           .registry()
+//                           .reregister(
+//                             &mut socket.sock,
+//                             token,
+//                             Interest::READABLE,
+//                           )
+//                           .unwrap();
+//                       }
+//                     };
+//                     break;
+//                   }
+//                   Ok(httparse::Status::Partial) => {
+//                     socket.parse_done = ParseStatus::Ongoing(offset + read);
+//                     continue;
+//                   }
+//                   Err(_) => {
+//                     let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+//                     continue 'events;
+//                   }
+//                 }
+//               }
+//               Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+//                 break 'events
+//               }
+//               Err(_) => break 'events,
+//             }
+//           }
+
+//           debug_assert_eq!(socket.parse_done, ParseStatus::None);
+//           if let Some(method) = &req.method {
+//             if method == &"POST" || method == &"PUT" {
+//               let (tx, rx) = mpsc::channel(100);
+//               socket.read_tx = Some(tx);
+//               socket.read_rx = Some(rx);
+//             }
+//           }
+
+//           // SAFETY: It is safe for the read buf to be mutable here.
+//           let buffer = unsafe { &mut *socket.buffer.get() };
+//           let inner_req = InnerRequest {
+//             // SAFETY: backing buffer is pinned and lives as long as the request.
+//             req: unsafe { transmute::<httparse::Request<'_, '_>, _>(req) },
+//             // SAFETY: backing buffer is pinned and lives as long as the request.
+//             _headers: unsafe {
+//               transmute::<Vec<httparse::Header<'_>>, _>(headers)
+//             },
+//             buffer: Pin::new(
+//               replace(buffer, vec![0_u8; 1024]).into_boxed_slice(),
+//             ),
+//             body_offset,
+//             body_len,
+//           };
+//           // h1
+//           // https://github.com/tiny-http/tiny-http/blob/master/src/client.rs#L177
+//           // https://github.com/hyperium/hyper/blob/4545c3ef191ce9b5f5d250ee27c4c96f9b71d2c6/src/proto/h1/role.rs#L127
+//           let mut keep_alive = inner_req.req.version.unwrap() == 1;
+//           let mut expect_continue = false;
+//           let mut te = false;
+//           let mut te_chunked = false;
+//           let mut content_length = None;
+//           for header in inner_req.req.headers.iter() {
+//             match HeaderName::from_bytes(header.name.as_bytes()) {
+//               Ok(CONNECTION) => {
+//                 // SAFETY: illegal bytes are validated by httparse.
+//                 let value = unsafe {
+//                   HeaderValue::from_maybe_shared_unchecked(header.value)
+//                 };
+//                 if keep_alive {
+//                   // 1.1
+//                   keep_alive = !connection_has(&value, "close");
+//                 } else {
+//                   // 1.0
+//                   keep_alive = connection_has(&value, "keep-alive");
+//                 }
+//               }
+//               Ok(TRANSFER_ENCODING) => {
+//                 // https://tools.ietf.org/html/rfc7230#section-3.3.3
+//                 debug_assert!(inner_req.req.version.unwrap() == 1);
+//                 // Two states for Transfer-Encoding because we want to make sure Content-Length handling knows it.
+//                 te = true;
+//                 content_length = None;
+//                 // SAFETY: illegal bytes are validated by httparse.
+//                 let value = unsafe {
+//                   HeaderValue::from_maybe_shared_unchecked(header.value)
+//                 };
+//                 if let Ok(Some(encoding)) =
+//                   value.to_str().map(|s| s.rsplit(',').next())
+//                 {
+//                   // Chunked must always be the last encoding
+//                   if encoding.trim().eq_ignore_ascii_case("chunked") {
+//                     te_chunked = true;
+//                   }
+//                 }
+//               }
+//               // Transfer-Encoding overrides the Content-Length.
+//               Ok(CONTENT_LENGTH) if !te => {
+//                 if let Some(len) = from_digits(header.value) {
+//                   if let Some(prev) = content_length {
+//                     if prev != len {
+//                       let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+//                       continue 'events;
+//                     }
+//                     continue;
+//                   }
+//                   content_length = Some(len);
+//                 } else {
+//                   let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+//                   continue 'events;
+//                 }
+//               }
+//               Ok(EXPECT) if inner_req.req.version.unwrap() != 0 => {
+//                 expect_continue =
+//                   header.value.eq_ignore_ascii_case(b"100-continue");
+//               }
+//               _ => {}
+//             }
+//           }
+
+//           // There is Transfer-Encoding but its not chunked.
+//           if te && !te_chunked {
+//             let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+//             continue 'events;
+//           }
+
+//           tx.blocking_send(Request {
+//             socket: sock_ptr,
+//             // SAFETY: headers backing buffer outlives the mio event loop ('static)
+//             inner: inner_req,
+//             keep_alive,
+//             te_chunked,
+//             remaining_chunk_size: None,
+//             content_read: 0,
+//             content_length,
+//             expect_continue,
+//           })
+//           .ok();
+//         }
+//       }
+//     }
+//   }
+
+//   Ok(())
+// }
 
 fn make_addr_port_pair(hostname: &str, port: u16) -> (&str, u16) {
   // Default to localhost if given just the port. Example: ":80"
@@ -1246,7 +1445,11 @@ where
   let maybe_cert = opts.cert;
   let maybe_key = opts.key;
   let reuseport = opts.reuseport;
-  let join_handle = tokio::task::spawn_blocking(move || {
+  use tokio::task::LocalSet;
+
+  let local: &LocalSet = state.borrow::<LocalSet>();
+  let local = unsafe { std::mem::transmute::<_, &'static LocalSet>(local) };
+  let join_handle = local.run_until(async move {
     run_server(
       tx,
       listening_tx,
@@ -1256,11 +1459,17 @@ where
       maybe_key,
       reuseport,
     )
+    .await?;
+    Ok(())
   });
+
   let flash_ctx = state.borrow_mut::<FlashContext>();
   let server_id = flash_ctx.next_server_id;
   flash_ctx.next_server_id += 1;
-  flash_ctx.join_handles.insert(server_id, join_handle);
+  flash_ctx
+    .join_handles
+    .insert(server_id, Box::pin(join_handle));
+
   flash_ctx.servers.insert(server_id, ctx);
   Ok(server_id)
 }
@@ -1325,7 +1534,7 @@ fn op_flash_drive_server(
   Ok(async move {
     join_handle
       .await
-      .map_err(|_| type_error("server join error"))??;
+      .map_err(|_| type_error("server join error"))?;
     Ok(())
   })
 }
@@ -1440,10 +1649,7 @@ pub fn detach_socket(
   let std_stream = {
     use std::os::unix::prelude::AsRawFd;
     use std::os::unix::prelude::FromRawFd;
-    let fd = match stream.inner {
-      InnerStream::Tcp(ref tcp) => tcp.as_raw_fd(),
-      _ => todo!(),
-    };
+    let fd = stream.inner.as_raw_fd();
     // SAFETY: `fd` is a valid file descriptor.
     unsafe { std::net::TcpStream::from_raw_fd(fd) }
   };
@@ -1533,6 +1739,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
     ])
     .state(move |op_state| {
       op_state.put(Unstable(unstable));
+      op_state.put(tokio::task::LocalSet::new());
       op_state.put(FlashContext {
         next_server_id: 0,
         join_handles: HashMap::default(),
