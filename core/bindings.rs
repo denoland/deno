@@ -34,25 +34,21 @@ pub fn external_references(
     },
   ];
 
-  let mut ops_count = 0;
   for ctx in ops {
     let ctx_ptr = ctx as *const OpCtx as _;
     references.push(v8::ExternalReference { pointer: ctx_ptr });
     references.push(v8::ExternalReference {
       function: ctx.decl.v8_fn_ptr,
     });
-    ops_count += 2;
     if snapshot_loaded {
       if let Some(fast_fn) = &ctx.decl.fast_fn {
         references.push(v8::ExternalReference {
           pointer: fast_fn.function() as _,
         });
-        ops_count += 1;
       }
     }
   }
 
-  eprintln!("external_references: {} {}", references.len(), ops_count);
   let refs = v8::ExternalReferences::new(&references);
   // Leak, V8 takes ownership of the references.
   std::mem::forget(references);

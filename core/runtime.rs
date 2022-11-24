@@ -680,7 +680,8 @@ impl JsRuntime {
   /// Initializes JS of provided Extensions in the given realm
   fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
     // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions_with_js);
+    let mut extensions: Vec<Extension> =
+      std::mem::take(&mut self.extensions_with_js);
     for m in extensions.iter_mut() {
       let js_files = m.init_js();
       for (filename, source) in js_files {
@@ -749,7 +750,8 @@ impl JsRuntime {
       self.extensions = extensions;
     }
     {
-      let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions_with_js);
+      let mut extensions: Vec<Extension> =
+        std::mem::take(&mut self.extensions_with_js);
 
       // Setup state
       for e in extensions.iter_mut() {
