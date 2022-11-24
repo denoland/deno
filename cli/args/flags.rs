@@ -5408,7 +5408,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        no_lock: Some(true),
+        no_lock: true,
         ..Flags::default()
       }
     );

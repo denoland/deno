@@ -783,7 +783,7 @@ mod tests {
     let shim_data = resolve_shim_data(
       &Flags {
         allow_all: true,
-        no_lock: Some(true),
+        no_lock: true,
         ..Flags::default()
       },
       &InstallFlags {
