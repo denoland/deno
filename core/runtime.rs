@@ -331,9 +331,16 @@ impl JsRuntime {
     let has_startup_snapshot = options.startup_snapshot.is_some();
 
     // Add builtins extension
-    options
-      .extensions
-      .insert(0, crate::ops_builtin::init_builtins());
+    if !has_startup_snapshot {
+      options
+        .extensions
+        .insert(0, crate::ops_builtin::init_builtins_with_js());
+    } else {
+      options
+        .extensions
+        .insert(0, crate::ops_builtin::init_builtins());
+    }
+    
 
     let ops = Self::collect_ops(&mut options.extensions);
     let mut op_state = OpState::new(ops.len());
@@ -539,7 +546,7 @@ impl JsRuntime {
     js_runtime.init_extension_ops().unwrap();
     // TODO(@AaronO): diff extensions inited in snapshot and those provided
     // for now we assume that snapshot and extensions always match
-    if !has_startup_snapshot {
+    if !has_startup_snapshot || options.will_snapshot {
       let realm = js_runtime.global_realm();
       js_runtime.init_extension_js(&realm).unwrap();
     }
