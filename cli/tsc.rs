@@ -80,7 +80,7 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
 );
 
 pub fn compiler_snapshot() -> Snapshot {
-  Snapshot::Static(&*COMPILER_SNAPSHOT)
+  Snapshot::Static(&COMPILER_SNAPSHOT)
 }
 
 macro_rules! inc {

@@ -580,7 +580,8 @@ impl<'a> GraphDisplayContext<'a> {
       ));
       if let Some(package) = self.npm_info.packages.get(dep_id) {
         if !package.dependencies.is_empty() {
-          if self.seen.contains(&package.id.as_serialized()) {
+          let was_seen = !self.seen.insert(package.id.as_serialized());
+          if was_seen {
             child.text = format!("{} {}", child.text, colors::gray("*"));
           } else {
             let package = package.clone();

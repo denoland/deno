@@ -142,6 +142,7 @@ impl NodeAnalysisCacheInner {
     db_file_path: Option<&Path>,
     version: String,
   ) -> Result<Self, AnyError> {
+    log::debug!("Opening node analysis cache.");
     let conn = match db_file_path {
       Some(path) => Connection::open(path)?,
       None => Connection::open_in_memory()?,

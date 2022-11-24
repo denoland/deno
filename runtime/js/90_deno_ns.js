@@ -7,8 +7,6 @@
 
   __bootstrap.denoNs = {
     metrics: core.metrics,
-    test: __bootstrap.testing.test,
-    bench: __bootstrap.testing.bench,
     Process: __bootstrap.process.Process,
     run: __bootstrap.process.run,
     isatty: __bootstrap.tty.isatty,
@@ -149,6 +147,7 @@
     spawnChild: __bootstrap.spawn.spawnChild,
     spawn: __bootstrap.spawn.spawn,
     spawnSync: __bootstrap.spawn.spawnSync,
+    Command: __bootstrap.spawn.Command,
     serve: __bootstrap.flash.serve,
     upgradeHttp: __bootstrap.http.upgradeHttp,
     upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,

@@ -6,6 +6,7 @@ use monch::*;
 use serde::Deserialize;
 use serde::Serialize;
 
+use super::is_valid_npm_tag;
 use super::range::Partial;
 use super::range::VersionRange;
 use super::range::XRange;
@@ -55,7 +56,7 @@ fn parse_npm_specifier(input: &str) -> ParseResult<SpecifierVersionReq> {
   map_res(version_range, |result| {
     let (new_input, range_result) = match result {
       Ok((input, range)) => (input, Ok(range)),
-      // use an empty string because we'll consider the tag
+      // use an empty string because we'll consider it a tag
       Err(err) => ("", Err(err)),
     };
     Ok((
@@ -65,9 +66,7 @@ fn parse_npm_specifier(input: &str) -> ParseResult<SpecifierVersionReq> {
         inner: match range_result {
           Ok(range) => SpecifierVersionReqInner::Range(range),
           Err(err) => {
-            // npm seems to be extremely lax on what it supports for a dist-tag (any non-valid semver range),
-            // so just make any error here be a dist tag unless it starts or ends with whitespace
-            if input.trim() != input {
+            if !is_valid_npm_tag(input) {
               return Err(err);
             } else {
               SpecifierVersionReqInner::Tag(input.to_string())
