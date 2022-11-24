@@ -703,10 +703,13 @@ async fn run_command(
 
   if !flags.has_permission() && flags.has_permission_in_argv() {
     log::warn!(
-      r#"Permission flags have likely been incorrectly set after the script argument.
+      "{}",
+      crate::colors::yellow(
+        r#"Permission flags have likely been incorrectly set after the script argument.
 To grant permissions, set them before the script argument. For example:
     deno run --allow-read=. main.js"#
-    )
+      )
+    );
   }
 
   if flags.watch.is_some() {
