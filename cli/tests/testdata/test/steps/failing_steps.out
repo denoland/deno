@@ -37,13 +37,13 @@ failing step in failing test ... FAILED ([WILDCARD])
 
 nested failure => ./test/steps/failing_steps.ts:[WILDCARD]
 error: Error: 1 test step failed.
-    at runTest (deno:runtime/js/40_testing.js:[WILDCARD])
-    at async runTests (deno:runtime/js/40_testing.js:[WILDCARD])
+    at runTest (deno:cli/js/40_testing.js:[WILDCARD])
+    at async runTests (deno:cli/js/40_testing.js:[WILDCARD])
 
 multiple test step failures => ./test/steps/failing_steps.ts:[WILDCARD]
 error: Error: 2 test steps failed.
-    at runTest (deno:runtime/js/40_testing.js:[WILDCARD])
-    at async runTests (deno:runtime/js/40_testing.js:[WILDCARD])
+    at runTest (deno:cli/js/40_testing.js:[WILDCARD])
+    at async runTests (deno:cli/js/40_testing.js:[WILDCARD])
 
 failing step in failing test => ./test/steps/failing_steps.ts:[WILDCARD]
 error: Error: Fail test.

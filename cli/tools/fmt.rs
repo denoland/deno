@@ -635,7 +635,7 @@ struct FileContents {
 }
 
 fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
-  let file_bytes = fs::read(&file_path)
+  let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let charset = text_encoding::detect_charset(&file_bytes);
   let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;

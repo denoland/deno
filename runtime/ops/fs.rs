@@ -271,7 +271,7 @@ async fn op_write_file_async(
     None => None,
   };
   let (path, open_options) = open_helper(
-    &mut *state.borrow_mut(),
+    &mut state.borrow_mut(),
     &path,
     mode,
     Some(&write_open_options(create, append)),
@@ -646,14 +646,14 @@ fn raw_chmod(path: &Path, _raw_mode: u32) -> Result<(), AnyError> {
   {
     use std::os::unix::fs::PermissionsExt;
     let permissions = PermissionsExt::from_mode(_raw_mode);
-    std::fs::set_permissions(&path, permissions).map_err(err_mapper)?;
+    std::fs::set_permissions(path, permissions).map_err(err_mapper)?;
     Ok(())
   }
   // TODO Implement chmod for Windows (#4357)
   #[cfg(not(unix))]
   {
     // Still check file/dir exists on Windows
-    let _metadata = std::fs::metadata(&path).map_err(err_mapper)?;
+    let _metadata = std::fs::metadata(path).map_err(err_mapper)?;
     Err(not_supported())
   }
 }
@@ -1916,7 +1916,6 @@ fn op_futime_sync(
   mtime_secs: i64,
   mtime_nanos: u32,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.futimeSync");
   let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
   let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
 
@@ -1937,7 +1936,6 @@ async fn op_futime_async(
   mtime_secs: i64,
   mtime_nanos: u32,
 ) -> Result<(), AnyError> {
-  super::check_unstable2(&state, "Deno.futime");
   let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
   let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
 
@@ -1957,8 +1955,6 @@ fn op_utime_sync(
   mtime_secs: i64,
   mtime_nanos: u32,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.utime");
-
   let path = PathBuf::from(&path);
   let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
   let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
@@ -1982,8 +1978,6 @@ async fn op_utime_async(
   mtime_secs: i64,
   mtime_nanos: u32,
 ) -> Result<(), AnyError> {
-  super::check_unstable(&state.borrow(), "Deno.utime");
-
   let path = PathBuf::from(&path);
   let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
   let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);

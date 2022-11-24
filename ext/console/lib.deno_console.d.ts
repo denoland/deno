@@ -26,4 +26,13 @@ declare interface Console {
   timeLog(label?: string, ...data: any[]): void;
   trace(...data: any[]): void;
   warn(...data: any[]): void;
+
+  /** This method is a noop, unless used in inspector */
+  timeStamp(label?: string): void;
+
+  /** This method is a noop, unless used in inspector */
+  profile(label?: string): void;
+
+  /** This method is a noop, unless used in inspector */
+  profileEnd(label?: string): void;
 }

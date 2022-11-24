@@ -935,7 +935,7 @@ fn lsp_hover() {
           "language": "typescript",
           "value": "const Deno.args: string[]"
         },
-        "Returns the script arguments to the program. If for example we run a\nprogram:\n\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n\nThen `Deno.args` will contain:\n\n[ \"/etc/passwd\" ]",
+        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n```\n\nThen `Deno.args` will contain:\n\n```\n[ \"/etc/passwd\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is the\n[`std/flags`](https://deno.land/std/flags) module as part of the Deno\nstandard library.",
         "\n\n*@category* - Runtime Environment",
       ],
       "range": {
@@ -6077,7 +6077,7 @@ Deno.test({
   }
 });
 "#;
-  fs::write(&module_path, &contents).unwrap();
+  fs::write(&module_path, contents).unwrap();
   fs::write(temp_dir.path().join("./deno.jsonc"), r#"{}"#).unwrap();
 
   params.root_uri = Some(root_specifier);

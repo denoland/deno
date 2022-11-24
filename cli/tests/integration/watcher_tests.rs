@@ -219,7 +219,7 @@ fn lint_all_files_on_each_change_test() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("lint")
-    .arg(&t.path())
+    .arg(t.path())
     .arg("--watch")
     .arg("--unstable")
     .stdout(std::process::Stdio::piped())
@@ -349,7 +349,7 @@ fn fmt_check_all_files_on_each_change_test() {
   let mut child = util::deno_cmd()
     .current_dir(&fmt_testdata_path)
     .arg("fmt")
-    .arg(&t.path())
+    .arg(t.path())
     .arg("--watch")
     .arg("--check")
     .arg("--unstable")
@@ -582,6 +582,10 @@ fn run_watch_no_dynamic() {
   check_alive_then_kill(child);
 }
 
+// TODO(bartlomieju): this test became flaky on macOS runner; it is unclear
+// if that's because of a bug in code or the runner itself. We should reenable
+// it once we upgrade to XL runners for macOS.
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn run_watch_external_watch_files() {
   let t = TempDir::new();
@@ -828,7 +832,7 @@ fn test_watch() {
     .arg("--watch")
     .arg("--unstable")
     .arg("--no-check")
-    .arg(&t.path())
+    .arg(t.path())
     .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
@@ -969,7 +973,7 @@ fn test_watch_doc() {
     .arg("--watch")
     .arg("--doc")
     .arg("--unstable")
-    .arg(&t.path())
+    .arg(t.path())
     .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())

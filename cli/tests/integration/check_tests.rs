@@ -57,6 +57,11 @@ itest!(check_npm_install_diagnostics {
   exit_code: 1,
 });
 
+itest!(check_export_equals_declaration_file {
+  args: "check --quiet check/export_equals_declaration_file/main.ts",
+  exit_code: 0,
+});
+
 #[test]
 fn cache_switching_config_then_no_config() {
   let deno_dir = util::new_deno_dir();

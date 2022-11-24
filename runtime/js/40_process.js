@@ -20,7 +20,7 @@
     ops.op_kill(pid, signo, apiName);
   }
 
-  function kill(pid, signo) {
+  function kill(pid, signo = "SIGTERM") {
     opKill(pid, signo, "Deno.kill()");
   }
 
@@ -94,7 +94,7 @@
       core.close(this.rid);
     }
 
-    kill(signo) {
+    kill(signo = "SIGTERM") {
       opKill(this.pid, signo, "Deno.Process.kill()");
     }
   }

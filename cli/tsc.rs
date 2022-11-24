@@ -80,7 +80,7 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
 );
 
 pub fn compiler_snapshot() -> Snapshot {
-  Snapshot::Static(&*COMPILER_SNAPSHOT)
+  Snapshot::Static(&COMPILER_SNAPSHOT)
 }
 
 macro_rules! inc {
@@ -848,13 +848,15 @@ mod tests {
     let mut loader = MockLoader { fixtures };
     let graph = deno_graph::create_graph(
       vec![(specifier, ModuleKind::Esm)],
-      false,
-      None,
       &mut loader,
-      None,
-      None,
-      None,
-      None,
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: None,
+        resolver: None,
+        locker: None,
+        module_analyzer: None,
+        reporter: None,
+      },
     )
     .await;
     let state = State::new(
@@ -879,13 +881,15 @@ mod tests {
     let mut loader = MockLoader { fixtures };
     let graph = deno_graph::create_graph(
       vec![(specifier.clone(), ModuleKind::Esm)],
-      false,
-      None,
       &mut loader,
-      None,
-      None,
-      None,
-      None,
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: None,
+        resolver: None,
+        locker: None,
+        module_analyzer: None,
+        reporter: None,
+      },
     )
     .await;
     let config = TsConfig::new(json!({
