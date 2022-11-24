@@ -15,7 +15,7 @@ fn info_with_compiled_source() {
     .env("DENO_DIR", t.path())
     .current_dir(util::testdata_path())
     .arg("cache")
-    .arg(&module_path)
+    .arg(module_path)
     .spawn()
     .unwrap();
   let status = deno.wait().unwrap();
@@ -26,7 +26,7 @@ fn info_with_compiled_source() {
     .env("NO_COLOR", "1")
     .current_dir(util::testdata_path())
     .arg("info")
-    .arg(&module_path)
+    .arg(module_path)
     .output()
     .unwrap();
 

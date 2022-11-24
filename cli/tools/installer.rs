@@ -415,6 +415,10 @@ fn resolve_shim_data(
         fs::read_to_string(lock_path)
           .with_context(|| format!("error reading {}", lock_path.display()))?,
       ));
+    } else {
+      // Provide an empty lockfile so that this overwrites any existing lockfile
+      // from a previous installation. This will get populated on first run.
+      extra_files.push((copy_path, "{}".to_string()));
     }
   }
 
@@ -758,16 +762,18 @@ mod tests {
     )
     .unwrap();
 
-    let lock_path = temp_dir
-      .join("bin")
-      .join("cowsay.lock.json")
-      .display()
-      .to_string();
+    let lock_path = temp_dir.join("bin").join("cowsay.lock.json");
     assert_eq!(
       shim_data.args,
-      vec!["run", "--allow-all", "--lock", &lock_path, "npm:cowsay"]
+      vec![
+        "run",
+        "--allow-all",
+        "--lock",
+        &lock_path.to_string_lossy(),
+        "npm:cowsay"
+      ]
     );
-    assert_eq!(shim_data.extra_files, vec![]);
+    assert_eq!(shim_data.extra_files, vec![(lock_path, "{}".to_string())]);
   }
 
   #[test]

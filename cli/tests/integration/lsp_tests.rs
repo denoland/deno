@@ -6077,7 +6077,7 @@ Deno.test({
   }
 });
 "#;
-  fs::write(&module_path, &contents).unwrap();
+  fs::write(&module_path, contents).unwrap();
   fs::write(temp_dir.path().join("./deno.jsonc"), r#"{}"#).unwrap();
 
   params.root_uri = Some(root_specifier);

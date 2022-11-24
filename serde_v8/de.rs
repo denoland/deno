@@ -434,7 +434,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
-      .and_then(|zb| visitor.visit_bytes(&*zb))
+      .and_then(|zb| visitor.visit_bytes(&zb))
   }
 
   fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>

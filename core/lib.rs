@@ -18,6 +18,7 @@ mod ops_builtin_v8;
 mod ops_metrics;
 mod resources;
 mod runtime;
+pub mod snapshot_util;
 mod source_map;
 
 // Re-exports

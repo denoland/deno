@@ -19,6 +19,7 @@ use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::http_cache;
+use crate::http_util::HttpClient;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::node;
@@ -157,15 +158,18 @@ impl ProcState {
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
     let progress_bar = ProgressBar::default();
+    let http_client = HttpClient::new(
+      Some(root_cert_store.clone()),
+      cli_options
+        .unsafely_ignore_certificate_errors()
+        .map(ToOwned::to_owned),
+    )?;
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
       !cli_options.no_remote(),
-      Some(root_cert_store.clone()),
+      http_client.clone(),
       blob_store.clone(),
-      cli_options
-        .unsafely_ignore_certificate_errors()
-        .map(ToOwned::to_owned),
       Some(progress_bar.clone()),
     )?;
 
@@ -216,12 +220,14 @@ impl ProcState {
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
+      http_client.clone(),
       progress_bar.clone(),
     );
     let api = RealNpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
       cli_options.cache_setting(),
+      http_client,
       progress_bar.clone(),
     );
     let maybe_lockfile = lockfile.as_ref().cloned();
@@ -286,6 +292,7 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let has_root_npm_specifier = roots.iter().any(|r| {
@@ -369,6 +376,7 @@ impl ProcState {
       };
 
     let analyzer = self.parsed_source_cache.as_analyzer();
+    log::debug!("Creating module graph.");
     let graph = create_graph(
       roots.clone(),
       &mut loader,
@@ -417,6 +425,7 @@ impl ProcState {
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
+      log::debug!("Type checking.");
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
       let roots = roots.clone();
       let options = check::CheckOptions {
@@ -457,6 +466,8 @@ impl ProcState {
       let g = lockfile.lock();
       g.write()?;
     }
+
+    log::debug!("Prepared module load.");
 
     Ok(())
   }

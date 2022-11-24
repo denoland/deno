@@ -198,7 +198,7 @@ where
   let permissions = state.borrow_mut::<NP>();
   permissions.check_read(address_path, "Deno.listen()")?;
   permissions.check_write(address_path, "Deno.listen()")?;
-  let listener = UnixListener::bind(&address_path)?;
+  let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
   let listener_resource = UnixListenerResource {
@@ -220,7 +220,7 @@ where
   let permissions = state.borrow_mut::<NP>();
   permissions.check_read(address_path, "Deno.listenDatagram()")?;
   permissions.check_write(address_path, "Deno.listenDatagram()")?;
-  let socket = UnixDatagram::bind(&address_path)?;
+  let socket = UnixDatagram::bind(address_path)?;
   let local_addr = socket.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
   let datagram_resource = UnixDatagramResource {
