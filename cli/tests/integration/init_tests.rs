@@ -54,6 +54,9 @@ fn init_subcommand_without_dir() {
   assert!(output.status.success());
   let stdout = String::from_utf8(output.stdout).unwrap();
   assert_contains!(stdout, "1 passed");
+
+  assert!(cwd.join("deno.json").exists());
+  assert!(cwd.join(".vscode/settings.json").exists());
 }
 
 #[test]
@@ -107,6 +110,9 @@ fn init_subcommand_with_dir_arg() {
   assert!(output.status.success());
   let stdout = String::from_utf8(output.stdout).unwrap();
   assert_contains!(stdout, "1 passed");
+
+  assert!(cwd.join("my_dir/deno.json").exists());
+  assert!(cwd.join("my_dir/.vscode/settings.json").exists());
 }
 
 #[test]
@@ -156,4 +162,7 @@ fn init_subcommand_with_quiet_arg() {
   assert!(output.status.success());
   let stdout = String::from_utf8(output.stdout).unwrap();
   assert_contains!(stdout, "1 passed");
+
+  assert!(cwd.join("deno.json").exists());
+  assert!(cwd.join(".vscode/settings.json").exists());
 }

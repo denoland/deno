@@ -1,4 +1,3 @@
 {
-  "deno.lint": true,
   "deno.unstable": true
 }

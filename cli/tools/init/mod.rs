@@ -42,7 +42,7 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
 
   create_file(&dir, "deno.json", include_str!("./templates/deno.json"))?;
   let vscode_dir = dir.join(".vscode");
-  std::fs::create_dir_all(vscode_dir)?;
+  std::fs::create_dir_all(&vscode_dir)?;
   create_file(
     &vscode_dir,
     "settings.json",
