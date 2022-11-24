@@ -1,0 +1,13 @@
+{
+  "name": "@denotest/types-entry-value-not-exists",
+  "version": "1.0.0",
+  "main": "./dist/main.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/main.d.ts",
+      "node": "./dist/main.js",
+      "require": "./dist/main.js"
+    }
+  }
+}
