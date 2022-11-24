@@ -105,11 +105,9 @@ impl Lockfile {
         return Ok(None);
       }
     } else if let Some(config_file) = maybe_config_file {
-      if let Some(lock_config) = config_file.clone().to_lock_config()? {
-        if let LockConfig::Bool(lock) = lock_config {
-          if !lock {
-            return Ok(None);
-          }
+      if let LockConfig::Bool(lock) = config_file.clone().to_lock_config()? {
+        if !lock {
+          return Ok(None);
         }
       }
     }
@@ -119,15 +117,13 @@ impl Lockfile {
       None => match maybe_config_file {
         Some(config_file) => {
           if config_file.specifier.scheme() == "file" {
-            let mut path = config_file.specifier.to_file_path().unwrap();
-            path.set_file_name("deno.lock");
-            if let Some(lock_config) = config_file.clone().to_lock_config()? {
-              if let LockConfig::PathBuf(lock) = lock_config {
-                lock
-              } else {
-                path
-              }
+            if let LockConfig::PathBuf(lock) =
+              config_file.clone().to_lock_config()?
+            {
+              lock
             } else {
+              let mut path = config_file.specifier.to_file_path().unwrap();
+              path.set_file_name("deno.lock");
               path
             }
           } else {
