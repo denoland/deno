@@ -1,2 +1,2 @@
-Permission flags have likely been incorrectly set after the module name. To grant permissions, define them before the module name.
+Permission flags have likely been incorrectly set after the script argument. To grant permissions, define them before the script argument.
 Hello World

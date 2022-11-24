@@ -702,7 +702,7 @@ async fn run_command(
   }
 
   if !flags.has_permission() && flags.has_permission_in_argv() {
-    log::warn!("Permission flags have likely been incorrectly set after the module name. To grant permissions, define them before the module name.")
+    log::warn!("Permission flags have likely been incorrectly set after the script argument. To grant permissions, define them before the script argument.")
   }
 
   if flags.watch.is_some() {
