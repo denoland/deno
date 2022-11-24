@@ -400,21 +400,7 @@ fn resolve_shim_data(
     ));
   }
 
-  let config = CliOptions::from_flags(flags.clone())?;
-
-  let no_lock = if let Some(no_lock) = flags.no_lock {
-    no_lock
-  } else if let Some(lock_config) = config.to_lock_config()? {
-    if let LockConfig::Bool(lock) = lock_config {
-      !lock
-    } else {
-      true
-    }
-  } else {
-    false
-  };
-
-  if no_lock {
+  if flags.no_lock {
     executable_args.push("--no-lock".to_string());
   } else if flags.lock.is_some()
     // always use a lockfile for an npm entrypoint unless --no-lock

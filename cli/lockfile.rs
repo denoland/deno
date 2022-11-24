@@ -100,10 +100,8 @@ impl Lockfile {
     flags: &Flags,
     maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<Lockfile>, AnyError> {
-    if let Some(no_lock) = flags.no_lock {
-      if no_lock {
-        return Ok(None);
-      }
+    if flags.no_lock {
+      return Ok(None);
     } else if let Some(config_file) = maybe_config_file {
       if let Some(LockConfig::Bool(lock)) =
         config_file.clone().to_lock_config()?

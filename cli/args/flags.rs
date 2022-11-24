@@ -317,7 +317,7 @@ pub struct Flags {
   pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
-  pub no_lock: Option<bool>,
+  pub no_lock: bool,
   pub no_npm: bool,
   pub no_prompt: bool,
   pub reload: bool,
