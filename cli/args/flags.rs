@@ -2779,7 +2779,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
         .unwrap_or(NonZeroUsize::new(1).unwrap())
     }
   } else if matches.is_present("jobs") {
-    println!(
+    log::warn!(
       "{}",
       crate::colors::yellow("Warning: --jobs flag is deprecated. Use the --parallel flag with possibly the 'DENO_JOBS' environment variable."),
     );
