@@ -3649,9 +3649,9 @@ itest!(no_lock_flag {
   exit_code: 0,
 });
 
-itest!(lock_false_config {
-  args: "run run/lock_false_config/main.ts",
-  output: "run/lock_false_config/main.out",
+itest!(config_file_lock_false {
+  args: "run run/config_file_lock_false/main.ts",
+  output: "run/config_file_lock_false/main.out",
   http_server: true,
   exit_code: 0,
 });
