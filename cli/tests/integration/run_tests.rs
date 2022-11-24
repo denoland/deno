@@ -652,9 +652,9 @@ itest!(lock_check_err2 {
   http_server: true,
 });
 
-itest!(config_file_lock_custom {
-  args: "run --config=run/config_file_lock_custom.json run/019_media_types.ts",
-  output: "run/lock_check_err2.out",
+itest!(config_file_lock_path {
+  args: "run --config=run/config_file_lock_path.json run/019_media_types.ts",
+  output: "run/config_file_lock_path.out",
   exit_code: 10,
   http_server: true,
 });
@@ -3650,10 +3650,17 @@ itest!(no_lock_flag {
 });
 
 itest!(config_file_lock_false {
-  args: "run run/config_file_lock_false/main.ts",
-  output: "run/config_file_lock_false/main.out",
+  args: "run --config=run/config_file_lock_boolean/false.json run/config_file_lock_boolean/main.ts",
+  output: "run/config_file_lock_boolean/false.main.out",
   http_server: true,
   exit_code: 0,
+});
+
+itest!(config_file_lock_true {
+  args: "run --config=run/config_file_lock_boolean/true.json run/config_file_lock_boolean/main.ts",
+  output: "run/config_file_lock_boolean/true.main.out",
+  http_server: true,
+  exit_code: 10,
 });
 
 // Check https://github.com/denoland/deno_std/issues/2882
