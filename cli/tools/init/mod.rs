@@ -39,6 +39,9 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   let main_test_ts = include_str!("./templates/main_test.ts")
     .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL.as_str());
   create_file(&dir, "main_test.ts", &main_test_ts)?;
+  let main_bench_ts = include_str!("./templates/main_bench.ts")
+    .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL.as_str());
+  create_file(&dir, "main_bench.ts", &main_bench_ts)?;
 
   info!("✅ Project initialized");
   info!("Run these commands to get started");
@@ -47,5 +50,6 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   }
   info!("  deno run main.ts");
   info!("  deno test");
+  info!("  deno bench");
   Ok(())
 }
