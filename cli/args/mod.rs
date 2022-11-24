@@ -409,11 +409,11 @@ impl CliOptions {
     self.flags.watch.as_ref()
   }
 
-  pub fn to_lock_config(&self) -> Option<LockConfig> {
+  pub fn to_lock_config(&self) -> Result<Option<LockConfig>, AnyError> {
     if let Some(config) = &self.maybe_config_file {
       config.clone().to_lock_config()
     } else {
-      None
+      Ok(None)
     }
   }
 }

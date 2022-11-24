@@ -404,10 +404,11 @@ fn resolve_shim_data(
 
   let no_lock = if let Some(no_lock) = flags.no_lock {
     no_lock
-  } else if let Some(lock_config) = config.to_lock_config() {
-    match lock_config {
-      LockConfig::Bool(lock) => !lock,
-      _ => true,
+  } else if let Some(lock_config) = config.to_lock_config()? {
+    if let LockConfig::Bool(lock) = lock_config {
+      !lock
+    } else {
+      true
     }
   } else {
     false
