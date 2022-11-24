@@ -836,13 +836,15 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     path: &Arc<GraphSpecifierPath>,
     visited_ancestor_versions: &Arc<VisitedVersionsPath>,
   ) -> NpmPackageId {
-    let mut peer_dep_id = Cow::Borrowed(peer_dep_id);
+    let peer_dep_id = Cow::Borrowed(peer_dep_id);
     let old_id = node_id;
     let (new_id, mut old_node_children) =
-      if old_id.peer_dependencies.contains(&peer_dep_id) {
+      if old_id.peer_dependencies.contains(&peer_dep_id)
+        || *old_id == *peer_dep_id
+      {
         // the parent has already resolved to using this peer dependency
-        // via some other path, so we don't need to update its ids,
-        // but instead only make a link to it
+        // via some other path or the parent is the peer dependency,
+        // so we don't need to update its ids, but instead only make a link to it
         (
           old_id.clone(),
           self.graph.borrow_node(old_id).children.clone(),
@@ -850,11 +852,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       } else {
         let mut new_id = old_id.clone();
         new_id.peer_dependencies.push(peer_dep_id.as_ref().clone());
-
-        // this will happen for circular dependencies
-        if *old_id == *peer_dep_id {
-          peer_dep_id = Cow::Owned(new_id.clone());
-        }
 
         // remove the previous parents from the old node
         let old_node_children = {
@@ -1949,28 +1946,22 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          id: NpmPackageId::from_serialized("package-a@1.0.0_package-a@1.0.0")
-            .unwrap(),
+          id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-b".to_string(),
-            NpmPackageId::from_serialized(
-              "package-b@2.0.0_package-a@1.0.0__package-a@1.0.0"
-            )
-            .unwrap(),
+            NpmPackageId::from_serialized("package-b@2.0.0_package-a@1.0.0")
+              .unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          id: NpmPackageId::from_serialized(
-            "package-b@2.0.0_package-a@1.0.0__package-a@1.0.0"
-          )
-          .unwrap(),
+          id: NpmPackageId::from_serialized("package-b@2.0.0_package-a@1.0.0")
+            .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-a".to_string(),
-            NpmPackageId::from_serialized("package-a@1.0.0_package-a@1.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
           )]),
           dist: Default::default(),
         },
@@ -1978,10 +1969,7 @@ mod test {
     );
     assert_eq!(
       package_reqs,
-      vec![(
-        "package-a@1.0".to_string(),
-        "package-a@1.0.0_package-a@1.0.0".to_string()
-      )]
+      vec![("package-a@1.0".to_string(), "package-a@1.0.0".to_string())]
     );
   }
 
