@@ -243,6 +243,7 @@ mod ts {
           Ok(())
         })
         .build()],
+      extensions_with_js: vec![],
       additional_files: files,
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         vec.extend_from_slice(
@@ -304,6 +305,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
     snapshot_path,
     startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
     extensions,
+    extensions_with_js: vec![],
     additional_files: files,
     compression_cb: Some(Box::new(|vec, snapshot_slice| {
       lzzzz::lz4_hc::compress_to_vec(
