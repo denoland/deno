@@ -424,7 +424,8 @@ impl ProcState {
     drop(_pb_clear_guard);
 
     // type check if necessary
-    if self.options.type_check_mode() != TypeCheckMode::None {
+    let is_std_node = roots.len() == 1 && roots[0].0 == *node::MODULE_ALL_URL;
+    if self.options.type_check_mode() != TypeCheckMode::None && !is_std_node {
       log::debug!("Type checking.");
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
       let roots = roots.clone();
