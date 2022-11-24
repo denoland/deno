@@ -3642,6 +3642,13 @@ itest!(no_lock_flag {
   exit_code: 0,
 });
 
+itest!(lock_false_config {
+  args: "run run/lock_false_config/main.ts",
+  output: "run/lock_false_config/main.out",
+  http_server: true,
+  exit_code: 0,
+});
+
 // Check https://github.com/denoland/deno_std/issues/2882
 itest!(flash_shutdown {
   args: "run --unstable --allow-net run/flash_shutdown/main.ts",
