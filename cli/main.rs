@@ -705,7 +705,6 @@ async fn run_command(
     log::warn!(
       r#"
 Permission flags have likely been incorrectly set after the script argument.
-
 To grant permissions, set them before the script argument. For example:
     deno run --allow-read=. main.js
 "#
