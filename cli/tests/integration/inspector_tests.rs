@@ -505,6 +505,7 @@ async fn inspector_without_brk_runs_code() {
 async fn inspector_runtime_evaluate_does_not_crash() {
   let mut child = util::deno_cmd()
     .arg("repl")
+    .arg("--allow-read")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .stdin(std::process::Stdio::piped())
     .stdout(std::process::Stdio::piped())
