@@ -3135,7 +3135,7 @@ fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.lock_write = true;
   }
   if matches.is_present("no-lock") {
-    flags.no_lock = Some(true);
+    flags.no_lock = true;
   }
 }
 
