@@ -652,6 +652,13 @@ itest!(lock_check_err2 {
   http_server: true,
 });
 
+itest!(config_file_lock_custom {
+  args: "run --config=run/config_file_lock_custom.json run/019_media_types.ts",
+  output: "run/lock_check_err2.out",
+  exit_code: 10,
+  http_server: true,
+});
+
 itest!(lock_v2_check_ok {
   args:
     "run --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
