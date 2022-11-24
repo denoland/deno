@@ -57,7 +57,10 @@ Deno.test(async function httpServerCanResolveHostnames() {
   await server;
 });
 
-Deno.test(async function httpServerRejectsOnAddrInUse() {
+// TODO(magurotuna): ignore this case for now because it's flaky on GitHub Actions,
+// although it acts as expected when running locally.
+// See https://github.com/denoland/deno/pull/16616
+Deno.test({ ignore: true }, async function httpServerRejectsOnAddrInUse() {
   const ac1 = new AbortController();
   const listeningPromise = deferred();
   let port: number;
