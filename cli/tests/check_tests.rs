@@ -50,6 +50,18 @@ itest!(declaration_header_file_with_no_exports {
   output_str: Some(""),
 });
 
+itest!(check_npm_install_diagnostics {
+  args: "check --quiet check/npm_install_diagnostics/main.ts",
+  output: "check/npm_install_diagnostics/main.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  exit_code: 1,
+});
+
+itest!(check_export_equals_declaration_file {
+  args: "check --quiet check/export_equals_declaration_file/main.ts",
+  exit_code: 0,
+});
+
 #[test]
 fn cache_switching_config_then_no_config() {
   let deno_dir = util::new_deno_dir();

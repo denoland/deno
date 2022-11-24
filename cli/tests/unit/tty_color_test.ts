@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "./test_util.ts";
 
-// Note tests for Deno.setRaw is in integration tests.
+// Note tests for Deno.stdin.setRaw is in integration tests.
 
 Deno.test(
   { permissions: { run: true, read: true } },

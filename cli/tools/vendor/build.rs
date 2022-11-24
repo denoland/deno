@@ -473,7 +473,7 @@ mod test {
             "/mod.ts",
             r#"import data from "https://localhost/data.json" assert { type: "json" };"#,
           )
-          .add("https://localhost/data.json", "{}");
+          .add("https://localhost/data.json", "{ \"a\": \"b\" }");
       })
       .build()
       .await
@@ -489,7 +489,7 @@ mod test {
     );
     assert_eq!(
       output.files,
-      to_file_vec(&[("/vendor/localhost/data.json", "{}"),]),
+      to_file_vec(&[("/vendor/localhost/data.json", "{ \"a\": \"b\" }"),]),
     );
   }
 
@@ -502,7 +502,7 @@ mod test {
     let output = builder
       .with_loader(|loader| {
         loader
-          .add("/mod.ts", &mod_file_text)
+          .add("/mod.ts", mod_file_text)
           .add("https://localhost/mod.ts", "export class Example {}");
       })
       .build()

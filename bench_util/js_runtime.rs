@@ -63,7 +63,6 @@ pub fn bench_js_sync_with(
 
   let code = v8::String::new(scope, looped_src.as_ref()).unwrap();
   let script = v8::Script::compile(scope, code, None).unwrap();
-
   // Run once if profiling, otherwise regular bench loop
   if is_profiling() {
     script.run(scope).unwrap();
@@ -102,7 +101,9 @@ pub fn bench_js_async_with(
   };
   let looped = loop_code(inner_iters, src);
   let src = looped.as_ref();
-
+  runtime
+    .execute_script("init", "Deno.core.initializeAsyncOps();")
+    .unwrap();
   if is_profiling() {
     for _ in 0..opts.profiling_outer {
       tokio_runtime.block_on(inner_async(src, &mut runtime));

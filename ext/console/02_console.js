@@ -417,6 +417,7 @@
         }
     }
 
+    let entriesLengthWithoutEmptyItems = entriesLength;
     if (options.typeName === "Array") {
       for (
         let i = 0, j = 0;
@@ -433,7 +434,7 @@
 
         if (skipTo) {
           // subtract skipped (empty) items
-          entriesLength -= skipTo - i;
+          entriesLengthWithoutEmptyItems -= skipTo - i;
           i = skipTo;
         }
       }
@@ -478,8 +479,9 @@
       ArrayPrototypeSort(entries);
     }
 
-    if (entriesLength > inspectOptions.iterableLimit) {
-      const nmore = entriesLength - inspectOptions.iterableLimit;
+    if (entriesLengthWithoutEmptyItems > inspectOptions.iterableLimit) {
+      const nmore = entriesLengthWithoutEmptyItems -
+        inspectOptions.iterableLimit;
       ArrayPrototypePush(entries, `... ${nmore} more items`);
     }
 
@@ -2237,6 +2239,12 @@
       this.error(err.stack);
     };
 
+    // These methods are noops, but when the inspector is connected, they
+    // call into V8.
+    profile = (_label) => {};
+    profileEnd = (_label) => {};
+    timeStamp = (_label) => {};
+
     static [SymbolHasInstance](instance) {
       return instance[isConsoleInstance];
     }
@@ -2330,6 +2338,9 @@
           consoleFromV8[key],
           consoleFromDeno[key],
         );
+      } else {
+        // Add additional console APIs from the inspector
+        consoleFromDeno[key] = consoleFromV8[key];
       }
     }
   }

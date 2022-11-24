@@ -14,6 +14,7 @@ use import_map::ImportMap;
 use log::error;
 use log::warn;
 use serde_json::from_value;
+use std::collections::HashMap;
 use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -49,7 +50,6 @@ use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
-use super::registries::ModuleRegistryOptions;
 use super::testing;
 use super::text;
 use super::tsc;
@@ -64,11 +64,19 @@ use crate::args::FmtConfig;
 use crate::args::LintConfig;
 use crate::args::TsConfig;
 use crate::deno_dir;
+use crate::deno_dir::DenoDir;
+use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::get_source_from_data_url;
+use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::graph_util::graph_valid;
+use crate::http_util::HttpClient;
+use crate::npm::NpmCache;
+use crate::npm::NpmPackageResolver;
+use crate::npm::RealNpmRegistryApi;
 use crate::proc_state::import_map_from_text;
 use crate::proc_state::ProcState;
+use crate::progress_bar::ProgressBar;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 
@@ -86,6 +94,7 @@ pub struct StateSnapshot {
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub root_uri: Option<Url>,
+  pub maybe_npm_resolver: Option<NpmPackageResolver>,
 }
 
 #[derive(Debug)]
@@ -124,6 +133,8 @@ pub struct Inner {
   pub maybe_lint_config: Option<LintConfig>,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
+  /// Resolver for npm packages.
+  npm_resolver: NpmPackageResolver,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -196,6 +207,13 @@ impl LanguageServer {
     }
   }
 
+  pub async fn inlay_hint(
+    &self,
+    params: InlayHintParams,
+  ) -> LspResult<Option<Vec<InlayHint>>> {
+    self.0.lock().await.inlay_hint(params).await
+  }
+
   pub async fn virtual_text_document(
     &self,
     params: Option<Value>,
@@ -219,17 +237,43 @@ impl LanguageServer {
   }
 }
 
+fn create_lsp_npm_resolver(
+  dir: &DenoDir,
+  http_client: HttpClient,
+) -> NpmPackageResolver {
+  let registry_url = RealNpmRegistryApi::default_url();
+  // Use an "only" cache setting in order to make the
+  // user do an explicit "cache" command and prevent
+  // the cache from being filled with lots of packages while
+  // the user is typing.
+  let cache_setting = CacheSetting::Only;
+  let progress_bar = ProgressBar::default();
+  let npm_cache = NpmCache::from_deno_dir(
+    dir,
+    cache_setting.clone(),
+    http_client.clone(),
+    progress_bar.clone(),
+  );
+  let api = RealNpmRegistryApi::new(
+    registry_url,
+    npm_cache.clone(),
+    cache_setting,
+    http_client,
+    progress_bar,
+  );
+  NpmPackageResolver::new(npm_cache, api, false, None)
+}
+
 impl Inner {
   fn new(client: Client) -> Self {
     let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(maybe_custom_root)
       .expect("could not access DENO_DIR");
     let module_registries_location = dir.root.join(REGISTRIES_PATH);
-    let module_registries = ModuleRegistry::new(
-      &module_registries_location,
-      ModuleRegistryOptions::default(),
-    )
-    .expect("could not create module registries");
+    let http_client = HttpClient::new(None, None).unwrap();
+    let module_registries =
+      ModuleRegistry::new(&module_registries_location, http_client.clone())
+        .unwrap();
     let location = dir.root.join(CACHE_PATH);
     let documents = Documents::new(&location);
     let cache_metadata = cache::CacheMetadata::new(&location);
@@ -242,6 +286,7 @@ impl Inner {
       ts_server.clone(),
     );
     let assets = Assets::new(ts_server.clone());
+    let npm_resolver = create_lsp_npm_resolver(&dir, http_client);
 
     Self {
       assets,
@@ -259,6 +304,7 @@ impl Inner {
       maybe_testing_server: None,
       module_registries,
       module_registries_location,
+      npm_resolver,
       performance,
       ts_fixable_diagnostics: Default::default(),
       ts_server,
@@ -427,6 +473,7 @@ impl Inner {
       cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
+      maybe_npm_resolver: Some(self.npm_resolver.snapshotted()),
       root_uri: self.config.root_uri.clone(),
     })
   }
@@ -461,40 +508,56 @@ impl Inner {
       None
     };
     if self.maybe_cache_path != maybe_cache_path {
-      let maybe_custom_root = maybe_cache_path
-        .clone()
-        .or_else(|| env::var("DENO_DIR").map(String::into).ok());
-      let dir = deno_dir::DenoDir::new(maybe_custom_root)?;
-      let module_registries_location = dir.root.join(REGISTRIES_PATH);
-      let workspace_settings = self.config.get_workspace_settings();
-      let maybe_root_path = self
-        .config
-        .root_uri
-        .as_ref()
-        .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
-      self.module_registries = ModuleRegistry::new(
-        &module_registries_location,
-        ModuleRegistryOptions {
-          maybe_root_path,
-          maybe_ca_stores: workspace_settings.certificate_stores.clone(),
-          maybe_ca_file: workspace_settings.tls_certificate.clone(),
-          unsafely_ignore_certificate_errors: workspace_settings
-            .unsafely_ignore_certificate_errors,
-        },
-      )?;
-      self.module_registries_location = module_registries_location;
-      let location = dir.root.join(CACHE_PATH);
-      self.documents.set_location(&location);
-      self.cache_metadata.set_location(&location);
-      self.maybe_cache_path = maybe_cache_path;
+      self.recreate_http_client_and_dependents(maybe_cache_path)?;
     }
+    Ok(())
+  }
+
+  /// Recreates the http client and all dependent structs.
+  fn recreate_http_client_and_dependents(
+    &mut self,
+    new_cache_path: Option<PathBuf>,
+  ) -> Result<(), AnyError> {
+    let maybe_custom_root = new_cache_path
+      .clone()
+      .or_else(|| env::var("DENO_DIR").map(String::into).ok());
+    let dir = deno_dir::DenoDir::new(maybe_custom_root)?;
+    let workspace_settings = self.config.get_workspace_settings();
+    let maybe_root_path = self
+      .config
+      .root_uri
+      .as_ref()
+      .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
+    let root_cert_store = Some(get_root_cert_store(
+      maybe_root_path,
+      workspace_settings.certificate_stores.clone(),
+      workspace_settings.tls_certificate.clone(),
+    )?);
+    let client = HttpClient::new(
+      root_cert_store,
+      workspace_settings.unsafely_ignore_certificate_errors,
+    )?;
+    let module_registries_location = dir.root.join(REGISTRIES_PATH);
+    self.module_registries =
+      ModuleRegistry::new(&module_registries_location, client.clone())?;
+    self.module_registries_location = module_registries_location;
+    self.npm_resolver = create_lsp_npm_resolver(&dir, client);
+    // update the cache path
+    let location = dir.root.join(CACHE_PATH);
+    self.documents.set_location(&location);
+    self.cache_metadata.set_location(&location);
+    self.maybe_cache_path = new_cache_path;
     Ok(())
   }
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_import_map", None::<()>);
-    let maybe_import_map_url = if let Some(import_map_str) =
-      self.config.get_workspace_settings().import_map
+
+    let maybe_import_map_url = if let Some(import_map_str) = self
+      .config
+      .get_workspace_settings()
+      .import_map
+      .and_then(|s| if s.is_empty() { None } else { Some(s) })
     {
       lsp_log!(
         "Setting import map from workspace settings: \"{}\"",
@@ -586,23 +649,8 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_registries", None::<()>);
+    self.recreate_http_client_and_dependents(self.maybe_cache_path.clone())?;
     let workspace_settings = self.config.get_workspace_settings();
-    let maybe_root_path = self
-      .config
-      .root_uri
-      .as_ref()
-      .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
-    self.module_registries = ModuleRegistry::new(
-      &self.module_registries_location,
-      ModuleRegistryOptions {
-        maybe_root_path,
-        maybe_ca_stores: workspace_settings.certificate_stores.clone(),
-        maybe_ca_file: workspace_settings.tls_certificate.clone(),
-        unsafely_ignore_certificate_errors: workspace_settings
-          .unsafely_ignore_certificate_errors
-          .clone(),
-      },
-    )?;
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
       if *enabled {
         lsp_log!("Enabling import suggestions for: {}", registry);
@@ -786,6 +834,7 @@ impl Inner {
     Ok(InitializeResult {
       capabilities,
       server_info: Some(server_info),
+      offset_encoding: None,
     })
   }
 
@@ -815,7 +864,7 @@ impl Inner {
       if let Err(err) =
         self.client.register_capability(vec![registration]).await
       {
-        warn!("Client errored on capabilities.\n{}", err);
+        warn!("Client errored on capabilities.\n{:#}", err);
       }
     }
     self.config.update_enabled_paths(self.client.clone()).await;
@@ -878,6 +927,7 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
+          self.refresh_npm_specifiers().await;
           self
             .diagnostics_server
             .invalidate(&self.documents.dependents(&specifier));
@@ -888,6 +938,13 @@ impl Inner {
       Err(err) => error!("{}", err),
     }
     self.performance.measure(mark);
+  }
+
+  async fn refresh_npm_specifiers(&mut self) {
+    let package_reqs = self.documents.npm_package_reqs();
+    if let Err(err) = self.npm_resolver.set_package_reqs(package_reqs).await {
+      warn!("Could not set npm package requirements. {:#}", err);
+    }
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -904,6 +961,7 @@ impl Inner {
       error!("{}", err);
     }
     if self.is_diagnosable(&specifier) {
+      self.refresh_npm_specifiers().await;
       let mut specifiers = self.documents.dependents(&specifier);
       specifiers.push(specifier.clone());
       self.diagnostics_server.invalidate(&specifiers);
@@ -1122,7 +1180,7 @@ impl Inner {
         Ok(None) => Some(Vec::new()),
         Err(err) => {
           // TODO(lucacasonato): handle error properly
-          warn!("Format error: {}", err);
+          warn!("Format error: {:#}", err);
           None
         }
       }
@@ -1777,6 +1835,7 @@ impl Inner {
         };
       let position =
         line_index.offset_tsc(params.text_document_position.position)?;
+      let use_snippets = self.config.client_capabilities.snippet_support;
       let req = tsc::RequestMethod::GetCompletions((
         specifier.clone(),
         position,
@@ -1792,10 +1851,12 @@ impl Inner {
               self.config.get_workspace_settings().suggest.auto_imports,
             ),
             include_completions_for_module_exports: Some(true),
-            include_completions_with_object_literal_method_snippets: Some(true),
-            include_completions_with_class_member_snippets: Some(true),
+            include_completions_with_object_literal_method_snippets: Some(
+              use_snippets,
+            ),
+            include_completions_with_class_member_snippets: Some(use_snippets),
             include_completions_with_insert_text: Some(true),
-            include_completions_with_snippet_text: Some(true),
+            include_completions_with_snippet_text: Some(use_snippets),
             jsx_attribute_completion_style: Some(
               tsc::JsxAttributeCompletionStyle::Auto,
             ),
@@ -2460,6 +2521,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let has_specifier_settings =
         inner.config.has_specifier_settings(&specifier);
       if document.is_diagnosable() {
+        inner.refresh_npm_specifiers().await;
         let specifiers = inner.documents.dependents(&specifier);
         inner.diagnostics_server.invalidate(&specifiers);
         // don't send diagnostics yet if we don't have the specifier settings
@@ -2810,9 +2872,19 @@ impl Inner {
     async fn create_graph_for_caching(
       cli_options: CliOptions,
       roots: Vec<(ModuleSpecifier, ModuleKind)>,
+      open_docs: Vec<Document>,
     ) -> Result<(), AnyError> {
+      let open_docs = open_docs
+        .into_iter()
+        .map(|d| (d.specifier().clone(), d))
+        .collect::<HashMap<_, _>>();
       let ps = ProcState::from_options(Arc::new(cli_options)).await?;
-      let graph = ps.create_graph(roots).await?;
+      let mut inner_loader = ps.create_graph_loader();
+      let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
+        inner_loader: &mut inner_loader,
+        open_docs: &open_docs,
+      };
+      let graph = ps.create_graph_with_loader(roots, &mut loader).await?;
       graph_valid(&graph, true, false)?;
       Ok(())
     }
@@ -2844,18 +2916,24 @@ impl Inner {
         ca_stores: None,
         ca_file: None,
         unsafely_ignore_certificate_errors: None,
+        // this is to allow loading npm specifiers, so we can remove this
+        // once stabilizing them
+        unstable: true,
         ..Default::default()
       },
       self.maybe_config_file.clone(),
+      // TODO(#16510): add support for lockfile
+      None,
     );
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 
     // todo(dsherret): why is running this on a new thread necessary? It does
     // a compile error otherwise.
+    let open_docs = self.documents.documents(true, true);
     let handle = tokio::task::spawn_blocking(|| {
-      run_local(
-        async move { create_graph_for_caching(cli_options, roots).await },
-      )
+      run_local(async move {
+        create_graph_for_caching(cli_options, roots, open_docs).await
+      })
     });
     if let Err(err) = handle.await.unwrap() {
       self.client.show_message(MessageType::WARNING, err).await;
@@ -2865,6 +2943,7 @@ impl Inner {
     // For that we're invalidating all the existing diagnostics and restarting
     // the language server for TypeScript (as it might hold to some stale
     // documents).
+    self.refresh_npm_specifiers().await;
     self.diagnostics_server.invalidate_all();
     let _: bool = self
       .ts_server
@@ -2890,6 +2969,50 @@ impl Inner {
         .as_ref()
         .and_then(|cf| cf.to_lsp_tasks()),
     )
+  }
+
+  async fn inlay_hint(
+    &self,
+    params: InlayHintParams,
+  ) -> LspResult<Option<Vec<InlayHint>>> {
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let workspace_settings = self.config.get_workspace_settings();
+    if !self.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+      || !workspace_settings.enabled_inlay_hints()
+    {
+      return Ok(None);
+    }
+
+    let mark = self.performance.mark("inlay_hint", Some(&params));
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
+    let range = tsc::TextSpan::from_range(&params.range, line_index.clone())
+      .map_err(|err| {
+        error!("Failed to convert range to text_span: {}", err);
+        LspError::internal_error()
+      })?;
+    let req = tsc::RequestMethod::ProvideInlayHints((
+      specifier.clone(),
+      range,
+      (&workspace_settings).into(),
+    ));
+    let maybe_inlay_hints: Option<Vec<tsc::InlayHint>> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Unable to get inlay hints: {}", err);
+        LspError::internal_error()
+      })?;
+    let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {
+      hints
+        .iter()
+        .map(|hint| hint.to_lsp(line_index.clone()))
+        .collect()
+    });
+    self.performance.measure(mark);
+    Ok(maybe_inlay_hints)
   }
 
   async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {

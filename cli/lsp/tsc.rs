@@ -618,6 +618,15 @@ pub struct TextSpan {
 }
 
 impl TextSpan {
+  pub fn from_range(
+    range: &lsp::Range,
+    line_index: Arc<LineIndex>,
+  ) -> Result<Self, AnyError> {
+    let start = line_index.offset_tsc(range.start)?;
+    let length = line_index.offset_tsc(range.end)? - start;
+    Ok(Self { start, length })
+  }
+
   pub fn to_range(&self, line_index: Arc<LineIndex>) -> lsp::Range {
     lsp::Range {
       start: line_index.position_tsc(self.start.into()),
@@ -929,6 +938,48 @@ impl NavigateToItem {
       location,
       container_name: self.container_name.clone(),
     })
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub enum InlayHintKind {
+  Type,
+  Parameter,
+  Enum,
+}
+
+impl InlayHintKind {
+  pub fn to_lsp(&self) -> Option<lsp::InlayHintKind> {
+    match self {
+      Self::Enum => None,
+      Self::Parameter => Some(lsp::InlayHintKind::PARAMETER),
+      Self::Type => Some(lsp::InlayHintKind::TYPE),
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHint {
+  pub text: String,
+  pub position: u32,
+  pub kind: InlayHintKind,
+  pub whitespace_before: Option<bool>,
+  pub whitespace_after: Option<bool>,
+}
+
+impl InlayHint {
+  pub fn to_lsp(&self, line_index: Arc<LineIndex>) -> lsp::InlayHint {
+    lsp::InlayHint {
+      position: line_index.position_tsc(self.position.into()),
+      label: lsp::InlayHintLabel::String(self.text.clone()),
+      kind: self.kind.to_lsp(),
+      padding_left: self.whitespace_before,
+      padding_right: self.whitespace_after,
+      text_edits: None,
+      tooltip: None,
+      data: None,
+    }
   }
 }
 
@@ -2196,6 +2247,10 @@ impl CompletionEntry {
         || kind == Some(lsp::CompletionItemKind::METHOD));
     let commit_characters = self.get_commit_characters(info, settings);
     let mut insert_text = self.insert_text.clone();
+    let insert_text_format = match self.is_snippet {
+      Some(true) => Some(lsp::InsertTextFormat::SNIPPET),
+      _ => None,
+    };
     let range = self.replacement_span.clone();
     let mut filter_text = self.get_filter_text();
     let mut tags = None;
@@ -2262,6 +2317,7 @@ impl CompletionEntry {
       text_edit,
       filter_text,
       insert_text,
+      insert_text_format,
       detail,
       tags,
       commit_characters,
@@ -2623,6 +2679,20 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 }
 
 #[op]
+fn op_is_node_file(state: &mut OpState, path: String) -> bool {
+  let state = state.borrow::<State>();
+  match ModuleSpecifier::parse(&path) {
+    Ok(specifier) => state
+      .state_snapshot
+      .maybe_npm_resolver
+      .as_ref()
+      .map(|r| r.in_npm_package(&specifier))
+      .unwrap_or(false),
+    Err(_) => false,
+  }
+}
+
+#[op]
 fn op_load(
   state: &mut OpState,
   args: SpecifierArgs,
@@ -2636,7 +2706,7 @@ fn op_load(
     Some(doc) => {
       json!({
         "data": doc.text(),
-        "scriptKind": crate::tsc::as_ts_script_kind(&doc.media_type()),
+        "scriptKind": crate::tsc::as_ts_script_kind(doc.media_type()),
         "version": state.script_version(&specifier),
       })
     }
@@ -2653,11 +2723,11 @@ fn op_resolve(
   let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
 
-  let result = if let Some(resolved) = state
-    .state_snapshot
-    .documents
-    .resolve(args.specifiers, &referrer)
-  {
+  let result = if let Some(resolved) = state.state_snapshot.documents.resolve(
+    args.specifiers,
+    &referrer,
+    state.state_snapshot.maybe_npm_resolver.as_ref(),
+  ) {
     Ok(
       resolved
         .into_iter()
@@ -2733,6 +2803,7 @@ fn init_extension(performance: Arc<Performance>) -> Extension {
     .ops(vec![
       op_exists::decl(),
       op_is_cancelled::decl(),
+      op_is_node_file::decl(),
       op_load::decl(),
       op_resolve::decl(),
       op_respond::decl(),
@@ -2825,6 +2896,18 @@ pub enum IncludeInlayParameterNameHints {
   All,
 }
 
+impl From<&config::InlayHintsParamNamesEnabled>
+  for IncludeInlayParameterNameHints
+{
+  fn from(setting: &config::InlayHintsParamNamesEnabled) -> Self {
+    match setting {
+      config::InlayHintsParamNamesEnabled::All => Self::All,
+      config::InlayHintsParamNamesEnabled::Literals => Self::Literals,
+      config::InlayHintsParamNamesEnabled::None => Self::None,
+    }
+  }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
@@ -2905,11 +2988,52 @@ pub struct UserPreferences {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub include_inlay_variable_type_hints: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_variable_type_hints_when_type_matches_name: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub include_inlay_property_declaration_type_hints: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub include_inlay_function_like_return_type_hints: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub include_inlay_enum_member_value_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub allow_rename_of_import_path: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub auto_import_file_exclude_patterns: Option<Vec<String>>,
+}
+
+impl From<&config::WorkspaceSettings> for UserPreferences {
+  fn from(workspace_settings: &config::WorkspaceSettings) -> Self {
+    let inlay_hints = &workspace_settings.inlay_hints;
+    Self {
+      include_inlay_parameter_name_hints: Some(
+        (&inlay_hints.parameter_names.enabled).into(),
+      ),
+      include_inlay_parameter_name_hints_when_argument_matches_name: Some(
+        !inlay_hints
+          .parameter_names
+          .suppress_when_argument_matches_name,
+      ),
+      include_inlay_function_parameter_type_hints: Some(
+        inlay_hints.parameter_types.enabled,
+      ),
+      include_inlay_variable_type_hints: Some(
+        inlay_hints.variable_types.enabled,
+      ),
+      include_inlay_variable_type_hints_when_type_matches_name: Some(
+        !inlay_hints.variable_types.suppress_when_type_matches_name,
+      ),
+      include_inlay_property_declaration_type_hints: Some(
+        inlay_hints.property_declaration_types.enabled,
+      ),
+      include_inlay_function_like_return_type_hints: Some(
+        inlay_hints.function_like_return_types.enabled,
+      ),
+      include_inlay_enum_member_value_hints: Some(
+        inlay_hints.enum_member_values.enabled,
+      ),
+      ..Default::default()
+    }
+  }
 }
 
 #[derive(Debug, Serialize)]
@@ -3044,6 +3168,8 @@ pub enum RequestMethod {
   ProvideCallHierarchyIncomingCalls((ModuleSpecifier, u32)),
   /// Resolve outgoing call hierarchy items for a specific position.
   ProvideCallHierarchyOutgoingCalls((ModuleSpecifier, u32)),
+  /// Resolve inlay hints for a specific text span
+  ProvideInlayHints((ModuleSpecifier, TextSpan, UserPreferences)),
 
   // Special request, used only internally by the LSP
   Restart,
@@ -3260,6 +3386,15 @@ impl RequestMethod {
           "position": position
         })
       }
+      RequestMethod::ProvideInlayHints((specifier, span, preferences)) => {
+        json!({
+          "id": id,
+          "method": "provideInlayHints",
+          "specifier": state.denormalize_specifier(specifier),
+          "span": span,
+          "preferences": preferences,
+        })
+      }
       RequestMethod::Restart => json!({
         "id": id,
         "method": "restart",
@@ -3310,6 +3445,7 @@ mod tests {
   use super::*;
   use crate::http_cache::HttpCache;
   use crate::http_util::HeadersMap;
+  use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::text::LineIndex;
@@ -3775,7 +3911,7 @@ mod tests {
 
     // You might have found this assertion starts failing after upgrading TypeScript.
     // Just update the new number of assets (declaration files) for this number.
-    assert_eq!(assets.len(), 70);
+    assert_eq!(assets.len(), 71);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;
@@ -3990,7 +4126,7 @@ mod tests {
     assert!(result.is_ok());
     let response: CompletionInfo =
       serde_json::from_value(result.unwrap()).unwrap();
-    assert_eq!(response.entries.len(), 19);
+    assert_eq!(response.entries.len(), 22);
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -4168,5 +4304,28 @@ mod tests {
         }
       );
     }
+  }
+
+  #[test]
+  fn include_supress_inlay_hit_settings() {
+    let mut settings = WorkspaceSettings::default();
+    settings
+      .inlay_hints
+      .parameter_names
+      .suppress_when_argument_matches_name = true;
+    settings
+      .inlay_hints
+      .variable_types
+      .suppress_when_type_matches_name = true;
+    let user_preferences: UserPreferences = (&settings).into();
+    assert_eq!(
+      user_preferences.include_inlay_variable_type_hints_when_type_matches_name,
+      Some(false)
+    );
+    assert_eq!(
+      user_preferences
+        .include_inlay_parameter_name_hints_when_argument_matches_name,
+      Some(false)
+    );
   }
 }

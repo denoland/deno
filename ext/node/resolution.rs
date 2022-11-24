@@ -19,11 +19,93 @@ use crate::RequireNpmResolver;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
+pub static TYPES_CONDITIONS: &[&str] = &["types"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeModuleKind {
   Esm,
   Cjs,
+}
+
+/// Checks if the resolved file has a corresponding declaration file.
+pub fn path_to_declaration_path(
+  path: PathBuf,
+  referrer_kind: NodeModuleKind,
+) -> PathBuf {
+  fn probe_extensions(
+    path: &Path,
+    referrer_kind: NodeModuleKind,
+  ) -> Option<PathBuf> {
+    let specific_dts_path = match referrer_kind {
+      NodeModuleKind::Cjs => with_known_extension(path, "d.cts"),
+      NodeModuleKind::Esm => with_known_extension(path, "d.mts"),
+    };
+    if specific_dts_path.exists() {
+      return Some(specific_dts_path);
+    }
+    let dts_path = with_known_extension(path, "d.ts");
+    if dts_path.exists() {
+      Some(dts_path)
+    } else {
+      None
+    }
+  }
+
+  let lowercase_path = path.to_string_lossy().to_lowercase();
+  if lowercase_path.ends_with(".d.ts")
+    || lowercase_path.ends_with(".d.cts")
+    || lowercase_path.ends_with(".d.ts")
+  {
+    return path;
+  }
+  if let Some(path) = probe_extensions(&path, referrer_kind) {
+    return path;
+  }
+  if path.is_dir() {
+    if let Some(path) = probe_extensions(&path.join("index"), referrer_kind) {
+      return path;
+    }
+  }
+  path
+}
+
+/// Alternate `PathBuf::with_extension` that will handle known extensions
+/// more intelligently.
+pub fn with_known_extension(path: &Path, ext: &str) -> PathBuf {
+  const NON_DECL_EXTS: &[&str] = &["cjs", "js", "json", "jsx", "mjs", "tsx"];
+  const DECL_EXTS: &[&str] = &["cts", "mts", "ts"];
+
+  let file_name = match path.file_name() {
+    Some(value) => value.to_string_lossy(),
+    None => return path.to_path_buf(),
+  };
+  let lowercase_file_name = file_name.to_lowercase();
+  let period_index = lowercase_file_name.rfind('.').and_then(|period_index| {
+    let ext = &lowercase_file_name[period_index + 1..];
+    if DECL_EXTS.contains(&ext) {
+      if let Some(next_period_index) =
+        lowercase_file_name[..period_index].rfind('.')
+      {
+        if &lowercase_file_name[next_period_index + 1..period_index] == "d" {
+          Some(next_period_index)
+        } else {
+          Some(period_index)
+        }
+      } else {
+        Some(period_index)
+      }
+    } else if NON_DECL_EXTS.contains(&ext) {
+      Some(period_index)
+    } else {
+      None
+    }
+  });
+
+  let file_name = match period_index {
+    Some(period_index) => &file_name[..period_index],
+    None => &file_name,
+  };
+  path.with_file_name(format!("{}.{}", file_name, ext))
 }
 
 fn to_specifier_display_string(url: &ModuleSpecifier) -> String {
@@ -251,13 +333,17 @@ fn resolve_package_target_string(
         };
         let package_json_url =
           ModuleSpecifier::from_file_path(package_json_path).unwrap();
-        return package_resolve(
+        return match package_resolve(
           &export_target,
           &package_json_url,
           referrer_kind,
           conditions,
           npm_resolver,
-        );
+        ) {
+          Ok(Some(path)) => Ok(path),
+          Ok(None) => Err(generic_error("not found")),
+          Err(err) => Err(err),
+        };
       }
     }
     return Err(throw_invalid_package_target(
@@ -593,7 +679,7 @@ pub fn package_resolve(
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
   npm_resolver: &dyn RequireNpmResolver,
-) -> Result<PathBuf, AnyError> {
+) -> Result<Option<PathBuf>, AnyError> {
   let (package_name, package_subpath, _is_scoped) =
     parse_package_name(specifier, referrer)?;
 
@@ -611,13 +697,15 @@ pub fn package_resolve(
         referrer_kind,
         conditions,
         npm_resolver,
-      );
+      )
+      .map(Some);
     }
   }
 
   let package_dir_path = npm_resolver.resolve_package_folder_from_package(
     &package_name,
     &referrer.to_file_path().unwrap(),
+    conditions,
   )?;
   let package_json_path = package_dir_path.join("package.json");
 
@@ -645,13 +733,21 @@ pub fn package_resolve(
       referrer_kind,
       conditions,
       npm_resolver,
-    );
+    )
+    .map(Some);
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_json, referrer_kind);
+    return legacy_main_resolve(&package_json, referrer_kind, conditions);
   }
 
-  Ok(package_json.path.parent().unwrap().join(&package_subpath))
+  let file_path = package_json.path.parent().unwrap().join(&package_subpath);
+
+  if conditions == TYPES_CONDITIONS {
+    let declaration_path = path_to_declaration_path(file_path, referrer_kind);
+    Ok(Some(declaration_path))
+  } else {
+    Ok(Some(file_path))
+  }
 }
 
 pub fn get_package_scope_config(
@@ -706,75 +802,78 @@ fn file_exists(path: &Path) -> bool {
 pub fn legacy_main_resolve(
   package_json: &PackageJson,
   referrer_kind: NodeModuleKind,
-) -> Result<PathBuf, AnyError> {
-  let maybe_main = package_json.main(referrer_kind);
-  let mut guess;
+  conditions: &[&str],
+) -> Result<Option<PathBuf>, AnyError> {
+  let is_types = conditions == TYPES_CONDITIONS;
+  let maybe_main = if is_types {
+    match package_json.types.as_ref() {
+      Some(types) => Some(types),
+      None => {
+        // fallback to checking the main entrypoint for
+        // a corresponding declaration file
+        if let Some(main) = package_json.main(referrer_kind) {
+          let main = package_json.path.parent().unwrap().join(main).clean();
+          let path = path_to_declaration_path(main, referrer_kind);
+          if path.exists() {
+            return Ok(Some(path));
+          }
+        }
+        None
+      }
+    }
+  } else {
+    package_json.main(referrer_kind)
+  };
 
   if let Some(main) = maybe_main {
-    guess = package_json.path.parent().unwrap().join(main).clean();
+    let guess = package_json.path.parent().unwrap().join(main).clean();
     if file_exists(&guess) {
-      return Ok(guess);
+      return Ok(Some(guess));
     }
 
-    let mut found = false;
-    // todo(dsherret): investigate exactly how node handles this
-    let endings = match referrer_kind {
-      NodeModuleKind::Cjs => vec![
-        ".js",
-        ".cjs",
-        ".json",
-        ".node",
-        "/index.js",
-        "/index.cjs",
-        "/index.json",
-        "/index.node",
-      ],
-      NodeModuleKind::Esm => vec![
-        ".js",
-        ".mjs",
-        ".json",
-        ".node",
-        "/index.js",
-        "/index.mjs",
-        ".cjs",
-        "/index.cjs",
-        "/index.json",
-        "/index.node",
-      ],
+    // todo(dsherret): investigate exactly how node and typescript handles this
+    let endings = if is_types {
+      match referrer_kind {
+        NodeModuleKind::Cjs => {
+          vec![".d.ts", ".d.cts", "/index.d.ts", "/index.d.cts"]
+        }
+        NodeModuleKind::Esm => vec![
+          ".d.ts",
+          ".d.mts",
+          "/index.d.ts",
+          "/index.d.mts",
+          ".d.cts",
+          "/index.d.cts",
+        ],
+      }
+    } else {
+      vec![".js", "/index.js"]
     };
     for ending in endings {
-      guess = package_json
+      let guess = package_json
         .path
         .parent()
         .unwrap()
         .join(&format!("{}{}", main, ending))
         .clean();
       if file_exists(&guess) {
-        found = true;
-        break;
+        // TODO(bartlomieju): emitLegacyIndexDeprecation()
+        return Ok(Some(guess));
       }
-    }
-
-    if found {
-      // TODO(bartlomieju): emitLegacyIndexDeprecation()
-      return Ok(guess);
     }
   }
 
-  let index_file_names = match referrer_kind {
-    NodeModuleKind::Cjs => {
-      vec!["index.js", "index.cjs", "index.json", "index.node"]
+  let index_file_names = if is_types {
+    // todo(dsherret): investigate exactly how typescript does this
+    match referrer_kind {
+      NodeModuleKind::Cjs => vec!["index.d.ts", "index.d.cts"],
+      NodeModuleKind::Esm => vec!["index.d.ts", "index.d.mts", "index.d.cts"],
     }
-    NodeModuleKind::Esm => vec![
-      "index.js",
-      "index.mjs",
-      "index.cjs",
-      "index.json",
-      "index.node",
-    ],
+  } else {
+    vec!["index.js"]
   };
   for index_file_name in index_file_names {
-    guess = package_json
+    let guess = package_json
       .path
       .parent()
       .unwrap()
@@ -782,11 +881,11 @@ pub fn legacy_main_resolve(
       .clean();
     if file_exists(&guess) {
       // TODO(bartlomieju): emitLegacyIndexDeprecation()
-      return Ok(guess);
+      return Ok(Some(guess));
     }
   }
 
-  Err(generic_error("not found"))
+  Ok(None)
 }
 
 #[cfg(test)]
@@ -814,5 +913,19 @@ mod tests {
         true
       )
     );
+  }
+
+  #[test]
+  fn test_with_known_extension() {
+    let cases = &[
+      ("test", "d.ts", "test.d.ts"),
+      ("test.d.ts", "ts", "test.ts"),
+      ("test.worker", "d.ts", "test.worker.d.ts"),
+      ("test.d.mts", "js", "test.js"),
+    ];
+    for (path, ext, expected) in cases {
+      let actual = with_known_extension(&PathBuf::from(path), ext);
+      assert_eq!(actual.to_string_lossy(), *expected);
+    }
   }
 }

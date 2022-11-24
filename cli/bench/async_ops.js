@@ -5,7 +5,7 @@ let [total, count] = typeof Deno !== "undefined"
   : [process.argv[2], process.argv[3]];
 
 total = total ? parseInt(total, 0) : 50;
-count = count ? parseInt(count, 10) : 100000;
+count = count ? parseInt(count, 10) : 1000000;
 
 async function bench(fun) {
   const start = Date.now();
@@ -16,4 +16,5 @@ async function bench(fun) {
   if (--total) queueMicrotask(() => bench(fun));
 }
 
-bench(() => Deno.core.opAsync("op_void_async"));
+const { ops } = Deno.core;
+bench(() => ops.op_void_async());

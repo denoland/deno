@@ -4,7 +4,6 @@ use crate::args::BenchFlags;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::colors;
-use crate::create_main_worker;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::fs_util::collect_specifiers;
@@ -15,6 +14,7 @@ use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
+use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -210,7 +210,7 @@ impl BenchReporter for ConsoleReporter {
           println!();
         }
 
-        if None == self.group || group != self.group.as_ref().unwrap() {
+        if self.group.is_none() || group != self.group.as_ref().unwrap() {
           self.report_group_summary();
         }
 
@@ -352,15 +352,11 @@ async fn bench_specifier(
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
   let filter = TestFilter::from_flag(&options.filter);
-  let mut worker = create_main_worker(
+  let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::bench::init(
-      channel.clone(),
-      filter,
-      ps.options.unstable(),
-    )],
+    vec![ops::bench::init(channel.clone(), filter)],
     Default::default(),
   )
   .await?;

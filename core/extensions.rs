@@ -16,6 +16,9 @@ pub struct OpDecl {
   pub enabled: bool,
   pub is_async: bool,
   pub is_unstable: bool,
+  /// V8 argument count. Used as an optimization
+  /// hint by `core.initalizeAsyncOps`.
+  pub argc: usize,
   pub is_v8: bool,
   pub fast_fn: Option<Box<dyn FastFunction>>,
 }

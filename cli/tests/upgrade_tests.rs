@@ -120,7 +120,7 @@ fn upgrade_with_out_in_tmpdir() {
     .arg("--version")
     .arg("1.11.5")
     .arg("--output")
-    .arg(&new_exe_path.to_str().unwrap())
+    .arg(new_exe_path.to_str().unwrap())
     .spawn()
     .unwrap()
     .wait()

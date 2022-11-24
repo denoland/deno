@@ -22,7 +22,7 @@ jobs:
   lint:
     name: lint
     runs-on: "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}"
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - name: Configure Git
         run: |-
@@ -266,13 +266,15 @@ jobs:
         with:
           deno-version: v1.25.4
       - name: Install Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v4
         with:
           python-version: "3.8"
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
           name: build-release-linux
+      - name: Install Node
+        uses: actions/setup-node@v3
       - name: Unpack artifacts
         run: |-
           tar --use-compress-program=unzstd -xpf artifacts_1.tar.gz

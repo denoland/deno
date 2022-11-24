@@ -9,13 +9,14 @@ use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::CreateCache;
+use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
-use deno_core::located_script_name;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
@@ -31,6 +32,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
+use deno_core::{located_script_name, Snapshot};
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
@@ -320,6 +322,7 @@ pub struct WebWorker {
 pub struct WebWorkerOptions {
   pub bootstrap: BootstrapOptions,
   pub extensions: Vec<Extension>,
+  pub startup_snapshot: Option<Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
@@ -337,6 +340,7 @@ pub struct WebWorkerOptions {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
 }
 
@@ -373,6 +377,10 @@ impl WebWorker {
         Ok(())
       })
       .build();
+    let create_cache = options.cache_storage_dir.map(|storage_dir| {
+      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
+      CreateCache(Arc::new(create_cache_fn))
+    });
 
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
@@ -392,6 +400,7 @@ impl WebWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
+      deno_cache::init::<SqliteBackedCache>(create_cache),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
@@ -423,7 +432,8 @@ impl WebWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_node::init::<Permissions>(unstable, options.npm_resolver),
+      deno_napi::init::<Permissions>(unstable),
+      deno_node::init::<Permissions>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),
       ops::process::init(),
@@ -442,12 +452,17 @@ impl WebWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(js::deno_isolate_init()),
+      startup_snapshot: Some(
+        options
+          .startup_snapshot
+          .unwrap_or_else(js::deno_isolate_init),
+      ),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      inspector: options.maybe_inspector_server.is_some(),
       ..Default::default()
     });
 
