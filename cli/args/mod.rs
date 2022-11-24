@@ -408,14 +408,6 @@ impl CliOptions {
   pub fn watch_paths(&self) -> Option<&Vec<PathBuf>> {
     self.flags.watch.as_ref()
   }
-
-  pub fn to_lock_config(&self) -> Result<Option<LockConfig>, AnyError> {
-    if let Some(config) = &self.maybe_config_file {
-      config.clone().to_lock_config()
-    } else {
-      Ok(None)
-    }
-  }
 }
 
 fn resolve_import_map_specifier(
