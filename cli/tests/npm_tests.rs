@@ -2,7 +2,6 @@
 
 mod integration;
 
-use deno_core::url::Url;
 use pretty_assertions::assert_eq;
 use std::process::Stdio;
 use test_util as util;
