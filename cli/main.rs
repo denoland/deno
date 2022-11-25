@@ -19,7 +19,6 @@ mod graph_util;
 mod http_cache;
 mod http_util;
 mod js;
-mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
@@ -74,6 +73,7 @@ use crate::resolver::CliResolver;
 use crate::tools::check;
 
 use args::CliOptions;
+use args::Lockfile;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
@@ -327,7 +327,7 @@ async fn create_graph_and_maybe_check(
     Permissions::allow_all(),
     Permissions::allow_all(),
   );
-  let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
+  let maybe_locker = Lockfile::as_maybe_locker(ps.lockfile.clone());
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_cli_resolver = CliResolver::maybe_new(
     ps.options.to_maybe_jsx_import_source_config(),
@@ -937,7 +937,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 
       if let Some(e) = error.downcast_ref::<JsError>() {
         error_string = format_js_error(e);
-      } else if let Some(e) = error.downcast_ref::<lockfile::LockfileError>() {
+      } else if let Some(e) = error.downcast_ref::<args::LockfileError>() {
         error_string = e.to_string();
         error_code = 10;
       }
