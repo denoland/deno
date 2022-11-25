@@ -6,6 +6,36 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.28.2 / 2022.11.24
+
+- feat(cli): add warning for incorrectly ordered flags (#16734)
+- feat(core): Ability to create snapshots from existing snapshots (#16597)
+- fix(ext/flash): graceful server startup/shutdown with unsettled promises in
+  mind (#16616)
+- fix(ext/node): handle URL in createRequire (#16682)
+- fix(ext/websocket): uncatchable errors on send (#16743)
+- fix(fmt/markdown): scenario where whitespace was being incorrectly stripped in
+  inline links (#16769)
+- fix(info): handle circular npm dependencies (#16692)
+- fix(inspector): ensure console methods provided by inspector are available
+  (#16724)
+- fix(install): `deno install -f` should overwrite lockfile from previous
+  installation (#16744)
+- fix(npm): add suggestions to error message when can't find binary entrypoint
+  (#16733)
+- fix(npm): automatically find binary entrypoint when values are all the same
+  (#16735)
+- fix(npm): handle directory resolution when resolving declaration files
+  (#16706)
+- fix(npm): use an http client with connection pool (#16705)
+- fix(npm/check): prioritize exports over types entry (#16788)
+- fix(npm/types): resolve main entrypoint declaration file when no types entry
+  (#16791)
+- fix(types/unstable): change interface base for `CommandOutput` (#16696)
+- fix: Make npm packages works with import maps (#16754)
+- perf(ext/flash): optimize response streaming (#16660)
+- perf(npm): make dependency resolution faster (#16694)
+
 ### 1.28.1 / 2022.11.16
 
 - fix(bundle): explicit error when using an npm specifier with deno bundle

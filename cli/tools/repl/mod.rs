@@ -89,7 +89,7 @@ pub async fn run(
   };
 
   let history_file_path = ps.dir.root.join("deno_history.txt");
-  let editor = ReplEditor::new(helper, history_file_path);
+  let editor = ReplEditor::new(helper, history_file_path)?;
 
   if let Some(eval_files) = maybe_eval_files {
     for eval_file in eval_files {
@@ -131,6 +131,7 @@ pub async fn run(
     match line {
       Ok(line) => {
         should_exit_on_interrupt = false;
+        editor.update_history(line.clone());
         let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
         // We check for close and break here instead of making it a loop condition to get
@@ -140,8 +141,6 @@ pub async fn run(
         }
 
         println!("{}", output);
-
-        editor.add_history_entry(line);
       }
       Err(ReadlineError::Interrupted) => {
         if should_exit_on_interrupt {
@@ -160,8 +159,6 @@ pub async fn run(
       }
     }
   }
-
-  editor.save_history()?;
 
   Ok(repl_session.worker.get_exit_code())
 }
