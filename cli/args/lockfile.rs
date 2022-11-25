@@ -95,6 +95,15 @@ pub struct Lockfile {
 }
 
 impl Lockfile {
+  pub fn as_maybe_locker(
+    lockfile: Option<Arc<Mutex<Lockfile>>>,
+  ) -> Option<Rc<RefCell<dyn deno_graph::source::Locker>>> {
+    lockfile.as_ref().map(|lf| {
+      Rc::new(RefCell::new(Locker(Some(lf.clone()))))
+        as Rc<RefCell<dyn deno_graph::source::Locker>>
+    })
+  }
+
   pub fn discover(
     flags: &Flags,
     maybe_config_file: Option<&ConfigFile>,
@@ -357,15 +366,6 @@ impl deno_graph::source::Locker for Locker {
     let lock_file = self.0.as_ref()?.lock();
     lock_file.filename.to_str().map(|s| s.to_string())
   }
-}
-
-pub fn as_maybe_locker(
-  lockfile: Option<Arc<Mutex<Lockfile>>>,
-) -> Option<Rc<RefCell<dyn deno_graph::source::Locker>>> {
-  lockfile.as_ref().map(|lf| {
-    Rc::new(RefCell::new(Locker(Some(lf.clone()))))
-      as Rc<RefCell<dyn deno_graph::source::Locker>>
-  })
 }
 
 #[cfg(test)]

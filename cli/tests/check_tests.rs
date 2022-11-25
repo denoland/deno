@@ -125,7 +125,7 @@ fn typecheck_declarations_ns() {
   let output = util::deno_cmd()
     .arg("test")
     .arg("--doc")
-    .arg(util::root_path().join("cli/dts/lib.deno.ns.d.ts"))
+    .arg(util::root_path().join("cli/tsc/dts/lib.deno.ns.d.ts"))
     .output()
     .unwrap();
   println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
@@ -139,7 +139,7 @@ fn typecheck_declarations_unstable() {
     .arg("test")
     .arg("--doc")
     .arg("--unstable")
-    .arg(util::root_path().join("cli/dts/lib.deno.unstable.d.ts"))
+    .arg(util::root_path().join("cli/tsc/dts/lib.deno.unstable.d.ts"))
     .output()
     .unwrap();
   println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
