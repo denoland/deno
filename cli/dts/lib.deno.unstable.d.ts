@@ -1639,14 +1639,14 @@ declare namespace Deno {
    *   ],
    *   stdin: "piped",
    * });
-   * command.spawn();
+   * const child = command.spawn();
    *
    * // open a file and pipe the subprocess output to it.
-   * command.stdout.pipeTo(Deno.openSync("output").writable);
+   * child.stdout.pipeTo(Deno.openSync("output").writable);
    *
    * // manually close stdin
-   * command.stdin.close();
-   * const status = await command.status;
+   * child.stdin.close();
+   * const status = await child.status;
    * ```
    *
    * ```ts
