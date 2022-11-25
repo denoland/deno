@@ -1,10 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use encoding_rs::*;
-use std::{
-  borrow::Cow,
-  io::{Error, ErrorKind},
-};
+use std::borrow::Cow;
+use std::io::Error;
+use std::io::ErrorKind;
 
 pub const BOM_CHAR: char = '\u{FEFF}';
 
