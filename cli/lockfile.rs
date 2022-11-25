@@ -102,14 +102,6 @@ impl Lockfile {
   ) -> Result<Option<Lockfile>, AnyError> {
     if flags.no_lock {
       return Ok(None);
-    } else if let Some(config_file) = maybe_config_file {
-      if let Some(LockConfig::Bool(lock)) =
-        config_file.clone().to_lock_config()?
-      {
-        if !lock {
-          return Ok(None);
-        }
-      }
     }
 
     let filename = match flags.lock {
@@ -117,6 +109,14 @@ impl Lockfile {
       None => match maybe_config_file {
         Some(config_file) => {
           if config_file.specifier.scheme() == "file" {
+            if let Some(LockConfig::Bool(lock)) =
+              config_file.clone().to_lock_config()?
+            {
+              if !lock {
+                return Ok(None);
+              }
+            }
+
             if let Some(LockConfig::PathBuf(lock)) =
               config_file.clone().to_lock_config()?
             {
