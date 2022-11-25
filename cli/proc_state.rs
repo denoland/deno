@@ -292,6 +292,7 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let has_root_npm_specifier = roots.iter().any(|r| {
@@ -375,6 +376,7 @@ impl ProcState {
       };
 
     let analyzer = self.parsed_source_cache.as_analyzer();
+    log::debug!("Creating module graph.");
     let graph = create_graph(
       roots.clone(),
       &mut loader,
@@ -422,7 +424,9 @@ impl ProcState {
     drop(_pb_clear_guard);
 
     // type check if necessary
-    if self.options.type_check_mode() != TypeCheckMode::None {
+    let is_std_node = roots.len() == 1 && roots[0].0 == *node::MODULE_ALL_URL;
+    if self.options.type_check_mode() != TypeCheckMode::None && !is_std_node {
+      log::debug!("Type checking.");
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
       let roots = roots.clone();
       let options = check::CheckOptions {
@@ -463,6 +467,8 @@ impl ProcState {
       let g = lockfile.lock();
       g.write()?;
     }
+
+    log::debug!("Prepared module load.");
 
     Ok(())
   }

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_ops"
-version = "0.38.0"
+version = "0.39.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,7 +24,6 @@ regex.workspace = true
 syn.workspace = true
 
 [dev-dependencies]
-deno_core.workspace = true
 prettyplease = "0.1.21"
 testing_macros = "0.2.7"
 trybuild = "1.0.71"

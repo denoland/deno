@@ -298,6 +298,22 @@ itest!(no_types_in_conditional_exports {
   http_server: true,
 });
 
+itest!(types_entry_value_not_exists {
+  args: "run --check=all npm/types_entry_value_not_exists/main.ts",
+  output: "npm/types_entry_value_not_exists/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 0,
+});
+
+itest!(types_no_types_entry {
+  args: "run --check=all npm/types_no_types_entry/main.ts",
+  output: "npm/types_no_types_entry/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 0,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
