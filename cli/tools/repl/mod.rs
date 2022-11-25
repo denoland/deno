@@ -2,6 +2,7 @@
 
 use crate::create_main_worker;
 use crate::proc_state::ProcState;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
@@ -80,6 +81,7 @@ fn print_help() {
 .help     Print this message
 .restart  Create a new session without exiting the REPL
 .exit     Exit the REPL
+.save     Save the current session to a file"
 "#;
 
   print!("{}", help_text);
@@ -92,7 +94,7 @@ async fn create_repl_session(
   maybe_eval: Option<String>,
 ) -> Result<ReplSession, AnyError> {
   let mut worker = create_main_worker(
-    &ps,
+    ps,
     module_url.clone(),
     Permissions::from_options(&ps.options.permissions_options())?,
   )
@@ -159,6 +161,8 @@ pub async fn run(
   println!("Deno {}", crate::version::deno());
   println!("exit using ctrl+d, ctrl+c, or close()");
 
+  let mut session_history: Vec<String> = vec![];
+
   loop {
     let line = read_line_and_poll(
       &mut repl_session,
@@ -171,7 +175,7 @@ pub async fn run(
         should_exit_on_interrupt = false;
         editor.update_history(line.clone());
 
-        match &line {
+        match line.as_str() {
           ".restart" => {
             println!(
               "Started a new REPL session. Global scope has been reset."
@@ -192,9 +196,17 @@ pub async fn run(
           ".exit" => {
             break;
           }
+          ".save" => {
+            let filename =
+              format!("./repl-{}.ts", chrono::Local::now().to_rfc3339());
+            std::fs::write(&filename, session_history.join("\n"))
+              .context("Unable to save session file")?;
+            println!("Saved session to {}", filename);
+          }
           line => {
+            session_history.push(line.to_string());
             let output =
-              repl_session.evaluate_line_and_get_output(&line).await?;
+              repl_session.evaluate_line_and_get_output(line).await?;
 
             // We check for close and break here instead of making it a loop condition to get
             // consistent behavior in when the user evaluates a call to close().
