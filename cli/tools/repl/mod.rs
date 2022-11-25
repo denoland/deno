@@ -154,7 +154,7 @@ pub async fn run(
   };
 
   let history_file_path = ps.dir.root.join("deno_history.txt");
-  let editor = ReplEditor::new(helper, history_file_path);
+  let editor = ReplEditor::new(helper, history_file_path)?;
 
   println!("Deno {}", crate::version::deno());
   println!("exit using ctrl+d, ctrl+c, or close()");
@@ -169,35 +169,42 @@ pub async fn run(
     match line {
       Ok(line) => {
         should_exit_on_interrupt = false;
+        editor.update_history(line.clone());
 
-        if line == ".restart" {
-          println!("Started a new REPL session. Global scope has been reset.");
-          repl_session = create_repl_session(
-            ps,
-            module_url.clone(),
-            maybe_eval_files.clone(),
-            maybe_eval.clone(),
-          )
-          .await?;
-          continue;
-        } else if line == ".help" {
-          print_help();
-          continue;
-        } else if line == ".exit" {
-          break;
+        match &line {
+          ".restart" => {
+            println!(
+              "Started a new REPL session. Global scope has been reset."
+            );
+            repl_session = create_repl_session(
+              ps,
+              module_url.clone(),
+              maybe_eval_files.clone(),
+              maybe_eval.clone(),
+            )
+            .await?;
+            continue;
+          }
+          ".help" => {
+            print_help();
+            continue;
+          }
+          ".exit" => {
+            break;
+          }
+          line => {
+            let output =
+              repl_session.evaluate_line_and_get_output(&line).await?;
+
+            // We check for close and break here instead of making it a loop condition to get
+            // consistent behavior in when the user evaluates a call to close().
+            if repl_session.closing().await? {
+              break;
+            }
+
+            println!("{}", output);
+          }
         }
-
-        let output = repl_session.evaluate_line_and_get_output(&line).await?;
-
-        // We check for close and break here instead of making it a loop condition to get
-        // consistent behavior in when the user evaluates a call to close().
-        if repl_session.closing().await? {
-          break;
-        }
-
-        println!("{}", output);
-
-        editor.add_history_entry(line);
       }
       Err(ReadlineError::Interrupted) => {
         if should_exit_on_interrupt {
@@ -216,8 +223,6 @@ pub async fn run(
       }
     }
   }
-
-  editor.save_history()?;
 
   Ok(repl_session.worker.get_exit_code())
 }
