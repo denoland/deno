@@ -81,14 +81,17 @@ impl DenoDir {
     self.root.join("check_cache_v1")
   }
 
+  /// Path to the registries cache, used for the lps.
   pub fn registries_folder_path(&self) -> PathBuf {
     self.root.join("registries")
   }
 
+  /// Path to the dependencies cache folder.
   pub fn deps_folder_path(&self) -> PathBuf {
     self.root.join("deps")
   }
 
+  /// Path to the origin data cache folder.
   pub fn origin_data_folder_path(&self) -> PathBuf {
     // TODO(@crowlKats): change to origin_data for 2.0
     self.root.join("location_data")
