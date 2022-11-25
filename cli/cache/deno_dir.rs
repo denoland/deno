@@ -47,6 +47,7 @@ impl DenoDir {
     Ok(deno_dir)
   }
 
+  /// The root directory of the DENO_DIR for display purposes only.
   pub fn root_path_for_display(&self) -> std::path::Display {
     self.root.display()
   }
