@@ -4,9 +4,9 @@
 //! populate a cache, emit files, and transform a graph into the structures for
 //! loading into an isolate.
 
-use crate::args::config_file::IgnoredCompilerOptions;
 use crate::args::ConfigFile;
 use crate::args::EmitConfigOptions;
+use crate::args::IgnoredCompilerOptions;
 use crate::args::TsConfig;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
