@@ -314,6 +314,14 @@ itest!(types_no_types_entry {
   exit_code: 0,
 });
 
+itest!(typescript_file_in_package {
+  args: "run npm/typescript_file_in_package/main.ts",
+  output: "npm/typescript_file_in_package/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
