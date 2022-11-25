@@ -593,20 +593,8 @@ async fn repl_command(
 ) -> Result<i32, AnyError> {
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let ps = ProcState::build(flags).await?;
-  let mut worker = create_main_worker(
-    &ps,
-    main_module.clone(),
-    Permissions::from_options(&ps.options.permissions_options())?,
-  )
-  .await?;
-  worker.setup_repl().await?;
-  tools::repl::run(
-    &ps,
-    worker.into_main_worker(),
-    repl_flags.eval_files,
-    repl_flags.eval,
-  )
-  .await
+  tools::repl::run(&ps, main_module, repl_flags.eval_files, repl_flags.eval)
+    .await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {

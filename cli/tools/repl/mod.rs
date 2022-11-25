@@ -1,9 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::create_main_worker;
 use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
+use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::worker::MainWorker;
 use rustyline::error::ReadlineError;
 
 mod channel;
@@ -73,23 +74,32 @@ async fn read_eval_file(
   Ok((*file.source).to_string())
 }
 
-pub async fn run(
+// TODO(bartlomieju): add .save command
+fn print_help() {
+  let help_text = r#"Available commands:
+.help     Print this message
+.restart  Create a new session without exiting the REPL
+.exit     Exit the REPL
+"#;
+
+  print!("{}", help_text);
+}
+
+async fn create_repl_session(
   ps: &ProcState,
-  worker: MainWorker,
+  module_url: ModuleSpecifier,
   maybe_eval_files: Option<Vec<String>>,
   maybe_eval: Option<String>,
-) -> Result<i32, AnyError> {
+) -> Result<ReplSession, AnyError> {
+  let mut worker = create_main_worker(
+    &ps,
+    module_url.clone(),
+    Permissions::from_options(&ps.options.permissions_options())?,
+  )
+  .await?;
+  worker.setup_repl().await?;
+  let worker = worker.into_main_worker();
   let mut repl_session = ReplSession::initialize(worker).await?;
-  let mut rustyline_channel = rustyline_channel();
-  let mut should_exit_on_interrupt = false;
-
-  let helper = EditorHelper {
-    context_id: repl_session.context_id,
-    sync_sender: rustyline_channel.0,
-  };
-
-  let history_file_path = ps.dir.root.join("deno_history.txt");
-  let editor = ReplEditor::new(helper, history_file_path);
 
   if let Some(eval_files) = maybe_eval_files {
     for eval_file in eval_files {
@@ -118,6 +128,34 @@ pub async fn run(
     }
   }
 
+  Ok(repl_session)
+}
+
+pub async fn run(
+  ps: &ProcState,
+  module_url: ModuleSpecifier,
+  maybe_eval_files: Option<Vec<String>>,
+  maybe_eval: Option<String>,
+) -> Result<i32, AnyError> {
+  let mut repl_session = create_repl_session(
+    ps,
+    module_url.clone(),
+    maybe_eval_files.clone(),
+    maybe_eval.clone(),
+  )
+  .await?;
+  let mut rustyline_channel = rustyline_channel();
+  let mut should_exit_on_interrupt = false;
+
+  // TODO(bartlomieju): add helper to update `context_id` in the helper
+  let helper = EditorHelper {
+    context_id: repl_session.context_id,
+    sync_sender: rustyline_channel.0,
+  };
+
+  let history_file_path = ps.dir.root.join("deno_history.txt");
+  let editor = ReplEditor::new(helper, history_file_path);
+
   println!("Deno {}", crate::version::deno());
   println!("exit using ctrl+d, ctrl+c, or close()");
 
@@ -131,6 +169,24 @@ pub async fn run(
     match line {
       Ok(line) => {
         should_exit_on_interrupt = false;
+
+        if line == ".restart" {
+          println!("Started a new REPL session. Global scope has been reset.");
+          repl_session = create_repl_session(
+            ps,
+            module_url.clone(),
+            maybe_eval_files.clone(),
+            maybe_eval.clone(),
+          )
+          .await?;
+          continue;
+        } else if line == ".help" {
+          print_help();
+          continue;
+        } else if line == ".exit" {
+          break;
+        }
+
         let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
         // We check for close and break here instead of making it a loop condition to get
