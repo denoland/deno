@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::TsConfig;
-use crate::diagnostics::Diagnostics;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::node;
@@ -39,6 +38,14 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+mod diagnostics;
+
+pub use self::diagnostics::Diagnostic;
+pub use self::diagnostics::DiagnosticCategory;
+pub use self::diagnostics::DiagnosticMessageChain;
+pub use self::diagnostics::Diagnostics;
+pub use self::diagnostics::Position;
 
 // Declaration files
 
@@ -797,10 +804,10 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 
 #[cfg(test)]
 mod tests {
+  use super::Diagnostic;
+  use super::DiagnosticCategory;
   use super::*;
   use crate::args::TsConfig;
-  use crate::diagnostics::Diagnostic;
-  use crate::diagnostics::DiagnosticCategory;
   use deno_core::futures::future;
   use deno_core::OpState;
   use deno_graph::ModuleKind;

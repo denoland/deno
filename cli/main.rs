@@ -7,7 +7,6 @@ mod cdp;
 mod checksum;
 mod deno_dir;
 mod deno_std;
-mod diagnostics;
 mod diff;
 mod display;
 mod emit;
