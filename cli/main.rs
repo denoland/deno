@@ -3,7 +3,6 @@
 mod args;
 mod auth_tokens;
 mod cache;
-mod cdp;
 mod checksum;
 mod deno_dir;
 mod deno_std;
