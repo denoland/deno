@@ -314,7 +314,7 @@
       case "httpConn":
         return "Close the inbound HTTP connection by calling `httpConn.close()`.";
       case "httpStream":
-        return "Close the inbound HTTP request by responding with `e.respondWith().` or closing the HTTP connection.";
+        return "Close the inbound HTTP request by responding with `e.respondWith()` or closing the HTTP connection.";
       case "tcpStream":
         return "Close the TCP connection by calling `tcpConn.close()`.";
       case "unixStream":
@@ -344,9 +344,9 @@
       case "childStdin":
         return "Close the child process stdin by calling `proc.stdin.close()`.";
       case "childStdout":
-        return "Close the child process stdout by calling `proc.stdout.close()`.";
+        return "Close the child process stdout by calling `proc.stdout.close()` or `await child.stdout.cancel()`.";
       case "childStderr":
-        return "Close the child process stderr by calling `proc.stderr.close()`.";
+        return "Close the child process stderr by calling `proc.stderr.close()` or `await child.stderr.cancel()`.";
       case "child":
         return "Close the child process by calling `proc.kill()` or `proc.close()`.";
       case "signal":
