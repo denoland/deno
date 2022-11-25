@@ -41,7 +41,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::deno_dir::DenoDir;
+use crate::cache::DenoDir;
 use crate::emit::get_ts_config_for_emit;
 use crate::emit::TsConfigType;
 use crate::emit::TsConfigWithIgnoredOptions;
