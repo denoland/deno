@@ -1,9 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-//! The collection of APIs to be able to take `deno_graph` module graphs and
-//! populate a cache, emit files, and transform a graph into the structures for
-//! loading into an isolate.
-
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
