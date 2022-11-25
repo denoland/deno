@@ -417,7 +417,7 @@ impl ReplEditor {
 
   pub fn update_history(&self, entry: String) {
     self.inner.lock().add_history_entry(entry);
-    if let Err(e) = self.inner.lock().save_history(&self.history_file_path) {
+    if let Err(e) = self.inner.lock().append_history(&self.history_file_path) {
       if self.errored_on_history_save.load(Relaxed) {
         return;
       }
