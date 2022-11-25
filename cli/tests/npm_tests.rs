@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+mod integration;
+
 use pretty_assertions::assert_eq;
 use std::process::Stdio;
 use test_util as util;

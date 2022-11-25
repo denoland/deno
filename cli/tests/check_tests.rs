@@ -1,10 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+mod integration;
+
 use std::process::Command;
 use std::process::Stdio;
-
-use crate::itest;
-
 use test_util as util;
 use util::TempDir;
 

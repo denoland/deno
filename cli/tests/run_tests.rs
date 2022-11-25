@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+mod integration;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use std::io::Read;
@@ -1879,6 +1880,7 @@ fn dont_cache_on_check_fail() {
 }
 
 mod permissions {
+  use super::itest;
   use test_util as util;
 
   // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
@@ -3350,7 +3352,7 @@ async fn http2_request_url() {
       assert_eq!(msg, "READY");
 
       let cert = reqwest::Certificate::from_pem(include_bytes!(
-        "../testdata/tls/RootCA.crt"
+        "./testdata/tls/RootCA.crt"
       ))
       .unwrap();
 
