@@ -35,6 +35,7 @@ use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
+use v8::HandleScope;
 
 pub enum InspectorMsgKind {
   Notification,
@@ -196,6 +197,20 @@ impl JsRuntimeInspector {
     drop(self_);
 
     self__
+  }
+
+  pub fn context_destroyed(
+    &mut self,
+    scope: &mut HandleScope,
+    context: v8::Global<v8::Context>,
+  ) {
+    let context = v8::Local::new(scope, context);
+    self
+      .v8_inspector
+      .borrow_mut()
+      .as_mut()
+      .unwrap()
+      .context_destroyed(context);
   }
 
   pub fn has_active_sessions(&self) -> bool {

@@ -1091,6 +1091,13 @@ impl JsRuntime {
         let inspector_has_active_sessions =
           self.inspector().borrow_mut().has_active_sessions();
         if wait_for_inspector && inspector_has_active_sessions {
+          let inspector = self.inspector().clone();
+          let context = self.global_context();
+          let scope = &mut self.handle_scope();
+          inspector
+            .borrow_mut()
+            .context_destroyed(scope, context);
+          eprintln!("Waiting for inspector to disconnect...");
           return Poll::Pending;
         }
       }
