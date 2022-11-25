@@ -122,7 +122,7 @@ mod ts {
       "esnext.intl",
     ];
 
-    let path_dts = cwd.join("dts");
+    let path_dts = cwd.join("tsc/dts");
     // ensure we invalidate the build properly.
     for name in libs.iter() {
       println!(
@@ -476,5 +476,8 @@ fn main() {
 
 fn deno_webgpu_get_declaration() -> PathBuf {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  manifest_dir.join("dts").join("lib.deno_webgpu.d.ts")
+  manifest_dir
+    .join("tsc")
+    .join("dts")
+    .join("lib.deno_webgpu.d.ts")
 }
