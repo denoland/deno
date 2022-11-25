@@ -7,6 +7,9 @@ use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
+use deno_core::serde_json::json;
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_core::Extension;
 use deno_core::ModuleId;
 use deno_runtime::colors;
@@ -38,6 +41,11 @@ pub struct CliMainWorker {
   is_main_cjs: bool,
   worker: MainWorker,
   ps: ProcState,
+
+  js_run_tests_callback: Option<v8::Global<v8::Function>>,
+  js_run_benchmarks_callback: Option<v8::Global<v8::Function>>,
+  js_enable_test_callback: Option<v8::Global<v8::Function>>,
+  js_enable_bench_callback: Option<v8::Global<v8::Function>>,
 }
 
 impl CliMainWorker {
@@ -168,7 +176,7 @@ impl CliMainWorker {
     &mut self,
     mode: TestMode,
   ) -> Result<(), AnyError> {
-    self.worker.enable_test();
+    self.enable_test();
 
     // Enable op call tracing in core to enable better debugging of op sanitizer
     // failures.
@@ -194,10 +202,7 @@ impl CliMainWorker {
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
-    self
-      .worker
-      .run_tests(&self.ps.options.shuffle_tests())
-      .await?;
+    self.run_tests(&self.ps.options.shuffle_tests()).await?;
     loop {
       if !self
         .worker
@@ -223,7 +228,7 @@ impl CliMainWorker {
     &mut self,
     mode: TestMode,
   ) -> Result<(), AnyError> {
-    self.worker.enable_test();
+    self.enable_test();
 
     self
       .worker
@@ -239,7 +244,7 @@ impl CliMainWorker {
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
-    self.worker.run_tests(&None).await?;
+    self.run_tests(&None).await?;
     loop {
       if !self
         .worker
@@ -254,13 +259,13 @@ impl CliMainWorker {
   }
 
   pub async fn run_bench_specifier(&mut self) -> Result<(), AnyError> {
-    self.worker.enable_bench();
+    self.enable_bench();
 
     // We execute the module module as a side module so that import.meta.main is not set.
     self.execute_side_module_possibly_with_npm().await?;
 
     self.worker.dispatch_load_event(&located_script_name!())?;
-    self.worker.run_benchmarks().await?;
+    self.run_benchmarks().await?;
     loop {
       if !self
         .worker
@@ -340,14 +345,104 @@ impl CliMainWorker {
       Ok(None)
     }
   }
+
+  /// Run tests declared with `Deno.test()`. Test events will be dispatched
+  /// by calling ops which are currently only implemented in the CLI crate.
+  pub async fn run_tests(
+    &mut self,
+    shuffle: &Option<u64>,
+  ) -> Result<(), AnyError> {
+    let promise = {
+      let scope = &mut self.worker.js_runtime.handle_scope();
+      let cb = self.js_run_tests_callback.as_ref().unwrap().open(scope);
+      let this = v8::undefined(scope).into();
+      let options =
+        serde_v8::to_v8(scope, json!({ "shuffle": shuffle })).unwrap();
+      let promise = cb.call(scope, this, &[options]).unwrap();
+      v8::Global::new(scope, promise)
+    };
+    self.worker.js_runtime.resolve_value(promise).await?;
+    Ok(())
+  }
+
+  /// Run benches declared with `Deno.bench()`. Bench events will be dispatched
+  /// by calling ops which are currently only implemented in the CLI crate.
+  pub async fn run_benchmarks(&mut self) -> Result<(), AnyError> {
+    let promise = {
+      let scope = &mut self.worker.js_runtime.handle_scope();
+      let cb = self
+        .js_run_benchmarks_callback
+        .as_ref()
+        .unwrap()
+        .open(scope);
+      let this = v8::undefined(scope).into();
+      let promise = cb.call(scope, this, &[]).unwrap();
+      v8::Global::new(scope, promise)
+    };
+    self.worker.js_runtime.resolve_value(promise).await?;
+    Ok(())
+  }
+
+  /// Enable `Deno.test()`. If this isn't called before executing user code,
+  /// `Deno.test()` calls will noop.
+  pub fn enable_test(&mut self) {
+    let scope = &mut self.worker.js_runtime.handle_scope();
+    let cb = self.js_enable_test_callback.as_ref().unwrap().open(scope);
+    let this = v8::undefined(scope).into();
+    cb.call(scope, this, &[]).unwrap();
+  }
+
+  /// Enable `Deno.bench()`. If this isn't called before executing user code,
+  /// `Deno.bench()` calls will noop.
+  pub fn enable_bench(&mut self) {
+    let scope = &mut self.worker.js_runtime.handle_scope();
+    let cb = self.js_enable_bench_callback.as_ref().unwrap().open(scope);
+    let this = v8::undefined(scope).into();
+    cb.call(scope, this, &[]).unwrap();
+  }
 }
 
 pub async fn create_main_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
   permissions: Permissions,
+) -> Result<CliMainWorker, AnyError> {
+  create_main_worker_internal(
+    ps,
+    main_module,
+    permissions,
+    vec![],
+    Default::default(),
+    false,
+  )
+  .await
+}
+
+pub async fn create_main_worker_for_test_or_bench(
+  ps: &ProcState,
+  main_module: ModuleSpecifier,
+  permissions: Permissions,
+  custom_extensions: Vec<Extension>,
+  stdio: deno_runtime::ops::io::Stdio,
+) -> Result<CliMainWorker, AnyError> {
+  create_main_worker_internal(
+    ps,
+    main_module,
+    permissions,
+    custom_extensions,
+    stdio,
+    true,
+  )
+  .await
+}
+
+async fn create_main_worker_internal(
+  ps: &ProcState,
+  main_module: ModuleSpecifier,
+  permissions: Permissions,
   mut custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
+  bench_or_test: bool,
 ) -> Result<CliMainWorker, AnyError> {
   let (main_module, is_main_cjs) = if let Ok(package_ref) =
     NpmPackageReference::from_specifier(&main_module)
@@ -426,7 +521,7 @@ pub async fn create_main_worker(
       inspect: ps.options.is_inspecting(),
     },
     extensions,
-    startup_snapshot: None,
+    startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: ps
       .options
       .unsafely_ignore_certificate_errors()
@@ -452,16 +547,59 @@ pub async fn create_main_worker(
     stdio,
   };
 
-  let worker = MainWorker::bootstrap_from_options(
+  let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),
     permissions,
     options,
   );
+
+  let (
+    js_run_tests_callback,
+    js_run_benchmarks_callback,
+    js_enable_test_callback,
+    js_enable_bench_callback,
+  ) = if bench_or_test {
+    let scope = &mut worker.js_runtime.handle_scope();
+    let js_run_tests_callback = deno_core::JsRuntime::eval::<v8::Function>(
+      scope,
+      "Deno[Deno.internal].testing.runTests",
+    )
+    .unwrap();
+    let js_run_benchmarks_callback =
+      deno_core::JsRuntime::eval::<v8::Function>(
+        scope,
+        "Deno[Deno.internal].testing.runBenchmarks",
+      )
+      .unwrap();
+    let js_enable_tests_callback = deno_core::JsRuntime::eval::<v8::Function>(
+      scope,
+      "Deno[Deno.internal].testing.enableTest",
+    )
+    .unwrap();
+    let js_enable_bench_callback = deno_core::JsRuntime::eval::<v8::Function>(
+      scope,
+      "Deno[Deno.internal].testing.enableBench",
+    )
+    .unwrap();
+    (
+      Some(v8::Global::new(scope, js_run_tests_callback)),
+      Some(v8::Global::new(scope, js_run_benchmarks_callback)),
+      Some(v8::Global::new(scope, js_enable_tests_callback)),
+      Some(v8::Global::new(scope, js_enable_bench_callback)),
+    )
+  } else {
+    (None, None, None, None)
+  };
+
   Ok(CliMainWorker {
     main_module,
     is_main_cjs,
     worker,
     ps: ps.clone(),
+    js_run_tests_callback,
+    js_run_benchmarks_callback,
+    js_enable_test_callback,
+    js_enable_bench_callback,
   })
 }
 
@@ -544,6 +682,7 @@ fn create_web_worker_callback(
         inspect: ps.options.is_inspecting(),
       },
       extensions,
+      startup_snapshot: Some(crate::js::deno_isolate_init()),
       unsafely_ignore_certificate_errors: ps
         .options
         .unsafely_ignore_certificate_errors()
@@ -576,4 +715,110 @@ fn create_web_worker_callback(
       options,
     )
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use deno_core::{resolve_url_or_path, FsModuleLoader};
+  use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+  use deno_runtime::deno_web::BlobStore;
+
+  fn create_test_worker() -> MainWorker {
+    let main_module = resolve_url_or_path("./hello.js").unwrap();
+    let permissions = Permissions::default();
+
+    let options = WorkerOptions {
+      bootstrap: BootstrapOptions {
+        args: vec![],
+        cpu_count: 1,
+        debug_flag: false,
+        enable_testing_features: false,
+        locale: deno_core::v8::icu::get_language_tag(),
+        location: None,
+        no_color: true,
+        is_tty: false,
+        runtime_version: "x".to_string(),
+        ts_version: "x".to_string(),
+        unstable: false,
+        user_agent: "x".to_string(),
+        inspect: false,
+      },
+      extensions: vec![],
+      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      unsafely_ignore_certificate_errors: None,
+      root_cert_store: None,
+      seed: None,
+      format_js_error_fn: None,
+      source_map_getter: None,
+      web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
+      web_worker_pre_execute_module_cb: Arc::new(|_| unreachable!()),
+      create_web_worker_cb: Arc::new(|_| unreachable!()),
+      maybe_inspector_server: None,
+      should_break_on_first_statement: false,
+      module_loader: Rc::new(FsModuleLoader),
+      npm_resolver: None,
+      get_error_class_fn: None,
+      cache_storage_dir: None,
+      origin_storage_dir: None,
+      blob_store: BlobStore::default(),
+      broadcast_channel: InMemoryBroadcastChannel::default(),
+      shared_array_buffer_store: None,
+      compiled_wasm_module_store: None,
+      stdio: Default::default(),
+    };
+
+    MainWorker::bootstrap_from_options(main_module, permissions, options)
+  }
+
+  #[tokio::test]
+  async fn execute_mod_esm_imports_a() {
+    let p = test_util::testdata_path().join("runtime/esm_imports_a.js");
+    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let mut worker = create_test_worker();
+    let result = worker.execute_main_module(&module_specifier).await;
+    if let Err(err) = result {
+      eprintln!("execute_mod err {:?}", err);
+    }
+    if let Err(e) = worker.run_event_loop(false).await {
+      panic!("Future got unexpected error: {:?}", e);
+    }
+  }
+
+  #[tokio::test]
+  async fn execute_mod_circular() {
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .parent()
+      .unwrap()
+      .join("tests/circular1.js");
+    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let mut worker = create_test_worker();
+    let result = worker.execute_main_module(&module_specifier).await;
+    if let Err(err) = result {
+      eprintln!("execute_mod err {:?}", err);
+    }
+    if let Err(e) = worker.run_event_loop(false).await {
+      panic!("Future got unexpected error: {:?}", e);
+    }
+  }
+
+  #[tokio::test]
+  async fn execute_mod_resolve_error() {
+    // "foo" is not a valid module specifier so this should return an error.
+    let mut worker = create_test_worker();
+    let module_specifier = resolve_url_or_path("does-not-exist").unwrap();
+    let result = worker.execute_main_module(&module_specifier).await;
+    assert!(result.is_err());
+  }
+
+  #[tokio::test]
+  async fn execute_mod_002_hello() {
+    // This assumes cwd is project root (an assumption made throughout the
+    // tests).
+    let mut worker = create_test_worker();
+    let p = test_util::testdata_path().join("run/001_hello.js");
+    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let result = worker.execute_main_module(&module_specifier).await;
+    assert!(result.is_ok());
+  }
 }

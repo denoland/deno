@@ -47,8 +47,6 @@ struct Op {
 
 impl Op {
   fn new(mut item: ItemFn, attrs: Attributes) -> Self {
-    add_scope_lifetime(&mut item);
-
     // Preserve the original function. Change the name to `call`.
     //
     // impl op_foo {
@@ -57,6 +55,8 @@ impl Op {
     // }
     let mut orig = item.clone();
     orig.sig.ident = Ident::new("call", Span::call_site());
+
+    add_scope_lifetime(&mut item);
 
     let is_async = item.sig.asyncness.is_some() || is_future(&item.sig.output);
     let type_params = exclude_lifetime_params(&item.sig.generics.params);

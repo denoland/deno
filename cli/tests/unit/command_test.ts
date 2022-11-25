@@ -724,10 +724,9 @@ Deno.test(function spawnSyncStdinPipedFails() {
 });
 
 Deno.test(
-  // TODO(bartlomieju): this test became flaky on Windows CI
-  // raising "PermissionDenied" instead of "NotFound".
+  // FIXME(bartlomieju): this test is very flaky on CI, fix it
   {
-    ignore: Deno.build.os === "windows",
+    ignore: true,
     permissions: { write: true, run: true, read: true },
   },
   async function commandChildUnref() {

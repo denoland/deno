@@ -1703,8 +1703,7 @@ fn exec_path() {
     .unwrap();
   assert!(output.status.success());
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
-  let actual =
-    std::fs::canonicalize(&std::path::Path::new(stdout_str)).unwrap();
+  let actual = std::fs::canonicalize(std::path::Path::new(stdout_str)).unwrap();
   let expected = std::fs::canonicalize(util::deno_exe_path()).unwrap();
   assert_eq!(expected, actual);
 }
@@ -3647,4 +3646,15 @@ itest!(no_lock_flag {
 itest!(flash_shutdown {
   args: "run --unstable --allow-net run/flash_shutdown/main.ts",
   exit_code: 0,
+});
+
+itest!(permission_args {
+  args: "run run/001_hello.js --allow-net",
+  output: "run/permission_args.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(permission_args_quiet {
+  args: "run --quiet run/001_hello.js --allow-net",
+  output: "run/001_hello.js.out",
 });

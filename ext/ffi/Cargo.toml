@@ -2,24 +2,24 @@
 
 [package]
 name = "deno_ffi"
-version = "0.65.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.66.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "Dynamic library ffi for deno"
 
 [lib]
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.160.0", path = "../../core" }
-dlopen = "0.1.8"
+deno_core.workspace = true
+dlopen.workspace = true
 dynasmrt = "1.2.3"
 libffi = "3.0.0"
-serde = { version = "1.0.129", features = ["derive"] }
-tokio = { version = "1.21", features = ["full"] }
+serde.workspace = true
+tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3.9", features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }
+winapi = { workspace = true, features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }

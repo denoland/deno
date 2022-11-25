@@ -140,7 +140,7 @@ impl CliModuleLoader {
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path).with_context(|| {
         let mut msg = "Unable to load ".to_string();
-        msg.push_str(&*file_path.to_string_lossy());
+        msg.push_str(&file_path.to_string_lossy());
         if let Some(referrer) = &maybe_referrer {
           msg.push_str(" imported from ");
           msg.push_str(referrer.as_str());

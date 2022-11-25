@@ -126,8 +126,7 @@ pub fn merge_functions(
       trees.push(tree);
     }
   }
-  let merged =
-    RangeTree::normalize(&rta, merge_range_trees(&rta, trees).unwrap());
+  let merged = RangeTree::normalize(merge_range_trees(&rta, trees).unwrap());
   let ranges = merged.to_ranges();
   let is_block_coverage: bool = !(ranges.len() == 1 && ranges[0].count == 0);
 

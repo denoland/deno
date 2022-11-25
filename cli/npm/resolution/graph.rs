@@ -139,6 +139,11 @@ struct Node {
   pub parents: BTreeMap<String, BTreeSet<NodeParent>>,
   pub children: BTreeMap<String, NpmPackageId>,
   pub deps: Arc<Vec<NpmDependencyEntry>>,
+  /// Whether the node has demonstrated to have no peer dependencies in its
+  /// descendants. If this is true then we can skip analyzing this node
+  /// again when we encounter it another time in the dependency tree, which
+  /// is much faster.
+  pub no_peers: bool,
 }
 
 impl Node {
@@ -225,6 +230,7 @@ impl Graph {
         parents: Default::default(),
         children: Default::default(),
         deps: Default::default(),
+        no_peers: false,
       }));
       self
         .packages_by_name
@@ -492,7 +498,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     package_info: &NpmPackageInfo,
     parent_id: &NpmPackageId,
     visited_versions: &Arc<VisitedVersionsPath>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<Arc<Mutex<Node>>, AnyError> {
     let node = self.resolve_node_from_info(
       &entry.name,
       match entry.kind {
@@ -515,7 +521,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       &NodeParent::Node(parent_id.clone()),
     );
     self.try_add_pending_unresolved_node(Some(visited_versions), &node);
-    Ok(())
+    Ok(node)
   }
 
   fn try_add_pending_unresolved_node(
@@ -523,7 +529,13 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     maybe_previous_visited_versions: Option<&Arc<VisitedVersionsPath>>,
     node: &Arc<Mutex<Node>>,
   ) {
-    let node_id = node.lock().id.clone();
+    let node_id = {
+      let node = node.lock();
+      if node.no_peers {
+        return; // skip, no need to analyze this again
+      }
+      node.id.clone()
+    };
     let visited_versions = match maybe_previous_visited_versions {
       Some(previous_visited_versions) => {
         match previous_visited_versions.with_id(&node_id) {
@@ -576,6 +588,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       // so these are resolved in that order
       deps.sort();
       node.deps = Arc::new(deps);
+      node.no_peers = node.deps.is_empty();
     }
 
     Ok(node)
@@ -589,8 +602,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       {
         let (mut parent_id, deps, existing_children) = {
           let parent_node = parent_node.lock();
-          if parent_node.forgotten {
-            // todo(dsherret): we should try to reproduce this scenario and write a test
+          if parent_node.forgotten || parent_node.no_peers {
+            // todo(dsherret): we should try to reproduce this forgotten scenario and write a test
             continue;
           }
 
@@ -622,20 +635,25 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         }
 
         // resolve the dependencies
+        let mut found_peer = false;
         for dep in deps.iter() {
           let package_info = self.api.package_info(&dep.name).await?;
 
           match dep.kind {
             NpmDependencyEntryKind::Dep => {
-              self.analyze_dependency(
+              let node = self.analyze_dependency(
                 dep,
                 &package_info,
                 &parent_id,
                 &visited_versions,
               )?;
+              if !found_peer {
+                found_peer = !node.lock().no_peers;
+              }
             }
             NpmDependencyEntryKind::Peer
             | NpmDependencyEntryKind::OptionalPeer => {
+              found_peer = true;
               let maybe_new_parent_id = self.resolve_peer_dep(
                 &dep.bare_specifier,
                 &parent_id,
@@ -653,6 +671,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
               }
             }
           }
+        }
+
+        if !found_peer {
+          self.graph.borrow_node(&parent_id).no_peers = true;
         }
       }
     }
@@ -814,13 +836,15 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     path: &Arc<GraphSpecifierPath>,
     visited_ancestor_versions: &Arc<VisitedVersionsPath>,
   ) -> NpmPackageId {
-    let mut peer_dep_id = Cow::Borrowed(peer_dep_id);
+    let peer_dep_id = Cow::Borrowed(peer_dep_id);
     let old_id = node_id;
     let (new_id, mut old_node_children) =
-      if old_id.peer_dependencies.contains(&peer_dep_id) {
+      if old_id.peer_dependencies.contains(&peer_dep_id)
+        || *old_id == *peer_dep_id
+      {
         // the parent has already resolved to using this peer dependency
-        // via some other path, so we don't need to update its ids,
-        // but instead only make a link to it
+        // via some other path or the parent is the peer dependency,
+        // so we don't need to update its ids, but instead only make a link to it
         (
           old_id.clone(),
           self.graph.borrow_node(old_id).children.clone(),
@@ -828,11 +852,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       } else {
         let mut new_id = old_id.clone();
         new_id.peer_dependencies.push(peer_dep_id.as_ref().clone());
-
-        // this will happen for circular dependencies
-        if *old_id == *peer_dep_id {
-          peer_dep_id = Cow::Owned(new_id.clone());
-        }
 
         // remove the previous parents from the old node
         let old_node_children = {
@@ -1927,28 +1946,22 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          id: NpmPackageId::from_serialized("package-a@1.0.0_package-a@1.0.0")
-            .unwrap(),
+          id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-b".to_string(),
-            NpmPackageId::from_serialized(
-              "package-b@2.0.0_package-a@1.0.0__package-a@1.0.0"
-            )
-            .unwrap(),
+            NpmPackageId::from_serialized("package-b@2.0.0_package-a@1.0.0")
+              .unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          id: NpmPackageId::from_serialized(
-            "package-b@2.0.0_package-a@1.0.0__package-a@1.0.0"
-          )
-          .unwrap(),
+          id: NpmPackageId::from_serialized("package-b@2.0.0_package-a@1.0.0")
+            .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-a".to_string(),
-            NpmPackageId::from_serialized("package-a@1.0.0_package-a@1.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
           )]),
           dist: Default::default(),
         },
@@ -1956,10 +1969,7 @@ mod test {
     );
     assert_eq!(
       package_reqs,
-      vec![(
-        "package-a@1.0".to_string(),
-        "package-a@1.0.0_package-a@1.0.0".to_string()
-      )]
+      vec![("package-a@1.0".to_string(), "package-a@1.0.0".to_string())]
     );
   }
 
