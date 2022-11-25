@@ -9,8 +9,8 @@ use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use std::sync::Arc;
 
-/// A hashing function that takes the source code, version and optionally a
-/// user provided config and generates a string hash which can be stored to
+/// A hashing function that takes the source code and emit options
+/// hash then generates a string hash which can be stored to
 /// determine if the cached emit is valid or not.
 fn get_source_hash(source_text: &str, emit_options_hash: u64) -> u64 {
   FastInsecureHasher::new()
