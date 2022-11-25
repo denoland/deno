@@ -452,9 +452,13 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
       Ok(b) => {
         // Handles detached buffers.
         let byte_length = b.byte_length();
-        let store = b.data().unwrap().cast::<u8>().as_ptr();
-        // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
-        unsafe { ::std::slice::from_raw_parts_mut(store, byte_length) }
+        if let Some(data) = b.data() {
+          let store = data.cast::<u8>().as_ptr();
+          // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
+          unsafe { ::std::slice::from_raw_parts_mut(store, byte_length) }
+        } else {
+          &mut []
+        }
       },
       Err(_) => {
         if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
@@ -466,9 +470,13 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
                 return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
               }
           };
-          let store = buffer.data().unwrap().cast::<u8>().as_ptr();
-          // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
-          unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
+          if let Some(data) = buffer.data() {
+            let store = data.cast::<u8>().as_ptr();
+            // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
+            unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
+          } else {
+            &mut []
+          }
         } else {
           return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
         }
@@ -487,9 +495,13 @@ fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
             return #core::_ops::throw_type_error(scope, format!("Expected Uint32Array at position {}", #idx));
           }
       };
-      let store = buffer.data().unwrap().cast::<u8>().as_ptr();
-      // SAFETY: buffer from Uint32Array. Rust guarantees that lifetime of slice is no longer than the call.
-      unsafe { ::std::slice::from_raw_parts_mut(store.add(offset) as *mut u32, len / 4) }
+      if let Some(data) = buffer.data() {
+        let store = data.cast::<u8>().as_ptr();
+        // SAFETY: buffer from Uint32Array. Rust guarantees that lifetime of slice is no longer than the call.
+        unsafe { ::std::slice::from_raw_parts_mut(store.add(offset) as *mut u32, len / 4) }
+      } else {
+        &mut []
+      }
     } else {
       return #core::_ops::throw_type_error(scope, format!("Expected Uint32Array at position {}", #idx));
     }
