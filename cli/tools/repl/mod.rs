@@ -6,6 +6,7 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use rustyline::error::ReadlineError;
 
+mod cdp;
 mod channel;
 mod editor;
 mod session;
