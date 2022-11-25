@@ -452,9 +452,7 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
       Ok(b) => {
         // Handles detached buffers.
         let byte_length = b.byte_length();
-        let data = b.data();
-        assert!(data.is_some());
-        let store = data.unwrap().cast::<u8>().as_ptr();
+        let store = b.data().unwrap().cast::<u8>().as_ptr();
         // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
         unsafe { ::std::slice::from_raw_parts_mut(store, byte_length) }
       },
@@ -468,9 +466,7 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
                 return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
               }
           };
-          let data = buffer.data();
-          assert!(data.is_some());
-          let store = data.unwrap().cast::<u8>().as_ptr();
+          let store = buffer.data().unwrap().cast::<u8>().as_ptr();
           // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
           unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
         } else {
@@ -491,9 +487,7 @@ fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
             return #core::_ops::throw_type_error(scope, format!("Expected Uint32Array at position {}", #idx));
           }
       };
-      let data = buffer.data();
-      assert!(data.is_some());
-      let store = data.unwrap().cast::<u8>().as_ptr();
+      let store = buffer.data().unwrap().cast::<u8>().as_ptr();
       // SAFETY: buffer from Uint32Array. Rust guarantees that lifetime of slice is no longer than the call.
       unsafe { ::std::slice::from_raw_parts_mut(store.add(offset) as *mut u32, len / 4) }
     } else {
