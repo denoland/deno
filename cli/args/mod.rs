@@ -16,6 +16,9 @@ pub use config_file::MaybeImportsResult;
 pub use config_file::ProseWrap;
 pub use config_file::TestConfig;
 pub use config_file::TsConfig;
+pub use config_file::TsConfigForEmit;
+pub use config_file::TsConfigType;
+pub use config_file::TsTypeLib;
 pub use flags::*;
 
 use deno_ast::ModuleSpecifier;
@@ -38,10 +41,6 @@ use std::sync::Arc;
 
 use crate::args::config_file::JsxImportSourceConfig;
 use crate::deno_dir::DenoDir;
-use crate::emit::get_ts_config_for_emit;
-use crate::emit::TsConfigType;
-use crate::emit::TsConfigWithIgnoredOptions;
-use crate::emit::TsTypeLib;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
@@ -188,8 +187,11 @@ impl CliOptions {
   pub fn resolve_ts_config_for_emit(
     &self,
     config_type: TsConfigType,
-  ) -> Result<TsConfigWithIgnoredOptions, AnyError> {
-    get_ts_config_for_emit(config_type, self.maybe_config_file.as_ref())
+  ) -> Result<TsConfigForEmit, AnyError> {
+    config_file::get_ts_config_for_emit(
+      config_type,
+      self.maybe_config_file.as_ref(),
+    )
   }
 
   /// Resolves the storage key to use based on the current flags, config, or main module.

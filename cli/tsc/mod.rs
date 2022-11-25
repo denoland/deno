@@ -85,7 +85,7 @@ pub fn compiler_snapshot() -> Snapshot {
 
 macro_rules! inc {
   ($e:expr) => {
-    include_str!(concat!("dts/", $e))
+    include_str!(concat!("./dts/", $e))
   };
 }
 
