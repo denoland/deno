@@ -3,6 +3,9 @@
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::Lockfile;
+use crate::args::TsConfigType;
+use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::cache::EmitCache;
@@ -12,16 +15,12 @@ use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
 use crate::deno_dir;
 use crate::emit::emit_parsed_source;
-use crate::emit::TsConfigType;
-use crate::emit::TsTypeLib;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::http_cache;
 use crate::http_util::HttpClient;
-use crate::lockfile::as_maybe_locker;
-use crate::lockfile::Lockfile;
 use crate::node;
 use crate::node::NodeResolution;
 use crate::npm::resolve_npm_package_reqs;
@@ -330,7 +329,7 @@ impl ProcState {
       root_permissions.clone(),
       dynamic_permissions.clone(),
     );
-    let maybe_locker = as_maybe_locker(self.lockfile.clone());
+    let maybe_locker = Lockfile::as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_resolver =
       self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
@@ -640,7 +639,7 @@ impl ProcState {
     roots: Vec<(ModuleSpecifier, ModuleKind)>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let maybe_locker = as_maybe_locker(self.lockfile.clone());
+    let maybe_locker = Lockfile::as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
 
     let maybe_cli_resolver = CliResolver::maybe_new(
