@@ -1160,7 +1160,6 @@ dependencies = [
 name = "deno_ops"
 version = "0.39.0"
 dependencies = [
- "deno_core",
  "once_cell",
  "pmutil",
  "prettyplease",
