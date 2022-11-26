@@ -495,7 +495,13 @@ fn codegen_u8_ptr(core: &TokenStream2, idx: usize) -> TokenStream2 {
   quote! {{
     let value = args.get(#idx as i32);
     match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
-      Ok(b) => b.data() as *const u8,
+      Ok(b) => {
+        if let Some(data) = b.data() {
+          data.cast::<u8>().as_ptr()
+        } else {
+          0 as *const u8
+        }
+      },
       Err(_) => {
         if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
           let offset = view.byte_offset();
@@ -505,7 +511,11 @@ fn codegen_u8_ptr(core: &TokenStream2, idx: usize) -> TokenStream2 {
                 return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
               }
           };
-          let store = buffer.data() as *mut u8;
+          let store = if let Some(data) = buffer.data() {
+            data.cast::<u8>().as_ptr()
+          } else {
+            0 as *mut u8
+          };
           unsafe { store.add(offset) }
         } else {
           return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
