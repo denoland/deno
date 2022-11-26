@@ -183,12 +183,13 @@ impl JsRuntimeInspector {
     // Tell the inspector about the global context.
     let context = v8::Local::new(scope, context);
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
+    let aux_data = v8::inspector::StringView::from(&b""[..]);
     self_
       .v8_inspector
       .borrow_mut()
       .as_mut()
       .unwrap()
-      .context_created(context, Self::CONTEXT_GROUP_ID, context_name);
+      .context_created(context, Self::CONTEXT_GROUP_ID, context_name, aux_data);
 
     // Poll the session handler so we will get notified whenever there is
     // new incoming debugger activity.
