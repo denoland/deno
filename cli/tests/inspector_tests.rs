@@ -303,7 +303,6 @@ mod inspector {
       .unwrap();
 
     let msg = ws_read_msg(&mut socket).await;
-    println!("response msg 1 {}", msg);
     assert_starts_with!(msg, r#"{"id":6,"result":{"debuggerId":"#);
 
     socket
@@ -312,7 +311,6 @@ mod inspector {
       .unwrap();
 
     let msg = ws_read_msg(&mut socket).await;
-    println!("response msg 2 {}", msg);
     assert_eq!(msg, r#"{"id":31,"result":{}}"#);
 
     child.kill().unwrap();
@@ -546,6 +544,10 @@ mod inspector {
       .filter(|s| !s.starts_with("Deno "));
 
     assert_stderr_for_inspect(&mut stderr_lines);
+    assert_eq!(
+      &stdout_lines.next().unwrap(),
+      "exit using ctrl+d, ctrl+c, or close()"
+    );
 
     assert_inspector_messages(
     &mut socket_tx,
@@ -564,11 +566,6 @@ mod inspector {
   )
   .await;
 
-    assert_eq!(
-      &stdout_lines.next().unwrap(),
-      "exit using ctrl+d, ctrl+c, or close()"
-    );
-
     assert_inspector_messages(
     &mut socket_tx,
     &[
@@ -577,7 +574,6 @@ mod inspector {
     &mut socket_rx,
     &[r#"{"id":3,"result":{}}"#], &[]
   ).await;
-
     assert_inspector_messages(
     &mut socket_tx,
     &[
@@ -587,7 +583,6 @@ mod inspector {
     &[r#"{"id":4,"result":{"result":{"type":"string","value":""#],
     &[],
   ).await;
-
     assert_inspector_messages(
     &mut socket_tx,
     &[
@@ -597,9 +592,7 @@ mod inspector {
     &[r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#],
     &[r#"{"method":"Runtime.consoleAPICalled"#],
   ).await;
-
     assert_eq!(&stderr_lines.next().unwrap(), "done");
-
     drop(stdin);
     child.wait().unwrap();
   }
@@ -904,6 +897,26 @@ mod inspector {
 
     assert_eq!(&stdout_lines.next().unwrap(), "hello");
     assert_eq!(&stdout_lines.next().unwrap(), "world");
+
+    assert_inspector_messages(
+      &mut socket_tx,
+      &[],
+      &mut socket_rx,
+      &[],
+      &[
+        r#"{"method":"Debugger.resumed","params":{}}"#,
+        r#"{"method":"Runtime.consoleAPICalled","#,
+        r#"{"method":"Runtime.consoleAPICalled","#,
+        r#"{"method":"Runtime.executionContextDestroyed","params":{"executionContextId":1}}"#,
+      ],
+    )
+    .await;
+    let line = &stdout_lines.next().unwrap();
+
+    assert_eq!(
+      line,
+      "Program finished. Waiting for inspector to disconnect to exit the process..."
+    );
 
     child.kill().unwrap();
     child.wait().unwrap();
