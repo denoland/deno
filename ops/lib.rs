@@ -432,6 +432,13 @@ fn codegen_arg(
       };
     }
   }
+  // Fast path for `*const u8`
+  if is_ptr_u8(&**ty) {
+    let blk = codegen_u8_ptr(core, idx);
+    return quote! {
+      let #ident = #blk;
+    };
+  }
   // Otherwise deserialize it via serde_v8
   quote! {
     let #ident = args.get(#idx as i32);
@@ -450,7 +457,6 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
     let value = args.get(#idx as i32);
     match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
       Ok(b) => {
-        // Handles detached buffers.
         let byte_length = b.byte_length();
         let store = b.data() as *mut u8;
         // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
@@ -475,6 +481,30 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
       }
     }}
   }
+}
+
+fn codegen_u8_ptr(core: &TokenStream2, idx: usize) -> TokenStream2 {
+  quote! {{
+    let value = args.get(#idx as i32);
+    match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
+      Ok(b) => b.data() as *const u8,
+      Err(_) => {
+        if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
+          let offset = view.byte_offset();
+          let buffer = match view.buffer(scope) {
+              Some(v) => v,
+              None => {
+                return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+              }
+          };
+          let store = buffer.data() as *mut u8;
+          unsafe { store.add(offset) }
+        } else {
+          return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+        }
+      }
+    }
+  }}
 }
 
 fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
@@ -600,6 +630,10 @@ fn is_u8_slice_mut(ty: impl ToTokens) -> bool {
 
 fn is_u32_slice_mut(ty: impl ToTokens) -> bool {
   tokens(ty) == "& mut [u32]"
+}
+
+fn is_ptr_u8(ty: impl ToTokens) -> bool {
+  tokens(ty) == "* const u8"
 }
 
 fn is_optional_fast_callback_option(ty: impl ToTokens) -> bool {
