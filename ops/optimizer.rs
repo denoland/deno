@@ -9,7 +9,7 @@ use syn::{
   parse_quote, punctuated::Punctuated, token::Colon2,
   AngleBracketedGenericArguments, FnArg, GenericArgument, PatType, Path,
   PathArguments, PathSegment, ReturnType, Signature, Type, TypePath,
-  TypeReference, TypeSlice,
+  TypeReference, TypeSlice, TypeTuple,
 };
 
 #[derive(Debug)]
@@ -275,6 +275,9 @@ impl Optimizer {
 
   fn analyze_return_type(&mut self, ty: &Type) -> Result<(), BailoutReason> {
     match ty {
+      Type::Tuple(TypeTuple { elems, .. }) if elems.is_empty() => {
+        self.fast_result = Some(FastValue::Void);
+      }
       Type::Path(TypePath {
         path: Path { segments, .. },
         ..
@@ -309,6 +312,14 @@ impl Optimizer {
 
                   self.fast_compatible = false;
                   return Err(BailoutReason::FastUnsupportedParamType);
+                }
+                Some(GenericArgument::Type(Type::Tuple(TypeTuple {
+                  elems,
+                  ..
+                })))
+                  if elems.is_empty() =>
+                {
+                  self.fast_result = Some(FastValue::Void);
                 }
                 _ => return Err(BailoutReason::FastUnsupportedParamType),
               }
