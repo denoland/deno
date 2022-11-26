@@ -173,7 +173,10 @@ pub(crate) struct Optimizer {
 
   pub(crate) has_rc_opstate: bool,
 
+  // Do we need an explict FastApiCallbackOptions argument?
   pub(crate) has_fast_callback_option: bool,
+  // Do we depend on FastApiCallbackOptions?
+  pub(crate) needs_fast_callback_option: bool,
 
   pub(crate) fast_result: Option<FastValue>,
   pub(crate) fast_parameters: Vec<FastValue>,
@@ -194,6 +197,11 @@ impl Debug for Optimizer {
       f,
       "has_fast_callback_option: {}",
       self.has_fast_callback_option
+    )?;
+    writeln!(
+      f,
+      "needs_fast_callback_option: {}",
+      self.needs_fast_callback_option
     )?;
     writeln!(f, "fast_result: {:?}", self.fast_result)?;
     writeln!(f, "fast_parameters: {:?}", self.fast_parameters)?;
@@ -509,6 +517,7 @@ impl Optimizer {
               match segment {
                 // Is `T` a u8?
                 PathSegment { ident, .. } if ident == "u8" => {
+                  self.needs_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint8Array);
                   assert!(self
                     .transforms
@@ -517,6 +526,7 @@ impl Optimizer {
                 }
                 // Is `T` a u32?
                 PathSegment { ident, .. } if ident == "u32" => {
+                  self.needs_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint32Array);
                   assert!(self
                     .transforms

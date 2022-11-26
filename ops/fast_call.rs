@@ -141,6 +141,7 @@ pub(crate) fn generate(
   if optimizer.has_fast_callback_option
     || optimizer.needs_opstate()
     || optimizer.is_async
+    || optimizer.needs_fast_callback_option
   {
     let decl = parse_quote! {
       fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions
