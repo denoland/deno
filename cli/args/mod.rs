@@ -1,7 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-pub mod config_file;
-pub mod flags;
+mod config_file;
+mod flags;
+mod lockfile;
 
 mod flags_allow_net;
 
@@ -10,13 +11,20 @@ pub use config_file::ConfigFile;
 pub use config_file::EmitConfigOptions;
 pub use config_file::FmtConfig;
 pub use config_file::FmtOptionsConfig;
+pub use config_file::IgnoredCompilerOptions;
+pub use config_file::JsxImportSourceConfig;
 pub use config_file::LintConfig;
 pub use config_file::LintRulesConfig;
 pub use config_file::MaybeImportsResult;
 pub use config_file::ProseWrap;
 pub use config_file::TestConfig;
 pub use config_file::TsConfig;
+pub use config_file::TsConfigForEmit;
+pub use config_file::TsConfigType;
+pub use config_file::TsTypeLib;
 pub use flags::*;
+pub use lockfile::Lockfile;
+pub use lockfile::LockfileError;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
@@ -36,16 +44,10 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::args::config_file::JsxImportSourceConfig;
-use crate::deno_dir::DenoDir;
-use crate::emit::get_ts_config_for_emit;
-use crate::emit::TsConfigType;
-use crate::emit::TsConfigWithIgnoredOptions;
-use crate::emit::TsTypeLib;
+use crate::cache::DenoDir;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
-use crate::lockfile::Lockfile;
 use crate::version;
 
 /// Overrides for the options below that when set will
@@ -188,8 +190,11 @@ impl CliOptions {
   pub fn resolve_ts_config_for_emit(
     &self,
     config_type: TsConfigType,
-  ) -> Result<TsConfigWithIgnoredOptions, AnyError> {
-    get_ts_config_for_emit(config_type, self.maybe_config_file.as_ref())
+  ) -> Result<TsConfigForEmit, AnyError> {
+    config_file::get_ts_config_for_emit(
+      config_type,
+      self.maybe_config_file.as_ref(),
+    )
   }
 
   /// Resolves the storage key to use based on the current flags, config, or main module.

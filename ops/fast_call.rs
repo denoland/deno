@@ -432,7 +432,7 @@ mod tests {
   #[testing_macros::fixture("optimizer_tests/**/*.rs")]
   fn test_fast_call_codegen(input: PathBuf) {
     let update_expected = std::env::var("UPDATE_EXPECTED").is_ok();
-    let core = crate::deno::import();
+    let core = quote!(deno_core);
 
     let source =
       std::fs::read_to_string(&input).expect("Failed to read test file");
