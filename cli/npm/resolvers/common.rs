@@ -11,7 +11,7 @@ use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
 
-use crate::lockfile::Lockfile;
+use crate::args::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
