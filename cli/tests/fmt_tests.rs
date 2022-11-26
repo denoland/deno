@@ -239,9 +239,9 @@ mod fmt {
 
   // Check if CLI flags take precedence
   itest!(fmt_with_config_and_flags {
-  args: "fmt --config fmt/with_config/deno.jsonc --ignore=fmt/with_config/subdir/a.ts,fmt/with_config/subdir/b.ts",
-  output: "fmt/fmt_with_config_and_flags.out",
-});
+    args: "fmt --config fmt/with_config/deno.jsonc --ignore=fmt/with_config/subdir/a.ts,fmt/with_config/subdir/b.ts",
+    output: "fmt/fmt_with_config_and_flags.out",
+  });
 
   itest!(fmt_with_malformed_config {
     args: "fmt --config fmt/deno.malformed.jsonc",

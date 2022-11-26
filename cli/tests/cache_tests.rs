@@ -7,8 +7,8 @@ mod cache {
   itest!(_036_import_map_fetch {
   args:
     "cache --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
-  output: "cache/036_import_map_fetch.out",
-});
+    output: "cache/036_import_map_fetch.out",
+  });
 
   itest!(_037_fetch_multiple {
     args: "cache --reload --check=all run/fetch/test.ts run/fetch/other.ts",

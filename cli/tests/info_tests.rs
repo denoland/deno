@@ -84,10 +84,10 @@ mod init {
   });
 
   itest!(import_map_info {
-  args:
-    "info --quiet --import-map=import_maps/import_map.json import_maps/test.ts",
-  output: "info/065_import_map_info.out",
-});
+    args:
+      "info --quiet --import-map=import_maps/import_map.json import_maps/test.ts",
+    output: "info/065_import_map_info.out",
+  });
 
   itest!(info_json_deps_order {
     args: "info --unstable --json info/076_info_json_deps_order.ts",
@@ -130,7 +130,7 @@ mod init {
   });
 
   itest!(with_config_override {
-  args: "info info/with_config/test.ts --config info/with_config/deno-override.json --import-map info/with_config/import_map.json",
-  output: "info/with_config/with_config.out",
-});
+    args: "info info/with_config/test.ts --config info/with_config/deno-override.json --import-map info/with_config/import_map.json",
+    output: "info/with_config/with_config.out",
+  });
 }
