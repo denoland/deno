@@ -559,6 +559,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
   )
   .await;
 
+  assert_eq!(&stdout_lines.next().unwrap(), "Run repl.help() for help");
   assert_eq!(
     &stdout_lines.next().unwrap(),
     "exit using ctrl+d, ctrl+c, or close()"

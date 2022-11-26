@@ -50,9 +50,9 @@ globalThis.repl = {
     console.log("%cAvailable functions:", "font-style: italic");
     console.log("%crepl.help()", "color: green;", "                 Print this message");
     console.log("%crepl.reload()", "color: green;", "               Create a new session without exiting the REPL");
-    console.log("%crepl.exit()", "color: green;", "                 Exit the REPL");
     console.log("%crepl.save(maybeFilename)", "color: green;", "    Save the current session to a file");
     console.log("%cclear()", "color: green;", "                     Clear screen");
+    console.log("%cclose()", "color: green;", "                     Exit the REPL");
     console.log("");
     console.log("%cAvailable variables:", "font-style: italic");
     console.log("%c_", "color: green;", "                           Last evaluation result");
@@ -63,7 +63,7 @@ globalThis.repl = {
     Deno.core.ops.op_repl_reload();
   },
 
-  exit: () => {
+  close: () => {
     close();
   },
 

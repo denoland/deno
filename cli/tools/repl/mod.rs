@@ -201,7 +201,7 @@ pub async fn run(
   let editor = ReplEditor::new(helper, history_file_path)?;
 
   println!("Deno {}", crate::version::deno());
-  println!("Run repl.help() to see help");
+  println!("Run repl.help() for help");
   println!("Exit using ctrl+d, ctrl+c, or close()");
 
   let mut session_history: Vec<String> = vec![];
