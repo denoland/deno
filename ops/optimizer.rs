@@ -8,8 +8,8 @@ use std::fmt::Formatter;
 use syn::{
   parse_quote, punctuated::Punctuated, token::Colon2,
   AngleBracketedGenericArguments, FnArg, GenericArgument, PatType, Path,
-  PathArguments, PathSegment, ReturnType, Signature, Type, TypePath,
-  TypeReference, TypeSlice, TypeTuple, TypePtr,
+  PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypePtr,
+  TypeReference, TypeSlice, TypeTuple,
 };
 
 #[derive(Debug)]
