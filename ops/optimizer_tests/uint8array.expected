@@ -6,6 +6,6 @@ has_fast_callback_option: false
 needs_fast_callback_option: true
 fast_result: Some(Bool)
 fast_parameters: [V8Value, Uint8Array, Uint8Array]
-transforms: {1: Transform { kind: SliceU8(true), index: 1 }, 0: Transform { kind: SliceU8(false), index: 0 }}
+transforms: {0: Transform { kind: SliceU8(false), index: 0 }, 1: Transform { kind: SliceU8(true), index: 1 }}
 is_async: false
 fast_compatible: true
