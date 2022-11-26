@@ -1094,10 +1094,8 @@ impl JsRuntime {
           let inspector = self.inspector().clone();
           let context = self.global_context();
           let scope = &mut self.handle_scope();
-          inspector
-            .borrow_mut()
-            .context_destroyed(scope, context);
-          eprintln!("Waiting for inspector to disconnect...");
+          inspector.borrow_mut().context_destroyed(scope, context);
+          eprintln!("Program finished. Waiting for inspector to disconnect to exit the process...");
           return Poll::Pending;
         }
       }
