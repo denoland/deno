@@ -93,6 +93,7 @@ use npm::NpmPackageReference;
 use std::env;
 use std::io::Read;
 use std::iter::once;
+use std::panic::panic_any;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -588,6 +589,10 @@ async fn repl_command(
   flags: Flags,
   repl_flags: ReplFlags,
 ) -> Result<i32, AnyError> {
+  if !atty::is(atty::Stream::Stdout) {
+    panic_any(InvalidPiping {});
+  }
+
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let ps = ProcState::build(flags).await?;
   let mut worker = create_main_worker(
@@ -758,6 +763,10 @@ async fn test_command(
   flags: Flags,
   test_flags: TestFlags,
 ) -> Result<i32, AnyError> {
+  if !atty::is(atty::Stream::Stdout) {
+    panic_any(InvalidPiping {});
+  }
+
   if let Some(ref coverage_dir) = flags.coverage_dir {
     std::fs::create_dir_all(coverage_dir)?;
     env::set_var(
@@ -901,7 +910,13 @@ fn get_subcommand(
   }
 }
 
+/// An exception that is thrown by subcommands that don't support piping, but are nevertheless piped by the user.
+struct InvalidPiping {}
+
 fn setup_panic_hook() {
+  let is_invalid_piping = |payload: &dyn std::any::Any| {
+    payload.downcast_ref::<InvalidPiping>().is_some()
+  };
   // This function does two things inside of the panic hook:
   // - Tokio does not exit the process when a task panics, so we define a custom
   //   panic hook to implement this behaviour.
@@ -909,18 +924,24 @@ fn setup_panic_hook() {
   //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
-    eprintln!("\n============================================================");
-    eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
-    eprintln!("at https://github.com/denoland/deno/issues/new.");
-    eprintln!("If you can reliably reproduce this panic, include the");
-    eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
-    eprintln!("var set and include the backtrace in your report.");
-    eprintln!();
-    eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
-    eprintln!("Version: {}", version::deno());
-    eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
-    eprintln!();
-    orig_hook(panic_info);
+    if is_invalid_piping(panic_info.payload()) {
+      eprintln!("Tried to pipe a deno subcommand that can't be piped.");
+    } else {
+      eprintln!(
+        "\n============================================================"
+      );
+      eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
+      eprintln!("at https://github.com/denoland/deno/issues/new.");
+      eprintln!("If you can reliably reproduce this panic, include the");
+      eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
+      eprintln!("var set and include the backtrace in your report.");
+      eprintln!();
+      eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
+      eprintln!("Version: {}", version::deno());
+      eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
+      eprintln!();
+      orig_hook(panic_info);
+    }
     std::process::exit(1);
   }));
 }
