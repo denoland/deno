@@ -312,7 +312,6 @@ mod inspector {
       .unwrap();
 
     let msg = ws_read_msg(&mut socket).await;
-    println!("response msg 2 {}", msg);
     assert_eq!(msg, r#"{"id":31,"result":{}}"#);
 
     child.kill().unwrap();
@@ -904,6 +903,26 @@ mod inspector {
 
     assert_eq!(&stdout_lines.next().unwrap(), "hello");
     assert_eq!(&stdout_lines.next().unwrap(), "world");
+
+    assert_inspector_messages(
+      &mut socket_tx,
+      &[],
+      &mut socket_rx,
+      &[],
+      &[
+        r#"{"method":"Debugger.resumed","params":{}}"#,
+        r#"{"method":"Runtime.consoleAPICalled","#,
+        r#"{"method":"Runtime.consoleAPICalled","#,
+        r#"{"method":"Runtime.executionContextDestroyed","params":{"executionContextId":1}}"#,
+      ],
+    )
+    .await;
+    let line = &stdout_lines.next().unwrap();
+
+    assert_eq!(
+      line,
+      "Program finished. Waiting for inspector to disconnect to exit the process..."
+    );
 
     child.kill().unwrap();
     child.wait().unwrap();
