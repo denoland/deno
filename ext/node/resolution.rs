@@ -806,19 +806,31 @@ pub fn legacy_main_resolve(
 ) -> Result<Option<PathBuf>, AnyError> {
   let is_types = conditions == TYPES_CONDITIONS;
   let maybe_main = if is_types {
-    package_json.types.as_ref()
+    match package_json.types.as_ref() {
+      Some(types) => Some(types),
+      None => {
+        // fallback to checking the main entrypoint for
+        // a corresponding declaration file
+        if let Some(main) = package_json.main(referrer_kind) {
+          let main = package_json.path.parent().unwrap().join(main).clean();
+          let path = path_to_declaration_path(main, referrer_kind);
+          if path.exists() {
+            return Ok(Some(path));
+          }
+        }
+        None
+      }
+    }
   } else {
     package_json.main(referrer_kind)
   };
-  let mut guess;
 
   if let Some(main) = maybe_main {
-    guess = package_json.path.parent().unwrap().join(main).clean();
+    let guess = package_json.path.parent().unwrap().join(main).clean();
     if file_exists(&guess) {
       return Ok(Some(guess));
     }
 
-    let mut found = false;
     // todo(dsherret): investigate exactly how node and typescript handles this
     let endings = if is_types {
       match referrer_kind {
@@ -838,21 +850,16 @@ pub fn legacy_main_resolve(
       vec![".js", "/index.js"]
     };
     for ending in endings {
-      guess = package_json
+      let guess = package_json
         .path
         .parent()
         .unwrap()
         .join(&format!("{}{}", main, ending))
         .clean();
       if file_exists(&guess) {
-        found = true;
-        break;
+        // TODO(bartlomieju): emitLegacyIndexDeprecation()
+        return Ok(Some(guess));
       }
-    }
-
-    if found {
-      // TODO(bartlomieju): emitLegacyIndexDeprecation()
-      return Ok(Some(guess));
     }
   }
 
@@ -866,7 +873,7 @@ pub fn legacy_main_resolve(
     vec!["index.js"]
   };
   for index_file_name in index_file_names {
-    guess = package_json
+    let guess = package_json
       .path
       .parent()
       .unwrap()

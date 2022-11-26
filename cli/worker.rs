@@ -483,9 +483,7 @@ async fn create_main_worker_internal(
   let maybe_storage_key = ps.options.resolve_storage_key(&main_module);
   let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
     ps.dir
-      .root
-      // TODO(@crowlKats): change to origin_data for 2.0
-      .join("location_data")
+      .origin_data_folder_path()
       .join(checksum::gen(&[key.as_bytes()]))
   });
   let cache_storage_dir = maybe_storage_key.map(|key| {
