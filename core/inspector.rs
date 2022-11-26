@@ -147,10 +147,7 @@ impl JsRuntimeInspector {
   /// and thus it's id is provided as an associated contant.
   const CONTEXT_GROUP_ID: i32 = 1;
 
-  pub fn new(
-    isolate: &mut v8::OwnedIsolate,
-    context: v8::Global<v8::Context>,
-  ) -> Rc<RefCell<Self>> {
+  pub fn new(isolate: &mut v8::OwnedIsolate) -> Rc<RefCell<Self>> {
     let scope = &mut v8::HandleScope::new(isolate);
 
     let (new_session_tx, new_session_rx) =
@@ -180,22 +177,37 @@ impl JsRuntimeInspector {
       new_session_rx,
     ));
 
-    // Tell the inspector about the global context.
-    let context = v8::Local::new(scope, context);
-    let context_name = v8::inspector::StringView::from(&b"global context"[..]);
-    self_
-      .v8_inspector
-      .borrow_mut()
-      .as_mut()
-      .unwrap()
-      .context_created(context, Self::CONTEXT_GROUP_ID, context_name);
-
     // Poll the session handler so we will get notified whenever there is
     // new incoming debugger activity.
     let _ = self_.poll_sessions(None).unwrap();
     drop(self_);
 
     self__
+  }
+
+  pub fn has_sessions_waiting_for_context_created(&self) -> bool {
+    self.sessions.borrow().waiting_for_context_created.is_some()
+  }
+
+  pub fn handshake_session(&mut self) {
+    let mut sessions = self.sessions.borrow_mut();
+    let s = sessions.waiting_for_context_created.take().unwrap();
+    assert!(sessions.handshake.replace(s).is_none());
+  }
+
+  pub fn context_created(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    context: v8::Global<v8::Context>,
+  ) {
+    let context = v8::Local::new(scope, context);
+    let context_name = v8::inspector::StringView::from(&b"global context"[..]);
+    self
+      .v8_inspector
+      .borrow_mut()
+      .as_mut()
+      .unwrap()
+      .context_created(context, Self::CONTEXT_GROUP_ID, context_name);
   }
 
   pub fn has_active_sessions(&self) -> bool {
@@ -249,7 +261,7 @@ impl JsRuntimeInspector {
         if let Poll::Ready(Some(session_proxy)) = poll_result {
           let session =
             InspectorSession::new(sessions.v8_inspector.clone(), session_proxy);
-          let prev = sessions.handshake.replace(session);
+          let prev = sessions.waiting_for_context_created.replace(session);
           assert!(prev.is_none());
         }
 
@@ -348,7 +360,11 @@ impl JsRuntimeInspector {
 
   /// Create a local inspector session that can be used on
   /// the same thread as the isolate.
-  pub fn create_local_session(&self) -> LocalInspectorSession {
+  pub fn create_local_session(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    context: v8::Global<v8::Context>,
+  ) -> LocalInspectorSession {
     // The 'outbound' channel carries messages sent to the session.
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
 
@@ -371,6 +387,7 @@ impl JsRuntimeInspector {
       .push(inspector_session);
     take(&mut self.flags.borrow_mut().waiting_for_session);
 
+    self.context_created(scope, context);
     LocalInspectorSession::new(inbound_tx, outbound_rx)
   }
 }
@@ -386,6 +403,7 @@ struct InspectorFlags {
 struct SessionContainer {
   v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
   session_rx: UnboundedReceiver<InspectorSessionProxy>,
+  waiting_for_context_created: Option<Box<InspectorSession>>,
   handshake: Option<Box<InspectorSession>>,
   established: SelectAll<Box<InspectorSession>>,
 }
@@ -398,6 +416,7 @@ impl SessionContainer {
     Self {
       v8_inspector,
       session_rx: new_session_rx,
+      waiting_for_context_created: None,
       handshake: None,
       established: SelectAll::new(),
     }
@@ -426,6 +445,7 @@ impl SessionContainer {
     Self {
       v8_inspector: Default::default(),
       session_rx: rx,
+      waiting_for_context_created: None,
       handshake: None,
       established: SelectAll::new(),
     }

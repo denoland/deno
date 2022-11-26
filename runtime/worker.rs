@@ -356,7 +356,11 @@ impl MainWorker {
   /// was not configured to create inspector.
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
     self.js_runtime.maybe_init_inspector();
-    self.js_runtime.inspector().borrow().create_local_session()
+    let inspector = self.js_runtime.inspector();
+    let mut i = inspector.borrow_mut();
+    let context = self.js_runtime.global_context();
+    let scope = &mut self.js_runtime.handle_scope();
+    i.create_local_session(scope, context)
   }
 
   pub fn poll_event_loop(

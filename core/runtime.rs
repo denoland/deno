@@ -495,10 +495,7 @@ impl JsRuntime {
 
     op_state.borrow_mut().put(isolate_ptr);
     let inspector = if options.inspector {
-      Some(JsRuntimeInspector::new(
-        &mut isolate,
-        global_context.clone(),
-      ))
+      Some(JsRuntimeInspector::new(&mut isolate))
     } else {
       None
     };
@@ -946,10 +943,8 @@ impl JsRuntime {
     }
 
     let mut state = self.state.borrow_mut();
-    state.inspector = Some(JsRuntimeInspector::new(
-      self.v8_isolate.as_mut().unwrap(),
-      state.global_realm.clone().unwrap().0,
-    ));
+    state.inspector =
+      Some(JsRuntimeInspector::new(self.v8_isolate.as_mut().unwrap()));
   }
 
   pub fn poll_value(
@@ -1031,7 +1026,16 @@ impl JsRuntime {
 
     if has_inspector {
       // We poll the inspector first.
-      let _ = self.inspector().borrow_mut().poll_unpin(cx);
+      let inspector = self.inspector();
+      let mut i = inspector.borrow_mut();
+
+      if i.has_sessions_waiting_for_context_created() {
+        let context = self.global_context();
+        let scope = &mut self.handle_scope();
+        i.context_created(scope, context);
+        i.handshake_session();
+      }
+      let _ = i.poll_unpin(cx);
     }
 
     self.pump_v8_message_loop()?;
