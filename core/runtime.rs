@@ -239,12 +239,21 @@ pub struct RuntimeOptions {
   /// executed tries to load modules.
   pub module_loader: Option<Rc<dyn ModuleLoader>>,
 
-  /// JsRuntime extensions, not to be confused with ES modules
-  /// these are sets of ops to be initialized.
+  /// JsRuntime extensions, not to be confused with ES modules.
+  /// Only ops registered by extensions will be initialized. If you need
+  /// to execute JS code from extensions, use `extensions_with_js` options
+  /// instead.
   pub extensions: Vec<Extension>,
 
-  /// JsRuntime extensions, not to be confused with ES modules
-  /// these are sets of ops and other JS code to be initialized.
+  /// JsRuntime extensions, not to be confused with ES modules.
+  /// Ops registered by extensions will be initialized and JS code will be
+  /// executed. If you don't need to execute JS code from extensions, use
+  /// `extensions` option instead.
+  ///
+  /// This is useful when creating snapshots, in such case you would pass
+  /// extensions using `extensions_with_js`, later when creating a runtime
+  /// from the snapshot, you would pass these extensions using `extensions`
+  /// option.
   pub extensions_with_js: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
@@ -346,7 +355,10 @@ impl JsRuntime {
         .insert(0, crate::ops_builtin::init_builtins());
     }
 
-    let ops = Self::collect_ops(&mut options.extensions);
+    let ops = Self::collect_ops(
+      &mut options.extensions,
+      &mut options.extensions_with_js,
+    );
     let mut op_state = OpState::new(ops.len());
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
@@ -696,9 +708,16 @@ impl JsRuntime {
   }
 
   /// Collects ops from extensions & applies middleware
-  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpDecl> {
+  fn collect_ops(
+    extensions: &mut [Extension],
+    extensions_with_js: &mut [Extension],
+  ) -> Vec<OpDecl> {
+    let mut exts = vec![];
+    exts.extend(extensions);
+    exts.extend(extensions_with_js);
+
     // Middleware
-    let middleware: Vec<Box<OpMiddlewareFn>> = extensions
+    let middleware: Vec<Box<OpMiddlewareFn>> = exts
       .iter_mut()
       .filter_map(|e| e.init_middleware())
       .collect();
@@ -707,7 +726,7 @@ impl JsRuntime {
     let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
     // Flatten ops, apply middlware & override disabled ops
-    extensions
+    exts
       .iter_mut()
       .filter_map(|e| e.init_ops())
       .flatten()
