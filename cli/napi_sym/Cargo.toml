@@ -1,9 +1,13 @@
+# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 [package]
 name = "napi_sym"
-version = "0.8.0"
-edition = "2021"
-license = "MIT"
+version = "0.9.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
+repository.workspace = true
 description = "proc macro for writing N-API symbols"
 
 [lib]
@@ -11,8 +15,8 @@ path = "./lib.rs"
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "1"
-quote = "1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-syn = { version = "1", features = ["full", "extra-traits"] }
+proc-macro2.workspace = true
+quote.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+syn.workspace = true

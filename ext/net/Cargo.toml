@@ -2,23 +2,23 @@
 
 [package]
 name = "deno_net"
-version = "0.70.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.71.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "Networking for Deno"
 
 [lib]
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.160.0", path = "../../core" }
-deno_tls = { version = "0.65.0", path = "../tls" }
-log = "0.4.16"
-serde = { version = "1.0.136", features = ["derive"] }
-socket2 = "0.4.4"
-tokio = { version = "1.21", features = ["full"] }
+deno_core.workspace = true
+deno_tls.workspace = true
+log.workspace = true
+serde.workspace = true
+socket2.workspace = true
+tokio.workspace = true
 trust-dns-proto = "0.22"
 trust-dns-resolver = { version = "0.22", features = ["tokio-runtime", "serde-config"] }

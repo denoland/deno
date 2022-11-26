@@ -2,6 +2,7 @@
 
 use crate::Stream;
 use std::pin::Pin;
+use tokio::sync::oneshot;
 
 #[derive(Debug)]
 pub struct InnerRequest {
@@ -20,8 +21,7 @@ pub struct Request {
   pub inner: InnerRequest,
   // Pointer to stream owned by the server loop thread.
   //
-  // Dereferencing is safe until server thread finishes and
-  // op_flash_serve resolves or websocket upgrade is performed.
+  // Dereferencing is safe until websocket upgrade is performed.
   pub socket: *mut Stream,
   pub keep_alive: bool,
   pub content_read: usize,
@@ -29,6 +29,8 @@ pub struct Request {
   pub remaining_chunk_size: Option<usize>,
   pub te_chunked: bool,
   pub expect_continue: bool,
+  pub socket_rx: oneshot::Receiver<Pin<Box<Stream>>>,
+  pub owned_socket: Option<Pin<Box<Stream>>>,
 }
 
 // SAFETY: Sent from server thread to JS thread.
@@ -37,8 +39,16 @@ unsafe impl Send for Request {}
 
 impl Request {
   #[inline(always)]
-  pub fn socket<'a>(&self) -> &'a mut Stream {
-    // SAFETY: Dereferencing is safe until server thread detaches socket or finishes.
+  pub fn socket<'a>(&mut self) -> &'a mut Stream {
+    if let Ok(mut sock) = self.socket_rx.try_recv() {
+      // SAFETY: We never move the data out of the acquired mutable reference.
+      self.socket = unsafe { sock.as_mut().get_unchecked_mut() };
+
+      // Let the struct own the socket so that it won't get dropped.
+      self.owned_socket = Some(sock);
+    }
+
+    // SAFETY: Dereferencing is safe until server thread detaches socket.
     unsafe { &mut *self.socket }
   }
 

@@ -480,12 +480,16 @@ delete Object.prototype.__proto__;
    * @type {ts.CompilerHost & ts.LanguageServiceHost} */
   const host = {
     fileExists(specifier) {
-      debug(`host.fileExists("${specifier}")`);
+      if (logDebug) {
+        debug(`host.fileExists("${specifier}")`);
+      }
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
       return ops.op_exists({ specifier });
     },
     readFile(specifier) {
-      debug(`host.readFile("${specifier}")`);
+      if (logDebug) {
+        debug(`host.readFile("${specifier}")`);
+      }
       return ops.op_load({ specifier }).data;
     },
     getCancellationToken() {
@@ -499,11 +503,13 @@ delete Object.prototype.__proto__;
       _shouldCreateNewSourceFile,
     ) {
       const createOptions = getCreateSourceFileOptions(languageVersion);
-      debug(
-        `host.getSourceFile("${specifier}", ${
-          ts.ScriptTarget[createOptions.languageVersion]
-        })`,
-      );
+      if (logDebug) {
+        debug(
+          `host.getSourceFile("${specifier}", ${
+            ts.ScriptTarget[createOptions.languageVersion]
+          })`,
+        );
+      }
 
       // Needs the original specifier
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
@@ -546,13 +552,17 @@ delete Object.prototype.__proto__;
       return ASSETS;
     },
     writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
-      debug(`host.writeFile("${fileName}")`);
+      if (logDebug) {
+        debug(`host.writeFile("${fileName}")`);
+      }
       return ops.op_emit(
         { fileName, data },
       );
     },
     getCurrentDirectory() {
-      debug(`host.getCurrentDirectory()`);
+      if (logDebug) {
+        debug(`host.getCurrentDirectory()`);
+      }
       return cwd ?? ops.op_cwd();
     },
     getCanonicalFileName(fileName) {
@@ -609,9 +619,11 @@ delete Object.prototype.__proto__;
       });
     },
     resolveModuleNames(specifiers, base) {
-      debug(`host.resolveModuleNames()`);
-      debug(`  base: ${base}`);
-      debug(`  specifiers: ${specifiers.join(", ")}`);
+      if (logDebug) {
+        debug(`host.resolveModuleNames()`);
+        debug(`  base: ${base}`);
+        debug(`  specifiers: ${specifiers.join(", ")}`);
+      }
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve({
         specifiers,
@@ -646,11 +658,15 @@ delete Object.prototype.__proto__;
 
     // LanguageServiceHost
     getCompilationSettings() {
-      debug("host.getCompilationSettings()");
+      if (logDebug) {
+        debug("host.getCompilationSettings()");
+      }
       return compilationSettings;
     },
     getScriptFileNames() {
-      debug("host.getScriptFileNames()");
+      if (logDebug) {
+        debug("host.getScriptFileNames()");
+      }
       // tsc requests the script file names multiple times even though it can't
       // possibly have changed, so we will memoize it on a per request basis.
       if (scriptFileNamesCache) {
@@ -659,7 +675,9 @@ delete Object.prototype.__proto__;
       return scriptFileNamesCache = ops.op_script_names();
     },
     getScriptVersion(specifier) {
-      debug(`host.getScriptVersion("${specifier}")`);
+      if (logDebug) {
+        debug(`host.getScriptVersion("${specifier}")`);
+      }
       const sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
         return sourceFile.version ?? "1";
@@ -674,7 +692,9 @@ delete Object.prototype.__proto__;
       return scriptVersion;
     },
     getScriptSnapshot(specifier) {
-      debug(`host.getScriptSnapshot("${specifier}")`);
+      if (logDebug) {
+        debug(`host.getScriptSnapshot("${specifier}")`);
+      }
       const sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
         return {
@@ -807,8 +827,10 @@ delete Object.prototype.__proto__;
 
     setLogDebug(debugFlag, "TS");
     performanceStart();
-    debug(">>> exec start", { rootNames });
-    debug(config);
+    if (logDebug) {
+      debug(">>> exec start", { rootNames });
+      debug(config);
+    }
 
     rootNames.forEach(checkNormalizedPath);
 
@@ -877,7 +899,9 @@ delete Object.prototype.__proto__;
    * @param {LanguageServerRequest} request
    */
   function serverRequest({ id, ...request }) {
-    debug(`serverRequest()`, { id, ...request });
+    if (logDebug) {
+      debug(`serverRequest()`, { id, ...request });
+    }
 
     // reset all memoized source files names
     scriptFileNamesCache = undefined;
@@ -1000,7 +1024,9 @@ delete Object.prototype.__proto__;
         );
       }
       case "getCompletionDetails": {
-        debug("request", request);
+        if (logDebug) {
+          debug("request", request);
+        }
         return respond(
           id,
           languageService.getCompletionEntryDetails(

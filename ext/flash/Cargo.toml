@@ -2,29 +2,29 @@
 
 [package]
 name = "deno_flash"
-version = "0.14.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.15.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "Fast HTTP/1 server implementation for Deno"
 
 [lib]
 path = "lib.rs"
 
 [dependencies]
-deno_core = { path = "../../core", version = "0.160.0" }
-deno_tls = { version = "0.65.0", path = "../tls" }
+deno_core.workspace = true
+deno_tls.workspace = true
 # For HTTP/2 and websocket upgrades
-deno_websocket = { version = "0.83.0", path = "../websocket" }
-http = "0.2.6"
+deno_websocket.workspace = true
+http.workspace = true
 httparse = "1.8"
-libc = "0.2"
-log = "0.4.17"
+libc.workspace = true
+log.workspace = true
 mio = { version = "0.8.1", features = ["os-poll", "net"] }
-rustls = { version = "0.20" }
-rustls-pemfile = "1.0"
-serde = { version = "1.0.136", features = ["derive"] }
-socket2 = "0.4.7"
-tokio = { version = "1.21", features = ["full"] }
+rustls.workspace = true
+rustls-pemfile.workspace = true
+serde.workspace = true
+socket2.workspace = true
+tokio.workspace = true

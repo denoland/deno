@@ -2,26 +2,26 @@
 
 [package]
 name = "deno_url"
-version = "0.78.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.79.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "URL API implementation for Deno"
 
 [lib]
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.160.0", path = "../../core" }
-serde = { version = "1.0.136", features = ["derive"] }
-serde_repr = "0.1.7"
+deno_core.workspace = true
+serde.workspace = true
+serde_repr.workspace = true
 urlpattern = "0.2.0"
 
 [dev-dependencies]
-deno_bench_util = { version = "0.72.0", path = "../../bench_util" }
-deno_webidl = { version = "0.78.0", path = "../webidl" }
+deno_bench_util.workspace = true
+deno_webidl.workspace = true
 
 [[bench]]
 name = "url_ops"

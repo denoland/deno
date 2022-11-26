@@ -3,25 +3,24 @@
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::Lockfile;
+use crate::args::TsConfigType;
+use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache;
+use crate::cache::DenoDir;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
-use crate::deno_dir;
 use crate::emit::emit_parsed_source;
-use crate::emit::TsConfigType;
-use crate::emit::TsTypeLib;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::http_cache;
 use crate::http_util::HttpClient;
-use crate::lockfile::as_maybe_locker;
-use crate::lockfile::Lockfile;
 use crate::node;
 use crate::node::NodeResolution;
 use crate::npm::resolve_npm_package_reqs;
@@ -74,7 +73,7 @@ use std::sync::Arc;
 pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
-  pub dir: deno_dir::DenoDir,
+  pub dir: DenoDir,
   pub file_fetcher: FileFetcher,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
@@ -153,7 +152,7 @@ impl ProcState {
     let shared_array_buffer_store = SharedArrayBufferStore::default();
     let compiled_wasm_module_store = CompiledWasmModuleStore::default();
     let dir = cli_options.resolve_deno_dir()?;
-    let deps_cache_location = dir.root.join("deps");
+    let deps_cache_location = dir.deps_folder_path();
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
@@ -292,6 +291,7 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let has_root_npm_specifier = roots.iter().any(|r| {
@@ -329,7 +329,7 @@ impl ProcState {
       root_permissions.clone(),
       dynamic_permissions.clone(),
     );
-    let maybe_locker = as_maybe_locker(self.lockfile.clone());
+    let maybe_locker = Lockfile::as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_resolver =
       self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
@@ -375,6 +375,7 @@ impl ProcState {
       };
 
     let analyzer = self.parsed_source_cache.as_analyzer();
+    log::debug!("Creating module graph.");
     let graph = create_graph(
       roots.clone(),
       &mut loader,
@@ -422,7 +423,9 @@ impl ProcState {
     drop(_pb_clear_guard);
 
     // type check if necessary
-    if self.options.type_check_mode() != TypeCheckMode::None {
+    let is_std_node = roots.len() == 1 && roots[0].0 == *node::MODULE_ALL_URL;
+    if self.options.type_check_mode() != TypeCheckMode::None && !is_std_node {
+      log::debug!("Type checking.");
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
       let roots = roots.clone();
       let options = check::CheckOptions {
@@ -463,6 +466,8 @@ impl ProcState {
       let g = lockfile.lock();
       g.write()?;
     }
+
+    log::debug!("Prepared module load.");
 
     Ok(())
   }
@@ -634,7 +639,7 @@ impl ProcState {
     roots: Vec<(ModuleSpecifier, ModuleKind)>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let maybe_locker = as_maybe_locker(self.lockfile.clone());
+    let maybe_locker = Lockfile::as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
 
     let maybe_cli_resolver = CliResolver::maybe_new(

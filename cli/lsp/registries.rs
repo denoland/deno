@@ -12,7 +12,7 @@ use super::path_to_regex::StringOrNumber;
 use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
 
-use crate::deno_dir;
+use crate::cache::DenoDir;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::http_cache::HttpCache;
@@ -422,8 +422,8 @@ impl Default for ModuleRegistry {
     // This only gets used when creating the tsc runtime and for testing, and so
     // it shouldn't ever actually access the DenoDir, so it doesn't support a
     // custom root.
-    let dir = deno_dir::DenoDir::new(None).unwrap();
-    let location = dir.root.join("registries");
+    let dir = DenoDir::new(None).unwrap();
+    let location = dir.registries_folder_path();
     let http_client = HttpClient::new(None, None).unwrap();
     Self::new(&location, http_client).unwrap()
   }
