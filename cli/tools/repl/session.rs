@@ -103,7 +103,6 @@ impl ReplSession {
           .unwrap();
       }
     }
-
     let mut repl_session = ReplSession {
       worker,
       session,

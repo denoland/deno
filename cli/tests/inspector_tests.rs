@@ -402,7 +402,20 @@ mod inspector {
       std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
 
     assert_stderr_for_inspect_brk(&mut stderr_lines);
-
+    eprintln!("1");
+    assert_inspector_messages(
+      &mut socket_tx,
+      &[
+      ],
+      &mut socket_rx,
+      &[
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#
+      ],
+    )
+    .await;
+    eprintln!(".1.1");
     assert_inspector_messages(
     &mut socket_tx,
     &[
@@ -415,11 +428,10 @@ mod inspector {
       r#"{"id":2,"result":{"debuggerId":"#
     ],
     &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#
     ],
   )
   .await;
-
+  eprintln!("2");
     assert_inspector_messages(
       &mut socket_tx,
       &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
@@ -428,7 +440,7 @@ mod inspector {
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
-
+    eprintln!("3");
     assert_inspector_messages(
       &mut socket_tx,
       &[r#"{"id":4,"method":"Debugger.resume"}"#],
@@ -437,7 +449,7 @@ mod inspector {
       &[r#"{"method":"Debugger.resumed","params":{}}"#],
     )
     .await;
-
+    eprintln!("4");
     for i in 0..128u32 {
       let request_id = i + 10;
       // Expect the number {i} on stdout.
@@ -468,6 +480,7 @@ mod inspector {
       )
       .await;
     }
+    eprintln!("5");
 
     // Check that we can gracefully close the websocket connection.
     socket_tx.close().await.unwrap();

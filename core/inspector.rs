@@ -200,6 +200,7 @@ impl JsRuntimeInspector {
     scope: &mut v8::HandleScope,
     context: v8::Global<v8::Context>,
   ) {
+    self.flags.borrow_mut().needs_to_send_context_created = false;
     let context = v8::Local::new(scope, context);
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
     self
@@ -261,8 +262,13 @@ impl JsRuntimeInspector {
         if let Poll::Ready(Some(session_proxy)) = poll_result {
           let session =
             InspectorSession::new(sessions.v8_inspector.clone(), session_proxy);
-          let prev = sessions.waiting_for_context_created.replace(session);
-          assert!(prev.is_none());
+          if self.flags.borrow().needs_to_send_context_created {
+            let prev = sessions.waiting_for_context_created.replace(session);
+            assert!(prev.is_none());
+          } else {
+            let prev = sessions.handshake.replace(session);
+            assert!(prev.is_none());
+          }
         }
 
         // Poll established sessions.
@@ -380,22 +386,34 @@ impl JsRuntimeInspector {
     // sessions, so it doesn't need to go through the session sender.
     let inspector_session =
       InspectorSession::new(self.v8_inspector.clone(), proxy);
+    if self.flags.borrow().needs_to_send_context_created {
+      self.context_created(scope, context);
+    }
     self
       .sessions
       .borrow_mut()
       .established
       .push(inspector_session);
     take(&mut self.flags.borrow_mut().waiting_for_session);
-
-    self.context_created(scope, context);
+    
     LocalInspectorSession::new(inbound_tx, outbound_rx)
   }
 }
 
-#[derive(Default)]
 struct InspectorFlags {
   waiting_for_session: bool,
   on_pause: bool,
+  needs_to_send_context_created: bool,
+}
+
+impl Default for InspectorFlags {
+  fn default() -> Self {
+      Self {
+        waiting_for_session: false,
+        on_pause: false,
+        needs_to_send_context_created: true,
+      }
+  }
 }
 
 /// A helper structure that helps coordinate sessions during different
