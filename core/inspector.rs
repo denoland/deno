@@ -117,7 +117,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().on_pause = true;
-    let _ = self.poll_sessions(None);
+    let _ = self.poll_sessions(None, None);
   }
 
   fn quit_message_loop_on_pause(&mut self) {
@@ -125,6 +125,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   }
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
+    eprintln!("run if waiting for debugger");
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().waiting_for_session = false;
   }
@@ -138,7 +139,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
 impl Future for JsRuntimeInspector {
   type Output = ();
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
-    self.poll_sessions(Some(cx)).unwrap()
+    self.poll_sessions(Some(cx), None).unwrap()
   }
 }
 
@@ -179,7 +180,7 @@ impl JsRuntimeInspector {
 
     // Poll the session handler so we will get notified whenever there is
     // new incoming debugger activity.
-    let _ = self_.poll_sessions(None).unwrap();
+    let _ = self_.poll_sessions(None, None).unwrap();
     drop(self_);
 
     self__
@@ -196,7 +197,7 @@ impl JsRuntimeInspector {
   }
 
   pub fn context_created(
-    &mut self,
+    &self,
     scope: &mut v8::HandleScope,
     context: v8::Global<v8::Context>,
   ) {
@@ -218,6 +219,7 @@ impl JsRuntimeInspector {
   fn poll_sessions(
     &self,
     mut invoker_cx: Option<&mut Context>,
+    mut maybe_scope_and_context: Option<(&mut v8::HandleScope, v8::Global<v8::Context>)>,
   ) -> Result<Poll<()>, BorrowMutError> {
     // The futures this function uses do not have re-entrant poll() functions.
     // However it is can happpen that poll_sessions() gets re-entered, e.g.
@@ -241,6 +243,7 @@ impl JsRuntimeInspector {
       loop {
         // Do one "handshake" with a newly connected session at a time.
         if let Some(mut session) = sessions.handshake.take() {
+          eprintln!("handshake taken");
           let poll_result = session.poll_next_unpin(cx);
           match poll_result {
             Poll::Pending => {
@@ -263,8 +266,16 @@ impl JsRuntimeInspector {
           let session =
             InspectorSession::new(sessions.v8_inspector.clone(), session_proxy);
           if self.flags.borrow().needs_to_send_context_created {
-            let prev = sessions.waiting_for_context_created.replace(session);
-            assert!(prev.is_none());
+            eprintln!("waiting for session {}", self.flags.borrow().waiting_for_session);
+            if self.flags.borrow().waiting_for_session {
+              let (scope, context) = maybe_scope_and_context.as_mut().unwrap();
+              self.context_created(scope, context.clone());
+              let prev = sessions.handshake.replace(session);
+              assert!(prev.is_none());
+            } else {
+              let prev = sessions.waiting_for_context_created.replace(session);
+              assert!(prev.is_none());
+            }
           } else {
             let prev = sessions.handshake.replace(session);
             assert!(prev.is_none());
@@ -334,13 +345,17 @@ impl JsRuntimeInspector {
   /// After that, it instructs V8 to pause at the next statement.
   /// Frontend must send "Runtime.runIfWaitingForDebugger" message to resume
   /// execution.
-  pub fn wait_for_session_and_break_on_next_statement(&mut self) {
+  pub fn wait_for_session_and_break_on_next_statement(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    context: v8::Global<v8::Context>,
+  ) {
     loop {
       match self.sessions.get_mut().established.iter_mut().next() {
         Some(session) => break session.break_on_next_statement(),
         None => {
           self.flags.get_mut().waiting_for_session = true;
-          let _ = self.poll_sessions(None).unwrap();
+          let _ = self.poll_sessions(None, Some((scope, context.clone()))).unwrap();
         }
       };
     }
@@ -529,7 +544,7 @@ impl task::ArcWake for InspectorWaker {
             // SAFETY: `InspectorWaker` is owned by `JsRuntimeInspector`, so the
             // pointer to the latter is valid as long as waker is alive.
             let inspector = unsafe { &*(arg as *mut JsRuntimeInspector) };
-            let _ = inspector.poll_sessions(None);
+            let _ = inspector.poll_sessions(None, None);
           }
         }
         PollState::Parked => {
@@ -613,6 +628,7 @@ impl InspectorSession {
     let detail = v8::inspector::StringView::empty();
     // TODO(bartlomieju): use raw `*mut V8InspectorSession` pointer, as this
     // reference may become aliased.
+    eprintln!("break on next statement");
     (*self.v8_session).schedule_pause_on_next_statement(reason, detail);
   }
 }

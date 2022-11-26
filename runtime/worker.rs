@@ -344,11 +344,11 @@ impl MainWorker {
 
   fn wait_for_inspector_session(&mut self) {
     if self.should_break_on_first_statement {
-      self
-        .js_runtime
-        .inspector()
-        .borrow_mut()
-        .wait_for_session_and_break_on_next_statement()
+      let inspector = self.js_runtime.inspector();
+      let mut i = inspector.borrow_mut();
+      let context = self.js_runtime.global_context();
+      let scope = &mut self.js_runtime.handle_scope();  
+      i.wait_for_session_and_break_on_next_statement(scope, context)
     }
   }
 

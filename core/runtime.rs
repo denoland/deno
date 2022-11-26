@@ -1025,6 +1025,7 @@ impl JsRuntime {
     }
 
     if has_inspector {
+      eprintln!("inspector in poll_event_loop");
       // We poll the inspector first.
       let inspector = self.inspector();
       let mut i = inspector.borrow_mut();
