@@ -11,7 +11,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 
-use crate::deno_dir::DenoDir;
+use crate::cache::DenoDir;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::http_util::HttpClient;
@@ -146,7 +146,7 @@ impl Default for ReadonlyNpmCache {
     // This only gets used when creating the tsc runtime and for testing, and so
     // it shouldn't ever actually access the DenoDir, so it doesn't support a
     // custom root.
-    Self::from_deno_dir(&crate::deno_dir::DenoDir::new(None).unwrap())
+    Self::from_deno_dir(&DenoDir::new(None).unwrap())
   }
 }
 
@@ -173,7 +173,7 @@ impl ReadonlyNpmCache {
   }
 
   pub fn from_deno_dir(dir: &DenoDir) -> Self {
-    Self::new(dir.root.join("npm"))
+    Self::new(dir.npm_folder_path())
   }
 
   pub fn package_folder_for_id(
@@ -510,7 +510,8 @@ mod test {
 
   #[test]
   fn should_get_package_folder() {
-    let root_dir = crate::deno_dir::DenoDir::new(None).unwrap().root;
+    let deno_dir = crate::cache::DenoDir::new(None).unwrap();
+    let root_dir = deno_dir.npm_folder_path();
     let cache = ReadonlyNpmCache::new(root_dir.clone());
     let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
 
