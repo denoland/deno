@@ -550,7 +550,7 @@ impl Optimizer {
             path: Path { segments, .. },
             ..
           }) => {
-            let segment = single_segment(&segments)?;
+            let segment = single_segment(segments)?;
             match segment {
               // Is `T` a u8?
               PathSegment { ident, .. } if ident == "u8" => {
