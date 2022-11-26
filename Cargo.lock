@@ -982,9 +982,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.49.1"
+version = "0.50.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa3bb0abda350b6523cfc96e0b14c55037fd7b5a901fcc40cb87ef9a1abb6d92"
+checksum = "dc40beda42f25219236ea7a517c63c6ad57375cba5ecf1a00aa4a21a0c294f90"
 dependencies = [
  "cfg-if",
  "deno_ast",
