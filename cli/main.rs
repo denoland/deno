@@ -926,22 +926,21 @@ fn setup_panic_hook() {
   std::panic::set_hook(Box::new(move |panic_info| {
     if is_invalid_piping(panic_info.payload()) {
       eprintln!("Tried to pipe a deno subcommand that can't be piped.");
-    } else {
-      eprintln!(
-        "\n============================================================"
-      );
-      eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
-      eprintln!("at https://github.com/denoland/deno/issues/new.");
-      eprintln!("If you can reliably reproduce this panic, include the");
-      eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
-      eprintln!("var set and include the backtrace in your report.");
-      eprintln!();
-      eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
-      eprintln!("Version: {}", version::deno());
-      eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
-      eprintln!();
-      orig_hook(panic_info);
+      std::process::exit(1);
     }
+    eprintln!("\n============================================================");
+    eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
+    eprintln!("at https://github.com/denoland/deno/issues/new.");
+    eprintln!("If you can reliably reproduce this panic, include the");
+    eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
+    eprintln!("var set and include the backtrace in your report.");
+    eprintln!();
+    eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
+    eprintln!("Version: {}", version::deno());
+    eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
+    eprintln!();
+    orig_hook(panic_info);
+
     std::process::exit(1);
   }));
 }
