@@ -22,8 +22,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::args::Lockfile;
 use crate::fs_util;
-use crate::lockfile::Lockfile;
 
 use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;

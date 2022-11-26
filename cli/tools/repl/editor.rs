@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::cdp;
 use crate::colors;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::Token;
@@ -32,6 +31,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
+use super::cdp;
 use super::channel::RustylineSyncMessageSender;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
