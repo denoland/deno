@@ -75,18 +75,6 @@ async fn read_eval_file(
   Ok((*file.source).to_string())
 }
 
-// TODO(bartlomieju): add .save command
-fn print_help() {
-  let help_text = r#"Available commands:
-.help     Print this message
-.restart  Create a new session without exiting the REPL
-.exit     Exit the REPL
-.save     Save the current session to a file"
-"#;
-
-  print!("{}", help_text);
-}
-
 async fn create_repl_session(
   ps: &ProcState,
   module_url: ModuleSpecifier,
@@ -133,6 +121,19 @@ async fn create_repl_session(
   Ok(repl_session)
 }
 
+fn save_session_to_file(
+  maybe_filename: Option<String>,
+) -> Result<(), AnyError> {
+  // TODO(bartlomieju): make date shorter
+  let filename = maybe_filename.unwrap_or_else(|| {
+    format!("./repl-{}.ts", chrono::Local::now().to_rfc3339())
+  });
+  std::fs::write(&filename, session_history.join("\n"))
+    .context("Unable to save session file")?;
+  println!("Saved session to {}", filename);
+  Ok(())
+}
+
 pub async fn run(
   ps: &ProcState,
   module_url: ModuleSpecifier,
@@ -159,7 +160,8 @@ pub async fn run(
   let editor = ReplEditor::new(helper, history_file_path)?;
 
   println!("Deno {}", crate::version::deno());
-  println!("exit using ctrl+d, ctrl+c, or close()");
+  println!("Run repl.help() to see help");
+  println!("Exit using ctrl+d, ctrl+c, or close()");
 
   let mut session_history: Vec<String> = vec![];
 
@@ -175,48 +177,16 @@ pub async fn run(
         should_exit_on_interrupt = false;
         editor.update_history(line.clone());
 
-        match line.as_str() {
-          ".restart" => {
-            println!(
-              "Started a new REPL session. Global scope has been reset."
-            );
-            repl_session = create_repl_session(
-              ps,
-              module_url.clone(),
-              maybe_eval_files.clone(),
-              maybe_eval.clone(),
-            )
-            .await?;
-            continue;
-          }
-          ".help" => {
-            print_help();
-            continue;
-          }
-          ".exit" => {
-            break;
-          }
-          ".save" => {
-            let filename =
-              format!("./repl-{}.ts", chrono::Local::now().to_rfc3339());
-            std::fs::write(&filename, session_history.join("\n"))
-              .context("Unable to save session file")?;
-            println!("Saved session to {}", filename);
-          }
-          line => {
-            session_history.push(line.to_string());
-            let output =
-              repl_session.evaluate_line_and_get_output(line).await?;
+        session_history.push(line.to_string());
+        let output = repl_session.evaluate_line_and_get_output(line).await?;
 
-            // We check for close and break here instead of making it a loop condition to get
-            // consistent behavior in when the user evaluates a call to close().
-            if repl_session.closing().await? {
-              break;
-            }
-
-            println!("{}", output);
-          }
+        // We check for close and break here instead of making it a loop condition to get
+        // consistent behavior in when the user evaluates a call to close().
+        if repl_session.closing().await? {
+          break;
         }
+
+        println!("{}", output);
       }
       Err(ReadlineError::Interrupted) => {
         if should_exit_on_interrupt {
