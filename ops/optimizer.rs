@@ -8,7 +8,7 @@ use std::fmt::Formatter;
 use syn::{
   parse_quote, punctuated::Punctuated, token::Colon2,
   AngleBracketedGenericArguments, FnArg, GenericArgument, PatType, Path,
-  PathArguments, PathSegment, ReturnType, Signature, Type, TypePath,
+  PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypePtr,
   TypeReference, TypeSlice,
 };
 
@@ -25,6 +25,7 @@ enum TransformKind {
   V8Value,
   SliceU32(bool),
   SliceU8(bool),
+  PtrU8,
 }
 
 impl Transform {
@@ -45,6 +46,13 @@ impl Transform {
   fn slice_u8(index: usize, is_mut: bool) -> Self {
     Transform {
       kind: TransformKind::SliceU8(is_mut),
+      index,
+    }
+  }
+
+  fn u8_ptr(index: usize) -> Self {
+    Transform {
+      kind: TransformKind::PtrU8,
       index,
     }
   }
@@ -109,6 +117,21 @@ impl Transform {
         q!(Vars { var: &ident }, {
           let var = match unsafe { &*var }.get_storage_if_aligned() {
             Some(v) => v,
+            None => {
+              unsafe { &mut *fast_api_callback_options }.fallback = true;
+              return Default::default();
+            }
+          };
+        })
+      }
+      // *const u8
+      TransformKind::PtrU8 => {
+        *ty =
+          parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
+
+        q!(Vars { var: &ident }, {
+          let var = match unsafe { &*var }.get_storage_if_aligned() {
+            Some(v) => v.as_ptr(),
             None => {
               unsafe { &mut *fast_api_callback_options }.fallback = true;
               return Default::default();
@@ -515,6 +538,32 @@ impl Optimizer {
             }
             _ => return Err(BailoutReason::FastUnsupportedParamType),
           },
+          _ => return Err(BailoutReason::FastUnsupportedParamType),
+        },
+        // *const T
+        Type::Ptr(TypePtr {
+          elem,
+          const_token: Some(_),
+          ..
+        }) => match &**elem {
+          Type::Path(TypePath {
+            path: Path { segments, .. },
+            ..
+          }) => {
+            let segment = single_segment(&segments)?;
+            match segment {
+              // Is `T` a u8?
+              PathSegment { ident, .. } if ident == "u8" => {
+                self.has_fast_callback_option = true;
+                self.fast_parameters.push(FastValue::Uint8Array);
+                assert!(self
+                  .transforms
+                  .insert(index, Transform::u8_ptr(index))
+                  .is_none());
+              }
+              _ => return Err(BailoutReason::FastUnsupportedParamType),
+            }
+          }
           _ => return Err(BailoutReason::FastUnsupportedParamType),
         },
         _ => return Err(BailoutReason::FastUnsupportedParamType),
