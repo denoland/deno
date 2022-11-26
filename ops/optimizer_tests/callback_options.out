@@ -8,7 +8,7 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_fallback_fast {
     fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
         use deno_core::v8::fast_api::Type::*;
         use deno_core::v8::fast_api::CType;
-        &[V8Value]
+        &[V8Value, CallbackOptions]
     }
     fn return_type(&self) -> deno_core::v8::fast_api::CType {
         deno_core::v8::fast_api::CType::Void
@@ -16,10 +16,13 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_fallback_fast {
 }
 fn op_fallback_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
-    options: Option<&mut FastApiCallbackOptions>,
+    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
 ) -> () {
     use deno_core::v8;
     use deno_core::_ops;
+    let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
+        &mut *fast_api_callback_options
+    };
     let result = op_fallback::call(options);
     result
 }

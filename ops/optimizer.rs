@@ -395,9 +395,9 @@ impl Optimizer {
                   {
                     let segment = single_segment(segments)?;
                     match segment {
-                      // Is `T` a FastApiCallbackOption?
+                      // Is `T` a FastApiCallbackOptions?
                       PathSegment { ident, .. }
-                        if ident == "FastApiCallbackOption" =>
+                        if ident == "FastApiCallbackOptions" =>
                       {
                         self.has_fast_callback_option = true;
                       }
@@ -508,8 +508,7 @@ impl Optimizer {
               let is_mut_ref = mutability.is_some();
               match segment {
                 // Is `T` a u8?
-                PathSegment { ident, .. } if ident == "u8" => {
-                  self.has_fast_callback_option = true;
+                PathSegment { ident, .. } if ident == "u8" => {                  
                   self.fast_parameters.push(FastValue::Uint8Array);
                   assert!(self
                     .transforms
@@ -518,7 +517,6 @@ impl Optimizer {
                 }
                 // Is `T` a u32?
                 PathSegment { ident, .. } if ident == "u32" => {
-                  self.has_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint32Array);
                   assert!(self
                     .transforms
