@@ -4,7 +4,7 @@ let j;
 j = setInterval(() => {
     console.log("hello");
     i++;
-    if (i > 3) {
+    if (i > 1) {
         clearInterval(j);
     }
 }, 1000);
