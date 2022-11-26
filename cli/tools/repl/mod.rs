@@ -1,10 +1,13 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::create_main_worker;
 use crate::proc_state::ProcState;
+use crate::worker::create_main_worker_with_extensions;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
+use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
 use rustyline::error::ReadlineError;
 
@@ -75,16 +78,52 @@ async fn read_eval_file(
   Ok((*file.source).to_string())
 }
 
+#[derive(Clone)]
+struct ReplState {
+  needs_reload: bool,
+  needs_save: bool,
+  maybe_session_filename: Option<String>,
+}
+
+#[op]
+pub fn op_repl_reload(state: &mut OpState) {
+  let repl_state = state.borrow_mut::<ReplState>();
+  repl_state.needs_reload = true;
+}
+
+#[op]
+pub fn op_repl_save(
+  state: &mut OpState,
+  maybe_session_filename: Option<String>,
+) {
+  let repl_state = state.borrow_mut::<ReplState>();
+  repl_state.needs_save = true;
+  repl_state.maybe_session_filename = maybe_session_filename;
+}
+
 async fn create_repl_session(
   ps: &ProcState,
   module_url: ModuleSpecifier,
   maybe_eval_files: Option<Vec<String>>,
   maybe_eval: Option<String>,
 ) -> Result<ReplSession, AnyError> {
-  let mut worker = create_main_worker(
+  let extension = Extension::builder()
+    .ops(vec![op_repl_reload::decl(), op_repl_save::decl()])
+    .state(move |state| {
+      state.put(ReplState {
+        needs_reload: false,
+        needs_save: false,
+        maybe_session_filename: None,
+      });
+      Ok(())
+    })
+    .build();
+
+  let mut worker = create_main_worker_with_extensions(
     ps,
     module_url.clone(),
     Permissions::from_options(&ps.options.permissions_options())?,
+    vec![extension],
   )
   .await?;
   worker.setup_repl().await?;
@@ -122,6 +161,7 @@ async fn create_repl_session(
 }
 
 fn save_session_to_file(
+  session_history: &[String],
   maybe_filename: Option<String>,
 ) -> Result<(), AnyError> {
   // TODO(bartlomieju): make date shorter
@@ -164,7 +204,6 @@ pub async fn run(
   println!("Exit using ctrl+d, ctrl+c, or close()");
 
   let mut session_history: Vec<String> = vec![];
-
   loop {
     let line = read_line_and_poll(
       &mut repl_session,
@@ -178,7 +217,7 @@ pub async fn run(
         editor.update_history(line.clone());
 
         session_history.push(line.to_string());
-        let output = repl_session.evaluate_line_and_get_output(line).await?;
+        let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
         // We check for close and break here instead of making it a loop condition to get
         // consistent behavior in when the user evaluates a call to close().
@@ -187,6 +226,36 @@ pub async fn run(
         }
 
         println!("{}", output);
+
+        {
+          let op_state = repl_session.worker.js_runtime.op_state();
+          let repl_state = {
+            let op_state = op_state.borrow();
+            op_state.borrow::<ReplState>().clone()
+          };
+          if repl_state.needs_reload {
+            drop(op_state);
+            repl_session = create_repl_session(
+              ps,
+              module_url.clone(),
+              maybe_eval_files.clone(),
+              maybe_eval.clone(),
+            )
+            .await?;
+            println!("Started a new REPL session. Global scope is now clean.");
+          } else if repl_state.needs_save {
+            let mut op_state = op_state.borrow_mut();
+            op_state.put(ReplState {
+              needs_reload: false,
+              needs_save: false,
+              maybe_session_filename: None,
+            });
+            save_session_to_file(
+              &session_history,
+              repl_state.maybe_session_filename,
+            )?;
+          }
+        }
       }
       Err(ReadlineError::Interrupted) => {
         if should_exit_on_interrupt {

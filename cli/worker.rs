@@ -418,6 +418,23 @@ pub async fn create_main_worker(
   .await
 }
 
+pub async fn create_main_worker_with_extensions(
+  ps: &ProcState,
+  main_module: ModuleSpecifier,
+  permissions: Permissions,
+  custom_extensions: Vec<Extension>,
+) -> Result<CliMainWorker, AnyError> {
+  create_main_worker_internal(
+    ps,
+    main_module,
+    permissions,
+    custom_extensions,
+    Default::default(),
+    false,
+  )
+  .await
+}
+
 pub async fn create_main_worker_for_test_or_bench(
   ps: &ProcState,
   main_module: ModuleSpecifier,
