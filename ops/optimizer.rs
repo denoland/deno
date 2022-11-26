@@ -401,9 +401,13 @@ impl Optimizer {
                       {
                         self.has_fast_callback_option = true;
                       }
-                      _ => {}
+                      _ => return Err(BailoutReason::FastUnsupportedParamType),
                     }
+                  } else {
+                    return Err(BailoutReason::FastUnsupportedParamType);
                   }
+                } else {
+                  return Err(BailoutReason::FastUnsupportedParamType);
                 }
               }
             }
