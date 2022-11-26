@@ -499,7 +499,7 @@ fn codegen_u8_ptr(core: &TokenStream2, idx: usize) -> TokenStream2 {
         if let Some(data) = b.data() {
           data.cast::<u8>().as_ptr()
         } else {
-          0 as *const u8
+          std::ptr::null::<u8>()
         }
       },
       Err(_) => {
@@ -514,7 +514,7 @@ fn codegen_u8_ptr(core: &TokenStream2, idx: usize) -> TokenStream2 {
           let store = if let Some(data) = buffer.data() {
             data.cast::<u8>().as_ptr()
           } else {
-            0 as *mut u8
+            std::ptr::null_mut::<u8>()
           };
           unsafe { store.add(offset) }
         } else {
