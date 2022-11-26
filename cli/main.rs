@@ -940,7 +940,6 @@ fn setup_panic_hook() {
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
     orig_hook(panic_info);
-
     std::process::exit(1);
   }));
 }
