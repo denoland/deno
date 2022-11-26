@@ -88,6 +88,8 @@ pub struct JsRuntime {
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
+  // Marks if this is considered the top-level runtime. Used only be inspector.
+  is_main: bool,
 }
 
 pub(crate) struct DynImportModEvaluate {
@@ -274,7 +276,13 @@ pub struct RuntimeOptions {
   /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
   /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+
+  /// Start inspector instance to allow debuggers to connect.
   pub inspector: bool,
+
+  /// Describe if this is the main runtime instance, used by debuggers in some
+  /// situation - like disconnecting when program finishes running.
+  pub is_main: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -498,6 +506,7 @@ impl JsRuntime {
       Some(JsRuntimeInspector::new(
         &mut isolate,
         global_context.clone(),
+        options.is_main,
       ))
     } else {
       None
@@ -532,6 +541,7 @@ impl JsRuntime {
       extensions: options.extensions,
       state: state_rc,
       module_map: Some(module_map_rc),
+      is_main: options.is_main,
     };
 
     // Init resources and ops before extensions to make sure they are
@@ -949,6 +959,7 @@ impl JsRuntime {
     state.inspector = Some(JsRuntimeInspector::new(
       self.v8_isolate.as_mut().unwrap(),
       state.global_realm.clone().unwrap().0,
+      self.is_main,
     ));
   }
 
