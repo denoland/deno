@@ -665,17 +665,7 @@ fn package_config_resolve(
   let package_config =
     PackageJson::load(npm_resolver, package_json_path.clone())?;
   if let Some(exports) = &package_config.exports {
-    let is_types = conditions == TYPES_CONDITIONS;
-    if is_types && package_subpath == "." {
-      if let Ok(Some(path)) =
-        legacy_main_resolve(&package_config, referrer_kind, conditions)
-      {
-        return Ok(Some(path));
-      } else {
-        return Ok(None);
-      }
-    }
-    return package_exports_resolve(
+    let result = package_exports_resolve(
       &package_json_path,
       package_subpath.to_string(),
       exports,
@@ -683,8 +673,23 @@ fn package_config_resolve(
       referrer_kind,
       conditions,
       npm_resolver,
-    )
-    .map(Some);
+    );
+    match result {
+      Ok(found) => return Ok(Some(found)),
+      Err(exports_err) => {
+        let is_types = conditions == TYPES_CONDITIONS;
+        if is_types && package_subpath == "." {
+          if let Ok(Some(path)) =
+            legacy_main_resolve(&package_config, referrer_kind, conditions)
+          {
+            return Ok(Some(path));
+          } else {
+            return Ok(None);
+          }
+        }
+        return Err(exports_err);
+      }
+    }
   }
   if package_subpath == "." {
     return legacy_main_resolve(&package_config, referrer_kind, conditions);
@@ -698,20 +703,25 @@ pub fn url_to_node_resolution(
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<NodeResolution, AnyError> {
   let url_str = url.as_str().to_lowercase();
-  Ok(if url_str.starts_with("http") {
-    NodeResolution::Esm(url)
+  if url_str.starts_with("http") {
+    Ok(NodeResolution::Esm(url))
   } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
     let package_config = get_closest_package_json(&url, npm_resolver)?;
     if package_config.typ == "module" {
-      NodeResolution::Esm(url)
+      Ok(NodeResolution::Esm(url))
     } else {
-      NodeResolution::CommonJs(url)
+      Ok(NodeResolution::CommonJs(url))
     }
   } else if url_str.ends_with(".mjs") || url_str.ends_with(".d.mts") {
-    NodeResolution::Esm(url)
+    Ok(NodeResolution::Esm(url))
+  } else if url_str.ends_with(".ts") {
+    Err(generic_error(format!(
+      "TypeScript files are not supported in npm packages: {}",
+      url
+    )))
   } else {
-    NodeResolution::CommonJs(url)
-  })
+    Ok(NodeResolution::CommonJs(url))
+  }
 }
 
 fn finalize_resolution(

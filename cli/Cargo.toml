@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.28.1"
+version = "1.28.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -48,7 +48,7 @@ deno_emit = "0.11.0"
 deno_graph = "0.38.0"
 deno_lint = { version = "0.35.0", features = ["docs"] }
 deno_runtime.workspace = true
-deno_task_shell = "0.7.2"
+deno_task_shell = "0.7.3"
 napi_sym.workspace = true
 
 atty.workspace = true

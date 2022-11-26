@@ -3,11 +3,8 @@
 mod args;
 mod auth_tokens;
 mod cache;
-mod cdp;
 mod checksum;
-mod deno_dir;
 mod deno_std;
-mod diagnostics;
 mod diff;
 mod display;
 mod emit;
@@ -19,7 +16,6 @@ mod graph_util;
 mod http_cache;
 mod http_util;
 mod js;
-mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
@@ -60,12 +56,12 @@ use crate::args::ReplFlags;
 use crate::args::RunFlags;
 use crate::args::TaskFlags;
 use crate::args::TestFlags;
+use crate::args::TsConfigType;
 use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UpgradeFlags;
 use crate::args::VendorFlags;
 use crate::cache::TypeCheckCache;
-use crate::emit::TsConfigType;
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
 use crate::graph_util::graph_lock_or_exit;
@@ -74,6 +70,7 @@ use crate::resolver::CliResolver;
 use crate::tools::check;
 
 use args::CliOptions;
+use args::Lockfile;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
@@ -327,7 +324,7 @@ async fn create_graph_and_maybe_check(
     Permissions::allow_all(),
     Permissions::allow_all(),
   );
-  let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
+  let maybe_locker = Lockfile::as_maybe_locker(ps.lockfile.clone());
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_cli_resolver = CliResolver::maybe_new(
     ps.options.to_maybe_jsx_import_source_config(),
@@ -686,6 +683,17 @@ async fn run_command(
     return run_from_stdin(flags).await;
   }
 
+  if !flags.has_permission() && flags.has_permission_in_argv() {
+    log::warn!(
+      "{}",
+      crate::colors::yellow(
+        r#"Permission flags have likely been incorrectly set after the script argument.
+To grant permissions, set them before the script argument. For example:
+    deno run --allow-read=. main.js"#
+      )
+    );
+  }
+
   if flags.watch.is_some() {
     return run_with_watch(flags, run_flags.script).await;
   }
@@ -697,7 +705,7 @@ async fn run_command(
 
   // Run a background task that checks for available upgrades. If an earlier
   // run of this background task found a new version of Deno.
-  tools::upgrade::check_for_upgrades(ps.dir.root.clone());
+  tools::upgrade::check_for_upgrades(ps.dir.upgrade_check_file_path());
 
   let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
   {
@@ -926,7 +934,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 
       if let Some(e) = error.downcast_ref::<JsError>() {
         error_string = format_js_error(e);
-      } else if let Some(e) = error.downcast_ref::<lockfile::LockfileError>() {
+      } else if let Some(e) = error.downcast_ref::<args::LockfileError>() {
         error_string = e.to_string();
         error_code = 10;
       }

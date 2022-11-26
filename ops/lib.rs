@@ -17,9 +17,6 @@ mod deno;
 mod fast_call;
 mod optimizer;
 
-#[cfg(test)]
-mod tests;
-
 const SCOPE_LIFETIME: &str = "'scope";
 
 /// Add the 'scope lifetime to the function signature.
@@ -60,6 +57,10 @@ impl Op {
 
     let is_async = item.sig.asyncness.is_some() || is_future(&item.sig.output);
     let type_params = exclude_lifetime_params(&item.sig.generics.params);
+
+    #[cfg(test)]
+    let core = quote!(deno_core);
+    #[cfg(not(test))]
     let core = deno::import();
 
     Self {

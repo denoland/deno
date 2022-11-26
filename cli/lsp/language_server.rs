@@ -63,8 +63,7 @@ use crate::args::Flags;
 use crate::args::FmtConfig;
 use crate::args::LintConfig;
 use crate::args::TsConfig;
-use crate::deno_dir;
-use crate::deno_dir::DenoDir;
+use crate::cache::DenoDir;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::file_fetcher::CacheSetting;
@@ -79,9 +78,6 @@ use crate::proc_state::ProcState;
 use crate::progress_bar::ProgressBar;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
-
-pub const REGISTRIES_PATH: &str = "registries";
-const CACHE_PATH: &str = "deps";
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
@@ -267,14 +263,14 @@ fn create_lsp_npm_resolver(
 impl Inner {
   fn new(client: Client) -> Self {
     let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
-    let dir = deno_dir::DenoDir::new(maybe_custom_root)
-      .expect("could not access DENO_DIR");
-    let module_registries_location = dir.root.join(REGISTRIES_PATH);
+    let dir =
+      DenoDir::new(maybe_custom_root).expect("could not access DENO_DIR");
+    let module_registries_location = dir.registries_folder_path();
     let http_client = HttpClient::new(None, None).unwrap();
     let module_registries =
       ModuleRegistry::new(&module_registries_location, http_client.clone())
         .unwrap();
-    let location = dir.root.join(CACHE_PATH);
+    let location = dir.deps_folder_path();
     let documents = Documents::new(&location);
     let cache_metadata = cache::CacheMetadata::new(&location);
     let performance = Arc::new(Performance::default());
@@ -521,7 +517,7 @@ impl Inner {
     let maybe_custom_root = new_cache_path
       .clone()
       .or_else(|| env::var("DENO_DIR").map(String::into).ok());
-    let dir = deno_dir::DenoDir::new(maybe_custom_root)?;
+    let dir = DenoDir::new(maybe_custom_root)?;
     let workspace_settings = self.config.get_workspace_settings();
     let maybe_root_path = self
       .config
@@ -537,13 +533,13 @@ impl Inner {
       root_cert_store,
       workspace_settings.unsafely_ignore_certificate_errors,
     )?;
-    let module_registries_location = dir.root.join(REGISTRIES_PATH);
+    let module_registries_location = dir.registries_folder_path();
     self.module_registries =
       ModuleRegistry::new(&module_registries_location, client.clone())?;
     self.module_registries_location = module_registries_location;
     self.npm_resolver = create_lsp_npm_resolver(&dir, client);
     // update the cache path
-    let location = dir.root.join(CACHE_PATH);
+    let location = dir.deps_folder_path();
     self.documents.set_location(&location);
     self.cache_metadata.set_location(&location);
     self.maybe_cache_path = new_cache_path;

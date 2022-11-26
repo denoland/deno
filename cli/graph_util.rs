@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::TsTypeLib;
 use crate::colors;
-use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
 use crate::npm::resolve_npm_package_reqs;
 use crate::npm::NpmPackageReference;
