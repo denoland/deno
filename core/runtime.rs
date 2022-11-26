@@ -1089,9 +1089,14 @@ impl JsRuntime {
     if !pending_state.is_pending() && !maybe_scheduling {
       if has_inspector {
         let inspector = self.inspector();
-        let inspector_has_active_sessions =
-          inspector.borrow_mut().has_active_sessions();
-        if wait_for_inspector && inspector_has_active_sessions {
+        let ready_to_disconnect = {
+          let i = inspector.borrow();
+          wait_for_inspector
+            && i.has_active_sessions()
+            && !i.has_blocking_sessions()
+        };
+
+        if ready_to_disconnect {
           let context = self.global_context();
           let scope = &mut self.handle_scope();
           inspector.borrow_mut().context_destroyed(scope, context);

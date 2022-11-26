@@ -217,6 +217,10 @@ impl JsRuntimeInspector {
     self.sessions.borrow().has_active_sessions()
   }
 
+  pub fn has_blocking_sessions(&self) -> bool {
+    self.sessions.borrow().has_blocking_sessions()
+  }
+
   fn poll_sessions(
     &self,
     mut invoker_cx: Option<&mut Context>,
@@ -262,8 +266,11 @@ impl JsRuntimeInspector {
         // Accept new connections.
         let poll_result = sessions.session_rx.poll_next_unpin(cx);
         if let Poll::Ready(Some(session_proxy)) = poll_result {
-          let session =
-            InspectorSession::new(sessions.v8_inspector.clone(), session_proxy);
+          let session = InspectorSession::new(
+            sessions.v8_inspector.clone(),
+            session_proxy,
+            false,
+          );
           let prev = sessions.handshake.replace(session);
           assert!(prev.is_none());
         }
@@ -378,7 +385,7 @@ impl JsRuntimeInspector {
     // InspectorSessions for a local session is added directly to the "established"
     // sessions, so it doesn't need to go through the session sender.
     let inspector_session =
-      InspectorSession::new(self.v8_inspector.clone(), proxy);
+      InspectorSession::new(self.v8_inspector.clone(), proxy, true);
     self
       .sessions
       .borrow_mut()
@@ -430,6 +437,10 @@ impl SessionContainer {
 
   fn has_active_sessions(&self) -> bool {
     !self.established.is_empty() || self.handshake.is_some()
+  }
+
+  fn has_blocking_sessions(&self) -> bool {
+    self.established.iter().any(|s| s.blocking)
   }
 
   /// A temporary placeholder that should be used before actual
@@ -528,6 +539,9 @@ struct InspectorSession {
   v8_channel: v8::inspector::ChannelBase,
   v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
   proxy: InspectorSessionProxy,
+  // Describes if session should keep event loop alive, eg. a local REPL
+  // session should keep event loop alive, but a Websocket session shouldn't.
+  blocking: bool,
 }
 
 impl InspectorSession {
@@ -536,6 +550,7 @@ impl InspectorSession {
   pub fn new(
     v8_inspector_rc: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
     session_proxy: InspectorSessionProxy,
+    blocking: bool,
   ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
@@ -556,6 +571,7 @@ impl InspectorSession {
         v8_channel,
         v8_session,
         proxy: session_proxy,
+        blocking,
       }
     })
   }

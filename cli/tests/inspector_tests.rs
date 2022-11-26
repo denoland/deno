@@ -545,7 +545,12 @@ mod inspector {
       .filter(|s| !s.starts_with("Deno "));
 
     assert_stderr_for_inspect(&mut stderr_lines);
+    assert_eq!(
+      &stdout_lines.next().unwrap(),
+      "exit using ctrl+d, ctrl+c, or close()"
+    );
 
+    eprintln!("1");
     assert_inspector_messages(
     &mut socket_tx,
     &[
@@ -562,12 +567,9 @@ mod inspector {
     ],
   )
   .await;
+    eprintln!("2");
 
-    assert_eq!(
-      &stdout_lines.next().unwrap(),
-      "exit using ctrl+d, ctrl+c, or close()"
-    );
-
+    eprintln!("2.1");
     assert_inspector_messages(
     &mut socket_tx,
     &[
@@ -576,7 +578,7 @@ mod inspector {
     &mut socket_rx,
     &[r#"{"id":3,"result":{}}"#], &[]
   ).await;
-
+    eprintln!("3");
     assert_inspector_messages(
     &mut socket_tx,
     &[
@@ -586,7 +588,7 @@ mod inspector {
     &[r#"{"id":4,"result":{"result":{"type":"string","value":""#],
     &[],
   ).await;
-
+    eprintln!("4");
     assert_inspector_messages(
     &mut socket_tx,
     &[
@@ -596,9 +598,9 @@ mod inspector {
     &[r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#],
     &[r#"{"method":"Runtime.consoleAPICalled"#],
   ).await;
-
+    eprintln!("5");
     assert_eq!(&stderr_lines.next().unwrap(), "done");
-
+    eprintln!("6");
     drop(stdin);
     child.wait().unwrap();
   }
