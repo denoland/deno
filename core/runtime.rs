@@ -1089,18 +1089,20 @@ impl JsRuntime {
     if !pending_state.is_pending() && !maybe_scheduling {
       if has_inspector {
         let inspector = self.inspector();
-        let ready_to_disconnect = {
-          let i = inspector.borrow();
-          wait_for_inspector
-            && i.has_active_sessions()
-            && !i.has_blocking_sessions()
-        };
+        let has_active_sessions = inspector.borrow().has_active_sessions();
+        let has_blocking_sessions = inspector.borrow().has_blocking_sessions();
 
-        if ready_to_disconnect {
-          let context = self.global_context();
-          let scope = &mut self.handle_scope();
-          inspector.borrow_mut().context_destroyed(scope, context);
-          println!("Program finished. Waiting for inspector to disconnect to exit the process...");
+        if wait_for_inspector && has_active_sessions {
+          // If there are no blocking sessions (eg. REPL) we can now notify
+          // debugger that the program has finished running and we're ready
+          // to exit the process once debugger disconnects.
+          if !has_blocking_sessions {
+            let context = self.global_context();
+            let scope = &mut self.handle_scope();
+            inspector.borrow_mut().context_destroyed(scope, context);
+            println!("Program finished. Waiting for inspector to disconnect to exit the process...");
+          }
+
           return Poll::Pending;
         }
       }
