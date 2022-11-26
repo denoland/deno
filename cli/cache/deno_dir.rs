@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache::DiskCache;
+use super::DiskCache;
 
 use std::path::PathBuf;
 
@@ -9,7 +9,8 @@ use std::path::PathBuf;
 #[derive(Clone)]
 pub struct DenoDir {
   /// Example: /Users/rld/.deno/
-  pub root: PathBuf,
+  /// Note: This is not exposed in order to encourage using re-usable methods.
+  root: PathBuf,
   /// Used by TsCompiler to cache compiler output.
   pub gen_cache: DiskCache,
 }
@@ -46,6 +47,11 @@ impl DenoDir {
     Ok(deno_dir)
   }
 
+  /// The root directory of the DENO_DIR for display purposes only.
+  pub fn root_path_for_display(&self) -> std::path::Display {
+    self.root.display()
+  }
+
   /// Path for the incremental cache used for formatting.
   pub fn fmt_incremental_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
@@ -74,6 +80,42 @@ impl DenoDir {
   pub fn type_checking_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
     self.root.join("check_cache_v1")
+  }
+
+  /// Path to the registries cache, used for the lps.
+  pub fn registries_folder_path(&self) -> PathBuf {
+    self.root.join("registries")
+  }
+
+  /// Path to the dependencies cache folder.
+  pub fn deps_folder_path(&self) -> PathBuf {
+    self.root.join("deps")
+  }
+
+  /// Path to the origin data cache folder.
+  pub fn origin_data_folder_path(&self) -> PathBuf {
+    // TODO(@crowlKats): change to origin_data for 2.0
+    self.root.join("location_data")
+  }
+
+  /// File used for the upgrade checker.
+  pub fn upgrade_check_file_path(&self) -> PathBuf {
+    self.root.join("latest.txt")
+  }
+
+  /// Folder used for the npm cache.
+  pub fn npm_folder_path(&self) -> PathBuf {
+    self.root.join("npm")
+  }
+
+  /// Path used for the REPL history file.
+  pub fn repl_history_file_path(&self) -> PathBuf {
+    self.root.join("deno_history.txt")
+  }
+
+  /// Folder path used for downloading new versions of deno.
+  pub fn dl_folder_path(&self) -> PathBuf {
+    self.root.join("dl")
   }
 }
 

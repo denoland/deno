@@ -3,9 +3,7 @@
 mod args;
 mod auth_tokens;
 mod cache;
-mod cdp;
 mod checksum;
-mod deno_dir;
 mod deno_std;
 mod diff;
 mod display;
@@ -707,7 +705,7 @@ To grant permissions, set them before the script argument. For example:
 
   // Run a background task that checks for available upgrades. If an earlier
   // run of this background task found a new version of Deno.
-  tools::upgrade::check_for_upgrades(ps.dir.root.clone());
+  tools::upgrade::check_for_upgrades(ps.dir.upgrade_check_file_path());
 
   let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
   {
