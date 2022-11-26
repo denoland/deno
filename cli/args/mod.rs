@@ -44,7 +44,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::deno_dir::DenoDir;
+use crate::cache::DenoDir;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
