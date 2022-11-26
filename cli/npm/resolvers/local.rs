@@ -22,8 +22,8 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::TYPES_CONDITIONS;
 use tokio::task::JoinHandle;
 
+use crate::args::Lockfile;
 use crate::fs_util;
-use crate::lockfile::Lockfile;
 use crate::npm::cache::mixed_case_package_name_encode;
 use crate::npm::cache::should_sync_download;
 use crate::npm::cache::NpmPackageCacheFolderId;

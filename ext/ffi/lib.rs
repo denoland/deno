@@ -2065,7 +2065,7 @@ fn op_ffi_call_nonblocking<'scope>(
 #[op(fast)]
 fn op_ffi_ptr_of<FP>(
   state: &mut deno_core::OpState,
-  buf: &[u8],
+  buf: *const u8,
   out: &mut [u32],
 ) -> Result<(), AnyError>
 where
@@ -2084,7 +2084,7 @@ where
 
   // SAFETY: Out buffer was asserted to be at least large enough to hold a usize, and properly aligned.
   let out = unsafe { &mut *outptr };
-  *out = buf.as_ptr() as usize;
+  *out = buf as usize;
 
   Ok(())
 }
