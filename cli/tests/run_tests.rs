@@ -663,6 +663,12 @@ mod run {
     http_server: true,
   });
 
+  itest!(lock_flag_overrides_config_file_lock_path {
+     args: "run --lock=run/lock_check_ok2.json --config=run/config_file_lock_path.json run/019_media_types.ts",
+    output: "run/019_media_types.ts.out",
+    http_server: true,
+  });
+
   itest!(lock_v2_check_ok {
   args:
     "run --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
