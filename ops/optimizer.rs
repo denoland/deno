@@ -508,7 +508,7 @@ impl Optimizer {
               let is_mut_ref = mutability.is_some();
               match segment {
                 // Is `T` a u8?
-                PathSegment { ident, .. } if ident == "u8" => {                  
+                PathSegment { ident, .. } if ident == "u8" => {
                   self.fast_parameters.push(FastValue::Uint8Array);
                   assert!(self
                     .transforms
