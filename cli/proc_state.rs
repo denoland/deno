@@ -8,12 +8,12 @@ use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache;
+use crate::cache::DenoDir;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
-use crate::deno_dir;
 use crate::emit::emit_parsed_source;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_lock_or_exit;
@@ -73,7 +73,7 @@ use std::sync::Arc;
 pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
-  pub dir: deno_dir::DenoDir,
+  pub dir: DenoDir,
   pub file_fetcher: FileFetcher,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
@@ -152,7 +152,7 @@ impl ProcState {
     let shared_array_buffer_store = SharedArrayBufferStore::default();
     let compiled_wasm_module_store = CompiledWasmModuleStore::default();
     let dir = cli_options.resolve_deno_dir()?;
-    let deps_cache_location = dir.root.join("deps");
+    let deps_cache_location = dir.deps_folder_path();
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
