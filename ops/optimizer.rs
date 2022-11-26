@@ -2,7 +2,7 @@
 use crate::Op;
 use pmutil::{q, Quote};
 use proc_macro2::TokenStream;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Formatter;
 use syn::{
@@ -201,7 +201,7 @@ pub(crate) struct Optimizer {
   pub(crate) fast_result: Option<FastValue>,
   pub(crate) fast_parameters: Vec<FastValue>,
 
-  pub(crate) transforms: HashMap<usize, Transform>,
+  pub(crate) transforms: BTreeMap<usize, Transform>,
   pub(crate) fast_compatible: bool,
 
   pub(crate) is_async: bool,
