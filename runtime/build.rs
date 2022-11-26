@@ -120,7 +120,7 @@ mod not_docs {
   }
 
   fn create_runtime_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
-    let extensions: Vec<Extension> = vec![
+    let extensions_with_js: Vec<Extension> = vec![
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
@@ -154,7 +154,8 @@ mod not_docs {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions,
+      extensions: vec![],
+      extensions_with_js,
       additional_files: files,
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         lzzzz::lz4_hc::compress_to_vec(

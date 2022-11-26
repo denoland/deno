@@ -87,6 +87,7 @@ pub struct JsRuntime {
   built_from_snapshot: bool,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
+  extensions_with_js: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
@@ -240,9 +241,22 @@ pub struct RuntimeOptions {
   /// executed tries to load modules.
   pub module_loader: Option<Rc<dyn ModuleLoader>>,
 
-  /// JsRuntime extensions, not to be confused with ES modules
-  /// these are sets of ops and other JS code to be initialized.
+  /// JsRuntime extensions, not to be confused with ES modules.
+  /// Only ops registered by extensions will be initialized. If you need
+  /// to execute JS code from extensions, use `extensions_with_js` options
+  /// instead.
   pub extensions: Vec<Extension>,
+
+  /// JsRuntime extensions, not to be confused with ES modules.
+  /// Ops registered by extensions will be initialized and JS code will be
+  /// executed. If you don't need to execute JS code from extensions, use
+  /// `extensions` option instead.
+  ///
+  /// This is useful when creating snapshots, in such case you would pass
+  /// extensions using `extensions_with_js`, later when creating a runtime
+  /// from the snapshot, you would pass these extensions using `extensions`
+  /// option.
+  pub extensions_with_js: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
   ///
@@ -339,11 +353,20 @@ impl JsRuntime {
     let has_startup_snapshot = options.startup_snapshot.is_some();
 
     // Add builtins extension
-    options
-      .extensions
-      .insert(0, crate::ops_builtin::init_builtins());
+    if !has_startup_snapshot {
+      options
+        .extensions_with_js
+        .insert(0, crate::ops_builtin::init_builtins());
+    } else {
+      options
+        .extensions
+        .insert(0, crate::ops_builtin::init_builtins());
+    }
 
-    let ops = Self::collect_ops(&mut options.extensions);
+    let ops = Self::collect_ops(
+      &mut options.extensions,
+      &mut options.extensions_with_js,
+    );
     let mut op_state = OpState::new(ops.len());
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
@@ -539,6 +562,7 @@ impl JsRuntime {
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
+      extensions_with_js: options.extensions_with_js,
       state: state_rc,
       module_map: Some(module_map_rc),
       is_main: options.is_main,
@@ -547,12 +571,8 @@ impl JsRuntime {
     // Init resources and ops before extensions to make sure they are
     // available during the initialization process.
     js_runtime.init_extension_ops().unwrap();
-    // TODO(@AaronO): diff extensions inited in snapshot and those provided
-    // for now we assume that snapshot and extensions always match
-    if !has_startup_snapshot {
-      let realm = js_runtime.global_realm();
-      js_runtime.init_extension_js(&realm).unwrap();
-    }
+    let realm = js_runtime.global_realm();
+    js_runtime.init_extension_js(&realm).unwrap();
     // Init callbacks (opresolve)
     js_runtime.init_cbs();
 
@@ -682,7 +702,8 @@ impl JsRuntime {
   /// Initializes JS of provided Extensions in the given realm
   fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
     // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
+    let mut extensions: Vec<Extension> =
+      std::mem::take(&mut self.extensions_with_js);
     for m in extensions.iter_mut() {
       let js_files = m.init_js();
       for (filename, source) in js_files {
@@ -691,15 +712,22 @@ impl JsRuntime {
       }
     }
     // Restore extensions
-    self.extensions = extensions;
+    self.extensions_with_js = extensions;
 
     Ok(())
   }
 
   /// Collects ops from extensions & applies middleware
-  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpDecl> {
+  fn collect_ops(
+    extensions: &mut [Extension],
+    extensions_with_js: &mut [Extension],
+  ) -> Vec<OpDecl> {
+    let mut exts = vec![];
+    exts.extend(extensions);
+    exts.extend(extensions_with_js);
+
     // Middleware
-    let middleware: Vec<Box<OpMiddlewareFn>> = extensions
+    let middleware: Vec<Box<OpMiddlewareFn>> = exts
       .iter_mut()
       .filter_map(|e| e.init_middleware())
       .collect();
@@ -708,7 +736,7 @@ impl JsRuntime {
     let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
     // Flatten ops, apply middlware & override disabled ops
-    extensions
+    exts
       .iter_mut()
       .filter_map(|e| e.init_ops())
       .flatten()
@@ -733,22 +761,41 @@ impl JsRuntime {
   fn init_extension_ops(&mut self) -> Result<(), Error> {
     let op_state = self.op_state();
     // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
+    {
+      let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
 
-    // Setup state
-    for e in extensions.iter_mut() {
-      // ops are already registered during in bindings::initialize_context();
-      e.init_state(&mut op_state.borrow_mut())?;
+      // Setup state
+      for e in extensions.iter_mut() {
+        // ops are already registered during in bindings::initialize_context();
+        e.init_state(&mut op_state.borrow_mut())?;
 
-      // Setup event-loop middleware
-      if let Some(middleware) = e.init_event_loop_middleware() {
-        self.event_loop_middlewares.push(middleware);
+        // Setup event-loop middleware
+        if let Some(middleware) = e.init_event_loop_middleware() {
+          self.event_loop_middlewares.push(middleware);
+        }
       }
+
+      // Restore extensions
+      self.extensions = extensions;
     }
+    {
+      let mut extensions: Vec<Extension> =
+        std::mem::take(&mut self.extensions_with_js);
 
-    // Restore extensions
-    self.extensions = extensions;
+      // Setup state
+      for e in extensions.iter_mut() {
+        // ops are already registered during in bindings::initialize_context();
+        e.init_state(&mut op_state.borrow_mut())?;
 
+        // Setup event-loop middleware
+        if let Some(middleware) = e.init_event_loop_middleware() {
+          self.event_loop_middlewares.push(middleware);
+        }
+      }
+
+      // Restore extensions
+      self.extensions_with_js = extensions;
+    }
     Ok(())
   }
 
