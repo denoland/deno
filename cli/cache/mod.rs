@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 mod check;
 mod common;
+mod deno_dir;
 mod disk_cache;
 mod emit;
 mod incremental;
@@ -24,6 +25,7 @@ mod parsed_source;
 
 pub use check::TypeCheckCache;
 pub use common::FastInsecureHasher;
+pub use deno_dir::DenoDir;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use incremental::IncrementalCache;

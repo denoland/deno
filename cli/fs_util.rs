@@ -1053,34 +1053,92 @@ mod tests {
 
   #[test]
   fn test_relative_specifier() {
-    run_test("file:///from", "file:///to", Some("./to"));
-    run_test("file:///from", "file:///from/other", Some("./from/other"));
-    run_test("file:///from", "file:///from/other/", Some("./from/other/"));
-    run_test("file:///from", "file:///other/from", Some("./other/from"));
-    run_test("file:///from/", "file:///other/from", Some("../other/from"));
-    run_test("file:///from", "file:///other/from/", Some("./other/from/"));
-    run_test(
-      "file:///from",
-      "file:///to/other.txt",
-      Some("./to/other.txt"),
-    );
-    run_test(
-      "file:///from/test",
-      "file:///to/other.txt",
-      Some("../to/other.txt"),
-    );
-    run_test(
-      "file:///from/other.txt",
-      "file:///to/other.txt",
-      Some("../to/other.txt"),
-    );
-
-    fn run_test(from: &str, to: &str, expected: Option<&str>) {
-      let result = relative_specifier(
-        &ModuleSpecifier::parse(from).unwrap(),
-        &ModuleSpecifier::parse(to).unwrap(),
+    let fixtures: Vec<(&str, &str, Option<&str>)> = vec![
+      ("file:///from", "file:///to", Some("./to")),
+      ("file:///from", "file:///from/other", Some("./from/other")),
+      ("file:///from", "file:///from/other/", Some("./from/other/")),
+      ("file:///from", "file:///other/from", Some("./other/from")),
+      ("file:///from/", "file:///other/from", Some("../other/from")),
+      ("file:///from", "file:///other/from/", Some("./other/from/")),
+      (
+        "file:///from",
+        "file:///to/other.txt",
+        Some("./to/other.txt"),
+      ),
+      (
+        "file:///from/test",
+        "file:///to/other.txt",
+        Some("../to/other.txt"),
+      ),
+      (
+        "file:///from/other.txt",
+        "file:///to/other.txt",
+        Some("../to/other.txt"),
+      ),
+      (
+        "https://deno.land/x/a/b/d.ts",
+        "https://deno.land/x/a/b/c.ts",
+        Some("./c.ts"),
+      ),
+      (
+        "https://deno.land/x/a/b/d.ts",
+        "https://deno.land/x/a/c.ts",
+        Some("../c.ts"),
+      ),
+      (
+        "https://deno.land/x/a/b/d.ts",
+        "https://deno.land/x/a/b/c/d.ts",
+        Some("./c/d.ts"),
+      ),
+      (
+        "https://deno.land/x/a/b/c/",
+        "https://deno.land/x/a/b/c/d.ts",
+        Some("./d.ts"),
+      ),
+      (
+        "https://deno.land/x/a/b/c/",
+        "https://deno.land/x/a/b/c/d/e.ts",
+        Some("./d/e.ts"),
+      ),
+      (
+        "https://deno.land/x/a/b/c/f.ts",
+        "https://deno.land/x/a/b/c/d/e.ts",
+        Some("./d/e.ts"),
+      ),
+      (
+        "https://deno.land/x/a/b/d.ts",
+        "https://deno.land/x/a/c.ts?foo=bar",
+        Some("../c.ts?foo=bar"),
+      ),
+      (
+        "https://deno.land/x/a/b/d.ts?foo=bar",
+        "https://deno.land/x/a/b/c.ts",
+        Some("./c.ts"),
+      ),
+      ("file:///a/b/d.ts", "file:///a/b/c.ts", Some("./c.ts")),
+      ("https://deno.land/x/a/b/c.ts", "file:///a/b/c.ts", None),
+      (
+        "https://deno.land/",
+        "https://deno.land/x/a/b/c.ts",
+        Some("./x/a/b/c.ts"),
+      ),
+      (
+        "https://deno.land/x/d/e/f.ts",
+        "https://deno.land/x/a/b/c.ts",
+        Some("../../a/b/c.ts"),
+      ),
+    ];
+    for (from_str, to_str, expected) in fixtures {
+      let from = ModuleSpecifier::parse(from_str).unwrap();
+      let to = ModuleSpecifier::parse(to_str).unwrap();
+      let actual = relative_specifier(&from, &to);
+      assert_eq!(
+        actual.as_deref(),
+        expected,
+        "from: \"{}\" to: \"{}\"",
+        from_str,
+        to_str
       );
-      assert_eq!(result.as_deref(), expected);
     }
   }
 
