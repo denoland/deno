@@ -248,7 +248,6 @@ impl RealNpmRegistryApi {
   pub fn new(
     base_url: Url,
     cache: NpmCache,
-    cache_setting: CacheSetting,
     http_client: HttpClient,
     progress_bar: ProgressBar,
   ) -> Self {
@@ -256,7 +255,6 @@ impl RealNpmRegistryApi {
       base_url,
       cache,
       mem_cache: Default::default(),
-      cache_setting,
       http_client,
       progress_bar,
     }))
@@ -286,7 +284,6 @@ struct RealNpmRegistryApiInner {
   base_url: Url,
   cache: NpmCache,
   mem_cache: Mutex<HashMap<String, Option<Arc<NpmPackageInfo>>>>,
-  cache_setting: CacheSetting,
   http_client: HttpClient,
   progress_bar: ProgressBar,
 }
@@ -301,7 +298,7 @@ impl RealNpmRegistryApiInner {
       Ok(info)
     } else {
       let mut maybe_package_info = None;
-      if self.cache_setting.should_use_for_npm_package(name) {
+      if self.cache.cache_setting().should_use_for_npm_package(name) {
         // attempt to load from the file cache
         maybe_package_info = self.load_file_cached_package_info(name);
       }
@@ -409,15 +406,14 @@ impl RealNpmRegistryApiInner {
     &self,
     name: &str,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
-    if self.cache_setting == CacheSetting::Only {
+    if *self.cache.cache_setting() == CacheSetting::Only {
       return Err(custom_error(
         "NotCached",
         format!(
           "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
           name
         )
-      )
-      );
+      ));
     }
 
     let package_url = self.get_package_url(name);

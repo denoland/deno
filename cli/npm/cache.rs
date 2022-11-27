@@ -1,14 +1,17 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 
 use crate::cache::DenoDir;
@@ -310,13 +313,46 @@ impl ReadonlyNpmCache {
   }
 }
 
+#[derive(Debug)]
+struct NpmCacheUseDeterminer {
+  cache_setting: CacheSetting,
+  /// Prevents re-downloading a package if using `--reload` more than
+  /// once per run.
+  previously_reloaded_package_folders: Mutex<HashSet<String>>,
+}
+
+impl NpmCacheUseDeterminer {
+  pub fn new(cache_setting: CacheSetting) -> Self {
+    Self {
+      cache_setting,
+      previously_reloaded_package_folders: Default::default(),
+    }
+  }
+
+  /// Checks if the cache should be used for the provided name and version.
+  /// NOTE: Subsequent calls for the same package will always return `true`
+  /// to ensure a package is only downloaded once per run of the CLI. This
+  /// prevents downloads from occurring when someone has `--reload` and
+  /// `--watch` on for example.
+  pub fn should_use_global_cache_for_package(
+    &self,
+    package: (&str, &NpmVersion),
+  ) -> bool {
+    self.cache_setting.should_use_for_npm_package(package.0)
+      || !self
+        .previously_reloaded_package_folders
+        .lock()
+        .insert(format!("{}@{}", package.0, package.1))
+  }
+}
+
 /// Stores a single copy of npm packages in a cache.
 #[derive(Clone, Debug)]
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
-  cache_setting: CacheSetting,
   http_client: HttpClient,
   progress_bar: ProgressBar,
+  cache_use_determiner: Arc<NpmCacheUseDeterminer>,
 }
 
 impl NpmCache {
@@ -328,14 +364,18 @@ impl NpmCache {
   ) -> Self {
     Self {
       readonly: ReadonlyNpmCache::from_deno_dir(dir),
-      cache_setting,
       http_client,
       progress_bar,
+      cache_use_determiner: Arc::new(NpmCacheUseDeterminer::new(cache_setting)),
     }
   }
 
   pub fn as_readonly(&self) -> ReadonlyNpmCache {
     self.readonly.clone()
+  }
+
+  pub fn cache_setting(&self) -> &CacheSetting {
+    &self.cache_use_determiner.cache_setting
   }
 
   pub async fn ensure_package(
@@ -350,10 +390,6 @@ impl NpmCache {
       .with_context(|| {
         format!("Failed caching npm package '{}@{}'.", package.0, package.1)
       })
-  }
-
-  pub fn should_use_cache_for_npm_package(&self, package_name: &str) -> bool {
-    self.cache_setting.should_use_for_npm_package(package_name)
   }
 
   async fn ensure_package_inner(
@@ -371,10 +407,10 @@ impl NpmCache {
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
-      && self.should_use_cache_for_npm_package(package.0)
+      && self.cache_use_determiner.should_use_global_cache_for_package(package)
     {
       return Ok(());
-    } else if self.cache_setting == CacheSetting::Only {
+    } else if self.cache_use_determiner.cache_setting == CacheSetting::Only {
       return Err(custom_error(
         "NotCached",
         format!(
@@ -424,7 +460,6 @@ impl NpmCache {
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
-      && self.cache_setting.should_use_for_npm_package(&id.name)
     {
       return Ok(());
     }
@@ -504,7 +539,9 @@ pub fn mixed_case_package_name_decode(name: &str) -> Option<String> {
 mod test {
   use deno_core::url::Url;
 
+  use super::NpmCacheUseDeterminer;
   use super::ReadonlyNpmCache;
+  use crate::file_fetcher::CacheSetting;
   use crate::npm::cache::NpmPackageCacheFolderId;
   use crate::npm::semver::NpmVersion;
 
@@ -574,5 +611,32 @@ mod test {
         .join("_ib2hs4dfomxuuu2pjy")
         .join("2.1.5"),
     );
+  }
+
+  #[test]
+  fn test_cache_use_determiner() {
+    let determiner = NpmCacheUseDeterminer::new(CacheSetting::Only);
+    let version1 = NpmVersion::parse("1.0.0").unwrap();
+    assert!(determiner.should_use_global_cache_for_package(("a", &version1)));
+    assert!(determiner.should_use_global_cache_for_package(("a", &version1)));
+
+    // with reload, it should only not use the global cache the first call for a version
+    let determiner = NpmCacheUseDeterminer::new(CacheSetting::ReloadAll);
+    assert!(!determiner.should_use_global_cache_for_package(("a", &version1)));
+    assert!(determiner.should_use_global_cache_for_package(("a", &version1)));
+    let version2 = NpmVersion::parse("2.0.0").unwrap();
+    assert!(!determiner.should_use_global_cache_for_package(("a", &version2)));
+    assert!(determiner.should_use_global_cache_for_package(("a", &version2)));
+    assert!(determiner.should_use_global_cache_for_package(("a", &version1)));
+    assert!(!determiner.should_use_global_cache_for_package(("b", &version2)));
+    assert!(determiner.should_use_global_cache_for_package(("b", &version2)));
+
+    let determiner =
+      NpmCacheUseDeterminer::new(CacheSetting::ReloadSome(vec![
+        "npm:a".to_string()
+      ]));
+    assert!(!determiner.should_use_global_cache_for_package(("a", &version1)));
+    assert!(determiner.should_use_global_cache_for_package(("a", &version1)));
+    assert!(determiner.should_use_global_cache_for_package(("b", &version1)));
   }
 }
