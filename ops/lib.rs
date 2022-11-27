@@ -725,3 +725,39 @@ fn exclude_lifetime_params(
     .cloned()
     .collect::<Punctuated<GenericParam, Comma>>()
 }
+
+#[cfg(test)]
+mod tests {
+  use crate::{Attributes, Op};
+  use std::path::PathBuf;
+
+  #[testing_macros::fixture("optimizer_tests/**/*.rs")]
+  fn test_codegen(input: PathBuf) {
+    let update_expected = std::env::var("UPDATE_EXPECTED").is_ok();
+
+    let source =
+      std::fs::read_to_string(&input).expect("Failed to read test file");
+
+    let mut attrs = Attributes::default();
+    if source.contains("// @test-attr:fast") {
+      attrs.must_be_fast = true;
+    }
+
+    let item = syn::parse_str(&source).expect("Failed to parse test file");
+    let op = Op::new(item, attrs);
+
+    let expected = std::fs::read_to_string(input.with_extension("out"))
+      .expect("Failed to read expected output file");
+
+    let actual = op.gen();
+    // Validate syntax tree.
+    let tree = syn::parse2(actual).unwrap();
+    let actual = prettyplease::unparse(&tree);
+    if update_expected {
+      std::fs::write(input.with_extension("out"), actual)
+        .expect("Failed to write expected file");
+    } else {
+      assert_eq!(actual, expected);
+    }
+  }
+}
