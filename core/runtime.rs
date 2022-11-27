@@ -1197,47 +1197,76 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else {
-        let scope = &mut self.handle_scope();
-        let module_map = Self::module_map(scope);
-        let module_map = module_map.borrow();
-        let mut root_module_id = None;
-        for module_info in module_map.info.values() {
-          if module_info.main {
-            root_module_id = Some(module_info.id);
-            break;
+        fn get_stalled_top_level_await_message_for_module<'s>(
+          scope: &'s mut v8::HandleScope,
+          module_id: ModuleId,
+        ) -> Vec<v8::Global<v8::Message>> {
+          let module_map = JsRuntime::module_map(scope);
+          let module_map = module_map.borrow();
+          let module_handle = module_map.handles_by_id.get(&module_id).unwrap();
+
+          let module = v8::Local::new(scope, module_handle);
+          let stalled = module.get_stalled_top_level_await_message(scope);
+          let mut messages = vec![];
+          for (_, message) in stalled {
+            messages.push(v8::Global::new(scope, message));
           }
+          messages
         }
-        assert!(root_module_id.is_some());
-        let module_handle = module_map
-          .handles_by_id
-          .get(&root_module_id.unwrap())
-          .unwrap();
 
-        let module = v8::Local::new(scope, module_handle);
-        let mut msg = "Module evaluation is still pending but there are no pending ops or dynamic imports.\n".to_string();
+        fn find_stalled_top_level_await<'s>(
+          scope: &'s mut v8::HandleScope,
+        ) -> Vec<v8::Global<v8::Message>> {
+          let module_map = JsRuntime::module_map(scope);
+          let module_map = module_map.borrow();
 
-        let stalled = module.get_stalled_top_level_await_message(scope);
-        for (_, message) in stalled {
-          let message_str = message.get(scope);
-          msg.push_str(&format!(
-            "  {} in {}:{}:{}\n",
-            message_str.to_rust_string_lossy(scope),
-            message
-              .get_script_resource_name(scope)
-              .unwrap()
-              .to_rust_string_lossy(scope),
-            message.get_line_number(scope).unwrap(),
-            message.get_start_column(),
-          ));
-          msg.push_str(&format!(
-            "\n    {}",
-            message
-              .get_source_line(scope)
-              .unwrap()
-              .to_rust_string_lossy(scope)
-          ));
+          // First check if that's root module
+          let mut root_module_id = None;
+          for module_info in module_map.info.values() {
+            if module_info.main {
+              root_module_id = Some(module_info.id);
+              break;
+            }
+          }
+
+          if let Some(root_module_id) = root_module_id {
+            let messages = get_stalled_top_level_await_message_for_module(
+              scope,
+              root_module_id,
+            );
+            if !messages.is_empty() {
+              return messages;
+            }
+          }
+
+          // It wasn't a top module, so iterate over all modules and try to find
+          // any with stalled top level await
+          let module_ids = module_map
+            .handles_by_id
+            .keys()
+            .map(|k| k.clone())
+            .collect::<Vec<_>>();
+          for module_id in module_ids {
+            let messages =
+              get_stalled_top_level_await_message_for_module(scope, module_id);
+            if !messages.is_empty() {
+              return messages;
+            }
+          }
+
+          unreachable!()
         }
-        return Poll::Ready(Err(generic_error(msg)));
+
+        let scope = &mut self.handle_scope();
+        let messages = find_stalled_top_level_await(scope);
+        // We are gonna print only a single message to provide a nice formatting
+        // with source line of offending promise shown. Once user fixed it, then
+        // they will get another error message for the next promise (but this
+        // situation is gonna be very rare, if ever happening).
+        assert!(!messages.is_empty());
+        let msg = v8::Local::new(scope, messages[0].clone());
+        let js_error = JsError::from_v8_message(scope, msg);
+        return Poll::Ready(Err(js_error.into()));
       }
     }
 
