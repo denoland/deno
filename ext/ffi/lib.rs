@@ -996,7 +996,11 @@ fn ffi_parse_buffer_arg(
   // 5. Null: Very uncommon / can be represented by a 0.
 
   let pointer = if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
-    value.data()
+    if let Some(non_null) = value.data() {
+      non_null.as_ptr()
+    } else {
+      ptr::null_mut()
+    }
   } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg) {
     let byte_offset = value.byte_offset();
     let pointer = value
@@ -1005,12 +1009,12 @@ fn ffi_parse_buffer_arg(
         type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
       })?
       .data();
-    if !pointer.is_null() {
+    if let Some(non_null) = pointer {
       // SAFETY: Pointer is non-null, and V8 guarantees that the byte_offset
       // is within the buffer backing store.
-      unsafe { pointer.add(byte_offset) }
+      unsafe { non_null.as_ptr().add(byte_offset) }
     } else {
-      pointer
+      ptr::null_mut()
     }
   } else if arg.is_null() {
     ptr::null_mut()
