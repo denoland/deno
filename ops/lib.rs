@@ -750,6 +750,10 @@ mod tests {
     if source.contains("// @test-attr:fast") {
       attrs.must_be_fast = true;
     }
+    if source.contains("// @test-attr:wasm") {
+      attrs.is_wasm = true;
+      attrs.must_be_fast = true;
+    }
 
     let item = syn::parse_str(&source).expect("Failed to parse test file");
     let op = Op::new(item, attrs);

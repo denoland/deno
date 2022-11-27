@@ -443,26 +443,28 @@ impl Optimizer {
                   TypeReference { elem, .. },
                 ))) = args.last()
                 {
-                  // -> Option<&mut [u8]>
-                  if let Type::Slice(TypeSlice { elem, .. }) = &**elem {
-                    if let Type::Path(TypePath {
-                      path: Path { segments, .. },
-                      ..
-                    }) = &**elem
-                    {
-                      let segment = single_segment(segments)?;
+                  if self.has_wasm_memory {
+                    // -> Option<&mut [u8]>
+                    if let Type::Slice(TypeSlice { elem, .. }) = &**elem {
+                      if let Type::Path(TypePath {
+                        path: Path { segments, .. },
+                        ..
+                      }) = &**elem
+                      {
+                        let segment = single_segment(segments)?;
 
-                      match segment {
-                        // Is `T` a u8?
-                        PathSegment { ident, .. } if ident == "u8" => {
-                          self.has_fast_callback_option = true;
-                          assert!(self
-                            .transforms
-                            .insert(index, Transform::wasm_memory(index))
-                            .is_none());
-                        }
-                        _ => {
-                          return Err(BailoutReason::FastUnsupportedParamType)
+                        match segment {
+                          // Is `T` a u8?
+                          PathSegment { ident, .. } if ident == "u8" => {
+                            self.needs_fast_callback_option = true;
+                            assert!(self
+                              .transforms
+                              .insert(index, Transform::wasm_memory(index))
+                              .is_none());
+                          }
+                          _ => {
+                            return Err(BailoutReason::FastUnsupportedParamType)
+                          }
                         }
                       }
                     }
