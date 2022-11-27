@@ -35,6 +35,7 @@ use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
+use v8::HandleScope;
 
 pub enum InspectorMsgKind {
   Notification,
@@ -150,6 +151,7 @@ impl JsRuntimeInspector {
   pub fn new(
     isolate: &mut v8::OwnedIsolate,
     context: v8::Global<v8::Context>,
+    is_main: bool,
   ) -> Rc<RefCell<Self>> {
     let scope = &mut v8::HandleScope::new(isolate);
 
@@ -183,12 +185,26 @@ impl JsRuntimeInspector {
     // Tell the inspector about the global context.
     let context = v8::Local::new(scope, context);
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
+    // NOTE(bartlomieju): this is what Node.js does and it turns out some
+    // debuggers (like VSCode) rely on this information to disconnect after
+    // program completes
+    let aux_data = if is_main {
+      r#"{"isDefault": true}"#
+    } else {
+      r#"{"isDefault": false}"#
+    };
+    let aux_data_view = v8::inspector::StringView::from(aux_data.as_bytes());
     self_
       .v8_inspector
       .borrow_mut()
       .as_mut()
       .unwrap()
-      .context_created(context, Self::CONTEXT_GROUP_ID, context_name);
+      .context_created(
+        context,
+        Self::CONTEXT_GROUP_ID,
+        context_name,
+        aux_data_view,
+      );
 
     // Poll the session handler so we will get notified whenever there is
     // new incoming debugger activity.
@@ -198,8 +214,26 @@ impl JsRuntimeInspector {
     self__
   }
 
+  pub fn context_destroyed(
+    &mut self,
+    scope: &mut HandleScope,
+    context: v8::Global<v8::Context>,
+  ) {
+    let context = v8::Local::new(scope, context);
+    self
+      .v8_inspector
+      .borrow_mut()
+      .as_mut()
+      .unwrap()
+      .context_destroyed(context);
+  }
+
   pub fn has_active_sessions(&self) -> bool {
     self.sessions.borrow().has_active_sessions()
+  }
+
+  pub fn has_blocking_sessions(&self) -> bool {
+    self.sessions.borrow().has_blocking_sessions()
   }
 
   fn poll_sessions(
@@ -247,8 +281,11 @@ impl JsRuntimeInspector {
         // Accept new connections.
         let poll_result = sessions.session_rx.poll_next_unpin(cx);
         if let Poll::Ready(Some(session_proxy)) = poll_result {
-          let session =
-            InspectorSession::new(sessions.v8_inspector.clone(), session_proxy);
+          let session = InspectorSession::new(
+            sessions.v8_inspector.clone(),
+            session_proxy,
+            false,
+          );
           let prev = sessions.handshake.replace(session);
           assert!(prev.is_none());
         }
@@ -363,7 +400,7 @@ impl JsRuntimeInspector {
     // InspectorSessions for a local session is added directly to the "established"
     // sessions, so it doesn't need to go through the session sender.
     let inspector_session =
-      InspectorSession::new(self.v8_inspector.clone(), proxy);
+      InspectorSession::new(self.v8_inspector.clone(), proxy, true);
     self
       .sessions
       .borrow_mut()
@@ -415,6 +452,10 @@ impl SessionContainer {
 
   fn has_active_sessions(&self) -> bool {
     !self.established.is_empty() || self.handshake.is_some()
+  }
+
+  fn has_blocking_sessions(&self) -> bool {
+    self.established.iter().any(|s| s.blocking)
   }
 
   /// A temporary placeholder that should be used before actual
@@ -513,6 +554,9 @@ struct InspectorSession {
   v8_channel: v8::inspector::ChannelBase,
   v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
   proxy: InspectorSessionProxy,
+  // Describes if session should keep event loop alive, eg. a local REPL
+  // session should keep event loop alive, but a Websocket session shouldn't.
+  blocking: bool,
 }
 
 impl InspectorSession {
@@ -521,6 +565,7 @@ impl InspectorSession {
   pub fn new(
     v8_inspector_rc: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
     session_proxy: InspectorSessionProxy,
+    blocking: bool,
   ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
@@ -541,6 +586,7 @@ impl InspectorSession {
         v8_channel,
         v8_session,
         proxy: session_proxy,
+        blocking,
       }
     })
   }
