@@ -15,7 +15,7 @@ use deno_core::*;
 
 struct WasmMemory(NonNull<v8::WasmMemoryObject>);
 
-unsafe fn wasm_memory_unchecked(state: &mut OpState) -> &mut [u8] {
+fn wasm_memory_unchecked(state: &mut OpState) -> &mut [u8] {
   let WasmMemory(global) = state.borrow::<WasmMemory>();
   // SAFETY: `v8::Local` is always non-null pointer; the `HandleScope` is
   // already on the stack, but we don't have access to it.
@@ -33,8 +33,7 @@ unsafe fn wasm_memory_unchecked(state: &mut OpState) -> &mut [u8] {
 
 #[op(wasm)]
 fn op_wasm(state: &mut OpState, memory: Option<&mut [u8]>) {
-  let memory =
-    memory.unwrap_or_else(|| unsafe { wasm_memory_unchecked(state) });
+  let memory = memory.unwrap_or_else(|| wasm_memory_unchecked(state));
   memory[0] = 69;
 }
 
