@@ -141,6 +141,7 @@ pub(crate) fn generate(
   if optimizer.has_fast_callback_option
     || optimizer.needs_opstate()
     || optimizer.is_async
+    || optimizer.needs_fast_callback_option
   {
     let decl = parse_quote! {
       fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions
@@ -170,9 +171,9 @@ pub(crate) fn generate(
 
   let mut output_transforms = q!({});
 
-  if optimizer.has_fast_callback_option
-    || optimizer.needs_opstate()
+  if optimizer.needs_opstate()
     || optimizer.is_async
+    || optimizer.has_fast_callback_option
   {
     // Dark arts 🪄 ✨
     //
