@@ -9,7 +9,7 @@ use crate::profiling::is_profiling;
 
 pub fn create_js_runtime(setup: impl FnOnce() -> Vec<Extension>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions: setup(),
+    extensions_with_js: setup(),
     ..Default::default()
   })
 }

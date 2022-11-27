@@ -1,26 +1,23 @@
 use deno_core::error::AnyError;
 use mio::net::TcpStream;
-use std::cell::UnsafeCell;
-use std::future::Future;
-use std::io::Read;
-use std::io::Write;
-use std::marker::PhantomPinned;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::{
+  cell::UnsafeCell,
+  future::Future,
+  io::{Read, Write},
+  pin::Pin,
+  sync::{Arc, Mutex},
+};
 use tokio::sync::mpsc;
 
 use crate::ParseStatus;
 
 type TlsTcpStream = rustls::StreamOwned<rustls::ServerConnection, TcpStream>;
 
-#[derive(Debug)]
 pub enum InnerStream {
   Tcp(TcpStream),
   Tls(Box<TlsTcpStream>),
 }
 
-#[derive(Debug)]
 pub struct Stream {
   pub inner: InnerStream,
   pub detached: bool,
@@ -29,7 +26,6 @@ pub struct Stream {
   pub parse_done: ParseStatus,
   pub buffer: UnsafeCell<Vec<u8>>,
   pub read_lock: Arc<Mutex<()>>,
-  pub _pinned: PhantomPinned,
 }
 
 impl Stream {
