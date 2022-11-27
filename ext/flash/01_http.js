@@ -188,8 +188,8 @@
     return str;
   }
 
-  function prepareFastCalls() {
-    return core.ops.op_flash_make_request();
+  function prepareFastCalls(serverId) {
+    return core.ops.op_flash_make_request(serverId);
   }
 
   function hostnameForDisplay(hostname) {
@@ -243,6 +243,7 @@
     i,
     respondFast,
     respondChunked,
+    tryRespondChunked,
   ) {
     // there might've been an HTTP upgrade.
     if (resp === undefined) {
@@ -371,6 +372,9 @@
           }
         } else {
           const reader = respBody.getReader();
+
+          // Best case: sends headers + first chunk in a single go.
+          const { value, done } = await reader.read();
           writeFixedResponse(
             serverId,
             i,
@@ -385,14 +389,23 @@
             false,
             respondFast,
           );
-          while (true) {
-            const { value, done } = await reader.read();
-            await respondChunked(
-              i,
-              value,
-              done,
-            );
-            if (done) break;
+
+          await tryRespondChunked(
+            i,
+            value,
+            done,
+          );
+
+          if (!done) {
+            while (true) {
+              const chunk = await reader.read();
+              await respondChunked(
+                i,
+                chunk.value,
+                chunk.done,
+              );
+              if (chunk.done) break;
+            }
           }
         }
       }
@@ -482,15 +495,11 @@
 
       const serverId = opFn(listenOpts);
       const serverPromise = core.opAsync("op_flash_drive_server", serverId);
-
-      PromisePrototypeCatch(
-        PromisePrototypeThen(
-          core.opAsync("op_flash_wait_for_listening", serverId),
-          (port) => {
-            onListen({ hostname: listenOpts.hostname, port });
-          },
-        ),
-        () => {},
+      const listenPromise = PromisePrototypeThen(
+        core.opAsync("op_flash_wait_for_listening", serverId),
+        (port) => {
+          onListen({ hostname: listenOpts.hostname, port });
+        },
       );
       const finishedPromise = PromisePrototypeCatch(serverPromise, () => {});
 
@@ -506,7 +515,7 @@
             return;
           }
           server.closed = true;
-          await core.opAsync("op_flash_close_server", serverId);
+          core.ops.op_flash_close_server(serverId);
           await server.finished;
         },
         async serve() {
@@ -572,6 +581,7 @@
                           i,
                           respondFast,
                           respondChunked,
+                          tryRespondChunked,
                         ),
                     ),
                     onError,
@@ -589,6 +599,7 @@
                       i,
                       respondFast,
                       respondChunked,
+                      tryRespondChunked,
                     )
                   ).catch(onError);
                   continue;
@@ -607,6 +618,7 @@
                 i,
                 respondFast,
                 respondChunked,
+                tryRespondChunked,
               );
             }
 
@@ -618,10 +630,29 @@
 
       signal?.addEventListener("abort", () => {
         clearInterval(dateInterval);
-        PromisePrototypeThen(server.close(), () => {}, () => {});
+        server.close();
       }, {
         once: true,
       });
+
+      function tryRespondChunked(token, chunk, shutdown) {
+        const nwritten = core.ops.op_try_flash_respond_chuncked(
+          serverId,
+          token,
+          chunk ?? new Uint8Array(),
+          shutdown,
+        );
+        if (nwritten > 0) {
+          return core.opAsync(
+            "op_flash_respond_chuncked",
+            serverId,
+            token,
+            chunk,
+            shutdown,
+            nwritten,
+          );
+        }
+      }
 
       function respondChunked(token, chunk, shutdown) {
         return core.opAsync(
@@ -633,7 +664,7 @@
         );
       }
 
-      const fastOp = prepareFastCalls();
+      const fastOp = prepareFastCalls(serverId);
       let nextRequestSync = () => fastOp.nextRequest();
       let getMethodSync = (token) => fastOp.getMethod(token);
       let respondFast = (token, response, shutdown) =>
@@ -653,8 +684,8 @@
       }
 
       await SafePromiseAll([
+        listenPromise,
         PromisePrototypeCatch(server.serve(), console.error),
-        serverPromise,
       ]);
     };
   }

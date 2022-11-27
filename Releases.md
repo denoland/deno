@@ -6,6 +6,55 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.28.2 / 2022.11.24
+
+- feat(cli): add warning for incorrectly ordered flags (#16734)
+- feat(core): Ability to create snapshots from existing snapshots (#16597)
+- fix(ext/flash): graceful server startup/shutdown with unsettled promises in
+  mind (#16616)
+- fix(ext/node): handle URL in createRequire (#16682)
+- fix(ext/websocket): uncatchable errors on send (#16743)
+- fix(fmt/markdown): scenario where whitespace was being incorrectly stripped in
+  inline links (#16769)
+- fix(info): handle circular npm dependencies (#16692)
+- fix(inspector): ensure console methods provided by inspector are available
+  (#16724)
+- fix(install): `deno install -f` should overwrite lockfile from previous
+  installation (#16744)
+- fix(npm): add suggestions to error message when can't find binary entrypoint
+  (#16733)
+- fix(npm): automatically find binary entrypoint when values are all the same
+  (#16735)
+- fix(npm): handle directory resolution when resolving declaration files
+  (#16706)
+- fix(npm): use an http client with connection pool (#16705)
+- fix(npm/check): prioritize exports over types entry (#16788)
+- fix(npm/types): resolve main entrypoint declaration file when no types entry
+  (#16791)
+- fix(types/unstable): change interface base for `CommandOutput` (#16696)
+- fix: Make npm packages works with import maps (#16754)
+- perf(ext/flash): optimize response streaming (#16660)
+- perf(npm): make dependency resolution faster (#16694)
+
+### 1.28.1 / 2022.11.16
+
+- fix(bundle): explicit error when using an npm specifier with deno bundle
+  (#16637)
+- fix(cli): add a jsdoc tag for `UnstableRunOptions` (#16525)
+- fix(ext/webstorage): make web storages re-assignable (#16661)
+- fix(install): support npm specifiers (#16634)
+- fix(lock): ensure npm dependencies are written with --lock-write (#16668)
+- fix(npm): don't fail if conditional exports don't contains types (#16651)
+- fix(npm): handle peer dep being resolved without resolved dep higher in tree
+  and then with (#16640)
+- fix(npm): probing for files that have a file stem (#16641)
+- fix(npm): properly handle getting `@types` package for scoped packages
+  (#16655)
+- fix(npm): support dist tags specified in npm package dependencies (#16652)
+- fix(npm): support non-all lowercase package names (#16669)
+- fix(npm): using types for packages with subpath (#16656)
+- perf(runtime/spawn): collect output using `op_read_all` (#16596)
+
 ### 1.28.0 / 2022.11.13
 
 - feat(lock): don't require --unstable for auto discovery (#16582)

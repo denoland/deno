@@ -73,11 +73,6 @@ pub fn url_to_filename(url: &Url) -> Option<PathBuf> {
   Some(cache_filename)
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct HttpCache {
-  pub location: PathBuf,
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct Metadata {
   pub headers: HeadersMap,
@@ -107,6 +102,11 @@ impl Metadata {
   }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct HttpCache {
+  pub location: PathBuf,
+}
+
 impl HttpCache {
   /// Returns a new instance.
   ///
@@ -123,7 +123,7 @@ impl HttpCache {
     if path.is_dir() {
       return Ok(());
     }
-    fs::create_dir_all(&path).map_err(|e| {
+    fs::create_dir_all(path).map_err(|e| {
       io::Error::new(
         e.kind(),
         format!(

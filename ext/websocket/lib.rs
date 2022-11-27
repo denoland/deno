@@ -504,12 +504,9 @@ pub fn op_ws_try_send_string(
   state: &mut OpState,
   rid: ResourceId,
   text: String,
-) -> bool {
-  let resource = match state.resource_table.get::<WsStreamResource>(rid) {
-    Ok(resource) => resource,
-    Err(_) => return false,
-  };
-  resource.try_send(Message::Text(text)).is_ok()
+) -> Result<bool, AnyError> {
+  let resource = state.resource_table.get::<WsStreamResource>(rid)?;
+  resource.try_send(Message::Text(text))
 }
 
 #[op(fast)]
@@ -517,12 +514,9 @@ pub fn op_ws_try_send_binary(
   state: &mut OpState,
   rid: u32,
   value: &[u8],
-) -> bool {
-  let resource = match state.resource_table.get::<WsStreamResource>(rid) {
-    Ok(resource) => resource,
-    Err(_) => return false,
-  };
-  resource.try_send(Message::Binary(value.to_vec())).is_ok()
+) -> Result<bool, AnyError> {
+  let resource = state.resource_table.get::<WsStreamResource>(rid)?;
+  resource.try_send(Message::Binary(value.to_vec()))
 }
 
 #[op(deferred)]
