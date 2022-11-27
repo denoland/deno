@@ -92,17 +92,19 @@ impl ReplSession {
     for notification in session.notifications() {
       let method = notification.get("method").unwrap().as_str().unwrap();
       let params = notification.get("params").unwrap();
-
       if method == "Runtime.executionContextCreated" {
-        context_id = params
-          .get("context")
+        let context = params.get("context").unwrap();
+        assert!(context
+          .get("auxData")
           .unwrap()
-          .get("id")
+          .get("isDefault")
           .unwrap()
-          .as_u64()
-          .unwrap();
+          .as_bool()
+          .unwrap());
+        context_id = context.get("id").unwrap().as_u64().unwrap();
       }
     }
+    assert_ne!(context_id, 0);
 
     let mut repl_session = ReplSession {
       worker,
