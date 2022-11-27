@@ -169,6 +169,7 @@ mod not_docs {
   }
 
   pub fn build_snapshot(runtime_snapshot_path: PathBuf) {
+    #[allow(unused_mut)]
     let mut js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js");
     #[cfg(not(feature = "snapshot_from_snapshot"))]
     {
