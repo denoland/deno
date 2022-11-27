@@ -18,7 +18,11 @@ impl op_wasm {
             name: Self::name(),
             v8_fn_ptr: Self::v8_fn_ptr(),
             enabled: true,
-            fast_fn: None,
+            fast_fn: Some(
+                Box::new(op_wasm_fast {
+                    _phantom: ::std::marker::PhantomData,
+                }),
+            ),
             is_async: false,
             is_unstable: false,
             is_v8: false,
@@ -42,4 +46,36 @@ impl op_wasm {
         let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
         op_state.tracker.track_sync(ctx.id);
     }
+}
+struct op_wasm_fast {
+    _phantom: ::std::marker::PhantomData<()>,
+}
+impl<'scope> deno_core::v8::fast_api::FastFunction for op_wasm_fast {
+    fn function(&self) -> *const ::std::ffi::c_void {
+        op_wasm_fast_fn as *const ::std::ffi::c_void
+    }
+    fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
+        use deno_core::v8::fast_api::Type::*;
+        use deno_core::v8::fast_api::CType;
+        &[V8Value, CallbackOptions]
+    }
+    fn return_type(&self) -> deno_core::v8::fast_api::CType {
+        deno_core::v8::fast_api::CType::Void
+    }
+}
+fn op_wasm_fast_fn<'scope>(
+    _: deno_core::v8::Local<deno_core::v8::Object>,
+    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
+) -> () {
+    use deno_core::v8;
+    use deno_core::_ops;
+    let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
+        &mut *fast_api_callback_options
+    };
+    let memory = unsafe {
+        &*(__opts.wasm_memory as *const deno_core::v8::fast_api::FastApiTypedArray<u8>)
+    }
+        .get_storage_if_aligned();
+    let result = op_wasm::call(memory);
+    result
 }

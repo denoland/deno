@@ -4,8 +4,8 @@ use deno_core::op;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
-use std::ptr::NonNull;
 use std::mem::transmute;
+use std::ptr::NonNull;
 
 // This is a hack to make the `#[op]` macro work with
 // deno_core examples.
@@ -33,7 +33,8 @@ unsafe fn wasm_memory_unchecked(state: &mut OpState) -> &mut [u8] {
 
 #[op(wasm)]
 fn op_wasm(state: &mut OpState, memory: Option<&mut [u8]>) {
-  let memory = memory.unwrap_or_else(|| unsafe { wasm_memory_unchecked(state) });
+  let memory =
+    memory.unwrap_or_else(|| unsafe { wasm_memory_unchecked(state) });
   memory[0] = 69;
 }
 
@@ -43,14 +44,17 @@ fn op_set_wasm_mem(
   state: &mut OpState,
   memory: serde_v8::Value,
 ) {
-  let memory = v8::Local::<v8::WasmMemoryObject>::try_from(memory.v8_value).unwrap();
+  let memory =
+    v8::Local::<v8::WasmMemoryObject>::try_from(memory.v8_value).unwrap();
   let global = v8::Global::new(scope, memory);
   state.put(WasmMemory(global.into_raw()));
 }
 
 fn main() {
   // Build a deno_core::Extension providing custom ops
-  let ext = Extension::builder().ops(vec![op_wasm::decl(), op_set_wasm_mem::decl()]).build();
+  let ext = Extension::builder()
+    .ops(vec![op_wasm::decl(), op_set_wasm_mem::decl()])
+    .build();
 
   // Initialize a runtime instance
   let mut runtime = JsRuntime::new(RuntimeOptions {

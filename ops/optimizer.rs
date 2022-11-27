@@ -17,7 +17,6 @@ pub(crate) enum BailoutReason {
   // Recoverable errors
   MustBeSingleSegment,
   FastUnsupportedParamType,
-  MissingWasmMemory,
 }
 
 #[derive(Debug, PartialEq)]
@@ -468,9 +467,7 @@ impl Optimizer {
                         }
                       }
                     }
-                  }
-
-                  if let Type::Path(TypePath {
+                  } else if let Type::Path(TypePath {
                     path: Path { segments, .. },
                     ..
                   }) = &**elem

@@ -80,7 +80,6 @@ impl Op {
       | Err(BailoutReason::FastUnsupportedParamType) => {
         optimizer.fast_compatible = false;
       }
-      Err(BailoutReason::MissingWasmMemory) => todo!(),
       _ => {}
     };
 

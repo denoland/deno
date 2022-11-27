@@ -139,6 +139,7 @@ pub(crate) fn generate(
 
   // Apply *hard* optimizer hints.
   if optimizer.has_fast_callback_option
+    || optimizer.has_wasm_memory
     || optimizer.needs_opstate()
     || optimizer.is_async
     || optimizer.needs_fast_callback_option
@@ -147,7 +148,7 @@ pub(crate) fn generate(
       fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions
     };
 
-    if optimizer.has_fast_callback_option {
+    if optimizer.has_fast_callback_option || optimizer.has_wasm_memory {
       // Replace last parameter.
       assert!(fast_fn_inputs.pop().is_some());
       fast_fn_inputs.push(decl);
@@ -174,6 +175,7 @@ pub(crate) fn generate(
   if optimizer.needs_opstate()
     || optimizer.is_async
     || optimizer.has_fast_callback_option
+    || optimizer.has_wasm_memory
   {
     // Dark arts 🪄 ✨
     //

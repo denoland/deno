@@ -30,17 +30,12 @@ impl Parse for Attributes {
     }
 
     let is_wasm = vars.contains(&"wasm");
-    let mut must_be_fast = vars.contains(&"fast");
-    // All Wasm ops must use fast API calls.
-    if is_wasm {
-      must_be_fast = true;
-    }
 
     Ok(Self {
       is_unstable: vars.contains(&"unstable"),
       is_v8: vars.contains(&"v8"),
       deferred: vars.contains(&"deferred"),
-      must_be_fast,
+      must_be_fast: is_wasm || vars.contains(&"fast"),
       is_wasm,
     })
   }
