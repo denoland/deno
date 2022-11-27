@@ -466,6 +466,12 @@ impl WebWorker {
       ..Default::default()
     });
 
+    {
+      let op_state = js_runtime.op_state();
+      let inspector = js_runtime.inspector();
+      op_state.borrow_mut().put(inspector);
+    }
+
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
         main_module.to_string(),
