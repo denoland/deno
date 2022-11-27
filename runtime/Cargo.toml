@@ -12,6 +12,7 @@ description = "Provides the deno runtime library"
 [features]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
+snapshot_from_snapshot = []
 
 [lib]
 name = "deno_runtime"

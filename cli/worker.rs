@@ -519,7 +519,7 @@ async fn create_main_worker_internal(
       inspect: ps.options.is_inspecting(),
     },
     extensions,
-    startup_snapshot: Some(crate::js::deno_isolate_init()),
+    startup_snapshot: crate::js::deno_isolate_init(),
     unsafely_ignore_certificate_errors: ps
       .options
       .unsafely_ignore_certificate_errors()
@@ -680,7 +680,7 @@ fn create_web_worker_callback(
         inspect: ps.options.is_inspecting(),
       },
       extensions,
-      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      startup_snapshot: crate::js::deno_isolate_init(),
       unsafely_ignore_certificate_errors: ps
         .options
         .unsafely_ignore_certificate_errors()
@@ -743,7 +743,7 @@ mod tests {
         inspect: false,
       },
       extensions: vec![],
-      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      startup_snapshot: crate::js::deno_isolate_init(),
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
       seed: None,
