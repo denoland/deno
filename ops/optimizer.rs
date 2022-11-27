@@ -9,7 +9,7 @@ use syn::{
   parse_quote, punctuated::Punctuated, token::Colon2,
   AngleBracketedGenericArguments, FnArg, GenericArgument, PatType, Path,
   PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypePtr,
-  TypeReference, TypeSlice,
+  TypeReference, TypeSlice, TypeTuple,
 };
 
 #[derive(Debug)]
@@ -196,7 +196,10 @@ pub(crate) struct Optimizer {
 
   pub(crate) has_rc_opstate: bool,
 
+  // Do we need an explict FastApiCallbackOptions argument?
   pub(crate) has_fast_callback_option: bool,
+  // Do we depend on FastApiCallbackOptions?
+  pub(crate) needs_fast_callback_option: bool,
 
   pub(crate) fast_result: Option<FastValue>,
   pub(crate) fast_parameters: Vec<FastValue>,
@@ -217,6 +220,11 @@ impl Debug for Optimizer {
       f,
       "has_fast_callback_option: {}",
       self.has_fast_callback_option
+    )?;
+    writeln!(
+      f,
+      "needs_fast_callback_option: {}",
+      self.needs_fast_callback_option
     )?;
     writeln!(f, "fast_result: {:?}", self.fast_result)?;
     writeln!(f, "fast_parameters: {:?}", self.fast_parameters)?;
@@ -298,6 +306,9 @@ impl Optimizer {
 
   fn analyze_return_type(&mut self, ty: &Type) -> Result<(), BailoutReason> {
     match ty {
+      Type::Tuple(TypeTuple { elems, .. }) if elems.is_empty() => {
+        self.fast_result = Some(FastValue::Void);
+      }
       Type::Path(TypePath {
         path: Path { segments, .. },
         ..
@@ -332,6 +343,14 @@ impl Optimizer {
 
                   self.fast_compatible = false;
                   return Err(BailoutReason::FastUnsupportedParamType);
+                }
+                Some(GenericArgument::Type(Type::Tuple(TypeTuple {
+                  elems,
+                  ..
+                })))
+                  if elems.is_empty() =>
+                {
+                  self.fast_result = Some(FastValue::Void);
                 }
                 _ => return Err(BailoutReason::FastUnsupportedParamType),
               }
@@ -407,15 +426,19 @@ impl Optimizer {
                   {
                     let segment = single_segment(segments)?;
                     match segment {
-                      // Is `T` a FastApiCallbackOption?
+                      // Is `T` a FastApiCallbackOptions?
                       PathSegment { ident, .. }
-                        if ident == "FastApiCallbackOption" =>
+                        if ident == "FastApiCallbackOptions" =>
                       {
                         self.has_fast_callback_option = true;
                       }
-                      _ => {}
+                      _ => return Err(BailoutReason::FastUnsupportedParamType),
                     }
+                  } else {
+                    return Err(BailoutReason::FastUnsupportedParamType);
                   }
+                } else {
+                  return Err(BailoutReason::FastUnsupportedParamType);
                 }
               }
             }
@@ -517,7 +540,7 @@ impl Optimizer {
               match segment {
                 // Is `T` a u8?
                 PathSegment { ident, .. } if ident == "u8" => {
-                  self.has_fast_callback_option = true;
+                  self.needs_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint8Array);
                   assert!(self
                     .transforms
@@ -526,7 +549,7 @@ impl Optimizer {
                 }
                 // Is `T` a u32?
                 PathSegment { ident, .. } if ident == "u32" => {
-                  self.has_fast_callback_option = true;
+                  self.needs_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint32Array);
                   assert!(self
                     .transforms
@@ -554,7 +577,7 @@ impl Optimizer {
             match segment {
               // Is `T` a u8?
               PathSegment { ident, .. } if ident == "u8" => {
-                self.has_fast_callback_option = true;
+                self.needs_fast_callback_option = true;
                 self.fast_parameters.push(FastValue::Uint8Array);
                 assert!(self
                   .transforms
