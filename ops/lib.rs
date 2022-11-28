@@ -76,10 +76,11 @@ impl Op {
   fn gen(mut self) -> TokenStream2 {
     let mut optimizer = Optimizer::new();
     match optimizer.analyze(&mut self) {
-      Ok(_) | Err(BailoutReason::MustBeSingleSegment) => {}
-      Err(BailoutReason::FastUnsupportedParamType) => {
+      Err(BailoutReason::MustBeSingleSegment)
+      | Err(BailoutReason::FastUnsupportedParamType) => {
         optimizer.fast_compatible = false;
       }
+      _ => {}
     };
 
     let Self {
@@ -385,7 +386,9 @@ fn codegen_arg(
   let ident = quote::format_ident!("{name}");
   let (pat, ty) = match arg {
     syn::FnArg::Typed(pat) => {
-      if is_optional_fast_callback_option(&pat.ty) {
+      if is_optional_fast_callback_option(&pat.ty)
+        || is_optional_wasm_memory(&pat.ty)
+      {
         return quote! { let #ident = None; };
       }
       (&pat.pat, &pat.ty)
@@ -662,6 +665,10 @@ fn is_optional_fast_callback_option(ty: impl ToTokens) -> bool {
   tokens(&ty).contains("Option < & mut FastApiCallbackOptions")
 }
 
+fn is_optional_wasm_memory(ty: impl ToTokens) -> bool {
+  tokens(&ty).contains("Option < & mut [u8]")
+}
+
 /// Detects if the type can be set using `rv.set_uint32` fast path
 fn is_u32_rv(ty: impl ToTokens) -> bool {
   ["u32", "u8", "u16"].iter().any(|&s| tokens(&ty) == s) || is_resource_id(&ty)
@@ -724,4 +731,44 @@ fn exclude_lifetime_params(
     .filter(|t| !tokens(t).starts_with('\''))
     .cloned()
     .collect::<Punctuated<GenericParam, Comma>>()
+}
+
+#[cfg(test)]
+mod tests {
+  use crate::{Attributes, Op};
+  use std::path::PathBuf;
+
+  #[testing_macros::fixture("optimizer_tests/**/*.rs")]
+  fn test_codegen(input: PathBuf) {
+    let update_expected = std::env::var("UPDATE_EXPECTED").is_ok();
+
+    let source =
+      std::fs::read_to_string(&input).expect("Failed to read test file");
+
+    let mut attrs = Attributes::default();
+    if source.contains("// @test-attr:fast") {
+      attrs.must_be_fast = true;
+    }
+    if source.contains("// @test-attr:wasm") {
+      attrs.is_wasm = true;
+      attrs.must_be_fast = true;
+    }
+
+    let item = syn::parse_str(&source).expect("Failed to parse test file");
+    let op = Op::new(item, attrs);
+
+    let expected = std::fs::read_to_string(input.with_extension("out"))
+      .expect("Failed to read expected output file");
+
+    let actual = op.gen();
+    // Validate syntax tree.
+    let tree = syn::parse2(actual).unwrap();
+    let actual = prettyplease::unparse(&tree);
+    if update_expected {
+      std::fs::write(input.with_extension("out"), actual)
+        .expect("Failed to write expected file");
+    } else {
+      assert_eq!(actual, expected);
+    }
+  }
 }
