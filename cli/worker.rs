@@ -24,7 +24,6 @@ use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 
 use crate::args::DenoSubcommand;
-use crate::checksum;
 use crate::errors;
 use crate::module_loader::CliModuleLoader;
 use crate::node;
@@ -34,6 +33,7 @@ use crate::proc_state::ProcState;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
 use crate::tools::test::TestMode;
+use crate::util::checksum;
 use crate::version;
 
 pub struct CliMainWorker {
