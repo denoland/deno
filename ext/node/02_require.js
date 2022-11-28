@@ -69,6 +69,8 @@
   let statCache = null;
   let isPreloading = false;
   let mainModule = null;
+  let hasBrokenOnInspectBrk = false;
+  let hasInspectBrk = false;
 
   function stat(filename) {
     // TODO: required only on windows
@@ -723,6 +725,12 @@
     if (requireDepth === 0) {
       statCache = new SafeMap();
     }
+
+    if (hasInspectBrk && !hasBrokenOnInspectBrk) {
+      hasBrokenOnInspectBrk = true;
+      core.ops.op_require_break_on_next_statement();
+    }
+
     const result = compiledWrapper.call(
       thisValue,
       exports,
@@ -896,6 +904,9 @@
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     require: {
+      setInspectBrk() {
+        hasInspectBrk = true;
+      },
       Module,
       wrapSafe,
       toRealPath,
