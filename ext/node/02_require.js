@@ -818,6 +818,17 @@
     return require;
   }
 
+  // Matches to:
+  // - /foo/...
+  // - \foo\...
+  // - C:/foo/...
+  // - C:\foo\...
+  const RE_START_OF_ABS_PATH = /^([/\\]|[a-zA-Z]:[/\\])/;
+
+  function isAbsolute(filenameOrUrl) {
+    return RE_START_OF_ABS_PATH.test(filenameOrUrl);
+  }
+
   function createRequire(filenameOrUrl) {
     let fileUrlStr;
     if (filenameOrUrl instanceof URL) {
@@ -828,7 +839,7 @@
       }
       fileUrlStr = filenameOrUrl.toString();
     } else if (typeof filenameOrUrl === "string") {
-      if (!filenameOrUrl.startsWith("file:")) {
+      if (!filenameOrUrl.startsWith("file:") && !isAbsolute(filenameOrUrl)) {
         throw new Error(
           `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
         );
