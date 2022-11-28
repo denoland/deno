@@ -19,6 +19,7 @@ mod common;
 mod deno_dir;
 mod disk_cache;
 mod emit;
+mod http_cache;
 mod incremental;
 mod node;
 mod parsed_source;
@@ -28,9 +29,14 @@ pub use common::FastInsecureHasher;
 pub use deno_dir::DenoDir;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
+pub use http_cache::CachedUrlMetadata;
+pub use http_cache::HttpCache;
 pub use incremental::IncrementalCache;
 pub use node::NodeAnalysisCache;
 pub use parsed_source::ParsedSourceCache;
+
+/// Permissions used to save a file in the disk caches.
+pub const CACHE_PERM: u32 = 0o644;
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
