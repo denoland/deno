@@ -238,22 +238,20 @@ fn create_lsp_npm_resolver(
   http_client: HttpClient,
 ) -> NpmPackageResolver {
   let registry_url = RealNpmRegistryApi::default_url();
-  // Use an "only" cache setting in order to make the
-  // user do an explicit "cache" command and prevent
-  // the cache from being filled with lots of packages while
-  // the user is typing.
-  let cache_setting = CacheSetting::Only;
   let progress_bar = ProgressBar::default();
   let npm_cache = NpmCache::from_deno_dir(
     dir,
-    cache_setting.clone(),
+    // Use an "only" cache setting in order to make the
+    // user do an explicit "cache" command and prevent
+    // the cache from being filled with lots of packages while
+    // the user is typing.
+    CacheSetting::Only,
     http_client.clone(),
     progress_bar.clone(),
   );
   let api = RealNpmRegistryApi::new(
     registry_url,
     npm_cache.clone(),
-    cache_setting,
     http_client,
     progress_bar,
   );

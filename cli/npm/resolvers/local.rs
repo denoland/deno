@@ -291,7 +291,9 @@ async fn sync_resolution_with_fs(
       get_package_folder_id_folder_name(&package.get_package_cache_folder_id());
     let folder_path = deno_local_registry_dir.join(&folder_name);
     let initialized_file = folder_path.join(".initialized");
-    if !cache.should_use_cache_for_npm_package(&package.id.name)
+    if !cache
+      .cache_setting()
+      .should_use_for_npm_package(&package.id.name)
       || !initialized_file.exists()
     {
       let cache = cache.clone();

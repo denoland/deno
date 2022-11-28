@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::PathBuf;
@@ -248,7 +249,6 @@ impl RealNpmRegistryApi {
   pub fn new(
     base_url: Url,
     cache: NpmCache,
-    cache_setting: CacheSetting,
     http_client: HttpClient,
     progress_bar: ProgressBar,
   ) -> Self {
@@ -256,7 +256,7 @@ impl RealNpmRegistryApi {
       base_url,
       cache,
       mem_cache: Default::default(),
-      cache_setting,
+      previously_reloaded_packages: Default::default(),
       http_client,
       progress_bar,
     }))
@@ -286,7 +286,7 @@ struct RealNpmRegistryApiInner {
   base_url: Url,
   cache: NpmCache,
   mem_cache: Mutex<HashMap<String, Option<Arc<NpmPackageInfo>>>>,
-  cache_setting: CacheSetting,
+  previously_reloaded_packages: Mutex<HashSet<String>>,
   http_client: HttpClient,
   progress_bar: ProgressBar,
 }
@@ -296,12 +296,16 @@ impl RealNpmRegistryApiInner {
     &self,
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
-    let maybe_info = self.mem_cache.lock().get(name).cloned();
-    if let Some(info) = maybe_info {
-      Ok(info)
+    let maybe_maybe_info = self.mem_cache.lock().get(name).cloned();
+    if let Some(maybe_info) = maybe_maybe_info {
+      Ok(maybe_info)
     } else {
       let mut maybe_package_info = None;
-      if self.cache_setting.should_use_for_npm_package(name) {
+      if self.cache.cache_setting().should_use_for_npm_package(name)
+        // if this has been previously reloaded, then try loading from the
+        // file system cache
+        || !self.previously_reloaded_packages.lock().insert(name.to_string())
+      {
         // attempt to load from the file cache
         maybe_package_info = self.load_file_cached_package_info(name);
       }
@@ -409,15 +413,14 @@ impl RealNpmRegistryApiInner {
     &self,
     name: &str,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
-    if self.cache_setting == CacheSetting::Only {
+    if *self.cache.cache_setting() == CacheSetting::Only {
       return Err(custom_error(
         "NotCached",
         format!(
           "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
           name
         )
-      )
-      );
+      ));
     }
 
     let package_url = self.get_package_url(name);
