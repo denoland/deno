@@ -307,7 +307,7 @@ mod npm {
     args: "check --quiet npm/no_types_cjs/main.ts",
     output_str: Some(""),
     exit_code: 0,
-    envs: env_vars(),
+    envs: env_vars_for_npm_tests(),
     http_server: true,
   });
 
