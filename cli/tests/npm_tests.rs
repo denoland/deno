@@ -190,19 +190,19 @@ mod npm {
   });
 
   itest!(import_map {
-  args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
-  output: "npm/import_map/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
+    args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
+    output: "npm/import_map/main.out",
+    envs: env_vars_for_npm_tests(),
+    http_server: true,
+  });
 
   itest!(lock_file {
-  args: "run --allow-read --allow-env --lock npm/lock_file/lock.json npm/lock_file/main.js",
-  output: "npm/lock_file/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 10,
-});
+    args: "run --allow-read --allow-env --lock npm/lock_file/lock.json npm/lock_file/main.js",
+    output: "npm/lock_file/main.out",
+    envs: env_vars_for_npm_tests(),
+    http_server: true,
+    exit_code: 10,
+  });
 
   itest!(sub_paths {
     args: "run -A --quiet npm/sub_paths/main.jsx",
@@ -296,12 +296,20 @@ mod npm {
   });
 
   itest!(types_ambient_module_import_map {
-  args: "check --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
-  output: "npm/types_ambient_module/main_import_map.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
+    args: "check --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
+    output: "npm/types_ambient_module/main_import_map.out",
+    envs: env_vars_for_npm_tests(),
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(no_types_cjs {
+    args: "check --quiet npm/no_types_cjs/main.ts",
+    output_str: Some(""),
+    exit_code: 0,
+    envs: env_vars_for_npm_tests(),
+    http_server: true,
+  });
 
   itest!(no_types_in_conditional_exports {
     args: "run --check --unstable npm/no_types_in_conditional_exports/main.ts",
@@ -791,20 +799,20 @@ mod npm {
   }
 
   itest!(compile_errors {
-  args: "compile -A --quiet npm/cached_only/main.ts",
-  output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
-  exit_code: 1,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
+    args: "compile -A --quiet npm/cached_only/main.ts",
+    output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
+    exit_code: 1,
+    envs: env_vars_for_npm_tests(),
+    http_server: true,
+  });
 
   itest!(bundle_errors {
-  args: "bundle --quiet npm/esm/main.js",
-  output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
-  exit_code: 1,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
+    args: "bundle --quiet npm/esm/main.js",
+    output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
+    exit_code: 1,
+    envs: env_vars_for_npm_tests(),
+    http_server: true,
+  });
 
   itest!(info_chalk_display {
     args: "info --quiet npm/cjs_with_deps/main.js",
@@ -832,14 +840,14 @@ mod npm {
   });
 
   itest!(info_chalk_json_node_modules_dir {
-  args:
-    "info --quiet --node-modules-dir --json $TESTDATA/npm/cjs_with_deps/main.js",
-  output: "npm/cjs_with_deps/main_info_json.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  temp_cwd: true,
-});
+    args:
+      "info --quiet --node-modules-dir --json $TESTDATA/npm/cjs_with_deps/main.js",
+    output: "npm/cjs_with_deps/main_info_json.out",
+    exit_code: 0,
+    envs: env_vars_for_npm_tests(),
+    http_server: true,
+    temp_cwd: true,
+  });
 
   itest!(info_cli_chalk_display {
     args: "info --quiet npm:chalk@4",
