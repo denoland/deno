@@ -244,18 +244,18 @@ impl MainWorker {
       ..Default::default()
     });
 
-    {
-      let op_state = js_runtime.op_state();
-      let inspector = js_runtime.inspector();
-      op_state.borrow_mut().put(inspector);
-    }
-
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
         main_module.to_string(),
         &mut js_runtime,
         options.should_break_on_first_statement,
       );
+
+      // Put inspecto handle into the op state so we can put a breakpoint when
+      // executing a CJS entrypoint.
+      let op_state = js_runtime.op_state();
+      let inspector = js_runtime.inspector();
+      op_state.borrow_mut().put(inspector);
     }
 
     Self {
@@ -349,7 +349,7 @@ impl MainWorker {
     self.evaluate_module(id).await
   }
 
-  pub fn wait_for_inspector_session(&mut self) {
+  fn wait_for_inspector_session(&mut self) {
     if self.should_break_on_first_statement {
       self
         .js_runtime
