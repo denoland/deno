@@ -9,6 +9,7 @@ use crate::node::NodeResolution;
 use crate::node::NodeResolutionMode;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
+use crate::util::checksum;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -178,7 +179,7 @@ fn get_maybe_hash(
   if let Some(source) = maybe_source {
     let mut data = vec![source.as_bytes().to_owned()];
     data.extend_from_slice(hash_data);
-    Some(crate::checksum::gen(&data))
+    Some(checksum::gen(&data))
   } else {
     None
   }
@@ -186,7 +187,7 @@ fn get_maybe_hash(
 
 /// Hash the URL so it can be sent to `tsc` in a supportable way
 fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
-  let hash = crate::checksum::gen(&[specifier.path().as_bytes()]);
+  let hash = checksum::gen(&[specifier.path().as_bytes()]);
   format!(
     "{}:///{}{}",
     specifier.scheme(),
@@ -365,7 +366,7 @@ fn op_create_hash(s: &mut OpState, args: Value) -> Result<Value, AnyError> {
     .context("Invalid request from JavaScript for \"op_create_hash\".")?;
   let mut data = vec![v.data.as_bytes().to_owned()];
   data.extend_from_slice(&state.hash_data);
-  let hash = crate::checksum::gen(&data);
+  let hash = checksum::gen(&data);
   Ok(json!({ "hash": hash }))
 }
 

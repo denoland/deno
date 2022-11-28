@@ -28,9 +28,9 @@ use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 use crate::npm::RealNpmRegistryApi;
-use crate::progress_bar::ProgressBar;
 use crate::resolver::CliResolver;
 use crate::tools::check;
+use crate::util::progress_bar::ProgressBar;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;

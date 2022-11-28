@@ -3,10 +3,10 @@
 use crate::args::CoverageFlags;
 use crate::args::Flags;
 use crate::colors;
-use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
-use crate::text_encoding::source_map_from_code;
 use crate::tools::fmt::format_json;
+use crate::util::fs::collect_files;
+use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;

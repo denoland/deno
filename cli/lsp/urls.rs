@@ -56,7 +56,7 @@ fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
     file_name_str.push('?');
     file_name_str.push_str(query);
   }
-  crate::checksum::gen(&[file_name_str.as_bytes()])
+  crate::util::checksum::gen(&[file_name_str.as_bytes()])
 }
 
 #[derive(Debug, Default)]

@@ -9,7 +9,6 @@ use crate::args::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
-use crate::fs_util::specifier_to_file_path;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::node;
@@ -20,7 +19,8 @@ use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 use crate::resolver::CliResolver;
-use crate::text_encoding;
+use crate::util::path::specifier_to_file_path;
+use crate::util::text_encoding;
 
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;

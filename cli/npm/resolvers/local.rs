@@ -10,6 +10,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::util::fs::symlink_dir;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -23,7 +24,6 @@ use deno_runtime::deno_node::TYPES_CONDITIONS;
 use tokio::task::JoinHandle;
 
 use crate::args::Lockfile;
-use crate::fs_util;
 use crate::npm::cache::mixed_case_package_name_encode;
 use crate::npm::cache::should_sync_download;
 use crate::npm::cache::NpmPackageCacheFolderId;
@@ -34,6 +34,8 @@ use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 use crate::npm::RealNpmRegistryApi;
+use crate::util::fs::copy_dir_recursive;
+use crate::util::fs::hard_link_dir_recursive;
 
 use super::common::ensure_registry_read_permission;
 use super::common::types_package_name;
@@ -203,7 +205,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
   fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
     let package_folder_path = self.get_package_id_folder(package_id)?;
 
-    Ok(fs_util::dir_size(&package_folder_path)?)
+    Ok(crate::util::fs::dir_size(&package_folder_path)?)
   }
 
   fn has_packages(&self) -> bool {
@@ -318,7 +320,7 @@ async fn sync_resolution_with_fs(
           &registry_url,
         );
         // for now copy, but in the future consider hard linking
-        fs_util::copy_dir_recursive(&cache_folder, &package_path)?;
+        copy_dir_recursive(&cache_folder, &package_path)?;
         // write out a file that indicates this folder has been initialized
         fs::write(initialized_file, "")?;
         Ok(())
@@ -356,7 +358,7 @@ async fn sync_resolution_with_fs(
           .join("node_modules"),
         &package.id.name,
       );
-      fs_util::hard_link_dir_recursive(&source_path, &package_path)?;
+      hard_link_dir_recursive(&source_path, &package_path)?;
       // write out a file that indicates this folder has been initialized
       fs::write(initialized_file, "")?;
     }
@@ -467,7 +469,7 @@ fn symlink_package_dir(
   #[cfg(windows)]
   return junction_or_symlink_dir(old_path, new_path);
   #[cfg(not(windows))]
-  fs_util::symlink_dir(old_path, new_path)
+  symlink_dir(old_path, new_path)
 }
 
 #[cfg(windows)]
@@ -477,6 +479,7 @@ fn junction_or_symlink_dir(
 ) -> Result<(), AnyError> {
   // Use junctions because they're supported on ntfs file systems without
   // needing to elevate privileges on Windows
+
   match junction::create(old_path, new_path) {
     Ok(()) => Ok(()),
     Err(junction_err) => {
@@ -486,7 +489,7 @@ fn junction_or_symlink_dir(
         log::warn!("Error creating junction. {:#}", junction_err);
       }
 
-      match fs_util::symlink_dir(old_path, new_path) {
+      match symlink_dir(old_path, new_path) {
         Ok(()) => Ok(()),
         Err(symlink_err) => bail!(
           concat!(
