@@ -1321,11 +1321,7 @@ fn find_stalled_top_level_await<'s>(
 
   // It wasn't a top module, so iterate over all modules and try to find
   // any with stalled top level await
-  let module_ids = module_map
-    .handles_by_id
-    .keys()
-    .copied()
-    .collect::<Vec<_>>();
+  let module_ids = module_map.handles_by_id.keys().copied().collect::<Vec<_>>();
   for module_id in module_ids {
     let messages =
       get_stalled_top_level_await_message_for_module(scope, module_id);
