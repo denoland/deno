@@ -1708,7 +1708,7 @@ fn start_output_redirect_thread(
 }
 
 #[cfg(test)]
-mod test {
+mod inner_test {
   use std::path::Path;
 
   use super::*;

@@ -22,7 +22,7 @@ use deno_runtime::colors;
 use serde::Serialize;
 
 use crate::args::CacheSetting;
-use crate::http_cache::CACHE_PERM;
+use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;

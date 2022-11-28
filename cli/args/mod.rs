@@ -80,7 +80,7 @@ impl CacheSetting {
     match self {
       CacheSetting::ReloadAll => false,
       CacheSetting::ReloadSome(list) => {
-        if list.contains(&"npm:".to_string()) {
+        if list.iter().any(|i| i == "npm:") {
           return false;
         }
         let specifier = format!("npm:{}", package_name);

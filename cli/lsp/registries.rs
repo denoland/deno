@@ -14,8 +14,8 @@ use super::path_to_regex::Token;
 
 use crate::args::CacheSetting;
 use crate::cache::DenoDir;
+use crate::cache::HttpCache;
 use crate::file_fetcher::FileFetcher;
-use crate::http_cache::HttpCache;
 use crate::http_util::HttpClient;
 
 use deno_core::anyhow::anyhow;

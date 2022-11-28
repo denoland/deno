@@ -3445,7 +3445,7 @@ pub fn request(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::http_cache::HttpCache;
+  use crate::cache::HttpCache;
   use crate::http_util::HeadersMap;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;

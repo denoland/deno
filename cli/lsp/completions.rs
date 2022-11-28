@@ -505,7 +505,7 @@ fn get_workspace_completions(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::http_cache::HttpCache;
+  use crate::cache::HttpCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use deno_core::resolve_url;

@@ -2,8 +2,8 @@
 
 use crate::args::CacheSetting;
 use crate::auth_tokens::AuthTokens;
+use crate::cache::HttpCache;
 use crate::colors;
-use crate::http_cache::HttpCache;
 use crate::http_util::CacheSemantics;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
@@ -629,6 +629,7 @@ impl FileFetcher {
 
 #[cfg(test)]
 mod tests {
+  use crate::cache::CachedUrlMetadata;
   use crate::http_util::HttpClient;
 
   use super::*;
@@ -1050,8 +1051,7 @@ mod tests {
       .http_cache
       .get_cache_filename(&specifier)
       .unwrap();
-    let mut metadata =
-      crate::http_cache::Metadata::read(&cache_filename).unwrap();
+    let mut metadata = CachedUrlMetadata::read(&cache_filename).unwrap();
     metadata.headers = HashMap::new();
     metadata
       .headers
@@ -1140,8 +1140,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
 
-    let metadata_filename =
-      crate::http_cache::Metadata::filename(&cache_filename);
+    let metadata_filename = CachedUrlMetadata::filename(&cache_filename);
     let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
@@ -1160,8 +1159,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
 
-    let metadata_filename =
-      crate::http_cache::Metadata::filename(&cache_filename);
+    let metadata_filename = CachedUrlMetadata::filename(&cache_filename);
     let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
@@ -1313,7 +1311,7 @@ mod tests {
     assert!(result.is_ok());
 
     let metadata_filename =
-      crate::http_cache::Metadata::filename(&redirected_cache_filename);
+      CachedUrlMetadata::filename(&redirected_cache_filename);
     let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
@@ -1333,7 +1331,7 @@ mod tests {
     assert!(result.is_ok());
 
     let metadata_filename =
-      crate::http_cache::Metadata::filename(&redirected_cache_filename);
+      CachedUrlMetadata::filename(&redirected_cache_filename);
     let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();

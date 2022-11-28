@@ -19,7 +19,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-pub const CACHE_PERM: u32 = 0o644;
+use super::CACHE_PERM;
 
 /// Turn base of url (scheme, hostname, port) into a valid filename.
 /// This method replaces port part with a special string token (because
@@ -73,15 +73,16 @@ pub fn url_to_filename(url: &Url) -> Option<PathBuf> {
   Some(cache_filename)
 }
 
+/// Cached metadata about a url.
 #[derive(Serialize, Deserialize)]
-pub struct Metadata {
+pub struct CachedUrlMetadata {
   pub headers: HeadersMap,
   pub url: String,
   #[serde(default = "SystemTime::now")]
   pub now: SystemTime,
 }
 
-impl Metadata {
+impl CachedUrlMetadata {
   pub fn write(&self, cache_filename: &Path) -> Result<(), AnyError> {
     let metadata_filename = Self::filename(cache_filename);
     let json = serde_json::to_string_pretty(self)?;
@@ -89,10 +90,10 @@ impl Metadata {
     Ok(())
   }
 
-  pub fn read(cache_filename: &Path) -> Result<Metadata, AnyError> {
-    let metadata_filename = Metadata::filename(cache_filename);
+  pub fn read(cache_filename: &Path) -> Result<CachedUrlMetadata, AnyError> {
+    let metadata_filename = CachedUrlMetadata::filename(cache_filename);
     let metadata = fs::read_to_string(metadata_filename)?;
-    let metadata: Metadata = serde_json::from_str(&metadata)?;
+    let metadata: CachedUrlMetadata = serde_json::from_str(&metadata)?;
     Ok(metadata)
   }
 
@@ -149,10 +150,10 @@ impl HttpCache {
       url_to_filename(url)
         .ok_or_else(|| generic_error("Can't convert url to filename."))?,
     );
-    let metadata_filename = Metadata::filename(&cache_filename);
+    let metadata_filename = CachedUrlMetadata::filename(&cache_filename);
     let file = File::open(cache_filename)?;
     let metadata = fs::read_to_string(metadata_filename)?;
-    let metadata: Metadata = serde_json::from_str(&metadata)?;
+    let metadata: CachedUrlMetadata = serde_json::from_str(&metadata)?;
     Ok((file, metadata.headers, metadata.now))
   }
 
@@ -174,7 +175,7 @@ impl HttpCache {
     // Cache content
     util::fs::atomic_write_file(&cache_filename, content, CACHE_PERM)?;
 
-    let metadata = Metadata {
+    let metadata = CachedUrlMetadata {
       now: SystemTime::now(),
       url: url.to_string(),
       headers: headers_map,

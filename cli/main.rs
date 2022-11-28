@@ -8,7 +8,6 @@ mod emit;
 mod errors;
 mod file_fetcher;
 mod graph_util;
-mod http_cache;
 mod http_util;
 mod js;
 mod logger;
