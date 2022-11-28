@@ -225,7 +225,6 @@ impl ProcState {
     let api = RealNpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
-      cli_options.cache_setting(),
       http_client,
       progress_bar.clone(),
     );

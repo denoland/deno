@@ -43,7 +43,7 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core.workspace = true
-deno_doc = "0.49.1"
+deno_doc = "0.50.0"
 deno_emit = "0.11.0"
 deno_graph = "0.38.0"
 deno_lint = { version = "0.35.0", features = ["docs"] }
