@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -17,6 +17,23 @@ Deno.test(async function permissionNetInvalidHost() {
   await assertRejects(async () => {
     await Deno.permissions.query({ name: "net", host: ":" });
   }, URIError);
+});
+
+Deno.test(async function permissionSysValidKind() {
+  await Deno.permissions.query({ name: "sys", kind: "loadavg" });
+  await Deno.permissions.query({ name: "sys", kind: "osRelease" });
+  await Deno.permissions.query({ name: "sys", kind: "networkInterfaces" });
+  await Deno.permissions.query({ name: "sys", kind: "systemMemoryInfo" });
+  await Deno.permissions.query({ name: "sys", kind: "hostname" });
+  await Deno.permissions.query({ name: "sys", kind: "uid" });
+  await Deno.permissions.query({ name: "sys", kind: "gid" });
+});
+
+Deno.test(async function permissionSysInvalidKind() {
+  await assertRejects(async () => {
+    // deno-lint-ignore no-explicit-any
+    await Deno.permissions.query({ name: "sys", kind: "abc" as any });
+  }, TypeError);
 });
 
 Deno.test(async function permissionQueryReturnsEventTarget() {
@@ -70,4 +87,27 @@ Deno.test(async function permissionURL() {
     name: "run",
     command: new URL(".", import.meta.url),
   });
+});
+
+Deno.test(async function permissionDescriptorValidation() {
+  for (const value of [undefined, null, {}]) {
+    for (const method of ["query", "request", "revoke"]) {
+      await assertRejects(
+        async () => {
+          // deno-lint-ignore no-explicit-any
+          await (Deno.permissions as any)[method](value as any);
+        },
+        TypeError,
+        '"undefined" is not a valid permission name',
+      );
+    }
+  }
+});
+
+// Regression test for https://github.com/denoland/deno/issues/15894.
+Deno.test(async function permissionStatusObjectsNotEqual() {
+  assert(
+    await Deno.permissions.query({ name: "env", variable: "A" }) !=
+      await Deno.permissions.query({ name: "env", variable: "B" }),
+  );
 });

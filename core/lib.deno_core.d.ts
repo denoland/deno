@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -6,19 +6,11 @@
 /// <reference lib="esnext" />
 
 declare namespace Deno {
-  declare namespace core {
-    /** Call an op in Rust, and synchronously receive the result. */
-    function opSync(
-      opName: string,
-      a?: any,
-      b?: any,
-    ): any;
-
+  namespace core {
     /** Call an op in Rust, and asynchronously receive the result. */
     function opAsync(
       opName: string,
-      a?: any,
-      b?: any,
+      ...args: any[]
     ): Promise<any>;
 
     /** Mark following promise as "ref", ie. event loop won't exit
@@ -30,10 +22,10 @@ declare namespace Deno {
     function unrefOps(promiseId: number): void;
 
     /**
-     * Retrieve a list of all registered ops, in the form of a map that maps op
+     * List of all registered ops, in the form of a map that maps op
      * name to internal numerical op id.
      */
-    function ops(): Record<string, number>;
+    const ops: Record<string, (...args: unknown[]) => any>;
 
     /**
      * Retrieve a list of all open resources, in the form of a map that maps
@@ -64,12 +56,19 @@ declare namespace Deno {
     function write(rid: number, buf: Uint8Array): Promise<number>;
 
     /**
+     * Write to a (stream) resource that implements write()
+     */
+    function writeAll(rid: number, buf: Uint8Array): Promise<void>;
+
+    /**
+     * Print a message to stdout or stderr
+     */
+    function print(message: string, is_err?: boolean): void;
+
+    /**
      * Shutdown a resource
      */
     function shutdown(rid: number): Promise<void>;
-
-    /** Get heap stats for current isolate/worker */
-    function heapStats(): Record<string, number>;
 
     /** Encode a string to its Uint8Array representation. */
     function encode(input: string): Uint8Array;
@@ -104,16 +103,16 @@ declare namespace Deno {
     ): void;
 
     /** Check if there's a scheduled "next tick". */
-    function hasNextTickScheduled(): bool;
+    function hasNextTickScheduled(): boolean;
 
     /** Set a value telling the runtime if there are "next ticks" scheduled */
-    function setHasNextTickScheduled(value: bool): void;
+    function setHasNextTickScheduled(value: boolean): void;
 
     /**
      * Set a callback that will be called after resolving ops and "next ticks".
      */
     function setMacrotaskCallback(
-      cb: () => bool,
+      cb: () => boolean,
     ): void;
 
     /**
@@ -126,7 +125,7 @@ declare namespace Deno {
 
     export type PromiseRejectCallback = (
       type: number,
-      promise: Promise,
+      promise: Promise<unknown>,
       reason: any,
     ) => void;
 
@@ -141,5 +140,49 @@ declare namespace Deno {
     ): undefined | UncaughtExceptionCallback;
 
     export type UncaughtExceptionCallback = (err: any) => void;
+
+    /**
+     * Enables collection of stack traces of all async ops. This allows for
+     * debugging of where a given async op was started. Deno CLI uses this for
+     * improving error message in op sanitizer errors for `deno test`.
+     *
+     * **NOTE:** enabling tracing has a significant negative performance impact.
+     * To get high level metrics on async ops with no added performance cost,
+     * use `Deno.core.metrics()`.
+     */
+    function enableOpCallTracing(): void;
+
+    export interface OpCallTrace {
+      opName: string;
+      stack: string;
+    }
+
+    /**
+     * A map containing traces for all ongoing async ops. The key is the op id.
+     * Tracing only occurs when `Deno.core.enableOpCallTracing()` was previously
+     * enabled.
+     */
+    const opCallTraces: Map<number, OpCallTrace>;
+
+    /**
+     * Adds a callback for the given Promise event. If this function is called
+     * multiple times, the callbacks are called in the order they were added.
+     * - `init_hook` is called when a new promise is created. When a new promise
+     *   is created as part of the chain in the case of `Promise.then` or in the
+     *   intermediate promises created by `Promise.{race, all}`/`AsyncFunctionAwait`,
+     *   we pass the parent promise otherwise we pass undefined.
+     * - `before_hook` is called at the beginning of the promise reaction.
+     * - `after_hook` is called at the end of the promise reaction.
+     * - `resolve_hook` is called at the beginning of resolve or reject function.
+     */
+    function setPromiseHooks(
+      init_hook?: (
+        promise: Promise<unknown>,
+        parentPromise?: Promise<unknown>,
+      ) => void,
+      before_hook?: (promise: Promise<unknown>) => void,
+      after_hook?: (promise: Promise<unknown>) => void,
+      resolve_hook?: (promise: Promise<unknown>) => void,
+    ): void;
   }
 }

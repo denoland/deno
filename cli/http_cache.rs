@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 //! This module is meant to eventually implement HTTP cache
 //! as defined in RFC 7234 (<https://tools.ietf.org/html/rfc7234>).
 //! Currently it's a very simplified version to fulfill Deno needs
@@ -73,11 +73,6 @@ pub fn url_to_filename(url: &Url) -> Option<PathBuf> {
   Some(cache_filename)
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct HttpCache {
-  pub location: PathBuf,
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct Metadata {
   pub headers: HeadersMap,
@@ -107,6 +102,11 @@ impl Metadata {
   }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct HttpCache {
+  pub location: PathBuf,
+}
+
 impl HttpCache {
   /// Returns a new instance.
   ///
@@ -123,7 +123,7 @@ impl HttpCache {
     if path.is_dir() {
       return Ok(());
     }
-    fs::create_dir_all(&path).map_err(|e| {
+    fs::create_dir_all(path).map_err(|e| {
       io::Error::new(
         e.kind(),
         format!(
@@ -134,7 +134,7 @@ impl HttpCache {
     })
   }
 
-  pub(crate) fn get_cache_filename(&self, url: &Url) -> Option<PathBuf> {
+  pub fn get_cache_filename(&self, url: &Url) -> Option<PathBuf> {
     Some(self.location.join(url_to_filename(url)?))
   }
 
@@ -188,11 +188,11 @@ mod tests {
   use super::*;
   use std::collections::HashMap;
   use std::io::Read;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   #[test]
   fn test_create_cache() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new();
     let mut cache_path = dir.path().to_owned();
     cache_path.push("foobar");
     // HttpCache should be created lazily on first use:
@@ -219,7 +219,7 @@ mod tests {
 
   #[test]
   fn test_get_set() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new();
     let cache = HttpCache::new(dir.path());
     let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
     let mut headers = HashMap::new();

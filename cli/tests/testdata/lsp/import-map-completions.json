@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "/~/": "./lib/",
+    "fs": "https://example.com/fs/index.js",
+    "std/": "https://example.com/std@0.123.0/"
+  }
+}

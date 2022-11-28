@@ -1,0 +1,21 @@
+Check [WILDCARD]test/ops_sanitizer_missing_details.ts
+running 1 test from ./test/ops_sanitizer_missing_details.ts
+test 1 ... FAILED [WILDCARD]
+
+ ERRORS 
+
+test 1 => ./test/ops_sanitizer_missing_details.ts:[WILDCARD]
+error: AssertionError: Test case is leaking async ops.
+
+ - 1 async operation to op_write was started in this test, but never completed.
+
+To get more details where ops were leaked, run again with --trace-ops flag.
+    at [WILDCARD]
+
+ FAILURES 
+
+test 1 => ./test/ops_sanitizer_missing_details.ts:[WILDCARD]
+
+FAILED | 0 passed | 1 failed [WILDCARD]
+
+error: Test failed

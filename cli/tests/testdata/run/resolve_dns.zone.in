@@ -1,0 +1,31 @@
+@   IN  SOA     net      admin\.domain (
+                            20     ; SERIAL
+                            7200   ; REFRESH
+                            600    ; RETRY
+                            3600000; EXPIRE
+                            60)    ; MINIMUM
+@   IN	CAA	0       issue "ca.example.net"
+@   IN	CAA	0       issue "ca2.example.net; account=123456"
+@   IN	CAA	0       issuewild ";"
+@   IN	CAA	0       iodef "mailto:security@example.com"
+@   IN	CAA	128     tbs "Unknown"
+        NS      ns1.ns.com.
+        NS      ns2.ns.com.
+        NS      ns3.ns.com.
+        MX  10  mx1.com.
+        MX  20  mx2.com.
+        TXT     I am a txt record
+        TXT     I am another txt record
+        TXT     "I am a different" "txt record"
+        TXT     key=val
+www             A       1.2.3.4
+                A       5.6.7.8
+                ANAME   aname
+www     AAAA    1:2:3:4:5:6:7:8
+alias   CNAME   cname
+
+1.2.3.4.IN-ADDR.ARPA.   PTR www
+                        PTR alias
+_service._tcp           SRV 0 100 1234 srv
+@   IN  NAPTR  10 0 "s" "SIPS+D2T" "" _sips._tcp.example.com.
+@   IN  NAPTR  10 0 "s" RELAY:turn.udp "" _turn._udp.example.com.

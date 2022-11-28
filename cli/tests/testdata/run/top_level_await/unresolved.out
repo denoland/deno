@@ -1,0 +1,4 @@
+error: Top-level await promise never resolved
+await new Promise(() => {});
+^
+    at <anonymous> ([WILDCARD]top_level_await/unresolved.js:1:1)

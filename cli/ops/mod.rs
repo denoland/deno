@@ -1,29 +1,30 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::proc_state::ProcState;
+use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::Extension;
+use deno_core::OpState;
 
-mod errors;
-mod runtime_compiler;
+pub mod bench;
 pub mod testing;
 
-pub fn cli_exts(ps: ProcState, enable_compiler: bool) -> Vec<Extension> {
-  if enable_compiler {
-    vec![
-      init_proc_state(ps),
-      errors::init(),
-      runtime_compiler::init(),
-    ]
-  } else {
-    vec![init_proc_state(ps), errors::init()]
-  }
+pub fn cli_exts(ps: ProcState) -> Vec<Extension> {
+  vec![init_proc_state(ps)]
 }
 
 fn init_proc_state(ps: ProcState) -> Extension {
   Extension::builder()
+    .ops(vec![op_npm_process_state::decl()])
     .state(move |state| {
       state.put(ps.clone());
       Ok(())
     })
     .build()
+}
+
+#[op]
+fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
+  let proc_state = state.borrow_mut::<ProcState>();
+  Ok(proc_state.npm_resolver.get_npm_process_state())
 }

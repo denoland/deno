@@ -1,27 +1,44 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
+  const { Event } = window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const {
     Error,
     SymbolFor,
   } = window.__bootstrap.primordials;
 
+  const windowDispatchEvent = EventTarget.prototype.dispatchEvent.bind(window);
+
   function loadavg() {
-    return core.opSync("op_loadavg");
+    return ops.op_loadavg();
   }
 
   function hostname() {
-    return core.opSync("op_hostname");
+    return ops.op_hostname();
   }
 
   function osRelease() {
-    return core.opSync("op_os_release");
+    return ops.op_os_release();
   }
 
   function systemMemoryInfo() {
-    return core.opSync("op_system_memory_info");
+    return ops.op_system_memory_info();
+  }
+
+  function networkInterfaces() {
+    return ops.op_network_interfaces();
+  }
+
+  function gid() {
+    return ops.op_gid();
+  }
+
+  function uid() {
+    return ops.op_uid();
   }
 
   // This is an internal only method used by the test harness to override the
@@ -34,7 +51,7 @@
   function exit(code) {
     // Set exit code first so unload event listeners can override it.
     if (typeof code === "number") {
-      core.opSync("op_set_exit_code", code);
+      ops.op_set_exit_code(code);
     } else {
       code = 0;
     }
@@ -43,7 +60,7 @@
     if (!window[SymbolFor("isUnloadDispatched")]) {
       // Invokes the `unload` hooks before exiting
       // ref: https://github.com/denoland/deno/issues/3603
-      window.dispatchEvent(new Event("unload"));
+      windowDispatchEvent(new Event("unload"));
     }
 
     if (exitHandler) {
@@ -51,43 +68,46 @@
       return;
     }
 
-    core.opSync("op_exit");
+    ops.op_exit();
     throw new Error("Code not reachable");
   }
 
   function setEnv(key, value) {
-    core.opSync("op_set_env", key, value);
+    ops.op_set_env(key, value);
   }
 
   function getEnv(key) {
-    return core.opSync("op_get_env", key) ?? undefined;
+    return ops.op_get_env(key) ?? undefined;
   }
 
   function deleteEnv(key) {
-    core.opSync("op_delete_env", key);
+    ops.op_delete_env(key);
   }
 
   const env = {
     get: getEnv,
     toObject() {
-      return core.opSync("op_env");
+      return ops.op_env();
     },
     set: setEnv,
     delete: deleteEnv,
   };
 
   function execPath() {
-    return core.opSync("op_exec_path");
+    return ops.op_exec_path();
   }
 
   window.__bootstrap.os = {
     env,
     execPath,
-    setExitHandler,
     exit,
-    osRelease,
-    systemMemoryInfo,
+    gid,
     hostname,
     loadavg,
+    networkInterfaces,
+    osRelease,
+    setExitHandler,
+    systemMemoryInfo,
+    uid,
   };
 })(this);

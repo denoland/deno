@@ -1,0 +1,4 @@
+error: TS2322 [ERROR]: Type '12' is not assignable to type '"a"'.
+export const a: "a" = 12;
+             ^
+    at http://localhost:4545/subdir/type_error.ts:1:14

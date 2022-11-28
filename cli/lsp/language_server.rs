@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -8,250 +8,334 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_graph::ModuleKind;
+use deno_runtime::tokio_util::run_local;
 use import_map::ImportMap;
 use log::error;
-use log::info;
 use log::warn;
-use lspower::jsonrpc::Error as LspError;
-use lspower::jsonrpc::Result as LspResult;
-use lspower::lsp::request::*;
-use lspower::lsp::*;
 use serde_json::from_value;
+use std::collections::HashMap;
 use std::env;
+use std::fmt::Write as _;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::fs;
+use tower_lsp::jsonrpc::Error as LspError;
+use tower_lsp::jsonrpc::Result as LspResult;
+use tower_lsp::lsp_types::request::*;
+use tower_lsp::lsp_types::*;
 
 use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
-use super::cache::CacheServer;
+use super::cache;
 use super::capabilities;
 use super::client::Client;
 use super::code_lens;
 use super::completions;
 use super::config::Config;
-use super::config::ConfigSnapshot;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
-use super::diagnostics::DiagnosticSource;
+use super::diagnostics::DiagnosticsServer;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
+use super::documents::Document;
 use super::documents::Documents;
 use super::documents::LanguageId;
+use super::logging::lsp_log;
 use super::lsp_custom;
 use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
-use super::registries;
+use super::registries::ModuleRegistry;
+use super::testing;
 use super::text;
 use super::tsc;
-use super::tsc::AssetDocument;
 use super::tsc::Assets;
+use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
-use crate::config_file::ConfigFile;
-use crate::config_file::FmtConfig;
-use crate::config_file::LintConfig;
-use crate::config_file::TsConfig;
-use crate::deno_dir;
+use crate::args::CliOptions;
+use crate::args::ConfigFile;
+use crate::args::Flags;
+use crate::args::FmtConfig;
+use crate::args::LintConfig;
+use crate::args::TsConfig;
+use crate::cache::DenoDir;
+use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::get_source_from_data_url;
+use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
-use crate::logger;
-use crate::lsp::logging::lsp_log;
+use crate::graph_util::graph_valid;
+use crate::http_util::HttpClient;
+use crate::npm::NpmCache;
+use crate::npm::NpmPackageResolver;
+use crate::npm::RealNpmRegistryApi;
+use crate::proc_state::import_map_from_text;
+use crate::proc_state::ProcState;
+use crate::progress_bar::ProgressBar;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
-
-pub const REGISTRIES_PATH: &str = "registries";
-const CACHE_PATH: &str = "deps";
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 
+/// Snapshot of the state used by TSC.
 #[derive(Debug, Default)]
-pub(crate) struct StateSnapshot {
-  pub assets: Assets,
-  pub config: ConfigSnapshot,
+pub struct StateSnapshot {
+  pub assets: AssetsSnapshot,
+  pub cache_metadata: cache::CacheMetadata,
   pub documents: Documents,
-  pub maybe_lint_config: Option<LintConfig>,
-  pub maybe_fmt_config: Option<FmtConfig>,
-  pub maybe_config_uri: Option<ModuleSpecifier>,
-  pub module_registries: registries::ModuleRegistry,
-  pub performance: Performance,
-  pub url_map: urls::LspUrlMap,
+  pub maybe_import_map: Option<Arc<ImportMap>>,
+  pub root_uri: Option<Url>,
+  pub maybe_npm_resolver: Option<NpmPackageResolver>,
 }
 
 #[derive(Debug)]
-pub(crate) struct Inner {
+pub struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
   /// are part of the TypeScript snapshot and have to be fetched out.
   assets: Assets,
+  /// A representation of metadata associated with specifiers in the DENO_DIR
+  /// which is used by the language server
+  cache_metadata: cache::CacheMetadata,
   /// The LSP client that this LSP server is connected to.
-  pub(crate) client: Client,
+  pub client: Client,
   /// Configuration information.
-  pub(crate) config: Config,
+  pub config: Config,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
-  documents: Documents,
+  pub documents: Documents,
   /// Handles module registries, which allow discovery of modules
-  module_registries: registries::ModuleRegistry,
+  module_registries: ModuleRegistry,
   /// The path to the module registries cache
   module_registries_location: PathBuf,
   /// An optional path to the DENO_DIR which has been specified in the client
   /// options.
   maybe_cache_path: Option<PathBuf>,
-  /// A lazily created "server" for handling cache requests.
-  maybe_cache_server: Option<CacheServer>,
   /// An optional configuration file which has been specified in the client
   /// options.
   maybe_config_file: Option<ConfigFile>,
-  /// An optional configuration for linter which has been taken from specified config file.
-  maybe_lint_config: Option<LintConfig>,
   /// An optional configuration for formatter which has been taken from specified config file.
   maybe_fmt_config: Option<FmtConfig>,
-  /// An optional URL which provides the location of a TypeScript configuration
-  /// file which will be used by the Deno LSP.
-  maybe_config_uri: Option<Url>,
   /// An optional import map which is used to resolve modules.
-  pub(crate) maybe_import_map: Option<Arc<ImportMap>>,
+  pub maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
+  /// An optional configuration for linter which has been taken from specified config file.
+  pub maybe_lint_config: Option<LintConfig>,
+  /// A lazily create "server" for handling test run requests.
+  maybe_testing_server: Option<testing::TestServer>,
+  /// Resolver for npm packages.
+  npm_resolver: NpmPackageResolver,
   /// A collection of measurements which instrument that performance of the LSP.
-  performance: Performance,
+  performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
   /// An abstraction that handles interactions with TypeScript.
-  pub(crate) ts_server: Arc<TsServer>,
+  pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
-  pub(crate) url_map: urls::LspUrlMap,
+  pub url_map: urls::LspUrlMap,
 }
 
 impl LanguageServer {
   pub fn new(client: Client) -> Self {
     Self(Arc::new(tokio::sync::Mutex::new(Inner::new(client))))
   }
+
+  pub async fn cache_request(
+    &self,
+    params: Option<Value>,
+  ) -> LspResult<Option<Value>> {
+    match params.map(serde_json::from_value) {
+      Some(Ok(params)) => self.0.lock().await.cache(params).await,
+      Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+      None => Err(LspError::invalid_params("Missing parameters")),
+    }
+  }
+
+  pub async fn performance_request(&self) -> LspResult<Option<Value>> {
+    Ok(Some(self.0.lock().await.get_performance()))
+  }
+
+  pub async fn reload_import_registries_request(
+    &self,
+  ) -> LspResult<Option<Value>> {
+    self.0.lock().await.reload_import_registries().await
+  }
+
+  pub async fn task_request(&self) -> LspResult<Option<Value>> {
+    self.0.lock().await.get_tasks()
+  }
+
+  pub async fn test_run_request(
+    &self,
+    params: Option<Value>,
+  ) -> LspResult<Option<Value>> {
+    let inner = self.0.lock().await;
+    if let Some(testing_server) = &inner.maybe_testing_server {
+      match params.map(serde_json::from_value) {
+        Some(Ok(params)) => testing_server
+          .run_request(params, inner.config.get_workspace_settings()),
+        Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+        None => Err(LspError::invalid_params("Missing parameters")),
+      }
+    } else {
+      Err(LspError::invalid_request())
+    }
+  }
+
+  pub async fn test_run_cancel_request(
+    &self,
+    params: Option<Value>,
+  ) -> LspResult<Option<Value>> {
+    if let Some(testing_server) = &self.0.lock().await.maybe_testing_server {
+      match params.map(serde_json::from_value) {
+        Some(Ok(params)) => testing_server.run_cancel_request(params),
+        Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+        None => Err(LspError::invalid_params("Missing parameters")),
+      }
+    } else {
+      Err(LspError::invalid_request())
+    }
+  }
+
+  pub async fn inlay_hint(
+    &self,
+    params: InlayHintParams,
+  ) -> LspResult<Option<Vec<InlayHint>>> {
+    self.0.lock().await.inlay_hint(params).await
+  }
+
+  pub async fn virtual_text_document(
+    &self,
+    params: Option<Value>,
+  ) -> LspResult<Option<Value>> {
+    match params.map(serde_json::from_value) {
+      Some(Ok(params)) => Ok(Some(
+        serde_json::to_value(
+          self.0.lock().await.virtual_text_document(params)?,
+        )
+        .map_err(|err| {
+          error!(
+            "Failed to serialize virtual_text_document response: {}",
+            err
+          );
+          LspError::internal_error()
+        })?,
+      )),
+      Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+      None => Err(LspError::invalid_params("Missing parameters")),
+    }
+  }
+}
+
+fn create_lsp_npm_resolver(
+  dir: &DenoDir,
+  http_client: HttpClient,
+) -> NpmPackageResolver {
+  let registry_url = RealNpmRegistryApi::default_url();
+  let progress_bar = ProgressBar::default();
+  let npm_cache = NpmCache::from_deno_dir(
+    dir,
+    // Use an "only" cache setting in order to make the
+    // user do an explicit "cache" command and prevent
+    // the cache from being filled with lots of packages while
+    // the user is typing.
+    CacheSetting::Only,
+    http_client.clone(),
+    progress_bar.clone(),
+  );
+  let api = RealNpmRegistryApi::new(
+    registry_url,
+    npm_cache.clone(),
+    http_client,
+    progress_bar,
+  );
+  NpmPackageResolver::new(npm_cache, api, false, None)
 }
 
 impl Inner {
   fn new(client: Client) -> Self {
     let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
-    let dir = deno_dir::DenoDir::new(maybe_custom_root)
-      .expect("could not access DENO_DIR");
-    let module_registries_location = dir.root.join(REGISTRIES_PATH);
+    let dir =
+      DenoDir::new(maybe_custom_root).expect("could not access DENO_DIR");
+    let module_registries_location = dir.registries_folder_path();
+    let http_client = HttpClient::new(None, None).unwrap();
     let module_registries =
-      registries::ModuleRegistry::new(&module_registries_location);
-    let location = dir.root.join(CACHE_PATH);
+      ModuleRegistry::new(&module_registries_location, http_client.clone())
+        .unwrap();
+    let location = dir.deps_folder_path();
     let documents = Documents::new(&location);
-    let ts_server = Arc::new(TsServer::new());
-    let config = Config::new(client.clone());
+    let cache_metadata = cache::CacheMetadata::new(&location);
+    let performance = Arc::new(Performance::default());
+    let ts_server = Arc::new(TsServer::new(performance.clone()));
+    let config = Config::new();
+    let diagnostics_server = DiagnosticsServer::new(
+      client.clone(),
+      performance.clone(),
+      ts_server.clone(),
+    );
+    let assets = Assets::new(ts_server.clone());
+    let npm_resolver = create_lsp_npm_resolver(&dir, http_client);
 
     Self {
-      assets: Default::default(),
+      assets,
+      cache_metadata,
       client,
       config,
-      diagnostics_server: Default::default(),
+      diagnostics_server,
       documents,
       maybe_cache_path: None,
-      maybe_lint_config: None,
-      maybe_fmt_config: None,
-      maybe_cache_server: None,
       maybe_config_file: None,
-      maybe_config_uri: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
+      maybe_lint_config: None,
+      maybe_fmt_config: None,
+      maybe_testing_server: None,
       module_registries,
       module_registries_location,
-      performance: Default::default(),
+      npm_resolver,
+      performance,
       ts_fixable_diagnostics: Default::default(),
       ts_server,
       url_map: Default::default(),
     }
   }
 
-  /// Searches assets and open documents which might be performed asynchronously,
-  /// hydrating in memory caches for subsequent requests.
-  pub(crate) async fn get_asset_or_document(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> LspResult<AssetOrDocument> {
-    self
-      .get_maybe_asset_or_document(specifier)
-      .await?
-      .map_or_else(
-        || {
-          Err(LspError::invalid_params(format!(
-            "Unable to find asset or document for: {}",
-            specifier
-          )))
-        },
-        Ok,
-      )
-  }
-
-  /// Searches assets and open documents which might be performed asynchronously,
-  /// hydrating in memory caches for subsequent requests.
-  pub(crate) async fn get_maybe_asset_or_document(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> LspResult<Option<AssetOrDocument>> {
-    let mark = self.performance.mark(
-      "get_maybe_asset_or_document",
-      Some(json!({ "specifier": specifier })),
-    );
-    let result = if specifier.scheme() == "asset" {
-      self.get_asset(specifier).await?.map(AssetOrDocument::Asset)
-    } else {
-      self.documents.get(specifier).map(AssetOrDocument::Document)
-    };
-    self.performance.measure(mark);
-    Ok(result)
-  }
-
-  /// Only searches already cached assets and documents. If
-  /// the asset or document cannot be found an error is returned.
-  pub(crate) fn get_cached_asset_or_document(
+  /// Searches assets and documents for the provided
+  /// specifier erroring if it doesn't exist.
+  pub fn get_asset_or_document(
     &self,
     specifier: &ModuleSpecifier,
   ) -> LspResult<AssetOrDocument> {
-    self
-      .get_maybe_cached_asset_or_document(specifier)
-      .map_or_else(
-        || {
-          Err(LspError::invalid_params(format!(
-            "An unexpected specifier ({}) was provided.",
-            specifier
-          )))
-        },
-        Ok,
-      )
+    self.get_maybe_asset_or_document(specifier).map_or_else(
+      || {
+        Err(LspError::invalid_params(format!(
+          "Unable to find asset or document for: {}",
+          specifier
+        )))
+      },
+      Ok,
+    )
   }
 
-  /// Only searches already cached assets and documents. If
-  /// the asset or document cannot be found, `None` is returned.
-  pub(crate) fn get_maybe_cached_asset_or_document(
+  /// Searches assets and documents for the provided specifier.
+  pub fn get_maybe_asset_or_document(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<AssetOrDocument> {
     if specifier.scheme() == "asset" {
-      self
-        .assets
-        .get(specifier)
-        .map(|maybe_asset| {
-          maybe_asset
-            .as_ref()
-            .map(|asset| AssetOrDocument::Asset(asset.clone()))
-        })
-        .flatten()
+      self.assets.get(specifier).map(AssetOrDocument::Asset)
     } else {
       self.documents.get(specifier).map(AssetOrDocument::Document)
     }
   }
 
-  pub(crate) async fn get_navigation_tree(
+  pub async fn get_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<Arc<tsc::NavigationTree>, AnyError> {
@@ -259,7 +343,7 @@ impl Inner {
       "get_navigation_tree",
       Some(json!({ "specifier": specifier })),
     );
-    let asset_or_doc = self.get_cached_asset_or_document(specifier)?;
+    let asset_or_doc = self.get_asset_or_document(specifier)?;
     let navigation_tree =
       if let Some(navigation_tree) = asset_or_doc.maybe_navigation_tree() {
         navigation_tree
@@ -267,7 +351,7 @@ impl Inner {
         let navigation_tree: tsc::NavigationTree = self
           .ts_server
           .request(
-            self.snapshot()?,
+            self.snapshot(),
             tsc::RequestMethod::GetNavigationTree(specifier.clone()),
           )
           .await?;
@@ -292,18 +376,15 @@ impl Inner {
 
   /// Returns a tuple with parsed `ConfigFile` and `Url` pointing to that file.
   /// If there's no config file specified in settings returns `None`.
-  fn get_config_file_and_url(
-    &self,
-  ) -> Result<Option<(ConfigFile, Url)>, AnyError> {
+  fn get_config_file(&self) -> Result<Option<ConfigFile>, AnyError> {
     let workspace_settings = self.config.get_workspace_settings();
-    let maybe_root_uri = self.config.root_uri.clone();
     let maybe_config = workspace_settings.config;
     if let Some(config_str) = &maybe_config {
       if !config_str.is_empty() {
-        lsp_log!("Setting TypeScript configuration from: \"{}\"", config_str);
+        lsp_log!("Setting Deno configuration from: \"{}\"", config_str);
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
           Ok(url)
-        } else if let Some(root_uri) = maybe_root_uri {
+        } else if let Some(root_uri) = &self.config.root_uri {
           root_uri.join(config_str).map_err(|_| {
             anyhow!("Bad file path for configuration file: \"{}\"", config_str)
           })
@@ -316,11 +397,26 @@ impl Inner {
         lsp_log!("  Resolved configuration file: \"{}\"", config_url);
 
         let config_file = ConfigFile::from_specifier(&config_url)?;
-        return Ok(Some((config_file, config_url)));
+        return Ok(Some(config_file));
       }
     }
 
-    Ok(None)
+    // Auto-discover config
+
+    // It is possible that root_uri is not set, for example when having a single
+    // file open and not a workspace.  In those situations we can't
+    // automatically discover the configuration
+    if let Some(root_uri) = &self.config.root_uri {
+      let root_path = fs_util::specifier_to_file_path(root_uri)?;
+      let mut checked = std::collections::HashSet::new();
+      let maybe_config = ConfigFile::discover_from(&root_path, &mut checked)?;
+      Ok(maybe_config.map(|c| {
+        lsp_log!("  Auto-resolved configuration file: \"{}\"", c.specifier);
+        c
+      }))
+    } else {
+      Ok(None)
+    }
   }
 
   fn is_diagnosable(&self, specifier: &ModuleSpecifier) -> bool {
@@ -349,7 +445,7 @@ impl Inner {
   }
 
   fn merge_user_tsconfig(
-    &mut self,
+    &self,
     tsconfig: &mut TsConfig,
   ) -> Result<(), AnyError> {
     if let Some(config_file) = self.maybe_config_file.as_ref() {
@@ -365,39 +461,26 @@ impl Inner {
     Ok(())
   }
 
-  pub(crate) fn snapshot(&self) -> LspResult<Arc<StateSnapshot>> {
-    Ok(Arc::new(StateSnapshot {
-      assets: self.assets.clone(),
-      config: self.config.snapshot().map_err(|err| {
-        error!("{}", err);
-        LspError::internal_error()
-      })?,
+  pub fn snapshot(&self) -> Arc<StateSnapshot> {
+    Arc::new(StateSnapshot {
+      assets: self.assets.snapshot(),
+      cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
-      maybe_lint_config: self.maybe_lint_config.clone(),
-      maybe_fmt_config: self.maybe_fmt_config.clone(),
-      maybe_config_uri: self.maybe_config_uri.clone(),
-      module_registries: self.module_registries.clone(),
-      performance: self.performance.clone(),
-      url_map: self.url_map.clone(),
-    }))
+      maybe_import_map: self.maybe_import_map.clone(),
+      maybe_npm_resolver: Some(self.npm_resolver.snapshotted()),
+      root_uri: self.config.root_uri.clone(),
+    })
   }
 
   pub fn update_cache(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_cache", None::<()>);
     self.performance.measure(mark);
-    self.maybe_cache_server = None;
-    let (maybe_cache, maybe_root_uri) = {
-      let config = &self.config;
-      (
-        config.get_workspace_settings().cache,
-        config.root_uri.clone(),
-      )
-    };
+    let maybe_cache = self.config.get_workspace_settings().cache;
     let maybe_cache_path = if let Some(cache_str) = &maybe_cache {
       lsp_log!("Setting cache path from: \"{}\"", cache_str);
       let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
         Ok(url)
-      } else if let Some(root_uri) = &maybe_root_uri {
+      } else if let Some(root_uri) = &self.config.root_uri {
         let root_path = fs_util::specifier_to_file_path(root_uri)?;
         let cache_path = root_path.join(cache_str);
         Url::from_file_path(cache_path).map_err(|_| {
@@ -419,53 +502,113 @@ impl Inner {
       None
     };
     if self.maybe_cache_path != maybe_cache_path {
-      let maybe_custom_root = maybe_cache_path
-        .clone()
-        .or_else(|| env::var("DENO_DIR").map(String::into).ok());
-      let dir = deno_dir::DenoDir::new(maybe_custom_root)
-        .expect("could not access DENO_DIR");
-      let module_registries_location = dir.root.join(REGISTRIES_PATH);
-      self.module_registries =
-        registries::ModuleRegistry::new(&module_registries_location);
-      self.module_registries_location = module_registries_location;
-      self.documents.set_location(dir.root.join(CACHE_PATH));
-      self.maybe_cache_path = maybe_cache_path;
+      self.recreate_http_client_and_dependents(maybe_cache_path)?;
     }
+    Ok(())
+  }
+
+  /// Recreates the http client and all dependent structs.
+  fn recreate_http_client_and_dependents(
+    &mut self,
+    new_cache_path: Option<PathBuf>,
+  ) -> Result<(), AnyError> {
+    let maybe_custom_root = new_cache_path
+      .clone()
+      .or_else(|| env::var("DENO_DIR").map(String::into).ok());
+    let dir = DenoDir::new(maybe_custom_root)?;
+    let workspace_settings = self.config.get_workspace_settings();
+    let maybe_root_path = self
+      .config
+      .root_uri
+      .as_ref()
+      .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
+    let root_cert_store = Some(get_root_cert_store(
+      maybe_root_path,
+      workspace_settings.certificate_stores.clone(),
+      workspace_settings.tls_certificate.clone(),
+    )?);
+    let client = HttpClient::new(
+      root_cert_store,
+      workspace_settings.unsafely_ignore_certificate_errors,
+    )?;
+    let module_registries_location = dir.registries_folder_path();
+    self.module_registries =
+      ModuleRegistry::new(&module_registries_location, client.clone())?;
+    self.module_registries_location = module_registries_location;
+    self.npm_resolver = create_lsp_npm_resolver(&dir, client);
+    // update the cache path
+    let location = dir.deps_folder_path();
+    self.documents.set_location(&location);
+    self.cache_metadata.set_location(&location);
+    self.maybe_cache_path = new_cache_path;
     Ok(())
   }
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_import_map", None::<()>);
-    self.maybe_cache_server = None;
-    let (maybe_import_map, maybe_root_uri) = {
-      let config = &self.config;
-      (
-        config.get_workspace_settings().import_map,
-        config.root_uri.clone(),
-      )
-    };
-    if let Some(import_map_str) = &maybe_import_map {
-      lsp_log!("Setting import map from: \"{}\"", import_map_str);
-      let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str)
-      {
-        Ok(url)
+
+    let maybe_import_map_url = if let Some(import_map_str) = self
+      .config
+      .get_workspace_settings()
+      .import_map
+      .and_then(|s| if s.is_empty() { None } else { Some(s) })
+    {
+      lsp_log!(
+        "Setting import map from workspace settings: \"{}\"",
+        import_map_str
+      );
+      if let Some(config_file) = &self.maybe_config_file {
+        if let Some(import_map_path) = config_file.to_import_map_path() {
+          lsp_log!("Warning: Import map \"{}\" configured in \"{}\" being ignored due to an import map being explicitly configured in workspace settings.", import_map_path, config_file.specifier);
+        }
+      }
+      if let Ok(url) = Url::from_file_path(&import_map_str) {
+        Some(url)
       } else if import_map_str.starts_with("data:") {
-        Url::parse(import_map_str).map_err(|_| {
-          anyhow!("Bad data url for import map: {:?}", import_map_str)
-        })
-      } else if let Some(root_uri) = &maybe_root_uri {
+        Some(Url::parse(&import_map_str).map_err(|_| {
+          anyhow!("Bad data url for import map: {}", import_map_str)
+        })?)
+      } else if let Some(root_uri) = &self.config.root_uri {
         let root_path = fs_util::specifier_to_file_path(root_uri)?;
-        let import_map_path = root_path.join(import_map_str);
-        Url::from_file_path(import_map_path).map_err(|_| {
-          anyhow!("Bad file path for import map: {:?}", import_map_str)
-        })
+        let import_map_path = root_path.join(&import_map_str);
+        Some(Url::from_file_path(import_map_path).map_err(|_| {
+          anyhow!("Bad file path for import map: {}", import_map_str)
+        })?)
       } else {
-        Err(anyhow!(
+        return Err(anyhow!(
           "The path to the import map (\"{}\") is not resolvable.",
           import_map_str
-        ))
-      }?;
-
+        ));
+      }
+    } else if let Some(config_file) = &self.maybe_config_file {
+      if let Some(import_map_path) = config_file.to_import_map_path() {
+        lsp_log!(
+          "Setting import map from configuration file: \"{}\"",
+          import_map_path
+        );
+        let specifier =
+          if let Ok(config_file_path) = config_file.specifier.to_file_path() {
+            let import_map_file_path = config_file_path
+              .parent()
+              .ok_or_else(|| {
+                anyhow!("Bad config file specifier: {}", config_file.specifier)
+              })?
+              .join(&import_map_path);
+            ModuleSpecifier::from_file_path(import_map_file_path).unwrap()
+          } else {
+            deno_core::resolve_import(
+              &import_map_path,
+              config_file.specifier.as_str(),
+            )?
+          };
+        Some(specifier)
+      } else {
+        None
+      }
+    } else {
+      None
+    };
+    if let Some(import_map_url) = maybe_import_map_url {
       let import_map_json = if import_map_url.scheme() == "data" {
         get_source_from_data_url(&import_map_url)?.0
       } else {
@@ -482,13 +625,11 @@ impl Inner {
           )
         })?
       };
-      let import_map = Arc::new(ImportMap::from_json(
-        &import_map_url.to_string(),
-        &import_map_json,
-      )?);
+      let import_map = import_map_from_text(&import_map_url, &import_map_json)?;
       self.maybe_import_map_uri = Some(import_map_url);
-      self.maybe_import_map = Some(import_map);
+      self.maybe_import_map = Some(Arc::new(import_map));
     } else {
+      self.maybe_import_map_uri = None;
       self.maybe_import_map = None;
     }
     self.performance.measure(mark);
@@ -502,14 +643,9 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_registries", None::<()>);
-    for (registry, enabled) in self
-      .config
-      .get_workspace_settings()
-      .suggest
-      .imports
-      .hosts
-      .iter()
-    {
+    self.recreate_http_client_and_dependents(self.maybe_cache_path.clone())?;
+    let workspace_settings = self.config.get_workspace_settings();
+    for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
       if *enabled {
         lsp_log!("Enabling import suggestions for: {}", registry);
         self.module_registries.enable(registry).await?;
@@ -523,13 +659,10 @@ impl Inner {
 
   fn update_config_file(&mut self) -> Result<(), AnyError> {
     self.maybe_config_file = None;
-    self.maybe_config_uri = None;
     self.maybe_fmt_config = None;
     self.maybe_lint_config = None;
 
-    let maybe_file_and_url = self.get_config_file_and_url()?;
-
-    if let Some((config_file, config_url)) = maybe_file_and_url {
+    if let Some(config_file) = self.get_config_file()? {
       let lint_config = config_file
         .to_lint_config()
         .map_err(|err| {
@@ -544,7 +677,6 @@ impl Inner {
         .unwrap_or_default();
 
       self.maybe_config_file = Some(config_file);
-      self.maybe_config_uri = Some(config_url);
       self.maybe_lint_config = Some(lint_config);
       self.maybe_fmt_config = Some(fmt_config);
     }
@@ -562,6 +694,7 @@ impl Inner {
       "jsx": "react",
       "lib": ["deno.ns", "deno.window"],
       "module": "esnext",
+      "moduleDetection": "force",
       "noEmit": true,
       "resolveJsonModule": true,
       "strict": true,
@@ -583,29 +716,10 @@ impl Inner {
     }
     let _ok: bool = self
       .ts_server
-      .request(self.snapshot()?, tsc::RequestMethod::Configure(tsconfig))
+      .request(self.snapshot(), tsc::RequestMethod::Configure(tsconfig))
       .await?;
     self.performance.measure(mark);
     Ok(())
-  }
-
-  async fn get_asset(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> LspResult<Option<AssetDocument>> {
-    if let Some(maybe_asset) = self.assets.get(specifier) {
-      Ok(maybe_asset.clone())
-    } else {
-      let maybe_asset =
-        tsc::get_asset(specifier, &self.ts_server, self.snapshot()?)
-          .await
-          .map_err(|err| {
-            error!("Error getting asset {}: {}", specifier, err);
-            LspError::internal_error()
-          })?;
-      self.assets.insert(specifier.clone(), maybe_asset.clone());
-      Ok(maybe_asset)
-    }
   }
 }
 
@@ -650,20 +764,25 @@ impl Inner {
     }
 
     {
-      let config = &mut self.config;
       // sometimes this root uri may not have a trailing slash, so force it to
-      config.root_uri = params
+      self.config.root_uri = params
         .root_uri
         .map(|s| self.url_map.normalize_url(&s))
         .map(fs_util::ensure_directory_specifier);
 
       if let Some(value) = params.initialization_options {
-        config.set_workspace_settings(value).map_err(|err| {
+        self.config.set_workspace_settings(value).map_err(|err| {
           error!("Cannot set workspace settings: {}", err);
           LspError::internal_error()
         })?;
       }
-      config.update_capabilities(&params.capabilities);
+      self.config.workspace_folders = params.workspace_folders.map(|folders| {
+        folders
+          .into_iter()
+          .map(|folder| (self.url_map.normalize_url(&folder.uri), folder))
+          .collect()
+      });
+      self.config.update_capabilities(&params.capabilities);
     }
 
     self.update_debug_flag();
@@ -681,7 +800,7 @@ impl Inner {
     if capabilities.code_action_provider.is_some() {
       let fixable_diagnostics: Vec<String> = self
         .ts_server
-        .request(self.snapshot()?, tsc::RequestMethod::GetSupportedCodeFixes)
+        .request(self.snapshot(), tsc::RequestMethod::GetSupportedCodeFixes)
         .await
         .map_err(|err| {
           error!("Unable to get fixable diagnostics: {}", err);
@@ -703,10 +822,13 @@ impl Inner {
       self.maybe_config_file.as_ref(),
     );
 
+    self.assets.intitialize(self.snapshot()).await;
+
     self.performance.measure(mark);
     Ok(InitializeResult {
       capabilities,
       server_info: Some(server_info),
+      offset_encoding: None,
     })
   }
 
@@ -722,7 +844,7 @@ impl Inner {
       let watch_registration_options =
         DidChangeWatchedFilesRegistrationOptions {
           watchers: vec![FileSystemWatcher {
-            glob_pattern: "**/*.json".to_string(),
+            glob_pattern: "**/*.{json,jsonc}".to_string(),
             kind: Some(WatchKind::Change),
           }],
         };
@@ -736,8 +858,18 @@ impl Inner {
       if let Err(err) =
         self.client.register_capability(vec![registration]).await
       {
-        warn!("Client errored on capabilities.\n{}", err);
+        warn!("Client errored on capabilities.\n{:#}", err);
       }
+    }
+    self.config.update_enabled_paths(self.client.clone()).await;
+
+    if self.config.client_capabilities.testing_api {
+      let test_server = testing::TestServer::new(
+        self.client.clone(),
+        self.performance.clone(),
+        self.config.root_uri.clone(),
+      );
+      self.maybe_testing_server = Some(test_server);
     }
 
     lsp_log!("Server ready.");
@@ -747,24 +879,12 @@ impl Inner {
     Ok(())
   }
 
-  async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
+  async fn did_open(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    params: DidOpenTextDocumentParams,
+  ) -> Document {
     let mark = self.performance.mark("did_open", Some(&params));
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
-
-    if let Err(err) = self
-      .config
-      .update_specifier_settings(&specifier, &params.text_document.uri)
-      .await
-    {
-      error!("Error updating specifier settings: {}", err);
-    }
-
-    if params.text_document.uri.scheme() == "deno" {
-      // we can ignore virtual text documents opening, as they don't need to
-      // be tracked in memory, as they are static assets that won't change
-      // already managed by the language service
-      return;
-    }
     let language_id =
       params
         .text_document
@@ -780,25 +900,15 @@ impl Inner {
         params.text_document.language_id, params.text_document.uri
       );
     }
-    let content = Arc::new(params.text_document.text);
     let document = self.documents.open(
       specifier.clone(),
       params.text_document.version,
       params.text_document.language_id.parse().unwrap(),
-      content,
+      params.text_document.text.into(),
     );
 
-    if document.is_diagnosable() {
-      self
-        .diagnostics_server
-        .invalidate(self.documents.dependents(&specifier))
-        .await;
-      if let Err(err) = self.diagnostics_server.update() {
-        error!("{}", err);
-      }
-    }
-
     self.performance.measure(mark);
+    document
   }
 
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
@@ -811,18 +921,24 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
+          self.refresh_npm_specifiers().await;
           self
             .diagnostics_server
-            .invalidate(self.documents.dependents(&specifier))
-            .await;
-          if let Err(err) = self.diagnostics_server.update() {
-            error!("{}", err);
-          }
+            .invalidate(&self.documents.dependents(&specifier));
+          self.send_diagnostics_update();
+          self.send_testing_update();
         }
       }
       Err(err) => error!("{}", err),
     }
     self.performance.measure(mark);
+  }
+
+  async fn refresh_npm_specifiers(&mut self) {
+    let package_reqs = self.documents.npm_package_reqs();
+    if let Err(err) = self.npm_resolver.set_package_reqs(package_reqs).await {
+      warn!("Could not set npm package requirements. {:#}", err);
+    }
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -839,49 +955,29 @@ impl Inner {
       error!("{}", err);
     }
     if self.is_diagnosable(&specifier) {
+      self.refresh_npm_specifiers().await;
       let mut specifiers = self.documents.dependents(&specifier);
       specifiers.push(specifier.clone());
-      self.diagnostics_server.invalidate(specifiers).await;
-      if let Err(err) = self.diagnostics_server.update() {
-        error!("{}", err);
-      }
+      self.diagnostics_server.invalidate(&specifiers);
+      self.send_diagnostics_update();
+      self.send_testing_update();
     }
     self.performance.measure(mark);
   }
 
   async fn did_change_configuration(
     &mut self,
+    client_workspace_config: Option<Value>,
     params: DidChangeConfigurationParams,
   ) {
-    let mark = self
-      .performance
-      .mark("did_change_configuration", Some(&params));
-
     let maybe_config =
       if self.config.client_capabilities.workspace_configuration {
-        let config_response = self
-          .client
-          .configuration(vec![ConfigurationItem {
-            scope_uri: None,
-            section: Some(SETTINGS_SECTION.to_string()),
-          }])
-          .await;
-        if let Err(err) = self.config.update_all_settings().await {
-          error!("Cannot request updating all settings: {}", err);
-        }
-        match config_response {
-          Ok(value_vec) => value_vec.get(0).cloned(),
-          Err(err) => {
-            error!("Error getting workspace configuration: {}", err);
-            None
-          }
-        }
+        client_workspace_config
       } else {
         params
           .settings
           .as_object()
-          .map(|settings| settings.get(SETTINGS_SECTION))
-          .flatten()
+          .and_then(|settings| settings.get(SETTINGS_SECTION))
           .cloned()
       };
 
@@ -895,27 +991,26 @@ impl Inner {
     if let Err(err) = self.update_cache() {
       self.client.show_message(MessageType::WARNING, err).await;
     }
-    if let Err(err) = self.update_import_map().await {
-      self.client.show_message(MessageType::WARNING, err).await;
-    }
     if let Err(err) = self.update_registries().await {
       self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_config_file() {
       self.client.show_message(MessageType::WARNING, err).await;
     }
+    if let Err(err) = self.update_import_map().await {
+      self.client.show_message(MessageType::WARNING, err).await;
+    }
     if let Err(err) = self.update_tsconfig().await {
       self.client.show_message(MessageType::WARNING, err).await;
     }
-    if let Err(err) = self.diagnostics_server.update() {
-      error!("{}", err);
-    }
+
     self.documents.update_config(
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
     );
 
-    self.performance.measure(mark);
+    self.send_diagnostics_update();
+    self.send_testing_update();
   }
 
   async fn did_change_watched_files(
@@ -932,22 +1027,23 @@ impl Inner {
       .map(|f| self.url_map.normalize_url(&f.uri))
       .collect();
 
-    // if the current import map has changed, we need to reload it
-    if let Some(import_map_uri) = &self.maybe_import_map_uri {
-      if changes.iter().any(|uri| import_map_uri == uri) {
-        if let Err(err) = self.update_import_map().await {
+    // if the current tsconfig has changed, we need to reload it
+    if let Some(config_file) = &self.maybe_config_file {
+      if changes.iter().any(|uri| config_file.specifier == *uri) {
+        if let Err(err) = self.update_config_file() {
+          self.client.show_message(MessageType::WARNING, err).await;
+        }
+        if let Err(err) = self.update_tsconfig().await {
           self.client.show_message(MessageType::WARNING, err).await;
         }
         touched = true;
       }
     }
-    // if the current tsconfig has changed, we need to reload it
-    if let Some(config_uri) = &self.maybe_config_uri {
-      if changes.iter().any(|uri| config_uri == uri) {
-        if let Err(err) = self.update_config_file() {
-          self.client.show_message(MessageType::WARNING, err).await;
-        }
-        if let Err(err) = self.update_tsconfig().await {
+    // if the current import map, or config file has changed, we need to reload
+    // reload the import map
+    if let Some(import_map_uri) = &self.maybe_import_map_uri {
+      if changes.iter().any(|uri| import_map_uri == uri) || touched {
+        if let Err(err) = self.update_import_map().await {
           self.client.show_message(MessageType::WARNING, err).await;
         }
         touched = true;
@@ -958,11 +1054,38 @@ impl Inner {
         self.maybe_import_map.clone(),
         self.maybe_config_file.as_ref(),
       );
-      self.diagnostics_server.invalidate_all().await;
-      if let Err(err) = self.diagnostics_server.update() {
-        error!("Cannot update diagnostics: {}", err);
+      self.diagnostics_server.invalidate_all();
+      self.send_diagnostics_update();
+      self.send_testing_update();
+    }
+    self.performance.measure(mark);
+  }
+
+  async fn did_change_workspace_folders(
+    &mut self,
+    params: DidChangeWorkspaceFoldersParams,
+  ) {
+    let mark = self
+      .performance
+      .mark("did_change_workspace_folders", Some(&params));
+    let mut workspace_folders = params
+      .event
+      .added
+      .into_iter()
+      .map(|folder| (self.url_map.normalize_url(&folder.uri), folder))
+      .collect::<Vec<(ModuleSpecifier, WorkspaceFolder)>>();
+    if let Some(current_folders) = &self.config.workspace_folders {
+      for (specifier, folder) in current_folders {
+        if !params.event.removed.is_empty()
+          && params.event.removed.iter().any(|f| f.uri == folder.uri)
+        {
+          continue;
+        }
+        workspace_folders.push((specifier.clone(), folder.clone()));
       }
     }
+
+    self.config.workspace_folders = Some(workspace_folders);
     self.performance.measure(mark);
   }
 
@@ -978,7 +1101,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("document_symbol", Some(&params));
-    let asset_or_document = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_document = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_document.line_index();
 
     let navigation_tree =
@@ -1035,22 +1158,23 @@ impl Inner {
         Some(Ok(parsed_source)) => {
           format_parsed_source(&parsed_source, fmt_options)
         }
-        Some(Err(err)) => Err(err.to_string()),
+        Some(Err(err)) => Err(anyhow!("{}", err)),
         None => {
           // it's not a js/ts file, so attempt to format its contents
-          format_file(&file_path, document.content().as_str(), fmt_options)
+          format_file(&file_path, &document.content(), &fmt_options)
         }
       };
 
       match format_result {
-        Ok(new_text) => Some(text::get_edits(
-          document.content().as_str(),
+        Ok(Some(new_text)) => Some(text::get_edits(
+          &document.content(),
           &new_text,
           document.line_index().as_ref(),
         )),
+        Ok(None) => Some(Vec::new()),
         Err(err) => {
           // TODO(lucacasonato): handle error properly
-          warn!("Format error: {}", err);
+          warn!("Format error: {:#}", err);
           None
         }
       }
@@ -1071,7 +1195,7 @@ impl Inner {
     }
   }
 
-  async fn hover(&mut self, params: HoverParams) -> LspResult<Option<Hover>> {
+  async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
@@ -1082,43 +1206,52 @@ impl Inner {
     }
 
     let mark = self.performance.mark("hover", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let hover = if let Some((_, dep, range)) = asset_or_doc
       .get_maybe_dependency(&params.text_document_position_params.position)
     {
       let dep_maybe_types_dependency = dep
         .get_code()
-        .map(|s| self.documents.get(s))
-        .flatten()
-        .map(|d| d.maybe_types_dependency())
-        .flatten();
-      let value = match (&dep.maybe_code, &dep.maybe_type, &dep_maybe_types_dependency) {
-        (Some(code_dep), Some(type_dep), None) => format!(
+        .and_then(|s| self.documents.get(s))
+        .map(|d| d.maybe_types_dependency());
+      let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
+        (false, false, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(code_dep),
-          to_hover_text(type_dep)
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type)
         ),
-        (Some(code_dep), Some(type_dep), Some(types_dep)) => format!(
+        (false, false, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
-          to_hover_text(code_dep),
-          to_hover_text(types_dep),
-          to_hover_text(type_dep)
-        ),
-        (Some(code_dep), None, None) => format!(
-          "**Resolved Dependency**\n\n**Code**: {}\n",
-          to_hover_text(code_dep)
-        ),
-        (Some(code_dep), None, Some(types_dep)) => format!(
-          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(code_dep),
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type),
           to_hover_text(types_dep)
         ),
-        (None, Some(type_dep), _) => format!(
-          "**Resolved Dependency**\n\n**Types**: {}\n",
-          to_hover_text(type_dep)
+        (false, false, Some(_)) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type)
         ),
-        (None, None, _) => unreachable!("{}", json!(params)),
+        (false, true, Some(types_dep)) if !types_dep.is_none() => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(types_dep)
+        ),
+        (false, true, _) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n",
+          to_hover_text(&dep.maybe_code)
+        ),
+        (true, false, _) => format!(
+          "**Resolved Dependency**\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_type)
+        ),
+        (true, true, _) => unreachable!("{}", json!(params)),
       };
+      let value =
+        if let Some(docs) = self.module_registries.get_hover(&dep).await {
+          format!("{}\n\n---\n\n{}", value, docs)
+        } else {
+          value
+        };
       Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
           kind: MarkupKind::Markdown,
@@ -1134,20 +1267,20 @@ impl Inner {
       ));
       let maybe_quick_info: Option<tsc::QuickInfo> = self
         .ts_server
-        .request(self.snapshot()?, req)
+        .request(self.snapshot(), req)
         .await
         .map_err(|err| {
           error!("Unable to get quick info: {}", err);
           LspError::internal_error()
         })?;
-      maybe_quick_info.map(|qi| qi.to_hover(line_index))
+      maybe_quick_info.map(|qi| qi.to_hover(line_index, self))
     };
     self.performance.measure(mark);
     Ok(hover)
   }
 
   async fn code_action(
-    &mut self,
+    &self,
     params: CodeActionParams,
   ) -> LspResult<Option<CodeActionResponse>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
@@ -1159,7 +1292,7 @@ impl Inner {
 
     let mark = self.performance.mark("code_action", Some(&params));
     let mut all_actions = CodeActionResponse::new();
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
     // QuickFix
@@ -1179,15 +1312,7 @@ impl Inner {
             _ => false,
           },
           "deno-lint" => matches!(&d.code, Some(_)),
-          "deno" => match &d.code {
-            Some(NumberOrString::String(code)) => {
-              matches!(
-                code.as_str(),
-                "no-cache" | "no-cache-data" | "no-assert-type"
-              )
-            }
-            _ => false,
-          },
+          "deno" => diagnostics::DenoDiagnostic::is_fixable(&d.code),
           _ => false,
         },
         None => false,
@@ -1197,8 +1322,7 @@ impl Inner {
       let mut code_actions = CodeActionCollection::default();
       let file_diagnostics = self
         .diagnostics_server
-        .get(&specifier, DiagnosticSource::TypeScript)
-        .await;
+        .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version());
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
           Some("deno-ts") => {
@@ -1214,7 +1338,7 @@ impl Inner {
               codes,
             ));
             let actions: Vec<tsc::CodeFixAction> =
-              match self.ts_server.request(self.snapshot()?, req).await {
+              match self.ts_server.request(self.snapshot(), req).await {
                 Ok(items) => items,
                 Err(err) => {
                   // sometimes tsc reports errors when retrieving code actions
@@ -1228,7 +1352,6 @@ impl Inner {
             for action in actions {
               code_actions
                 .add_ts_fix_action(&specifier, &action, diagnostic, self)
-                .await
                 .map_err(|err| {
                   error!("Unable to convert fix: {}", err);
                   LspError::internal_error()
@@ -1254,7 +1377,7 @@ impl Inner {
               &specifier,
               diagnostic,
               asset_or_doc.document().map(|d| d.text_info()),
-              asset_or_doc.maybe_parsed_source().map(|r| r.ok()).flatten(),
+              asset_or_doc.maybe_parsed_source().and_then(|r| r.ok()),
             )
             .map_err(|err| {
               error!("Unable to fix lint error: {}", err);
@@ -1287,7 +1410,7 @@ impl Inner {
     ));
     let refactor_infos: Vec<tsc::ApplicableRefactorInfo> = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1321,7 +1444,7 @@ impl Inner {
   }
 
   async fn code_action_resolve(
-    &mut self,
+    &self,
     params: CodeAction,
   ) -> LspResult<CodeAction> {
     if params.kind.is_none() || params.data.is_none() {
@@ -1334,6 +1457,7 @@ impl Inner {
 
     let result = if kind.as_str().starts_with(CodeActionKind::QUICKFIX.as_str())
     {
+      let snapshot = self.snapshot();
       let code_action_data: CodeActionData =
         from_value(data).map_err(|err| {
           error!("Unable to decode code action data: {}", err);
@@ -1345,7 +1469,7 @@ impl Inner {
       ));
       let combined_code_actions: tsc::CombinedCodeActions = self
         .ts_server
-        .request(self.snapshot()?, req)
+        .request(snapshot.clone(), req)
         .await
         .map_err(|err| {
           error!("Unable to get combined fix from TypeScript: {}", err);
@@ -1360,31 +1484,30 @@ impl Inner {
         fix_ts_import_changes(
           &code_action_data.specifier,
           &combined_code_actions.changes,
-          self,
+          &self.documents,
         )
         .map_err(|err| {
           error!("Unable to remap changes: {}", err);
           LspError::internal_error()
         })?
       } else {
-        combined_code_actions.changes.clone()
+        combined_code_actions.changes
       };
       let mut code_action = params.clone();
-      code_action.edit =
-        ts_changes_to_edit(&changes, self).await.map_err(|err| {
-          error!("Unable to convert changes to edits: {}", err);
-          LspError::internal_error()
-        })?;
+      code_action.edit = ts_changes_to_edit(&changes, self).map_err(|err| {
+        error!("Unable to convert changes to edits: {}", err);
+        LspError::internal_error()
+      })?;
       code_action
     } else if kind.as_str().starts_with(CodeActionKind::REFACTOR.as_str()) {
+      let snapshot = self.snapshot();
       let mut code_action = params.clone();
       let action_data: refactor::RefactorCodeActionData = from_value(data)
         .map_err(|err| {
           error!("Unable to decode code action data: {}", err);
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
-      let asset_or_doc =
-        self.get_cached_asset_or_document(&action_data.specifier)?;
+      let asset_or_doc = self.get_asset_or_document(&action_data.specifier)?;
       let line_index = asset_or_doc.line_index();
       let start = line_index.offset_tsc(action_data.range.start)?;
       let length = line_index.offset_tsc(action_data.range.end)? - start;
@@ -1394,11 +1517,8 @@ impl Inner {
         action_data.refactor_name.clone(),
         action_data.action_name.clone(),
       ));
-      let refactor_edit_info: tsc::RefactorEditInfo = self
-        .ts_server
-        .request(self.snapshot()?, req)
-        .await
-        .map_err(|err| {
+      let refactor_edit_info: tsc::RefactorEditInfo =
+        self.ts_server.request(snapshot, req).await.map_err(|err| {
           error!("Failed to request to tsserver {}", err);
           LspError::invalid_request()
         })?;
@@ -1433,14 +1553,13 @@ impl Inner {
     }
 
     let mark = self.performance.mark("code_lens", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let navigation_tree =
       self.get_navigation_tree(&specifier).await.map_err(|err| {
         error!("Error getting code lenses for \"{}\": {}", specifier, err);
         LspError::internal_error()
       })?;
-    let parsed_source =
-      asset_or_doc.maybe_parsed_source().map(|r| r.ok()).flatten();
+    let parsed_source = asset_or_doc.maybe_parsed_source().and_then(|r| r.ok());
     let line_index = asset_or_doc.line_index();
     let code_lenses = code_lens::collect(
       &specifier,
@@ -1460,7 +1579,7 @@ impl Inner {
   }
 
   async fn code_lens_resolve(
-    &mut self,
+    &self,
     code_lens: CodeLens,
   ) -> LspResult<CodeLens> {
     let mark = self.performance.mark("code_lens_resolve", Some(&code_lens));
@@ -1481,7 +1600,7 @@ impl Inner {
   }
 
   async fn document_highlight(
-    &mut self,
+    &self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
     let specifier = self
@@ -1494,7 +1613,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("document_highlight", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let files_to_search = vec![specifier.clone()];
     let req = tsc::RequestMethod::GetDocumentHighlights((
@@ -1504,7 +1623,7 @@ impl Inner {
     ));
     let maybe_document_highlights: Option<Vec<tsc::DocumentHighlights>> = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Unable to get document highlights from TypeScript: {}", err);
@@ -1514,8 +1633,7 @@ impl Inner {
     if let Some(document_highlights) = maybe_document_highlights {
       let result = document_highlights
         .into_iter()
-        .map(|dh| dh.to_highlight(line_index.clone()))
-        .flatten()
+        .flat_map(|dh| dh.to_highlight(line_index.clone()))
         .collect();
       self.performance.measure(mark);
       Ok(Some(result))
@@ -1526,7 +1644,7 @@ impl Inner {
   }
 
   async fn references(
-    &mut self,
+    &self,
     params: ReferenceParams,
   ) -> LspResult<Option<Vec<Location>>> {
     let specifier = self
@@ -1539,7 +1657,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("references", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let req = tsc::RequestMethod::GetReferences((
       specifier.clone(),
@@ -1547,7 +1665,7 @@ impl Inner {
     ));
     let maybe_references: Option<Vec<tsc::ReferenceEntry>> = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Unable to get references from TypeScript: {}", err);
@@ -1566,10 +1684,11 @@ impl Inner {
           line_index.clone()
         } else {
           let asset_or_doc =
-            self.get_asset_or_document(&reference_specifier).await?;
+            self.get_asset_or_document(&reference_specifier)?;
           asset_or_doc.line_index()
         };
-        results.push(reference.to_location(reference_line_index, self));
+        results
+          .push(reference.to_location(reference_line_index, &self.url_map));
       }
 
       self.performance.measure(mark);
@@ -1581,7 +1700,7 @@ impl Inner {
   }
 
   async fn goto_definition(
-    &mut self,
+    &self,
     params: GotoDefinitionParams,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
     let specifier = self
@@ -1594,7 +1713,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("goto_definition", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let req = tsc::RequestMethod::GetDefinition((
       specifier,
@@ -1602,7 +1721,7 @@ impl Inner {
     ));
     let maybe_definition: Option<tsc::DefinitionInfoAndBoundSpan> = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Unable to get definition from TypeScript: {}", err);
@@ -1620,7 +1739,7 @@ impl Inner {
   }
 
   async fn goto_type_definition(
-    &mut self,
+    &self,
     params: GotoTypeDefinitionParams,
   ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
     let specifier = self
@@ -1633,7 +1752,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("goto_definition", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let req = tsc::RequestMethod::GetTypeDefinition {
       specifier,
@@ -1642,7 +1761,7 @@ impl Inner {
     };
     let maybe_definition_info: Option<Vec<tsc::DefinitionInfo>> = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Unable to get type definition from TypeScript: {}", err);
@@ -1652,8 +1771,7 @@ impl Inner {
     let response = if let Some(definition_info) = maybe_definition_info {
       let mut location_links = Vec::new();
       for info in definition_info {
-        if let Some(link) =
-          info.document_span.to_link(line_index.clone(), self).await
+        if let Some(link) = info.document_span.to_link(line_index.clone(), self)
         {
           location_links.push(link);
         }
@@ -1668,7 +1786,7 @@ impl Inner {
   }
 
   async fn completion(
-    &mut self,
+    &self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
     let specifier = self
@@ -1681,50 +1799,73 @@ impl Inner {
     }
 
     let mark = self.performance.mark("completion", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     // Import specifiers are something wholly internal to Deno, so for
     // completions, we will use internal logic and if there are completions
     // for imports, we will return those and not send a message into tsc, where
     // other completions come from.
-    let snapshot = self.snapshot()?;
     let response = if let Some(response) = completions::get_import_completions(
       &specifier,
       &params.text_document_position.position,
-      &snapshot,
+      &self.config.snapshot(),
       self.client.clone(),
+      &self.module_registries,
+      &self.documents,
+      self.maybe_import_map.clone(),
     )
     .await
     {
       Some(response)
     } else {
       let line_index = asset_or_doc.line_index();
-      let trigger_character = if let Some(context) = &params.context {
-        context.trigger_character.clone()
-      } else {
-        None
-      };
+      let (trigger_character, trigger_kind) =
+        if let Some(context) = &params.context {
+          (
+            context.trigger_character.clone(),
+            Some(context.trigger_kind.into()),
+          )
+        } else {
+          (None, None)
+        };
       let position =
         line_index.offset_tsc(params.text_document_position.position)?;
+      let use_snippets = self.config.client_capabilities.snippet_support;
       let req = tsc::RequestMethod::GetCompletions((
         specifier.clone(),
         position,
         tsc::GetCompletionsAtPositionOptions {
           user_preferences: tsc::UserPreferences {
-            allow_text_changes_in_new_files: Some(specifier.scheme() == "file"),
-            include_automatic_optional_chain_completions: Some(true),
-            provide_refactor_not_applicable_reason: Some(true),
-            include_completions_with_insert_text: Some(true),
             allow_incomplete_completions: Some(true),
+            allow_text_changes_in_new_files: Some(specifier.scheme() == "file"),
+            import_module_specifier_ending: Some(
+              tsc::ImportModuleSpecifierEnding::Index,
+            ),
+            include_automatic_optional_chain_completions: Some(true),
+            include_completions_for_import_statements: Some(
+              self.config.get_workspace_settings().suggest.auto_imports,
+            ),
+            include_completions_for_module_exports: Some(true),
+            include_completions_with_object_literal_method_snippets: Some(
+              use_snippets,
+            ),
+            include_completions_with_class_member_snippets: Some(use_snippets),
+            include_completions_with_insert_text: Some(true),
+            include_completions_with_snippet_text: Some(use_snippets),
+            jsx_attribute_completion_style: Some(
+              tsc::JsxAttributeCompletionStyle::Auto,
+            ),
+            provide_prefix_and_suffix_text_for_rename: Some(true),
+            provide_refactor_not_applicable_reason: Some(true),
+            use_label_details_in_completion_entries: Some(true),
             ..Default::default()
           },
           trigger_character,
+          trigger_kind,
         },
       ));
-      let maybe_completion_info: Option<tsc::CompletionInfo> = self
-        .ts_server
-        .request(self.snapshot()?, req)
-        .await
-        .map_err(|err| {
+      let snapshot = self.snapshot();
+      let maybe_completion_info: Option<tsc::CompletionInfo> =
+        self.ts_server.request(snapshot, req).await.map_err(|err| {
           error!("Unable to get completion info from TypeScript: {}", err);
           LspError::internal_error()
         })?;
@@ -1746,7 +1887,7 @@ impl Inner {
   }
 
   async fn completion_resolve(
-    &mut self,
+    &self,
     params: CompletionItem,
   ) -> LspResult<CompletionItem> {
     let mark = self.performance.mark("completion_resolve", Some(&params));
@@ -1758,18 +1899,26 @@ impl Inner {
             "Could not decode data field of completion item.",
           )
         })?;
-      if let Some(data) = data.tsc {
+      if let Some(data) = &data.tsc {
+        let specifier = data.specifier.clone();
         let req = tsc::RequestMethod::GetCompletionDetails(data.into());
-        let maybe_completion_info: Option<tsc::CompletionEntryDetails> = self
-          .ts_server
-          .request(self.snapshot()?, req)
-          .await
-          .map_err(|err| {
-            error!("Unable to get completion info from TypeScript: {}", err);
-            LspError::internal_error()
-          })?;
+        let maybe_completion_info: Option<tsc::CompletionEntryDetails> =
+          self.ts_server.request(self.snapshot(), req).await.map_err(
+            |err| {
+              error!("Unable to get completion info from TypeScript: {}", err);
+              LspError::internal_error()
+            },
+          )?;
         if let Some(completion_info) = maybe_completion_info {
-          completion_info.as_completion_item(&params)
+          completion_info
+            .as_completion_item(&params, data, &specifier, self)
+            .map_err(|err| {
+              error!(
+                "Failed to serialize virtual_text_document response: {}",
+                err
+              );
+              LspError::internal_error()
+            })?
         } else {
           error!(
             "Received an undefined response from tsc for completion details."
@@ -1793,7 +1942,7 @@ impl Inner {
   }
 
   async fn goto_implementation(
-    &mut self,
+    &self,
     params: GotoImplementationParams,
   ) -> LspResult<Option<GotoImplementationResponse>> {
     let specifier = self
@@ -1806,7 +1955,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("goto_implementation", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::GetImplementation((
@@ -1815,7 +1964,7 @@ impl Inner {
     ));
     let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1825,9 +1974,7 @@ impl Inner {
     let result = if let Some(implementations) = maybe_implementations {
       let mut links = Vec::new();
       for implementation in implementations {
-        if let Some(link) =
-          implementation.to_link(line_index.clone(), self).await
-        {
+        if let Some(link) = implementation.to_link(line_index.clone(), self) {
           links.push(link)
         }
       }
@@ -1841,7 +1988,7 @@ impl Inner {
   }
 
   async fn folding_range(
-    &mut self,
+    &self,
     params: FoldingRangeParams,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
@@ -1852,12 +1999,12 @@ impl Inner {
     }
 
     let mark = self.performance.mark("folding_range", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
 
     let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
     let outlining_spans: Vec<tsc::OutliningSpan> = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1871,7 +2018,7 @@ impl Inner {
           .map(|span| {
             span.to_folding_range(
               asset_or_doc.line_index(),
-              asset_or_doc.text().as_str().as_bytes(),
+              asset_or_doc.text().as_bytes(),
               self.config.client_capabilities.line_folding_only,
             )
           })
@@ -1885,7 +2032,7 @@ impl Inner {
   }
 
   async fn incoming_calls(
-    &mut self,
+    &self,
     params: CallHierarchyIncomingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
     let specifier = self.url_map.normalize_url(&params.item.uri);
@@ -1896,7 +2043,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("incoming_calls", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::ProvideCallHierarchyIncomingCalls((
@@ -1905,7 +2052,7 @@ impl Inner {
     ));
     let incoming_calls: Vec<tsc::CallHierarchyIncomingCall> = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1919,13 +2066,10 @@ impl Inner {
       .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyIncomingCall>::new();
     for item in incoming_calls.iter() {
-      if let Some(resolved) = item
-        .try_resolve_call_hierarchy_incoming_call(
-          self,
-          maybe_root_path_owned.as_deref(),
-        )
-        .await
-      {
+      if let Some(resolved) = item.try_resolve_call_hierarchy_incoming_call(
+        self,
+        maybe_root_path_owned.as_deref(),
+      ) {
         resolved_items.push(resolved);
       }
     }
@@ -1934,7 +2078,7 @@ impl Inner {
   }
 
   async fn outgoing_calls(
-    &mut self,
+    &self,
     params: CallHierarchyOutgoingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
     let specifier = self.url_map.normalize_url(&params.item.uri);
@@ -1945,7 +2089,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("outgoing_calls", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::ProvideCallHierarchyOutgoingCalls((
@@ -1954,7 +2098,7 @@ impl Inner {
     ));
     let outgoing_calls: Vec<tsc::CallHierarchyOutgoingCall> = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1968,14 +2112,11 @@ impl Inner {
       .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyOutgoingCall>::new();
     for item in outgoing_calls.iter() {
-      if let Some(resolved) = item
-        .try_resolve_call_hierarchy_outgoing_call(
-          line_index.clone(),
-          self,
-          maybe_root_path_owned.as_deref(),
-        )
-        .await
-      {
+      if let Some(resolved) = item.try_resolve_call_hierarchy_outgoing_call(
+        line_index.clone(),
+        self,
+        maybe_root_path_owned.as_deref(),
+      ) {
         resolved_items.push(resolved);
       }
     }
@@ -1984,7 +2125,7 @@ impl Inner {
   }
 
   async fn prepare_call_hierarchy(
-    &mut self,
+    &self,
     params: CallHierarchyPrepareParams,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
     let specifier = self
@@ -1999,7 +2140,7 @@ impl Inner {
     let mark = self
       .performance
       .mark("prepare_call_hierarchy", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::PrepareCallHierarchy((
@@ -2009,7 +2150,7 @@ impl Inner {
     let maybe_one_or_many: Option<tsc::OneOrMany<tsc::CallHierarchyItem>> =
       self
         .ts_server
-        .request(self.snapshot()?, req)
+        .request(self.snapshot(), req)
         .await
         .map_err(|err| {
           error!("Failed to request to tsserver {}", err);
@@ -2025,25 +2166,19 @@ impl Inner {
       let mut resolved_items = Vec::<CallHierarchyItem>::new();
       match one_or_many {
         tsc::OneOrMany::One(item) => {
-          if let Some(resolved) = item
-            .try_resolve_call_hierarchy_item(
-              self,
-              maybe_root_path_owned.as_deref(),
-            )
-            .await
-          {
+          if let Some(resolved) = item.try_resolve_call_hierarchy_item(
+            self,
+            maybe_root_path_owned.as_deref(),
+          ) {
             resolved_items.push(resolved)
           }
         }
         tsc::OneOrMany::Many(items) => {
           for item in items.iter() {
-            if let Some(resolved) = item
-              .try_resolve_call_hierarchy_item(
-                self,
-                maybe_root_path_owned.as_deref(),
-              )
-              .await
-            {
+            if let Some(resolved) = item.try_resolve_call_hierarchy_item(
+              self,
+              maybe_root_path_owned.as_deref(),
+            ) {
               resolved_items.push(resolved);
             }
           }
@@ -2058,7 +2193,7 @@ impl Inner {
   }
 
   async fn rename(
-    &mut self,
+    &self,
     params: RenameParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
     let specifier = self
@@ -2071,7 +2206,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("rename", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::FindRenameLocations {
@@ -2085,7 +2220,7 @@ impl Inner {
 
     let maybe_locations: Option<Vec<tsc::RenameLocation>> = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -2109,44 +2244,6 @@ impl Inner {
     }
   }
 
-  async fn request_else(
-    &mut self,
-    method: &str,
-    params: Option<Value>,
-  ) -> LspResult<Option<Value>> {
-    match method {
-      lsp_custom::CACHE_REQUEST => match params.map(serde_json::from_value) {
-        Some(Ok(params)) => self.cache(params).await,
-        Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-        None => Err(LspError::invalid_params("Missing parameters")),
-      },
-      lsp_custom::PERFORMANCE_REQUEST => Ok(Some(self.get_performance())),
-      lsp_custom::RELOAD_IMPORT_REGISTRIES_REQUEST => {
-        self.reload_import_registries().await
-      }
-      lsp_custom::VIRTUAL_TEXT_DOCUMENT => {
-        match params.map(serde_json::from_value) {
-          Some(Ok(params)) => Ok(Some(
-            serde_json::to_value(self.virtual_text_document(params).await?)
-              .map_err(|err| {
-                error!(
-                  "Failed to serialize virtual_text_document response: {}",
-                  err
-                );
-                LspError::internal_error()
-              })?,
-          )),
-          Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-          None => Err(LspError::invalid_params("Missing parameters")),
-        }
-      }
-      _ => {
-        error!("Got a {} request, but no handler is defined", method);
-        Err(LspError::method_not_found())
-      }
-    }
-  }
-
   async fn selection_range(
     &mut self,
     params: SelectionRangeParams,
@@ -2159,7 +2256,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("selection_range", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
     let mut selection_ranges = Vec::<SelectionRange>::new();
@@ -2171,7 +2268,7 @@ impl Inner {
 
       let selection_range: tsc::SelectionRange = self
         .ts_server
-        .request(self.snapshot()?, req)
+        .request(self.snapshot(), req)
         .await
         .map_err(|err| {
           error!("Failed to request to tsserver {}", err);
@@ -2197,7 +2294,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("semantic_tokens_full", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
@@ -2209,7 +2306,7 @@ impl Inner {
     ));
     let semantic_classification: tsc::Classifications = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -2217,7 +2314,7 @@ impl Inner {
       })?;
 
     let semantic_tokens =
-      semantic_classification.to_semantic_tokens(line_index)?;
+      semantic_classification.to_semantic_tokens(&asset_or_doc, line_index)?;
     let response = if !semantic_tokens.data.is_empty() {
       Some(SemanticTokensResult::Tokens(semantic_tokens))
     } else {
@@ -2241,7 +2338,7 @@ impl Inner {
     let mark = self
       .performance
       .mark("semantic_tokens_range", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
     let start = line_index.offset_tsc(params.range.start)?;
@@ -2252,7 +2349,7 @@ impl Inner {
     ));
     let semantic_classification: tsc::Classifications = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -2260,7 +2357,7 @@ impl Inner {
       })?;
 
     let semantic_tokens =
-      semantic_classification.to_semantic_tokens(line_index)?;
+      semantic_classification.to_semantic_tokens(&asset_or_doc, line_index)?;
     let response = if !semantic_tokens.data.is_empty() {
       Some(SemanticTokensRangeResult::Tokens(semantic_tokens))
     } else {
@@ -2284,7 +2381,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("signature_help", Some(&params));
-    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let options = if let Some(context) = params.context {
       tsc::SignatureHelpItemsOptions {
@@ -2305,7 +2402,7 @@ impl Inner {
     ));
     let maybe_signature_help_items: Option<tsc::SignatureHelpItems> = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver: {}", err);
@@ -2313,7 +2410,7 @@ impl Inner {
       })?;
 
     if let Some(signature_help_items) = maybe_signature_help_items {
-      let signature_help = signature_help_items.into_signature_help();
+      let signature_help = signature_help_items.into_signature_help(self);
       self.performance.measure(mark);
       Ok(Some(signature_help))
     } else {
@@ -2337,7 +2434,7 @@ impl Inner {
 
     let navigate_to_items: Vec<tsc::NavigateToItem> = self
       .ts_server
-      .request(self.snapshot()?, req)
+      .request(self.snapshot(), req)
       .await
       .map_err(|err| {
         error!("Failed request to tsserver: {}", err);
@@ -2349,7 +2446,7 @@ impl Inner {
     } else {
       let mut symbol_information = Vec::new();
       for item in navigate_to_items {
-        if let Some(info) = item.to_symbol_information(self).await {
+        if let Some(info) = item.to_symbol_information(self) {
           symbol_information.push(info);
         }
       }
@@ -2359,20 +2456,37 @@ impl Inner {
     self.performance.measure(mark);
     Ok(maybe_symbol_information)
   }
+
+  fn send_diagnostics_update(&self) {
+    let snapshot = (
+      self.snapshot(),
+      self.config.snapshot(),
+      self.maybe_lint_config.clone(),
+    );
+    if let Err(err) = self.diagnostics_server.update(snapshot) {
+      error!("Cannot update diagnostics: {}", err);
+    }
+  }
+
+  /// Send a message to the testing server to look for any changes in tests and
+  /// update the client.
+  fn send_testing_update(&self) {
+    if let Some(testing_server) = &self.maybe_testing_server {
+      if let Err(err) = testing_server.update(self.snapshot()) {
+        error!("Cannot update testing server: {}", err);
+      }
+    }
+  }
 }
 
-#[lspower::async_trait]
-impl lspower::LanguageServer for LanguageServer {
+#[tower_lsp::async_trait]
+impl tower_lsp::LanguageServer for LanguageServer {
   async fn initialize(
     &self,
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
     let mut language_server = self.0.lock().await;
-    let client = language_server.client.clone();
-    let ts_server = language_server.ts_server.clone();
-    language_server
-      .diagnostics_server
-      .start(self.0.clone(), client, ts_server);
+    language_server.diagnostics_server.start();
     language_server.initialize(params).await
   }
 
@@ -2385,7 +2499,65 @@ impl lspower::LanguageServer for LanguageServer {
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
-    self.0.lock().await.did_open(params).await
+    if params.text_document.uri.scheme() == "deno" {
+      // we can ignore virtual text documents opening, as they don't need to
+      // be tracked in memory, as they are static assets that won't change
+      // already managed by the language service
+      return;
+    }
+
+    let (client, uri, specifier, had_specifier_settings) = {
+      let mut inner = self.0.lock().await;
+      let client = inner.client.clone();
+      let uri = params.text_document.uri.clone();
+      let specifier = inner.url_map.normalize_url(&uri);
+      let document = inner.did_open(&specifier, params).await;
+      let has_specifier_settings =
+        inner.config.has_specifier_settings(&specifier);
+      if document.is_diagnosable() {
+        inner.refresh_npm_specifiers().await;
+        let specifiers = inner.documents.dependents(&specifier);
+        inner.diagnostics_server.invalidate(&specifiers);
+        // don't send diagnostics yet if we don't have the specifier settings
+        if has_specifier_settings {
+          inner.send_diagnostics_update();
+          inner.send_testing_update();
+        }
+      }
+      (client, uri, specifier, has_specifier_settings)
+    };
+
+    // retrieve the specifier settings outside the lock if
+    // they haven't been asked for yet on its own time
+    if !had_specifier_settings {
+      let language_server = self.clone();
+      tokio::spawn(async move {
+        let response = client.specifier_configuration(&uri).await;
+        let mut inner = language_server.0.lock().await;
+        match response {
+          Ok(specifier_settings) => {
+            // now update the config and send a diagnostics update
+            inner.config.set_specifier_settings(
+              specifier.clone(),
+              uri,
+              specifier_settings,
+            );
+          }
+          Err(err) => {
+            error!("{}", err);
+          }
+        }
+        if inner
+          .documents
+          .get(&specifier)
+          .map(|d| d.is_diagnosable())
+          .unwrap_or(false)
+        {
+          inner.send_diagnostics_update();
+          inner.send_testing_update();
+        }
+      });
+    }
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -2405,7 +2577,93 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: DidChangeConfigurationParams,
   ) {
-    self.0.lock().await.did_change_configuration(params).await
+    let (has_workspace_capability, client, specifiers, mark) = {
+      let inner = self.0.lock().await;
+      let mark = inner
+        .performance
+        .mark("did_change_configuration", Some(&params));
+
+      let specifiers =
+        if inner.config.client_capabilities.workspace_configuration {
+          Some(inner.config.get_specifiers_with_client_uris())
+        } else {
+          None
+        };
+      (
+        inner.config.client_capabilities.workspace_configuration,
+        inner.client.clone(),
+        specifiers,
+        mark,
+      )
+    };
+
+    // start retrieving all the specifiers' settings outside the lock on its own
+    // time
+    if let Some(specifiers) = specifiers {
+      let language_server = self.clone();
+      let client = client.clone();
+      tokio::spawn(async move {
+        if let Ok(configs) = client
+          .specifier_configurations(
+            specifiers.iter().map(|s| s.client_uri.clone()).collect(),
+          )
+          .await
+        {
+          let mut inner = language_server.0.lock().await;
+          for (i, value) in configs.into_iter().enumerate() {
+            match value {
+              Ok(specifier_settings) => {
+                let entry = specifiers[i].clone();
+                inner.config.set_specifier_settings(
+                  entry.specifier,
+                  entry.client_uri,
+                  specifier_settings,
+                );
+              }
+              Err(err) => {
+                error!("{}", err);
+              }
+            }
+          }
+        }
+        let mut ls = language_server.0.lock().await;
+        if ls.config.update_enabled_paths(client).await {
+          ls.diagnostics_server.invalidate_all();
+          // this will be called in the inner did_change_configuration, but the
+          // problem then becomes, if there was a change, the snapshot used
+          // will be an out of date one, so we will call it again here if the
+          // workspace folders have been touched
+          ls.send_diagnostics_update();
+        }
+      });
+    }
+
+    // Get the configuration from the client outside of the lock
+    // in order to prevent potential deadlocking scenarios where
+    // the server holds a lock and calls into the client, which
+    // calls into the server which deadlocks acquiring the lock.
+    // There is a gap here between when the configuration is
+    // received and acquiring the lock, but most likely there
+    // won't be any racing here.
+    let client_workspace_config = if has_workspace_capability {
+      let config_response = client.workspace_configuration().await;
+      match config_response {
+        Ok(value) => Some(value),
+        Err(err) => {
+          error!("{}", err);
+          None
+        }
+      }
+    } else {
+      None
+    };
+
+    // now update the inner state
+    let mut inner = self.0.lock().await;
+    inner
+      .did_change_configuration(client_workspace_config, params)
+      .await;
+    inner.performance.measure(mark);
   }
 
   async fn did_change_watched_files(
@@ -2413,6 +2671,25 @@ impl lspower::LanguageServer for LanguageServer {
     params: DidChangeWatchedFilesParams,
   ) {
     self.0.lock().await.did_change_watched_files(params).await
+  }
+
+  async fn did_change_workspace_folders(
+    &self,
+    params: DidChangeWorkspaceFoldersParams,
+  ) {
+    let client = {
+      let mut inner = self.0.lock().await;
+      inner.did_change_workspace_folders(params).await;
+      inner.client.clone()
+    };
+    let language_server = self.clone();
+    tokio::spawn(async move {
+      let mut ls = language_server.0.lock().await;
+      if ls.config.update_enabled_paths(client).await {
+        ls.diagnostics_server.invalidate_all();
+        ls.send_diagnostics_update();
+      }
+    });
   }
 
   async fn document_symbol(
@@ -2542,14 +2819,6 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.rename(params).await
   }
 
-  async fn request_else(
-    &self,
-    method: &str,
-    params: Option<Value>,
-  ) -> LspResult<Option<Value>> {
-    self.0.lock().await.request_else(method, params).await
-  }
-
   async fn selection_range(
     &self,
     params: SelectionRangeParams,
@@ -2594,6 +2863,26 @@ impl Inner {
     &mut self,
     params: lsp_custom::CacheParams,
   ) -> LspResult<Option<Value>> {
+    async fn create_graph_for_caching(
+      cli_options: CliOptions,
+      roots: Vec<(ModuleSpecifier, ModuleKind)>,
+      open_docs: Vec<Document>,
+    ) -> Result<(), AnyError> {
+      let open_docs = open_docs
+        .into_iter()
+        .map(|d| (d.specifier().clone(), d))
+        .collect::<HashMap<_, _>>();
+      let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+      let mut inner_loader = ps.create_graph_loader();
+      let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
+        inner_loader: &mut inner_loader,
+        open_docs: &open_docs,
+      };
+      let graph = ps.create_graph_with_loader(roots, &mut loader).await?;
+      graph_valid(&graph, true, false)?;
+      Ok(())
+    }
+
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !self.is_diagnosable(&referrer) {
       return Ok(None);
@@ -2604,35 +2893,60 @@ impl Inner {
       params
         .uris
         .iter()
-        .map(|t| self.url_map.normalize_url(&t.uri))
+        .map(|t| {
+          (
+            self.url_map.normalize_url(&t.uri),
+            deno_graph::ModuleKind::Esm,
+          )
+        })
         .collect()
     } else {
-      vec![referrer.clone()]
+      vec![(referrer.clone(), deno_graph::ModuleKind::Esm)]
     };
 
-    if self.maybe_cache_server.is_none() {
-      self.maybe_cache_server = Some(
-        CacheServer::new(
-          self.maybe_cache_path.clone(),
-          self.maybe_import_map.clone(),
-          self.maybe_config_file.clone(),
-        )
-        .await,
-      );
-    }
-    let cache_server = self.maybe_cache_server.as_ref().unwrap();
-    if let Err(err) = cache_server.cache(roots).await {
+    let mut cli_options = CliOptions::new(
+      Flags {
+        cache_path: self.maybe_cache_path.clone(),
+        ca_stores: None,
+        ca_file: None,
+        unsafely_ignore_certificate_errors: None,
+        // this is to allow loading npm specifiers, so we can remove this
+        // once stabilizing them
+        unstable: true,
+        ..Default::default()
+      },
+      self.maybe_config_file.clone(),
+      // TODO(#16510): add support for lockfile
+      None,
+    );
+    cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
+
+    // todo(dsherret): why is running this on a new thread necessary? It does
+    // a compile error otherwise.
+    let open_docs = self.documents.documents(true, true);
+    let handle = tokio::task::spawn_blocking(|| {
+      run_local(async move {
+        create_graph_for_caching(cli_options, roots, open_docs).await
+      })
+    });
+    if let Err(err) = handle.await.unwrap() {
       self.client.show_message(MessageType::WARNING, err).await;
     }
 
-    // now that we have dependencies loaded, we need to re-analyze them and
-    // invalidate some diagnostics
-    self.diagnostics_server.invalidate(vec![referrer]).await;
+    // Now that we have dependencies loaded, we need to re-analyze all the files.
+    // For that we're invalidating all the existing diagnostics and restarting
+    // the language server for TypeScript (as it might hold to some stale
+    // documents).
+    self.refresh_npm_specifiers().await;
+    self.diagnostics_server.invalidate_all();
+    let _: bool = self
+      .ts_server
+      .request(self.snapshot(), tsc::RequestMethod::Restart)
+      .await
+      .unwrap();
+    self.send_diagnostics_update();
+    self.send_testing_update();
 
-    self.diagnostics_server.update().map_err(|err| {
-      error!("{}", err);
-      LspError::internal_error()
-    })?;
     self.performance.measure(mark);
     Ok(Some(json!(true)))
   }
@@ -2642,6 +2956,59 @@ impl Inner {
     json!({ "averages": averages })
   }
 
+  fn get_tasks(&self) -> LspResult<Option<Value>> {
+    Ok(
+      self
+        .maybe_config_file
+        .as_ref()
+        .and_then(|cf| cf.to_lsp_tasks()),
+    )
+  }
+
+  async fn inlay_hint(
+    &self,
+    params: InlayHintParams,
+  ) -> LspResult<Option<Vec<InlayHint>>> {
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let workspace_settings = self.config.get_workspace_settings();
+    if !self.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+      || !workspace_settings.enabled_inlay_hints()
+    {
+      return Ok(None);
+    }
+
+    let mark = self.performance.mark("inlay_hint", Some(&params));
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
+    let range = tsc::TextSpan::from_range(&params.range, line_index.clone())
+      .map_err(|err| {
+        error!("Failed to convert range to text_span: {}", err);
+        LspError::internal_error()
+      })?;
+    let req = tsc::RequestMethod::ProvideInlayHints((
+      specifier.clone(),
+      range,
+      (&workspace_settings).into(),
+    ));
+    let maybe_inlay_hints: Option<Vec<tsc::InlayHint>> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Unable to get inlay hints: {}", err);
+        LspError::internal_error()
+      })?;
+    let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {
+      hints
+        .iter()
+        .map(|hint| hint.to_lsp(line_index.clone()))
+        .collect()
+    });
+    self.performance.measure(mark);
+    Ok(maybe_inlay_hints)
+  }
+
   async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {
     fs_util::remove_dir_all_if_exists(&self.module_registries_location)
       .await
@@ -2649,8 +3016,6 @@ impl Inner {
         error!("Unable to remove registries cache: {}", err);
         LspError::internal_error()
       })?;
-    self.module_registries =
-      registries::ModuleRegistry::new(&self.module_registries_location);
     self.update_registries().await.map_err(|err| {
       error!("Unable to update registries: {}", err);
       LspError::internal_error()
@@ -2658,7 +3023,7 @@ impl Inner {
     Ok(Some(json!(true)))
   }
 
-  async fn virtual_text_document(
+  fn virtual_text_document(
     &mut self,
     params: lsp_custom::VirtualTextDocumentParams,
   ) -> LspResult<Option<String>> {
@@ -2678,7 +3043,8 @@ impl Inner {
       let measures = self.performance.to_vec();
       let workspace_settings = self.config.get_workspace_settings();
 
-      contents.push_str(&format!(
+      write!(
+        contents,
         r#"# Deno Language Server Status
 
 ## Workspace Settings
@@ -2714,23 +3080,23 @@ impl Inner {
           .map(|m| m.to_string())
           .collect::<Vec<String>>()
           .join("\n    - ")
-      ));
+      )
+      .unwrap();
       contents
         .push_str("\n## Performance\n\n|Name|Duration|Count|\n|---|---|---|\n");
       let mut averages = self.performance.averages();
       averages.sort();
       for average in averages {
-        contents.push_str(&format!(
-          "|{}|{}ms|{}|\n",
+        writeln!(
+          contents,
+          "|{}|{}ms|{}|",
           average.name, average.average_duration, average.count
-        ));
+        )
+        .unwrap();
       }
       Some(contents)
     } else {
-      let asset_or_doc = self
-        .get_maybe_asset_or_document(&specifier)
-        .await
-        .map_err(|_| LspError::internal_error())?;
+      let asset_or_doc = self.get_maybe_asset_or_document(&specifier);
       if let Some(asset_or_doc) = asset_or_doc {
         Some(asset_or_doc.text().to_string())
       } else {

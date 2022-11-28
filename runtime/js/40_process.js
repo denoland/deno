@@ -1,21 +1,27 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
-  const { File } = window.__bootstrap.files;
+  const ops = core.ops;
+  const { FsFile } = window.__bootstrap.files;
   const { readAll } = window.__bootstrap.io;
-  const { assert, pathFromURL } = window.__bootstrap.util;
+  const { pathFromURL } = window.__bootstrap.util;
+  const { assert } = window.__bootstrap.infra;
   const {
     ArrayPrototypeMap,
+    ArrayPrototypeSlice,
     TypeError,
-    isNaN,
     ObjectEntries,
     String,
   } = window.__bootstrap.primordials;
 
-  function opKill(pid, signo) {
-    core.opSync("op_kill", pid, signo);
+  function opKill(pid, signo, apiName) {
+    ops.op_kill(pid, signo, apiName);
+  }
+
+  function kill(pid, signo = "SIGTERM") {
+    opKill(pid, signo, "Deno.kill()");
   }
 
   function opRunStatus(rid) {
@@ -24,7 +30,7 @@
 
   function opRun(request) {
     assert(request.cmd.length > 0);
-    return core.opSync("op_run", request);
+    return ops.op_run(request);
   }
 
   async function runStatus(rid) {
@@ -46,15 +52,15 @@
       this.pid = res.pid;
 
       if (res.stdinRid && res.stdinRid > 0) {
-        this.stdin = new File(res.stdinRid);
+        this.stdin = new FsFile(res.stdinRid);
       }
 
       if (res.stdoutRid && res.stdoutRid > 0) {
-        this.stdout = new File(res.stdoutRid);
+        this.stdout = new FsFile(res.stdoutRid);
       }
 
       if (res.stderrRid && res.stderrRid > 0) {
-        this.stderr = new File(res.stderrRid);
+        this.stderr = new FsFile(res.stderrRid);
       }
     }
 
@@ -88,13 +94,9 @@
       core.close(this.rid);
     }
 
-    kill(signo) {
-      opKill(this.pid, signo);
+    kill(signo = "SIGTERM") {
+      opKill(this.pid, signo, "Deno.Process.kill()");
     }
-  }
-
-  function isRid(arg) {
-    return !isNaN(arg);
   }
 
   function run({
@@ -109,7 +111,7 @@
     stdin = "inherit",
   }) {
     if (cmd[0] != null) {
-      cmd[0] = pathFromURL(cmd[0]);
+      cmd = [pathFromURL(cmd[0]), ...ArrayPrototypeSlice(cmd, 1)];
     }
     const res = opRun({
       cmd: ArrayPrototypeMap(cmd, String),
@@ -118,12 +120,9 @@
       env: ObjectEntries(env),
       gid,
       uid,
-      stdin: isRid(stdin) ? "" : stdin,
-      stdout: isRid(stdout) ? "" : stdout,
-      stderr: isRid(stderr) ? "" : stderr,
-      stdinRid: isRid(stdin) ? stdin : 0,
-      stdoutRid: isRid(stdout) ? stdout : 0,
-      stderrRid: isRid(stderr) ? stderr : 0,
+      stdin,
+      stdout,
+      stderr,
     });
     return new Process(res);
   }
@@ -131,6 +130,6 @@
   window.__bootstrap.process = {
     run,
     Process,
-    kill: opKill,
+    kill,
   };
 })(this);

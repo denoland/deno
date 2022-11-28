@@ -1,33 +1,36 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::diagnostics::DenoDiagnostic;
+use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
-use crate::config_file::LintConfig;
+use crate::args::LintConfig;
 use crate::tools::lint::create_linter;
 use crate::tools::lint::get_configured_rules;
 
+use deno_ast::SourceRange;
+use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
-use lspower::lsp::Position;
-use lspower::lsp::Range;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use tower_lsp::lsp_types as lsp;
+use tower_lsp::lsp_types::Position;
+use tower_lsp::lsp_types::Range;
 
 /// Diagnostic error codes which actually are the same, and so when grouping
 /// fixes we treat them the same.
 static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
   Lazy::new(|| {
-    (&[("2339", "2339"), ("2345", "2339")])
+    ([("2339", "2339"), ("2345", "2339")])
       .iter()
       .cloned()
       .collect()
@@ -37,7 +40,7 @@ static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
 /// multiple fixes available.
 static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
   Lazy::new(|| {
-    (&[
+    ([
       ("annotateWithTypeFromJSDoc", (1, false)),
       ("constructorForDerivedNeedSuperCall", (1, false)),
       ("extendsInterfaceBecomesImplements", (1, false)),
@@ -51,25 +54,13 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
       ("addMissingAwait", (1, false)),
       ("fixImport", (0, true)),
     ])
-      .iter()
-      .cloned()
-      .collect()
+    .iter()
+    .cloned()
+    .collect()
   });
 
 static IMPORT_SPECIFIER_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap());
-
-static DENO_TYPES_RE: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#).unwrap()
-});
-
-static TRIPLE_SLASH_REFERENCE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap());
-
-static PATH_REFERENCE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap());
-static TYPES_REFERENCE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap());
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
 
@@ -171,14 +162,11 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 fn check_specifier(
   specifier: &str,
   referrer: &ModuleSpecifier,
-  snapshot: &language_server::StateSnapshot,
+  documents: &Documents,
 ) -> Option<String> {
   for ext in SUPPORTED_EXTENSIONS {
     let specifier_with_ext = format!("{}{}", specifier, ext);
-    if snapshot
-      .documents
-      .contains_import(&specifier_with_ext, referrer)
-    {
+    if documents.contains_import(&specifier_with_ext, referrer) {
       return Some(specifier_with_ext);
     }
   }
@@ -187,13 +175,12 @@ fn check_specifier(
 
 /// For a set of tsc changes, can them for any that contain something that looks
 /// like an import and rewrite the import specifier to include the extension
-pub(crate) fn fix_ts_import_changes(
+pub fn fix_ts_import_changes(
   referrer: &ModuleSpecifier,
   changes: &[tsc::FileTextChanges],
-  language_server: &language_server::Inner,
+  documents: &Documents,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
   let mut r = Vec::new();
-  let snapshot = language_server.snapshot()?;
   for change in changes {
     let mut text_changes = Vec::new();
     for text_change in &change.text_changes {
@@ -205,7 +192,7 @@ pub(crate) fn fix_ts_import_changes(
           .ok_or_else(|| anyhow!("Missing capture."))?
           .as_str();
         if let Some(new_specifier) =
-          check_specifier(specifier, referrer, &snapshot)
+          check_specifier(specifier, referrer, documents)
         {
           let new_text =
             text_change.new_text.replace(specifier, &new_specifier);
@@ -234,7 +221,7 @@ pub(crate) fn fix_ts_import_changes(
 fn fix_ts_import_action(
   referrer: &ModuleSpecifier,
   action: &tsc::CodeFixAction,
-  language_server: &language_server::Inner,
+  documents: &Documents,
 ) -> Result<tsc::CodeFixAction, AnyError> {
   if action.fix_name == "import" {
     let change = action
@@ -251,9 +238,8 @@ fn fix_ts_import_action(
         .get(1)
         .ok_or_else(|| anyhow!("Missing capture."))?
         .as_str();
-      let snapshot = language_server.snapshot()?;
       if let Some(new_specifier) =
-        check_specifier(specifier, referrer, &snapshot)
+        check_specifier(specifier, referrer, documents)
       {
         let description = action.description.replace(specifier, &new_specifier);
         let changes = action
@@ -339,14 +325,13 @@ fn is_preferred(
 
 /// Convert changes returned from a TypeScript quick fix action into edits
 /// for an LSP CodeAction.
-pub(crate) async fn ts_changes_to_edit(
+pub fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
-  language_server: &mut language_server::Inner,
+  language_server: &language_server::Inner,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
-    let text_document_edit =
-      change.to_text_document_edit(language_server).await?;
+    let text_document_edit = change.to_text_document_edit(language_server)?;
     text_document_edits.push(text_document_edit);
   }
   Ok(Some(lsp::WorkspaceEdit {
@@ -361,12 +346,6 @@ pub(crate) async fn ts_changes_to_edit(
 pub struct CodeActionData {
   pub specifier: ModuleSpecifier,
   pub fix_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DenoFixData {
-  pub specifier: ModuleSpecifier,
 }
 
 #[derive(Debug, Clone)]
@@ -388,58 +367,17 @@ pub struct CodeActionCollection {
 }
 
 impl CodeActionCollection {
-  pub(crate) fn add_deno_fix_action(
+  pub fn add_deno_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) -> Result<(), AnyError> {
-    if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
-      if code == "no-assert-type" {
-        let code_action = lsp::CodeAction {
-          title: "Insert import assertion.".to_string(),
-          kind: Some(lsp::CodeActionKind::QUICKFIX),
-          diagnostics: Some(vec![diagnostic.clone()]),
-          edit: Some(lsp::WorkspaceEdit {
-            changes: Some(HashMap::from([(
-              specifier.clone(),
-              vec![lsp::TextEdit {
-                new_text: " assert { type: \"json\" }".to_string(),
-                range: lsp::Range {
-                  start: diagnostic.range.end,
-                  end: diagnostic.range.end,
-                },
-              }],
-            )])),
-            ..Default::default()
-          }),
-          ..Default::default()
-        };
-        self.actions.push(CodeActionKind::Deno(code_action));
-      } else if let Some(data) = diagnostic.data.clone() {
-        let fix_data: DenoFixData = serde_json::from_value(data)?;
-        let title = if code == "no-cache-data" {
-          "Cache the data URL and its dependencies.".to_string()
-        } else {
-          format!("Cache \"{}\" and its dependencies.", fix_data.specifier)
-        };
-        let code_action = lsp::CodeAction {
-          title,
-          kind: Some(lsp::CodeActionKind::QUICKFIX),
-          diagnostics: Some(vec![diagnostic.clone()]),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![json!([fix_data.specifier])]),
-          }),
-          ..Default::default()
-        };
-        self.actions.push(CodeActionKind::Deno(code_action));
-      }
-    }
+    let code_action = DenoDiagnostic::get_code_action(specifier, diagnostic)?;
+    self.actions.push(CodeActionKind::Deno(code_action));
     Ok(())
   }
 
-  pub(crate) fn add_deno_lint_ignore_action(
+  pub fn add_deno_lint_ignore_action(
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
@@ -532,8 +470,8 @@ impl CodeActionCollection {
       // Get the end position of the comment.
       let line = maybe_parsed_source
         .unwrap()
-        .source()
-        .line_and_column_index(ignore_comment.span.hi());
+        .text_info()
+        .line_and_column_index(ignore_comment.end());
       let position = lsp::Position {
         line: line.line_index as u32,
         character: line.column_index as u32,
@@ -602,12 +540,12 @@ impl CodeActionCollection {
   }
 
   /// Add a TypeScript code fix action to the code actions collection.
-  pub(crate) async fn add_ts_fix_action(
+  pub fn add_ts_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<(), AnyError> {
     if action.commands.is_some() {
       // In theory, tsc can return actions that require "commands" to be applied
@@ -622,8 +560,9 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
-    let action = fix_ts_import_action(specifier, action, language_server)?;
-    let edit = ts_changes_to_edit(&action.changes, language_server).await?;
+    let action =
+      fix_ts_import_action(specifier, action, &language_server.documents)?;
+    let edit = ts_changes_to_edit(&action.changes, language_server)?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
       kind: Some(lsp::CodeActionKind::QUICKFIX),
@@ -782,6 +721,24 @@ fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
   }
 }
 
+pub fn source_range_to_lsp_range(
+  range: &SourceRange,
+  source_text_info: &SourceTextInfo,
+) -> lsp::Range {
+  let start = source_text_info.line_and_column_index(range.start);
+  let end = source_text_info.line_and_column_index(range.end);
+  lsp::Range {
+    start: lsp::Position {
+      line: start.line_index as u32,
+      character: start.column_index as u32,
+    },
+    end: lsp::Position {
+      line: end.line_index as u32,
+      character: end.column_index as u32,
+    },
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -850,12 +807,12 @@ mod tests {
       start: deno_lint::diagnostic::Position {
         line_index: 0,
         column_index: 2,
-        byte_pos: 23,
+        byte_index: 23,
       },
       end: deno_lint::diagnostic::Position {
         line_index: 1,
         column_index: 0,
-        byte_pos: 33,
+        byte_index: 33,
       },
     };
     let actual = as_lsp_range(&fixture);

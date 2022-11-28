@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -13,6 +13,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
 
   /**
    * @param {Deno.CreateHttpClientOptions} options
@@ -20,7 +21,11 @@
    */
   function createHttpClient(options) {
     options.caCerts ??= [];
-    return new HttpClient(core.opSync("op_fetch_custom_client", options));
+    return new HttpClient(
+      ops.op_fetch_custom_client(
+        options,
+      ),
+    );
   }
 
   class HttpClient {
@@ -34,8 +39,10 @@
       core.close(this.rid);
     }
   }
+  const HttpClientPrototype = HttpClient.prototype;
 
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.createHttpClient = createHttpClient;
   window.__bootstrap.fetch.HttpClient = HttpClient;
+  window.__bootstrap.fetch.HttpClientPrototype = HttpClientPrototype;
 })(globalThis);

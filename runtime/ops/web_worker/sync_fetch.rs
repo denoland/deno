@@ -1,9 +1,10 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_fetch::data_url::DataUrl;
@@ -16,7 +17,7 @@ use tokio::task::JoinHandle;
 
 // TODO(andreubotella) Properly parse the MIME type
 fn mime_type_essence(mime_type: &str) -> String {
-  let essence = match mime_type.split_once(";") {
+  let essence = match mime_type.split_once(';') {
     Some((essence, _)) => essence,
     None => mime_type,
   };
@@ -30,6 +31,7 @@ pub struct SyncFetchScript {
   script: String,
 }
 
+#[op]
 pub fn op_worker_sync_fetch(
   state: &mut OpState,
   scripts: Vec<String>,

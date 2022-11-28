@@ -1,28 +1,32 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 /// <reference path="../../core/internal.d.ts" />
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { writableStreamClose, Deferred } = window.__bootstrap.streams;
   const { DOMException } = window.__bootstrap.domException;
   const { add, remove } = window.__bootstrap.abortSignal;
+  const { headersFromHeaderList, headerListFromHeaders, fillHeaders } =
+    window.__bootstrap.headers;
 
   const {
+    ArrayPrototypeJoin,
+    ArrayPrototypeMap,
+    Error,
+    ObjectPrototypeIsPrototypeOf,
+    PromisePrototypeCatch,
+    PromisePrototypeThen,
+    Set,
     StringPrototypeEndsWith,
     StringPrototypeToLowerCase,
     Symbol,
     SymbolFor,
-    Set,
-    ArrayPrototypeMap,
-    ArrayPrototypeJoin,
-    PromisePrototypeThen,
-    PromisePrototypeCatch,
-    Uint8Array,
     TypeError,
-    Error,
+    Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
   webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
@@ -38,6 +42,10 @@
       {
         key: "signal",
         converter: webidl.converters.AbortSignal,
+      },
+      {
+        key: "headers",
+        converter: webidl.converters.HeadersInit,
       },
     ],
   );
@@ -56,17 +64,20 @@
     ],
   );
 
+  const CLOSE_RESPONSE_TIMEOUT = 5000;
+
   const _rid = Symbol("[[rid]]");
   const _url = Symbol("[[url]]");
   const _connection = Symbol("[[connection]]");
   const _closed = Symbol("[[closed]]");
   const _earlyClose = Symbol("[[earlyClose]]");
+  const _closeSent = Symbol("[[closeSent]]");
   class WebSocketStream {
     [_rid];
 
     [_url];
     get url() {
-      webidl.assertBranded(this, WebSocketStream);
+      webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_url];
     }
 
@@ -116,8 +127,13 @@
         );
       }
 
-      const cancelRid = core.opSync(
-        "op_ws_check_permission_and_cancel_handle",
+      const headers = headersFromHeaderList([], "request");
+      if (options.headers !== undefined) {
+        fillHeaders(headers, options.headers);
+      }
+
+      const cancelRid = ops.op_ws_check_permission_and_cancel_handle(
+        "WebSocketStream.abort()",
         this[_url],
         true,
       );
@@ -133,20 +149,21 @@
         };
         options.signal?.[add](abort);
         PromisePrototypeThen(
-          core.opAsync("op_ws_create", {
-            url: this[_url],
-            protocols: options.protocols
+          core.opAsync(
+            "op_ws_create",
+            "new WebSocketStream()",
+            this[_url],
+            options.protocols
               ? ArrayPrototypeJoin(options.protocols, ", ")
               : "",
-            cancelHandle: cancelRid,
-          }),
+            cancelRid,
+            headerListFromHeaders(headers),
+          ),
           (create) => {
             options.signal?.[remove](abort);
             if (this[_earlyClose]) {
               PromisePrototypeThen(
-                core.opAsync("op_ws_close", {
-                  rid: create.rid,
-                }),
+                core.opAsync("op_ws_close", create.rid),
                 () => {
                   PromisePrototypeThen(
                     (async () => {
@@ -190,7 +207,9 @@
                       kind: "text",
                       value: chunk,
                     });
-                  } else if (chunk instanceof Uint8Array) {
+                  } else if (
+                    ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
+                  ) {
                     await core.opAsync("op_ws_send", this[_rid], {
                       kind: "binary",
                       value: chunk,
@@ -218,6 +237,58 @@
                   await this.closed;
                 },
               });
+              const pull = async (controller) => {
+                const { kind, value } = await core.opAsync(
+                  "op_ws_next_event",
+                  this[_rid],
+                );
+
+                switch (kind) {
+                  case "string": {
+                    controller.enqueue(value);
+                    break;
+                  }
+                  case "binary": {
+                    controller.enqueue(value);
+                    break;
+                  }
+                  case "ping": {
+                    await core.opAsync("op_ws_send", this[_rid], {
+                      kind: "pong",
+                    });
+                    await pull(controller);
+                    break;
+                  }
+                  case "closed":
+                  case "close": {
+                    this[_closed].resolve(value);
+                    core.tryClose(this[_rid]);
+                    break;
+                  }
+                  case "error": {
+                    const err = new Error(value);
+                    this[_closed].reject(err);
+                    controller.error(err);
+                    core.tryClose(this[_rid]);
+                    break;
+                  }
+                }
+
+                if (
+                  this[_closeSent].state === "fulfilled" &&
+                  this[_closed].state === "pending"
+                ) {
+                  if (
+                    new Date().getTime() - await this[_closeSent].promise <=
+                      CLOSE_RESPONSE_TIMEOUT
+                  ) {
+                    return pull(controller);
+                  }
+
+                  this[_closed].resolve(value);
+                  core.tryClose(this[_rid]);
+                }
+              };
               const readable = new ReadableStream({
                 start: (controller) => {
                   PromisePrototypeThen(this.closed, () => {
@@ -235,43 +306,14 @@
                       // needed to ignore warnings & assertions
                     }
                   });
-                },
-                pull: async (controller) => {
-                  const { kind, value } = await core.opAsync(
-                    "op_ws_next_event",
-                    this[_rid],
-                  );
 
-                  switch (kind) {
-                    case "string": {
-                      controller.enqueue(value);
-                      break;
+                  PromisePrototypeThen(this[_closeSent].promise, () => {
+                    if (this[_closed].state === "pending") {
+                      return pull(controller);
                     }
-                    case "binary": {
-                      controller.enqueue(value);
-                      break;
-                    }
-                    case "ping": {
-                      await core.opAsync("op_ws_send", this[_rid], {
-                        kind: "pong",
-                      });
-                      break;
-                    }
-                    case "closed":
-                    case "close": {
-                      this[_closed].resolve(value);
-                      core.tryClose(this[_rid]);
-                      break;
-                    }
-                    case "error": {
-                      const err = new Error(value);
-                      this[_closed].reject(err);
-                      controller.error(err);
-                      core.tryClose(this[_rid]);
-                      break;
-                    }
-                  }
+                  });
                 },
+                pull,
                 cancel: async (reason) => {
                   try {
                     this.close(reason?.code !== undefined ? reason : {});
@@ -291,7 +333,7 @@
             }
           },
           (err) => {
-            if (err instanceof core.Interrupted) {
+            if (ObjectPrototypeIsPrototypeOf(core.InterruptedPrototype, err)) {
               // The signal was aborted.
               err = options.signal.reason;
             } else {
@@ -306,19 +348,20 @@
 
     [_connection] = new Deferred();
     get connection() {
-      webidl.assertBranded(this, WebSocketStream);
+      webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_connection].promise;
     }
 
     [_earlyClose] = false;
     [_closed] = new Deferred();
+    [_closeSent] = new Deferred();
     get closed() {
-      webidl.assertBranded(this, WebSocketStream);
+      webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_closed].promise;
     }
 
     close(closeInfo) {
-      webidl.assertBranded(this, WebSocketStream);
+      webidl.assertBranded(this, WebSocketStreamPrototype);
       closeInfo = webidl.converters.WebSocketCloseInfo(closeInfo, {
         prefix: "Failed to execute 'close' on 'WebSocketStream'",
         context: "Argument 1",
@@ -353,12 +396,13 @@
       if (this[_connection].state === "pending") {
         this[_earlyClose] = true;
       } else if (this[_closed].state === "pending") {
-        PromisePrototypeCatch(
-          core.opAsync("op_ws_close", {
-            rid: this[_rid],
-            code,
-            reason: closeInfo.reason,
-          }),
+        PromisePrototypeThen(
+          core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
+          () => {
+            setTimeout(() => {
+              this[_closeSent].resolve(new Date().getTime());
+            }, 0);
+          },
           (err) => {
             this[_rid] && core.tryClose(this[_rid]);
             this[_closed].reject(err);
@@ -375,6 +419,8 @@
       }`;
     }
   }
+
+  const WebSocketStreamPrototype = WebSocketStream.prototype;
 
   window.__bootstrap.webSocket.WebSocketStream = WebSocketStream;
 })(this);

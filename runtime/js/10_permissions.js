@@ -1,14 +1,12 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
-  const {
-    Event,
-    EventTarget,
-    Deno: { core },
-    __bootstrap: { webUtil: { illegalConstructorKey } },
-  } = window;
+  const { ops } = Deno.core;
+  const { Event } = window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { pathFromURL } = window.__bootstrap.util;
+  const { illegalConstructorKey } = window.__bootstrap.webUtil;
   const {
     ArrayIsArray,
     ArrayPrototypeIncludes,
@@ -21,6 +19,7 @@
     FunctionPrototypeCall,
     PromiseResolve,
     PromiseReject,
+    ReflectHas,
     SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -31,12 +30,13 @@
    * @property {PermissionStatus} status
    */
 
-  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "run" | "ffi" | "hrtime">} */
+  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "hrtime">} */
   const permissionNames = [
     "read",
     "write",
     "net",
     "env",
+    "sys",
     "run",
     "ffi",
     "hrtime",
@@ -47,7 +47,7 @@
    * @returns {Deno.PermissionState}
    */
   function opQuery(desc) {
-    return core.opSync("op_query_permission", desc);
+    return ops.op_query_permission(desc);
   }
 
   /**
@@ -55,7 +55,7 @@
    * @returns {Deno.PermissionState}
    */
   function opRevoke(desc) {
-    return core.opSync("op_revoke_permission", desc);
+    return ops.op_revoke_permission(desc);
   }
 
   /**
@@ -63,7 +63,7 @@
    * @returns {Deno.PermissionState}
    */
   function opRequest(desc) {
-    return core.opSync("op_request_permission", desc);
+    return ops.op_request_permission(desc);
   }
 
   class PermissionStatus extends EventTarget {
@@ -120,10 +120,21 @@
    */
   function cache(desc, state) {
     let { name: key } = desc;
-    if ((desc.name === "read" || desc.name === "write") && "path" in desc) {
-      key += `-${desc.path}`;
+    if (
+      (desc.name === "read" || desc.name === "write" || desc.name === "ffi") &&
+      ReflectHas(desc, "path")
+    ) {
+      key += `-${desc.path}&`;
     } else if (desc.name === "net" && desc.host) {
-      key += `-${desc.host}`;
+      key += `-${desc.host}&`;
+    } else if (desc.name === "run" && desc.command) {
+      key += `-${desc.command}&`;
+    } else if (desc.name === "env" && desc.variable) {
+      key += `-${desc.variable}&`;
+    } else if (desc.name === "sys" && desc.kind) {
+      key += `-${desc.kind}&`;
+    } else {
+      key += "$";
     }
     if (MapPrototypeHas(statusCache, key)) {
       const status = MapPrototypeGet(statusCache, key);
@@ -145,7 +156,7 @@
    * @returns {desc is Deno.PermissionDescriptor}
    */
   function isValidDescriptor(desc) {
-    return desc && desc !== null &&
+    return typeof desc === "object" && desc !== null &&
       ArrayPrototypeIncludes(permissionNames, desc.name);
   }
 
@@ -160,7 +171,7 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc.name}" is not a valid permission name.`,
+            `The provided value "${desc?.name}" is not a valid permission name.`,
           ),
         );
       }
@@ -181,7 +192,7 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc.name}" is not a valid permission name.`,
+            `The provided value "${desc?.name}" is not a valid permission name.`,
           ),
         );
       }
@@ -200,7 +211,7 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc.name}" is not a valid permission name.`,
+            `The provided value "${desc?.name}" is not a valid permission name.`,
           ),
         );
       }
@@ -232,7 +243,7 @@
           serializedPermissions[key] = permissions[key];
         }
       }
-      for (const key of ["env", "hrtime", "net"]) {
+      for (const key of ["env", "hrtime", "net", "sys"]) {
         if (ArrayIsArray(permissions[key])) {
           serializedPermissions[key] = ArrayPrototypeSlice(permissions[key]);
         } else {

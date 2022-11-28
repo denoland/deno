@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -21,16 +21,15 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
   Ok(canonicalized_path)
 }
 
+#[inline]
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
-  let resolved_path = if path.is_absolute() {
-    path.to_owned()
+  if path.is_absolute() {
+    Ok(normalize_path(path))
   } else {
     let cwd =
       current_dir().context("Failed to get current working directory")?;
-    cwd.join(path)
-  };
-
-  Ok(normalize_path(&resolved_path))
+    Ok(normalize_path(&cwd.join(path)))
+  }
 }
 
 #[cfg(test)]

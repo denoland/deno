@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::normalize_path;
 use std::env::current_dir;
@@ -43,7 +43,7 @@ impl fmt::Display for ModuleResolutionError {
         specifier,
         match maybe_referrer {
           Some(referrer) => format!(" from \"{}\"", referrer),
-          None => format!(""),
+          None => String::new(),
         }
       ),
     }
@@ -138,7 +138,9 @@ pub fn resolve_url_or_path(
 pub fn resolve_path(
   path_str: &str,
 ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-  let path = current_dir().unwrap().join(path_str);
+  let path = current_dir()
+    .map_err(|_| ModuleResolutionError::InvalidPath(path_str.into()))?
+    .join(path_str);
   let path = normalize_path(&path);
   Url::from_file_path(path.clone())
     .map_err(|()| ModuleResolutionError::InvalidPath(path))
@@ -397,7 +399,7 @@ mod tests {
       // Relative local path.
       let expected_url = format!(
         "file:///{}/tests/006_url_imports.ts",
-        cwd_str.replace("\\", "/")
+        cwd_str.replace('\\', "/")
       );
       tests.extend(vec![
         (r"tests/006_url_imports.ts", expected_url.to_string()),

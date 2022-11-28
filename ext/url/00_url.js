@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -9,6 +9,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayIsArray,
@@ -18,6 +19,8 @@
     ArrayPrototypeSort,
     ArrayPrototypeSplice,
     ObjectKeys,
+    Uint32Array,
+    SafeArrayIterator,
     StringPrototypeSlice,
     Symbol,
     SymbolFor,
@@ -29,51 +32,49 @@
   const _urlObject = Symbol("url object");
 
   // WARNING: must match rust code's UrlSetter::*
-  const SET_HASH = 1;
-  const SET_HOST = 2;
-  const SET_HOSTNAME = 3;
-  const SET_PASSWORD = 4;
-  const SET_PATHNAME = 5;
-  const SET_PORT = 6;
-  const SET_PROTOCOL = 7;
-  const SET_SEARCH = 8;
-  const SET_USERNAME = 9;
+  const SET_HASH = 0;
+  const SET_HOST = 1;
+  const SET_HOSTNAME = 2;
+  const SET_PASSWORD = 3;
+  const SET_PATHNAME = 4;
+  const SET_PORT = 5;
+  const SET_PROTOCOL = 6;
+  const SET_SEARCH = 7;
+  const SET_USERNAME = 8;
 
   // Helper functions
   function opUrlReparse(href, setter, value) {
-    return _urlParts(core.opSync("op_url_reparse", href, [setter, value]));
-  }
-  function opUrlParse(href, maybeBase) {
-    return _urlParts(core.opSync("op_url_parse", href, maybeBase));
-  }
-  function _urlParts(internalParts) {
-    // WARNING: must match UrlParts serialization rust's url_result()
-    const {
-      0: href,
-      1: hash,
-      2: host,
-      3: hostname,
-      4: origin,
-      5: password,
-      6: pathname,
-      7: port,
-      8: protocol,
-      9: search,
-      10: username,
-    } = internalParts.split("\n");
-    return {
+    const status = ops.op_url_reparse(
       href,
-      hash,
-      host,
-      hostname,
-      origin,
-      password,
-      pathname,
-      port,
-      protocol,
-      search,
-      username,
-    };
+      setter,
+      value,
+      componentsBuf.buffer,
+    );
+    return getSerialization(status, href);
+  }
+
+  function opUrlParse(href, maybeBase) {
+    let status;
+    if (maybeBase === undefined) {
+      status = ops.op_url_parse(href, componentsBuf.buffer);
+    } else {
+      status = core.ops.op_url_parse_with_base(
+        href,
+        maybeBase,
+        componentsBuf.buffer,
+      );
+    }
+    return getSerialization(status, href);
+  }
+
+  function getSerialization(status, href) {
+    if (status === 0) {
+      return href;
+    } else if (status === 1) {
+      return core.ops.op_url_get_serialization();
+    } else {
+      throw new TypeError("Invalid URL");
+    }
   }
 
   class URLSearchParams {
@@ -91,6 +92,11 @@
           { prefix, context: "Argument 1" },
         );
       this[webidl.brand] = webidl.brand;
+      if (!init) {
+        // if there is no query string, return early
+        this[_list] = [];
+        return;
+      }
 
       if (typeof init === "string") {
         // Overload: USVString
@@ -99,7 +105,7 @@
         if (init[0] == "?") {
           init = StringPrototypeSlice(init, 1);
         }
-        this[_list] = core.opSync("op_url_parse_search_params", init);
+        this[_list] = ops.op_url_parse_search_params(init);
       } else if (ArrayIsArray(init)) {
         // Overload: sequence<sequence<USVString>>
         this[_list] = ArrayPrototypeMap(init, (pair, i) => {
@@ -126,7 +132,7 @@
       if (url === null) {
         return;
       }
-      url[_url] = opUrlReparse(url.href, SET_SEARCH, this.toString());
+      url[_updateUrlSearch](this.toString());
     }
 
     /**
@@ -134,7 +140,7 @@
      * @param {string} value
      */
     append(name, value) {
-      webidl.assertBranded(this, URLSearchParams);
+      webidl.assertBranded(this, URLSearchParamsPrototype);
       const prefix = "Failed to execute 'append' on 'URLSearchParams'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       name = webidl.converters.USVString(name, {
@@ -153,7 +159,7 @@
      * @param {string} name
      */
     delete(name) {
-      webidl.assertBranded(this, URLSearchParams);
+      webidl.assertBranded(this, URLSearchParamsPrototype);
       const prefix = "Failed to execute 'append' on 'URLSearchParams'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       name = webidl.converters.USVString(name, {
@@ -177,7 +183,7 @@
      * @returns {string[]}
      */
     getAll(name) {
-      webidl.assertBranded(this, URLSearchParams);
+      webidl.assertBranded(this, URLSearchParamsPrototype);
       const prefix = "Failed to execute 'getAll' on 'URLSearchParams'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       name = webidl.converters.USVString(name, {
@@ -198,7 +204,7 @@
      * @return {string | null}
      */
     get(name) {
-      webidl.assertBranded(this, URLSearchParams);
+      webidl.assertBranded(this, URLSearchParamsPrototype);
       const prefix = "Failed to execute 'get' on 'URLSearchParams'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       name = webidl.converters.USVString(name, {
@@ -218,7 +224,7 @@
      * @return {boolean}
      */
     has(name) {
-      webidl.assertBranded(this, URLSearchParams);
+      webidl.assertBranded(this, URLSearchParamsPrototype);
       const prefix = "Failed to execute 'has' on 'URLSearchParams'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       name = webidl.converters.USVString(name, {
@@ -233,7 +239,7 @@
      * @param {string} value
      */
     set(name, value) {
-      webidl.assertBranded(this, URLSearchParams);
+      webidl.assertBranded(this, URLSearchParamsPrototype);
       const prefix = "Failed to execute 'set' on 'URLSearchParams'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       name = webidl.converters.USVString(name, {
@@ -276,7 +282,7 @@
     }
 
     sort() {
-      webidl.assertBranded(this, URLSearchParams);
+      webidl.assertBranded(this, URLSearchParamsPrototype);
       ArrayPrototypeSort(
         this[_list],
         (a, b) => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1),
@@ -288,20 +294,52 @@
      * @return {string}
      */
     toString() {
-      webidl.assertBranded(this, URLSearchParams);
-      return core.opSync("op_url_stringify_search_params", this[_list]);
+      webidl.assertBranded(this, URLSearchParamsPrototype);
+      return ops.op_url_stringify_search_params(this[_list]);
     }
   }
 
   webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
 
   webidl.configurePrototype(URLSearchParams);
+  const URLSearchParamsPrototype = URLSearchParams.prototype;
 
-  const _url = Symbol("url");
+  webidl.converters["URLSearchParams"] = webidl.createInterfaceConverter(
+    "URLSearchParams",
+    URLSearchParamsPrototype,
+  );
 
+  const _updateUrlSearch = Symbol("updateUrlSearch");
+
+  function trim(s) {
+    if (s.length === 1) return "";
+    return s;
+  }
+
+  // Represents a "no port" value. A port in URL cannot be greater than 2^16 − 1
+  const NO_PORT = 65536;
+
+  const componentsBuf = new Uint32Array(8);
   class URL {
-    [_url];
     #queryObject = null;
+    #serialization;
+    #schemeEnd;
+    #usernameEnd;
+    #hostStart;
+    #hostEnd;
+    #port;
+    #pathStart;
+    #queryStart;
+    #fragmentStart;
+
+    [_updateUrlSearch](value) {
+      this.#serialization = opUrlReparse(
+        this.#serialization,
+        SET_SEARCH,
+        value,
+      );
+      this.#updateComponents();
+    }
 
     /**
      * @param {string} url
@@ -317,10 +355,24 @@
         });
       }
       this[webidl.brand] = webidl.brand;
-      this[_url] = opUrlParse(url, base);
+      this.#serialization = opUrlParse(url, base);
+      this.#updateComponents();
     }
 
-    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+    #updateComponents() {
+      [
+        this.#schemeEnd,
+        this.#usernameEnd,
+        this.#hostStart,
+        this.#hostEnd,
+        this.#port,
+        this.#pathStart,
+        this.#queryStart,
+        this.#fragmentStart,
+      ] = componentsBuf;
+    }
+
+    [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
       const object = {
         href: this.href,
         origin: this.origin,
@@ -334,29 +386,41 @@
         hash: this.hash,
         search: this.search,
       };
-      return `${this.constructor.name} ${inspect(object)}`;
+      return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
     }
 
     #updateSearchParams() {
       if (this.#queryObject !== null) {
         const params = this.#queryObject[_list];
-        const newParams = core.opSync(
-          "op_url_parse_search_params",
+        const newParams = ops.op_url_parse_search_params(
           StringPrototypeSlice(this.search, 1),
         );
-        ArrayPrototypeSplice(params, 0, params.length, ...newParams);
+        ArrayPrototypeSplice(
+          params,
+          0,
+          params.length,
+          ...new SafeArrayIterator(newParams),
+        );
       }
+    }
+
+    #hasAuthority() {
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L824
+      return this.#serialization.slice(this.#schemeEnd).startsWith("://");
     }
 
     /** @return {string} */
     get hash() {
-      webidl.assertBranded(this, URL);
-      return this[_url].hash;
+      webidl.assertBranded(this, URLPrototype);
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L263
+      return this.#fragmentStart
+        ? trim(this.#serialization.slice(this.#fragmentStart))
+        : "";
     }
 
     /** @param {string} value */
     set hash(value) {
-      webidl.assertBranded(this, URL);
+      webidl.assertBranded(this, URLPrototype);
       const prefix = "Failed to set 'hash' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -364,7 +428,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_HASH, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_HASH,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -372,13 +441,14 @@
 
     /** @return {string} */
     get host() {
-      webidl.assertBranded(this, URL);
-      return this[_url].host;
+      webidl.assertBranded(this, URLPrototype);
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L101
+      return this.#serialization.slice(this.#hostStart, this.#pathStart);
     }
 
     /** @param {string} value */
     set host(value) {
-      webidl.assertBranded(this, URL);
+      webidl.assertBranded(this, URLPrototype);
       const prefix = "Failed to set 'host' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -386,7 +456,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_HOST, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_HOST,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -394,13 +469,14 @@
 
     /** @return {string} */
     get hostname() {
-      webidl.assertBranded(this, URL);
-      return this[_url].hostname;
+      webidl.assertBranded(this, URLPrototype);
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L988
+      return this.#serialization.slice(this.#hostStart, this.#hostEnd);
     }
 
     /** @param {string} value */
     set hostname(value) {
-      webidl.assertBranded(this, URL);
+      webidl.assertBranded(this, URLPrototype);
       const prefix = "Failed to set 'hostname' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -408,7 +484,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_HOSTNAME, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_HOSTNAME,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -416,38 +497,68 @@
 
     /** @return {string} */
     get href() {
-      webidl.assertBranded(this, URL);
-      return this[_url].href;
+      webidl.assertBranded(this, URLPrototype);
+      return this.#serialization;
     }
 
     /** @param {string} value */
     set href(value) {
-      webidl.assertBranded(this, URL);
+      webidl.assertBranded(this, URLPrototype);
       const prefix = "Failed to set 'href' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
-      this[_url] = opUrlParse(value);
+      this.#serialization = opUrlParse(value);
+      this.#updateComponents();
       this.#updateSearchParams();
     }
 
     /** @return {string} */
     get origin() {
-      webidl.assertBranded(this, URL);
-      return this[_url].origin;
+      webidl.assertBranded(this, URLPrototype);
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/origin.rs#L14
+      const scheme = this.#serialization.slice(0, this.#schemeEnd);
+      if (
+        scheme === "http" || scheme === "https" || scheme === "ftp" ||
+        scheme === "ws" || scheme === "wss"
+      ) {
+        return `${scheme}://${this.host}`;
+      }
+
+      if (scheme === "blob") {
+        // TODO(@littledivy): Fast path.
+        try {
+          return new URL(this.pathname).origin;
+        } catch {
+          return "null";
+        }
+      }
+
+      return "null";
     }
 
     /** @return {string} */
     get password() {
-      webidl.assertBranded(this, URL);
-      return this[_url].password;
+      webidl.assertBranded(this, URLPrototype);
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L914
+      if (
+        this.#hasAuthority() &&
+        this.#usernameEnd !== this.#serialization.length &&
+        this.#serialization[this.#usernameEnd] === ":"
+      ) {
+        return this.#serialization.slice(
+          this.#usernameEnd + 1,
+          this.#hostStart - 1,
+        );
+      }
+      return "";
     }
 
     /** @param {string} value */
     set password(value) {
-      webidl.assertBranded(this, URL);
+      webidl.assertBranded(this, URLPrototype);
       const prefix = "Failed to set 'password' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -455,7 +566,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_PASSWORD, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_PASSWORD,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -463,13 +579,19 @@
 
     /** @return {string} */
     get pathname() {
-      webidl.assertBranded(this, URL);
-      return this[_url].pathname;
+      webidl.assertBranded(this, URLPrototype);
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L1203
+      if (!this.#queryStart && !this.#fragmentStart) {
+        return this.#serialization.slice(this.#pathStart);
+      }
+
+      const nextComponentStart = this.#queryStart || this.#fragmentStart;
+      return this.#serialization.slice(this.#pathStart, nextComponentStart);
     }
 
     /** @param {string} value */
     set pathname(value) {
-      webidl.assertBranded(this, URL);
+      webidl.assertBranded(this, URLPrototype);
       const prefix = "Failed to set 'pathname' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -477,7 +599,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_PATHNAME, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_PATHNAME,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -485,13 +612,21 @@
 
     /** @return {string} */
     get port() {
-      webidl.assertBranded(this, URL);
-      return this[_url].port;
+      webidl.assertBranded(this, URLPrototype);
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L196
+      if (this.#port === NO_PORT) {
+        return this.#serialization.slice(this.#hostEnd, this.#pathStart);
+      } else {
+        return this.#serialization.slice(
+          this.#hostEnd + 1, /* : */
+          this.#pathStart,
+        );
+      }
     }
 
     /** @param {string} value */
     set port(value) {
-      webidl.assertBranded(this, URL);
+      webidl.assertBranded(this, URLPrototype);
       const prefix = "Failed to set 'port' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -499,7 +634,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_PORT, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_PORT,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -507,13 +647,14 @@
 
     /** @return {string} */
     get protocol() {
-      webidl.assertBranded(this, URL);
-      return this[_url].protocol;
+      webidl.assertBranded(this, URLPrototype);
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L56
+      return this.#serialization.slice(0, this.#schemeEnd + 1 /* : */);
     }
 
     /** @param {string} value */
     set protocol(value) {
-      webidl.assertBranded(this, URL);
+      webidl.assertBranded(this, URLPrototype);
       const prefix = "Failed to set 'protocol' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -521,7 +662,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_PROTOCOL, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_PROTOCOL,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -529,13 +675,17 @@
 
     /** @return {string} */
     get search() {
-      webidl.assertBranded(this, URL);
-      return this[_url].search;
+      webidl.assertBranded(this, URLPrototype);
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L249
+      const afterPath = this.#queryStart || this.#fragmentStart ||
+        this.#serialization.length;
+      const afterQuery = this.#fragmentStart || this.#serialization.length;
+      return trim(this.#serialization.slice(afterPath, afterQuery));
     }
 
     /** @param {string} value */
     set search(value) {
-      webidl.assertBranded(this, URL);
+      webidl.assertBranded(this, URLPrototype);
       const prefix = "Failed to set 'search' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -543,7 +693,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_SEARCH, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_SEARCH,
+          value,
+        );
+        this.#updateComponents();
         this.#updateSearchParams();
       } catch {
         /* pass */
@@ -552,13 +707,25 @@
 
     /** @return {string} */
     get username() {
-      webidl.assertBranded(this, URL);
-      return this[_url].username;
+      webidl.assertBranded(this, URLPrototype);
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L881
+      const schemeSeperatorLen = 3; /* :// */
+      if (
+        this.#hasAuthority() &&
+        this.#usernameEnd > this.#schemeEnd + schemeSeperatorLen
+      ) {
+        return this.#serialization.slice(
+          this.#schemeEnd + schemeSeperatorLen,
+          this.#usernameEnd,
+        );
+      } else {
+        return "";
+      }
     }
 
     /** @param {string} value */
     set username(value) {
-      webidl.assertBranded(this, URL);
+      webidl.assertBranded(this, URLPrototype);
       const prefix = "Failed to set 'username' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -566,7 +733,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_USERNAME, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_USERNAME,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -583,18 +755,19 @@
 
     /** @return {string} */
     toString() {
-      webidl.assertBranded(this, URL);
-      return this[_url].href;
+      webidl.assertBranded(this, URLPrototype);
+      return this.#serialization;
     }
 
     /** @return {string} */
     toJSON() {
-      webidl.assertBranded(this, URL);
-      return this[_url].href;
+      webidl.assertBranded(this, URLPrototype);
+      return this.#serialization;
     }
   }
 
   webidl.configurePrototype(URL);
+  const URLPrototype = URL.prototype;
 
   /**
    * This function implements application/x-www-form-urlencoded parsing.
@@ -603,7 +776,7 @@
    * @returns {[string, string][]}
    */
   function parseUrlEncoded(bytes) {
-    return core.opSync("op_url_parse_search_params", null, bytes);
+    return ops.op_url_parse_search_params(null, bytes);
   }
 
   webidl
@@ -622,7 +795,9 @@
 
   window.__bootstrap.url = {
     URL,
+    URLPrototype,
     URLSearchParams,
+    URLSearchParamsPrototype,
     parseUrlEncoded,
   };
 })(this);

@@ -1,16 +1,17 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const {
+    decodeURIComponent,
+    ObjectPrototypeIsPrototypeOf,
+    Promise,
+    SafeArrayIterator,
     StringPrototypeReplace,
     TypeError,
-    Promise,
-    decodeURIComponent,
-    Error,
   } = window.__bootstrap.primordials;
   const { build } = window.__bootstrap.build;
-  const { URL } = window.__bootstrap.url;
+  const { URLPrototype } = window.__bootstrap.url;
   let logDebug = false;
   let logSource = "JS";
 
@@ -25,20 +26,10 @@
     if (logDebug) {
       // if we destructure `console` off `globalThis` too early, we don't bind to
       // the right console, therefore we don't log anything out.
-      globalThis.console.log(`DEBUG ${logSource} -`, ...args);
-    }
-  }
-
-  class AssertionError extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "AssertionError";
-    }
-  }
-
-  function assert(cond, msg = "Assertion failed.") {
-    if (!cond) {
-      throw new AssertionError(msg);
+      globalThis.console.log(
+        `DEBUG ${logSource} -`,
+        ...new SafeArrayIterator(args),
+      );
     }
   }
 
@@ -93,7 +84,7 @@
   }
 
   function pathFromURL(pathOrUrl) {
-    if (pathOrUrl instanceof URL) {
+    if (ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrUrl)) {
       if (pathOrUrl.protocol != "file:") {
         throw new TypeError("Must be a file URL.");
       }
@@ -149,8 +140,6 @@
     log,
     setLogDebug,
     createResolvable,
-    assert,
-    AssertionError,
     pathFromURL,
     writable,
     nonEnumerable,

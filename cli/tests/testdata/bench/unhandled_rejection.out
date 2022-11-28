@@ -1,0 +1,7 @@
+Check [WILDCARD]/bench/unhandled_rejection.ts
+error: Uncaught (in promise) Error: rejection
+  reject(new Error("rejection"));
+         ^
+    at [WILDCARD]/bench/unhandled_rejection.ts:2:10
+    at new Promise (<anonymous>)
+    at [WILDCARD]/bench/unhandled_rejection.ts:1:1

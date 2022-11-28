@@ -8,12 +8,13 @@
   "initializationOptions": {
     "enable": true,
     "cache": null,
+    "certificateStores": null,
     "codeLens": {
       "implementations": true,
       "references": true,
       "test": true
     },
-    "config": "",
+    "config": null,
     "importMap": null,
     "lint": true,
     "suggest": {
@@ -25,6 +26,14 @@
         "hosts": {}
       }
     },
+    "testing": {
+      "args": [
+        "--allow-all"
+      ],
+      "enable": true
+    },
+    "tlsCertificate": null,
+    "unsafelyIgnoreCertificateErrors": null,
     "unstable": false
   },
   "capabilities": {
@@ -47,6 +56,11 @@
           ]
         }
       },
+      "completion": {
+        "completionItem": {
+          "snippetSupport": true
+        }
+      },
       "foldingRange": {
         "lineFoldingOnly": true
       },
@@ -60,6 +74,9 @@
     "workspace": {
       "configuration": true,
       "workspaceFolders": true
+    },
+    "experimental": {
+      "testingApi": true
     }
   }
 }

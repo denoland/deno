@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_core::error::AnyError;
@@ -69,7 +69,8 @@ impl InspectorServer {
     js_runtime: &mut JsRuntime,
     should_break_on_first_statement: bool,
   ) {
-    let inspector = js_runtime.inspector();
+    let inspector_rc = js_runtime.inspector();
+    let mut inspector = inspector_rc.borrow_mut();
     let session_sender = inspector.get_session_sender();
     let deregister_rx = inspector.add_deregister_handler();
     let info = InspectorInfo::new(
@@ -152,11 +153,7 @@ fn handle_ws_request(
       _ => http::Response::builder()
         .status(http::StatusCode::BAD_REQUEST)
         .body("Not a valid Websocket Request".into()),
-    });
-
-  if resp.is_err() {
-    return resp;
-  }
+    })?;
 
   let (parts, _) = req.into_parts();
   let req = http::Request::from_parts(parts, body);
@@ -193,7 +190,7 @@ fn handle_ws_request(
     pump_websocket_messages(websocket, inbound_tx, outbound_rx).await;
   });
 
-  resp
+  Ok(resp)
 }
 
 fn handle_json_request(

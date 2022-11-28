@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -6,8 +6,11 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
-  const { defineEventHandler, setTarget } = window.__bootstrap.event;
+  const { MessageEvent, defineEventHandler, setTarget } =
+    window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayPrototypeIndexOf,
@@ -92,13 +95,13 @@
       if (rid === null) {
         // Create the rid immediately, otherwise there is a time window (and a
         // race condition) where messages can get lost, because recv() is async.
-        rid = core.opSync("op_broadcast_subscribe");
+        rid = ops.op_broadcast_subscribe();
         recv();
       }
     }
 
     postMessage(message) {
-      webidl.assertBranded(this, BroadcastChannel);
+      webidl.assertBranded(this, BroadcastChannelPrototype);
 
       const prefix = "Failed to execute 'postMessage' on 'BroadcastChannel'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -117,23 +120,26 @@
       dispatch(this, this[_name], new Uint8Array(data));
 
       // Send to listeners in other VMs.
-      defer(() => core.opAsync("op_broadcast_send", [rid, this[_name]], data));
+      defer(() => core.opAsync("op_broadcast_send", rid, this[_name], data));
     }
 
     close() {
-      webidl.assertBranded(this, BroadcastChannel);
+      webidl.assertBranded(this, BroadcastChannelPrototype);
       this[_closed] = true;
 
       const index = ArrayPrototypeIndexOf(channels, this);
       if (index === -1) return;
 
       ArrayPrototypeSplice(channels, index, 1);
-      if (channels.length === 0) core.opSync("op_broadcast_unsubscribe", rid);
+      if (channels.length === 0) {
+        ops.op_broadcast_unsubscribe(rid);
+      }
     }
   }
 
   defineEventHandler(BroadcastChannel.prototype, "message");
   defineEventHandler(BroadcastChannel.prototype, "messageerror");
+  const BroadcastChannelPrototype = BroadcastChannel.prototype;
 
   window.__bootstrap.broadcastChannel = { BroadcastChannel };
 })(this);

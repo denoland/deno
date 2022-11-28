@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { assertNotEquals, assertStrictEquals } from "./test_util.ts";
 
 Deno.test(function getRandomValuesInt8Array() {
@@ -37,10 +37,22 @@ Deno.test(function getRandomValuesInt32Array() {
   assertNotEquals(arr, new Int32Array(8));
 });
 
+Deno.test(function getRandomValuesBigInt64Array() {
+  const arr = new BigInt64Array(8);
+  crypto.getRandomValues(arr);
+  assertNotEquals(arr, new BigInt64Array(8));
+});
+
 Deno.test(function getRandomValuesUint32Array() {
   const arr = new Uint32Array(8);
   crypto.getRandomValues(arr);
   assertNotEquals(arr, new Uint32Array(8));
+});
+
+Deno.test(function getRandomValuesBigUint64Array() {
+  const arr = new BigUint64Array(8);
+  crypto.getRandomValues(arr);
+  assertNotEquals(arr, new BigUint64Array(8));
 });
 
 Deno.test(function getRandomValuesReturnValue() {

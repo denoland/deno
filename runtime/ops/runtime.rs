@@ -1,16 +1,16 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::Permissions;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 
 pub fn init(main_module: ModuleSpecifier) -> Extension {
   Extension::builder()
-    .ops(vec![("op_main_module", op_sync(op_main_module))])
+    .ops(vec![op_main_module::decl()])
     .state(move |state| {
       state.put::<ModuleSpecifier>(main_module.clone());
       Ok(())
@@ -18,21 +18,19 @@ pub fn init(main_module: ModuleSpecifier) -> Extension {
     .build()
 }
 
-fn op_main_module(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
   let main = state.borrow::<ModuleSpecifier>().to_string();
   let main_url = deno_core::resolve_url_or_path(&main)?;
   if main_url.scheme() == "file" {
     let main_path = std::env::current_dir()
       .context("Failed to get current working directory")?
       .join(main_url.to_string());
-    state
-      .borrow_mut::<Permissions>()
-      .read
-      .check_blind(&main_path, "main_module")?;
+    state.borrow_mut::<Permissions>().read.check_blind(
+      &main_path,
+      "main_module",
+      "Deno.mainModule",
+    )?;
   }
   Ok(main)
 }
@@ -54,6 +52,7 @@ pub fn ppid() -> i64 {
       CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
       TH32CS_SNAPPROCESS,
     };
+    // SAFETY: winapi calls
     unsafe {
       // Take a snapshot of system processes, one of which is ours
       // and contains our parent's pid

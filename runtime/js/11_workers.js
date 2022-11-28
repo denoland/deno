@@ -1,10 +1,12 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const {
     Error,
+    ObjectPrototypeIsPrototypeOf,
     StringPrototypeStartsWith,
     String,
     SymbolIterator,
@@ -15,36 +17,39 @@
   const { getLocationHref } = window.__bootstrap.location;
   const { serializePermissions } = window.__bootstrap.permissions;
   const { log } = window.__bootstrap.util;
-  const { defineEventHandler } = window.__bootstrap.event;
-  const { deserializeJsMessageData, serializeJsMessageData } =
-    window.__bootstrap.messagePort;
+  const { ErrorEvent, MessageEvent, defineEventHandler } =
+    window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
+  const {
+    deserializeJsMessageData,
+    serializeJsMessageData,
+    MessagePortPrototype,
+  } = window.__bootstrap.messagePort;
 
   function createWorker(
     specifier,
     hasSourceCode,
     sourceCode,
-    useDenoNamespace,
     permissions,
     name,
     workerType,
   ) {
-    return core.opSync("op_create_worker", {
+    return ops.op_create_worker({
       hasSourceCode,
       name,
       permissions: serializePermissions(permissions),
       sourceCode,
       specifier,
-      useDenoNamespace,
       workerType,
     });
   }
 
   function hostTerminateWorker(id) {
-    core.opSync("op_host_terminate_worker", id);
+    ops.op_host_terminate_worker(id);
   }
 
   function hostPostMessage(id, data) {
-    core.opSync("op_host_post_message", id, data);
+    ops.op_host_post_message(id, data);
   }
 
   function hostRecvCtrl(id) {
@@ -75,20 +80,6 @@
         type = "classic",
       } = options;
 
-      let namespace;
-      let permissions;
-      if (typeof deno == "object") {
-        namespace = deno.namespace ?? false;
-        permissions = deno.permissions ?? undefined;
-      } else {
-        // Assume `deno: boolean | undefined`.
-        // TODO(Soremwar)
-        // `deno: boolean` is kept for backwards compatibility with the previous
-        // worker options implementation. Remove for 2.0
-        namespace = !!deno;
-        permissions = undefined;
-      }
-
       const workerType = webidl.converters["WorkerType"](type);
 
       if (
@@ -116,8 +107,7 @@
         specifier,
         hasSourceCode,
         sourceCode,
-        namespace,
-        permissions,
+        deno?.permissions,
         name,
         workerType,
       );
@@ -130,20 +120,21 @@
       const event = new ErrorEvent("error", {
         cancelable: true,
         message: e.message,
-        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+        lineno: e.lineNumber ? e.lineNumber : undefined,
+        colno: e.columnNumber ? e.columnNumber : undefined,
         filename: e.fileName,
         error: null,
       });
 
-      let handled = false;
-
       this.dispatchEvent(event);
-      if (event.defaultPrevented) {
-        handled = true;
+      // Don't bubble error event to window for loader errors (`!e.fileName`).
+      // TODO(nayeemrmn): It's not correct to use `e.fileName` to detect user
+      // errors. It won't be there for non-awaited async ops for example.
+      if (e.fileName && !event.defaultPrevented) {
+        window.dispatchEvent(event);
       }
 
-      return handled;
+      return event.defaultPrevented;
     }
 
     #pollControl = async () => {
@@ -161,7 +152,7 @@
           } /* falls through */
           case 2: { // Error
             if (!this.#handleError(data)) {
-              throw new Error("Unhandled error event in child worker.");
+              throw new Error("Unhandled error in child worker.");
             }
             break;
           }
@@ -199,7 +190,9 @@
         const event = new MessageEvent("message", {
           cancelable: false,
           data: message,
-          ports: transferables.filter((t) => t instanceof MessagePort),
+          ports: transferables.filter((t) =>
+            ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)
+          ),
         });
         this.dispatchEvent(event);
       }

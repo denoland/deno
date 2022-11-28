@@ -1,15 +1,14 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::io::ChildStderrResource;
 use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use super::io::StdFileResource;
 use crate::permissions::Permissions;
-use deno_core::error::bad_resource_id;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
+use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::Extension;
@@ -29,30 +28,73 @@ use std::os::unix::process::ExitStatusExt;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(vec![
-      ("op_run", op_sync(op_run)),
-      ("op_run_status", op_async(op_run_status)),
-      ("op_kill", op_sync(op_kill)),
-    ])
+    .ops(vec![op_run::decl(), op_run_status::decl(), op_kill::decl()])
     .build()
 }
 
-fn clone_file(
-  state: &mut OpState,
-  rid: ResourceId,
-) -> Result<std::fs::File, AnyError> {
-  StdFileResource::with(state, rid, move |r| match r {
-    Ok(std_file) => std_file.try_clone().map_err(AnyError::from),
-    Err(_) => Err(bad_resource_id()),
-  })
+#[derive(Copy, Clone, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Stdio {
+  Inherit,
+  Piped,
+  Null,
 }
 
-fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
-  match s {
-    "inherit" => Ok(std::process::Stdio::inherit()),
-    "piped" => Ok(std::process::Stdio::piped()),
-    "null" => Ok(std::process::Stdio::null()),
-    _ => Err(type_error("Invalid resource for stdio")),
+impl Stdio {
+  pub fn as_stdio(&self) -> std::process::Stdio {
+    match &self {
+      Stdio::Inherit => std::process::Stdio::inherit(),
+      Stdio::Piped => std::process::Stdio::piped(),
+      Stdio::Null => std::process::Stdio::null(),
+    }
+  }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum StdioOrRid {
+  Stdio(Stdio),
+  Rid(ResourceId),
+}
+
+impl<'de> Deserialize<'de> for StdioOrRid {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    use serde_json::Value;
+    let value = Value::deserialize(deserializer)?;
+    match value {
+      Value::String(val) => match val.as_str() {
+        "inherit" => Ok(StdioOrRid::Stdio(Stdio::Inherit)),
+        "piped" => Ok(StdioOrRid::Stdio(Stdio::Piped)),
+        "null" => Ok(StdioOrRid::Stdio(Stdio::Null)),
+        val => Err(serde::de::Error::unknown_variant(
+          val,
+          &["inherit", "piped", "null"],
+        )),
+      },
+      Value::Number(val) => match val.as_u64() {
+        Some(val) if val <= ResourceId::MAX as u64 => {
+          Ok(StdioOrRid::Rid(val as ResourceId))
+        }
+        _ => Err(serde::de::Error::custom("Expected a positive integer")),
+      },
+      _ => Err(serde::de::Error::custom(
+        r#"Expected a resource id, "inherit", "piped", or "null""#,
+      )),
+    }
+  }
+}
+
+impl StdioOrRid {
+  pub fn as_stdio(
+    &self,
+    state: &mut OpState,
+  ) -> Result<std::process::Stdio, AnyError> {
+    match &self {
+      StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
+      StdioOrRid::Rid(rid) => StdFileResource::as_stdio(state, *rid),
+    }
   }
 }
 
@@ -67,12 +109,9 @@ pub struct RunArgs {
   gid: Option<u32>,
   #[cfg(unix)]
   uid: Option<u32>,
-  stdin: String,
-  stdout: String,
-  stderr: String,
-  stdin_rid: ResourceId,
-  stdout_rid: ResourceId,
-  stderr_rid: ResourceId,
+  stdin: StdioOrRid,
+  stdout: StdioOrRid,
+  stderr: StdioOrRid,
 }
 
 struct ChildResource {
@@ -102,13 +141,13 @@ struct RunInfo {
   stderr_rid: Option<ResourceId>,
 }
 
-fn op_run(
-  state: &mut OpState,
-  run_args: RunArgs,
-  _: (),
-) -> Result<RunInfo, AnyError> {
+#[op]
+fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
-  state.borrow_mut::<Permissions>().run.check(&args[0])?;
+  state
+    .borrow_mut::<Permissions>()
+    .run
+    .check(&args[0], Some("Deno.run()"))?;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -138,6 +177,8 @@ fn op_run(
     c.uid(uid);
   }
   #[cfg(unix)]
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     c.pre_exec(|| {
       libc::setgroups(0, std::ptr::null());
@@ -146,26 +187,21 @@ fn op_run(
   }
 
   // TODO: make this work with other resources, eg. sockets
-  if !run_args.stdin.is_empty() {
-    c.stdin(subprocess_stdio_map(run_args.stdin.as_ref())?);
-  } else {
-    let file = clone_file(state, run_args.stdin_rid)?;
-    c.stdin(file);
-  }
-
-  if !run_args.stdout.is_empty() {
-    c.stdout(subprocess_stdio_map(run_args.stdout.as_ref())?);
-  } else {
-    let file = clone_file(state, run_args.stdout_rid)?;
-    c.stdout(file);
-  }
-
-  if !run_args.stderr.is_empty() {
-    c.stderr(subprocess_stdio_map(run_args.stderr.as_ref())?);
-  } else {
-    let file = clone_file(state, run_args.stderr_rid)?;
-    c.stderr(file);
-  }
+  c.stdin(run_args.stdin.as_stdio(state)?);
+  c.stdout(
+    match run_args.stdout {
+      StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(1),
+      value => value,
+    }
+    .as_stdio(state)?,
+  );
+  c.stderr(
+    match run_args.stderr {
+      StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(2),
+      value => value,
+    }
+    .as_stdio(state)?,
+  );
 
   // We want to kill child when it's closed
   c.kill_on_drop(true);
@@ -226,10 +262,10 @@ struct ProcessStatus {
   exit_signal: i32,
 }
 
+#[op]
 async fn op_run_status(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<ProcessStatus, AnyError> {
   let resource = state
     .borrow_mut()
@@ -267,6 +303,7 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
 
 #[cfg(not(unix))]
 pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
+  use deno_core::error::type_error;
   use std::io::Error;
   use std::io::ErrorKind::NotFound;
   use winapi::shared::minwindef::DWORD;
@@ -284,31 +321,42 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   } else if pid <= 0 {
     Err(type_error("Invalid pid"))
   } else {
+    // SAFETY: winapi call
     let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
+
     if handle.is_null() {
+      // SAFETY: winapi call
       let err = match unsafe { GetLastError() } {
         ERROR_INVALID_PARAMETER => Error::from(NotFound), // Invalid `pid`.
         errno => Error::from_raw_os_error(errno as i32),
       };
       Err(err.into())
     } else {
-      let r = unsafe { TerminateProcess(handle, 1) };
-      unsafe { CloseHandle(handle) };
-      match r {
-        FALSE => Err(Error::last_os_error().into()),
-        TRUE => Ok(()),
-        _ => unreachable!(),
+      // SAFETY: winapi calls
+      unsafe {
+        let is_terminated = TerminateProcess(handle, 1);
+        CloseHandle(handle);
+        match is_terminated {
+          FALSE => Err(Error::last_os_error().into()),
+          TRUE => Ok(()),
+          _ => unreachable!(),
+        }
       }
     }
   }
 }
 
+#[op]
 fn op_kill(
   state: &mut OpState,
   pid: i32,
   signal: String,
+  api_name: String,
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<Permissions>().run.check_all()?;
+  state
+    .borrow_mut::<Permissions>()
+    .run
+    .check_all(Some(&api_name))?;
   kill(pid, &signal)?;
   Ok(())
 }

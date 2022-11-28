@@ -1,25 +1,40 @@
-# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_http"
-version = "0.22.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.73.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "HTTP server implementation for Deno"
 
 [lib]
 path = "lib.rs"
 
+[[bench]]
+name = "compressible"
+harness = false
+
 [dependencies]
-base64 = "0.13.0"
-bytes = "1"
-deno_core = { version = "0.112.0", path = "../../core" }
-deno_websocket = { version = "0.35.0", path = "../websocket" }
-hyper = { version = "0.14.9", features = ["server", "stream", "http1", "http2", "runtime"] }
-ring = "0.16.20"
-serde = { version = "1.0.129", features = ["derive"] }
-tokio = { version = "1.10.1", features = ["full"] }
-tokio-util = { version = "0.6.7", features = ["io"] }
+async-compression = { version = "0.3.12", features = ["tokio", "brotli", "gzip"] }
+base64.workspace = true
+brotli = "3.3.4"
+bytes.workspace = true
+cache_control.workspace = true
+deno_core.workspace = true
+deno_websocket.workspace = true
+flate2.workspace = true
+fly-accept-encoding = "0.2.0"
+hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
+mime = "0.3.16"
+percent-encoding.workspace = true
+phf = { version = "0.10", features = ["macros"] }
+ring.workspace = true
+serde.workspace = true
+tokio.workspace = true
+tokio-util = { workspace = true, features = ["io"] }
+
+[dev-dependencies]
+bencher.workspace = true

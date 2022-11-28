@@ -1,8 +1,9 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const {
     Set,
     SymbolFor,
@@ -10,7 +11,7 @@
   } = window.__bootstrap.primordials;
 
   function bindSignal(signo) {
-    return core.opSync("op_signal_bind", signo);
+    return ops.op_signal_bind(signo);
   }
 
   function pollSignal(rid) {
@@ -20,7 +21,7 @@
   }
 
   function unbindSignal(rid) {
-    core.opSync("op_signal_unbind", rid);
+    ops.op_signal_unbind(rid);
   }
 
   // Stores signal listeners and resource data. This has type of

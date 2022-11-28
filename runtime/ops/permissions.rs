@@ -1,10 +1,11 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::permissions::parse_sys_kind;
 use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::url;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -14,9 +15,9 @@ use std::path::Path;
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_query_permission", op_sync(op_query_permission)),
-      ("op_revoke_permission", op_sync(op_revoke_permission)),
-      ("op_request_permission", op_sync(op_request_permission)),
+      op_query_permission::decl(),
+      op_revoke_permission::decl(),
+      op_request_permission::decl(),
     ])
     .build()
 }
@@ -27,13 +28,14 @@ pub struct PermissionArgs {
   path: Option<String>,
   host: Option<String>,
   variable: Option<String>,
+  kind: Option<String>,
   command: Option<String>,
 }
 
+#[op]
 pub fn op_query_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _: (),
 ) -> Result<String, AnyError> {
   let permissions = state.borrow::<Permissions>();
   let path = args.path.as_deref();
@@ -48,6 +50,9 @@ pub fn op_query_permission(
       .as_ref(),
     ),
     "env" => permissions.env.query(args.variable.as_deref()),
+    "sys" => permissions
+      .sys
+      .query(args.kind.as_deref().map(parse_sys_kind).transpose()?),
     "run" => permissions.run.query(args.command.as_deref()),
     "ffi" => permissions.ffi.query(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.query(),
@@ -61,10 +66,10 @@ pub fn op_query_permission(
   Ok(perm.to_string())
 }
 
+#[op]
 pub fn op_revoke_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _: (),
 ) -> Result<String, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
@@ -79,6 +84,9 @@ pub fn op_revoke_permission(
       .as_ref(),
     ),
     "env" => permissions.env.revoke(args.variable.as_deref()),
+    "sys" => permissions
+      .sys
+      .revoke(args.kind.as_deref().map(parse_sys_kind).transpose()?),
     "run" => permissions.run.revoke(args.command.as_deref()),
     "ffi" => permissions.ffi.revoke(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.revoke(),
@@ -92,10 +100,10 @@ pub fn op_revoke_permission(
   Ok(perm.to_string())
 }
 
+#[op]
 pub fn op_request_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _: (),
 ) -> Result<String, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
@@ -110,6 +118,9 @@ pub fn op_request_permission(
       .as_ref(),
     ),
     "env" => permissions.env.request(args.variable.as_deref()),
+    "sys" => permissions
+      .sys
+      .request(args.kind.as_deref().map(parse_sys_kind).transpose()?),
     "run" => permissions.run.request(args.command.as_deref()),
     "ffi" => permissions.ffi.request(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.request(),

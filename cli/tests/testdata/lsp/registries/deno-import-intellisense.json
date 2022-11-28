@@ -16,6 +16,7 @@
         },
         {
           "key": "path",
+          "documentation": "/lsp/registries/doc_${module}_${{version}}_${path}.json",
           "url": "/lsp/registries/${module}_${{version}}_${path}.json"
         }
       ]
@@ -30,6 +31,7 @@
         },
         {
           "key": "path",
+          "documentation": "/lsp/registries/doc_${module}_latest_${path}.json",
           "url": "/lsp/registries/${module}_latest_${path}.json"
         }
       ]

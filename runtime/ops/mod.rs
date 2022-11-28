@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 pub mod fs;
 pub mod fs_events;
@@ -9,6 +9,7 @@ pub mod permissions;
 pub mod process;
 pub mod runtime;
 pub mod signal;
+pub mod spawn;
 pub mod tty;
 mod utils;
 pub mod web_worker;

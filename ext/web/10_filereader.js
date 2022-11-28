@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference no-default-lib="true" />
@@ -13,14 +13,15 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { forgivingBase64Encode } = window.__bootstrap.infra;
+  const { ProgressEvent } = window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { decode, TextDecoder } = window.__bootstrap.encoding;
   const { parseMimeType } = window.__bootstrap.mimesniff;
   const { DOMException } = window.__bootstrap.domException;
   const {
-    ArrayPrototypeJoin,
-    ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeReduce,
     FunctionPrototypeCall,
@@ -28,12 +29,14 @@
     MapPrototypeGet,
     MapPrototypeSet,
     ObjectDefineProperty,
+    ObjectPrototypeIsPrototypeOf,
     queueMicrotask,
-    StringFromCodePoint,
+    SafeArrayIterator,
     Symbol,
     TypedArrayPrototypeSet,
     TypeError,
     Uint8Array,
+    Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
   const state = Symbol("[[state]]");
@@ -116,7 +119,10 @@
 
             // 4. If chunkPromise is fulfilled with an object whose done property is false
             // and whose value property is a Uint8Array object, run these steps:
-            if (!chunk.done && chunk.value instanceof Uint8Array) {
+            if (
+              !chunk.done &&
+              ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk.value)
+            ) {
               ArrayPrototypePush(chunks, chunk.value);
 
               // TODO(bartlomieju): (only) If roughly 50ms have passed since last progress
@@ -162,13 +168,7 @@
                     break;
                   }
                   case "BinaryString":
-                    this[result] = ArrayPrototypeJoin(
-                      ArrayPrototypeMap(
-                        [...new Uint8Array(bytes.buffer)],
-                        (v) => StringFromCodePoint(v),
-                      ),
-                      "",
-                    );
+                    this[result] = core.ops.op_encode_binary_string(bytes);
                     break;
                   case "Text": {
                     let decoder = undefined;
@@ -260,7 +260,7 @@
     }
 
     #getEventHandlerFor(name) {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReaderPrototype);
 
       const maybeMap = this[handlerSymbol];
       if (!maybeMap) return null;
@@ -269,7 +269,7 @@
     }
 
     #setEventHandlerFor(name, value) {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReaderPrototype);
 
       if (!this[handlerSymbol]) {
         this[handlerSymbol] = new Map();
@@ -292,7 +292,7 @@
 
     /** @returns {number} */
     get readyState() {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReaderPrototype);
       switch (this[state]) {
         case "empty":
           return FileReader.EMPTY;
@@ -306,17 +306,17 @@
     }
 
     get result() {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReaderPrototype);
       return this[result];
     }
 
     get error() {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReaderPrototype);
       return this[error];
     }
 
     abort() {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReaderPrototype);
       // If context object's state is "empty" or if context object's state is "done" set context object's result to null and terminate this algorithm.
       if (
         this[state] === "empty" ||
@@ -349,7 +349,7 @@
 
     /** @param {Blob} blob */
     readAsArrayBuffer(blob) {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReaderPrototype);
       const prefix = "Failed to execute 'readAsArrayBuffer' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       this.#readOperation(blob, { kind: "ArrayBuffer" });
@@ -357,7 +357,7 @@
 
     /** @param {Blob} blob */
     readAsBinaryString(blob) {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReaderPrototype);
       const prefix = "Failed to execute 'readAsBinaryString' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // alias for readAsArrayBuffer
@@ -366,7 +366,7 @@
 
     /** @param {Blob} blob */
     readAsDataURL(blob) {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReaderPrototype);
       const prefix = "Failed to execute 'readAsDataURL' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // alias for readAsArrayBuffer
@@ -378,7 +378,7 @@
      * @param {string} [encoding]
      */
     readAsText(blob, encoding = undefined) {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReaderPrototype);
       const prefix = "Failed to execute 'readAsText' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       if (encoding !== undefined) {
@@ -435,6 +435,7 @@
   }
 
   webidl.configurePrototype(FileReader);
+  const FileReaderPrototype = FileReader.prototype;
 
   ObjectDefineProperty(FileReader, "EMPTY", {
     writable: false,
@@ -478,7 +479,11 @@
       if (typeof wrappedHandler.handler !== "function") {
         return;
       }
-      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
+      return FunctionPrototypeCall(
+        wrappedHandler.handler,
+        this,
+        ...new SafeArrayIterator(args),
+      );
     }
     wrappedHandler.handler = handler;
     return wrappedHandler;

@@ -1,10 +1,9 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use encoding_rs::*;
-use std::{
-  borrow::Cow,
-  io::{Error, ErrorKind},
-};
+use std::borrow::Cow;
+use std::io::Error;
+use std::io::ErrorKind;
 
 pub const BOM_CHAR: char = '\u{FEFF}';
 
@@ -51,6 +50,34 @@ pub fn strip_bom(text: &str) -> &str {
     &text[BOM_CHAR.len_utf8()..]
   } else {
     text
+  }
+}
+
+static SOURCE_MAP_PREFIX: &str =
+  "//# sourceMappingURL=data:application/json;base64,";
+
+pub fn source_map_from_code(code: &str) -> Option<Vec<u8>> {
+  let last_line = code.rsplit(|u| u == '\n').next()?;
+  if last_line.starts_with(SOURCE_MAP_PREFIX) {
+    let input = last_line.split_at(SOURCE_MAP_PREFIX.len()).1;
+    let decoded_map = base64::decode(input)
+      .expect("Unable to decode source map from emitted file.");
+    Some(decoded_map)
+  } else {
+    None
+  }
+}
+
+pub fn code_without_source_map(mut code: String) -> String {
+  if let Some(last_line_index) = code.rfind('\n') {
+    if code[last_line_index + 1..].starts_with(SOURCE_MAP_PREFIX) {
+      code.truncate(last_line_index + 1);
+      code
+    } else {
+      code
+    }
+  } else {
+    code
   }
 }
 
@@ -102,5 +129,34 @@ mod tests {
     assert!(result.is_err());
     let err = result.expect_err("Err expected");
     assert!(err.kind() == ErrorKind::InvalidData);
+  }
+
+  #[test]
+  fn test_source_without_source_map() {
+    run_test("", "");
+    run_test("\n", "\n");
+    run_test("\r\n", "\r\n");
+    run_test("a", "a");
+    run_test("a\n", "a\n");
+    run_test("a\r\n", "a\r\n");
+    run_test("a\r\nb", "a\r\nb");
+    run_test("a\nb\n", "a\nb\n");
+    run_test("a\r\nb\r\n", "a\r\nb\r\n");
+    run_test(
+      "test\n//# sourceMappingURL=data:application/json;base64,test",
+      "test\n",
+    );
+    run_test(
+      "test\r\n//# sourceMappingURL=data:application/json;base64,test",
+      "test\r\n",
+    );
+    run_test(
+      "\n//# sourceMappingURL=data:application/json;base64,test",
+      "\n",
+    );
+
+    fn run_test(input: &str, output: &str) {
+      assert_eq!(code_without_source_map(input.to_string()), output);
+    }
   }
 }

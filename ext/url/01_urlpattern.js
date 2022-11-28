@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -11,6 +11,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayPrototypeMap,
@@ -68,7 +69,7 @@
         });
       }
 
-      const components = core.opSync("op_urlpattern_parse", input, baseURL);
+      const components = ops.op_urlpattern_parse(input, baseURL);
 
       for (const key of ObjectKeys(components)) {
         try {
@@ -85,42 +86,42 @@
     }
 
     get protocol() {
-      webidl.assertBranded(this, URLPattern);
+      webidl.assertBranded(this, URLPatternPrototype);
       return this[_components].protocol.patternString;
     }
 
     get username() {
-      webidl.assertBranded(this, URLPattern);
+      webidl.assertBranded(this, URLPatternPrototype);
       return this[_components].username.patternString;
     }
 
     get password() {
-      webidl.assertBranded(this, URLPattern);
+      webidl.assertBranded(this, URLPatternPrototype);
       return this[_components].password.patternString;
     }
 
     get hostname() {
-      webidl.assertBranded(this, URLPattern);
+      webidl.assertBranded(this, URLPatternPrototype);
       return this[_components].hostname.patternString;
     }
 
     get port() {
-      webidl.assertBranded(this, URLPattern);
+      webidl.assertBranded(this, URLPatternPrototype);
       return this[_components].port.patternString;
     }
 
     get pathname() {
-      webidl.assertBranded(this, URLPattern);
+      webidl.assertBranded(this, URLPatternPrototype);
       return this[_components].pathname.patternString;
     }
 
     get search() {
-      webidl.assertBranded(this, URLPattern);
+      webidl.assertBranded(this, URLPatternPrototype);
       return this[_components].search.patternString;
     }
 
     get hash() {
-      webidl.assertBranded(this, URLPattern);
+      webidl.assertBranded(this, URLPatternPrototype);
       return this[_components].hash.patternString;
     }
 
@@ -130,7 +131,7 @@
      * @returns {boolean}
      */
     test(input, baseURL = undefined) {
-      webidl.assertBranded(this, URLPattern);
+      webidl.assertBranded(this, URLPatternPrototype);
       const prefix = "Failed to execute 'test' on 'URLPattern'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       input = webidl.converters.URLPatternInput(input, {
@@ -144,8 +145,7 @@
         });
       }
 
-      const res = core.opSync(
-        "op_urlpattern_process_match_input",
+      const res = ops.op_urlpattern_process_match_input(
         input,
         baseURL,
       );
@@ -170,7 +170,7 @@
      * @returns {URLPatternResult | null}
      */
     exec(input, baseURL = undefined) {
-      webidl.assertBranded(this, URLPattern);
+      webidl.assertBranded(this, URLPatternPrototype);
       const prefix = "Failed to execute 'exec' on 'URLPattern'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       input = webidl.converters.URLPatternInput(input, {
@@ -184,8 +184,7 @@
         });
       }
 
-      const res = core.opSync(
-        "op_urlpattern_process_match_input",
+      const res = ops.op_urlpattern_process_match_input(
         input,
         baseURL,
       );
@@ -241,6 +240,7 @@
   }
 
   webidl.configurePrototype(URLPattern);
+  const URLPatternPrototype = URLPattern.prototype;
 
   webidl.converters.URLPatternInit = webidl
     .createDictionaryConverter("URLPatternInit", [

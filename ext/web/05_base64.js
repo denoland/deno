@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -9,37 +9,34 @@
 "use strict";
 
 ((window) => {
+  const core = Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
-  const {
-    forgivingBase64Encode,
-    forgivingBase64Decode,
-  } = window.__bootstrap.infra;
   const { DOMException } = window.__bootstrap.domException;
-  const {
-    ArrayPrototypeMap,
-    StringPrototypeCharCodeAt,
-    ArrayPrototypeJoin,
-    StringFromCharCode,
-    TypedArrayFrom,
-    Uint8Array,
-  } = window.__bootstrap.primordials;
+  const { TypeError } = window.__bootstrap.primordials;
 
   /**
    * @param {string} data
    * @returns {string}
    */
   function atob(data) {
+    const prefix = "Failed to execute 'atob'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
     data = webidl.converters.DOMString(data, {
-      prefix: "Failed to execute 'atob'",
+      prefix,
       context: "Argument 1",
     });
-
-    const uint8Array = forgivingBase64Decode(data);
-    const result = ArrayPrototypeMap(
-      [...uint8Array],
-      (byte) => StringFromCharCode(byte),
-    );
-    return ArrayPrototypeJoin(result, "");
+    try {
+      return ops.op_base64_atob(data);
+    } catch (e) {
+      if (e instanceof TypeError) {
+        throw new DOMException(
+          "Failed to decode base64: invalid character",
+          "InvalidCharacterError",
+        );
+      }
+      throw e;
+    }
   }
 
   /**
@@ -53,17 +50,17 @@
       prefix,
       context: "Argument 1",
     });
-    const byteArray = ArrayPrototypeMap([...data], (char) => {
-      const charCode = StringPrototypeCharCodeAt(char, 0);
-      if (charCode > 0xff) {
+    try {
+      return ops.op_base64_btoa(data);
+    } catch (e) {
+      if (e instanceof TypeError) {
         throw new DOMException(
           "The string to be encoded contains characters outside of the Latin1 range.",
           "InvalidCharacterError",
         );
       }
-      return charCode;
-    });
-    return forgivingBase64Encode(TypedArrayFrom(Uint8Array, byteArray));
+      throw e;
+    }
   }
 
   window.__bootstrap.base64 = {

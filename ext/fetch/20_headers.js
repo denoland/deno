@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -32,6 +32,7 @@
     ObjectPrototypeHasOwnProperty,
     ObjectEntries,
     RegExpPrototypeTest,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     SymbolIterator,
@@ -87,7 +88,7 @@
 
   // Regex matching illegal chars in a header value
   // deno-lint-ignore no-control-regex
-  const ILLEGAL_VALUE_CHARS = /[\x00\x0A\x0D]/g;
+  const ILLEGAL_VALUE_CHARS = /[\x00\x0A\x0D]/;
 
   /**
    * https://fetch.spec.whatwg.org/#concept-headers-append
@@ -209,7 +210,7 @@
         const value = entry[1];
         if (value === null) throw new TypeError("Unreachable");
         // The following if statement is not spec compliant.
-        // `set-cookie` is the only header that can not be concatentated,
+        // `set-cookie` is the only header that can not be concatenated,
         // so must be given to the user as multiple headers.
         // The else block of the if statement is spec compliant again.
         if (name === "set-cookie") {
@@ -230,7 +231,10 @@
       }
 
       return ArrayPrototypeSort(
-        [...ObjectEntries(headers), ...cookies],
+        [
+          ...new SafeArrayIterator(ObjectEntries(headers)),
+          ...new SafeArrayIterator(cookies),
+        ],
         (a, b) => {
           const akey = a[0];
           const bkey = b[0];
@@ -263,7 +267,7 @@
      * @param {string} value
      */
     append(name, value) {
-      webidl.assertBranded(this, Headers);
+      webidl.assertBranded(this, HeadersPrototype);
       const prefix = "Failed to execute 'append' on 'Headers'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       name = webidl.converters["ByteString"](name, {
@@ -354,7 +358,7 @@
      * @param {string} value
      */
     set(name, value) {
-      webidl.assertBranded(this, Headers);
+      webidl.assertBranded(this, HeadersPrototype);
       const prefix = "Failed to execute 'set' on 'Headers'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       name = webidl.converters["ByteString"](name, {
@@ -411,6 +415,7 @@
   webidl.mixinPairIterable("Headers", Headers, _iterableHeaders, 0, 1);
 
   webidl.configurePrototype(Headers);
+  const HeadersPrototype = Headers.prototype;
 
   webidl.converters["HeadersInit"] = (V, opts) => {
     // Union for (sequence<sequence<ByteString>> or record<ByteString, ByteString>)
@@ -428,7 +433,7 @@
   };
   webidl.converters["Headers"] = webidl.createInterfaceConverter(
     "Headers",
-    Headers,
+    Headers.prototype,
   );
 
   /**
@@ -460,11 +465,12 @@
   }
 
   window.__bootstrap.headers = {
-    Headers,
     headersFromHeaderList,
     headerListFromHeaders,
-    fillHeaders,
     getDecodeSplitHeader,
     guardFromHeaders,
+    fillHeaders,
+    getHeader,
+    Headers,
   };
 })(this);

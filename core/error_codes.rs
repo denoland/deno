@@ -1,6 +1,6 @@
 use anyhow::Error;
 
-pub(crate) fn get_error_code(err: &Error) -> Option<&'static str> {
+pub fn get_error_code(err: &Error) -> Option<&'static str> {
   err
     .downcast_ref::<std::io::Error>()
     .map(|e| match e.raw_os_error() {
@@ -94,6 +94,7 @@ fn get_os_error_code(errno: i32) -> &'static str {
     libc::ENOMEM => "ENOMEM",
     libc::ENOSPC => "ENOSPC",
     libc::ENOTCONN => "ENOTCONN",
+    libc::ENOTDIR => "ENOTDIR",
     libc::ENOTEMPTY => "ENOTEMPTY",
     libc::ENOTSOCK => "ENOTSOCK",
     libc::ENOTSUP => "ENOTSUP",

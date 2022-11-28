@@ -1,0 +1,14 @@
+Check [WILDCARD]/bench/exit_sanitizer.ts
+cpu: [WILDCARD]
+runtime: deno [WILDCARD] ([WILDCARD])
+
+[WILDCARD]/bench/exit_sanitizer.ts
+benchmark      time (avg)             (min … max)       p75       p99      p995
+------------------------------------------------- -----------------------------
+exit(0)    error: AssertionError: Bench attempted to exit with exit code: 0
+[WILDCARD]
+exit(1)    error: AssertionError: Bench attempted to exit with exit code: 1
+[WILDCARD]
+exit(2)    error: AssertionError: Bench attempted to exit with exit code: 2
+[WILDCARD]
+error: Bench failed

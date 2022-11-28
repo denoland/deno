@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -13,18 +13,17 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = globalThis.__bootstrap.webidl;
-  const { Blob, File } = globalThis.__bootstrap.file;
+  const { Blob, BlobPrototype, File, FilePrototype } =
+    globalThis.__bootstrap.file;
   const {
-    ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeSlice,
     ArrayPrototypeSplice,
-    ArrayPrototypeFilter,
-    ArrayPrototypeForEach,
     Map,
     MapPrototypeGet,
     MapPrototypeSet,
     MathRandom,
+    ObjectPrototypeIsPrototypeOf,
     Symbol,
     StringFromCharCode,
     StringPrototypeTrim,
@@ -48,10 +47,16 @@
    * @returns {FormDataEntry}
    */
   function createEntry(name, value, filename) {
-    if (value instanceof Blob && !(value instanceof File)) {
+    if (
+      ObjectPrototypeIsPrototypeOf(BlobPrototype, value) &&
+      !ObjectPrototypeIsPrototypeOf(FilePrototype, value)
+    ) {
       value = new File([value], "blob", { type: value.type });
     }
-    if (value instanceof File && filename !== undefined) {
+    if (
+      ObjectPrototypeIsPrototypeOf(FilePrototype, value) &&
+      filename !== undefined
+    ) {
       value = new File([value], filename, {
         type: value.type,
         lastModified: value.lastModified,
@@ -89,7 +94,7 @@
      * @returns {void}
      */
     append(name, valueOrBlobValue, filename) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'append' on 'FormData'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
 
@@ -97,7 +102,7 @@
         prefix,
         context: "Argument 1",
       });
-      if (valueOrBlobValue instanceof Blob) {
+      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, valueOrBlobValue)) {
         valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
           prefix,
           context: "Argument 2",
@@ -125,7 +130,7 @@
      * @returns {void}
      */
     delete(name) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'name' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -148,7 +153,7 @@
      * @returns {FormDataEntryValue | null}
      */
     get(name) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'get' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -168,7 +173,7 @@
      * @returns {FormDataEntryValue[]}
      */
     getAll(name) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'getAll' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -189,7 +194,7 @@
      * @returns {boolean}
      */
     has(name) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'has' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -211,7 +216,7 @@
      * @returns {void}
      */
     set(name, valueOrBlobValue, filename) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'set' on 'FormData'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
 
@@ -219,7 +224,7 @@
         prefix,
         context: "Argument 1",
       });
-      if (valueOrBlobValue instanceof Blob) {
+      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, valueOrBlobValue)) {
         valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
           prefix,
           context: "Argument 2",
@@ -261,21 +266,21 @@
   webidl.mixinPairIterable("FormData", FormData, entryList, "name", "value");
 
   webidl.configurePrototype(FormData);
+  const FormDataPrototype = FormData.prototype;
 
-  const escape = (str, isFilename) =>
-    StringPrototypeReplace(
-      StringPrototypeReplace(
-        StringPrototypeReplace(
-          isFilename ? str : StringPrototypeReplace(str, /\r?\n|\r/g, "\r\n"),
-          /\n/g,
-          "%0A",
-        ),
-        /\r/g,
-        "%0D",
-      ),
-      /"/g,
-      "%22",
+  const escape = (str, isFilename) => {
+    const escapeMap = {
+      "\n": "%0A",
+      "\r": "%0D",
+      '"': "%22",
+    };
+
+    return StringPrototypeReplace(
+      isFilename ? str : StringPrototypeReplace(str, /\r?\n|\r/g, "\r\n"),
+      /([\n\r"])/g,
+      (c) => escapeMap[c],
     );
+  };
 
   /**
    * convert FormData to a Blob synchronous without reading all of the files
@@ -327,20 +332,17 @@
     /** @type {Map<string, string>} */
     const params = new Map();
     // Forced to do so for some Map constructor param mismatch
-    ArrayPrototypeForEach(
-      ArrayPrototypeMap(
-        ArrayPrototypeFilter(
-          ArrayPrototypeMap(
-            ArrayPrototypeSlice(StringPrototypeSplit(value, ";"), 1),
-            (s) => StringPrototypeSplit(StringPrototypeTrim(s), "="),
-          ),
-          (arr) => arr.length > 1,
-        ),
-        ([k, v]) => [k, StringPrototypeReplace(v, /^"([^"]*)"$/, "$1")],
-      ),
-      ([k, v]) => MapPrototypeSet(params, k, v),
-    );
-
+    const values = ArrayPrototypeSlice(StringPrototypeSplit(value, ";"), 1);
+    for (let i = 0; i < values.length; i++) {
+      const entries = StringPrototypeSplit(StringPrototypeTrim(values[i]), "=");
+      if (entries.length > 1) {
+        MapPrototypeSet(
+          params,
+          entries[0],
+          StringPrototypeReplace(entries[1], /^"([^"]*)"$/, "$1"),
+        );
+      }
+    }
     return params;
   }
 
@@ -391,9 +393,19 @@
      * @returns {FormData}
      */
     parse() {
-      // Body must be at least 2 boundaries + \r\n + -- on the last boundary.
+      // To have fields body must be at least 2 boundaries + \r\n + --
+      // on the last boundary.
       if (this.body.length < (this.boundary.length * 2) + 4) {
-        throw new TypeError("Form data too short to be valid.");
+        const decodedBody = core.decode(this.body);
+        const lastBoundary = this.boundary + "--";
+        // check if it's an empty valid form data
+        if (
+          decodedBody === lastBoundary ||
+          decodedBody === lastBoundary + "\r\n"
+        ) {
+          return new FormData();
+        }
+        throw new TypeError("Unable to parse body as form data.");
       }
 
       const formData = new FormData();
@@ -491,10 +503,11 @@
   }
 
   webidl.converters["FormData"] = webidl
-    .createInterfaceConverter("FormData", FormData);
+    .createInterfaceConverter("FormData", FormDataPrototype);
 
   globalThis.__bootstrap.formData = {
     FormData,
+    FormDataPrototype,
     formDataToBlob,
     parseFormData,
     formDataFromEntries,

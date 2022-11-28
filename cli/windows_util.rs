@@ -1,10 +1,11 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// Ensures that stdin, stdout, and stderr are open and have valid HANDLEs
 /// associated with them. There are many places where a `std::fs::File` is
 /// constructed from a stdio handle; if the handle is null this causes a panic.
 pub fn ensure_stdio_open() {
   #[cfg(windows)]
+  // SAFETY: winapi calls
   unsafe {
     use std::mem::size_of;
     use winapi::shared::minwindef::DWORD;

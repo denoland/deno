@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // The logic of this module is heavily influenced by
 // https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/src/languageFeatures/refactor.ts
@@ -6,8 +6,8 @@
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
 use once_cell::sync::Lazy;
+use tower_lsp::lsp_types as lsp;
 
 pub struct RefactorCodeActionKind {
   pub kind: lsp::CodeActionKind,

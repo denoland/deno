@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Write;
 
@@ -30,7 +30,7 @@ impl log::Log for CliLogger {
   }
 }
 
-pub(crate) fn init(maybe_level: Option<log::Level>) {
+pub fn init(maybe_level: Option<log::Level>) {
   let log_level = maybe_level.unwrap_or(log::Level::Info);
   let logger = env_logger::Builder::from_env(
     env_logger::Env::default()

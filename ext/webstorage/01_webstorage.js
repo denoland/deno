@@ -1,17 +1,20 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     ObjectDefineProperty,
     ObjectFromEntries,
     ObjectEntries,
     ReflectGet,
+    ReflectHas,
     Proxy,
   } = window.__bootstrap.primordials;
 
@@ -25,12 +28,12 @@
     }
 
     get length() {
-      webidl.assertBranded(this, Storage);
-      return core.opSync("op_webstorage_length", this[_persistent]);
+      webidl.assertBranded(this, StoragePrototype);
+      return ops.op_webstorage_length(this[_persistent]);
     }
 
     key(index) {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, StoragePrototype);
       const prefix = "Failed to execute 'key' on 'Storage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       index = webidl.converters["unsigned long"](index, {
@@ -38,11 +41,11 @@
         context: "Argument 1",
       });
 
-      return core.opSync("op_webstorage_key", index, this[_persistent]);
+      return ops.op_webstorage_key(index, this[_persistent]);
     }
 
     setItem(key, value) {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, StoragePrototype);
       const prefix = "Failed to execute 'setItem' on 'Storage'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       key = webidl.converters.DOMString(key, {
@@ -54,14 +57,11 @@
         context: "Argument 2",
       });
 
-      core.opSync("op_webstorage_set", {
-        keyName: key,
-        keyValue: value,
-      }, this[_persistent]);
+      ops.op_webstorage_set(key, value, this[_persistent]);
     }
 
     getItem(key) {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, StoragePrototype);
       const prefix = "Failed to execute 'getItem' on 'Storage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       key = webidl.converters.DOMString(key, {
@@ -69,11 +69,11 @@
         context: "Argument 1",
       });
 
-      return core.opSync("op_webstorage_get", key, this[_persistent]);
+      return ops.op_webstorage_get(key, this[_persistent]);
     }
 
     removeItem(key) {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, StoragePrototype);
       const prefix = "Failed to execute 'removeItem' on 'Storage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       key = webidl.converters.DOMString(key, {
@@ -81,14 +81,16 @@
         context: "Argument 1",
       });
 
-      core.opSync("op_webstorage_remove", key, this[_persistent]);
+      ops.op_webstorage_remove(key, this[_persistent]);
     }
 
     clear() {
-      webidl.assertBranded(this, Storage);
-      core.opSync("op_webstorage_clear", this[_persistent]);
+      webidl.assertBranded(this, StoragePrototype);
+      ops.op_webstorage_clear(this[_persistent]);
     }
   }
+
+  const StoragePrototype = Storage.prototype;
 
   function createStorage(persistent) {
     const storage = webidl.createBranded(Storage);
@@ -113,8 +115,8 @@
       },
       get(target, key) {
         if (typeof key == "symbol") return target[key];
-        if (key in target) {
-          return ReflectGet(...arguments);
+        if (ReflectHas(target, key)) {
+          return ReflectGet(...new SafeArrayIterator(arguments));
         } else {
           return target.getItem(key) ?? undefined;
         }
@@ -135,13 +137,13 @@
           (typeof target.getItem(p)) === "string";
       },
       ownKeys() {
-        return core.opSync("op_webstorage_iterate_keys", persistent);
+        return ops.op_webstorage_iterate_keys(persistent);
       },
       getOwnPropertyDescriptor(target, key) {
         if (arguments.length === 1) {
           return undefined;
         }
-        if (key in target) {
+        if (ReflectHas(target, key)) {
           return undefined;
         }
         const value = target.getItem(key);

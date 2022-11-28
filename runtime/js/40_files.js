@@ -1,15 +1,18 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
   const { ftruncate, ftruncateSync, fstat, fstatSync } = window.__bootstrap.fs;
   const { pathFromURL } = window.__bootstrap.util;
+  const { readableStreamForRid, writableStreamForRid } =
+    window.__bootstrap.streams;
   const {
+    ArrayPrototypeFilter,
     Error,
     ObjectValues,
-    ArrayPrototypeFilter,
   } = window.__bootstrap.primordials;
 
   function seekSync(
@@ -17,7 +20,7 @@
     offset,
     whence,
   ) {
-    return core.opSync("op_seek_sync", { rid, offset, whence });
+    return ops.op_seek_sync({ rid, offset, whence });
   }
 
   function seek(
@@ -30,30 +33,33 @@
 
   function openSync(
     path,
-    options = { read: true },
+    options,
   ) {
-    checkOpenOptions(options);
+    if (options) checkOpenOptions(options);
     const mode = options?.mode;
-    const rid = core.opSync(
-      "op_open_sync",
-      { path: pathFromURL(path), options, mode },
+    const rid = ops.op_open_sync(
+      pathFromURL(path),
+      options,
+      mode,
     );
 
-    return new File(rid);
+    return new FsFile(rid);
   }
 
   async function open(
     path,
-    options = { read: true },
+    options,
   ) {
-    checkOpenOptions(options);
+    if (options) checkOpenOptions(options);
     const mode = options?.mode;
     const rid = await core.opAsync(
       "op_open_async",
-      { path: pathFromURL(path), options, mode },
+      pathFromURL(path),
+      options,
+      mode,
     );
 
-    return new File(rid);
+    return new FsFile(rid);
   }
 
   function createSync(path) {
@@ -74,8 +80,11 @@
     });
   }
 
-  class File {
+  class FsFile {
     #rid = 0;
+
+    #readable;
+    #writable;
 
     constructor(rid) {
       this.#rid = rid;
@@ -128,9 +137,25 @@
     close() {
       core.close(this.rid);
     }
+
+    get readable() {
+      if (this.#readable === undefined) {
+        this.#readable = readableStreamForRid(this.rid);
+      }
+      return this.#readable;
+    }
+
+    get writable() {
+      if (this.#writable === undefined) {
+        this.#writable = writableStreamForRid(this.rid);
+      }
+      return this.#writable;
+    }
   }
 
   class Stdin {
+    #readable;
+
     constructor() {
     }
 
@@ -149,9 +174,23 @@
     close() {
       core.close(this.rid);
     }
+
+    get readable() {
+      if (this.#readable === undefined) {
+        this.#readable = readableStreamForRid(this.rid);
+      }
+      return this.#readable;
+    }
+
+    setRaw(mode, options = {}) {
+      const cbreak = !!(options.cbreak ?? false);
+      ops.op_stdin_set_raw(mode, cbreak);
+    }
   }
 
   class Stdout {
+    #writable;
+
     constructor() {
     }
 
@@ -170,9 +209,18 @@
     close() {
       core.close(this.rid);
     }
+
+    get writable() {
+      if (this.#writable === undefined) {
+        this.#writable = writableStreamForRid(this.rid);
+      }
+      return this.#writable;
+    }
   }
 
   class Stderr {
+    #writable;
+
     constructor() {
     }
 
@@ -190,6 +238,13 @@
 
     close() {
       core.close(this.rid);
+    }
+
+    get writable() {
+      if (this.#writable === undefined) {
+        this.#writable = writableStreamForRid(this.rid);
+      }
+      return this.#writable;
     }
   }
 
@@ -226,7 +281,8 @@
     stdin,
     stdout,
     stderr,
-    File,
+    File: FsFile,
+    FsFile,
     create,
     createSync,
     open,

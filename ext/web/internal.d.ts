@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-var
 
@@ -45,6 +45,7 @@ declare namespace globalThis {
       };
       forgivingBase64Encode(data: Uint8Array): string;
       forgivingBase64Decode(data: string): Uint8Array;
+      serializeJSValueToJSONString(value: unknown): string;
     };
 
     declare var domException: {
@@ -60,10 +61,24 @@ declare namespace globalThis {
       declare function parseMimeType(input: string): MimeType | null;
       declare function essence(mimeType: MimeType): string;
       declare function serializeMimeType(mimeType: MimeType): string;
+      declare function extractMimeType(
+        headerValues: string[] | null,
+      ): MimeType | null;
     }
 
     declare var eventTarget: {
       EventTarget: typeof EventTarget;
+    };
+
+    declare var event: {
+      Event: typeof event;
+      ErrorEvent: typeof ErrorEvent;
+      CloseEvent: typeof CloseEvent;
+      MessageEvent: typeof MessageEvent;
+      CustomEvent: typeof CustomEvent;
+      ProgressEvent: typeof ProgressEvent;
+      PromiseRejectionEvent: typeof PromiseRejectionEvent;
+      reportError: typeof reportError;
     };
 
     declare var location: {

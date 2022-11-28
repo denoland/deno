@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -493,4 +493,16 @@ Deno.test(function urlSearchParamsIdentityPreserved() {
   u.href = "http://bar.com/?baz=42";
   const sp2 = u.searchParams;
   assertStrictEquals(sp1, sp2);
+});
+
+Deno.test(function urlTakeURLObjectAsParameter() {
+  const url = new URL(
+    new URL(
+      "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
+    ),
+  );
+  assertEquals(
+    url.href,
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
+  );
 });

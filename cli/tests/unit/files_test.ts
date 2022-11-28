@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
@@ -8,7 +8,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
-import { copy } from "../../../test_util/std/io/util.ts";
+import { copy } from "../../../test_util/std/streams/conversion.ts";
 
 Deno.test(function filesStdioFileDescriptors() {
   assertEquals(Deno.stdin.rid, 0);
@@ -17,7 +17,7 @@ Deno.test(function filesStdioFileDescriptors() {
 });
 
 Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
-  const filename = "cli/tests/testdata/fixture.json";
+  const filename = "cli/tests/testdata/assets/fixture.json";
   const file = await Deno.open(filename);
   assert(file.rid > 2);
   const bytesWritten = await copy(file, Deno.stdout);
@@ -27,7 +27,7 @@ Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
 });
 
 Deno.test({ permissions: { read: true } }, async function filesIter() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = await Deno.open(filename);
 
   let totalSize = 0;
@@ -42,7 +42,7 @@ Deno.test({ permissions: { read: true } }, async function filesIter() {
 Deno.test(
   { permissions: { read: true } },
   async function filesIterCustomBufSize() {
-    const filename = "cli/tests/testdata/hello.txt";
+    const filename = "cli/tests/testdata/assets/hello.txt";
     const file = await Deno.open(filename);
 
     let totalSize = 0;
@@ -59,7 +59,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { read: true } }, function filesIterSync() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = Deno.openSync(filename);
 
   let totalSize = 0;
@@ -74,7 +74,7 @@ Deno.test({ permissions: { read: true } }, function filesIterSync() {
 Deno.test(
   { permissions: { read: true } },
   function filesIterSyncCustomBufSize() {
-    const filename = "cli/tests/testdata/hello.txt";
+    const filename = "cli/tests/testdata/assets/hello.txt";
     const file = Deno.openSync(filename);
 
     let totalSize = 0;
@@ -264,7 +264,7 @@ Deno.test(
 );
 
 Deno.test(async function openOptions() {
-  const filename = "cli/tests/testdata/fixture.json";
+  const filename = "cli/tests/testdata/assets/fixture.json";
   await assertRejects(
     async () => {
       await Deno.open(filename, { write: false });
@@ -558,7 +558,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { read: true } }, async function seekStart() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = await Deno.open(filename);
   const seekPosition = 6;
   // Deliberately move 1 step forward
@@ -575,7 +575,7 @@ Deno.test({ permissions: { read: true } }, async function seekStart() {
 });
 
 Deno.test({ permissions: { read: true } }, function seekSyncStart() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = Deno.openSync(filename);
   const seekPosition = 6;
   // Deliberately move 1 step forward
@@ -592,7 +592,7 @@ Deno.test({ permissions: { read: true } }, function seekSyncStart() {
 });
 
 Deno.test({ permissions: { read: true } }, async function seekCurrent() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = await Deno.open(filename);
   // Deliberately move 1 step forward
   await file.read(new Uint8Array(1)); // "H"
@@ -609,7 +609,7 @@ Deno.test({ permissions: { read: true } }, async function seekCurrent() {
 });
 
 Deno.test({ permissions: { read: true } }, function seekSyncCurrent() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = Deno.openSync(filename);
   // Deliberately move 1 step forward
   file.readSync(new Uint8Array(1)); // "H"
@@ -626,7 +626,7 @@ Deno.test({ permissions: { read: true } }, function seekSyncCurrent() {
 });
 
 Deno.test({ permissions: { read: true } }, async function seekEnd() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = await Deno.open(filename);
   const seekPosition = -6;
   // seek from end of file that has 12 chars, 12 - 6  = 6
@@ -640,7 +640,7 @@ Deno.test({ permissions: { read: true } }, async function seekEnd() {
 });
 
 Deno.test({ permissions: { read: true } }, function seekSyncEnd() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = Deno.openSync(filename);
   const seekPosition = -6;
   // seek from end of file that has 12 chars, 12 - 6  = 6
@@ -654,7 +654,7 @@ Deno.test({ permissions: { read: true } }, function seekSyncEnd() {
 });
 
 Deno.test({ permissions: { read: true } }, async function seekMode() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = await Deno.open(filename);
   await assertRejects(
     async () => {
@@ -671,3 +671,139 @@ Deno.test({ permissions: { read: true } }, async function seekMode() {
   assertEquals(new TextDecoder().decode(buf), "H");
   file.close();
 });
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function fileTruncateSyncSuccess() {
+    const filename = Deno.makeTempDirSync() + "/test_fileTruncateSync.txt";
+    const file = Deno.openSync(filename, {
+      create: true,
+      read: true,
+      write: true,
+    });
+
+    file.truncateSync(20);
+    assertEquals(Deno.readFileSync(filename).byteLength, 20);
+    file.truncateSync(5);
+    assertEquals(Deno.readFileSync(filename).byteLength, 5);
+    file.truncateSync(-5);
+    assertEquals(Deno.readFileSync(filename).byteLength, 0);
+
+    file.close();
+    Deno.removeSync(filename);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function fileTruncateSuccess() {
+    const filename = Deno.makeTempDirSync() + "/test_fileTruncate.txt";
+    const file = await Deno.open(filename, {
+      create: true,
+      read: true,
+      write: true,
+    });
+
+    await file.truncate(20);
+    assertEquals((await Deno.readFile(filename)).byteLength, 20);
+    await file.truncate(5);
+    assertEquals((await Deno.readFile(filename)).byteLength, 5);
+    await file.truncate(-5);
+    assertEquals((await Deno.readFile(filename)).byteLength, 0);
+
+    file.close();
+    await Deno.remove(filename);
+  },
+);
+
+Deno.test({ permissions: { read: true } }, function fileStatSyncSuccess() {
+  const file = Deno.openSync("README.md");
+  const fileInfo = file.statSync();
+  assert(fileInfo.isFile);
+  assert(!fileInfo.isSymlink);
+  assert(!fileInfo.isDirectory);
+  assert(fileInfo.size);
+  assert(fileInfo.atime);
+  assert(fileInfo.mtime);
+  // The `birthtime` field is not available on Linux before kernel version 4.11.
+  assert(fileInfo.birthtime || Deno.build.os === "linux");
+
+  file.close();
+});
+
+Deno.test(async function fileStatSuccess() {
+  const file = await Deno.open("README.md");
+  const fileInfo = await file.stat();
+  assert(fileInfo.isFile);
+  assert(!fileInfo.isSymlink);
+  assert(!fileInfo.isDirectory);
+  assert(fileInfo.size);
+  assert(fileInfo.atime);
+  assert(fileInfo.mtime);
+  // The `birthtime` field is not available on Linux before kernel version 4.11.
+  assert(fileInfo.birthtime || Deno.build.os === "linux");
+
+  file.close();
+});
+
+Deno.test({ permissions: { read: true } }, async function readableStream() {
+  const filename = "cli/tests/testdata/assets/hello.txt";
+  const file = await Deno.open(filename);
+  assert(file.readable instanceof ReadableStream);
+  const chunks = [];
+  for await (const chunk of file.readable) {
+    chunks.push(chunk);
+  }
+  assertEquals(chunks.length, 1);
+  assertEquals(chunks[0].byteLength, 12);
+});
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readableStreamTextEncoderPipe() {
+    const filename = "cli/tests/testdata/assets/hello.txt";
+    const file = await Deno.open(filename);
+    const readable = file.readable.pipeThrough(new TextDecoderStream());
+    const chunks = [];
+    for await (const chunk of readable) {
+      chunks.push(chunk);
+    }
+    assertEquals(chunks.length, 1);
+    assertEquals(chunks[0].length, 12);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writableStream() {
+    const path = await Deno.makeTempFile();
+    const file = await Deno.open(path, { write: true });
+    assert(file.writable instanceof WritableStream);
+    const readable = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("hello "));
+        controller.enqueue(new TextEncoder().encode("world!"));
+        controller.close();
+      },
+    });
+    await readable.pipeTo(file.writable);
+    const res = await Deno.readTextFile(path);
+    assertEquals(res, "hello world!");
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function readTextFileNonUtf8() {
+    const path = await Deno.makeTempFile();
+    const file = await Deno.open(path, { write: true });
+    await file.write(new TextEncoder().encode("hello "));
+    await file.write(new Uint8Array([0xC0]));
+    file.close();
+
+    const res = await Deno.readTextFile(path);
+    const resSync = Deno.readTextFileSync(path);
+    assertEquals(res, resSync);
+    assertEquals(res, "hello \uFFFD");
+  },
+);

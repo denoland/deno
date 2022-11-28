@@ -1,25 +1,18 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::anyhow;
+use super::client::Client;
+use super::logging::lsp_log;
+use crate::fs_util;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::RwLock;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_runtime::tokio_util::create_basic_runtime;
-use log::error;
-use lsp::WorkspaceFolder;
-use lspower::lsp;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::thread;
-use tokio::sync::mpsc;
-
-use super::client::Client;
+use tower_lsp::lsp_types as lsp;
 
 pub const SETTINGS_SECTION: &str = "deno";
 
@@ -27,7 +20,12 @@ pub const SETTINGS_SECTION: &str = "deno";
 pub struct ClientCapabilities {
   pub code_action_disabled_support: bool,
   pub line_folding_only: bool,
+  pub snippet_support: bool,
   pub status_notification: bool,
+  /// The client provides the `experimental.testingApi` capability, which is
+  /// built around VSCode's testing API. It indicates that the server should
+  /// send notifications about tests discovered in modules.
+  pub testing_api: bool,
   pub workspace_configuration: bool,
   pub workspace_did_change_watched_files: bool,
 }
@@ -108,6 +106,101 @@ impl Default for CompletionSettings {
   }
 }
 
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsSettings {
+  #[serde(default)]
+  pub parameter_names: InlayHintsParamNamesOptions,
+  #[serde(default)]
+  pub parameter_types: InlayHintsParamTypesOptions,
+  #[serde(default)]
+  pub variable_types: InlayHintsVarTypesOptions,
+  #[serde(default)]
+  pub property_declaration_types: InlayHintsPropDeclTypesOptions,
+  #[serde(default)]
+  pub function_like_return_types: InlayHintsFuncLikeReturnTypesOptions,
+  #[serde(default)]
+  pub enum_member_values: InlayHintsEnumMemberValuesOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsParamNamesOptions {
+  #[serde(default)]
+  pub enabled: InlayHintsParamNamesEnabled,
+  #[serde(default = "is_true")]
+  pub suppress_when_argument_matches_name: bool,
+}
+
+impl Default for InlayHintsParamNamesOptions {
+  fn default() -> Self {
+    Self {
+      enabled: InlayHintsParamNamesEnabled::None,
+      suppress_when_argument_matches_name: true,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum InlayHintsParamNamesEnabled {
+  None,
+  Literals,
+  All,
+}
+
+impl Default for InlayHintsParamNamesEnabled {
+  fn default() -> Self {
+    Self::None
+  }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsParamTypesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsVarTypesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+  #[serde(default = "is_true")]
+  pub suppress_when_type_matches_name: bool,
+}
+
+impl Default for InlayHintsVarTypesOptions {
+  fn default() -> Self {
+    Self {
+      enabled: false,
+      suppress_when_type_matches_name: true,
+    }
+  }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsPropDeclTypesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsFuncLikeReturnTypesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsEnumMemberValuesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCompletionSettings {
@@ -137,9 +230,39 @@ impl Default for ImportCompletionSettings {
 pub struct SpecifierSettings {
   /// A flag that indicates if Deno is enabled for this specifier or not.
   pub enable: bool,
+  /// A list of paths, using the workspace folder as a base that should be Deno
+  /// enabled.
+  #[serde(default)]
+  pub enable_paths: Vec<String>,
   /// Code lens specific settings for the resource.
   #[serde(default)]
   pub code_lens: CodeLensSpecifierSettings,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TestingSettings {
+  /// A vector of arguments which should be used when running the tests for
+  /// a workspace.
+  #[serde(default)]
+  pub args: Vec<String>,
+  /// Enable or disable the testing API if the client is capable of supporting
+  /// the testing API.
+  #[serde(default = "is_true")]
+  pub enable: bool,
+}
+
+impl Default for TestingSettings {
+  fn default() -> Self {
+    Self {
+      args: vec!["--allow-all".to_string(), "--no-check".to_string()],
+      enable: true,
+    }
+  }
+}
+
+fn default_to_true() -> bool {
+  true
 }
 
 /// Deno language server specific settings that are applied to a workspace.
@@ -150,9 +273,17 @@ pub struct WorkspaceSettings {
   #[serde(default)]
   pub enable: bool,
 
+  /// A list of paths, using the root_uri as a base that should be Deno enabled.
+  #[serde(default)]
+  pub enable_paths: Vec<String>,
+
   /// An option that points to a path string of the path to utilise as the
   /// cache/DENO_DIR for the language server.
   pub cache: Option<String>,
+
+  /// Override the default stores used to validate certificates. This overrides
+  /// the environment variable `DENO_TLS_CA_STORE` if present.
+  pub certificate_stores: Option<Vec<String>>,
 
   /// An option that points to a path string of the config file to apply to
   /// code within the workspace.
@@ -166,18 +297,34 @@ pub struct WorkspaceSettings {
   #[serde(default)]
   pub code_lens: CodeLensSettings,
 
+  #[serde(default)]
+  pub inlay_hints: InlayHintsSettings,
+
   /// A flag that indicates if internal debug logging should be made available.
   #[serde(default)]
   pub internal_debug: bool,
 
   /// A flag that indicates if linting is enabled for the workspace.
-  #[serde(default)]
+  #[serde(default = "default_to_true")]
   pub lint: bool,
 
   /// A flag that indicates if Dene should validate code against the unstable
   /// APIs for the workspace.
   #[serde(default)]
   pub suggest: CompletionSettings,
+
+  /// Testing settings for the workspace.
+  #[serde(default)]
+  pub testing: TestingSettings,
+
+  /// An option which sets the cert file to use when attempting to fetch remote
+  /// resources. This overrides `DENO_CERT` if present.
+  pub tls_certificate: Option<String>,
+
+  /// An option, if set, will unsafely ignore certificate errors when fetching
+  /// remote resources.
+  #[serde(default)]
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
 
   #[serde(default)]
   pub unstable: bool,
@@ -189,29 +336,55 @@ impl WorkspaceSettings {
   pub fn enabled_code_lens(&self) -> bool {
     self.code_lens.implementations || self.code_lens.references
   }
+
+  /// Determine if any inlay hints are enabled. This allows short circuiting
+  /// when there are no inlay hints enabled.
+  pub fn enabled_inlay_hints(&self) -> bool {
+    !matches!(
+      self.inlay_hints.parameter_names.enabled,
+      InlayHintsParamNamesEnabled::None
+    ) || self.inlay_hints.parameter_types.enabled
+      || self.inlay_hints.variable_types.enabled
+      || self.inlay_hints.property_declaration_types.enabled
+      || self.inlay_hints.function_like_return_types.enabled
+      || self.inlay_hints.enum_member_values.enabled
+  }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
-  pub root_uri: Option<Url>,
+  pub enabled_paths: HashMap<String, Vec<String>>,
   pub settings: Settings,
-  pub workspace_folders: Option<Vec<lsp::WorkspaceFolder>>,
 }
 
 impl ConfigSnapshot {
+  /// Determine if the provided specifier is enabled or not.
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
-    if let Some(settings) = self.settings.specifiers.get(specifier) {
-      settings.1.enable
+    if !self.enabled_paths.is_empty() {
+      let specifier_str = specifier.to_string();
+      for (workspace, enabled_paths) in self.enabled_paths.iter() {
+        if specifier_str.starts_with(workspace) {
+          return enabled_paths
+            .iter()
+            .any(|path| specifier_str.starts_with(path));
+        }
+      }
+    }
+    if let Some((_, SpecifierSettings { enable, .. })) =
+      self.settings.specifiers.get(specifier)
+    {
+      *enable
     } else {
       self.settings.workspace.enable
     }
   }
 }
 
-enum ConfigRequest {
-  All,
-  Specifier(ModuleSpecifier, ModuleSpecifier),
+#[derive(Debug, Clone)]
+pub struct SpecifierWithClientUri {
+  pub specifier: ModuleSpecifier,
+  pub client_uri: ModuleSpecifier,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -224,156 +397,77 @@ pub struct Settings {
 #[derive(Debug)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
-  pub root_uri: Option<Url>,
-  settings: Arc<RwLock<Settings>>,
-  tx: mpsc::Sender<ConfigRequest>,
-  pub workspace_folders: Option<Vec<WorkspaceFolder>>,
+  enabled_paths: HashMap<String, Vec<String>>,
+  pub root_uri: Option<ModuleSpecifier>,
+  settings: Settings,
+  pub workspace_folders: Option<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
 }
 
 impl Config {
-  pub fn new(client: Client) -> Self {
-    let (tx, mut rx) = mpsc::channel::<ConfigRequest>(100);
-    let settings = Arc::new(RwLock::new(Settings::default()));
-    let settings_ref = settings.clone();
-
-    let _join_handle = thread::spawn(move || {
-      let runtime = create_basic_runtime();
-
-      runtime.block_on(async {
-        loop {
-          match rx.recv().await {
-            None => break,
-            Some(ConfigRequest::All) => {
-              let (specifier_uri_map, items): (
-                Vec<(ModuleSpecifier, ModuleSpecifier)>,
-                Vec<lsp::ConfigurationItem>,
-              ) = {
-                let settings = settings_ref.read();
-                (
-                  settings
-                    .specifiers
-                    .iter()
-                    .map(|(s, (u, _))| (s.clone(), u.clone()))
-                    .collect(),
-                  settings
-                    .specifiers
-                    .iter()
-                    .map(|(_, (uri, _))| lsp::ConfigurationItem {
-                      scope_uri: Some(uri.clone()),
-                      section: Some(SETTINGS_SECTION.to_string()),
-                    })
-                    .collect(),
-                )
-              };
-              if let Ok(configs) = client.configuration(items).await {
-                let mut settings = settings_ref.write();
-                for (i, value) in configs.into_iter().enumerate() {
-                  match serde_json::from_value::<SpecifierSettings>(value) {
-                    Ok(specifier_settings) => {
-                      let (specifier, uri) = specifier_uri_map[i].clone();
-                      settings
-                        .specifiers
-                        .insert(specifier, (uri, specifier_settings));
-                    }
-                    Err(err) => {
-                      error!("Error converting specifier settings: {}", err);
-                    }
-                  }
-                }
-              }
-            }
-            Some(ConfigRequest::Specifier(specifier, uri)) => {
-              if settings_ref.read().specifiers.contains_key(&specifier) {
-                continue;
-              }
-              match client
-                .configuration(vec![lsp::ConfigurationItem {
-                  scope_uri: Some(uri.clone()),
-                  section: Some(SETTINGS_SECTION.to_string()),
-                }])
-                .await
-              {
-                Ok(values) => {
-                  if let Some(value) = values.first() {
-                    match serde_json::from_value::<SpecifierSettings>(value.clone()) {
-                      Ok(specifier_settings) => {
-                        settings_ref
-                          .write()
-                          .specifiers
-                          .insert(specifier, (uri, specifier_settings));
-                      }
-                      Err(err) => {
-                        error!("Error converting specifier settings ({}): {}", specifier, err);
-                      }
-                    }
-                  } else {
-                    error!("Expected the client to return a configuration item for specifier: {}", specifier);
-                  }
-                },
-                Err(err) => {
-                  error!(
-                    "Error retrieving settings for specifier ({}): {}",
-                    specifier,
-                    err,
-                  );
-                }
-              }
-            }
-          }
-        }
-      })
-    });
-
+  pub fn new() -> Self {
     Self {
       client_capabilities: ClientCapabilities::default(),
+      enabled_paths: Default::default(),
+      /// Root provided by the initialization parameters.
       root_uri: None,
-      settings,
-      tx,
+      settings: Default::default(),
       workspace_folders: None,
     }
   }
 
   pub fn get_workspace_settings(&self) -> WorkspaceSettings {
-    self.settings.read().workspace.clone()
+    self.settings.workspace.clone()
   }
 
   /// Set the workspace settings directly, which occurs during initialization
   /// and when the client does not support workspace configuration requests
-  pub fn set_workspace_settings(&self, value: Value) -> Result<(), AnyError> {
+  pub fn set_workspace_settings(
+    &mut self,
+    value: Value,
+  ) -> Result<(), AnyError> {
     let workspace_settings = serde_json::from_value(value)?;
-    self.settings.write().workspace = workspace_settings;
+    self.settings.workspace = workspace_settings;
     Ok(())
   }
 
-  pub fn snapshot(&self) -> Result<ConfigSnapshot, AnyError> {
-    Ok(ConfigSnapshot {
+  pub fn snapshot(&self) -> Arc<ConfigSnapshot> {
+    Arc::new(ConfigSnapshot {
       client_capabilities: self.client_capabilities.clone(),
-      root_uri: self.root_uri.clone(),
-      settings: self
-        .settings
-        .try_read()
-        .ok_or_else(|| anyhow!("Error reading settings."))?
-        .clone(),
-      workspace_folders: self.workspace_folders.clone(),
+      enabled_paths: self.enabled_paths.clone(),
+      settings: self.settings.clone(),
     })
   }
 
+  pub fn has_specifier_settings(&self, specifier: &ModuleSpecifier) -> bool {
+    self.settings.specifiers.contains_key(specifier)
+  }
+
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
-    let settings = self.settings.read();
-    settings
+    if !self.enabled_paths.is_empty() {
+      let specifier_str = specifier.to_string();
+      for (workspace, enabled_paths) in self.enabled_paths.iter() {
+        if specifier_str.starts_with(workspace) {
+          return enabled_paths
+            .iter()
+            .any(|path| specifier_str.starts_with(path));
+        }
+      }
+    }
+    self
+      .settings
       .specifiers
       .get(specifier)
       .map(|(_, s)| s.enable)
-      .unwrap_or_else(|| settings.workspace.enable)
+      .unwrap_or_else(|| self.settings.workspace.enable)
   }
 
   pub fn specifier_code_lens_test(&self, specifier: &ModuleSpecifier) -> bool {
-    let settings = self.settings.read();
-    let value = settings
+    let value = self
+      .settings
       .specifiers
       .get(specifier)
       .map(|(_, s)| s.code_lens.test)
-      .unwrap_or_else(|| settings.workspace.code_lens.test);
+      .unwrap_or_else(|| self.settings.workspace.code_lens.test);
     value
   }
 
@@ -385,7 +479,10 @@ impl Config {
       self.client_capabilities.status_notification = experimental
         .get("statusNotification")
         .and_then(|it| it.as_bool())
-        == Some(true)
+        == Some(true);
+      self.client_capabilities.testing_api =
+        experimental.get("testingApi").and_then(|it| it.as_bool())
+          == Some(true);
     }
 
     if let Some(workspace) = &capabilities.workspace {
@@ -408,29 +505,101 @@ impl Config {
         .as_ref()
         .and_then(|it| it.disabled_support)
         .unwrap_or(false);
+      self.client_capabilities.snippet_support =
+        if let Some(completion) = &text_document.completion {
+          completion
+            .completion_item
+            .as_ref()
+            .and_then(|it| it.snippet_support)
+            .unwrap_or(false)
+        } else {
+          false
+        };
     }
   }
 
-  /// Update all currently cached specifier settings
-  pub async fn update_all_settings(&self) -> Result<(), AnyError> {
-    self
-      .tx
-      .send(ConfigRequest::All)
-      .await
-      .map_err(|_| anyhow!("Error sending config update task."))
+  /// Given the configured workspaces or root URI and the their settings,
+  /// update and resolve any paths that should be enabled
+  pub async fn update_enabled_paths(&mut self, client: Client) -> bool {
+    if let Some(workspace_folders) = self.workspace_folders.clone() {
+      let mut touched = false;
+      for (workspace, folder) in workspace_folders {
+        if let Ok(settings) = client.specifier_configuration(&folder.uri).await
+        {
+          if self.update_enabled_paths_entry(&workspace, settings.enable_paths)
+          {
+            touched = true;
+          }
+        }
+      }
+      touched
+    } else if let Some(root_uri) = self.root_uri.clone() {
+      self.update_enabled_paths_entry(
+        &root_uri,
+        self.settings.workspace.enable_paths.clone(),
+      )
+    } else {
+      false
+    }
   }
 
-  /// Update a specific specifiers settings from the client.
-  pub async fn update_specifier_settings(
-    &self,
-    specifier: &ModuleSpecifier,
-    uri: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
+  /// Update a specific entry in the enabled paths for a given workspace.
+  fn update_enabled_paths_entry(
+    &mut self,
+    workspace: &ModuleSpecifier,
+    enabled_paths: Vec<String>,
+  ) -> bool {
+    let workspace = fs_util::ensure_directory_specifier(workspace.clone());
+    let key = workspace.to_string();
+    let mut touched = false;
+    if !enabled_paths.is_empty() {
+      if let Ok(workspace_path) = fs_util::specifier_to_file_path(&workspace) {
+        let mut paths = Vec::new();
+        for path in &enabled_paths {
+          let fs_path = workspace_path.join(path);
+          match ModuleSpecifier::from_file_path(fs_path) {
+            Ok(path_uri) => {
+              paths.push(path_uri.to_string());
+            }
+            Err(_) => {
+              lsp_log!("Unable to resolve a file path for `deno.enablePath` from \"{}\" for workspace \"{}\".", path, workspace);
+            }
+          }
+        }
+        if !paths.is_empty() {
+          touched = true;
+          self.enabled_paths.insert(key, paths);
+        }
+      }
+    } else {
+      touched = true;
+      self.enabled_paths.remove(&key);
+    }
+    touched
+  }
+
+  pub fn get_specifiers_with_client_uris(&self) -> Vec<SpecifierWithClientUri> {
     self
-      .tx
-      .send(ConfigRequest::Specifier(specifier.clone(), uri.clone()))
-      .await
-      .map_err(|_| anyhow!("Error sending config update task."))
+      .settings
+      .specifiers
+      .iter()
+      .map(|(s, (u, _))| SpecifierWithClientUri {
+        specifier: s.clone(),
+        client_uri: u.clone(),
+      })
+      .collect()
+  }
+
+  pub fn set_specifier_settings(
+    &mut self,
+    specifier: ModuleSpecifier,
+    client_uri: ModuleSpecifier,
+    settings: SpecifierSettings,
+  ) {
+    self
+      .settings
+      .specifiers
+      .insert(specifier, (client_uri, settings));
   }
 }
 
@@ -440,38 +609,9 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::serde_json::json;
 
-  #[derive(Debug, Default)]
-  struct MockLanguageServer;
-
-  #[lspower::async_trait]
-  impl lspower::LanguageServer for MockLanguageServer {
-    async fn initialize(
-      &self,
-      _params: lspower::lsp::InitializeParams,
-    ) -> lspower::jsonrpc::Result<lsp::InitializeResult> {
-      Ok(lspower::lsp::InitializeResult {
-        capabilities: lspower::lsp::ServerCapabilities::default(),
-        server_info: None,
-      })
-    }
-
-    async fn shutdown(&self) -> lspower::jsonrpc::Result<()> {
-      Ok(())
-    }
-  }
-
-  fn setup() -> Config {
-    let mut maybe_client: Option<Client> = None;
-    let (_service, _) = lspower::LspService::new(|client| {
-      maybe_client = Some(Client::from_lspower(client));
-      MockLanguageServer::default()
-    });
-    Config::new(maybe_client.unwrap())
-  }
-
   #[test]
   fn test_config_specifier_enabled() {
-    let config = setup();
+    let mut config = Config::new();
     let specifier = resolve_url("file:///a.ts").unwrap();
     assert!(!config.specifier_enabled(&specifier));
     config
@@ -483,8 +623,42 @@ mod tests {
   }
 
   #[test]
+  fn test_config_snapshot_specifier_enabled() {
+    let mut config = Config::new();
+    let specifier = resolve_url("file:///a.ts").unwrap();
+    assert!(!config.specifier_enabled(&specifier));
+    config
+      .set_workspace_settings(json!({
+        "enable": true
+      }))
+      .expect("could not update");
+    let config_snapshot = config.snapshot();
+    assert!(config_snapshot.specifier_enabled(&specifier));
+  }
+
+  #[test]
+  fn test_config_specifier_enabled_path() {
+    let mut config = Config::new();
+    let specifier_a = resolve_url("file:///project/worker/a.ts").unwrap();
+    let specifier_b = resolve_url("file:///project/other/b.ts").unwrap();
+    assert!(!config.specifier_enabled(&specifier_a));
+    assert!(!config.specifier_enabled(&specifier_b));
+    let mut enabled_paths = HashMap::new();
+    enabled_paths.insert(
+      "file:///project/".to_string(),
+      vec!["file:///project/worker/".to_string()],
+    );
+    config.enabled_paths = enabled_paths;
+    assert!(config.specifier_enabled(&specifier_a));
+    assert!(!config.specifier_enabled(&specifier_b));
+    let config_snapshot = config.snapshot();
+    assert!(config_snapshot.specifier_enabled(&specifier_a));
+    assert!(!config_snapshot.specifier_enabled(&specifier_b));
+  }
+
+  #[test]
   fn test_set_workspace_settings_defaults() {
-    let config = setup();
+    let mut config = Config::new();
     config
       .set_workspace_settings(json!({}))
       .expect("could not update");
@@ -492,7 +666,9 @@ mod tests {
       config.get_workspace_settings(),
       WorkspaceSettings {
         enable: false,
+        enable_paths: Vec::new(),
         cache: None,
+        certificate_stores: None,
         config: None,
         import_map: None,
         code_lens: CodeLensSettings {
@@ -501,8 +677,28 @@ mod tests {
           references_all_functions: false,
           test: true,
         },
+        inlay_hints: InlayHintsSettings {
+          parameter_names: InlayHintsParamNamesOptions {
+            enabled: InlayHintsParamNamesEnabled::None,
+            suppress_when_argument_matches_name: true
+          },
+          parameter_types: InlayHintsParamTypesOptions { enabled: false },
+          variable_types: InlayHintsVarTypesOptions {
+            enabled: false,
+            suppress_when_type_matches_name: true
+          },
+          property_declaration_types: InlayHintsPropDeclTypesOptions {
+            enabled: false
+          },
+          function_like_return_types: InlayHintsFuncLikeReturnTypesOptions {
+            enabled: false
+          },
+          enum_member_values: InlayHintsEnumMemberValuesOptions {
+            enabled: false
+          },
+        },
         internal_debug: false,
-        lint: false,
+        lint: true,
         suggest: CompletionSettings {
           complete_function_calls: false,
           names: true,
@@ -513,6 +709,12 @@ mod tests {
             hosts: HashMap::new(),
           }
         },
+        testing: TestingSettings {
+          args: vec!["--allow-all".to_string(), "--no-check".to_string()],
+          enable: true
+        },
+        tls_certificate: None,
+        unsafely_ignore_certificate_errors: None,
         unstable: false,
       }
     );

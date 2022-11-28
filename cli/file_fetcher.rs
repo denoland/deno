@@ -1,17 +1,18 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::auth_tokens::AuthTokens;
 use crate::colors;
 use crate::http_cache::HttpCache;
-use crate::http_util::fetch_once;
 use crate::http_util::CacheSemantics;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
+use crate::http_util::HttpClient;
+use crate::progress_bar::ProgressBar;
 use crate::text_encoding;
-use crate::version::get_user_agent;
 
 use data_url::DataUrl;
 use deno_ast::MediaType;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::uri_error;
@@ -20,9 +21,11 @@ use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
-use deno_runtime::deno_fetch::create_http_client;
-use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
+use deno_runtime::deno_tls::rustls_pemfile;
+use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use log::debug;
@@ -31,6 +34,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::future::Future;
+use std::io::BufReader;
 use std::io::Read;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -53,7 +57,7 @@ pub struct File {
   /// The resolved media type for the file.
   pub media_type: MediaType,
   /// The source of the file as a string.
-  pub source: Arc<String>,
+  pub source: Arc<str>,
   /// The _final_ specifier for the file.  The requested specifier and the final
   /// specifier maybe different for remote files that have been redirected.
   pub specifier: ModuleSpecifier,
@@ -139,6 +143,23 @@ impl CacheSetting {
       }
     }
   }
+
+  pub fn should_use_for_npm_package(&self, package_name: &str) -> bool {
+    match self {
+      CacheSetting::ReloadAll => false,
+      CacheSetting::ReloadSome(list) => {
+        if list.contains(&"npm:".to_string()) {
+          return false;
+        }
+        let specifier = format!("npm:{}", package_name);
+        if list.contains(&specifier) {
+          return false;
+        }
+        true
+      }
+      _ => true,
+    }
+  }
 }
 
 /// Fetch a source file from the local file system.
@@ -148,17 +169,91 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   })?;
   let bytes = fs::read(local.clone())?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
-  let source = strip_shebang(get_source_from_bytes(bytes, Some(charset))?);
+  let source = get_source_from_bytes(bytes, Some(charset))?;
   let media_type = MediaType::from(specifier);
 
   Ok(File {
     local,
     maybe_types: None,
     media_type,
-    source: Arc::new(source),
+    source: source.into(),
     specifier: specifier.clone(),
     maybe_headers: None,
   })
+}
+
+/// Create and populate a root cert store based on the passed options and
+/// environment.
+pub fn get_root_cert_store(
+  maybe_root_path: Option<PathBuf>,
+  maybe_ca_stores: Option<Vec<String>>,
+  maybe_ca_file: Option<String>,
+) -> Result<RootCertStore, AnyError> {
+  let mut root_cert_store = RootCertStore::empty();
+  let ca_stores: Vec<String> = maybe_ca_stores
+    .or_else(|| {
+      let env_ca_store = env::var("DENO_TLS_CA_STORE").ok()?;
+      Some(
+        env_ca_store
+          .split(',')
+          .map(|s| s.trim().to_string())
+          .filter(|s| !s.is_empty())
+          .collect(),
+      )
+    })
+    .unwrap_or_else(|| vec!["mozilla".to_string()]);
+
+  for store in ca_stores.iter() {
+    match store.as_str() {
+      "mozilla" => {
+        root_cert_store.add_server_trust_anchors(
+          webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+            rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+              ta.subject,
+              ta.spki,
+              ta.name_constraints,
+            )
+          }),
+        );
+      }
+      "system" => {
+        let roots = load_native_certs().expect("could not load platform certs");
+        for root in roots {
+          root_cert_store
+            .add(&rustls::Certificate(root.0))
+            .expect("Failed to add platform cert to root cert store");
+        }
+      }
+      _ => {
+        return Err(anyhow!("Unknown certificate store \"{}\" specified (allowed: \"system,mozilla\")", store));
+      }
+    }
+  }
+
+  let ca_file = maybe_ca_file.or_else(|| env::var("DENO_CERT").ok());
+  if let Some(ca_file) = ca_file {
+    let ca_file = if let Some(root) = &maybe_root_path {
+      root.join(&ca_file)
+    } else {
+      PathBuf::from(ca_file)
+    };
+    let certfile = fs::File::open(&ca_file)?;
+    let mut reader = BufReader::new(certfile);
+
+    match rustls_pemfile::certs(&mut reader) {
+      Ok(certs) => {
+        root_cert_store.add_parsable_certificates(&certs);
+      }
+      Err(e) => {
+        return Err(anyhow!(
+          "Unable to add pem file to certificate store: {}",
+          e
+        ));
+      }
+    }
+  }
+
+  Ok(root_cert_store)
 }
 
 /// Returns the decoded body and content-type of a provided
@@ -173,10 +268,7 @@ pub fn get_source_from_data_url(
   let (bytes, _) = data_url
     .decode_to_vec()
     .map_err(|e| uri_error(format!("{:?}", e)))?;
-  Ok((
-    strip_shebang(get_source_from_bytes(bytes, charset)?),
-    format!("{}", mime),
-  ))
+  Ok((get_source_from_bytes(bytes, charset)?, format!("{}", mime)))
 }
 
 /// Given a vector of bytes and optionally a charset, decode the bytes to a
@@ -230,19 +322,6 @@ pub fn map_content_type(
   }
 }
 
-/// Remove shebangs from the start of source code strings
-fn strip_shebang(mut value: String) -> String {
-  if value.starts_with("#!") {
-    if let Some(mid) = value.find('\n') {
-      let (_, rest) = value.split_at(mid);
-      value = rest.to_string()
-    } else {
-      value.clear()
-    }
-  }
-  value
-}
-
 /// A structure for resolving, fetching and caching source files.
 #[derive(Debug, Clone)]
 pub struct FileFetcher {
@@ -250,10 +329,11 @@ pub struct FileFetcher {
   allow_remote: bool,
   cache: FileCache,
   cache_setting: CacheSetting,
-  pub(crate) http_cache: HttpCache,
-  http_client: reqwest::Client,
+  pub http_cache: HttpCache,
+  http_client: HttpClient,
   blob_store: BlobStore,
   download_log_level: log::Level,
+  progress_bar: Option<ProgressBar>,
 }
 
 impl FileFetcher {
@@ -261,9 +341,9 @@ impl FileFetcher {
     http_cache: HttpCache,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    root_cert_store: Option<RootCertStore>,
+    http_client: HttpClient,
     blob_store: BlobStore,
-    unsafely_ignore_certificate_errors: Option<Vec<String>>,
+    progress_bar: Option<ProgressBar>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       auth_tokens: AuthTokens::new(env::var("DENO_AUTH_TOKENS").ok()),
@@ -271,16 +351,10 @@ impl FileFetcher {
       cache: Default::default(),
       cache_setting,
       http_cache,
-      http_client: create_http_client(
-        get_user_agent(),
-        root_cert_store,
-        vec![],
-        None,
-        unsafely_ignore_certificate_errors,
-        None,
-      )?,
+      http_client,
       blob_store,
       download_log_level: log::Level::Info,
+      progress_bar,
     })
   }
 
@@ -306,7 +380,7 @@ impl FileFetcher {
     let maybe_content_type = headers.get("content-type").cloned();
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
-    let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
+    let source = get_source_from_bytes(bytes, maybe_charset)?;
     let maybe_types = match media_type {
       MediaType::JavaScript
       | MediaType::Cjs
@@ -319,7 +393,7 @@ impl FileFetcher {
       local,
       maybe_types,
       media_type,
-      source: Arc::new(source),
+      source: source.into(),
       specifier: specifier.clone(),
       maybe_headers: Some(headers.clone()),
     })
@@ -328,7 +402,7 @@ impl FileFetcher {
   /// Fetch cached remote file.
   ///
   /// This is a recursive operation if source file has redirections.
-  fn fetch_cached(
+  pub fn fetch_cached(
     &self,
     specifier: &ModuleSpecifier,
     redirect_limit: i64,
@@ -405,7 +479,7 @@ impl FileFetcher {
       local,
       maybe_types: None,
       media_type,
-      source: Arc::new(source),
+      source: source.into(),
       specifier: specifier.clone(),
       maybe_headers: Some(headers),
     })
@@ -450,7 +524,7 @@ impl FileFetcher {
 
     let (media_type, maybe_charset) =
       map_content_type(specifier, Some(content_type.clone()));
-    let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
+    let source = get_source_from_bytes(bytes, maybe_charset)?;
 
     let local =
       self
@@ -469,7 +543,7 @@ impl FileFetcher {
       local,
       maybe_types: None,
       media_type,
-      source: Arc::new(source),
+      source: source.into(),
       specifier: specifier.clone(),
       maybe_headers: Some(headers),
     })
@@ -520,12 +594,17 @@ impl FileFetcher {
       .boxed();
     }
 
-    log::log!(
-      self.download_log_level,
-      "{} {}",
-      colors::green("Download"),
-      specifier
-    );
+    let mut _maybe_guard = None;
+    if let Some(pb) = self.progress_bar.as_ref() {
+      _maybe_guard = Some(pb.update(specifier.as_str()));
+    } else {
+      log::log!(
+        self.download_log_level,
+        "{} {}",
+        colors::green("Download"),
+        specifier
+      );
+    }
 
     let maybe_etag = match self.http_cache.get(specifier) {
       Ok((_, headers, _)) => headers.get("etag").cloned(),
@@ -538,14 +617,14 @@ impl FileFetcher {
     let file_fetcher = self.clone();
     // A single pass of fetch either yields code or yields a redirect.
     async move {
-      match fetch_once(FetchOnceArgs {
-        client,
-        url: specifier.clone(),
-        maybe_accept: maybe_accept.clone(),
-        maybe_etag,
-        maybe_auth_token,
-      })
-      .await?
+      match client
+        .fetch_once(FetchOnceArgs {
+          url: specifier.clone(),
+          maybe_accept: maybe_accept.clone(),
+          maybe_etag,
+          maybe_auth_token,
+        })
+        .await?
       {
         FetchOnceResult::NotModified => {
           let file = file_fetcher.fetch_cached(&specifier, 10)?.unwrap();
@@ -633,7 +712,11 @@ impl FileFetcher {
   }
 
   pub fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
-    if specifier.scheme() == "file" {
+    // TODO(@kitsonk) fix when deno_graph does not query cache for synthetic
+    // modules
+    if specifier.scheme() == "flags" {
+      None
+    } else if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
     } else {
       self.http_cache.get_cache_filename(specifier)
@@ -671,19 +754,20 @@ impl FileFetcher {
 
 #[cfg(test)]
 mod tests {
+  use crate::http_util::HttpClient;
+
   use super::*;
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
   use deno_core::resolve_url_or_path;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
-  use std::rc::Rc;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   fn setup(
     cache_setting: CacheSetting,
-    maybe_temp_dir: Option<Rc<TempDir>>,
-  ) -> (FileFetcher, Rc<TempDir>) {
+    maybe_temp_dir: Option<TempDir>,
+  ) -> (FileFetcher, TempDir) {
     let (file_fetcher, temp_dir, _) =
       setup_with_blob_store(cache_setting, maybe_temp_dir);
     (file_fetcher, temp_dir)
@@ -691,17 +775,16 @@ mod tests {
 
   fn setup_with_blob_store(
     cache_setting: CacheSetting,
-    maybe_temp_dir: Option<Rc<TempDir>>,
-  ) -> (FileFetcher, Rc<TempDir>, BlobStore) {
-    let temp_dir =
-      maybe_temp_dir.unwrap_or_else(|| Rc::new(TempDir::new().unwrap()));
+    maybe_temp_dir: Option<TempDir>,
+  ) -> (FileFetcher, TempDir, BlobStore) {
+    let temp_dir = maybe_temp_dir.unwrap_or_default();
     let location = temp_dir.path().join("deps");
     let blob_store = BlobStore::default();
     let file_fetcher = FileFetcher::new(
       HttpCache::new(&location),
       cache_setting,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       blob_store.clone(),
       None,
     )
@@ -749,7 +832,7 @@ mod tests {
     let url_str = format!("http://127.0.0.1:4545/encoding/{}", fixture);
     let specifier = resolve_url(&url_str).unwrap();
     let (file, headers) = test_fetch_remote(&specifier).await;
-    assert_eq!(file.source.as_str(), expected);
+    assert_eq!(&*file.source, expected);
     assert_eq!(file.media_type, MediaType::TypeScript);
     assert_eq!(
       headers.get("content-type").unwrap(),
@@ -761,7 +844,7 @@ mod tests {
     let p = test_util::testdata_path().join(format!("encoding/{}.ts", charset));
     let specifier = resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let (file, _) = test_fetch(&specifier).await;
-    assert_eq!(file.source.as_str(), expected);
+    assert_eq!(&*file.source, expected);
   }
 
   #[test]
@@ -784,13 +867,6 @@ mod tests {
         assert_eq!(actual.unwrap(), expected);
       }
     }
-  }
-
-  #[test]
-  fn test_strip_shebang() {
-    let value =
-      "#!/usr/bin/env deno\n\nconsole.log(\"hello deno!\");\n".to_string();
-    assert_eq!(strip_shebang(value), "\n\nconsole.log(\"hello deno!\");\n");
   }
 
   #[test]
@@ -978,7 +1054,7 @@ mod tests {
       local,
       maybe_types: None,
       media_type: MediaType::TypeScript,
-      source: Arc::new("some source code".to_string()),
+      source: "some source code".into(),
       specifier: specifier.clone(),
       maybe_headers: None,
     };
@@ -1008,7 +1084,7 @@ mod tests {
     let maybe_file = file_fetcher.get_source(&specifier);
     assert!(maybe_file.is_some());
     let file = maybe_file.unwrap();
-    assert_eq!(file.source.as_str(), "export const redirect = 1;\n");
+    assert_eq!(&*file.source, "export const redirect = 1;\n");
     assert_eq!(
       file.specifier,
       resolve_url("http://localhost:4545/subdir/redirects/redirect1.js")
@@ -1035,7 +1111,7 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source.as_str(),
+      &*file.source,
       "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
@@ -1067,7 +1143,7 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source.as_str(),
+      &*file.source,
       "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
@@ -1090,7 +1166,7 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source.as_str(),
+      &*file.source,
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
@@ -1113,7 +1189,7 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source.as_str(),
+      &*file.source,
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     // This validates that when using the cached value, because we modified
@@ -1134,7 +1210,7 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source.as_str(),
+      &*file.source,
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(file.media_type, MediaType::Json);
@@ -1146,7 +1222,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::ReloadAll,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
     )
@@ -1157,7 +1233,7 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source.as_str(),
+      &*file.source,
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
@@ -1166,13 +1242,13 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_uses_cache() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
     )
@@ -1199,7 +1275,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
     )
@@ -1336,13 +1412,13 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_uses_cache_with_redirects() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
     )
@@ -1371,7 +1447,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
     )
@@ -1465,18 +1541,19 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_no_remote() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Use,
       false,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
     )
     .unwrap();
-    let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
+    let specifier =
+      resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
@@ -1484,19 +1561,19 @@ mod tests {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(get_custom_error_class(&err), Some("NoRemote"));
-    assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/002_hello.ts\", but --no-remote is specified.");
+    assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/run/002_hello.ts\", but --no-remote is specified.");
   }
 
   #[tokio::test]
   async fn test_fetch_cache_only() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Only,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
     )
@@ -1505,12 +1582,13 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
     )
     .unwrap();
-    let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
+    let specifier =
+      resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
       .fetch(&specifier, &mut Permissions::allow_all())
@@ -1518,7 +1596,7 @@ mod tests {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(get_custom_error_class(&err), Some("NotCached"));
-    assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/002_hello.ts\", --cached-only is specified.");
+    assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified.");
 
     let result = file_fetcher_02
       .fetch(&specifier, &mut Permissions::allow_all())
@@ -1543,7 +1621,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    assert_eq!(file.source.as_str(), r#"console.log("hello deno");"#);
+    assert_eq!(&*file.source, r#"console.log("hello deno");"#);
 
     fs::write(fixture_path, r#"console.log("goodbye deno");"#).unwrap();
     let result = file_fetcher
@@ -1551,13 +1629,13 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    assert_eq!(file.source.as_str(), r#"console.log("goodbye deno");"#);
+    assert_eq!(&*file.source, r#"console.log("goodbye deno");"#);
   }
 
   #[tokio::test]
   async fn test_respect_cache_revalidates() {
     let _g = test_util::http_server();
-    let temp_dir = Rc::new(TempDir::new().unwrap());
+    let temp_dir = TempDir::new();
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let specifier =
@@ -1567,7 +1645,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    let first = file.source.as_str();
+    let first = file.source;
 
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
@@ -1576,7 +1654,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    let second = file.source.as_str();
+    let second = file.source;
 
     assert_ne!(first, second);
   }
@@ -1584,7 +1662,7 @@ mod tests {
   #[tokio::test]
   async fn test_respect_cache_still_fresh() {
     let _g = test_util::http_server();
-    let temp_dir = Rc::new(TempDir::new().unwrap());
+    let temp_dir = TempDir::new();
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let specifier =
@@ -1594,7 +1672,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    let first = file.source.as_str();
+    let first = file.source;
 
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
@@ -1603,7 +1681,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    let second = file.source.as_str();
+    let second = file.source;
 
     assert_eq!(first, second);
   }

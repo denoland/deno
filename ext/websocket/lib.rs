@@ -1,16 +1,18 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::invalid_hostname;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::url;
 use deno_core::AsyncRefCell;
+use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::Extension;
@@ -20,6 +22,8 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
+use http::header::HeaderName;
+use http::HeaderValue;
 use http::Method;
 use http::Request;
 use http::Uri;
@@ -30,18 +34,22 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::fmt;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
 use tokio_rustls::rustls::ServerName;
 use tokio_rustls::TlsConnector;
-use tokio_tungstenite::client_async;
+use tokio_tungstenite::client_async_with_config;
 use tokio_tungstenite::tungstenite::handshake::client::Response;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::tungstenite::protocol::Role;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::WebSocketStream;
 
@@ -53,7 +61,11 @@ pub struct WsRootStore(pub Option<RootCertStore>);
 pub struct WsUserAgent(pub String);
 
 pub trait WebSocketPermissions {
-  fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError>;
+  fn check_net_url(
+    &mut self,
+    _url: &url::Url,
+    _api_name: &str,
+  ) -> Result<(), AnyError>;
 }
 
 /// `UnsafelyIgnoreCertificateErrors` is a wrapper struct so it can be placed inside `GothamState`;
@@ -62,26 +74,36 @@ pub trait WebSocketPermissions {
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 
-type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type ClientWsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type ServerWsStream = WebSocketStream<Pin<Box<dyn Upgraded>>>;
+
 pub enum WebSocketStreamType {
   Client {
-    tx: AsyncRefCell<SplitSink<WsStream, Message>>,
-    rx: AsyncRefCell<SplitStream<WsStream>>,
+    tx: AsyncRefCell<SplitSink<ClientWsStream, Message>>,
+    rx: AsyncRefCell<SplitStream<ClientWsStream>>,
   },
   Server {
-    tx: AsyncRefCell<
-      SplitSink<WebSocketStream<hyper::upgrade::Upgraded>, Message>,
-    >,
-    rx: AsyncRefCell<SplitStream<WebSocketStream<hyper::upgrade::Upgraded>>>,
+    tx: AsyncRefCell<SplitSink<ServerWsStream, Message>>,
+    rx: AsyncRefCell<SplitStream<ServerWsStream>>,
   },
 }
 
+pub trait Upgraded: AsyncRead + AsyncWrite + Unpin {}
+
 pub async fn ws_create_server_stream(
   state: &Rc<RefCell<OpState>>,
-  transport: hyper::upgrade::Upgraded,
+  transport: Pin<Box<dyn Upgraded>>,
 ) -> Result<ResourceId, AnyError> {
-  let ws_stream =
-    WebSocketStream::from_raw_socket(transport, Role::Server, None).await;
+  let ws_stream = WebSocketStream::from_raw_socket(
+    transport,
+    Role::Server,
+    Some(WebSocketConfig {
+      max_message_size: Some(128 << 20),
+      max_frame_size: Some(32 << 20),
+      ..Default::default()
+    }),
+  )
+  .await;
   let (ws_tx, ws_rx) = ws_stream.split();
 
   let ws_resource = WsStreamResource {
@@ -132,8 +154,56 @@ impl WsStreamResource {
     match res {
       Ok(()) => Ok(()),
       Err(Error::ConnectionClosed) => Ok(()),
+      Err(tokio_tungstenite::tungstenite::Error::Protocol(
+        tokio_tungstenite::tungstenite::error::ProtocolError::SendAfterClosing,
+      )) => Ok(()),
       Err(err) => Err(err.into()),
     }
+  }
+
+  fn try_send(self: &Rc<Self>, message: Message) -> Result<bool, AnyError> {
+    let waker = deno_core::futures::task::noop_waker();
+    let mut cx = std::task::Context::from_waker(&waker);
+
+    let res = match self.stream {
+      WebSocketStreamType::Client { .. } => {
+        match RcRef::map(self, |r| match &r.stream {
+          WebSocketStreamType::Client { tx, .. } => tx,
+          WebSocketStreamType::Server { .. } => unreachable!(),
+        })
+        .try_borrow_mut()
+        {
+          Some(mut tx) => {
+            if tx.poll_ready_unpin(&mut cx).is_ready() {
+              tx.start_send_unpin(message)?;
+              tx.poll_flush_unpin(&mut cx).is_ready()
+            } else {
+              false
+            }
+          }
+          None => false,
+        }
+      }
+      WebSocketStreamType::Server { .. } => {
+        match RcRef::map(self, |r| match &r.stream {
+          WebSocketStreamType::Client { .. } => unreachable!(),
+          WebSocketStreamType::Server { tx, .. } => tx,
+        })
+        .try_borrow_mut()
+        {
+          Some(mut tx) => {
+            if tx.poll_ready_unpin(&mut cx).is_ready() {
+              tx.start_send_unpin(message)?;
+              tx.poll_flush_unpin(&mut cx).is_ready()
+            } else {
+              false
+            }
+          }
+          None => false,
+        }
+      }
+    };
+    Ok(res)
   }
 
   async fn next_message(
@@ -187,8 +257,10 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
+#[op]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
+  api_name: String,
   url: String,
   cancel_handle: bool,
 ) -> Result<Option<ResourceId>, AnyError>
@@ -197,7 +269,7 @@ where
 {
   state
     .borrow_mut::<WP>()
-    .check_net_url(&url::Url::parse(&url)?)?;
+    .check_net_url(&url::Url::parse(&url)?, &api_name)?;
 
   if cancel_handle {
     let rid = state
@@ -209,14 +281,6 @@ where
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateArgs {
-  url: String,
-  protocols: String,
-  cancel_handle: Option<ResourceId>,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateResponse {
@@ -225,10 +289,14 @@ pub struct CreateResponse {
   extensions: String,
 }
 
+#[op]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
-  args: CreateArgs,
-  _: (),
+  api_name: String,
+  url: String,
+  protocols: String,
+  cancel_handle: Option<ResourceId>,
+  headers: Option<Vec<(ByteString, ByteString)>>,
 ) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -236,13 +304,13 @@ where
   {
     let mut s = state.borrow_mut();
     s.borrow_mut::<WP>()
-      .check_net_url(&url::Url::parse(&args.url)?)
+      .check_net_url(&url::Url::parse(&url)?, &api_name)
       .expect(
         "Permission check should have been done in op_ws_check_permission",
       );
   }
 
-  let cancel_resource = if let Some(cancel_rid) = args.cancel_handle {
+  let cancel_resource = if let Some(cancel_rid) = cancel_handle {
     let r = state
       .borrow_mut()
       .resource_table
@@ -258,13 +326,37 @@ where
     .and_then(|it| it.0.clone());
   let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
-  let uri: Uri = args.url.parse()?;
+  let uri: Uri = url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
 
   request = request.header("User-Agent", user_agent);
 
-  if !args.protocols.is_empty() {
-    request = request.header("Sec-WebSocket-Protocol", args.protocols);
+  if !protocols.is_empty() {
+    request = request.header("Sec-WebSocket-Protocol", protocols);
+  }
+
+  if let Some(headers) = headers {
+    for (key, value) in headers {
+      let name = HeaderName::from_bytes(&key)
+        .map_err(|err| type_error(err.to_string()))?;
+      let v = HeaderValue::from_bytes(&value)
+        .map_err(|err| type_error(err.to_string()))?;
+
+      let is_disallowed_header = matches!(
+        name,
+        http::header::HOST
+          | http::header::SEC_WEBSOCKET_ACCEPT
+          | http::header::SEC_WEBSOCKET_EXTENSIONS
+          | http::header::SEC_WEBSOCKET_KEY
+          | http::header::SEC_WEBSOCKET_PROTOCOL
+          | http::header::SEC_WEBSOCKET_VERSION
+          | http::header::UPGRADE
+          | http::header::CONNECTION
+      );
+      if !is_disallowed_header {
+        request = request.header(name, v);
+      }
+    }
   }
 
   let request = request.body(())?;
@@ -295,8 +387,16 @@ where
     _ => unreachable!(),
   };
 
-  let client = client_async(request, socket);
-  let (stream, response): (WsStream, Response) =
+  let client = client_async_with_config(
+    request,
+    socket,
+    Some(WebSocketConfig {
+      max_message_size: Some(128 << 20),
+      max_frame_size: Some(32 << 20),
+      ..Default::default()
+    }),
+  );
+  let (stream, response): (ClientWsStream, Response) =
     if let Some(cancel_resource) = cancel_resource {
       client.or_cancel(cancel_resource.0.to_owned()).await?
     } else {
@@ -305,11 +405,11 @@ where
     .map_err(|err| {
       DomExceptionNetworkError::new(&format!(
         "failed to connect to WebSocket: {}",
-        err.to_string()
+        err
       ))
     })?;
 
-  if let Some(cancel_rid) = args.cancel_handle {
+  if let Some(cancel_rid) = cancel_handle {
     state.borrow_mut().resource_table.close(cancel_rid).ok();
   }
 
@@ -347,8 +447,10 @@ pub enum SendValue {
   Text(String),
   Binary(ZeroCopyBuf),
   Pong,
+  Ping,
 }
 
+#[op]
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -358,6 +460,7 @@ pub async fn op_ws_send(
     SendValue::Text(text) => Message::Text(text),
     SendValue::Binary(buf) => Message::Binary(buf.to_vec()),
     SendValue::Pong => Message::Pong(vec![]),
+    SendValue::Ping => Message::Ping(vec![]),
   };
 
   let resource = state
@@ -368,23 +471,65 @@ pub async fn op_ws_send(
   Ok(())
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CloseArgs {
+#[op]
+pub async fn op_ws_send_string(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  text: String,
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<WsStreamResource>(rid)?;
+  resource.send(Message::Text(text)).await?;
+  Ok(())
+}
+
+#[op]
+pub async fn op_ws_send_binary(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  data: ZeroCopyBuf,
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<WsStreamResource>(rid)?;
+  resource.send(Message::Binary(data.to_vec())).await?;
+  Ok(())
+}
+
+#[op]
+pub fn op_ws_try_send_string(
+  state: &mut OpState,
+  rid: ResourceId,
+  text: String,
+) -> Result<bool, AnyError> {
+  let resource = state.resource_table.get::<WsStreamResource>(rid)?;
+  resource.try_send(Message::Text(text))
+}
+
+#[op(fast)]
+pub fn op_ws_try_send_binary(
+  state: &mut OpState,
+  rid: u32,
+  value: &[u8],
+) -> Result<bool, AnyError> {
+  let resource = state.resource_table.get::<WsStreamResource>(rid)?;
+  resource.try_send(Message::Binary(value.to_vec()))
+}
+
+#[op(deferred)]
+pub async fn op_ws_close(
+  state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   code: Option<u16>,
   reason: Option<String>,
-}
-
-pub async fn op_ws_close(
-  state: Rc<RefCell<OpState>>,
-  args: CloseArgs,
-  _: (),
 ) -> Result<(), AnyError> {
-  let rid = args.rid;
-  let msg = Message::Close(args.code.map(|c| CloseFrame {
+  let rid = rid;
+  let msg = Message::Close(code.map(|c| CloseFrame {
     code: CloseCode::from(c),
-    reason: match args.reason {
+    reason: match reason {
       Some(reason) => Cow::from(reason),
       None => Default::default(),
     },
@@ -410,10 +555,10 @@ pub enum NextEventResponse {
   Closed,
 }
 
+#[op]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<NextEventResponse, AnyError> {
   let resource = state
     .borrow_mut()
@@ -437,7 +582,9 @@ pub async fn op_ws_next_event(
     Some(Ok(Message::Pong(_))) => NextEventResponse::Pong,
     Some(Err(e)) => NextEventResponse::Error(e.to_string()),
     None => {
-      state.borrow_mut().resource_table.close(rid).unwrap();
+      // No message was received, presumably the socket closed while we waited.
+      // Try close the stream, ignoring any errors, and report closed status to JavaScript.
+      let _ = state.borrow_mut().resource_table.close(rid);
       NextEventResponse::Closed
     }
   };
@@ -456,14 +603,15 @@ pub fn init<P: WebSocketPermissions + 'static>(
       "02_websocketstream.js",
     ))
     .ops(vec![
-      (
-        "op_ws_check_permission_and_cancel_handle",
-        op_sync(op_ws_check_permission_and_cancel_handle::<P>),
-      ),
-      ("op_ws_create", op_async(op_ws_create::<P>)),
-      ("op_ws_send", op_async(op_ws_send)),
-      ("op_ws_close", op_async(op_ws_close)),
-      ("op_ws_next_event", op_async(op_ws_next_event)),
+      op_ws_check_permission_and_cancel_handle::decl::<P>(),
+      op_ws_create::decl::<P>(),
+      op_ws_send::decl(),
+      op_ws_close::decl(),
+      op_ws_next_event::decl(),
+      op_ws_send_string::decl(),
+      op_ws_send_binary::decl(),
+      op_ws_try_send_string::decl(),
+      op_ws_try_send_binary::decl(),
     ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));

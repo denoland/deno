@@ -45,11 +45,11 @@ Deno.test(
 
 Deno.test(
   async function wasmInstantiateStreamingNoContentType() {
+    const response = new Response(simpleWasm);
+    // Rejects, not throws.
+    const wasmPromise = WebAssembly.instantiateStreaming(response);
     await assertRejects(
-      async () => {
-        const response = Promise.resolve(new Response(simpleWasm));
-        await WebAssembly.instantiateStreaming(response);
-      },
+      () => wasmPromise,
       TypeError,
       "Invalid WebAssembly content type.",
     );
@@ -79,8 +79,8 @@ Deno.test(async function wasmInstantiateStreaming() {
 Deno.test(
   { permissions: { read: true } },
   async function wasmFileStreaming() {
-    const url = new URL("../testdata/unreachable.wasm", import.meta.url);
-    assert(url.href.startsWith("file://"));
+    const url = import.meta.resolve("../testdata/assets/unreachable.wasm");
+    assert(url.startsWith("file://"));
 
     const { module } = await WebAssembly.instantiateStreaming(fetch(url));
     assertEquals(WebAssembly.Module.exports(module), [{
@@ -96,7 +96,7 @@ Deno.test(
     // deno-dom's WASM file is a real-world non-trivial case that gave us
     // trouble when implementing this.
     await WebAssembly.instantiateStreaming(fetch(
-      "http://localhost:4545/deno_dom_0.1.3-alpha2.wasm",
+      "http://localhost:4545/assets/deno_dom_0.1.3-alpha2.wasm",
     ));
   },
 );

@@ -1,0 +1,5 @@
+[WILDCARD]
+
+[WILDCARD]/bench/check_local_by_default.ts
+benchmark      time (avg)             (min … max)       p75       p99      p995
+------------------------------------------------- -----------------------------

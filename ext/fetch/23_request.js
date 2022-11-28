@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -16,9 +16,9 @@
   const { HTTP_TOKEN_CODE_POINT_RE, byteUpperCase } = window.__bootstrap.infra;
   const { URL } = window.__bootstrap.url;
   const { guardFromHeaders } = window.__bootstrap.headers;
-  const { mixinBody, extractBody } = window.__bootstrap.fetchBody;
+  const { mixinBody, extractBody, InnerBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
-  const mimesniff = window.__bootstrap.mimesniff;
+  const { extractMimeType } = window.__bootstrap.mimesniff;
   const { blobFromObjectUrl } = window.__bootstrap.file;
   const {
     headersFromHeaderList,
@@ -26,16 +26,14 @@
     fillHeaders,
     getDecodeSplitHeader,
   } = window.__bootstrap.headers;
-  const { HttpClient } = window.__bootstrap.fetch;
+  const { HttpClientPrototype } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
   const {
     ArrayPrototypeMap,
     ArrayPrototypeSlice,
     ArrayPrototypeSplice,
-    MapPrototypeHas,
-    MapPrototypeGet,
-    MapPrototypeSet,
     ObjectKeys,
+    ObjectPrototypeIsPrototypeOf,
     RegExpPrototypeTest,
     Symbol,
     SymbolFor,
@@ -44,51 +42,112 @@
 
   const _request = Symbol("request");
   const _headers = Symbol("headers");
+  const _getHeaders = Symbol("get headers");
+  const _headersCache = Symbol("headers cache");
   const _signal = Symbol("signal");
   const _mimeType = Symbol("mime type");
   const _body = Symbol("body");
+  const _flash = Symbol("flash");
+  const _url = Symbol("url");
+  const _method = Symbol("method");
+
+  /**
+   * @param {(() => string)[]} urlList
+   * @param {string[]} urlListProcessed
+   */
+  function processUrlList(urlList, urlListProcessed) {
+    for (let i = 0; i < urlList.length; i++) {
+      if (urlListProcessed[i] === undefined) {
+        urlListProcessed[i] = urlList[i]();
+      }
+    }
+    return urlListProcessed;
+  }
 
   /**
    * @typedef InnerRequest
-   * @property {string} method
+   * @property {() => string} method
    * @property {() => string} url
    * @property {() => string} currentUrl
-   * @property {[string, string][]} headerList
+   * @property {() => [string, string][]} headerList
    * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
    * @property {"follow" | "error" | "manual"} redirectMode
    * @property {number} redirectCount
-   * @property {string[]} urlList
+   * @property {(() => string)[]} urlList
+   * @property {string[]} urlListProcessed
    * @property {number | null} clientRid NOTE: non standard extension for `Deno.HttpClient`.
    * @property {Blob | null} blobUrlEntry
    */
 
   /**
-   * @param {string} method
-   * @param {string} url
-   * @param {[string, string][]} headerList
+   * @param {() => string} method
+   * @param {string | () => string} url
+   * @param {() => [string, string][]} headerList
    * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
    * @param {boolean} maybeBlob
-   * @returns
+   * @returns {InnerRequest}
    */
   function newInnerRequest(method, url, headerList, body, maybeBlob) {
     let blobUrlEntry = null;
-    if (maybeBlob && url.startsWith("blob:")) {
+    if (maybeBlob && typeof url === "string" && url.startsWith("blob:")) {
       blobUrlEntry = blobFromObjectUrl(url);
     }
     return {
-      method,
-      headerList,
+      methodInner: null,
+      get method() {
+        if (this.methodInner === null) {
+          try {
+            this.methodInner = method();
+          } catch {
+            throw new TypeError("cannot read method: request closed");
+          }
+        }
+        return this.methodInner;
+      },
+      set method(value) {
+        this.methodInner = value;
+      },
+      headerListInner: null,
+      get headerList() {
+        if (this.headerListInner === null) {
+          try {
+            this.headerListInner = headerList();
+          } catch {
+            throw new TypeError("cannot read headers: request closed");
+          }
+        }
+        return this.headerListInner;
+      },
+      set headerList(value) {
+        this.headerListInner = value;
+      },
       body,
       redirectMode: "follow",
       redirectCount: 0,
-      urlList: [url],
+      urlList: [typeof url === "string" ? () => url : url],
+      urlListProcessed: [],
       clientRid: null,
       blobUrlEntry,
       url() {
-        return this.urlList[0];
+        if (this.urlListProcessed[0] === undefined) {
+          try {
+            this.urlListProcessed[0] = this.urlList[0]();
+          } catch {
+            throw new TypeError("cannot read url: request closed");
+          }
+        }
+        return this.urlListProcessed[0];
       },
       currentUrl() {
-        return this.urlList[this.urlList.length - 1];
+        const currentIndex = this.urlList.length - 1;
+        if (this.urlListProcessed[currentIndex] === undefined) {
+          try {
+            this.urlListProcessed[currentIndex] = this.urlList[currentIndex]();
+          } catch {
+            throw new TypeError("cannot read url: request closed");
+          }
+        }
+        return this.urlListProcessed[currentIndex];
       },
     };
   }
@@ -99,9 +158,11 @@
    * @returns {InnerRequest}
    */
   function cloneInnerRequest(request) {
-    const headerList = [
-      ...ArrayPrototypeMap(request.headerList, (x) => [x[0], x[1]]),
-    ];
+    const headerList = ArrayPrototypeMap(
+      request.headerList,
+      (x) => [x[0], x[1]],
+    );
+
     let body = null;
     if (request.body !== null) {
       body = request.body.clone();
@@ -114,13 +175,29 @@
       redirectMode: request.redirectMode,
       redirectCount: request.redirectCount,
       urlList: request.urlList,
+      urlListProcessed: request.urlListProcessed,
       clientRid: request.clientRid,
       blobUrlEntry: request.blobUrlEntry,
       url() {
-        return this.urlList[0];
+        if (this.urlListProcessed[0] === undefined) {
+          try {
+            this.urlListProcessed[0] = this.urlList[0]();
+          } catch {
+            throw new TypeError("cannot read url: request closed");
+          }
+        }
+        return this.urlListProcessed[0];
       },
       currentUrl() {
-        return this.urlList[this.urlList.length - 1];
+        const currentIndex = this.urlList.length - 1;
+        if (this.urlListProcessed[currentIndex] === undefined) {
+          try {
+            this.urlListProcessed[currentIndex] = this.urlList[currentIndex]();
+          } catch {
+            throw new TypeError("cannot read url: request closed");
+          }
+        }
+        return this.urlListProcessed[currentIndex];
       },
     };
   }
@@ -166,48 +243,36 @@
     /** @type {InnerRequest} */
     [_request];
     /** @type {Headers} */
-    [_headers];
+    [_headersCache];
+    [_getHeaders];
+
+    /** @type {Headers} */
+    get [_headers]() {
+      if (this[_headersCache] === undefined) {
+        this[_headersCache] = this[_getHeaders]();
+      }
+      return this[_headersCache];
+    }
+
+    set [_headers](value) {
+      this[_headersCache] = value;
+    }
+
     /** @type {AbortSignal} */
     [_signal];
     get [_mimeType]() {
-      let charset = null;
-      let essence = null;
-      let mimeType = null;
       const values = getDecodeSplitHeader(
         headerListFromHeaders(this[_headers]),
         "Content-Type",
       );
-      if (values === null) return null;
-      for (const value of values) {
-        const temporaryMimeType = mimesniff.parseMimeType(value);
-        if (
-          temporaryMimeType === null ||
-          mimesniff.essence(temporaryMimeType) == "*/*"
-        ) {
-          continue;
-        }
-        mimeType = temporaryMimeType;
-        if (mimesniff.essence(mimeType) !== essence) {
-          charset = null;
-          const newCharset = MapPrototypeGet(mimeType.parameters, "charset");
-          if (newCharset !== undefined) {
-            charset = newCharset;
-          }
-          essence = mimesniff.essence(mimeType);
-        } else {
-          if (
-            MapPrototypeHas(mimeType.parameters, "charset") === null &&
-            charset !== null
-          ) {
-            MapPrototypeSet(mimeType.parameters, "charset", charset);
-          }
-        }
-      }
-      if (mimeType === null) return null;
-      return mimeType;
+      return extractMimeType(values);
     }
     get [_body]() {
-      return this[_request].body;
+      if (this[_flash]) {
+        return this[_flash].body;
+      } else {
+        return this[_request].body;
+      }
     }
 
     /**
@@ -239,9 +304,17 @@
       // 5.
       if (typeof input === "string") {
         const parsedURL = new URL(input, baseURL);
-        request = newInnerRequest("GET", parsedURL.href, [], null, true);
+        request = newInnerRequest(
+          () => "GET",
+          parsedURL.href,
+          () => [],
+          null,
+          true,
+        );
       } else { // 6.
-        if (!(input instanceof Request)) throw new TypeError("Unreachable");
+        if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
+          throw new TypeError("Unreachable");
+        }
         request = input[_request];
         signal = input[_signal];
       }
@@ -268,7 +341,10 @@
 
       // NOTE: non standard extension. This handles Deno.HttpClient parameter
       if (init.client !== undefined) {
-        if (init.client !== null && !(init.client instanceof HttpClient)) {
+        if (
+          init.client !== null &&
+          !ObjectPrototypeIsPrototypeOf(HttpClientPrototype, init.client)
+        ) {
           throw webidl.makeException(
             TypeError,
             "`client` must be a Deno.HttpClient",
@@ -312,7 +388,7 @@
 
       // 33.
       let inputBody = null;
-      if (input instanceof Request) {
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
         inputBody = input[_body];
       }
 
@@ -356,36 +432,63 @@
     }
 
     get method() {
-      webidl.assertBranded(this, Request);
-      return this[_request].method;
+      webidl.assertBranded(this, RequestPrototype);
+      if (this[_method]) {
+        return this[_method];
+      }
+      if (this[_flash]) {
+        this[_method] = this[_flash].methodCb();
+        return this[_method];
+      } else {
+        this[_method] = this[_request].method;
+        return this[_method];
+      }
     }
 
     get url() {
-      webidl.assertBranded(this, Request);
-      return this[_request].url();
+      webidl.assertBranded(this, RequestPrototype);
+      if (this[_url]) {
+        return this[_url];
+      }
+
+      if (this[_flash]) {
+        this[_url] = this[_flash].urlCb();
+        return this[_url];
+      } else {
+        this[_url] = this[_request].url();
+        return this[_url];
+      }
     }
 
     get headers() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_headers];
     }
 
     get redirect() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
+      if (this[_flash]) {
+        return this[_flash].redirectMode;
+      }
       return this[_request].redirectMode;
     }
 
     get signal() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_signal];
     }
 
     clone() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
-      const newReq = cloneInnerRequest(this[_request]);
+      let newReq;
+      if (this[_flash]) {
+        newReq = cloneInnerRequest(this[_flash]);
+      } else {
+        newReq = cloneInnerRequest(this[_request]);
+      }
       const newSignal = abortSignal.newSignal();
       abortSignal.follow(newSignal, this[_signal]);
       return fromInnerRequest(
@@ -398,7 +501,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Request,
+        evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
         keys: [
           "bodyUsed",
           "headers",
@@ -410,22 +513,22 @@
     }
   }
 
-  mixinBody(Request, _body, _mimeType);
-
   webidl.configurePrototype(Request);
+  const RequestPrototype = Request.prototype;
+  mixinBody(RequestPrototype, _body, _mimeType);
 
   webidl.converters["Request"] = webidl.createInterfaceConverter(
     "Request",
-    Request,
+    RequestPrototype,
   );
   webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
     // Union for (Request or USVString)
     if (typeof V == "object") {
-      if (V instanceof Request) {
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, V)) {
         return webidl.converters["Request"](V, opts);
       }
     }
-    // Passed to new URL(...) which implictly converts DOMString -> USVString
+    // Passed to new URL(...) which implicitly converts DOMString -> USVString
     return webidl.converters["DOMString"](V, opts);
   };
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
@@ -475,13 +578,47 @@
     const request = webidl.createBranded(Request);
     request[_request] = inner;
     request[_signal] = signal;
-    request[_headers] = headersFromHeaderList(inner.headerList, guard);
+    request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
+    return request;
+  }
+
+  /**
+   * @param {number} serverId
+   * @param {number} streamRid
+   * @param {ReadableStream} body
+   * @param {() => string} methodCb
+   * @param {() => string} urlCb
+   * @param {() => [string, string][]} headersCb
+   * @returns {Request}
+   */
+  function fromFlashRequest(
+    serverId,
+    streamRid,
+    body,
+    methodCb,
+    urlCb,
+    headersCb,
+  ) {
+    const request = webidl.createBranded(Request);
+    request[_flash] = {
+      body: body !== null ? new InnerBody(body) : null,
+      methodCb,
+      urlCb,
+      streamRid,
+      serverId,
+      redirectMode: "follow",
+      redirectCount: 0,
+    };
+    request[_getHeaders] = () => headersFromHeaderList(headersCb(), "request");
     return request;
   }
 
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.Request = Request;
   window.__bootstrap.fetch.toInnerRequest = toInnerRequest;
+  window.__bootstrap.fetch.fromFlashRequest = fromFlashRequest;
   window.__bootstrap.fetch.fromInnerRequest = fromInnerRequest;
   window.__bootstrap.fetch.newInnerRequest = newInnerRequest;
+  window.__bootstrap.fetch.processUrlList = processUrlList;
+  window.__bootstrap.fetch._flash = _flash;
 })(globalThis);

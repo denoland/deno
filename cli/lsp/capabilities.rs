@@ -1,36 +1,12 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 ///!
 ///! Provides information about what capabilities that are supported by the
 ///! language server, which helps determine what messages are sent from the
 ///! client.
 ///!
-use lspower::lsp::CallHierarchyServerCapability;
-use lspower::lsp::ClientCapabilities;
-use lspower::lsp::CodeActionKind;
-use lspower::lsp::CodeActionOptions;
-use lspower::lsp::CodeActionProviderCapability;
-use lspower::lsp::CodeLensOptions;
-use lspower::lsp::CompletionOptions;
-use lspower::lsp::DocumentSymbolOptions;
-use lspower::lsp::FoldingRangeProviderCapability;
-use lspower::lsp::HoverProviderCapability;
-use lspower::lsp::ImplementationProviderCapability;
-use lspower::lsp::OneOf;
-use lspower::lsp::SaveOptions;
-use lspower::lsp::SelectionRangeProviderCapability;
-use lspower::lsp::SemanticTokensFullOptions;
-use lspower::lsp::SemanticTokensOptions;
-use lspower::lsp::SemanticTokensServerCapabilities;
-use lspower::lsp::ServerCapabilities;
-use lspower::lsp::SignatureHelpOptions;
-use lspower::lsp::TextDocumentSyncCapability;
-use lspower::lsp::TextDocumentSyncKind;
-use lspower::lsp::TextDocumentSyncOptions;
-use lspower::lsp::TypeDefinitionProviderCapability;
-use lspower::lsp::WorkDoneProgressOptions;
-use lspower::lsp::WorkspaceFoldersServerCapabilities;
-use lspower::lsp::WorkspaceServerCapabilities;
+use deno_core::serde_json::json;
+use tower_lsp::lsp_types::*;
 
 use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::semantic_tokens::get_legend;
@@ -82,6 +58,7 @@ pub fn server_capabilities(
         ";".to_string(),
         "(".to_string(),
       ]),
+      completion_item: None,
       trigger_characters: Some(vec![
         ".".to_string(),
         "\"".to_string(),
@@ -154,12 +131,17 @@ pub fn server_capabilities(
     workspace: Some(WorkspaceServerCapabilities {
       workspace_folders: Some(WorkspaceFoldersServerCapabilities {
         supported: Some(true),
-        change_notifications: None,
+        change_notifications: Some(OneOf::Left(true)),
       }),
       file_operations: None,
     }),
-    experimental: None,
     linked_editing_range_provider: None,
     moniker_provider: None,
+    experimental: Some(json!({
+      "denoConfigTasks": true,
+      "testingApi":true,
+    })),
+    inlay_hint_provider: Some(OneOf::Left(true)),
+    position_encoding: None,
   }
 }
