@@ -5,8 +5,6 @@ use test_util as util;
 use test_util::TempDir;
 
 mod coverage {
-  use util::testdata_path;
-
   use super::*;
   #[test]
   fn branch() {
@@ -36,13 +34,15 @@ mod coverage {
 
     let invalid_cache_path =
       util::testdata_path().join("coverage/invalid_cache");
-    let mod_before_path = testdata_path()
+    let mod_before_path = util::testdata_path()
       .join(&invalid_cache_path)
       .join("mod_before.ts");
-    let mod_after_path = testdata_path()
+    let mod_after_path = util::testdata_path()
       .join(&invalid_cache_path)
       .join("mod_after.ts");
-    let mod_path = testdata_path().join(&invalid_cache_path).join("mod.ts");
+    let mod_path = util::testdata_path()
+      .join(&invalid_cache_path)
+      .join("mod.ts");
 
     // Write the inital mod.ts file
     std::fs::copy(mod_before_path, &mod_path).unwrap();
