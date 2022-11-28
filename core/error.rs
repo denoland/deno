@@ -258,7 +258,6 @@ impl JsError {
             (&frame.file_name, frame.line_number)
           {
             if !file_name.trim_start_matches('[').starts_with("deno:") {
-              // Source lookup expects a 0-based line number, ours are 1-based.
               source_line = get_source_line(
                 file_name,
                 line_number,
@@ -409,7 +408,6 @@ impl JsError {
               (&frame.file_name, frame.line_number)
             {
               if !file_name.trim_start_matches('[').starts_with("deno:") {
-                // Source lookup expects a 0-based line number, ours are 1-based.
                 source_line = get_source_line(
                   file_name,
                   line_number,
