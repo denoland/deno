@@ -497,6 +497,14 @@ delete Intl.v8BreakIterator;
       },
     });
 
+    ObjectAssign(internals.nodeUnstable, {
+      Command: __bootstrap.spawn.createCommand(
+        internals.nodeUnstable.spawn,
+        internals.nodeUnstable.spawnSync,
+        internals.nodeUnstable.spawnChild,
+      ),
+    });
+
     const finalDenoNs = {
       core,
       internal: internalSymbol,
@@ -526,6 +534,14 @@ delete Intl.v8BreakIterator;
         listenDatagram: __bootstrap.net.createListenDatagram(
           ops.op_net_listen_udp,
           ops.op_net_listen_unixpacket,
+        ),
+      });
+
+      ObjectAssign(finalDenoNs, {
+        Command: __bootstrap.spawn.createCommand(
+          finalDenoNs.spawn,
+          finalDenoNs.spawnSync,
+          finalDenoNs.spawnChild,
         ),
       });
     }
@@ -632,6 +648,14 @@ delete Intl.v8BreakIterator;
       },
     });
 
+    ObjectAssign(internals.nodeUnstable, {
+      Command: __bootstrap.spawn.createCommand(
+        internals.nodeUnstable.spawn,
+        internals.nodeUnstable.spawnSync,
+        internals.nodeUnstable.spawnChild,
+      ),
+    });
+
     const finalDenoNs = {
       core,
       internal: internalSymbol,
@@ -653,6 +677,13 @@ delete Intl.v8BreakIterator;
         listenDatagram: __bootstrap.net.createListenDatagram(
           ops.op_net_listen_udp,
           ops.op_net_listen_unixpacket,
+        ),
+      });
+      ObjectAssign(finalDenoNs, {
+        Command: __bootstrap.spawn.createCommand(
+          finalDenoNs.spawn,
+          finalDenoNs.spawnSync,
+          finalDenoNs.spawnChild,
         ),
       });
     }
