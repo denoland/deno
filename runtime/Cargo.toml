@@ -20,6 +20,7 @@ path = "lib.rs"
 
 [[example]]
 name = "hello_runtime"
+required-features = []
 path = "examples/hello_runtime.rs"
 
 [build-dependencies]
