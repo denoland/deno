@@ -4,6 +4,7 @@ console.log(typeof createRequire(import.meta.url));
 console.log(typeof createRequire(new URL(import.meta.url)));
 console.log(typeof createRequire("/"));
 console.log(typeof createRequire("/foo"));
+console.log(typeof createRequire("/foo/"));
 console.log(typeof createRequire("c:\\foo"));
 try {
   createRequire("https://example.com/");

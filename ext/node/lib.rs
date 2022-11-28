@@ -242,7 +242,10 @@ where
 fn op_require_proxy_path(filename: String) -> String {
   // Allow a directory to be passed as the filename
   let trailing_slash = if cfg!(windows) {
-    filename.ends_with('\\')
+    // Node also counts a trailing forward slash as a
+    // directory for node on Windows, but not backslashes
+    // on non-Windows platforms
+    filename.ends_with('\\') || filename.ends_with('/')
   } else {
     filename.ends_with('/')
   };
