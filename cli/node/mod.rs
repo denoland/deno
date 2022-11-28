@@ -636,17 +636,22 @@ pub fn load_cjs_module_from_ext_node(
   js_runtime: &mut JsRuntime,
   module: &str,
   main: bool,
+  inspect_brk: bool,
 ) -> Result<(), AnyError> {
   fn escape_for_single_quote_string(text: &str) -> String {
     text.replace('\\', r"\\").replace('\'', r"\'")
   }
 
   let source_code = &format!(
-    r#"(function loadCjsModule(module) {{
+    r#"(function loadCjsModule(module, inspectBrk) {{
+      if (inspectBrk) {{
+        Deno[Deno.internal].require.setInspectBrk();
+      }}
       Deno[Deno.internal].require.Module._load(module, null, {main});
-    }})('{module}');"#,
+    }})('{module}', {inspect_brk});"#,
     main = main,
     module = escape_for_single_quote_string(module),
+    inspect_brk = inspect_brk,
   );
 
   js_runtime.execute_script(&located_script_name!(), source_code)?;
