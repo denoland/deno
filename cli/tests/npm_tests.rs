@@ -294,12 +294,20 @@ mod npm {
   });
 
   itest!(types_ambient_module_import_map {
-  args: "check --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
-  output: "npm/types_ambient_module/main_import_map.out",
-  envs: env_vars(),
-  http_server: true,
-  exit_code: 1,
-});
+    args: "check --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
+    output: "npm/types_ambient_module/main_import_map.out",
+    envs: env_vars(),
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(no_types_cjs {
+    args: "check --quiet npm/no_types_cjs/main.ts",
+    output_str: Some(""),
+    exit_code: 0,
+    envs: env_vars(),
+    http_server: true,
+  });
 
   itest!(no_types_in_conditional_exports {
     args: "run --check --unstable npm/no_types_in_conditional_exports/main.ts",
