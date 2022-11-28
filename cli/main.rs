@@ -10,7 +10,6 @@ mod file_fetcher;
 mod graph_util;
 mod http_util;
 mod js;
-mod logger;
 mod lsp;
 mod module_loader;
 mod napi;
@@ -976,7 +975,7 @@ pub fn main() {
       init_v8_flags(&flags.v8_flags);
     }
 
-    logger::init(flags.log_level);
+    util::logger::init(flags.log_level);
 
     get_subcommand(flags).await
   };
