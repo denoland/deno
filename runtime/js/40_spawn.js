@@ -277,136 +277,44 @@
     };
   }
 
-  class Command {
-    #command;
-    #options;
+  function createCommand(spawn, spawnSync, spawnChild) {
+    return class Command {
+      #command;
+      #options;
 
-    #child;
+      constructor(command, options) {
+        this.#command = command;
+        this.#options = options;
+      }
 
-    #consumed;
-
-    constructor(command, options) {
-      this.#command = command;
-      this.#options = options;
-    }
-
-    output() {
-      if (this.#child) {
-        return this.#child.output();
-      } else {
-        if (this.#consumed) {
-          throw new TypeError(
-            "Command instance is being or has already been consumed.",
-          );
-        }
+      output() {
         if (this.#options?.stdin === "piped") {
           throw new TypeError(
             "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
           );
         }
-
-        this.#consumed = true;
-        return Deno.spawn(this.#command, this.#options);
-      }
-    }
-
-    outputSync() {
-      if (this.#consumed) {
-        throw new TypeError(
-          "Command instance is being or has already been consumed.",
-        );
-      }
-      if (this.#child) {
-        throw new TypeError("Was spawned");
-      }
-      if (this.#options?.stdin === "piped") {
-        throw new TypeError(
-          "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
-        );
+        return spawn(this.#command, this.#options);
       }
 
-      this.#consumed = true;
-      return Deno.spawnSync(this.#command, this.#options);
-    }
-
-    spawn() {
-      if (this.#consumed) {
-        throw new TypeError(
-          "Command instance is being or has already been consumed.",
-        );
+      outputSync() {
+        if (this.#options?.stdin === "piped") {
+          throw new TypeError(
+            "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
+          );
+        }
+        return spawnSync(this.#command, this.#options);
       }
 
-      this.#consumed = true;
-      this.#child = Deno.spawnChild(this.#command, this.#options);
-    }
-
-    get stdin() {
-      if (!this.#child) {
-        throw new TypeError("Wasn't spawned");
+      spawn() {
+        return spawnChild(this.#command, this.#options);
       }
-
-      return this.#child.stdin;
-    }
-
-    get stdout() {
-      if (!this.#child) {
-        throw new TypeError("Wasn't spawned");
-      }
-
-      return this.#child.stdout;
-    }
-
-    get stderr() {
-      if (!this.#child) {
-        throw new TypeError("Wasn't spawned");
-      }
-
-      return this.#child.stderr;
-    }
-
-    get status() {
-      if (!this.#child) {
-        throw new TypeError("Wasn't spawned");
-      }
-
-      return this.#child.status;
-    }
-
-    get pid() {
-      if (!this.#child) {
-        throw new TypeError("Wasn't spawned");
-      }
-
-      return this.#child.pid;
-    }
-
-    kill(signo = "SIGTERM") {
-      if (!this.#child) {
-        throw new TypeError("Wasn't spawned");
-      }
-      this.#child.kill(signo);
-    }
-
-    ref() {
-      if (!this.#child) {
-        throw new TypeError("Wasn't spawned");
-      }
-
-      this.#child.ref();
-    }
-
-    unref() {
-      if (!this.#child) {
-        throw new TypeError("Wasn't spawned");
-      }
-
-      this.#child.unref();
-    }
+    };
   }
 
   window.__bootstrap.spawn = {
     Child,
-    Command,
+    ChildProcess: Child,
+    createCommand,
     createSpawn,
     createSpawnChild,
     createSpawnSync,
