@@ -155,6 +155,13 @@ mod npm {
   //   http_server: true,
   // });
 
+  itest!(dynamic_import_reload_same_package {
+    args: "run -A --reload npm/dynamic_import_reload_same_package/main.ts",
+    output: "npm/dynamic_import_reload_same_package/main.out",
+    envs: env_vars(),
+    http_server: true,
+  });
+
   itest!(env_var_re_export_dev {
     args: "run --allow-read --allow-env --quiet npm/env_var_re_export/main.js",
     output_str: Some("dev\n"),
