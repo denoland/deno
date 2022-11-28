@@ -3,24 +3,24 @@
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::Lockfile;
+use crate::args::TsConfigType;
+use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache;
+use crate::cache::DenoDir;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
-use crate::deno_dir;
 use crate::emit::emit_parsed_source;
-use crate::emit::TsConfigType;
-use crate::emit::TsTypeLib;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::http_cache;
-use crate::lockfile::as_maybe_locker;
-use crate::lockfile::Lockfile;
+use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
 use crate::npm::resolve_npm_package_reqs;
@@ -73,7 +73,7 @@ use std::sync::Arc;
 pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
-  pub dir: deno_dir::DenoDir,
+  pub dir: DenoDir,
   pub file_fetcher: FileFetcher,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
@@ -152,20 +152,23 @@ impl ProcState {
     let shared_array_buffer_store = SharedArrayBufferStore::default();
     let compiled_wasm_module_store = CompiledWasmModuleStore::default();
     let dir = cli_options.resolve_deno_dir()?;
-    let deps_cache_location = dir.root.join("deps");
+    let deps_cache_location = dir.deps_folder_path();
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
     let progress_bar = ProgressBar::default();
+    let http_client = HttpClient::new(
+      Some(root_cert_store.clone()),
+      cli_options
+        .unsafely_ignore_certificate_errors()
+        .map(ToOwned::to_owned),
+    )?;
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
       !cli_options.no_remote(),
-      Some(root_cert_store.clone()),
+      http_client.clone(),
       blob_store.clone(),
-      cli_options
-        .unsafely_ignore_certificate_errors()
-        .map(ToOwned::to_owned),
       Some(progress_bar.clone()),
     )?;
 
@@ -216,16 +219,16 @@ impl ProcState {
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
+      http_client.clone(),
       progress_bar.clone(),
     );
     let api = RealNpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
-      cli_options.cache_setting(),
+      http_client,
       progress_bar.clone(),
     );
-    let maybe_lockfile =
-      lockfile.as_ref().filter(|l| !l.lock().overwrite).cloned();
+    let maybe_lockfile = lockfile.as_ref().cloned();
     let mut npm_resolver = NpmPackageResolver::new(
       npm_cache.clone(),
       api,
@@ -235,7 +238,9 @@ impl ProcState {
         .with_context(|| "Resolving local node_modules folder.")?,
     );
     if let Some(lockfile) = maybe_lockfile.clone() {
-      npm_resolver.add_lockfile(lockfile).await?;
+      npm_resolver
+        .add_lockfile_and_maybe_regenerate_snapshot(lockfile)
+        .await?;
     }
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
@@ -285,6 +290,7 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let has_root_npm_specifier = roots.iter().any(|r| {
@@ -322,7 +328,7 @@ impl ProcState {
       root_permissions.clone(),
       dynamic_permissions.clone(),
     );
-    let maybe_locker = as_maybe_locker(self.lockfile.clone());
+    let maybe_locker = Lockfile::as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_resolver =
       self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
@@ -368,6 +374,7 @@ impl ProcState {
       };
 
     let analyzer = self.parsed_source_cache.as_analyzer();
+    log::debug!("Creating module graph.");
     let graph = create_graph(
       roots.clone(),
       &mut loader,
@@ -415,7 +422,9 @@ impl ProcState {
     drop(_pb_clear_guard);
 
     // type check if necessary
-    if self.options.type_check_mode() != TypeCheckMode::None {
+    let is_std_node = roots.len() == 1 && roots[0].0 == *node::MODULE_ALL_URL;
+    if self.options.type_check_mode() != TypeCheckMode::None && !is_std_node {
+      log::debug!("Type checking.");
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
       let roots = roots.clone();
       let options = check::CheckOptions {
@@ -456,6 +465,8 @@ impl ProcState {
       let g = lockfile.lock();
       g.write()?;
     }
+
+    log::debug!("Prepared module load.");
 
     Ok(())
   }
@@ -524,6 +535,15 @@ impl ProcState {
         Some(Resolved::Ok { specifier, .. }) => {
           if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
           {
+            if !self.options.unstable()
+              && matches!(found_referrer.scheme(), "http" | "https")
+            {
+              return Err(custom_error(
+                "NotSupported",
+                format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {})", found_referrer),
+              ));
+            }
+
             return self
               .handle_node_resolve_result(node::node_resolve_npm_reference(
                 &reference,
@@ -618,7 +638,7 @@ impl ProcState {
     roots: Vec<(ModuleSpecifier, ModuleKind)>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let maybe_locker = as_maybe_locker(self.lockfile.clone());
+    let maybe_locker = Lockfile::as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
 
     let maybe_cli_resolver = CliResolver::maybe_new(

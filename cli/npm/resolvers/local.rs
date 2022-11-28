@@ -2,6 +2,7 @@
 
 //! Code for local node_modules resolution.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fs;
@@ -21,8 +22,9 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::TYPES_CONDITIONS;
 use tokio::task::JoinHandle;
 
+use crate::args::Lockfile;
 use crate::fs_util;
-use crate::lockfile::Lockfile;
+use crate::npm::cache::mixed_case_package_name_encode;
 use crate::npm::cache::should_sync_download;
 use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
@@ -34,6 +36,7 @@ use crate::npm::NpmResolutionPackage;
 use crate::npm::RealNpmRegistryApi;
 
 use super::common::ensure_registry_read_permission;
+use super::common::types_package_name;
 use super::common::InnerNpmPackageResolver;
 
 /// Resolver that creates a local node_modules directory
@@ -172,7 +175,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
       // if doing type resolution, check for the existance of a @types package
       if conditions == TYPES_CONDITIONS && !name.starts_with("@types/") {
         let sub_dir =
-          join_package_name(current_folder, &format!("@types/{}", name));
+          join_package_name(current_folder, &types_package_name(name));
         if sub_dir.is_dir() {
           return Ok(sub_dir);
         }
@@ -288,7 +291,9 @@ async fn sync_resolution_with_fs(
       get_package_folder_id_folder_name(&package.get_package_cache_folder_id());
     let folder_path = deno_local_registry_dir.join(&folder_name);
     let initialized_file = folder_path.join(".initialized");
-    if !cache.should_use_cache_for_npm_package(&package.id.name)
+    if !cache
+      .cache_setting()
+      .should_use_for_npm_package(&package.id.name)
       || !initialized_file.exists()
     {
       let cache = cache.clone();
@@ -437,7 +442,12 @@ fn get_package_folder_id_folder_name(id: &NpmPackageCacheFolderId) -> String {
   } else {
     format!("_{}", id.copy_index)
   };
-  format!("{}@{}{}", id.name, id.version, copy_str).replace('/', "+")
+  let name = if id.name.to_lowercase() == id.name {
+    Cow::Borrowed(&id.name)
+  } else {
+    Cow::Owned(format!("_{}", mixed_case_package_name_encode(&id.name)))
+  };
+  format!("{}@{}{}", name, id.version, copy_str).replace('/', "+")
 }
 
 fn symlink_package_dir(

@@ -5,7 +5,7 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::RunFlags;
 use crate::args::TypeCheckMode;
-use crate::deno_dir::DenoDir;
+use crate::cache::DenoDir;
 use crate::fs_util;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
@@ -50,7 +50,7 @@ pub async fn get_base_binary(
     format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
   };
 
-  let download_directory = deno_dir.root.join("dl");
+  let download_directory = deno_dir.dl_folder_path();
   let binary_path = download_directory.join(&binary_path_suffix);
 
   if !binary_path.exists() {
@@ -85,9 +85,9 @@ async fn download_base_binary(
     std::process::exit(1)
   };
 
-  std::fs::create_dir_all(&output_directory)?;
+  std::fs::create_dir_all(output_directory)?;
   let output_path = output_directory.join(binary_path_suffix);
-  std::fs::create_dir_all(&output_path.parent().unwrap())?;
+  std::fs::create_dir_all(output_path.parent().unwrap())?;
   tokio::fs::write(output_path, binary_content).await?;
   Ok(())
 }

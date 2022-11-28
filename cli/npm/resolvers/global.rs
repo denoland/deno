@@ -15,8 +15,8 @@ use deno_core::url::Url;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::TYPES_CONDITIONS;
 
+use crate::args::Lockfile;
 use crate::fs_util;
-use crate::lockfile::Lockfile;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::resolvers::common::cache_packages;
@@ -26,6 +26,7 @@ use crate::npm::NpmPackageReq;
 use crate::npm::RealNpmRegistryApi;
 
 use super::common::ensure_registry_read_permission;
+use super::common::types_package_name;
 use super::common::InnerNpmPackageResolver;
 
 /// Resolves packages from the global npm cache.
@@ -97,7 +98,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
         }
       }
 
-      let name = format!("@types/{}", name);
+      let name = types_package_name(name);
       let pkg = self
         .resolution
         .resolve_package_from_package(&name, &referrer_pkg_id)?;

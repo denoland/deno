@@ -195,7 +195,7 @@ fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
     {
       return Some(ErrorReference {
         from: current_error,
-        to: *seen,
+        to: seen,
       });
     } else {
       current_error = cause;

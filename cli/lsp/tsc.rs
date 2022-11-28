@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::code_lens;
-use super::completions::relative_specifier;
 use super::config;
 use super::documents::AssetOrDocument;
 use super::language_server;
@@ -19,6 +18,7 @@ use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::args::TsConfig;
+use crate::fs_util::relative_specifier;
 use crate::fs_util::specifier_to_file_path;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
@@ -2098,11 +2098,13 @@ fn update_import_statement(
     {
       if let Ok(import_specifier) = normalize_specifier(&import_data.file_name)
       {
-        let new_module_specifier =
-          relative_specifier(&import_specifier, &item_data.specifier);
-        text_edit.new_text = text_edit
-          .new_text
-          .replace(&import_data.module_specifier, &new_module_specifier);
+        if let Some(new_module_specifier) =
+          relative_specifier(&item_data.specifier, &import_specifier)
+        {
+          text_edit.new_text = text_edit
+            .new_text
+            .replace(&import_data.module_specifier, &new_module_specifier);
+        }
       }
     }
   }
@@ -4126,7 +4128,7 @@ mod tests {
     assert!(result.is_ok());
     let response: CompletionInfo =
       serde_json::from_value(result.unwrap()).unwrap();
-    assert_eq!(response.entries.len(), 19);
+    assert_eq!(response.entries.len(), 22);
     let result = request(
       &mut runtime,
       state_snapshot,

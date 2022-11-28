@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::TsTypeLib;
 use crate::colors;
-use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
 use crate::npm::resolve_npm_package_reqs;
 use crate::npm::NpmPackageReference;
@@ -80,9 +80,7 @@ impl GraphData {
     let mut has_npm_specifier_in_graph = false;
 
     for (specifier, result) in graph.specifiers() {
-      if specifier.scheme() == "npm"
-        && NpmPackageReference::from_specifier(&specifier).is_ok()
-      {
+      if NpmPackageReference::from_specifier(&specifier).is_ok() {
         has_npm_specifier_in_graph = true;
         continue;
       }
@@ -230,9 +228,7 @@ impl GraphData {
           for (dep_specifier, dep) in dependencies.iter().rev() {
             // todo(dsherret): ideally there would be a way to skip external dependencies
             // in the graph here rather than specifically npm package references
-            if dep_specifier.starts_with("npm:")
-              && NpmPackageReference::from_str(dep_specifier).is_ok()
-            {
+            if NpmPackageReference::from_str(dep_specifier).is_ok() {
               continue;
             }
 

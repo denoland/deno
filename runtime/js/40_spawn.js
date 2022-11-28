@@ -12,12 +12,12 @@
     ObjectEntries,
     String,
     TypeError,
-    Uint8Array,
     PromisePrototypeThen,
     SafePromiseAll,
     SymbolFor,
   } = window.__bootstrap.primordials;
   const {
+    readableStreamCollectIntoUint8Array,
     readableStreamForRidUnrefable,
     readableStreamForRidUnrefableRef,
     readableStreamForRidUnrefableUnref,
@@ -64,26 +64,12 @@
     };
   }
 
-  async function collectOutput(readableStream) {
+  function collectOutput(readableStream) {
     if (!(readableStream instanceof ReadableStream)) {
       return null;
     }
 
-    const bufs = [];
-    let size = 0;
-    for await (const chunk of readableStream) {
-      bufs.push(chunk);
-      size += chunk.byteLength;
-    }
-
-    const buffer = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of bufs) {
-      buffer.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-
-    return buffer;
+    return readableStreamCollectIntoUint8Array(readableStream);
   }
 
   class Child {
@@ -291,8 +277,44 @@
     };
   }
 
+  function createCommand(spawn, spawnSync, spawnChild) {
+    return class Command {
+      #command;
+      #options;
+
+      constructor(command, options) {
+        this.#command = command;
+        this.#options = options;
+      }
+
+      output() {
+        if (this.#options?.stdin === "piped") {
+          throw new TypeError(
+            "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
+          );
+        }
+        return spawn(this.#command, this.#options);
+      }
+
+      outputSync() {
+        if (this.#options?.stdin === "piped") {
+          throw new TypeError(
+            "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
+          );
+        }
+        return spawnSync(this.#command, this.#options);
+      }
+
+      spawn() {
+        return spawnChild(this.#command, this.#options);
+      }
+    };
+  }
+
   window.__bootstrap.spawn = {
     Child,
+    ChildProcess: Child,
+    createCommand,
     createSpawn,
     createSpawnChild,
     createSpawnSync,
