@@ -1303,7 +1303,9 @@ fn find_stalled_top_level_await<'s>(
   let module_map = module_map.borrow();
 
   // First check if that's root module
-  let root_module_id = module_map.info.values()
+  let root_module_id = module_map
+    .info
+    .values()
     .filter(|m| m.main)
     .map(|m| m.id)
     .next();
