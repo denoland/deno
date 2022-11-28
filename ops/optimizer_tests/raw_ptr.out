@@ -1,0 +1,55 @@
+struct op_ffi_ptr_of_fast<FP> {
+    _phantom: ::std::marker::PhantomData<FP>,
+}
+impl<'scope, FP> deno_core::v8::fast_api::FastFunction for op_ffi_ptr_of_fast<FP>
+where
+    FP: FfiPermissions + 'static,
+{
+    fn function(&self) -> *const ::std::ffi::c_void {
+        op_ffi_ptr_of_fast_fn::<FP> as *const ::std::ffi::c_void
+    }
+    fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
+        use deno_core::v8::fast_api::Type::*;
+        use deno_core::v8::fast_api::CType;
+        &[V8Value, TypedArray(CType::Uint8), TypedArray(CType::Uint32), CallbackOptions]
+    }
+    fn return_type(&self) -> deno_core::v8::fast_api::CType {
+        deno_core::v8::fast_api::CType::Void
+    }
+}
+fn op_ffi_ptr_of_fast_fn<'scope, FP>(
+    _: deno_core::v8::Local<deno_core::v8::Object>,
+    buf: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,
+    out: *const deno_core::v8::fast_api::FastApiTypedArray<u32>,
+    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
+) -> ()
+where
+    FP: FfiPermissions + 'static,
+{
+    use deno_core::v8;
+    use deno_core::_ops;
+    let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
+        &mut *fast_api_callback_options
+    };
+    let __ctx = unsafe {
+        &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
+            as *const _ops::OpCtx)
+    };
+    let state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
+    let buf = match unsafe { &*buf }.get_storage_if_aligned() {
+        Some(v) => v.as_ptr(),
+        None => {
+            unsafe { &mut *fast_api_callback_options }.fallback = true;
+            return Default::default();
+        }
+    };
+    let out = match unsafe { &*out }.get_storage_if_aligned() {
+        Some(v) => v,
+        None => {
+            unsafe { &mut *fast_api_callback_options }.fallback = true;
+            return Default::default();
+        }
+    };
+    let result = op_ffi_ptr_of::call::<FP>(state, buf, out);
+    result
+}

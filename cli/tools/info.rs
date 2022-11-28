@@ -22,7 +22,6 @@ use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::checksum;
 use crate::display;
-use crate::lsp;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
@@ -58,13 +57,12 @@ fn print_cache_info(
   json: bool,
   location: Option<&deno_core::url::Url>,
 ) -> Result<(), AnyError> {
-  let deno_dir = &state.dir.root;
+  let deno_dir = &state.dir.root_path_for_display();
   let modules_cache = &state.file_fetcher.get_http_cache_location();
   let npm_cache = &state.npm_cache.as_readonly().get_cache_location();
   let typescript_cache = &state.dir.gen_cache.location;
-  let registry_cache =
-    &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
-  let mut origin_dir = state.dir.root.join("location_data");
+  let registry_cache = &state.dir.registries_folder_path();
+  let mut origin_dir = state.dir.origin_data_folder_path();
 
   if let Some(location) = &location {
     origin_dir =
@@ -75,7 +73,7 @@ fn print_cache_info(
 
   if json {
     let mut output = json!({
-      "denoDir": deno_dir,
+      "denoDir": deno_dir.to_string(),
       "modulesCache": modules_cache,
       "npmCache": npm_cache,
       "typescriptCache": typescript_cache,
@@ -89,11 +87,7 @@ fn print_cache_info(
 
     display::write_json_to_stdout(&output)
   } else {
-    println!(
-      "{} {}",
-      colors::bold("DENO_DIR location:"),
-      deno_dir.display()
-    );
+    println!("{} {}", colors::bold("DENO_DIR location:"), deno_dir);
     println!(
       "{} {}",
       colors::bold("Remote modules cache:"),

@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::TsTypeLib;
 use crate::emit::emit_parsed_source;
-use crate::emit::TsTypeLib;
 use crate::graph_util::ModuleEntry;
 use crate::node;
 use crate::proc_state::ProcState;

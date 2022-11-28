@@ -31,7 +31,6 @@ const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 
 // How often query server for new version. In hours.
 const UPGRADE_CHECK_INTERVAL: i64 = 24;
-const UPGRADE_CHECK_FILE_NAME: &str = "latest.txt";
 
 const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
 
@@ -47,14 +46,14 @@ trait UpdateCheckerEnvironment: Clone + Send + Sync {
 
 #[derive(Clone)]
 struct RealUpdateCheckerEnvironment {
-  cache_dir: PathBuf,
+  cache_file_path: PathBuf,
   current_time: chrono::DateTime<chrono::Utc>,
 }
 
 impl RealUpdateCheckerEnvironment {
-  pub fn new(cache_dir: PathBuf) -> Self {
+  pub fn new(cache_file_path: PathBuf) -> Self {
     Self {
-      cache_dir,
+      cache_file_path,
       // cache the current time
       current_time: chrono::Utc::now(),
     }
@@ -79,12 +78,11 @@ impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
   }
 
   fn read_check_file(&self) -> String {
-    std::fs::read_to_string(self.cache_dir.join(UPGRADE_CHECK_FILE_NAME))
-      .unwrap_or_default()
+    std::fs::read_to_string(&self.cache_file_path).unwrap_or_default()
   }
 
   fn write_check_file(&self, text: &str) {
-    let _ = std::fs::write(self.cache_dir.join(UPGRADE_CHECK_FILE_NAME), text);
+    let _ = std::fs::write(&self.cache_file_path, text);
   }
 
   fn current_time(&self) -> chrono::DateTime<chrono::Utc> {
@@ -160,12 +158,12 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
   }
 }
 
-pub fn check_for_upgrades(cache_dir: PathBuf) {
+pub fn check_for_upgrades(cache_file_path: PathBuf) {
   if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
     return;
   }
 
-  let env = RealUpdateCheckerEnvironment::new(cache_dir);
+  let env = RealUpdateCheckerEnvironment::new(cache_file_path);
   let update_checker = UpdateChecker::new(env);
 
   if update_checker.should_check_for_new_version() {

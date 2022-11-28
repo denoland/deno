@@ -240,6 +240,7 @@ impl MainWorker {
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
+      is_main: true,
       ..Default::default()
     });
 

@@ -6,6 +6,7 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use rustyline::error::ReadlineError;
 
+mod cdp;
 mod channel;
 mod editor;
 mod session;
@@ -88,7 +89,7 @@ pub async fn run(
     sync_sender: rustyline_channel.0,
   };
 
-  let history_file_path = ps.dir.root.join("deno_history.txt");
+  let history_file_path = ps.dir.repl_history_file_path();
   let editor = ReplEditor::new(helper, history_file_path)?;
 
   if let Some(eval_files) = maybe_eval_files {
