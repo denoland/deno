@@ -3,6 +3,7 @@
 use crate::args::CoverageFlags;
 use crate::args::Flags;
 use crate::colors;
+use crate::emit::emit_parsed_source;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
 use crate::text_encoding::source_map_from_code;
@@ -647,15 +648,28 @@ pub async fn cover_files(
     let module_specifier =
       deno_core::resolve_url_or_path(&script_coverage.url)?;
 
-    let maybe_file = if module_specifier.scheme() == "file" {
-      ps.file_fetcher.get_source(&module_specifier)
-    } else {
-      ps.file_fetcher
-        .fetch_cached(&module_specifier, 10)
-        .with_context(|| {
-          format!("Failed to fetch \"{}\" from cache.", module_specifier)
-        })?
-    };
+    let (maybe_file, should_invalidate_cache) =
+      if module_specifier.scheme() == "file" {
+        if let Some(file) =
+          ps.file_fetcher.get_source_from_cache(&module_specifier)
+        {
+          (Some(file), false)
+        } else {
+          (
+            ps.file_fetcher.get_source_without_cache(&module_specifier),
+            true,
+          )
+        }
+      } else {
+        (
+          ps.file_fetcher
+            .fetch_cached(&module_specifier, 10)
+            .with_context(|| {
+              format!("Failed to fetch \"{}\" from cache.", module_specifier)
+            })?,
+          false,
+        )
+      };
     let file = maybe_file.ok_or_else(|| {
       anyhow!("Failed to fetch \"{}\" from cache.
           Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
@@ -677,6 +691,17 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
+        if should_invalidate_cache {
+          emit_parsed_source(
+            &ps.emit_cache,
+            &ps.parsed_source_cache,
+            &file.specifier,
+            file.media_type,
+            &file.source,
+            &ps.emit_options,
+            ps.emit_options_hash,
+          )?;
+        }
         match ps.emit_cache.get_emit_code(&file.specifier, None) {
           Some(code) => code,
           None => {

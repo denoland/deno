@@ -746,6 +746,29 @@ impl FileFetcher {
     }
   }
 
+  /// A synchronous way to retrieve a source file, where if the file has already
+  /// been cached in memory it will be returned, otherwise it returns None
+  pub fn get_source_from_cache(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<File> {
+    self.cache.get(specifier)
+  }
+
+  /// A synchronous way to retrieve a source file by reading local files from disk. (does not check cache)
+  pub fn get_source_without_cache(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<File> {
+    let is_local = specifier.scheme() == "file";
+    if is_local {
+      if let Ok(file) = fetch_local(specifier) {
+        return Some(file);
+      }
+    }
+    None
+  }
+
   /// Insert a temporary module into the in memory cache for the file fetcher.
   pub fn insert_cached(&self, file: File) -> Option<File> {
     self.cache.insert(file.specifier.clone(), file)
