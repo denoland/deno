@@ -90,10 +90,10 @@ impl CachedUrlMetadata {
     Ok(())
   }
 
-  pub fn read(cache_filename: &Path) -> Result<CachedUrlMetadata, AnyError> {
-    let metadata_filename = CachedUrlMetadata::filename(cache_filename);
+  pub fn read(cache_filename: &Path) -> Result<Self, AnyError> {
+    let metadata_filename = Self::filename(cache_filename);
     let metadata = fs::read_to_string(metadata_filename)?;
-    let metadata: CachedUrlMetadata = serde_json::from_str(&metadata)?;
+    let metadata: Self = serde_json::from_str(&metadata)?;
     Ok(metadata)
   }
 

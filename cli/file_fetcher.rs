@@ -495,7 +495,7 @@ impl FileFetcher {
   }
 
   /// Returns if the cache should be used for a given specifier.
-  pub fn should_use_cache(&self, specifier: &ModuleSpecifier) -> bool {
+  fn should_use_cache(&self, specifier: &ModuleSpecifier) -> bool {
     match &self.cache_setting {
       CacheSetting::ReloadAll => false,
       CacheSetting::Use | CacheSetting::Only => true,
