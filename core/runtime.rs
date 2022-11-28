@@ -1303,13 +1303,10 @@ fn find_stalled_top_level_await<'s>(
   let module_map = module_map.borrow();
 
   // First check if that's root module
-  let mut root_module_id = None;
-  for module_info in module_map.info.values() {
-    if module_info.main {
-      root_module_id = Some(module_info.id);
-      break;
-    }
-  }
+  let root_module_id = module_map.info.values()
+    .filter(|m| m.main)
+    .map(|m| m.id)
+    .next();
 
   if let Some(root_module_id) = root_module_id {
     let messages =
