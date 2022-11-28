@@ -70,6 +70,7 @@ impl CliMainWorker {
         &mut self.worker.js_runtime,
         &self.main_module.to_file_path().unwrap().to_string_lossy(),
         true,
+        self.ps.options.inspect_brk().is_some(),
       )?;
     } else {
       self.execute_main_module_possibly_with_npm().await?;

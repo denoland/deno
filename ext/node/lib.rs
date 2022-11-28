@@ -7,6 +7,7 @@ use deno_core::normalize_path;
 use deno_core::op;
 use deno_core::url::Url;
 use deno_core::Extension;
+use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
@@ -31,6 +32,7 @@ pub use resolution::path_to_declaration_path;
 pub use resolution::NodeModuleKind;
 pub use resolution::DEFAULT_CONDITIONS;
 pub use resolution::TYPES_CONDITIONS;
+use std::cell::RefCell;
 
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
@@ -106,6 +108,7 @@ pub fn init<P: NodePermissions + 'static>(
       op_require_read_closest_package_json::decl::<P>(),
       op_require_read_package_scope::decl(),
       op_require_package_imports_resolve::decl::<P>(),
+      op_require_break_on_next_statement::decl(),
     ])
     .state(move |state| {
       if let Some(npm_resolver) = maybe_npm_resolver.clone() {
@@ -629,4 +632,12 @@ where
   } else {
     Ok(None)
   }
+}
+
+#[op]
+fn op_require_break_on_next_statement(state: &mut OpState) {
+  let inspector = state.borrow::<Rc<RefCell<JsRuntimeInspector>>>();
+  inspector
+    .borrow_mut()
+    .wait_for_session_and_break_on_next_statement()
 }
