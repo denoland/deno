@@ -39,7 +39,6 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 
-
 [workspace.dependencies]
 v8 = { version = "0.56.1", default-features = false }
 deno_ast = { version = "0.21.0", features = ["transpiling"] }
