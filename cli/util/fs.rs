@@ -588,13 +588,13 @@ mod tests {
       .collect_files(&[root_dir_path.clone()])
       .unwrap();
     let expected = [
+      "README.md",
       "a.ts",
       "b.js",
       "c.tsx",
       "d.jsx",
       "e.mjs",
       "f.mjsx",
-      "README.md",
     ];
     let mut file_names = result
       .into_iter()
@@ -611,6 +611,7 @@ mod tests {
       ])
       .unwrap();
     let expected = [
+      "README.md",
       "a.ts",
       "b.js",
       "c.tsx",
@@ -618,7 +619,6 @@ mod tests {
       "e.mjs",
       "f.mjsx",
       "node_modules.js",
-      "README.md",
     ];
     let mut file_names = result
       .into_iter()
