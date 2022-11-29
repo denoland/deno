@@ -55,7 +55,7 @@ pub struct InspectorSessionProxy {
   pub rx: SessionProxyReceiver,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum PollState {
   Idle,
   Woken,
@@ -123,6 +123,10 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
     eprintln!("run message loop on pause");
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().on_pause = true;
+    // In here we want to pump sessions synchronously, and we might be reentrant
+    // from being polled by the runtime. Once all channels have been drained
+    // synchronously we want to continue and not block. There's no need to set
+    // waker here and we don't want to handle all that nasty parking stuff.
     let r = self.poll_sessions(None);
     eprintln!("finished run message loop on pause {:#?}", r);
     assert!(
@@ -151,6 +155,9 @@ impl Future for JsRuntimeInspector {
   type Output = ();
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
     eprintln!("poll inspector from the runtime");
+    // Here we actually want to set up waker so we are notified when new
+    // messages arrive. Note that other call sites might want to reenter
+    // and pump sessions synchronously.
     let r = self.poll_sessions(Some(cx)).unwrap();
     eprintln!("finished polling inspector from the runtime {:#?}", r);
     r
@@ -221,7 +228,9 @@ impl JsRuntimeInspector {
       );
 
     // Poll the session handler so we will get notified whenever there is
-    // new incoming debugger activity.
+    // new incoming debugger activity. Here we want to pump sessions synchronously.
+    // Don't want to do any of the parking stuff because this is run from the
+    // runtime itself. It's questionable that we even should poll here.
     eprintln!("poll sessions on creation");
     let _ = self_.poll_sessions(None).unwrap();
     eprintln!("finished polling sessions on creation");
@@ -275,48 +284,9 @@ impl JsRuntimeInspector {
     let cx = &mut Context::from_waker(&waker_ref);
 
     loop {
-      loop {
-        // Do one "handshake" with a newly connected session at a time.
-        if let Some(mut session) = sessions.handshake.take() {
-          let poll_result = session.poll_next_unpin(cx);
-          match poll_result {
-            Poll::Pending => {
-              sessions.established.push(session);
-              continue;
-            }
-            Poll::Ready(Some(session_stream_item)) => {
-              let (v8_session_ptr, msg) = session_stream_item;
-              InspectorSession::dispatch_message(v8_session_ptr, msg);
-              sessions.established.push(session);
-              continue;
-            }
-            Poll::Ready(None) => {}
-          }
-        }
-
-        // Accept new connections.
-        let poll_result = sessions.session_rx.poll_next_unpin(cx);
-        if let Poll::Ready(Some(session_proxy)) = poll_result {
-          let session = InspectorSession::new(
-            sessions.v8_inspector.clone(),
-            session_proxy,
-            false,
-          );
-          let prev = sessions.handshake.replace(session);
-          assert!(prev.is_none());
-        }
-
-        // Poll established sessions.
-        match sessions.established.poll_next_unpin(cx) {
-          Poll::Ready(Some(session_stream_item)) => {
-            let (v8_session_ptr, msg) = session_stream_item;
-            InspectorSession::dispatch_message(v8_session_ptr, msg);
-            continue;
-          }
-          Poll::Ready(None) => break,
-          Poll::Pending => break,
-        };
-      }
+      eprintln!("polling sessions inside");
+      sessions.poll(cx);
+      eprintln!("finished polling sessions inside");
 
       let should_block =
         self.flags.borrow().on_pause || self.flags.borrow().waiting_for_session;
@@ -350,11 +320,13 @@ impl JsRuntimeInspector {
             eprintln!("parking thread {:#?}", thread::current().id());
             w.poll_state = PollState::Parked;
             w.parked_thread.replace(thread::current());
+            eprintln!("parking thread");
           }
           _ => unreachable!(),
         };
         w.poll_state
       });
+      eprintln!("new state {:#?}", new_state);
       match new_state {
         PollState::Idle => {
           eprintln!("entered idle state, breaking outer loop");
@@ -380,6 +352,8 @@ impl JsRuntimeInspector {
         None => {
           self.flags.get_mut().waiting_for_session = true;
           eprintln!("poll sessions waiting for session");
+          // Here we want to synchrously poll sessions, but we might have
+          // to park the thread to block it. Otherwise we'd need to spin hot.
           let _ = self.poll_sessions(None).unwrap();
           eprintln!("finished polling sessions waiting for session");
         }
@@ -493,6 +467,51 @@ impl SessionContainer {
       established: SelectAll::new(),
     }
   }
+
+  fn poll(&mut self, cx: &mut Context) {
+    loop {
+      // Do one "handshake" with a newly connected session at a time.
+      if let Some(mut session) = self.handshake.take() {
+        let poll_result = session.poll_next_unpin(cx);
+        match poll_result {
+          Poll::Pending => {
+            self.established.push(session);
+            continue;
+          }
+          Poll::Ready(Some(session_stream_item)) => {
+            let (v8_session_ptr, msg) = session_stream_item;
+            InspectorSession::dispatch_message(v8_session_ptr, msg);
+            self.established.push(session);
+            continue;
+          }
+          Poll::Ready(None) => {}
+        }
+      }
+
+      // Accept new connections.
+      let poll_result = self.session_rx.poll_next_unpin(cx);
+      if let Poll::Ready(Some(session_proxy)) = poll_result {
+        let session = InspectorSession::new(
+          self.v8_inspector.clone(),
+          session_proxy,
+          false,
+        );
+        let prev = self.handshake.replace(session);
+        assert!(prev.is_none());
+      }
+
+      // Poll established sessions.
+      match self.established.poll_next_unpin(cx) {
+        Poll::Ready(Some(session_stream_item)) => {
+          let (v8_session_ptr, msg) = session_stream_item;
+          InspectorSession::dispatch_message(v8_session_ptr, msg);
+          continue;
+        }
+        Poll::Ready(None) => break,
+        Poll::Pending => break,
+      };
+    }
+  }
 }
 
 struct InspectorWakerInner {
@@ -556,6 +575,8 @@ impl task::ArcWake for InspectorWaker {
             // pointer to the latter is valid as long as waker is alive.
             let inspector = unsafe { &*(arg as *mut JsRuntimeInspector) };
             eprintln!("poll sessions from handle_interrupt");
+            // Here we want to pump sessions synchronously, and we might be reenetering
+            // from other call site. Unclear if we need parking, etc here.
             let r = inspector.poll_sessions(None);
             eprintln!("finished poll sessions from handle_interrupt {:#?}", r);
           }
