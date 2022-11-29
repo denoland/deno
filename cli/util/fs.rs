@@ -214,9 +214,9 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
             Some(Err(_)) => continue,
             Some(Ok(entry)) => entry,
           };
+          let file_type = e.file_type();
+          let is_dir = file_type.is_dir();
           if let Ok(c) = canonicalize_path(e.path()) {
-            let file_type = e.file_type();
-            let is_dir = file_type.is_dir();
             if self.canonicalized_ignore.iter().any(|i| c.starts_with(i)) {
               if is_dir {
                 iterator.skip_current_dir();
@@ -237,8 +237,11 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
                 iterator.skip_current_dir();
               }
             } else if (self.file_filter)(e.path()) {
-              target_files.push(c)
+              target_files.push(c);
             }
+          } else if is_dir {
+            // failed canonicalizing, so skip it
+            iterator.skip_current_dir();
           }
         }
       }
