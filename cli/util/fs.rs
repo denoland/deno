@@ -206,37 +206,40 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
     let mut target_files = Vec::new();
     for file in files {
       if let Ok(file) = canonicalize_path(file) {
-        for entry in WalkDir::new(&file)
-          .into_iter()
-          .filter_entry(|e| {
-            canonicalize_path(e.path()).map_or(false, |c| {
-              if self.canonicalized_ignore.iter().any(|i| c.starts_with(i)) {
-                return false;
+        // use an iterator like this in order to minimize the number of file system operations
+        let mut iterator = WalkDir::new(&file).into_iter();
+        loop {
+          let e = match iterator.next() {
+            None => break,
+            Some(Err(_)) => continue,
+            Some(Ok(entry)) => entry,
+          };
+          if let Ok(c) = canonicalize_path(e.path()) {
+            let file_type = e.file_type();
+            let is_dir = file_type.is_dir();
+            if self.canonicalized_ignore.iter().any(|i| c.starts_with(i)) {
+              if is_dir {
+                iterator.skip_current_dir();
               }
-
-              let file_type = e.file_type();
-              if file_type.is_dir() {
-                c.file_name()
-                  .map(|dir_name| {
-                    let dir_name = dir_name.to_string_lossy().to_lowercase();
-                    let is_ignored_file = self.ignore_node_modules
-                      && dir_name == "node_modules"
-                      || self.ignore_git_folder && dir_name == ".git";
-                    // allow the user to opt out of ignoring by explicitly specifying the dir
-                    file == c || !is_ignored_file
-                  })
-                  .unwrap_or(true)
-              } else {
-                (self.file_filter)(e.path())
+            } else if is_dir {
+              let should_ignore_dir = c
+                .file_name()
+                .map(|dir_name| {
+                  let dir_name = dir_name.to_string_lossy().to_lowercase();
+                  let is_ignored_file = self.ignore_node_modules
+                    && dir_name == "node_modules"
+                    || self.ignore_git_folder && dir_name == ".git";
+                  // allow the user to opt out of ignoring by explicitly specifying the dir
+                  file != c && is_ignored_file
+                })
+                .unwrap_or(false);
+              if should_ignore_dir {
+                iterator.skip_current_dir();
               }
-            })
-          })
-          .filter_map(|e| match e {
-            Ok(e) if !e.file_type().is_dir() => Some(e),
-            _ => None,
-          })
-        {
-          target_files.push(canonicalize_path(entry.path())?)
+            } else if (self.file_filter)(e.path()) {
+              target_files.push(c)
+            }
+          }
         }
       }
     }
