@@ -567,17 +567,18 @@ mod tests {
       "a.ts",
       "b.js",
       "c.tsx",
+      "d.jsx",
       "git.js",
       "e.mjs",
       "f.mjsx",
       "node_modules.js",
       "README.md",
-      "d.jsx",
     ];
-    let file_names = result
+    let mut file_names = result
       .into_iter()
       .map(|r| r.file_name().unwrap().to_string_lossy().to_string())
       .collect::<Vec<_>>();
+    file_names.sort();
     assert_eq!(file_names, expected);
 
     // test ignoring the .git and node_modules folder
@@ -590,15 +591,16 @@ mod tests {
       "a.ts",
       "b.js",
       "c.tsx",
+      "d.jsx",
       "e.mjs",
       "f.mjsx",
       "README.md",
-      "d.jsx",
     ];
-    let file_names = result
+    let mut file_names = result
       .into_iter()
       .map(|r| r.file_name().unwrap().to_string_lossy().to_string())
       .collect::<Vec<_>>();
+    file_names.sort();
     assert_eq!(file_names, expected);
 
     // test opting out of ignoring by specifying the dir
@@ -612,16 +614,17 @@ mod tests {
       "a.ts",
       "b.js",
       "c.tsx",
+      "d.jsx",
       "e.mjs",
       "f.mjsx",
-      "README.md",
-      "d.jsx",
       "node_modules.js",
+      "README.md",
     ];
-    let file_names = result
+    let mut file_names = result
       .into_iter()
       .map(|r| r.file_name().unwrap().to_string_lossy().to_string())
       .collect::<Vec<_>>();
+    file_names.sort();
     assert_eq!(file_names, expected);
   }
 
