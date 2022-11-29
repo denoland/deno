@@ -20,7 +20,6 @@ use deno_runtime::colors;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
-use crate::checksum;
 use crate::display;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReference;
@@ -29,6 +28,7 @@ use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolutionPackage;
 use crate::npm::NpmResolutionSnapshot;
 use crate::proc_state::ProcState;
+use crate::util::checksum;
 
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
