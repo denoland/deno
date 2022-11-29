@@ -140,7 +140,6 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().waiting_for_session = false;
-    self.poll_sessions_sync();
   }
 }
 
@@ -260,9 +259,14 @@ impl JsRuntimeInspector {
     loop {
       sessions.sync_poll();
 
+      self.waker.update(|w| {
+        w.poll_state = PollState::Polling;
+      });
+
       let should_block =
         self.flags.borrow().on_pause || self.flags.borrow().waiting_for_session;
 
+      
       let new_state = self.waker.update(|w| {
         match w.poll_state {
           PollState::Woken => {
@@ -275,7 +279,7 @@ impl JsRuntimeInspector {
             // there's no reason to block (execution is not paused), so this
             // function is about to return.
             // TODO: we shouldn't update the state in sync version?
-            // w.poll_state = PollState::Idle;
+            w.poll_state = PollState::Idle;
 
             // Register the address of the inspector, which allows the waker
             // to request an interrupt from the isolate.
@@ -295,6 +299,7 @@ impl JsRuntimeInspector {
         };
         w.poll_state
       });
+      eprintln!("should block {} {:?}", should_block, new_state);
       match new_state {
         PollState::Idle => {
           self.waker.update(|w| {
@@ -410,6 +415,7 @@ impl JsRuntimeInspector {
       let should_block =
         self.flags.borrow().on_pause || self.flags.borrow().waiting_for_session;
 
+      eprintln!("should block in async {}", should_block);
       let new_state = self.waker.update(|w| {
         match w.poll_state {
           PollState::Woken => {
@@ -462,12 +468,17 @@ impl JsRuntimeInspector {
   pub fn wait_for_session_and_break_on_next_statement(&mut self) {
     loop {
       match self.sessions.get_mut().established.iter_mut().next() {
-        Some(session) => break session.break_on_next_statement(),
+        Some(session) => {
+          eprintln!("break on next statement");
+          break session.break_on_next_statement()
+        },
         None => {
+          eprintln!("waiting for sessions");
           self.flags.get_mut().waiting_for_session = true;
           // Here we want to synchrously poll sessions, but we might have
           // to park the thread to block it. Otherwise we'd need to spin hot.
           self.poll_sessions_sync();
+          eprintln!("after waiting for sessions");
         }
       };
     }
