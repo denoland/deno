@@ -315,35 +315,66 @@ impl JsRuntimeInspector {
             eprintln!("parking thread");
           }
           // _ => unreachable!(),
-          _ => {},
+          _ => {}
         };
         w.poll_state
       });
-      eprintln!("new state in sync {:#?} {:#?}", new_state, std::thread::current().id());
+      eprintln!(
+        "new state in sync {:#?} {:#?}",
+        new_state,
+        std::thread::current().id()
+      );
       match new_state {
         PollState::Idle => {
-          eprintln!("entered idle state in poll_sessions_sync, breaking outer loop");
+          eprintln!(
+            "entered idle state in poll_sessions_sync, breaking outer loop"
+          );
           self.waker.update(|w| {
             if let Some(waker) = w.task_waker.take() {
               waker.wake()
             }
             w.poll_state
           });
-          
+
           break;
         } // Yield to task.
         PollState::Polling => {
-          eprintln!("entered polling state in poll_sessions_sync, breaking outer loop");
+          eprintln!(
+            "entered polling state in poll_sessions_sync, breaking outer loop"
+          );
           self.waker.update(|w| {
             if let Some(waker) = w.task_waker.take() {
               waker.wake()
             }
             w.poll_state
           });
-          
+
           break;
         } // Poll the session handler again.
-        PollState::Parked => thread::park(), // Park the thread.
+        PollState::Parked => {
+          futures::executor::block_on(futures::future::poll_fn(|cx| {
+            let poll_result = sessions.established.poll_next_unpin(cx);
+            eprintln!("after established");
+            match poll_result {
+              Poll::Ready(Some(session_stream_item)) => {
+                let (v8_session_ptr, msg) = session_stream_item;
+                InspectorSession::dispatch_message(v8_session_ptr, msg);
+                eprintln!("NOT finished polling sessions inside");
+                Poll::Ready(())
+              }
+              Poll::Ready(None) => unreachable!(),
+              Poll::Pending => Poll::Pending,
+            }
+          }));
+          self.waker.update(|w| match w.poll_state {
+            PollState::Parked => {
+              w.parked_thread.take();
+              w.poll_state = PollState::Polling;
+            }
+            _ => unreachable!(),
+          });
+          // thread::park(), // Park the thread.
+        }
         _ => unreachable!(),
       };
     }
@@ -407,7 +438,8 @@ impl JsRuntimeInspector {
 
         // Poll established sessions.
         eprintln!("before established established");
-        let poll_result = self.sessions.borrow_mut().established.poll_next_unpin(cx);
+        let poll_result =
+          self.sessions.borrow_mut().established.poll_next_unpin(cx);
         eprintln!("after established");
         match poll_result {
           Poll::Ready(Some(session_stream_item)) => {
