@@ -315,12 +315,25 @@
         if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
           throw new TypeError("Unreachable");
         }
-        request = input[_request];
+        const originalReq = input[_request];
+        const originalMethod = originalReq.method;
+        const originalUrl = originalReq.url();
+        const clonedHeaders = ArrayPrototypeMap(
+          originalReq.headerList,
+          (x) => [x[0], x[1]],
+        );
+        request = newInnerRequest(
+          () => originalMethod,
+          () => originalUrl,
+          () => clonedHeaders,
+          null,
+          false,
+        );
+        request.redirectMode = originalReq.redirectMode;
         signal = input[_signal];
       }
 
-      // 12.
-      // TODO(lucacasonato): create a copy of `request`
+      // 12. is folded into the else statement of step 6 above.
 
       // 22.
       if (init.redirect !== undefined) {
