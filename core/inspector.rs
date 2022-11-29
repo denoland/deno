@@ -155,8 +155,7 @@ impl Future for JsRuntimeInspector {
     // Here we actually want to set up waker so we are notified when new
     // messages arrive. Note that other call sites might want to reenter
     // and pump sessions synchronously.
-    let r = self.poll_sessions(cx).unwrap();
-    r
+    self.poll_sessions(cx).unwrap()
   }
 }
 
@@ -794,7 +793,7 @@ impl InspectorSession {
   }
 
   fn try_recv(
-    self: &mut Self,
+    &mut self,
   ) -> Option<(*mut v8::inspector::V8InspectorSession, String)> {
     if let Ok(maybe_msg) = self.proxy.rx.try_next() {
       if let Some(msg) = maybe_msg {
