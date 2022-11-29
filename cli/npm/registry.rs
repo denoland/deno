@@ -21,11 +21,11 @@ use deno_core::url::Url;
 use deno_runtime::colors;
 use serde::Serialize;
 
-use crate::file_fetcher::CacheSetting;
-use crate::fs_util;
-use crate::http_cache::CACHE_PERM;
+use crate::args::CacheSetting;
+use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
-use crate::progress_bar::ProgressBar;
+use crate::util::fs::atomic_write_file;
+use crate::util::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
 use super::resolution::NpmVersionMatcher;
@@ -405,7 +405,7 @@ impl RealNpmRegistryApiInner {
     let file_cache_path = self.get_package_file_cache_path(name);
     let file_text = serde_json::to_string(&package_info)?;
     std::fs::create_dir_all(file_cache_path.parent().unwrap())?;
-    fs_util::atomic_write_file(&file_cache_path, file_text, CACHE_PERM)?;
+    atomic_write_file(&file_cache_path, file_text, CACHE_PERM)?;
     Ok(())
   }
 
