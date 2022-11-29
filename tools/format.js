@@ -10,7 +10,7 @@ async function dprint() {
     stdout: "inherit",
     stderr: "inherit",
   });
-  cmd.spawn();
+
   const { code } = await cmd.output();
 
   if (code > 0) {
@@ -27,7 +27,7 @@ async function main() {
       args: ["status", "-uno", "--porcelain", "--ignore-submodules"],
       stderr: "inherit",
     });
-    cmd.spawn();
+
     const { code, stdout } = await cmd.output();
 
     if (code > 0) {

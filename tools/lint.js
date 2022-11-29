@@ -48,7 +48,6 @@ async function dlint() {
       stdout: "inherit",
       stderr: "inherit",
     });
-    cmd.spawn();
     const { code } = await cmd.output();
 
     if (code > 0) {
@@ -82,7 +81,6 @@ async function dlintPreferPrimordials() {
       stdout: "inherit",
       stderr: "inherit",
     });
-    cmd.spawn();
     const { code } = await cmd.output();
 
     if (code > 0) {
@@ -134,7 +132,6 @@ async function clippy() {
     stdout: "inherit",
     stderr: "inherit",
   });
-  cargoCmd.spawn();
   const { code } = await cargoCmd.output();
 
   if (code > 0) {
