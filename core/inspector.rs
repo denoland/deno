@@ -719,7 +719,12 @@ impl task::ArcWake for InspectorWaker {
           // not unhandled interrupt request in flight.
           // TODO(bartlomieju): why do we take inspector pointer here?
           // it should be valid for the whole lifetime of the inspector
-          // and should stay the same
+          // and should stay the same.
+          // Actually waker can outlive the inspector - maybe we could store it
+          // and remove the pointer once the inspector instance is dropped.
+          // That only leaves us with the need to "clone" the pointer.
+          // Alternatively we can always store inspector pointer in the beginning
+          // of "poll_sessions"/"poll_sessions_sync".
           if let Some(arg) = w
             .inspector_ptr
             .take()
