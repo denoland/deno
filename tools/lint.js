@@ -43,12 +43,15 @@ async function dlint() {
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
-    const { success } = await Deno.spawn(execPath, {
+    const cmd = new Deno.Command(execPath, {
       args: ["run", "--config=" + configFile, ...chunk],
       stdout: "inherit",
       stderr: "inherit",
     });
-    if (!success) {
+    cmd.spawn();
+    const { code } = await cmd.output();
+
+    if (code > 0) {
       throw new Error("dlint failed");
     }
   }
@@ -74,12 +77,15 @@ async function dlintPreferPrimordials() {
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
-    const { success } = await Deno.spawn(execPath, {
+    const cmd = new Deno.Command(execPath, {
       args: ["run", "--rule", "prefer-primordials", ...chunk],
       stdout: "inherit",
       stderr: "inherit",
     });
-    if (!success) {
+    cmd.spawn();
+    const { code } = await cmd.output();
+
+    if (code > 0) {
       throw new Error("prefer-primordials failed");
     }
   }
@@ -111,7 +117,7 @@ async function clippy() {
     cmd.push("--release");
   }
 
-  const { success } = await Deno.spawn("cargo", {
+  const cargoCmd = new Deno.Command("cargo", {
     args: [
       ...cmd,
       "--",
@@ -128,7 +134,10 @@ async function clippy() {
     stdout: "inherit",
     stderr: "inherit",
   });
-  if (!success) {
+  cargoCmd.spawn();
+  const { code } = await cargoCmd.output();
+
+  if (code > 0) {
     throw new Error("clippy failed");
   }
 }
