@@ -679,7 +679,7 @@ pub async fn cover_files(
       | MediaType::Cts
       | MediaType::Tsx => {
         let source_hash = get_source_hash(&file.source, ps.emit_options_hash);
-        match ps.emit_cache.get_emit_code(&file.specifier, Some(source_hash)) {
+        match ps.emit_cache.get_emit_code(&file.specifier, source_hash) {
           Some(code) => code,
           None => {
             return Err(anyhow!(

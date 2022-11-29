@@ -30,9 +30,7 @@ pub fn emit_parsed_source(
 ) -> Result<String, AnyError> {
   let source_hash = get_source_hash(source, emit_config_hash);
 
-  if let Some(emit_code) =
-    emit_cache.get_emit_code(specifier, Some(source_hash))
-  {
+  if let Some(emit_code) = emit_cache.get_emit_code(specifier, source_hash) {
     Ok(emit_code)
   } else {
     // this will use a cached version if it exists
