@@ -134,7 +134,9 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   }
 
   fn quit_message_loop_on_pause(&mut self) {
-    self.flags.borrow_mut().on_pause = false;
+    let mut flags = self.flags.borrow_mut();
+    assert!(flags.on_pause);
+    flags.on_pause = false;
   }
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
@@ -257,18 +259,26 @@ impl JsRuntimeInspector {
     let mut sessions = self.sessions.borrow_mut();
 
     loop {
-      sessions.sync_poll();
-
-      self.waker.update(|w| {
+      // TODO(bartlomieju): this should be `PollState::SyncPolling`, old
+      // state should probably be saved
+      // and restored when we exit this function
+      let prev_state = self.waker.update(|w| {
+        let prev_state = w.poll_state;
         w.poll_state = PollState::Polling;
+        prev_state
       });
 
+      sessions.sync_poll();
+
+      // TODO(bartlomieju): this should be split into distinct poll states,
+      // one for `on_pause` and one for `waiting_for_session`
       let should_block =
         self.flags.borrow().on_pause || self.flags.borrow().waiting_for_session;
 
-      
+      // TODO(bartlomieju): this whole function is not needed here
       let new_state = self.waker.update(|w| {
         match w.poll_state {
+          // TODO(bartlomieju): this arm should never happen here
           PollState::Woken => {
             // The inspector was woken while the session handler was being
             // polled, so we poll it another time.
@@ -278,7 +288,8 @@ impl JsRuntimeInspector {
             // The session handler doesn't need to be polled any longer, and
             // there's no reason to block (execution is not paused), so this
             // function is about to return.
-            // TODO: we shouldn't update the state in sync version?
+            // TODO(bartlomieju): we shouldn't update the state in sync version?
+            // TODO(bartlomieju): should it actually be Idle here?
             w.poll_state = PollState::Idle;
 
             // Register the address of the inspector, which allows the waker
@@ -299,9 +310,11 @@ impl JsRuntimeInspector {
         };
         w.poll_state
       });
+
       eprintln!("should block {} {:?}", should_block, new_state);
       match new_state {
         PollState::Idle => {
+          // TODO(bartlomieju): should we actually wake a task here?
           self.waker.update(|w| {
             if let Some(waker) = w.task_waker.take() {
               waker.wake()
@@ -310,8 +323,9 @@ impl JsRuntimeInspector {
           });
 
           break;
-        } // Yield to task.
+        }
         PollState::Polling => {
+          // TODO(bartlomieju): should we actually wake a task here?
           self.waker.update(|w| {
             if let Some(waker) = w.task_waker.take() {
               waker.wake()
@@ -320,8 +334,12 @@ impl JsRuntimeInspector {
           });
 
           break;
-        } // Poll the session handler again.
+        }
         PollState::Parked => {
+          // TODO(bartlomieju): in here we should be polling all sessions,
+          // since we might be waiting for a session - so unless we poll
+          // for handshake and incoming sessions will be dead locked here for
+          // ever.
           futures::executor::block_on(futures::future::poll_fn(|cx| {
             let poll_result = sessions.established.poll_next_unpin(cx);
             match poll_result {
@@ -412,6 +430,8 @@ impl JsRuntimeInspector {
         };
       }
 
+      // TODO(bartlomieju): this should never happen in async poll, assert
+      // that these are false
       let should_block =
         self.flags.borrow().on_pause || self.flags.borrow().waiting_for_session;
 
@@ -435,6 +455,7 @@ impl JsRuntimeInspector {
             // to request an interrupt from the isolate.
             w.inspector_ptr = NonNull::new(self as *const _ as *mut Self);
           }
+          // TODO(bartlomieju): this arm should never happen
           PollState::Polling if should_block => {
             // Isolate execution has been paused but there are no more
             // events to process, so this thread will be parked. Therefore,
@@ -453,6 +474,7 @@ impl JsRuntimeInspector {
           break Ok(Poll::Pending);
         } // Yield to task.
         PollState::Polling => {} // Poll the session handler again.
+        // TODO(bartlomieju): this arm should never happen
         PollState::Parked => thread::park(), // Park the thread.
         _ => unreachable!(),
       };
@@ -470,8 +492,8 @@ impl JsRuntimeInspector {
       match self.sessions.get_mut().established.iter_mut().next() {
         Some(session) => {
           eprintln!("break on next statement");
-          break session.break_on_next_statement()
-        },
+          break session.break_on_next_statement();
+        }
         None => {
           eprintln!("waiting for sessions");
           self.flags.get_mut().waiting_for_session = true;
@@ -695,6 +717,9 @@ impl task::ArcWake for InspectorWaker {
           }
           // Request an interrupt from the isolate if it's running and there's
           // not unhandled interrupt request in flight.
+          // TODO(bartlomieju): why do we take inspector pointer here?
+          // it should be valid for the whole lifetime of the inspector
+          // and should stay the same
           if let Some(arg) = w
             .inspector_ptr
             .take()
@@ -714,6 +739,7 @@ impl task::ArcWake for InspectorWaker {
             inspector.poll_sessions_sync();
           }
         }
+        // TODO(bartlomieju): this arm should never be reached
         PollState::Parked => {
           // Unpark the isolate thread.
           let parked_thread = w.parked_thread.take().unwrap();
@@ -747,6 +773,7 @@ impl InspectorSession {
     blocking: bool,
   ) -> Box<Self> {
     new_box_with(move |self_ptr| {
+      // TODO(bartlomieju): channel should probably be a separate struct
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
       let mut v8_inspector = v8_inspector_rc.borrow_mut();
       let v8_inspector_ptr = v8_inspector.as_mut().unwrap();
