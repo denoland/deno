@@ -29,6 +29,7 @@ mod coverage {
   #[test]
   fn error_if_invalid_cache() {
     let deno_dir = TempDir::new();
+    let deno_dir_path = deno_dir.path();
     let tempdir = TempDir::new();
     let tempdir = tempdir.path().join("cov");
 
@@ -40,16 +41,21 @@ mod coverage {
     let mod_after_path = util::testdata_path()
       .join(&invalid_cache_path)
       .join("mod_after.ts");
-    let mod_path = util::testdata_path()
+    let mod_test_path = util::testdata_path()
       .join(&invalid_cache_path)
-      .join("mod.ts");
+      .join("mod.test.ts");
+
+    let mod_temp_path = deno_dir_path.join("mod.ts");
+    let mod_test_temp_path = deno_dir_path.join("mod.test.ts");
 
     // Write the inital mod.ts file
-    std::fs::copy(mod_before_path, &mod_path).unwrap();
+    std::fs::copy(mod_before_path, &mod_temp_path).unwrap();
+    // And the test file
+    std::fs::copy(mod_test_path, &mod_test_temp_path).unwrap();
 
     // Generate coverage
     let status = util::deno_cmd_with_deno_dir(&deno_dir)
-      .current_dir(&invalid_cache_path)
+      .current_dir(&deno_dir_path)
       .arg("test")
       .arg("--quiet")
       .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
@@ -61,10 +67,10 @@ mod coverage {
     assert!(status.success());
 
     // Modify the file between deno test and deno coverage, thus invalidating the cache
-    std::fs::copy(mod_after_path, mod_path).unwrap();
+    std::fs::copy(mod_after_path, mod_temp_path).unwrap();
 
     let output = util::deno_cmd_with_deno_dir(&deno_dir)
-      .current_dir(&invalid_cache_path)
+      .current_dir(&deno_dir_path)
       .arg("coverage")
       .arg(format!("{}/", tempdir.to_str().unwrap()))
       .stdout(std::process::Stdio::piped())
