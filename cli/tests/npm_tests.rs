@@ -1516,7 +1516,7 @@ mod npm {
   });
 
   itest!(create_require {
-    args: "run --reload npm/create_require/main.ts",
+    args: "run --reload --allow-read npm/create_require/main.ts",
     output: "npm/create_require/main.out",
     exit_code: 0,
     envs: env_vars_for_npm_tests(),
