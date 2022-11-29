@@ -3,20 +3,20 @@
 use crate::args::Flags;
 use crate::args::TestFlags;
 use crate::args::TypeCheckMode;
-use crate::checksum;
 use crate::colors;
 use crate::display;
 use crate::file_fetcher::File;
-use crate::file_watcher;
-use crate::file_watcher::ResolutionResult;
-use crate::fs_util::collect_specifiers;
-use crate::fs_util::is_supported_test_ext;
-use crate::fs_util::is_supported_test_path;
-use crate::fs_util::specifier_to_file_path;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
+use crate::util::checksum;
+use crate::util::file_watcher;
+use crate::util::file_watcher::ResolutionResult;
+use crate::util::fs::collect_specifiers;
+use crate::util::path::get_extension;
+use crate::util::path::is_supported_ext;
+use crate::util::path::specifier_to_file_path;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_ast::swc::common::comments::CommentKind;
@@ -51,6 +51,7 @@ use std::fmt::Write as _;
 use std::io::Read;
 use std::io::Write;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -1184,6 +1185,44 @@ async fn test_specifiers(
   Ok(())
 }
 
+/// Checks if the path has a basename and extension Deno supports for tests.
+fn is_supported_test_path(path: &Path) -> bool {
+  if let Some(name) = path.file_stem() {
+    let basename = name.to_string_lossy();
+    (basename.ends_with("_test")
+      || basename.ends_with(".test")
+      || basename == "test")
+      && is_supported_ext(path)
+  } else {
+    false
+  }
+}
+
+/// Checks if the path has an extension Deno supports for tests.
+fn is_supported_test_ext(path: &Path) -> bool {
+  if let Some(ext) = get_extension(path) {
+    matches!(
+      ext.as_str(),
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "mts"
+        | "cjs"
+        | "cts"
+        | "md"
+        | "mkd"
+        | "mkdn"
+        | "mdwn"
+        | "mdown"
+        | "markdown"
+    )
+  } else {
+    false
+  }
+}
+
 /// Collects specifiers marking them with the appropriate test mode while maintaining the natural
 /// input order.
 ///
@@ -1666,4 +1705,68 @@ fn start_output_redirect_thread(
       let _ignore = sender.send(());
     }
   });
+}
+
+#[cfg(test)]
+mod inner_test {
+  use std::path::Path;
+
+  use super::*;
+
+  #[test]
+  fn test_is_supported_test_ext() {
+    assert!(!is_supported_test_ext(Path::new("tests/subdir/redirects")));
+    assert!(is_supported_test_ext(Path::new("README.md")));
+    assert!(is_supported_test_ext(Path::new("readme.MD")));
+    assert!(is_supported_test_ext(Path::new("lib/typescript.d.ts")));
+    assert!(is_supported_test_ext(Path::new(
+      "testdata/run/001_hello.js"
+    )));
+    assert!(is_supported_test_ext(Path::new(
+      "testdata/run/002_hello.ts"
+    )));
+    assert!(is_supported_test_ext(Path::new("foo.jsx")));
+    assert!(is_supported_test_ext(Path::new("foo.tsx")));
+    assert!(is_supported_test_ext(Path::new("foo.TS")));
+    assert!(is_supported_test_ext(Path::new("foo.TSX")));
+    assert!(is_supported_test_ext(Path::new("foo.JS")));
+    assert!(is_supported_test_ext(Path::new("foo.JSX")));
+    assert!(is_supported_test_ext(Path::new("foo.mjs")));
+    assert!(is_supported_test_ext(Path::new("foo.mts")));
+    assert!(is_supported_test_ext(Path::new("foo.cjs")));
+    assert!(is_supported_test_ext(Path::new("foo.cts")));
+    assert!(!is_supported_test_ext(Path::new("foo.mjsx")));
+    assert!(!is_supported_test_ext(Path::new("foo.jsonc")));
+    assert!(!is_supported_test_ext(Path::new("foo.JSONC")));
+    assert!(!is_supported_test_ext(Path::new("foo.json")));
+    assert!(!is_supported_test_ext(Path::new("foo.JsON")));
+  }
+
+  #[test]
+  fn test_is_supported_test_path() {
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.ts"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.tsx"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.js"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.jsx"
+    )));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.ts")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.tsx")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.js")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.jsx")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.js")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.jsx")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.ts")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.tsx")));
+    assert!(!is_supported_test_path(Path::new("README.md")));
+    assert!(!is_supported_test_path(Path::new("lib/typescript.d.ts")));
+    assert!(!is_supported_test_path(Path::new("notatest.js")));
+    assert!(!is_supported_test_path(Path::new("NotAtest.ts")));
+  }
 }

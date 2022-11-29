@@ -31,7 +31,7 @@ pub enum NodeModuleKind {
 pub fn path_to_declaration_path(
   path: PathBuf,
   referrer_kind: NodeModuleKind,
-) -> PathBuf {
+) -> Option<PathBuf> {
   fn probe_extensions(
     path: &Path,
     referrer_kind: NodeModuleKind,
@@ -56,17 +56,17 @@ pub fn path_to_declaration_path(
     || lowercase_path.ends_with(".d.cts")
     || lowercase_path.ends_with(".d.ts")
   {
-    return path;
+    return Some(path);
   }
   if let Some(path) = probe_extensions(&path, referrer_kind) {
-    return path;
+    return Some(path);
   }
   if path.is_dir() {
     if let Some(path) = probe_extensions(&path.join("index"), referrer_kind) {
-      return path;
+      return Some(path);
     }
   }
-  path
+  None
 }
 
 /// Alternate `PathBuf::with_extension` that will handle known extensions
@@ -743,8 +743,9 @@ pub fn package_resolve(
   let file_path = package_json.path.parent().unwrap().join(&package_subpath);
 
   if conditions == TYPES_CONDITIONS {
-    let declaration_path = path_to_declaration_path(file_path, referrer_kind);
-    Ok(Some(declaration_path))
+    let maybe_declaration_path =
+      path_to_declaration_path(file_path, referrer_kind);
+    Ok(maybe_declaration_path)
   } else {
     Ok(Some(file_path))
   }
@@ -813,8 +814,7 @@ pub fn legacy_main_resolve(
         // a corresponding declaration file
         if let Some(main) = package_json.main(referrer_kind) {
           let main = package_json.path.parent().unwrap().join(main).clean();
-          let path = path_to_declaration_path(main, referrer_kind);
-          if path.exists() {
+          if let Some(path) = path_to_declaration_path(main, referrer_kind) {
             return Ok(Some(path));
           }
         }

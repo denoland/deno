@@ -6,12 +6,11 @@ use super::tsc;
 use super::tsc::AssetDocument;
 
 use crate::args::ConfigFile;
+use crate::cache::CachedUrlMetadata;
+use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
-use crate::fs_util::specifier_to_file_path;
-use crate::http_cache;
-use crate::http_cache::HttpCache;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
@@ -20,7 +19,8 @@ use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 use crate::resolver::CliResolver;
-use crate::text_encoding;
+use crate::util::path::specifier_to_file_path;
+use crate::util::text_encoding;
 
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
@@ -610,7 +610,7 @@ impl SpecifierResolver {
   ) -> Option<ModuleSpecifier> {
     let cache_filename = self.cache.get_cache_filename(specifier)?;
     if redirect_limit > 0 && cache_filename.is_file() {
-      let headers = http_cache::Metadata::read(&cache_filename)
+      let headers = CachedUrlMetadata::read(&cache_filename)
         .ok()
         .map(|m| m.headers)?;
       if let Some(location) = headers.get("location") {
@@ -657,8 +657,7 @@ impl FileSystemDocuments {
       )
     } else {
       let cache_filename = cache.get_cache_filename(specifier)?;
-      let specifier_metadata =
-        http_cache::Metadata::read(&cache_filename).ok()?;
+      let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
       let maybe_content_type =
         specifier_metadata.headers.get("content-type").cloned();
       let maybe_headers = Some(&specifier_metadata.headers);

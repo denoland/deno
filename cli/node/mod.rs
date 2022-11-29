@@ -492,7 +492,10 @@ pub fn node_resolve(
       let path = url.to_file_path().unwrap();
       // todo(16370): the module kind is not correct here. I think we need
       // typescript to tell us if the referrer is esm or cjs
-      let path = path_to_declaration_path(path, NodeModuleKind::Esm);
+      let path = match path_to_declaration_path(path, NodeModuleKind::Esm) {
+        Some(path) => path,
+        None => return Ok(None),
+      };
       ModuleSpecifier::from_file_path(path).unwrap()
     }
   };
@@ -532,7 +535,10 @@ pub fn node_resolve_npm_reference(
   let resolved_path = match mode {
     NodeResolutionMode::Execution => resolved_path,
     NodeResolutionMode::Types => {
-      path_to_declaration_path(resolved_path, node_module_kind)
+      match path_to_declaration_path(resolved_path, node_module_kind) {
+        Some(path) => path,
+        None => return Ok(None),
+      }
     }
   };
   let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
@@ -636,17 +642,22 @@ pub fn load_cjs_module_from_ext_node(
   js_runtime: &mut JsRuntime,
   module: &str,
   main: bool,
+  inspect_brk: bool,
 ) -> Result<(), AnyError> {
   fn escape_for_single_quote_string(text: &str) -> String {
     text.replace('\\', r"\\").replace('\'', r"\'")
   }
 
   let source_code = &format!(
-    r#"(function loadCjsModule(module) {{
+    r#"(function loadCjsModule(module, inspectBrk) {{
+      if (inspectBrk) {{
+        Deno[Deno.internal].require.setInspectBrk();
+      }}
       Deno[Deno.internal].require.Module._load(module, null, {main});
-    }})('{module}');"#,
+    }})('{module}', {inspect_brk});"#,
     main = main,
     module = escape_for_single_quote_string(module),
+    inspect_brk = inspect_brk,
   );
 
   js_runtime.execute_script(&located_script_name!(), source_code)?;
@@ -789,7 +800,9 @@ fn module_resolve(
       // should use the value provided by typescript instead
       let declaration_path =
         path_to_declaration_path(file_path, NodeModuleKind::Esm);
-      Some(ModuleSpecifier::from_file_path(declaration_path).unwrap())
+      declaration_path.map(|declaration_path| {
+        ModuleSpecifier::from_file_path(declaration_path).unwrap()
+      })
     } else {
       Some(resolved_specifier)
     }

@@ -18,10 +18,10 @@ use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::args::TsConfig;
-use crate::fs_util::relative_specifier;
-use crate::fs_util::specifier_to_file_path;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
+use crate::util::path::relative_specifier;
+use crate::util::path::specifier_to_file_path;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
@@ -3445,7 +3445,7 @@ pub fn request(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::http_cache::HttpCache;
+  use crate::cache::HttpCache;
   use crate::http_util::HeadersMap;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;

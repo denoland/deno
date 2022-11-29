@@ -12,7 +12,7 @@ use std::sync::Arc;
 /// A hashing function that takes the source code and emit options
 /// hash then generates a string hash which can be stored to
 /// determine if the cached emit is valid or not.
-fn get_source_hash(source_text: &str, emit_options_hash: u64) -> u64 {
+pub fn get_source_hash(source_text: &str, emit_options_hash: u64) -> u64 {
   FastInsecureHasher::new()
     .write_str(source_text)
     .write_u64(emit_options_hash)
@@ -30,9 +30,7 @@ pub fn emit_parsed_source(
 ) -> Result<String, AnyError> {
   let source_hash = get_source_hash(source, emit_config_hash);
 
-  if let Some(emit_code) =
-    emit_cache.get_emit_code(specifier, Some(source_hash))
-  {
+  if let Some(emit_code) = emit_cache.get_emit_code(specifier, source_hash) {
     Ok(emit_code)
   } else {
     // this will use a cached version if it exists

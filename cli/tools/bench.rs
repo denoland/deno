@@ -5,17 +5,17 @@ use crate::args::BenchFlags;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::colors;
-use crate::file_watcher;
-use crate::file_watcher::ResolutionResult;
-use crate::fs_util::collect_specifiers;
-use crate::fs_util::is_supported_bench_path;
-use crate::fs_util::specifier_to_file_path;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
+use crate::util::file_watcher;
+use crate::util::file_watcher::ResolutionResult;
+use crate::util::fs::collect_specifiers;
+use crate::util::path::is_supported_ext;
+use crate::util::path::specifier_to_file_path;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
@@ -34,6 +34,7 @@ use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashSet;
+use std::path::Path;
 use std::path::PathBuf;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
@@ -469,6 +470,19 @@ async fn bench_specifiers(
   result??;
 
   Ok(())
+}
+
+/// Checks if the path has a basename and extension Deno supports for benches.
+fn is_supported_bench_path(path: &Path) -> bool {
+  if let Some(name) = path.file_stem() {
+    let basename = name.to_string_lossy();
+    (basename.ends_with("_bench")
+      || basename.ends_with(".bench")
+      || basename == "bench")
+      && is_supported_ext(path)
+  } else {
+    false
+  }
 }
 
 pub async fn run_benchmarks(
