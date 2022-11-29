@@ -55,7 +55,7 @@ mod coverage {
 
     // Generate coverage
     let status = util::deno_cmd_with_deno_dir(&deno_dir)
-      .current_dir(&deno_dir_path)
+      .current_dir(deno_dir_path)
       .arg("test")
       .arg("--quiet")
       .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
@@ -70,7 +70,7 @@ mod coverage {
     std::fs::copy(mod_after_path, mod_temp_path).unwrap();
 
     let output = util::deno_cmd_with_deno_dir(&deno_dir)
-      .current_dir(&deno_dir_path)
+      .current_dir(deno_dir_path)
       .arg("coverage")
       .arg(format!("{}/", tempdir.to_str().unwrap()))
       .stdout(std::process::Stdio::piped())
