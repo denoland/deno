@@ -769,7 +769,11 @@ async fn op_http_write_resource(
 
     match &mut *wr {
       HttpResponseWriter::Body(body) => {
-        if let Err(err) = body.write_all(&view).await {
+        let mut result = body.write_all(&view).await;
+        if result.is_ok() {
+          result = body.flush().await;
+        }
+        if let Err(err) = result {
           assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
           // Don't return "broken pipe", that's an implementation detail.
           // Pull up the failure associated with the transport connection instead.

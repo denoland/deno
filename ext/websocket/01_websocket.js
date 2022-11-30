@@ -10,7 +10,9 @@
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
   const { DOMException } = window.__bootstrap.domException;
-  const { defineEventHandler, _skipInternalInit } = window.__bootstrap.event;
+  const { Event, ErrorEvent, CloseEvent, MessageEvent, defineEventHandler, _skipInternalInit } =
+    window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { Blob, BlobPrototype } = globalThis.__bootstrap.file;
   const {
     ArrayBufferPrototype,
@@ -18,7 +20,6 @@
     ArrayPrototypeJoin,
     ArrayPrototypeMap,
     ArrayPrototypeSome,
-    Uint32Array,
     ErrorPrototypeToString,
     ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
@@ -83,10 +84,6 @@
   const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
   const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
   const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
-
-  /* [event type, close code] */
-  const eventBuf = new Uint32Array(2);
-
   class WebSocket extends EventTarget {
     [_rid];
 
@@ -415,15 +412,13 @@
 
     async [_eventLoop]() {
       while (this[_readyState] !== CLOSED) {
-        const value = await core.opAsync(
+        const { kind, value } = await core.opAsync(
           "op_ws_next_event",
           this[_rid],
-          eventBuf,
         );
-        const kind = eventBuf[0];
+
         switch (kind) {
-          /* string */
-          case 0: {
+          case "string": {
             this[_serverHandleIdleTimeout]();
             const event = new MessageEvent("message", {
               data: value,
@@ -432,8 +427,7 @@
             this.dispatchEvent(event);
             break;
           }
-          /* binary */
-          case 1: {
+          case "binary": {
             this[_serverHandleIdleTimeout]();
             let data;
 
@@ -451,23 +445,18 @@
             this.dispatchEvent(event);
             break;
           }
-          /* ping */
-          case 3: {
+          case "ping": {
             core.opAsync("op_ws_send", this[_rid], {
               kind: "pong",
             });
             break;
           }
-          /* pong */
-          case 4: {
+          case "pong": {
             this[_serverHandleIdleTimeout]();
             break;
           }
-          /* closed */
-          case 6: // falls through
-          /* close */
-          case 2: {
-            const code = eventBuf[1];
+          case "closed":
+          case "close": {
             const prevState = this[_readyState];
             this[_readyState] = CLOSED;
             clearTimeout(this[_idleTimeoutTimeout]);
@@ -477,8 +466,8 @@
                 await core.opAsync(
                   "op_ws_close",
                   this[_rid],
-                  code,
-                  value,
+                  value.code,
+                  value.reason,
                 );
               } catch {
                 // ignore failures
@@ -487,15 +476,14 @@
 
             const event = new CloseEvent("close", {
               wasClean: true,
-              code,
-              reason: value,
+              code: value.code,
+              reason: value.reason,
             });
             this.dispatchEvent(event);
             core.tryClose(this[_rid]);
             break;
           }
-          /* error */
-          case 5: {
+          case "error": {
             this[_readyState] = CLOSED;
 
             const errorEv = new ErrorEvent("error", {

@@ -69,6 +69,8 @@
   let statCache = null;
   let isPreloading = false;
   let mainModule = null;
+  let hasBrokenOnInspectBrk = false;
+  let hasInspectBrk = false;
 
   function stat(filename) {
     // TODO: required only on windows
@@ -351,8 +353,7 @@
         }
       }
 
-      const isDenoDirPackage = Deno.core.opSync(
-        "op_require_is_deno_dir_package",
+      const isDenoDirPackage = Deno.core.ops.op_require_is_deno_dir_package(
         curPath,
       );
       const isRelative = ops.op_require_is_request_relative(
@@ -402,9 +403,17 @@
 
   Module._resolveLookupPaths = function (request, parent) {
     const paths = [];
+
+    if (core.ops.op_require_is_request_relative(request) && parent?.filename) {
+      ArrayPrototypePush(
+        paths,
+        core.ops.op_require_path_dirname(parent.filename),
+      );
+      return paths;
+    }
+
     if (parent?.filename && parent.filename.length > 0) {
-      const denoDirPath = core.opSync(
-        "op_require_resolve_deno_dir",
+      const denoDirPath = core.ops.op_require_resolve_deno_dir(
         request,
         parent.filename,
       );
@@ -664,7 +673,7 @@
   Module.wrapper = [
     // We provide the non-standard APIs in the CommonJS wrapper
     // to avoid exposing them in global namespace.
-    "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout} = globalThis; var window = undefined; (function () {",
+    "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout} = globalThis; var window = undefined; (function () {",
     "\n}).call(this); })",
   ];
   Module.wrap = function (script) {
@@ -716,6 +725,12 @@
     if (requireDepth === 0) {
       statCache = new SafeMap();
     }
+
+    if (hasInspectBrk && !hasBrokenOnInspectBrk) {
+      hasBrokenOnInspectBrk = true;
+      core.ops.op_require_break_on_next_statement();
+    }
+
     const result = compiledWrapper.call(
       thisValue,
       exports,
@@ -811,9 +826,39 @@
     return require;
   }
 
+  // Matches to:
+  // - /foo/...
+  // - \foo\...
+  // - C:/foo/...
+  // - C:\foo\...
+  const RE_START_OF_ABS_PATH = /^([/\\]|[a-zA-Z]:[/\\])/;
+
+  function isAbsolute(filenameOrUrl) {
+    return RE_START_OF_ABS_PATH.test(filenameOrUrl);
+  }
+
   function createRequire(filenameOrUrl) {
-    // FIXME: handle URLs and validation
-    const filename = core.opSync("op_require_as_file_path", filenameOrUrl);
+    let fileUrlStr;
+    if (filenameOrUrl instanceof URL) {
+      if (filenameOrUrl.protocol !== "file:") {
+        throw new Error(
+          `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+        );
+      }
+      fileUrlStr = filenameOrUrl.toString();
+    } else if (typeof filenameOrUrl === "string") {
+      if (!filenameOrUrl.startsWith("file:") && !isAbsolute(filenameOrUrl)) {
+        throw new Error(
+          `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+        );
+      }
+      fileUrlStr = filenameOrUrl;
+    } else {
+      throw new Error(
+        `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+      );
+    }
+    const filename = core.ops.op_require_as_file_path(fileUrlStr);
     return createRequireFromPath(filename);
   }
 
@@ -870,6 +915,9 @@
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     require: {
+      setInspectBrk() {
+        hasInspectBrk = true;
+      },
       Module,
       wrapSafe,
       toRealPath,

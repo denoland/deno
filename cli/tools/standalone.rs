@@ -5,10 +5,10 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::RunFlags;
 use crate::args::TypeCheckMode;
-use crate::deno_dir::DenoDir;
-use crate::fs_util;
+use crate::cache::DenoDir;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
+use crate::util::path::path_has_trailing_slash;
 use crate::ProcState;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -50,7 +50,7 @@ pub async fn get_base_binary(
     format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
   };
 
-  let download_directory = deno_dir.root.join("dl");
+  let download_directory = deno_dir.dl_folder_path();
   let binary_path = download_directory.join(&binary_path_suffix);
 
   if !binary_path.exists() {
@@ -85,9 +85,9 @@ async fn download_base_binary(
     std::process::exit(1)
   };
 
-  std::fs::create_dir_all(&output_directory)?;
+  std::fs::create_dir_all(output_directory)?;
   let output_path = output_directory.join(binary_path_suffix);
-  std::fs::create_dir_all(&output_path.parent().unwrap())?;
+  std::fs::create_dir_all(output_path.parent().unwrap())?;
   tokio::fs::write(output_path, binary_content).await?;
   Ok(())
 }
@@ -281,6 +281,7 @@ pub fn compile_to_runtime_flags(
       .unsafely_ignore_certificate_errors
       .clone(),
     no_remote: false,
+    no_lock: false,
     no_npm: false,
     no_prompt: flags.no_prompt,
     reload: false,
@@ -298,7 +299,7 @@ pub fn resolve_compile_executable_output_path(
 ) -> Result<PathBuf, AnyError> {
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   compile_flags.output.as_ref().and_then(|output| {
-    if fs_util::path_has_trailing_slash(output) {
+    if path_has_trailing_slash(output) {
       let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
       Some(output.join(infer_file_name))
     } else {

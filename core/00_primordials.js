@@ -275,12 +275,15 @@
 
   const {
     ArrayPrototypeForEach,
+    ArrayPrototypeMap,
     FunctionPrototypeCall,
     Map,
     ObjectDefineProperty,
     ObjectFreeze,
+    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     Promise,
+    PromisePrototype,
     PromisePrototypeThen,
     Set,
     SymbolIterator,
@@ -435,6 +438,29 @@
 
   primordials.PromisePrototypeCatch = (thisPromise, onRejected) =>
     PromisePrototypeThen(thisPromise, undefined, onRejected);
+
+  /**
+   * Creates a Promise that is resolved with an array of results when all of the
+   * provided Promises resolve, or rejected when any Promise is rejected.
+   * @param {unknown[]} values An array of Promises.
+   * @returns A new Promise.
+   */
+  primordials.SafePromiseAll = (values) =>
+    // Wrapping on a new Promise is necessary to not expose the SafePromise
+    // prototype to user-land.
+    new Promise((a, b) =>
+      SafePromise.all(
+        ArrayPrototypeMap(
+          values,
+          (p) => {
+            if (ObjectPrototypeIsPrototypeOf(PromisePrototype, p)) {
+              return new SafePromise((c, d) => PromisePrototypeThen(p, c, d));
+            }
+            return p;
+          },
+        ),
+      ).then(a, b)
+    );
 
   /**
    * Attaches a callback that is invoked when the Promise is settled (fulfilled or

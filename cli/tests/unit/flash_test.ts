@@ -2227,6 +2227,32 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function serveWithPromisePrototypeThenOverride() {
+    const originalThen = Promise.prototype.then;
+    try {
+      Promise.prototype.then = () => {
+        throw new Error();
+      };
+      const ac = new AbortController();
+      const listeningPromise = deferred();
+      const server = Deno.serve({
+        handler: (_req) => new Response("ok"),
+        hostname: "localhost",
+        port: 4501,
+        signal: ac.signal,
+        onListen: onListen(listeningPromise),
+        onError: createOnErrorCb(ac),
+      });
+      ac.abort();
+      await server;
+    } finally {
+      Promise.prototype.then = originalThen;
+    }
+  },
+);
+
 // https://github.com/denoland/deno/issues/15549
 Deno.test(
   { permissions: { net: true } },
@@ -2244,6 +2270,40 @@ Deno.test(
 
         const res2 = await fetch("http://localhost:9000/");
         assertEquals(await res2.text(), "hello world 2");
+
+        promise.resolve();
+        ac.abort();
+      },
+      signal: ac.signal,
+    });
+
+    await promise;
+    await server;
+  },
+);
+
+// Checks large streaming response
+// https://github.com/denoland/deno/issues/16567
+Deno.test(
+  { permissions: { net: true } },
+  async function testIssue16567() {
+    const ac = new AbortController();
+    const promise = deferred();
+    const server = Deno.serve(() =>
+      new Response(
+        new ReadableStream({
+          start(c) {
+            // 2MB "a...a" response with 40 chunks
+            for (const _ of Array(40)) {
+              c.enqueue(new Uint8Array(50_000).fill(97));
+            }
+            c.close();
+          },
+        }),
+      ), {
+      async onListen() {
+        const res1 = await fetch("http://localhost:9000/");
+        assertEquals((await res1.text()).length, 40 * 50_000);
 
         promise.resolve();
         ac.abort();

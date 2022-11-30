@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/peer-dep-test-child-2",
+  "version": "1.0.0",
+  "peerDependencies": {
+    "@denotest/peer-dep-test-peer": "*"
+  }
+}

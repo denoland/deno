@@ -1260,10 +1260,11 @@ fn napi_delete_reference(env: *mut Env, _nref: napi_ref) -> Result {
 }
 
 #[napi_sym::napi_sym]
-fn napi_detach_arraybuffer(_env: *mut Env, value: napi_value) -> Result {
+fn napi_detach_arraybuffer(env: *mut Env, value: napi_value) -> Result {
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
   let ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  ab.detach();
+  ab.detach(v8::undefined(&mut env.scope()).into());
   Ok(())
 }
 
@@ -1798,9 +1799,7 @@ fn napi_is_detached_arraybuffer(
 ) -> Result {
   let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
   let _ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  // TODO: what is API for checking if ArrayBuffer is detached?
-  // there's only is_detachable I could find.
-  *result = false;
+  *result = _ab.was_detached();
   Ok(())
 }
 

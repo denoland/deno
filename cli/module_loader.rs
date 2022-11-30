@@ -1,12 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::TsTypeLib;
 use crate::emit::emit_parsed_source;
-use crate::emit::TsTypeLib;
 use crate::graph_util::ModuleEntry;
 use crate::node;
 use crate::proc_state::ProcState;
-use crate::text_encoding::code_without_source_map;
-use crate::text_encoding::source_map_from_code;
+use crate::util::text_encoding::code_without_source_map;
+use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -140,7 +140,7 @@ impl CliModuleLoader {
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path).with_context(|| {
         let mut msg = "Unable to load ".to_string();
-        msg.push_str(&*file_path.to_string_lossy());
+        msg.push_str(&file_path.to_string_lossy());
         if let Some(referrer) = &maybe_referrer {
           msg.push_str(" imported from ");
           msg.push_str(referrer.as_str());

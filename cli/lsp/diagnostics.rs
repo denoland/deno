@@ -13,7 +13,6 @@ use super::tsc;
 use super::tsc::TsServer;
 
 use crate::args::LintConfig;
-use crate::diagnostics;
 use crate::npm::NpmPackageReference;
 
 use deno_ast::MediaType;
@@ -43,7 +42,7 @@ pub type DiagnosticRecord =
 pub type DiagnosticVec = Vec<DiagnosticRecord>;
 type DiagnosticMap =
   HashMap<ModuleSpecifier, (Option<i32>, Vec<lsp::Diagnostic>)>;
-type TsDiagnosticsMap = HashMap<String, Vec<diagnostics::Diagnostic>>;
+type TsDiagnosticsMap = HashMap<String, Vec<crate::tsc::Diagnostic>>;
 type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp::Diagnostic>>;
 
 #[derive(Clone)]
@@ -335,25 +334,25 @@ impl DiagnosticsServer {
   }
 }
 
-impl<'a> From<&'a diagnostics::DiagnosticCategory> for lsp::DiagnosticSeverity {
-  fn from(category: &'a diagnostics::DiagnosticCategory) -> Self {
+impl<'a> From<&'a crate::tsc::DiagnosticCategory> for lsp::DiagnosticSeverity {
+  fn from(category: &'a crate::tsc::DiagnosticCategory) -> Self {
     match category {
-      diagnostics::DiagnosticCategory::Error => lsp::DiagnosticSeverity::ERROR,
-      diagnostics::DiagnosticCategory::Warning => {
+      crate::tsc::DiagnosticCategory::Error => lsp::DiagnosticSeverity::ERROR,
+      crate::tsc::DiagnosticCategory::Warning => {
         lsp::DiagnosticSeverity::WARNING
       }
-      diagnostics::DiagnosticCategory::Suggestion => {
+      crate::tsc::DiagnosticCategory::Suggestion => {
         lsp::DiagnosticSeverity::HINT
       }
-      diagnostics::DiagnosticCategory::Message => {
+      crate::tsc::DiagnosticCategory::Message => {
         lsp::DiagnosticSeverity::INFORMATION
       }
     }
   }
 }
 
-impl<'a> From<&'a diagnostics::Position> for lsp::Position {
-  fn from(pos: &'a diagnostics::Position) -> Self {
+impl<'a> From<&'a crate::tsc::Position> for lsp::Position {
+  fn from(pos: &'a crate::tsc::Position) -> Self {
     Self {
       line: pos.line as u32,
       character: pos.character as u32,
@@ -361,7 +360,7 @@ impl<'a> From<&'a diagnostics::Position> for lsp::Position {
   }
 }
 
-fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
+fn get_diagnostic_message(diagnostic: &crate::tsc::Diagnostic) -> String {
   if let Some(message) = diagnostic.message_text.clone() {
     message
   } else if let Some(message_chain) = diagnostic.message_chain.clone() {
@@ -372,8 +371,8 @@ fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
 }
 
 fn to_lsp_range(
-  start: &diagnostics::Position,
-  end: &diagnostics::Position,
+  start: &crate::tsc::Position,
+  end: &crate::tsc::Position,
 ) -> lsp::Range {
   lsp::Range {
     start: start.into(),
@@ -382,7 +381,7 @@ fn to_lsp_range(
 }
 
 fn to_lsp_related_information(
-  related_information: &Option<Vec<diagnostics::Diagnostic>>,
+  related_information: &Option<Vec<crate::tsc::Diagnostic>>,
 ) -> Option<Vec<lsp::DiagnosticRelatedInformation>> {
   related_information.as_ref().map(|related| {
     related
@@ -408,7 +407,7 @@ fn to_lsp_related_information(
 }
 
 fn ts_json_to_diagnostics(
-  diagnostics: Vec<diagnostics::Diagnostic>,
+  diagnostics: Vec<crate::tsc::Diagnostic>,
 ) -> Vec<lsp::Diagnostic> {
   diagnostics
     .iter()
@@ -456,6 +455,13 @@ async fn generate_lint_diagnostics(
       // exit early if cancelled
       if token.is_cancelled() {
         break;
+      }
+
+      // ignore any npm package files
+      if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+        if npm_resolver.in_npm_package(document.specifier()) {
+          continue;
+        }
       }
 
       let version = document.maybe_lsp_version();
@@ -597,6 +603,8 @@ pub enum DenoDiagnostic {
   NoCacheBlob,
   /// A data module was not found in the cache.
   NoCacheData(ModuleSpecifier),
+  /// A remote npm package reference was not found in the cache.
+  NoCacheNpm(NpmPackageReference, ModuleSpecifier),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
   /// The specifier resolved to a remote specifier that was redirected to
@@ -622,6 +630,7 @@ impl DenoDiagnostic {
       Self::NoCache(_) => "no-cache",
       Self::NoCacheBlob => "no-cache-blob",
       Self::NoCacheData(_) => "no-cache-data",
+      Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
       Self::Redirect { .. } => "redirect",
       Self::ResolutionError(err) => match err {
@@ -690,16 +699,17 @@ impl DenoDiagnostic {
           }),
           ..Default::default()
         },
-        "no-cache" | "no-cache-data" => {
+        "no-cache" | "no-cache-data" | "no-cache-npm" => {
           let data = diagnostic
             .data
             .clone()
             .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
           let data: DiagnosticDataSpecifier = serde_json::from_value(data)?;
-          let title = if code == "no-cache" {
-            format!("Cache \"{}\" and its dependencies.", data.specifier)
-          } else {
-            "Cache the data URL and its dependencies.".to_string()
+          let title = match code.as_str() {
+            "no-cache" | "no-cache-npm" => {
+              format!("Cache \"{}\" and its dependencies.", data.specifier)
+            }
+            _ => "Cache the data URL and its dependencies.".to_string(),
           };
           lsp::CodeAction {
             title,
@@ -757,6 +767,7 @@ impl DenoDiagnostic {
         code.as_str(),
         "import-map-remap"
           | "no-cache"
+          | "no-cache-npm"
           | "no-cache-data"
           | "no-assert-type"
           | "redirect"
@@ -777,6 +788,7 @@ impl DenoDiagnostic {
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{}\".", specifier), Some(json!({ "specifier": specifier }))),
       Self::NoCacheBlob => (lsp::DiagnosticSeverity::ERROR, "Uncached blob URL.".to_string(), None),
       Self::NoCacheData(specifier) => (lsp::DiagnosticSeverity::ERROR, "Uncached data URL.".to_string(), Some(json!({ "specifier": specifier }))),
+      Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: \"{}\".", pkg_ref.req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{}\" was redirected to \"{}\".", from, to), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => (lsp::DiagnosticSeverity::ERROR, err.to_string(), None),
@@ -847,8 +859,20 @@ fn diagnose_resolved(
               .push(DenoDiagnostic::NoAssertType.to_lsp_diagnostic(&range)),
           }
         }
-      } else if NpmPackageReference::from_specifier(specifier).is_ok() {
-        // ignore npm specifiers for now
+      } else if let Ok(pkg_ref) = NpmPackageReference::from_specifier(specifier)
+      {
+        if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+          // show diagnostics for npm package references that aren't cached
+          if npm_resolver
+            .resolve_package_folder_from_deno_module(&pkg_ref.req)
+            .is_err()
+          {
+            diagnostics.push(
+              DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone())
+                .to_lsp_diagnostic(&range),
+            );
+          }
+        }
       } else {
         // When the document is not available, it means that it cannot be found
         // in the cache or locally on the disk, so we want to issue a diagnostic
@@ -882,6 +906,12 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
+  if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+    if npm_resolver.in_npm_package(referrer) {
+      return; // ignore, surface typescript errors instead
+    }
+  }
+
   if let Some(import_map) = &snapshot.maybe_import_map {
     if let Resolved::Ok {
       specifier, range, ..
@@ -938,8 +968,8 @@ async fn generate_deno_diagnostics(
           &mut diagnostics,
           snapshot,
           specifier,
-          &dependency_key,
-          &dependency,
+          dependency_key,
+          dependency,
         );
       }
     }
