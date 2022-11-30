@@ -712,10 +712,7 @@ impl InspectorWaker {
   }
 }
 
-extern "C" fn handle_interrupt(
-  _isolate: &mut v8::Isolate,
-  arg: *mut c_void,
-) {
+extern "C" fn handle_interrupt(_isolate: &mut v8::Isolate, arg: *mut c_void) {
   // SAFETY: `InspectorWaker` is owned by `JsRuntimeInspector`, so the
   // pointer to the latter is valid as long as waker is alive.
   let inspector = unsafe { &*(arg as *mut JsRuntimeInspector) };
