@@ -10,8 +10,14 @@
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
   const { DOMException } = window.__bootstrap.domException;
-  const { Event, ErrorEvent, CloseEvent, MessageEvent, defineEventHandler, _skipInternalInit } =
-    window.__bootstrap.event;
+  const {
+    Event,
+    ErrorEvent,
+    CloseEvent,
+    MessageEvent,
+    defineEventHandler,
+    _skipInternalInit,
+  } = window.__bootstrap.event;
   const { EventTarget } = window.__bootstrap.eventTarget;
   const { Blob, BlobPrototype } = globalThis.__bootstrap.file;
   const {
