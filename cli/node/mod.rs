@@ -27,12 +27,12 @@ use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::path_to_declaration_path;
 use deno_runtime::deno_node::NodeModuleKind;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
-use deno_runtime::deno_node::TYPES_CONDITIONS;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -106,12 +106,6 @@ impl NodeResolution {
       }
     }
   }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeResolutionMode {
-  Execution,
-  Types,
 }
 
 struct NodeModulePolyfill {
@@ -480,8 +474,13 @@ pub fn node_resolve(
     }
   }
 
-  let conditions = mode_conditions(mode);
-  let url = module_resolve(specifier, referrer, conditions, npm_resolver)?;
+  let url = module_resolve(
+    specifier,
+    referrer,
+    DEFAULT_CONDITIONS,
+    mode,
+    npm_resolver,
+  )?;
   let url = match url {
     Some(url) => url,
     None => return Ok(None),
@@ -522,7 +521,8 @@ pub fn node_resolve_npm_reference(
       .unwrap_or_else(|| ".".to_string()),
     &package_folder,
     node_module_kind,
-    mode_conditions(mode),
+    DEFAULT_CONDITIONS,
+    mode,
     npm_resolver,
   )
   .with_context(|| {
@@ -546,13 +546,6 @@ pub fn node_resolve_npm_reference(
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
-}
-
-fn mode_conditions(mode: NodeResolutionMode) -> &'static [&'static str] {
-  match mode {
-    NodeResolutionMode::Execution => DEFAULT_CONDITIONS,
-    NodeResolutionMode::Types => TYPES_CONDITIONS,
-  }
 }
 
 pub fn node_resolve_binary_export(
@@ -669,6 +662,7 @@ fn package_config_resolve(
   package_dir: &Path,
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<PathBuf>, AnyError> {
   let package_json_path = package_dir.join("package.json");
@@ -683,15 +677,15 @@ fn package_config_resolve(
       &referrer,
       referrer_kind,
       conditions,
+      mode,
       npm_resolver,
     );
     match result {
       Ok(found) => return Ok(Some(found)),
       Err(exports_err) => {
-        let is_types = conditions == TYPES_CONDITIONS;
-        if is_types && package_subpath == "." {
+        if mode.is_types() && package_subpath == "." {
           if let Ok(Some(path)) =
-            legacy_main_resolve(&package_config, referrer_kind, conditions)
+            legacy_main_resolve(&package_config, referrer_kind, mode)
           {
             return Ok(Some(path));
           } else {
@@ -703,7 +697,7 @@ fn package_config_resolve(
     }
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_config, referrer_kind, conditions);
+    return legacy_main_resolve(&package_config, referrer_kind, mode);
   }
 
   Ok(Some(package_dir.join(package_subpath)))
@@ -789,12 +783,13 @@ fn module_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   // note: if we're here, the referrer is an esm module
   let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
     let resolved_specifier = referrer.join(specifier)?;
-    if conditions == TYPES_CONDITIONS {
+    if mode.is_types() {
       let file_path = to_file_path(&resolved_specifier);
       // todo(dsherret): the node module kind is not correct and we
       // should use the value provided by typescript instead
@@ -813,6 +808,7 @@ fn module_resolve(
         referrer,
         NodeModuleKind::Esm,
         conditions,
+        mode,
         npm_resolver,
       )
       .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
@@ -825,6 +821,7 @@ fn module_resolve(
       referrer,
       NodeModuleKind::Esm,
       conditions,
+      mode,
       npm_resolver,
     )?
     .map(|p| ModuleSpecifier::from_file_path(p).unwrap())
@@ -956,6 +953,7 @@ pub fn translate_cjs_to_esm(
       // FIXME(bartlomieju): check if these conditions are okay, probably
       // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
       &["deno", "require", "default"],
+      NodeResolutionMode::Execution,
       npm_resolver,
     )?;
     let reexport_specifier =
@@ -1026,6 +1024,7 @@ fn resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   if specifier.starts_with('/') {
@@ -1050,7 +1049,7 @@ fn resolve(
   let module_dir = npm_resolver.resolve_package_folder_from_package(
     package_specifier.as_str(),
     &referrer_path,
-    conditions,
+    mode,
   )?;
 
   let package_json_path = module_dir.join("package.json");
@@ -1066,6 +1065,7 @@ fn resolve(
         referrer,
         NodeModuleKind::Esm,
         conditions,
+        mode,
         npm_resolver,
       );
     }
