@@ -250,6 +250,12 @@ impl MainWorker {
         &mut js_runtime,
         options.should_break_on_first_statement,
       );
+
+      // Put inspector handle into the op state so we can put a breakpoint when
+      // executing a CJS entrypoint.
+      let op_state = js_runtime.op_state();
+      let inspector = js_runtime.inspector();
+      op_state.borrow_mut().put(inspector);
     }
 
     Self {

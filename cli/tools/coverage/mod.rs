@@ -3,10 +3,11 @@
 use crate::args::CoverageFlags;
 use crate::args::Flags;
 use crate::colors;
-use crate::fs_util::collect_files;
+use crate::emit::get_source_hash;
 use crate::proc_state::ProcState;
-use crate::text_encoding::source_map_from_code;
 use crate::tools::fmt::format_json;
+use crate::util::fs::collect_files;
+use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -677,7 +678,8 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        match ps.emit_cache.get_emit_code(&file.specifier, None) {
+        let source_hash = get_source_hash(&file.source, ps.emit_options_hash);
+        match ps.emit_cache.get_emit_code(&file.specifier, source_hash) {
           Some(code) => code,
           None => {
             return Err(anyhow!(
