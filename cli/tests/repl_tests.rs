@@ -881,4 +881,19 @@ mod repl {
     assert_contains!(out, "AggregateError");
     assert!(err.is_empty());
   }
+
+  #[test]
+  fn repl_with_quiet_flag() {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet"],
+      Some(vec!["await Promise.resolve('done')"]),
+      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+      false,
+    );
+    assert!(!out.contains("Deno"));
+    assert!(!out.contains("exit using ctrl+d, ctrl+c, or close()"));
+    assert_ends_with!(out, "\"done\"\n");
+    assert!(err.is_empty());
+  }
 }
