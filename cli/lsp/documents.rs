@@ -634,7 +634,7 @@ struct FileSystemDocuments {
 }
 
 impl FileSystemDocuments {
-  pub fn get<'a>(
+  pub fn get(
     &mut self,
     cache: &HttpCache,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
