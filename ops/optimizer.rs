@@ -20,12 +20,19 @@ pub(crate) enum BailoutReason {
 }
 
 #[derive(Debug, PartialEq)]
+enum StringType {
+  Cow,
+  Ref,
+  Owned,
+}
+
+#[derive(Debug, PartialEq)]
 enum TransformKind {
   // serde_v8::Value
   V8Value,
   SliceU32(bool),
   SliceU8(bool),
-  SeqOneByteString(bool),
+  SeqOneByteString(StringType),
   PtrU8,
   WasmMemory,
 }
@@ -52,7 +59,7 @@ impl Transform {
     }
   }
 
-  fn seq_one_byte_string(index: usize, is_ref: bool) -> Self {
+  fn seq_one_byte_string(index: usize, is_ref: StringType) -> Self {
     Transform {
       kind: TransformKind::SeqOneByteString(is_ref),
       index,
@@ -141,16 +148,18 @@ impl Transform {
         })
       }
       // &str
-      TransformKind::SeqOneByteString(is_ref) => {
+      TransformKind::SeqOneByteString(str_ty) => {
         *ty = parse_quote! { *const #core::v8::fast_api::FastApiOneByteString };
-        if *is_ref {
-          q!(Vars { var: &ident }, {
+        match str_ty {
+          StringType::Ref => q!(Vars { var: &ident }, {
             let var = unsafe { &*var }.as_str();
-          })
-        } else {
-          q!(Vars { var: &ident }, {
+          }),
+          StringType::Cow => q!(Vars { var: &ident }, {
+            let var = ::std::borrow::Cow::Borrowed(unsafe { &*var }.as_str());
+          }),
+          StringType::Owned => q!(Vars { var: &ident }, {
             let var = unsafe { &*var }.as_str().to_owned();
-          })
+          }),
         }
       }
       TransformKind::WasmMemory => {
@@ -572,6 +581,44 @@ impl Optimizer {
                 }
               }
             }
+            // Cow<'_, str>
+            PathSegment {
+              ident, arguments, ..
+            } if ident == "Cow" => {
+              if let PathArguments::AngleBracketed(
+                AngleBracketedGenericArguments { args, .. },
+              ) = arguments
+              {
+                assert_eq!(args.len(), 2);
+
+                let ty = &args[1];
+                match ty {
+                  GenericArgument::Type(Type::Path(TypePath {
+                    path: Path { segments, .. },
+                    ..
+                  })) => {
+                    let segment = single_segment(&segments)?;
+                    match segment {
+                      PathSegment { ident, .. } if ident == "str" => {
+                        self.fast_parameters.push(FastValue::SeqOneByteString);
+                        assert!(self
+                          .transforms
+                          .insert(
+                            index,
+                            Transform::seq_one_byte_string(
+                              index,
+                              StringType::Cow
+                            )
+                          )
+                          .is_none());
+                      }
+                      _ => return Err(BailoutReason::FastUnsupportedParamType),
+                    }
+                  }
+                  _ => return Err(BailoutReason::FastUnsupportedParamType),
+                }
+              }
+            }
             // Is `T` a fast scalar?
             PathSegment { ident, .. } => {
               if let Some(val) = get_fast_scalar(ident.to_string().as_str()) {
@@ -581,7 +628,10 @@ impl Optimizer {
                 self.fast_parameters.push(FastValue::SeqOneByteString);
                 assert!(self
                   .transforms
-                  .insert(index, Transform::seq_one_byte_string(index, false))
+                  .insert(
+                    index,
+                    Transform::seq_one_byte_string(index, StringType::Owned)
+                  )
                   .is_none());
               } else {
                 return Err(BailoutReason::FastUnsupportedParamType);
@@ -608,7 +658,10 @@ impl Optimizer {
                 self.fast_parameters.push(FastValue::SeqOneByteString);
                 assert!(self
                   .transforms
-                  .insert(index, Transform::seq_one_byte_string(index, true))
+                  .insert(
+                    index,
+                    Transform::seq_one_byte_string(index, StringType::Ref)
+                  )
                   .is_none());
               }
               _ => return Err(BailoutReason::FastUnsupportedParamType),

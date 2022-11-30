@@ -416,6 +416,17 @@ fn codegen_arg(
       #ref_block
     };
   }
+  // Fast path for `Cow<'_, str>`
+  if is_cow_str(&**ty) {
+    return quote! {
+      let #ident = match #core::v8::Local::<#core::v8::String>::try_from(args.get(#idx as i32)) {
+        Ok(v8_string) => ::std::borrow::Cow::Owned(#core::serde_v8::to_utf8(v8_string, scope)),
+        Err(_) => {
+          return #core::_ops::throw_type_error(scope, format!("Expected string at position {}", #idx));
+        }
+      };
+    };
+  }
   // Fast path for `Option<String>`
   if is_option_string(&**ty) {
     return quote! {
@@ -637,6 +648,10 @@ fn is_string(ty: impl ToTokens) -> Option<bool> {
 
 fn is_option_string(ty: impl ToTokens) -> bool {
   tokens(ty) == "Option < String >"
+}
+
+fn is_cow_str(ty: impl ToTokens) -> bool {
+  tokens(&ty).starts_with("Cow <") && tokens(&ty).ends_with("str >")
 }
 
 enum SliceType {

@@ -354,7 +354,7 @@ impl Resource for TextDecoderResource {
 
 #[op]
 fn op_encoding_encode_into(
-  input: &str,
+  input: Cow<'_, str>,
   buffer: &mut [u8],
   out_buf: &mut [u32],
 ) {
@@ -382,7 +382,10 @@ fn op_encoding_encode_into(
   buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
 
   // The `read` output parameter is measured in UTF-16 code units.
-  out_buf[0] = input[..boundary].len() as u32;
+  out_buf[0] = match input {
+    Cow::Borrowed(v) => v[..boundary].len() as u32,
+    Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
+  };
   out_buf[1] = boundary as u32;
 }
 
