@@ -55,12 +55,6 @@ mod inspector {
       if line.starts_with("Check") {
         continue;
       }
-      if line.starts_with("handshake") {
-        continue;
-      }
-      if line.starts_with("sync poll") {
-        continue;
-      }
 
       return line;
     }
