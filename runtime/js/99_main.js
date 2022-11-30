@@ -491,7 +491,6 @@ delete Intl.v8BreakIterator;
     });
 
     const finalDenoNs = {
-      core,
       internal: internalSymbol,
       [internalSymbol]: internals,
       resources: core.resources,
@@ -642,7 +641,6 @@ delete Intl.v8BreakIterator;
     });
 
     const finalDenoNs = {
-      core,
       internal: internalSymbol,
       [internalSymbol]: internals,
       resources: core.resources,
