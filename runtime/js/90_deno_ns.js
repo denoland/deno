@@ -7,6 +7,7 @@
 
   __bootstrap.denoNs = {
     metrics: core.metrics,
+    isProxy: core.isProxy,
     Process: __bootstrap.process.Process,
     run: __bootstrap.process.run,
     isatty: __bootstrap.tty.isatty,

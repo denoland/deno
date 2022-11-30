@@ -5214,4 +5214,11 @@ declare namespace Deno {
    * @category Runtime Environment
    */
   export function gid(): number | null;
+
+  /**
+   * Returns true if the given value is a proxy.
+   *
+   * @category Util
+   */
+  export function isProxy(value: unknown): boolean;
 }
