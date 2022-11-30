@@ -637,7 +637,7 @@ impl FileSystemDocuments {
   pub fn get<'a>(
     &mut self,
     cache: &HttpCache,
-    get_maybe_resolver: impl Fn() -> Option<&'a dyn deno_graph::source::Resolver>,
+    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
     let fs_version = get_document_path(cache, specifier)
@@ -645,7 +645,7 @@ impl FileSystemDocuments {
     let file_system_doc = self.docs.get(specifier);
     if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
       // attempt to update the file on the file system
-      self.refresh_document(cache, get_maybe_resolver(), specifier)
+      self.refresh_document(cache, maybe_resolver, specifier)
     } else {
       file_system_doc.cloned()
     }
@@ -890,11 +890,7 @@ impl Documents {
       Some(document.clone())
     } else {
       let mut file_system_docs = self.file_system_docs.lock();
-      file_system_docs.get(
-        &self.cache,
-        || self.get_maybe_resolver(),
-        &specifier,
-      )
+      file_system_docs.get(&self.cache, self.get_maybe_resolver(), &specifier)
     }
   }
 
@@ -1142,12 +1138,11 @@ impl Documents {
       doc_analyzer.analyze_doc(specifier, doc);
     }
 
+    let maybe_resolver = self.get_maybe_resolver();
     while let Some(specifier) = doc_analyzer.pending_specifiers.pop_front() {
-      if let Some(doc) = file_system_docs.get(
-        &self.cache,
-        || self.get_maybe_resolver(),
-        &specifier,
-      ) {
+      if let Some(doc) =
+        file_system_docs.get(&self.cache, maybe_resolver, &specifier)
+      {
         doc_analyzer.analyze_doc(&specifier, &doc);
       }
     }
