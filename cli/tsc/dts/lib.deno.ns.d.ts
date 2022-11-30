@@ -5216,7 +5216,7 @@ declare namespace Deno {
   export function gid(): number | null;
 
   /**
-   * Returns true if the given value is a proxy.
+   * Returns true if the given value is a `Proxy`.
    *
    * @category Util
    */
