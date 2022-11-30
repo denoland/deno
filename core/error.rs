@@ -207,6 +207,84 @@ impl JsError {
     Self::inner_from_v8_exception(scope, exception, Default::default())
   }
 
+  pub fn from_v8_message<'a>(
+    scope: &'a mut v8::HandleScope,
+    msg: v8::Local<'a, v8::Message>,
+  ) -> Self {
+    // Create a new HandleScope because we're creating a lot of new local
+    // handles below.
+    let scope = &mut v8::HandleScope::new(scope);
+
+    let exception_message = msg.get(scope).to_rust_string_lossy(scope);
+    let state_rc = JsRuntime::state(scope);
+
+    // Convert them into Vec<JsStackFrame>
+    let mut frames: Vec<JsStackFrame> = vec![];
+
+    let mut source_line = None;
+    let mut source_line_frame_index = None;
+    {
+      let state = &mut *state_rc.borrow_mut();
+
+      let script_resource_name = msg
+        .get_script_resource_name(scope)
+        .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
+        .map(|v| v.to_rust_string_lossy(scope));
+      let line_number: Option<i64> =
+        msg.get_line_number(scope).and_then(|v| v.try_into().ok());
+      let column_number: Option<i64> = msg.get_start_column().try_into().ok();
+      if let (Some(f), Some(l), Some(c)) =
+        (script_resource_name, line_number, column_number)
+      {
+        // V8's column numbers are 0-based, we want 1-based.
+        let c = c + 1;
+        if let Some(source_map_getter) = &state.source_map_getter {
+          let (f, l, c) = apply_source_map(
+            f,
+            l,
+            c,
+            &mut state.source_map_cache,
+            source_map_getter.as_ref(),
+          );
+          frames = vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
+        } else {
+          frames = vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
+        }
+      }
+
+      if let Some(source_map_getter) = &state.source_map_getter {
+        for (i, frame) in frames.iter().enumerate() {
+          if let (Some(file_name), Some(line_number)) =
+            (&frame.file_name, frame.line_number)
+          {
+            if !file_name.trim_start_matches('[').starts_with("deno:") {
+              source_line = get_source_line(
+                file_name,
+                line_number,
+                &mut state.source_map_cache,
+                source_map_getter.as_ref(),
+              );
+              source_line_frame_index = Some(i);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    Self {
+      name: None,
+      message: None,
+      exception_message,
+      cause: None,
+      source_line,
+      source_line_frame_index,
+      frames,
+      stack: None,
+      aggregated: None,
+    }
+  }
+
   fn inner_from_v8_exception<'a>(
     scope: &'a mut v8::HandleScope,
     exception: v8::Local<'a, v8::Value>,
@@ -330,7 +408,6 @@ impl JsError {
               (&frame.file_name, frame.line_number)
             {
               if !file_name.trim_start_matches('[').starts_with("deno:") {
-                // Source lookup expects a 0-based line number, ours are 1-based.
                 source_line = get_source_line(
                   file_name,
                   line_number,

@@ -20,6 +20,7 @@ use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 use crate::tools::fmt::format_json;
+use crate::util;
 use crate::Flags;
 
 #[derive(Debug)]
@@ -260,7 +261,7 @@ impl Lockfile {
   /// is not included, insert it.
   fn check_or_insert(&mut self, specifier: &str, code: &str) -> bool {
     if let Some(lockfile_checksum) = self.content.remote.get(specifier) {
-      let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
+      let compiled_checksum = util::checksum::gen(&[code.as_bytes()]);
       lockfile_checksum == &compiled_checksum
     } else {
       self.insert(specifier, code);
@@ -269,7 +270,7 @@ impl Lockfile {
   }
 
   fn insert(&mut self, specifier: &str, code: &str) {
-    let checksum = crate::checksum::gen(&[code.as_bytes()]);
+    let checksum = util::checksum::gen(&[code.as_bytes()]);
     self.content.remote.insert(specifier.to_string(), checksum);
     self.has_content_changed = true;
   }
@@ -359,7 +360,7 @@ impl deno_graph::source::Locker for Locker {
   }
 
   fn get_checksum(&self, content: &str) -> String {
-    crate::checksum::gen(&[content.as_bytes()])
+    util::checksum::gen(&[content.as_bytes()])
   }
 
   fn get_filename(&self) -> Option<String> {

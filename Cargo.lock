@@ -1445,15 +1445,16 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.14.2"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49cf3bc0cb9cc526a894b1d5af07c2ce2af1fa56b765990845ec781ab4cd1c91"
+checksum = "999e8891976e3b15b519b920db4ac70c6a85f0c6f0e0ddb6ef3b247373e8984d"
 dependencies = [
  "anyhow",
  "dprint-core",
  "pulldown-cmark",
  "regex",
  "serde",
+ "unicode-width",
 ]
 
 [[package]]
@@ -5387,9 +5388,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.56.1"
+version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7591a2478046263bc28ec09c70f4a43a5ac33b60f4480a29e2dde1ba4335c24"
+checksum = "293cb302608e408948274638627411722c394926a975923a5ca2ec573ed7132e"
 dependencies = [
  "bitflags",
  "fslock",
