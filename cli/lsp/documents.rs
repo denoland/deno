@@ -37,6 +37,7 @@ use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::fs;
 use std::ops::Range;
 use std::path::Path;
@@ -633,6 +634,23 @@ struct FileSystemDocuments {
 }
 
 impl FileSystemDocuments {
+  pub fn get<'a>(
+    &mut self,
+    cache: &HttpCache,
+    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Document> {
+    let fs_version = get_document_path(cache, specifier)
+      .and_then(|path| calculate_fs_version(&path));
+    let file_system_doc = self.docs.get(specifier);
+    if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
+      // attempt to update the file on the file system
+      self.refresh_document(cache, maybe_resolver, specifier)
+    } else {
+      file_system_doc.cloned()
+    }
+  }
+
   /// Adds or updates a document by reading the document from the file system
   /// returning the document.
   fn refresh_document(
@@ -709,7 +727,7 @@ pub struct Documents {
   /// settings.
   maybe_resolver: Option<CliResolver>,
   /// The npm package requirements.
-  npm_reqs: HashSet<NpmPackageReq>,
+  npm_reqs: Arc<HashSet<NpmPackageReq>>,
   /// Resolves a specifier to its final redirected to specifier.
   specifier_resolver: Arc<SpecifierResolver>,
 }
@@ -724,7 +742,7 @@ impl Documents {
       file_system_docs: Default::default(),
       imports: Default::default(),
       maybe_resolver: None,
-      npm_reqs: HashSet::new(),
+      npm_reqs: Default::default(),
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
     }
   }
@@ -862,7 +880,7 @@ impl Documents {
   /// Returns a collection of npm package requirements.
   pub fn npm_package_reqs(&mut self) -> HashSet<NpmPackageReq> {
     self.calculate_dependents_if_dirty();
-    self.npm_reqs.clone()
+    (*self.npm_reqs).clone()
   }
 
   /// Return a document for the specifier.
@@ -872,19 +890,7 @@ impl Documents {
       Some(document.clone())
     } else {
       let mut file_system_docs = self.file_system_docs.lock();
-      let fs_version = get_document_path(&self.cache, &specifier)
-        .and_then(|path| calculate_fs_version(&path));
-      let file_system_doc = file_system_docs.docs.get(&specifier);
-      if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
-        // attempt to update the file on the file system
-        file_system_docs.refresh_document(
-          &self.cache,
-          self.get_maybe_resolver(),
-          &specifier,
-        )
-      } else {
-        file_system_doc.cloned()
-      }
+      file_system_docs.get(&self.cache, self.get_maybe_resolver(), &specifier)
     }
   }
 
@@ -1075,46 +1081,74 @@ impl Documents {
   /// document and the value is a set of specifiers that depend on that
   /// document.
   fn calculate_dependents_if_dirty(&mut self) {
+    #[derive(Default)]
+    struct DocAnalyzer {
+      dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
+      analyzed_specifiers: HashSet<ModuleSpecifier>,
+      pending_specifiers: VecDeque<ModuleSpecifier>,
+      npm_reqs: HashSet<NpmPackageReq>,
+    }
+
+    impl DocAnalyzer {
+      fn add(&mut self, dep: &ModuleSpecifier, specifier: &ModuleSpecifier) {
+        if !self.analyzed_specifiers.contains(dep) {
+          self.analyzed_specifiers.insert(dep.clone());
+          // perf: ensure this is not added to unless this specifier has never
+          // been analyzed in order to not cause an extra file system lookup
+          self.pending_specifiers.push_back(dep.clone());
+          if let Ok(reference) = NpmPackageReference::from_specifier(dep) {
+            self.npm_reqs.insert(reference.req);
+          }
+        }
+
+        self
+          .dependents_map
+          .entry(dep.clone())
+          .or_default()
+          .insert(specifier.clone());
+      }
+
+      fn analyze_doc(&mut self, specifier: &ModuleSpecifier, doc: &Document) {
+        self.analyzed_specifiers.insert(specifier.clone());
+        for dependency in doc.dependencies().values() {
+          if let Some(dep) = dependency.get_code() {
+            self.add(dep, specifier);
+          }
+          if let Some(dep) = dependency.get_type() {
+            self.add(dep, specifier);
+          }
+        }
+        if let Resolved::Ok { specifier: dep, .. } =
+          doc.maybe_types_dependency()
+        {
+          self.add(&dep, specifier);
+        }
+      }
+    }
+
     let mut file_system_docs = self.file_system_docs.lock();
     if !file_system_docs.dirty && !self.dirty {
       return;
     }
 
-    let mut dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>> =
-      HashMap::new();
-    // favour documents that are open in case a document exists in both collections
+    let mut doc_analyzer = DocAnalyzer::default();
+    // favor documents that are open in case a document exists in both collections
     let documents = file_system_docs.docs.iter().chain(self.open_docs.iter());
     for (specifier, doc) in documents {
-      for dependency in doc.dependencies().values() {
-        if let Some(dep) = dependency.get_code() {
-          dependents_map
-            .entry(dep.clone())
-            .or_default()
-            .insert(specifier.clone());
-        }
-        if let Some(dep) = dependency.get_type() {
-          dependents_map
-            .entry(dep.clone())
-            .or_default()
-            .insert(specifier.clone());
-        }
-      }
-      if let Resolved::Ok { specifier: dep, .. } = doc.maybe_types_dependency()
+      doc_analyzer.analyze_doc(specifier, doc);
+    }
+
+    let maybe_resolver = self.get_maybe_resolver();
+    while let Some(specifier) = doc_analyzer.pending_specifiers.pop_front() {
+      if let Some(doc) =
+        file_system_docs.get(&self.cache, maybe_resolver, &specifier)
       {
-        dependents_map
-          .entry(dep.clone())
-          .or_default()
-          .insert(specifier.clone());
+        doc_analyzer.analyze_doc(&specifier, &doc);
       }
     }
-    let mut npm_reqs = HashSet::new();
-    for specifier in dependents_map.keys() {
-      if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
-        npm_reqs.insert(reference.req);
-      }
-    }
-    self.dependents_map = Arc::new(dependents_map);
-    self.npm_reqs = npm_reqs;
+
+    self.dependents_map = Arc::new(doc_analyzer.dependents_map);
+    self.npm_reqs = Arc::new(doc_analyzer.npm_reqs);
     self.dirty = false;
     file_system_docs.dirty = false;
   }
