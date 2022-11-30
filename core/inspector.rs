@@ -133,10 +133,6 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().on_pause = true;
-    // In here we want to pump sessions synchronously, and we might be reentrant
-    // from being polled by the runtime. Once all channels have been drained
-    // synchronously we want to continue and not block. There's no need to set
-    // waker here and we don't want to handle all that nasty parking stuff.
     self.poll_sessions_sync();
     assert!(
       !self.flags.borrow().on_pause,
@@ -234,10 +230,6 @@ impl JsRuntimeInspector {
         aux_data_view,
       );
 
-    // Poll the session handler so we will get notified whenever there is
-    // new incoming debugger activity. Here we want to pump sessions synchronously.
-    // Don't want to do any of the parking stuff because this is run from the
-    // runtime itself. It's questionable that we even should poll here.
     self_.poll_sessions_sync();
     drop(self_);
 
@@ -502,8 +494,6 @@ impl JsRuntimeInspector {
         }
         None => {
           self.flags.get_mut().waiting_for_session = true;
-          // Here we want to synchrously poll sessions, but we might have
-          // to park the thread to block it. Otherwise we'd need to spin hot.
           self.poll_sessions_sync();
         }
       };
@@ -712,8 +702,6 @@ extern "C" fn handle_interrupt(_isolate: &mut v8::Isolate, arg: *mut c_void) {
   // SAFETY: `InspectorWaker` is owned by `JsRuntimeInspector`, so the
   // pointer to the latter is valid as long as waker is alive.
   let inspector = unsafe { &*(arg as *mut JsRuntimeInspector) };
-  // Here we want to pump sessions synchronously, and we might be reenetering
-  // from other call site. Unclear if we need parking, etc here.
   inspector.poll_sessions_sync();
 }
 
