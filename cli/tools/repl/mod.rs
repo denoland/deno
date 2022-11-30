@@ -122,8 +122,12 @@ pub async fn run(
     }
   }
 
-  log::info!("Deno {}", crate::version::deno());
-  log::info!("exit using ctrl+d, ctrl+c, or close()");
+  // Doing this manually, instead of using `log::info!` because these messages
+  // are supposed to go to stdout, not stderr.
+  if !ps.options.is_quiet() {
+    println!("Deno {}", crate::version::deno());
+    println!("exit using ctrl+d, ctrl+c, or close()");
+  }
 
   loop {
     let line = read_line_and_poll(
