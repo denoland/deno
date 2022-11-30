@@ -1064,8 +1064,6 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.38.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65eb6b2223b71a759b12bc21ee35842193d3703157950d1411c0243239f072eb"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1075,7 +1073,6 @@ dependencies = [
  "lazy_static",
  "parking_lot 0.12.1",
  "regex",
- "ring",
  "serde",
  "serde_json",
  "sourcemap",

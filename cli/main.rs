@@ -61,7 +61,6 @@ use crate::util::display;
 use crate::util::file_watcher::ResolutionResult;
 
 use args::CliOptions;
-use args::Lockfile;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
@@ -315,7 +314,6 @@ async fn create_graph_and_maybe_check(
     Permissions::allow_all(),
     Permissions::allow_all(),
   );
-  let maybe_locker = Lockfile::as_maybe_locker(ps.lockfile.clone());
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_cli_resolver = CliResolver::maybe_new(
     ps.options.to_maybe_jsx_import_source_config(),
@@ -332,7 +330,6 @@ async fn create_graph_and_maybe_check(
         is_dynamic: false,
         imports: maybe_imports,
         resolver: maybe_graph_resolver,
-        locker: maybe_locker,
         module_analyzer: Some(&*analyzer),
         reporter: None,
       },
@@ -353,7 +350,9 @@ async fn create_graph_and_maybe_check(
   ps.npm_resolver
     .add_package_reqs(graph_data.npm_package_reqs().clone())
     .await?;
-  graph_lock_or_exit(&graph);
+  if let Some(lockfile) = &ps.lockfile {
+    graph_lock_or_exit(&graph, &mut lockfile.lock());
+  }
 
   if ps.options.type_check_mode() != TypeCheckMode::None {
     let ts_config_result =

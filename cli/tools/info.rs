@@ -595,9 +595,6 @@ impl<'a> GraphDisplayContext<'a> {
   ) -> TreeNode {
     self.seen.insert(specifier.to_string());
     match err {
-      ModuleGraphError::InvalidSource(_, _) => {
-        self.build_error_msg(specifier, "(invalid source)")
-      }
       ModuleGraphError::InvalidTypeAssertion { .. } => {
         self.build_error_msg(specifier, "(invalid import assertion)")
       }

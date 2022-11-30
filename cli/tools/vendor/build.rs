@@ -3,18 +3,22 @@
 use std::fmt::Write as _;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleKind;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 
+use crate::args::Lockfile;
 use crate::cache::ParsedSourceCache;
+use crate::graph_util::graph_lock_or_exit;
 
 use super::analyze::has_default_export;
 use super::import_map::build_import_map;
@@ -57,6 +61,7 @@ pub fn build(
   parsed_source_cache: &ParsedSourceCache,
   output_dir: &Path,
   original_import_map: Option<&ImportMap>,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   environment: &impl VendorEnvironment,
 ) -> Result<usize, AnyError> {
   assert!(output_dir.is_absolute());
@@ -68,7 +73,9 @@ pub fn build(
   }
 
   // build the graph
-  graph.lock()?;
+  if let Some(lockfile) = maybe_lockfile {
+    graph_lock_or_exit(&graph, &mut lockfile.lock());
+  }
 
   let graph_errors = graph.errors();
   if !graph_errors.is_empty() {

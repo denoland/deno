@@ -49,6 +49,7 @@ pub async fn vendor(
     &ps.parsed_source_cache,
     &output_dir,
     ps.maybe_import_map.as_deref(),
+    ps.lockfile.clone(),
     &build::RealVendorEnvironment,
   )?;
 
