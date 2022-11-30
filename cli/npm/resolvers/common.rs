@@ -10,6 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
+use deno_runtime::deno_node::NodeResolutionMode;
 
 use crate::args::Lockfile;
 use crate::npm::cache::should_sync_download;
@@ -29,7 +30,7 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_specifier(
