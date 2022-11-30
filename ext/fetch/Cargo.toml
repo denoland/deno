@@ -2,26 +2,26 @@
 
 [package]
 name = "deno_fetch"
-version = "0.101.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.102.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "Fetch API implementation for Deno"
 
 [lib]
 path = "lib.rs"
 
 [dependencies]
-bytes = "1.1.0"
-data-url = "0.2.0"
-deno_core = { version = "0.160.0", path = "../../core" }
-deno_tls = { version = "0.65.0", path = "../tls" }
+bytes.workspace = true
+data-url.workspace = true
+deno_core.workspace = true
+deno_tls.workspace = true
 dyn-clone = "1"
-http = "0.2.6"
-reqwest = { version = "0.11.11", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks"] }
-serde = { version = "1.0.136", features = ["derive"] }
-tokio = { version = "1.21", features = ["full"] }
+http.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+tokio.workspace = true
 tokio-stream = "0.1.8"
-tokio-util = { version = "0.7", features = ["io"] }
+tokio-util = { workspace = true, features = ["io"] }

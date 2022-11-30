@@ -31,7 +31,7 @@ pub enum NodeModuleKind {
 pub fn path_to_declaration_path(
   path: PathBuf,
   referrer_kind: NodeModuleKind,
-) -> PathBuf {
+) -> Option<PathBuf> {
   fn probe_extensions(
     path: &Path,
     referrer_kind: NodeModuleKind,
@@ -56,17 +56,17 @@ pub fn path_to_declaration_path(
     || lowercase_path.ends_with(".d.cts")
     || lowercase_path.ends_with(".d.ts")
   {
-    return path;
+    return Some(path);
   }
   if let Some(path) = probe_extensions(&path, referrer_kind) {
-    return path;
+    return Some(path);
   }
   if path.is_dir() {
     if let Some(path) = probe_extensions(&path.join("index"), referrer_kind) {
-      return path;
+      return Some(path);
     }
   }
-  path
+  None
 }
 
 /// Alternate `PathBuf::with_extension` that will handle known extensions
@@ -743,8 +743,9 @@ pub fn package_resolve(
   let file_path = package_json.path.parent().unwrap().join(&package_subpath);
 
   if conditions == TYPES_CONDITIONS {
-    let declaration_path = path_to_declaration_path(file_path, referrer_kind);
-    Ok(Some(declaration_path))
+    let maybe_declaration_path =
+      path_to_declaration_path(file_path, referrer_kind);
+    Ok(maybe_declaration_path)
   } else {
     Ok(Some(file_path))
   }
@@ -806,19 +807,30 @@ pub fn legacy_main_resolve(
 ) -> Result<Option<PathBuf>, AnyError> {
   let is_types = conditions == TYPES_CONDITIONS;
   let maybe_main = if is_types {
-    package_json.types.as_ref()
+    match package_json.types.as_ref() {
+      Some(types) => Some(types),
+      None => {
+        // fallback to checking the main entrypoint for
+        // a corresponding declaration file
+        if let Some(main) = package_json.main(referrer_kind) {
+          let main = package_json.path.parent().unwrap().join(main).clean();
+          if let Some(path) = path_to_declaration_path(main, referrer_kind) {
+            return Ok(Some(path));
+          }
+        }
+        None
+      }
+    }
   } else {
     package_json.main(referrer_kind)
   };
-  let mut guess;
 
   if let Some(main) = maybe_main {
-    guess = package_json.path.parent().unwrap().join(main).clean();
+    let guess = package_json.path.parent().unwrap().join(main).clean();
     if file_exists(&guess) {
       return Ok(Some(guess));
     }
 
-    let mut found = false;
     // todo(dsherret): investigate exactly how node and typescript handles this
     let endings = if is_types {
       match referrer_kind {
@@ -838,21 +850,16 @@ pub fn legacy_main_resolve(
       vec![".js", "/index.js"]
     };
     for ending in endings {
-      guess = package_json
+      let guess = package_json
         .path
         .parent()
         .unwrap()
         .join(&format!("{}{}", main, ending))
         .clean();
       if file_exists(&guess) {
-        found = true;
-        break;
+        // TODO(bartlomieju): emitLegacyIndexDeprecation()
+        return Ok(Some(guess));
       }
-    }
-
-    if found {
-      // TODO(bartlomieju): emitLegacyIndexDeprecation()
-      return Ok(Some(guess));
     }
   }
 
@@ -866,7 +873,7 @@ pub fn legacy_main_resolve(
     vec!["index.js"]
   };
   for index_file_name in index_file_names {
-    guess = package_json
+    let guess = package_json
       .path
       .parent()
       .unwrap()

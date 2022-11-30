@@ -2,7 +2,8 @@
 returns_result: false
 has_ref_opstate: true
 has_rc_opstate: false
-has_fast_callback_option: true
+has_fast_callback_option: false
+needs_fast_callback_option: true
 fast_result: Some(Void)
 fast_parameters: [V8Value, Uint8Array]
 transforms: {1: Transform { kind: SliceU8(true), index: 1 }}

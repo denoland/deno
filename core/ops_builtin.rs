@@ -205,7 +205,7 @@ async fn op_read_all(
       match maybe_max {
         Some(max) if vec.len() >= max as usize => {
           // no need to resize the vec, because the vec is already large enough
-          // to accomodate the maximum size of the read data.
+          // to accommodate the maximum size of the read data.
         }
         Some(max) if (max as usize) < vec.len() + grow_len => {
           // grow the vec to the maximum size of the read data

@@ -24,7 +24,6 @@ use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 
 use crate::args::DenoSubcommand;
-use crate::checksum;
 use crate::errors;
 use crate::module_loader::CliModuleLoader;
 use crate::node;
@@ -34,6 +33,7 @@ use crate::proc_state::ProcState;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
 use crate::tools::test::TestMode;
+use crate::util::checksum;
 use crate::version;
 
 pub struct CliMainWorker {
@@ -70,6 +70,7 @@ impl CliMainWorker {
         &mut self.worker.js_runtime,
         &self.main_module.to_file_path().unwrap().to_string_lossy(),
         true,
+        self.ps.options.inspect_brk().is_some(),
       )?;
     } else {
       self.execute_main_module_possibly_with_npm().await?;
@@ -483,9 +484,7 @@ async fn create_main_worker_internal(
   let maybe_storage_key = ps.options.resolve_storage_key(&main_module);
   let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
     ps.dir
-      .root
-      // TODO(@crowlKats): change to origin_data for 2.0
-      .join("location_data")
+      .origin_data_folder_path()
       .join(checksum::gen(&[key.as_bytes()]))
   });
   let cache_storage_dir = maybe_storage_key.map(|key| {

@@ -493,6 +493,32 @@ impl Flags {
       prompt: !self.no_prompt,
     }
   }
+
+  pub fn has_permission(&self) -> bool {
+    self.allow_all
+      || self.allow_hrtime
+      || self.allow_env.is_some()
+      || self.allow_ffi.is_some()
+      || self.allow_net.is_some()
+      || self.allow_read.is_some()
+      || self.allow_run.is_some()
+      || self.allow_sys.is_some()
+      || self.allow_write.is_some()
+  }
+
+  pub fn has_permission_in_argv(&self) -> bool {
+    self.argv.iter().any(|arg| {
+      arg == "--allow-all"
+        || arg == "--allow-hrtime"
+        || arg.starts_with("--allow-env")
+        || arg.starts_with("--allow-ffi")
+        || arg.starts_with("--allow-net")
+        || arg.starts_with("--allow-read")
+        || arg.starts_with("--allow-run")
+        || arg.starts_with("--allow-sys")
+        || arg.starts_with("--allow-write")
+    })
+  }
 }
 
 static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
@@ -3386,6 +3412,24 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn has_permission() {
+    let r = flags_from_vec(svec!["deno", "run", "--allow-read", "x.ts"]);
+    assert_eq!(r.unwrap().has_permission(), true);
+
+    let r = flags_from_vec(svec!["deno", "run", "x.ts"]);
+    assert_eq!(r.unwrap().has_permission(), false);
+  }
+
+  #[test]
+  fn has_permission_in_argv() {
+    let r = flags_from_vec(svec!["deno", "run", "x.ts", "--allow-read"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), true);
+
+    let r = flags_from_vec(svec!["deno", "run", "x.ts"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), false);
   }
 
   #[test]

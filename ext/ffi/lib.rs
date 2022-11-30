@@ -303,7 +303,7 @@ union NativeValue {
   isize_value: isize,
   f32_value: f32,
   f64_value: f64,
-  pointer: *const u8,
+  pointer: *mut c_void,
 }
 
 impl NativeValue {
@@ -972,11 +972,11 @@ fn ffi_parse_pointer_arg(
   // 2. Number: Common and supported by Fast API.
   // 3. Null: Very uncommon / can be represented by a 0.
   let pointer = if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
-    value.u64_value().0 as usize as *const u8
+    value.u64_value().0 as usize as *mut c_void
   } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
-    value.integer_value(scope).unwrap() as usize as *const u8
+    value.integer_value(scope).unwrap() as usize as *mut c_void
   } else if arg.is_null() {
-    ptr::null()
+    ptr::null_mut()
   } else {
     return Err(type_error(
       "Invalid FFI pointer type, expected null, integer or BigInt",
@@ -996,19 +996,28 @@ fn ffi_parse_buffer_arg(
   // 5. Null: Very uncommon / can be represented by a 0.
 
   let pointer = if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
-    let backing_store = value.get_backing_store();
-    &backing_store[..] as *const _ as *const u8
+    if let Some(non_null) = value.data() {
+      non_null.as_ptr()
+    } else {
+      ptr::null_mut()
+    }
   } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg) {
     let byte_offset = value.byte_offset();
-    let backing_store = value
+    let pointer = value
       .buffer(scope)
       .ok_or_else(|| {
         type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
       })?
-      .get_backing_store();
-    &backing_store[byte_offset..] as *const _ as *const u8
+      .data();
+    if let Some(non_null) = pointer {
+      // SAFETY: Pointer is non-null, and V8 guarantees that the byte_offset
+      // is within the buffer backing store.
+      unsafe { non_null.as_ptr().add(byte_offset) }
+    } else {
+      ptr::null_mut()
+    }
   } else if arg.is_null() {
-    ptr::null()
+    ptr::null_mut()
   } else {
     return Err(type_error(
       "Invalid FFI buffer type, expected null, ArrayBuffer, or ArrayBufferView",
@@ -1027,11 +1036,11 @@ fn ffi_parse_function_arg(
   // 2. Number: Common and supported by Fast API, optimise this case as second.
   // 3. Null: Very uncommon / can be represented by a 0.
   let pointer = if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
-    value.u64_value().0 as usize as *const u8
+    value.u64_value().0 as usize as *mut c_void
   } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
-    value.integer_value(scope).unwrap() as usize as *const u8
+    value.integer_value(scope).unwrap() as usize as *mut c_void
   } else if arg.is_null() {
-    ptr::null()
+    ptr::null_mut()
   } else {
     return Err(type_error(
       "Invalid FFI function type, expected null, integer, or BigInt",
@@ -1241,7 +1250,7 @@ where
       },
       NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
         NativeValue {
-          pointer: cif.call::<*const u8>(*fun_ptr, &call_args),
+          pointer: cif.call::<*mut c_void>(*fun_ptr, &call_args),
         }
       }
     })
@@ -1312,7 +1321,7 @@ fn ffi_call(
       },
       NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
         NativeValue {
-          pointer: cif.call::<*const u8>(fun_ptr, &call_args),
+          pointer: cif.call::<*mut c_void>(fun_ptr, &call_args),
         }
       }
     })
@@ -2065,7 +2074,7 @@ fn op_ffi_call_nonblocking<'scope>(
 #[op(fast)]
 fn op_ffi_ptr_of<FP>(
   state: &mut deno_core::OpState,
-  buf: &[u8],
+  buf: *const u8,
   out: &mut [u32],
 ) -> Result<(), AnyError>
 where
@@ -2084,7 +2093,7 @@ where
 
   // SAFETY: Out buffer was asserted to be at least large enough to hold a usize, and properly aligned.
   let out = unsafe { &mut *outptr };
-  *out = buf.as_ptr() as usize;
+  *out = buf as usize;
 
   Ok(())
 }

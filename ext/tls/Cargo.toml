@@ -2,23 +2,23 @@
 
 [package]
 name = "deno_tls"
-version = "0.65.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.66.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "TLS for Deno"
 
 [lib]
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.160.0", path = "../../core" }
-once_cell = "1.10.0"
-rustls = { version = "0.20.5", features = ["dangerous_configuration"] }
+deno_core.workspace = true
+once_cell.workspace = true
+rustls = { workspace = true, features = ["dangerous_configuration"] }
 rustls-native-certs = "0.6.2"
-rustls-pemfile = "1.0.0"
-serde = { version = "1.0.136", features = ["derive"] }
+rustls-pemfile.workspace = true
+serde.workspace = true
 webpki = "0.22"
 webpki-roots = "0.22"
