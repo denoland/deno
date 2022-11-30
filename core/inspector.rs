@@ -320,10 +320,6 @@ impl JsRuntimeInspector {
           break;
         }
         PollState::BlockOnSessionPoll => {
-          // TODO(bartlomieju): in here we should be polling all sessions,
-          // since we might be waiting for a session - so unless we poll
-          // for handshake and incoming sessions will be dead locked here for
-          // ever.
           futures::executor::block_on(futures::future::poll_fn(|cx| {
             // Do one "handshake" with a newly connected session at a time.
             let maybe_session = sessions.handshake.take();
