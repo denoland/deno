@@ -383,6 +383,7 @@ fn op_encoding_encode_into(
 
   // The `read` output parameter is measured in UTF-16 code units.
   out_buf[0] = match input {
+    // ops guarantee this to be a SeqOneByteString.
     Cow::Borrowed(v) => v[..boundary].len() as u32,
     Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
   };
