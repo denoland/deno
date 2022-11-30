@@ -12,13 +12,13 @@ use crate::args::FmtFlags;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
 use crate::colors;
-use crate::diff::diff;
-use crate::file_watcher;
-use crate::file_watcher::ResolutionResult;
-use crate::fs_util::collect_files;
-use crate::fs_util::get_extension;
-use crate::fs_util::specifier_to_file_path;
-use crate::text_encoding;
+use crate::util::diff::diff;
+use crate::util::file_watcher;
+use crate::util::file_watcher::ResolutionResult;
+use crate::util::fs::collect_files;
+use crate::util::path::get_extension;
+use crate::util::path::specifier_to_file_path;
+use crate::util::text_encoding;
 use deno_ast::ParsedSource;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -635,7 +635,7 @@ struct FileContents {
 }
 
 fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
-  let file_bytes = fs::read(&file_path)
+  let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let charset = text_encoding::detect_charset(&file_bytes);
   let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;

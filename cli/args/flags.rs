@@ -317,6 +317,7 @@ pub struct Flags {
   pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
+  pub no_lock: bool,
   pub no_npm: bool,
   pub no_prompt: bool,
   pub reload: bool,
@@ -458,7 +459,9 @@ impl Flags {
       Some(files.clone())
     } else if let Run(RunFlags { script }) = &self.subcommand {
       if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
-        if module_specifier.scheme() == "file" {
+        if module_specifier.scheme() == "file"
+          || module_specifier.scheme() == "npm"
+        {
           if let Ok(p) = module_specifier.to_file_path() {
             Some(vec![p])
           } else {
@@ -490,6 +493,32 @@ impl Flags {
       prompt: !self.no_prompt,
     }
   }
+
+  pub fn has_permission(&self) -> bool {
+    self.allow_all
+      || self.allow_hrtime
+      || self.allow_env.is_some()
+      || self.allow_ffi.is_some()
+      || self.allow_net.is_some()
+      || self.allow_read.is_some()
+      || self.allow_run.is_some()
+      || self.allow_sys.is_some()
+      || self.allow_write.is_some()
+  }
+
+  pub fn has_permission_in_argv(&self) -> bool {
+    self.argv.iter().any(|arg| {
+      arg == "--allow-all"
+        || arg == "--allow-hrtime"
+        || arg.starts_with("--allow-env")
+        || arg.starts_with("--allow-ffi")
+        || arg.starts_with("--allow-net")
+        || arg.starts_with("--allow-read")
+        || arg.starts_with("--allow-run")
+        || arg.starts_with("--allow-sys")
+        || arg.starts_with("--allow-write")
+    })
+  }
 }
 
 static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
@@ -506,6 +535,8 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          (defaults to $HOME/.deno/bin)
     DENO_NO_PROMPT       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
+    DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
+                         available
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     DENO_JOBS            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
@@ -632,7 +663,7 @@ fn clap_root(version: &str) -> Command {
         .help("Set log level")
         .hide(true)
         .takes_value(true)
-        .possible_values(&["debug", "info"])
+        .possible_values(["debug", "info"])
         .global(true),
     )
     .arg(
@@ -806,7 +837,7 @@ fn compile_subcommand<'a>() -> Command<'a> {
         .long("target")
         .help("Target OS architecture")
         .takes_value(true)
-        .possible_values(&[
+        .possible_values([
           "x86_64-unknown-linux-gnu",
           "x86_64-pc-windows-msvc",
           "x86_64-apple-darwin",
@@ -843,7 +874,7 @@ fn completions_subcommand<'a>() -> Command<'a> {
     .disable_help_subcommand(true)
     .arg(
       Arg::new("shell")
-        .possible_values(&["bash", "fish", "powershell", "zsh", "fig"])
+        .possible_values(["bash", "fish", "powershell", "zsh", "fig"])
         .required(true),
     )
     .about("Generate shell completions")
@@ -1044,7 +1075,7 @@ This command has implicit access to all permissions (--allow-all).",
         .help("Set standard input (stdin) content type")
         .takes_value(true)
         .default_value("js")
-        .possible_values(&["ts", "tsx", "js", "jsx"]),
+        .possible_values(["ts", "tsx", "js", "jsx"]),
     )
     .arg(
       Arg::new("print")
@@ -1101,7 +1132,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .help("Set standard input (stdin) content type")
         .takes_value(true)
         .default_value("ts")
-        .possible_values(&["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
+        .possible_values(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
     )
     .arg(
       Arg::new("ignore")
@@ -1160,7 +1191,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       Arg::new("options-prose-wrap")
         .long("options-prose-wrap")
         .takes_value(true)
-        .possible_values(&["always", "never", "preserve"])
+        .possible_values(["always", "never", "preserve"])
         .help("Define how prose should be wrapped. Defaults to always."),
     )
 }
@@ -1210,6 +1241,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(no_config_arg())
     .arg(config_arg())
     .arg(import_map_arg())
+    .arg(local_npm_arg())
     .arg(
       Arg::new("json")
         .long("json")
@@ -1767,6 +1799,7 @@ fn compile_args(app: Command) -> Command {
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
+    .arg(no_lock_arg())
     .arg(ca_file_arg())
 }
 
@@ -1781,6 +1814,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
+    .arg(no_lock_arg())
     .arg(ca_file_arg())
 }
 
@@ -2142,16 +2176,25 @@ fn lock_arg<'a>() -> Arg<'a> {
   Arg::new("lock")
     .long("lock")
     .value_name("FILE")
-    .help("Check the specified lock file")
+    .help("Check the specified lock file. If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .takes_value(true)
+    .min_values(0)
+    .max_values(1)
     .value_hint(ValueHint::FilePath)
 }
 
 fn lock_write_arg<'a>() -> Arg<'a> {
   Arg::new("lock-write")
     .long("lock-write")
-    .requires("lock")
-    .help("Write lock file (use with --lock)")
+    .help("Force overwriting the lock file.")
+}
+
+fn no_lock_arg<'a>() -> Arg<'a> {
+  Arg::new("no-lock")
+    .long("no-lock")
+    .help("Disable auto discovery of the lock file.")
+    .conflicts_with("lock")
+    .conflicts_with("lock-write")
 }
 
 static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
@@ -2510,6 +2553,7 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
+  local_npm_args_parse(flags, matches);
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.value_of("file").map(|f| f.to_string()),
@@ -3090,11 +3134,18 @@ fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("lock-write") {
     flags.lock_write = true;
   }
+  if matches.is_present("no-lock") {
+    flags.no_lock = true;
+  }
 }
 
 fn lock_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("lock") {
-    let lockfile = matches.value_of("lock").unwrap();
+    let lockfile = if let Some(path) = matches.value_of("lock") {
+      path
+    } else {
+      "./deno.lock"
+    };
     flags.lock = Some(PathBuf::from(lockfile));
   }
 }
@@ -3361,6 +3412,24 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn has_permission() {
+    let r = flags_from_vec(svec!["deno", "run", "--allow-read", "x.ts"]);
+    assert_eq!(r.unwrap().has_permission(), true);
+
+    let r = flags_from_vec(svec!["deno", "run", "x.ts"]);
+    assert_eq!(r.unwrap().has_permission(), false);
+  }
+
+  #[test]
+  fn has_permission_in_argv() {
+    let r = flags_from_vec(svec!["deno", "run", "x.ts", "--allow-read"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), true);
+
+    let r = flags_from_vec(svec!["deno", "run", "x.ts"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), false);
   }
 
   #[test]
@@ -5331,6 +5400,82 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "run", "--no-lock", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        no_lock: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--lock",
+      "--lock-write",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        lock_write: true,
+        lock: Some(PathBuf::from("./deno.lock")),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--lock-write",
+      "--lock",
+      "lock.json",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        lock_write: true,
+        lock: Some(PathBuf::from("lock.json")),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "run", "--lock-write", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        lock_write: true,
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec(svec!["deno", "run", "--lock", "--no-lock", "script.ts"]);
+    assert!(r.is_err(),);
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--lock-write",
+      "--no-lock",
+      "script.ts"
+    ]);
+    assert!(r.is_err(),);
   }
 
   #[test]

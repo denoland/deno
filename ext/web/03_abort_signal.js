@@ -6,8 +6,8 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  const { setIsTrusted, defineEventHandler } = window.__bootstrap.event;
-  const { listenerCount } = window.__bootstrap.eventTarget;
+  const { Event, setIsTrusted, defineEventHandler } = window.__bootstrap.event;
+  const { EventTarget, listenerCount } = window.__bootstrap.eventTarget;
   const {
     Set,
     SetPrototypeAdd,
@@ -185,9 +185,9 @@
     }
   }
 
-  window.AbortSignal = AbortSignal;
-  window.AbortController = AbortController;
   window.__bootstrap.abortSignal = {
+    AbortSignal,
+    AbortController,
     AbortSignalPrototype,
     add,
     signalAbort,

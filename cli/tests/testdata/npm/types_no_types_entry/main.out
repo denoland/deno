@@ -1,0 +1,4 @@
+Download http://localhost:4545/npm/registry/@denotest/types-no-types-entry
+Download http://localhost:4545/npm/registry/@denotest/types-no-types-entry/1.0.0.tgz
+Check file://[WILDCARD]/types_no_types_entry/main.ts
+5
