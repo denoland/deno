@@ -11,6 +11,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use global::GlobalNpmPackageResolver;
@@ -197,11 +198,11 @@ impl NpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let path = self
       .inner
-      .resolve_package_folder_from_package(name, referrer, conditions)?;
+      .resolve_package_folder_from_package(name, referrer, mode)?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
     Ok(path)
   }
@@ -330,10 +331,10 @@ impl RequireNpmResolver for NpmPackageResolver {
     &self,
     specifier: &str,
     referrer: &std::path::Path,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let referrer = path_to_specifier(referrer)?;
-    self.resolve_package_folder_from_package(specifier, &referrer, conditions)
+    self.resolve_package_folder_from_package(specifier, &referrer, mode)
   }
 
   fn resolve_package_folder_from_path(

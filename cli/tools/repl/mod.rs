@@ -101,11 +101,14 @@ pub async fn run(
             .await?;
           // only output errors
           if let EvaluationOutput::Error(error_text) = output {
-            println!("error in --eval-file file {}. {}", eval_file, error_text);
+            println!(
+              "Error in --eval-file file \"{}\": {}",
+              eval_file, error_text
+            );
           }
         }
         Err(e) => {
-          println!("error in --eval-file file {}. {}", eval_file, e);
+          println!("Error in --eval-file file \"{}\": {}", eval_file, e);
         }
       }
     }
@@ -115,12 +118,16 @@ pub async fn run(
     let output = repl_session.evaluate_line_and_get_output(&eval).await?;
     // only output errors
     if let EvaluationOutput::Error(error_text) = output {
-      println!("error in --eval flag. {}", error_text);
+      println!("Error in --eval flag: {}", error_text);
     }
   }
 
-  println!("Deno {}", crate::version::deno());
-  println!("exit using ctrl+d, ctrl+c, or close()");
+  // Doing this manually, instead of using `log::info!` because these messages
+  // are supposed to go to stdout, not stderr.
+  if !ps.options.is_quiet() {
+    println!("Deno {}", crate::version::deno());
+    println!("exit using ctrl+d, ctrl+c, or close()");
+  }
 
   loop {
     let line = read_line_and_poll(

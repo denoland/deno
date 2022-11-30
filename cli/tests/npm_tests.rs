@@ -327,6 +327,14 @@ mod npm {
     exit_code: 0,
   });
 
+  itest!(types_exports_import_types {
+    args: "run --check=all npm/types_exports_import_types/main.ts",
+    output: "npm/types_exports_import_types/main.out",
+    envs: env_vars_for_npm_tests(),
+    http_server: true,
+    exit_code: 0,
+  });
+
   itest!(types_no_types_entry {
     args: "run --check=all npm/types_no_types_entry/main.ts",
     output: "npm/types_no_types_entry/main.out",
