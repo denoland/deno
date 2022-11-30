@@ -357,7 +357,7 @@ fn op_encoding_encode_into(
   input: &str,
   buffer: &mut [u8],
   out_buf: &mut [u32],
-) {  
+) {
   // Since `input` is already UTF-8, we can simply find the last UTF-8 code
   // point boundary from input that fits in `buffer`, and copy the bytes up to
   // that point.
