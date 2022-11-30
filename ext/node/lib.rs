@@ -262,7 +262,7 @@ fn op_require_proxy_path(filename: String) -> String {
 }
 
 #[op]
-fn op_require_is_request_relative(request: String) -> bool {
+fn op_require_is_request_relative(request: &str) -> bool {
   if request.starts_with("./") || request.starts_with("../") || request == ".."
   {
     return true;

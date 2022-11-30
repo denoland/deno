@@ -41,11 +41,11 @@ pub fn init() -> Extension {
 #[op]
 pub fn op_url_parse_with_base(
   state: &mut OpState,
-  href: String,
-  base_href: String,
+  href: &str,
+  base_href: &str,
   buf: &mut [u8],
 ) -> u32 {
-  let base_url = match Url::parse(&base_href) {
+  let base_url = match Url::parse(base_href) {
     Ok(url) => url,
     Err(_) => return ParseStatus::Err as u32,
   };
@@ -68,7 +68,7 @@ pub fn op_url_get_serialization(state: &mut OpState) -> String {
 
 /// Parse `href` without a `base_url`. Fills the out `buf` with URL components.
 #[op]
-pub fn op_url_parse(state: &mut OpState, href: String, buf: &mut [u8]) -> u32 {
+pub fn op_url_parse(state: &mut OpState, href: &str, buf: &mut [u8]) -> u32 {
   parse_url(state, href, None, buf)
 }
 
@@ -99,11 +99,11 @@ pub fn op_url_parse(state: &mut OpState, href: String, buf: &mut [u8]) -> u32 {
 #[inline]
 fn parse_url(
   state: &mut OpState,
-  href: String,
+  href: &str,
   base_href: Option<&Url>,
   buf: &mut [u8],
 ) -> u32 {
-  match Url::options().base_url(base_href).parse(&href) {
+  match Url::options().base_url(base_href).parse(href) {
     Ok(url) => {
       let inner_url = quirks::internal_components(&url);
 

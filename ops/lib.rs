@@ -383,7 +383,6 @@ fn codegen_arg(
   name: &str,
   idx: usize,
 ) -> TokenStream2 {
-  let is_async = arg.sig.asyncness.is_some() || is_future(&arg.sig.output);
   let ident = quote::format_ident!("{name}");
   let (pat, ty) = match arg {
     syn::FnArg::Typed(pat) => {
@@ -403,9 +402,6 @@ fn codegen_arg(
   // Fast path for `String`
   if let Some(is_ref) = is_string(&**ty) {
     let ref_block = if is_ref {
-      if is_async {
-        panic!("String references are not supported in async ops");
-      }
       quote! { let #ident = #ident.as_ref(); }
     } else {
       quote! {}

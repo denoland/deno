@@ -2,7 +2,7 @@
 const count = 100000;
 
 const start = Date.now();
-for (let i = 0; i < count; i++) console.log("Hello World");
+for (let i = 0; i < count; i++) console.log(`hello ${i}`);
 const elapsed = Date.now() - start;
 const rate = Math.floor(count / (elapsed / 1000));
 console.log(`time ${elapsed} ms rate ${rate}`);
