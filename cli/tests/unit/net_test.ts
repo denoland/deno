@@ -8,6 +8,7 @@ import {
   deferred,
   delay,
   execCode,
+  execCode2,
 } from "./test_util.ts";
 import { join } from "../../../test_util/std/path/mod.ts";
 
@@ -853,25 +854,26 @@ Deno.test(
 Deno.test(
   { permissions: { read: true, run: true, net: true } },
   async function netListenUnrefAndRef() {
-    const p = execCode(`
+    // temp loop to test this on the CI
+    for (let i = 0; i < 100; i++) {
+      const p = execCode2(`
       async function main() {
         const listener = Deno.listen({ port: 3500 });
         listener.unref();
         listener.ref(); // This restores 'ref' state of listener
+        console.log("started");
         await listener.accept();
         console.log("accepted")
       }
       main();
     `);
-    // TODO(kt3k): This is racy. Find a correct way to
-    // wait for the server to be ready
-    setTimeout(async () => {
+      await p.waitStdoutText("started");
       const conn = await Deno.connect({ port: 3500 });
       conn.close();
-    }, 200);
-    const [statusCode, output] = await p;
-    assertEquals(statusCode, 0);
-    assertEquals(output.trim(), "accepted");
+      const [statusCode, output] = await p.finished();
+      assertEquals(statusCode, 0);
+      assertEquals(output.trim(), "started\naccepted");
+    }
   },
 );
 
