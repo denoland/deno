@@ -1,1 +1,1 @@
-Deno.core.ops.op_ffi_read_f32(0n, 0);
+Deno[Deno.internal].core.ops.op_ffi_read_f32(0n, 0);

@@ -232,7 +232,7 @@ mod inspector {
     assert_inspector_messages(
     &mut socket_tx,
     &[
-      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
+      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno[Deno.internal].core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
     ],
     &mut socket_rx,
     &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
@@ -748,7 +748,7 @@ mod inspector {
     assert_inspector_messages(
     &mut socket_tx,
     &[
-      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
+      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno[Deno.internal].core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
     ],
     &mut socket_rx,
     &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],

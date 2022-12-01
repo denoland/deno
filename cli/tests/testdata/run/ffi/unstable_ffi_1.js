@@ -1,1 +1,1 @@
-Deno.core.ops.op_ffi_load({ path: "", symbols: {} });
+Deno[Deno.internal].core.ops.op_ffi_load({ path: "", symbols: {} });

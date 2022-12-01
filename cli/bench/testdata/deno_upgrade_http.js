@@ -1,5 +1,7 @@
 const { serve, upgradeHttpRaw } = Deno;
-const u8 = Deno.core.encode("HTTP/1.1 101 Switching Protocols\r\n\r\n");
+const u8 = Deno[Deno.internal].core.encode(
+  "HTTP/1.1 101 Switching Protocols\r\n\r\n",
+);
 
 async function handler(req) {
   const [conn, _firstPacket] = upgradeHttpRaw(req);

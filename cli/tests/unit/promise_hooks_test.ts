@@ -12,8 +12,8 @@ function monitorPromises(outputArray: string[]) {
     return promiseIds.get(promise);
   }
 
-  // @ts-ignore: Deno.core allowed
-  Deno.core.setPromiseHooks(
+  // @ts-ignore: Deno[Deno.internal].core allowed
+  Deno[Deno.internal].core.setPromiseHooks(
     (promise: Promise<unknown>, parentPromise?: Promise<unknown>) => {
       outputArray.push(
         `init ${identify(promise)}` +

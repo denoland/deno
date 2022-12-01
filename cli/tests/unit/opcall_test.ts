@@ -30,7 +30,7 @@ declare global {
 Deno.test(async function opsAsyncBadResource() {
   try {
     const nonExistingRid = 9999;
-    await Deno.core.read(
+    await Deno[Deno.internal].core.read(
       nonExistingRid,
       new Uint8Array(0),
     );
@@ -44,7 +44,10 @@ Deno.test(async function opsAsyncBadResource() {
 Deno.test(function opsSyncBadResource() {
   try {
     const nonExistingRid = 9999;
-    Deno.core.ops.op_read_sync(nonExistingRid, new Uint8Array(0));
+    Deno[Deno.internal].core.ops.op_read_sync(
+      nonExistingRid,
+      new Uint8Array(0),
+    );
   } catch (e) {
     if (!(e instanceof Deno.errors.BadResource)) {
       throw e;

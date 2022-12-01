@@ -86,19 +86,19 @@ Deno.test(function DenoNamespaceConfigurable() {
 });
 
 Deno.test(function DenoCoreNamespaceIsImmutable() {
-  const { print } = Deno.core;
+  const { print } = Deno[Deno.internal].core;
   try {
-    Deno.core.print = 1;
+    Deno[Deno.internal].core.print = 1;
   } catch {
     // pass
   }
-  assert(print === Deno.core.print);
+  assert(print === Deno[Deno.internal].core.print);
   try {
-    delete Deno.core.print;
+    delete Deno[Deno.internal].core.print;
   } catch {
     // pass
   }
-  assert(print === Deno.core.print);
+  assert(print === Deno[Deno.internal].core.print);
 });
 
 Deno.test(async function windowQueueMicrotask() {
