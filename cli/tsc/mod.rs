@@ -6,7 +6,6 @@ use crate::graph_util::ModuleEntry;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
-use crate::node::NodeResolutionMode;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 use crate::util::checksum;
@@ -33,6 +32,7 @@ use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::Resolved;
+use deno_runtime::deno_node::NodeResolutionMode;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -619,7 +619,7 @@ fn op_resolve(
                 node::node_resolve(
                   specifier,
                   &referrer,
-                  node::NodeResolutionMode::Types,
+                  NodeResolutionMode::Types,
                   npm_resolver,
                 )
                 .ok()

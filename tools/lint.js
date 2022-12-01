@@ -117,13 +117,6 @@ async function clippy() {
       "--",
       "-D",
       "warnings",
-      "-A",
-      // https://github.com/rust-lang/rust-clippy/issues/407
-      "clippy::extra_unused_lifetimes",
-      "-A",
-      // https://github.com/rust-lang/rust-clippy/issues/7271
-      // False positives in core/resources.rs for lifetime elision.
-      "clippy::needless_lifetimes",
     ],
     stdout: "inherit",
     stderr: "inherit",

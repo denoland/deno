@@ -30,8 +30,8 @@ pub use resolution::package_imports_resolve;
 pub use resolution::package_resolve;
 pub use resolution::path_to_declaration_path;
 pub use resolution::NodeModuleKind;
+pub use resolution::NodeResolutionMode;
 pub use resolution::DEFAULT_CONDITIONS;
-pub use resolution::TYPES_CONDITIONS;
 use std::cell::RefCell;
 
 pub trait NodePermissions {
@@ -43,7 +43,7 @@ pub trait RequireNpmResolver {
     &self,
     specifier: &str,
     referrer: &Path,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_path(
@@ -292,7 +292,7 @@ fn op_require_resolve_deno_dir(
     .resolve_package_folder_from_package(
       &request,
       &PathBuf::from(parent_filename),
-      DEFAULT_CONDITIONS,
+      NodeResolutionMode::Execution,
     )
     .ok()
     .map(|p| p.to_string_lossy().to_string())
@@ -506,6 +506,7 @@ fn op_require_try_self(
       &referrer,
       NodeModuleKind::Cjs,
       resolution::REQUIRE_CONDITIONS,
+      NodeResolutionMode::Execution,
       &*resolver,
     )
     .map(|r| Some(r.to_string_lossy().to_string()))
@@ -568,6 +569,7 @@ fn op_require_resolve_exports(
       &referrer,
       NodeModuleKind::Cjs,
       resolution::REQUIRE_CONDITIONS,
+      NodeResolutionMode::Execution,
       &*resolver,
     )
     .map(|r| Some(r.to_string_lossy().to_string()))
@@ -627,6 +629,7 @@ where
       &referrer,
       NodeModuleKind::Cjs,
       resolution::REQUIRE_CONDITIONS,
+      NodeResolutionMode::Execution,
       &*resolver,
     )
     .map(|r| Some(Url::from_file_path(r).unwrap().to_string()));

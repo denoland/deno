@@ -14,7 +14,6 @@ use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
-use crate::node::NodeResolutionMode;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
@@ -33,6 +32,7 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphImport;
 use deno_graph::Resolved;
+use deno_runtime::deno_node::NodeResolutionMode;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -634,7 +634,7 @@ struct FileSystemDocuments {
 }
 
 impl FileSystemDocuments {
-  pub fn get<'a>(
+  pub fn get(
     &mut self,
     cache: &HttpCache,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
@@ -957,7 +957,7 @@ impl Documents {
             node::node_resolve(
               &specifier,
               referrer,
-              node::NodeResolutionMode::Types,
+              NodeResolutionMode::Types,
               npm_resolver,
             )
             .ok()
