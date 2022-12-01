@@ -6,6 +6,40 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.28.3 / 2022.12.01
+
+- Revert "fix(ext/flash): graceful server startup/shutdown with unsettl…
+  (#16839)
+- feat(core): send "executionContextDestroyed" notification on program end
+  (#16831)
+- feat(core): show unresolved promise origin (#16650)
+- feat(core): support initializing extensions with and without JS (#16789)
+- feat(ops): fast calls for Wasm (#16776)
+- feat(ops): support raw pointer arguments (#16826)
+- feat(unstable): rework Deno.Command (#16812)
+- fix(cli/js): improve resource sanitizer messages (#16798)
+- fix(coverage): Error if the emit cache is invalid (#16850)
+- fix(ext/ffi): Null buffer pointer value is inconsistent (#16625)
+- fix(ext/node): allow absolute path in createRequire (#16853)
+- fix(ext/web): fix typings for readable stream readers (#16191)
+- fix(fmt/markdown): fix emoji width calculation in tables (#16870)
+- fix(inspector): send "isDefault" in aux data (#16836)
+- fix(lsp): analyze fs dependencies of dependencies to find npm package
+  requirements (#16866)
+- fix(npm): allow to inspect npm modules with --inspect-brk (#16841)
+- fix(npm): better error message when attempting to use typescript in npm
+  packages (#16813)
+- fix(npm): don't resolve JS files when resolving types (#16854)
+- fix(npm): ensure npm package downloaded once per run when using `--reload`
+  (#16842)
+- fix(npm): improve package.json exports support for types (#16880)
+- fix(ops): circular dependency in deno_ops test (#16809)
+- fix(repl): more reliable history handling (#16797)
+- fix(repl): respect --quiet flag (#16875)
+- fix(runtime): feature-flag snapshot from snapshot (#16843)
+- fix(task): output encoding issues on windows (#16794)
+- perf(ops): Reenable fast unit result optimization (#16827)
+
 ### 1.28.2 / 2022.11.24
 
 - feat(cli): add warning for incorrectly ordered flags (#16734)

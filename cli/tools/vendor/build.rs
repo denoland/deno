@@ -1065,6 +1065,41 @@ mod test {
   }
 
   #[tokio::test]
+  async fn existing_import_map_http_key() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    original_import_map
+      .imports_mut()
+      .append(
+        "http/".to_string(),
+        "https://deno.land/std/http/".to_string(),
+      )
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'http/mod.ts';");
+        loader.add("https://deno.land/std/http/mod.ts", "console.log(5);");
+      })
+      .set_original_import_map(original_import_map.clone())
+      .build()
+      .await
+      .unwrap();
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "http/mod.ts": "./deno.land/std/http/mod.ts",
+          "https://deno.land/": "./deno.land/",
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[("/vendor/deno.land/std/http/mod.ts", "console.log(5);")]),
+    );
+  }
+
+  #[tokio::test]
   async fn vendor_file_fails_loading_dynamic_import() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let err = builder
