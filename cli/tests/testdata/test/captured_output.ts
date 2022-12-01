@@ -9,11 +9,11 @@ Deno.test("output", async () => {
     stdout: "inherit",
     stderr: "inherit",
   });
-  await Deno.spawn(Deno.execPath(), {
+  await new Deno.Command(Deno.execPath(), {
     args: ["eval", "console.log(4); console.error(5);"],
     stdout: "inherit",
     stderr: "inherit",
-  });
+  }).output();
   const c = await Deno.spawnChild(Deno.execPath(), {
     args: ["eval", "console.log(6); console.error(7);"],
     stdout: "inherit",
