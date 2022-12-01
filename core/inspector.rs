@@ -859,10 +859,8 @@ impl InspectorSession {
   fn try_recv(
     &mut self,
   ) -> Option<(*mut v8::inspector::V8InspectorSession, String)> {
-    if let Ok(maybe_msg) = self.proxy.rx.try_next() {
-      if let Some(msg) = maybe_msg {
-        return Some((&mut *self.v8_session, msg));
-      }
+    if let Ok(Some(msg)) = self.proxy.rx.try_next() {
+      return Some((&mut *self.v8_session, msg));
     }
 
     None
