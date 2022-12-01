@@ -421,9 +421,8 @@ impl<'a> GraphDisplayContext<'a> {
           }
         }
         writeln!(writer, "{} {}", colors::bold("type:"), root.media_type)?;
-        let modules = self.graph.modules();
         let total_modules_size =
-          modules.iter().map(|m| m.size() as f64).sum::<f64>();
+          self.graph.modules().map(|m| m.size() as f64).sum::<f64>();
         let total_npm_package_size = self
           .npm_info
           .package_sizes
@@ -431,7 +430,8 @@ impl<'a> GraphDisplayContext<'a> {
           .map(|s| *s as f64)
           .sum::<f64>();
         let total_size = total_modules_size + total_npm_package_size;
-        let dep_count = modules.len() - 1 + self.npm_info.packages.len()
+        let dep_count = self.graph.modules().count() - 1
+          + self.npm_info.packages.len()
           - self.npm_info.resolved_reqs.len();
         writeln!(
           writer,

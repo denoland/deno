@@ -77,16 +77,16 @@ pub fn build(
     graph_lock_or_exit(&graph, &mut lockfile.lock());
   }
 
-  let graph_errors = graph.errors();
-  if !graph_errors.is_empty() {
-    for err in &graph_errors {
+  let mut graph_errors = graph.errors().peekable();
+  if graph_errors.peek().is_some() {
+    for err in graph_errors {
       log::error!("{}", err);
     }
     bail!("failed vendoring");
   }
 
   // figure out how to map remote modules to local
-  let all_modules = graph.modules();
+  let all_modules = graph.modules().collect::<Vec<_>>();
   let remote_modules = all_modules
     .iter()
     .filter(|m| is_remote_specifier(&m.specifier))

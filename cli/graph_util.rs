@@ -135,11 +135,11 @@ impl GraphData {
             checked_libs: Default::default(),
             maybe_types,
           };
-          self.modules.insert(specifier, module_entry);
+          self.modules.insert(specifier.clone(), module_entry);
         }
         Err(error) => {
-          let module_entry = ModuleEntry::Error(error);
-          self.modules.insert(specifier, module_entry);
+          let module_entry = ModuleEntry::Error(error.clone());
+          self.modules.insert(specifier.clone(), module_entry);
         }
       }
     }

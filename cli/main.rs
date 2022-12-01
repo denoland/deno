@@ -432,7 +432,6 @@ async fn bundle_command(
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()
-        .iter()
         .filter_map(|(_, r)| {
           r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
         })
@@ -532,9 +531,8 @@ fn error_for_any_npm_specifier(
 ) -> Result<(), AnyError> {
   let first_npm_specifier = graph
     .specifiers()
-    .values()
-    .filter_map(|r| match r {
-      Ok((specifier, kind, _)) if *kind == deno_graph::ModuleKind::External => {
+    .filter_map(|(_, r)| match r {
+      Ok((specifier, kind, _)) if kind == deno_graph::ModuleKind::External => {
         Some(specifier.clone())
       }
       _ => None,
