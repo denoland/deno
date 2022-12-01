@@ -157,14 +157,14 @@
    * @param {InnerRequest} request
    * @returns {InnerRequest}
    */
-  function cloneInnerRequest(request) {
+  function cloneInnerRequest(request, skipBody = false) {
     const headerList = ArrayPrototypeMap(
       request.headerList,
       (x) => [x[0], x[1]],
     );
 
     let body = null;
-    if (request.body !== null) {
+    if (request.body !== null && !skipBody) {
       body = request.body.clone();
     }
 
@@ -316,20 +316,9 @@
           throw new TypeError("Unreachable");
         }
         const originalReq = input[_request];
-        const originalMethod = originalReq.method;
-        const originalUrl = originalReq.url();
-        const clonedHeaders = ArrayPrototypeMap(
-          originalReq.headerList,
-          (x) => [x[0], x[1]],
-        );
-        request = newInnerRequest(
-          () => originalMethod,
-          () => originalUrl,
-          () => clonedHeaders,
-          null,
-          false,
-        );
-        request.redirectMode = originalReq.redirectMode;
+        // fold in of step 12 from below
+        request = cloneInnerRequest(originalReq, true);
+        request.redirectCount = 0; // reset to 0 - cloneInnerRequest copies the value
         signal = input[_signal];
       }
 
