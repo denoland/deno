@@ -540,12 +540,14 @@ pub fn unpack(
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
-  if cfg!(windows) {
-    // On windows you cannot replace the currently running executable.
-    // so first we rename it to deno.old.exe
-    fs::rename(to, to.with_extension("old.exe"))?;
-  } else {
-    fs::remove_file(to)?;
+  if to.exists() {
+    if cfg!(windows) {
+      // On windows you cannot replace the currently running executable.
+      // so first we rename it to deno.old.exe
+      fs::rename(to, to.with_extension("old.exe"))?;
+    } else {
+      fs::remove_file(to)?;
+    }
   }
   // Windows cannot rename files across device boundaries, so if rename fails,
   // we try again with copy.
