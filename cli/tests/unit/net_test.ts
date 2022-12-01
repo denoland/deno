@@ -854,9 +854,7 @@ Deno.test(
 Deno.test(
   { permissions: { read: true, run: true, net: true } },
   async function netListenUnrefAndRef() {
-    // temp loop to test this on the CI
-    for (let i = 0; i < 100; i++) {
-      const p = execCode2(`
+    const p = execCode2(`
       async function main() {
         const listener = Deno.listen({ port: 3500 });
         listener.unref();
@@ -867,13 +865,12 @@ Deno.test(
       }
       main();
     `);
-      await p.waitStdoutText("started");
-      const conn = await Deno.connect({ port: 3500 });
-      conn.close();
-      const [statusCode, output] = await p.finished();
-      assertEquals(statusCode, 0);
-      assertEquals(output.trim(), "started\naccepted");
-    }
+    await p.waitStdoutText("started");
+    const conn = await Deno.connect({ port: 3500 });
+    conn.close();
+    const [statusCode, output] = await p.finished();
+    assertEquals(statusCode, 0);
+    assertEquals(output.trim(), "started\naccepted");
   },
 );
 
