@@ -7,6 +7,7 @@ use crate::colors;
 use crate::version;
 
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
@@ -348,12 +349,26 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   check_exe(&new_exe_path)?;
 
   if !upgrade_flags.dry_run {
-    match upgrade_flags.output {
-      Some(path) => {
-        fs::rename(&new_exe_path, &path)
-          .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))?;
+    let output_path = match upgrade_flags.output {
+      Some(path) => path,
+      None => old_exe_path,
+    };
+    if let Err(err) = replace_exe(&new_exe_path, &output_path) {
+      const WIN_ERROR_ACCESS_DENIED: i32 = 5;
+      if cfg!(windows) && err.raw_os_error() == Some(WIN_ERROR_ACCESS_DENIED) {
+        return Err(err).with_context(|| {
+          format!(
+            concat!(
+            "Could not replace the old executable. ",
+            "Please ensure there are no running deno processes (Stop-Process -Name deno ; deno {}) ",
+            "and close any editors before upgrading."
+            ),
+            std::env::args().collect::<Vec<_>>().join(" "),
+          )
+        });
+      } else {
+        return Err(err.into());
       }
-      None => replace_exe(&new_exe_path, &old_exe_path)?,
     }
   }
 
@@ -524,17 +539,17 @@ pub fn unpack(
   Ok(exe_path)
 }
 
-fn replace_exe(new: &Path, old: &Path) -> Result<(), std::io::Error> {
+fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
   if cfg!(windows) {
     // On windows you cannot replace the currently running executable.
     // so first we rename it to deno.old.exe
-    fs::rename(old, old.with_extension("old.exe"))?;
+    fs::rename(to, to.with_extension("old.exe"))?;
   } else {
-    fs::remove_file(old)?;
+    fs::remove_file(to)?;
   }
   // Windows cannot rename files across device boundaries, so if rename fails,
   // we try again with copy.
-  fs::rename(new, old).or_else(|_| fs::copy(new, old).map(|_| ()))?;
+  fs::rename(from, to).or_else(|_| fs::copy(from, to).map(|_| ()))?;
   Ok(())
 }
 
