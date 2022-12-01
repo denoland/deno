@@ -443,7 +443,7 @@ declare namespace Deno {
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerValue, definition: Fn);
+    constructor(pointer: PointerValue, definition: Const<Fn>);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -494,7 +494,7 @@ declare namespace Deno {
     Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
   > {
     constructor(
-      definition: Definition,
+      definition: Const<Definition>,
       callback: UnsafeCallbackFunction<
         Definition["parameters"],
         Definition["result"]

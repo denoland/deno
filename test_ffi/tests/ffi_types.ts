@@ -66,11 +66,11 @@ const remote = Deno.dlopen(
 
 Deno.dlopen(
   "dummy_lib_2.so",
-  // @ts-expect-error: Returning a function pointer
   // is declared using "pointer" or "function" + UnsafeFnPointer
   {
     wrong_method1: {
       parameters: [],
+      // @ts-expect-error not assignable to type 'NativeResultType'
       result: {
         function: {
           parameters: [],
@@ -78,7 +78,7 @@ Deno.dlopen(
         },
       },
     },
-  } as const,
+  },
 );
 
 // @ts-expect-error: Invalid argument
@@ -174,7 +174,7 @@ const fnptr = new Deno.UnsafeFnPointer(
   {
     parameters: ["u32", "pointer"],
     result: "void",
-  } as const,
+  },
 );
 // @ts-expect-error: Invalid argument
 fnptr.call(null, null);
@@ -184,7 +184,7 @@ const unsafe_callback_wrong1 = new Deno.UnsafeCallback(
   {
     parameters: ["i8"],
     result: "void",
-  } as const,
+  },
   // @ts-expect-error: i8 is not a pointer
   (_: bigint) => {},
 );
@@ -192,7 +192,7 @@ const unsafe_callback_wrong2 = new Deno.UnsafeCallback(
   {
     parameters: ["pointer"],
     result: "u64",
-  } as const,
+  },
   // @ts-expect-error: must return a number or bigint
   (_: Deno.UnsafePointer) => {},
 );
@@ -200,7 +200,7 @@ const unsafe_callback_wrong3 = new Deno.UnsafeCallback(
   {
     parameters: [],
     result: "void",
-  } as const,
+  },
   // @ts-expect-error: no parameters
   (_: Deno.UnsafePointer) => {},
 );
@@ -208,7 +208,7 @@ const unsafe_callback_wrong4 = new Deno.UnsafeCallback(
   {
     parameters: ["u64"],
     result: "void",
-  } as const,
+  },
   // @ts-expect-error: Callback's 64bit parameters are either number or bigint
   (_: number) => {},
 );
@@ -216,21 +216,21 @@ const unsafe_callback_right1 = new Deno.UnsafeCallback(
   {
     parameters: ["u8", "u32", "pointer"],
     result: "void",
-  } as const,
+  },
   (_1: number, _2: number, _3: Deno.PointerValue) => {},
 );
 const unsafe_callback_right2 = new Deno.UnsafeCallback(
   {
     parameters: [],
     result: "u8",
-  } as const,
+  },
   () => 3,
 );
 const unsafe_callback_right3 = new Deno.UnsafeCallback(
   {
     parameters: [],
     result: "function",
-  } as const,
+  },
   // Callbacks can return other callbacks' pointers, if really wanted.
   () => unsafe_callback_right2.pointer,
 );
@@ -238,14 +238,14 @@ const unsafe_callback_right4 = new Deno.UnsafeCallback(
   {
     parameters: ["u8", "u32", "pointer"],
     result: "u8",
-  } as const,
+  },
   (_1: number, _2: number, _3: Deno.PointerValue) => 3,
 );
 const unsafe_callback_right5 = new Deno.UnsafeCallback(
   {
     parameters: ["u8", "i32", "pointer"],
     result: "void",
-  } as const,
+  },
   (_1: number, _2: number, _3: Deno.PointerValue) => {},
 );
 
