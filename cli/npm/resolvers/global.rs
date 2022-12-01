@@ -12,8 +12,8 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_node::TYPES_CONDITIONS;
 
 use crate::args::Lockfile;
 use crate::npm::resolution::NpmResolution;
@@ -76,7 +76,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let referrer_pkg_id = self
       .cache
@@ -84,7 +84,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     let pkg_result = self
       .resolution
       .resolve_package_from_package(name, &referrer_pkg_id);
-    if conditions == TYPES_CONDITIONS && !name.starts_with("@types/") {
+    if mode.is_types() && !name.starts_with("@types/") {
       // When doing types resolution, the package must contain a "types"
       // entry, or else it will then search for a @types package
       if let Ok(pkg) = pkg_result {
