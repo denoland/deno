@@ -407,7 +407,7 @@ async fn download_package(
   client: Client,
   download_url: &str,
 ) -> Result<Vec<u8>, AnyError> {
-  log::info!("Checking {}", &download_url);
+  log::info!("Downloading {}", &download_url);
 
   let res = client.get(download_url).send().await?;
 
@@ -419,6 +419,7 @@ async fn download_package(
     let mut skip_print = 0;
     const MEBIBYTE: f64 = 1024.0 * 1024.0;
     let progress_bar = ProgressBar::default();
+    let clear_guard = progress_bar.clear_guard();
     while let Some(item) = stream.next().await {
       let bytes = item?;
       current_size += bytes.len() as f64;
@@ -435,7 +436,7 @@ async fn download_package(
         skip_print -= 1;
       }
     }
-    progress_bar.clear();
+    drop(clear_guard);
     log::info!(
       "{:.1} MiB / {:.1} MiB (100.0%)",
       current_size / MEBIBYTE,
