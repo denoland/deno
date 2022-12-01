@@ -862,8 +862,6 @@ impl InspectorSession {
     if let Ok(maybe_msg) = self.proxy.rx.try_next() {
       if let Some(msg) = maybe_msg {
         return Some((&mut *self.v8_session, msg));
-      } else {
-        return None;
       }
     }
 
