@@ -253,7 +253,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
       "You don't have write permission to {} because it's owned by root.\n",
       "Consider updating deno through your package manager if its installed from it.\n",
       "Otherwise run `deno upgrade` as root.",
-    ), old_exe_path.display());
+    ), current_exe_path.display());
   }
 
   let client = build_http_client(upgrade_flags.ca_file)?;
