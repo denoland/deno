@@ -66,9 +66,10 @@ enum PollState {
   // Inspector is being polled synchronously, possibly in a reentrant way
   // (e.g. from a callback invoked by V8).
   SyncPolling,
-  // We are blockingly waiting for new events until V8 resumes execution or a
-  // session connects.
-  BlockOnSessionPoll,
+  // We are blockingly waiting for new events until a session connects.
+  BlockOnWaitingForSession,
+  // We are blockingly waiting for new events until V8 resumes execution.
+  BlockOnPause,
   // TODO(bartlomieju): feels like this is not needed
   // Inspector has been dropped already, but wakers might outlive the inspector
   // so make sure nothing gets woken at this point.
@@ -276,20 +277,26 @@ impl JsRuntimeInspector {
     loop {
       sessions.sync_poll();
 
-      let should_block = {
+      let (on_pause, waiting_for_session) = {
         let flags = self.flags.borrow();
-        flags.on_pause || flags.waiting_for_session
+        (flags.on_pause, flags.waiting_for_session)
       };
 
       let new_state = self.waker.update(|w| {
         match w.poll_state {
-          PollState::SyncPolling if should_block => {
+          PollState::SyncPolling if on_pause => {
             // Isolate execution has been paused but there are no more
             // events to process, so this thread will block until more
             // events arrive.
-            w.poll_state = PollState::BlockOnSessionPoll;
+            w.poll_state = PollState::BlockOnPause;
           }
-          PollState::SyncPolling if !should_block => {
+          PollState::SyncPolling if waiting_for_session => {
+            // Isolate execution has been paused but there are no more
+            // events to process, so this thread will block until more
+            // events arrive.
+            w.poll_state = PollState::BlockOnWaitingForSession;
+          }
+          PollState::SyncPolling => {
             // We're done, we're about return from this function.
           }
           _ => unreachable!(),
@@ -311,7 +318,60 @@ impl JsRuntimeInspector {
 
           break;
         }
-        PollState::BlockOnSessionPoll => {
+        PollState::BlockOnWaitingForSession => {
+          futures::executor::block_on(futures::future::poll_fn(|cx| {
+            // Accept new connections.
+            let poll_result = sessions.session_rx.poll_next_unpin(cx);
+            if let Poll::Ready(Some(session_proxy)) = poll_result {
+              let session = InspectorSession::new(
+                self.v8_inspector.clone(),
+                session_proxy,
+                false,
+              );
+              let prev = sessions.handshake.replace(session);
+              assert!(prev.is_none());
+            }
+
+            // Do one "handshake" with a newly connected session at a time.
+            let maybe_session = sessions.handshake.take();
+            if let Some(mut session) = maybe_session {
+              let poll_result = session.poll_next_unpin(cx);
+              match poll_result {
+                Poll::Pending => {
+                  sessions.established.push(session);
+                }
+                Poll::Ready(Some(session_stream_item)) => {
+                  let (v8_session_ptr, msg) = session_stream_item;
+                  InspectorSession::dispatch_message(v8_session_ptr, msg);
+                  sessions.established.push(session);
+                }
+                Poll::Ready(None) => {}
+              }
+            }
+
+            loop {
+              let poll_result = sessions.established.poll_next_unpin(cx);
+              match poll_result {
+                Poll::Ready(Some(session_stream_item)) => {
+                  let (v8_session_ptr, msg) = session_stream_item;
+                  InspectorSession::dispatch_message(v8_session_ptr, msg);
+                }
+                _ => break,
+              }
+            }
+
+            if self.flags.borrow().waiting_for_session {
+              Poll::Pending
+            } else {
+              Poll::Ready(())
+            }
+          }));
+          self.waker.update(|w| {
+            assert_eq!(w.poll_state, PollState::BlockOnWaitingForSession);
+            w.poll_state = PollState::SyncPolling;
+          });
+        }
+        PollState::BlockOnPause => {
           futures::executor::block_on(futures::future::poll_fn(|cx| {
             // Do one "handshake" with a newly connected session at a time.
             let maybe_session = sessions.handshake.take();
@@ -331,21 +391,15 @@ impl JsRuntimeInspector {
             }
 
             // Accept new connections.
-            let mut new_connection_pending = false;
             let poll_result = sessions.session_rx.poll_next_unpin(cx);
-            match poll_result {
-              Poll::Ready(Some(session_proxy)) => {
-                let session = InspectorSession::new(
-                  self.v8_inspector.clone(),
-                  session_proxy,
-                  false,
-                );
-                let prev = sessions.handshake.replace(session);
-                assert!(prev.is_none());
-              }
-              _ => {
-                new_connection_pending = true;
-              }
+            if let Poll::Ready(Some(session_proxy)) = poll_result {
+              let session = InspectorSession::new(
+                self.v8_inspector.clone(),
+                session_proxy,
+                false,
+              );
+              let prev = sessions.handshake.replace(session);
+              assert!(prev.is_none());
             }
 
             let poll_result = sessions.established.poll_next_unpin(cx);
@@ -356,17 +410,13 @@ impl JsRuntimeInspector {
                 Poll::Ready(())
               }
               Poll::Ready(None) => {
-                if new_connection_pending {
-                  Poll::Pending
-                } else {
-                  unreachable!()
-                }
+                unreachable!()
               }
               Poll::Pending => Poll::Pending,
             }
           }));
           self.waker.update(|w| {
-            assert_eq!(w.poll_state, PollState::BlockOnSessionPoll);
+            assert_eq!(w.poll_state, PollState::BlockOnPause);
             w.poll_state = PollState::SyncPolling;
           });
         }
