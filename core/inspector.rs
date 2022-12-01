@@ -323,30 +323,19 @@ impl JsRuntimeInspector {
             // Accept new connections.
             let poll_result = sessions.session_rx.poll_next_unpin(cx);
             if let Poll::Ready(Some(session_proxy)) = poll_result {
-              let session = InspectorSession::new(
+              let mut session = InspectorSession::new(
                 self.v8_inspector.clone(),
                 session_proxy,
                 false,
               );
-              let prev = sessions.handshake.replace(session);
-              assert!(prev.is_none());
-            }
 
-            // Do one "handshake" with a newly connected session at a time.
-            let maybe_session = sessions.handshake.take();
-            if let Some(mut session) = maybe_session {
-              let poll_result = session.poll_next_unpin(cx);
-              match poll_result {
-                Poll::Pending => {
-                  sessions.established.push(session);
-                }
-                Poll::Ready(Some(session_stream_item)) => {
-                  let (v8_session_ptr, msg) = session_stream_item;
-                  InspectorSession::dispatch_message(v8_session_ptr, msg);
-                  sessions.established.push(session);
-                }
-                Poll::Ready(None) => {}
+              if let Poll::Ready(Some(session_stream_item)) =
+                session.poll_next_unpin(cx)
+              {
+                let (v8_session_ptr, msg) = session_stream_item;
+                InspectorSession::dispatch_message(v8_session_ptr, msg);
               }
+              sessions.established.push(session);
             }
 
             loop {
@@ -373,33 +362,22 @@ impl JsRuntimeInspector {
         }
         PollState::BlockOnPause => {
           futures::executor::block_on(futures::future::poll_fn(|cx| {
-            // Do one "handshake" with a newly connected session at a time.
-            let maybe_session = sessions.handshake.take();
-            if let Some(mut session) = maybe_session {
-              let poll_result = session.poll_next_unpin(cx);
-              match poll_result {
-                Poll::Pending => {
-                  sessions.established.push(session);
-                }
-                Poll::Ready(Some(session_stream_item)) => {
-                  let (v8_session_ptr, msg) = session_stream_item;
-                  InspectorSession::dispatch_message(v8_session_ptr, msg);
-                  sessions.established.push(session);
-                }
-                Poll::Ready(None) => {}
-              }
-            }
-
             // Accept new connections.
             let poll_result = sessions.session_rx.poll_next_unpin(cx);
             if let Poll::Ready(Some(session_proxy)) = poll_result {
-              let session = InspectorSession::new(
+              let mut session = InspectorSession::new(
                 self.v8_inspector.clone(),
                 session_proxy,
                 false,
               );
-              let prev = sessions.handshake.replace(session);
-              assert!(prev.is_none());
+
+              if let Poll::Ready(Some(session_stream_item)) =
+                session.poll_next_unpin(cx)
+              {
+                let (v8_session_ptr, msg) = session_stream_item;
+                InspectorSession::dispatch_message(v8_session_ptr, msg);
+              }
+              sessions.established.push(session);
             }
 
             let poll_result = sessions.established.poll_next_unpin(cx);
@@ -445,36 +423,24 @@ impl JsRuntimeInspector {
 
     loop {
       loop {
-        // Do one "handshake" with a newly connected session at a time.
-        let maybe_session = self.sessions.borrow_mut().handshake.take();
-        if let Some(mut session) = maybe_session {
-          let poll_result = session.poll_next_unpin(cx);
-          match poll_result {
-            Poll::Pending => {
-              self.sessions.borrow_mut().established.push(session);
-              continue;
-            }
-            Poll::Ready(Some(session_stream_item)) => {
-              let (v8_session_ptr, msg) = session_stream_item;
-              InspectorSession::dispatch_message(v8_session_ptr, msg);
-              self.sessions.borrow_mut().established.push(session);
-              continue;
-            }
-            Poll::Ready(None) => {}
-          }
-        }
-
         // Accept new connections.
         let poll_result =
           self.sessions.borrow_mut().session_rx.poll_next_unpin(cx);
         if let Poll::Ready(Some(session_proxy)) = poll_result {
-          let session = InspectorSession::new(
+          let mut session = InspectorSession::new(
             self.v8_inspector.clone(),
             session_proxy,
             false,
           );
-          let prev = self.sessions.borrow_mut().handshake.replace(session);
-          assert!(prev.is_none());
+
+          if let Poll::Ready(Some(session_stream_item)) =
+            session.poll_next_unpin(cx)
+          {
+            let (v8_session_ptr, msg) = session_stream_item;
+            InspectorSession::dispatch_message(v8_session_ptr, msg);
+          }
+          self.sessions.borrow_mut().established.push(session);
+          continue;
         }
 
         // Poll established sessions.
@@ -608,7 +574,6 @@ struct InspectorFlags {
 struct SessionContainer {
   v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
   session_rx: UnboundedReceiver<InspectorSessionProxy>,
-  handshake: Option<Box<InspectorSession>>,
   established: SelectAll<Box<InspectorSession>>,
 }
 
@@ -620,7 +585,6 @@ impl SessionContainer {
     Self {
       v8_inspector,
       session_rx: new_session_rx,
-      handshake: None,
       established: SelectAll::new(),
     }
   }
@@ -631,12 +595,11 @@ impl SessionContainer {
   /// all sessions before dropping the inspector instance.
   fn drop_sessions(&mut self) {
     self.v8_inspector = Default::default();
-    self.handshake.take();
     self.established.clear();
   }
 
   fn has_active_sessions(&self) -> bool {
-    !self.established.is_empty() || self.handshake.is_some()
+    !self.established.is_empty()
   }
 
   fn has_blocking_sessions(&self) -> bool {
@@ -652,40 +615,27 @@ impl SessionContainer {
     Self {
       v8_inspector: Default::default(),
       session_rx: rx,
-      handshake: None,
       established: SelectAll::new(),
     }
   }
 
   fn sync_poll(&mut self) {
     'outer: loop {
-      // Do one "handshake" with a newly connected session at a time.
-      if let Some(mut session) = self.handshake.take() {
-        let poll_result = session.try_recv();
-        match poll_result {
-          None => {
-            self.established.push(session);
-            continue;
-          }
-          Some(session_stream_item) => {
-            let (v8_session_ptr, msg) = session_stream_item;
-            InspectorSession::dispatch_message(v8_session_ptr, msg);
-            self.established.push(session);
-            continue;
-          }
-        }
-      }
-
       // Accept new connections.
       let poll_result = self.session_rx.try_next();
       if let Ok(Some(session_proxy)) = poll_result {
-        let session = InspectorSession::new(
+        let mut session = InspectorSession::new(
           self.v8_inspector.clone(),
           session_proxy,
           false,
         );
-        let prev = self.handshake.replace(session);
-        assert!(prev.is_none());
+
+        if let Some(session_stream_item) = session.try_recv() {
+          let (v8_session_ptr, msg) = session_stream_item;
+          InspectorSession::dispatch_message(v8_session_ptr, msg);
+        }
+        self.established.push(session);
+        continue;
       }
 
       // Poll established sessions.
