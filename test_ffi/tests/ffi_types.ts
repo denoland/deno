@@ -5,7 +5,7 @@
 const remote = Deno.dlopen(
   "dummy_lib.so",
   {
-    method1: { parameters: ["usize", "usize"], result: "void", callback: true },
+    method1: { parameters: ["usize", "bool"], result: "void", callback: true },
     method2: { parameters: [], result: "void" },
     method3: { parameters: ["usize"], result: "void" },
     method4: { parameters: ["isize"], result: "void" },
@@ -61,7 +61,7 @@ const remote = Deno.dlopen(
     static13: { type: "f32" },
     static14: { type: "f64" },
     static15: { type: "bool" },
-  } as const,
+  },
 );
 
 Deno.dlopen(
@@ -83,9 +83,13 @@ Deno.dlopen(
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method1(0);
+// @ts-expect-error: Invalid argument
+remote.symbols.method1(0, 0);
+// @ts-expect-error: Invalid argument
+remote.symbols.method1(true, true);
 // @ts-expect-error: Invalid return type
-<number> remote.symbols.method1(0, 0);
-<void> remote.symbols.method1(0n, 0n);
+<number> remote.symbols.method1(0, true);
+<void> remote.symbols.method1(0n, true);
 
 // @ts-expect-error: Expected 0 arguments, but got 1.
 remote.symbols.method2(null);
