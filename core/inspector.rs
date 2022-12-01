@@ -291,9 +291,9 @@ impl JsRuntimeInspector {
             w.poll_state = PollState::BlockOnPause;
           }
           PollState::SyncPolling if waiting_for_session => {
-            // Isolate execution has been paused but there are no more
+            // We're waiting for a session to connect but there are no more
             // events to process, so this thread will block until more
-            // events arrive.
+            // events arrive and one of them will be a session connection.
             w.poll_state = PollState::BlockOnWaitingForSession;
           }
           PollState::SyncPolling => {
@@ -349,6 +349,8 @@ impl JsRuntimeInspector {
               }
             }
 
+            // Keep polling until a session connects and tell us to start
+            // running.
             if self.flags.borrow().waiting_for_session {
               Poll::Pending
             } else {
@@ -380,6 +382,7 @@ impl JsRuntimeInspector {
               sessions.established.push(session);
             }
 
+            // Keep polling until a resume execution from a pause.
             let poll_result = sessions.established.poll_next_unpin(cx);
             match poll_result {
               Poll::Ready(Some(session_stream_item)) => {
