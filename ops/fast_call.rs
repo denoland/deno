@@ -139,12 +139,22 @@ pub(crate) fn generate(
 
   // Apply *hard* optimizer hints.
   if optimizer.has_fast_callback_option
+    || optimizer.has_wasm_memory
     || optimizer.needs_opstate()
     || optimizer.is_async
+    || optimizer.needs_fast_callback_option
   {
-    fast_fn_inputs.push(parse_quote! {
+    let decl = parse_quote! {
       fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions
-    });
+    };
+
+    if optimizer.has_fast_callback_option || optimizer.has_wasm_memory {
+      // Replace last parameter.
+      assert!(fast_fn_inputs.pop().is_some());
+      fast_fn_inputs.push(decl);
+    } else {
+      fast_fn_inputs.push(decl);
+    }
 
     input_variants.push(q!({ CallbackOptions }));
   }
@@ -162,14 +172,11 @@ pub(crate) fn generate(
 
   let mut output_transforms = q!({});
 
-  if optimizer.needs_opstate() || optimizer.is_async {
-    // Grab the op_state identifier, the first one. ¯\_(ツ)_/¯
-    let op_state = match idents.first() {
-      Some(ident) if optimizer.has_opstate_in_parameters() => ident.clone(),
-      // fn op_foo() -> Result<...>
-      _ => Ident::new("op_state", Span::call_site()),
-    };
-
+  if optimizer.needs_opstate()
+    || optimizer.is_async
+    || optimizer.has_fast_callback_option
+    || optimizer.has_wasm_memory
+  {
     // Dark arts 🪄 ✨
     //
     // - V8 calling convention guarantees that the callback options pointer is non-null.
@@ -179,13 +186,27 @@ pub(crate) fn generate(
     let prelude = q!({
       let __opts: &mut v8::fast_api::FastApiCallbackOptions =
         unsafe { &mut *fast_api_callback_options };
+    });
+
+    pre_transforms.push_tokens(&prelude);
+  }
+
+  if optimizer.needs_opstate() || optimizer.is_async {
+    // Grab the op_state identifier, the first one. ¯\_(ツ)_/¯
+    let op_state = match idents.first() {
+      Some(ident) if optimizer.has_opstate_in_parameters() => ident.clone(),
+      // fn op_foo() -> Result<...>
+      _ => Ident::new("op_state", Span::call_site()),
+    };
+
+    let ctx = q!({
       let __ctx = unsafe {
         &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
           as *const _ops::OpCtx)
       };
     });
 
-    pre_transforms.push_tokens(&prelude);
+    pre_transforms.push_tokens(&ctx);
     pre_transforms.push_tokens(&match optimizer.is_async {
       false => q!(
         Vars {
@@ -421,50 +442,4 @@ fn exclude_lifetime_params(
     gt_token: Some(Default::default()),
     where_clause: None,
   })
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::{Attributes, Op};
-  use std::path::PathBuf;
-
-  #[testing_macros::fixture("optimizer_tests/**/*.rs")]
-  fn test_fast_call_codegen(input: PathBuf) {
-    let update_expected = std::env::var("UPDATE_EXPECTED").is_ok();
-    let core = crate::deno::import();
-
-    let source =
-      std::fs::read_to_string(&input).expect("Failed to read test file");
-
-    let mut attrs = Attributes::default();
-    if source.contains("// @test-attr:fast") {
-      attrs.must_be_fast = true;
-    }
-
-    let item = syn::parse_str(&source).expect("Failed to parse test file");
-    let mut op = Op::new(item, attrs);
-    let mut optimizer = Optimizer::new();
-    if optimizer.analyze(&mut op).is_err() {
-      // Tested by optimizer::test tests.
-      return;
-    }
-
-    let expected = std::fs::read_to_string(input.with_extension("out"))
-      .expect("Failed to read expected file");
-
-    let FastImplItems {
-      impl_and_fn: actual,
-      ..
-    } = generate(&core, &mut optimizer, &op.item);
-    // Validate syntax tree.
-    let tree = syn::parse2(actual).unwrap();
-    let actual = prettyplease::unparse(&tree);
-    if update_expected {
-      std::fs::write(input.with_extension("out"), actual)
-        .expect("Failed to write expected file");
-    } else {
-      assert_eq!(actual, expected);
-    }
-  }
 }

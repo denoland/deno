@@ -110,8 +110,8 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
       absolute_path.parent().unwrap()
     };
     if created_dirs.insert(dir_path.to_path_buf()) {
-      fs::create_dir_all(&dir_path)?;
-      let canonicalized_dir = fs::canonicalize(&dir_path)?;
+      fs::create_dir_all(dir_path)?;
+      let canonicalized_dir = fs::canonicalize(dir_path)?;
       if !canonicalized_dir.starts_with(&output_folder) {
         bail!(
           "Extracted directory '{}' of npm tarball was not in output directory.",

@@ -12,11 +12,10 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_node::TYPES_CONDITIONS;
 
-use crate::fs_util;
-use crate::lockfile::Lockfile;
+use crate::args::Lockfile;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::resolvers::common::cache_packages;
@@ -26,6 +25,7 @@ use crate::npm::NpmPackageReq;
 use crate::npm::RealNpmRegistryApi;
 
 use super::common::ensure_registry_read_permission;
+use super::common::types_package_name;
 use super::common::InnerNpmPackageResolver;
 
 /// Resolves packages from the global npm cache.
@@ -76,7 +76,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let referrer_pkg_id = self
       .cache
@@ -84,7 +84,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     let pkg_result = self
       .resolution
       .resolve_package_from_package(name, &referrer_pkg_id);
-    if conditions == TYPES_CONDITIONS && !name.starts_with("@types/") {
+    if mode.is_types() && !name.starts_with("@types/") {
       // When doing types resolution, the package must contain a "types"
       // entry, or else it will then search for a @types package
       if let Ok(pkg) = pkg_result {
@@ -97,7 +97,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
         }
       }
 
-      let name = format!("@types/{}", name);
+      let name = types_package_name(name);
       let pkg = self
         .resolution
         .resolve_package_from_package(&name, &referrer_pkg_id)?;
@@ -124,7 +124,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
 
   fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
     let package_folder = self.package_folder(package_id);
-    Ok(fs_util::dir_size(&package_folder)?)
+    Ok(crate::util::fs::dir_size(&package_folder)?)
   }
 
   fn has_packages(&self) -> bool {

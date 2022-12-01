@@ -10,8 +10,9 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
+use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::lockfile::Lockfile;
+use crate::args::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
@@ -29,7 +30,7 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_specifier(
@@ -104,7 +105,7 @@ pub fn ensure_registry_read_permission(
   path: &Path,
 ) -> Result<(), AnyError> {
   // allow reading if it's in the node_modules
-  if path.starts_with(&registry_path)
+  if path.starts_with(registry_path)
     && path
       .components()
       .all(|c| !matches!(c, std::path::Component::ParentDir))
@@ -127,4 +128,26 @@ pub fn ensure_registry_read_permission(
     "PermissionDenied",
     format!("Reading {} is not allowed", path.display()),
   ))
+}
+
+/// Gets the corresponding @types package for the provided package name.
+pub fn types_package_name(package_name: &str) -> String {
+  debug_assert!(!package_name.starts_with("@types/"));
+  // Scoped packages will get two underscores for each slash
+  // https://github.com/DefinitelyTyped/DefinitelyTyped/tree/15f1ece08f7b498f4b9a2147c2a46e94416ca777#what-about-scoped-packages
+  format!("@types/{}", package_name.replace('/', "__"))
+}
+
+#[cfg(test)]
+mod test {
+  use super::types_package_name;
+
+  #[test]
+  fn test_types_package_name() {
+    assert_eq!(types_package_name("name"), "@types/name");
+    assert_eq!(
+      types_package_name("@scoped/package"),
+      "@types/@scoped__package"
+    );
+  }
 }

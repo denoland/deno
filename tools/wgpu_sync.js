@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --unstable --allow-read --allow-write --allow-run
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { join, ROOT_PATH, walk } from "./util.js";
+import { join, ROOT_PATH } from "./util.js";
 
 const COMMIT = "076df1a56812eee01614b7a3a4c88798012e79ab";
 const REPO = "gfx-rs/wgpu";
@@ -37,17 +37,11 @@ async function checkoutUpstream() {
   await bash(cmd);
 }
 
-async function denoCoreVersion() {
-  const coreCargo = join(ROOT_PATH, "core", "Cargo.toml");
-  const contents = await Deno.readTextFile(coreCargo);
-  return contents.match(/^version = "(\d+\.\d+\.\d+)"$/m)[1];
-}
-
 async function denoWebgpuVersion() {
-  const coreCargo = join(ROOT_PATH, "runtime", "Cargo.toml");
+  const coreCargo = join(ROOT_PATH, "Cargo.toml");
   const contents = await Deno.readTextFile(coreCargo);
   return contents.match(
-    /^deno_webgpu = { version = "(\d+\.\d+\.\d+)", path = "..\/ext\/webgpu" }$/m,
+    /^deno_webgpu = { version = "(\d+\.\d+\.\d+)", path = ".\/ext\/webgpu" }$/m,
   )[1];
 }
 
@@ -58,18 +52,12 @@ async function patchFile(path, patcher) {
 }
 
 async function patchCargo() {
-  const vDenoCore = await denoCoreVersion();
   const vDenoWebgpu = await denoWebgpuVersion();
   await patchFile(
     join(TARGET_DIR, "Cargo.toml"),
     (data) =>
       data
         .replace(/^version = .*/m, `version = "${vDenoWebgpu}"`)
-        .replace(`edition = "2018"`, `edition = "2021"`)
-        .replace(
-          /^deno_core \= .*$/gm,
-          `deno_core = { version = "${vDenoCore}", path = "../../core" }`,
-        )
         .replace(
           /^wgpu-core \= .*$/gm,
           `wgpu-core = { version = "${V_WGPU}", features = ["trace", "replay", "serde"] }`,
@@ -97,23 +85,11 @@ async function patchSrcLib() {
   );
 }
 
-async function patchCopyrights() {
-  const walker = walk(TARGET_DIR, { includeDirs: false });
-  for await (const entry of walker) {
-    await patchFile(
-      entry.path,
-      (data) =>
-        data.replace(/^\/\/ Copyright 2018-2021/, "// Copyright 2018-2022"),
-    );
-  }
-}
-
 async function main() {
   await clearTargetDir();
   await checkoutUpstream();
   await patchCargo();
   await patchSrcLib();
-  await patchCopyrights();
   await bash(join(ROOT_PATH, "tools", "format.js"));
 }
 

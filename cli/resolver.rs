@@ -8,7 +8,7 @@ use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use import_map::ImportMap;
 use std::sync::Arc;
 
-use crate::args::config_file::JsxImportSourceConfig;
+use crate::args::JsxImportSourceConfig;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.

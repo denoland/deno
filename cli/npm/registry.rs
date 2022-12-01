@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::PathBuf;
@@ -18,13 +19,13 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::colors;
-use deno_runtime::deno_fetch::reqwest;
 use serde::Serialize;
 
-use crate::file_fetcher::CacheSetting;
-use crate::fs_util;
-use crate::http_cache::CACHE_PERM;
-use crate::progress_bar::ProgressBar;
+use crate::args::CacheSetting;
+use crate::cache::CACHE_PERM;
+use crate::http_util::HttpClient;
+use crate::util::fs::atomic_write_file;
+use crate::util::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
 use super::resolution::NpmVersionMatcher;
@@ -248,14 +249,15 @@ impl RealNpmRegistryApi {
   pub fn new(
     base_url: Url,
     cache: NpmCache,
-    cache_setting: CacheSetting,
+    http_client: HttpClient,
     progress_bar: ProgressBar,
   ) -> Self {
     Self(Arc::new(RealNpmRegistryApiInner {
       base_url,
       cache,
       mem_cache: Default::default(),
-      cache_setting,
+      previously_reloaded_packages: Default::default(),
+      http_client,
       progress_bar,
     }))
   }
@@ -284,7 +286,8 @@ struct RealNpmRegistryApiInner {
   base_url: Url,
   cache: NpmCache,
   mem_cache: Mutex<HashMap<String, Option<Arc<NpmPackageInfo>>>>,
-  cache_setting: CacheSetting,
+  previously_reloaded_packages: Mutex<HashSet<String>>,
+  http_client: HttpClient,
   progress_bar: ProgressBar,
 }
 
@@ -293,12 +296,16 @@ impl RealNpmRegistryApiInner {
     &self,
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
-    let maybe_info = self.mem_cache.lock().get(name).cloned();
-    if let Some(info) = maybe_info {
-      Ok(info)
+    let maybe_maybe_info = self.mem_cache.lock().get(name).cloned();
+    if let Some(maybe_info) = maybe_maybe_info {
+      Ok(maybe_info)
     } else {
       let mut maybe_package_info = None;
-      if self.cache_setting.should_use_for_npm_package(name) {
+      if self.cache.cache_setting().should_use_for_npm_package(name)
+        // if this has been previously reloaded, then try loading from the
+        // file system cache
+        || !self.previously_reloaded_packages.lock().insert(name.to_string())
+      {
         // attempt to load from the file cache
         maybe_package_info = self.load_file_cached_package_info(name);
       }
@@ -397,8 +404,8 @@ impl RealNpmRegistryApiInner {
   ) -> Result<(), AnyError> {
     let file_cache_path = self.get_package_file_cache_path(name);
     let file_text = serde_json::to_string(&package_info)?;
-    std::fs::create_dir_all(&file_cache_path.parent().unwrap())?;
-    fs_util::atomic_write_file(&file_cache_path, file_text, CACHE_PERM)?;
+    std::fs::create_dir_all(file_cache_path.parent().unwrap())?;
+    atomic_write_file(&file_cache_path, file_text, CACHE_PERM)?;
     Ok(())
   }
 
@@ -406,21 +413,20 @@ impl RealNpmRegistryApiInner {
     &self,
     name: &str,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
-    if self.cache_setting == CacheSetting::Only {
+    if *self.cache.cache_setting() == CacheSetting::Only {
       return Err(custom_error(
         "NotCached",
         format!(
           "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
           name
         )
-      )
-      );
+      ));
     }
 
     let package_url = self.get_package_url(name);
     let _guard = self.progress_bar.update(package_url.as_str());
 
-    let response = match reqwest::get(package_url).await {
+    let response = match self.http_client.get(package_url).send().await {
       Ok(response) => response,
       Err(err) => {
         // attempt to use the local cache
@@ -516,6 +522,12 @@ impl TestNpmRegistryApi {
     version
       .dependencies
       .insert(package_to.0.to_string(), package_to.1.to_string());
+  }
+
+  pub fn add_dist_tag(&self, package_name: &str, tag: &str, version: &str) {
+    let mut infos = self.package_infos.lock();
+    let info = infos.get_mut(package_name).unwrap();
+    info.dist_tags.insert(tag.to_string(), version.to_string());
   }
 
   pub fn add_peer_dependency(

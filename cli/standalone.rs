@@ -287,7 +287,7 @@ pub async fn run(
       inspect: ps.options.is_inspecting(),
     },
     extensions: ops::cli_exts(ps.clone()),
-    startup_snapshot: None,
+    startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
     root_cert_store: Some(root_cert_store),

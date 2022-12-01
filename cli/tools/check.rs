@@ -15,11 +15,11 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
-use crate::diagnostics::Diagnostics;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::npm::NpmPackageResolver;
 use crate::tsc;
+use crate::tsc::Diagnostics;
 use crate::tsc::Stats;
 use crate::version;
 
