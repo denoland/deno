@@ -597,7 +597,7 @@ impl Optimizer {
                     path: Path { segments, .. },
                     ..
                   })) => {
-                    let segment = single_segment(&segments)?;
+                    let segment = single_segment(segments)?;
                     match segment {
                       PathSegment { ident, .. } if ident == "str" => {
                         self.fast_parameters.push(FastValue::SeqOneByteString);
