@@ -361,7 +361,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
           format!(
             concat!(
             "Could not replace the old executable. ",
-            "Please ensure there are no running deno processes (Stop-Process -Name deno ; deno {}) ",
+            "Please ensure there are no running deno processes (ex. Stop-Process -Name deno ; deno {}) ",
             "and close any editors before upgrading."
             ),
             std::env::args().collect::<Vec<_>>().join(" "),
