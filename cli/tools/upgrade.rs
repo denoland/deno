@@ -349,11 +349,12 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   check_exe(&new_exe_path)?;
 
   if !upgrade_flags.dry_run {
-    let output_path = match upgrade_flags.output {
-      Some(path) => path,
-      None => current_exe_path,
+    let output_result = match upgrade_flags.output {
+      Some(path) => fs::rename(&new_exe_path, &path)
+        .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ())),
+      None => replace_exe(&new_exe_path, &current_exe_path),
     };
-    if let Err(err) = replace_exe(&new_exe_path, &output_path) {
+    if let Err(err) = output_result {
       const WIN_ERROR_ACCESS_DENIED: i32 = 5;
       if cfg!(windows) && err.raw_os_error() == Some(WIN_ERROR_ACCESS_DENIED) {
         return Err(err).with_context(|| {
@@ -540,14 +541,12 @@ pub fn unpack(
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
-  if to.exists() {
-    if cfg!(windows) {
-      // On windows you cannot replace the currently running executable.
-      // so first we rename it to deno.old.exe
-      fs::rename(to, to.with_extension("old.exe"))?;
-    } else {
-      fs::remove_file(to)?;
-    }
+  if cfg!(windows) {
+    // On windows you cannot replace the currently running executable.
+    // so first we rename it to deno.old.exe
+    fs::rename(to, to.with_extension("old.exe"))?;
+  } else {
+    fs::remove_file(to)?;
   }
   // Windows cannot rename files across device boundaries, so if rename fails,
   // we try again with copy.
