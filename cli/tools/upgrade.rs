@@ -235,14 +235,14 @@ async fn fetch_and_store_latest_version<
 }
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
-  let old_exe_path = std::env::current_exe()?;
-  let metadata = fs::metadata(&old_exe_path)?;
+  let current_exe_path = std::env::current_exe()?;
+  let metadata = fs::metadata(&current_exe_path)?;
   let permissions = metadata.permissions();
 
   if permissions.readonly() {
     bail!(
       "You do not have write permission to {}",
-      old_exe_path.display()
+      current_exe_path.display()
     );
   }
   #[cfg(unix)]
@@ -351,7 +351,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   if !upgrade_flags.dry_run {
     let output_path = match upgrade_flags.output {
       Some(path) => path,
-      None => old_exe_path,
+      None => current_exe_path,
     };
     if let Err(err) = replace_exe(&new_exe_path, &output_path) {
       const WIN_ERROR_ACCESS_DENIED: i32 = 5;
