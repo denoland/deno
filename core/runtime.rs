@@ -1279,8 +1279,8 @@ impl JsRuntime {
   }
 }
 
-fn get_stalled_top_level_await_message_for_module<'s>(
-  scope: &'s mut v8::HandleScope,
+fn get_stalled_top_level_await_message_for_module(
+  scope: &mut v8::HandleScope,
   module_id: ModuleId,
 ) -> Vec<v8::Global<v8::Message>> {
   let module_map = JsRuntime::module_map(scope);
@@ -1296,8 +1296,8 @@ fn get_stalled_top_level_await_message_for_module<'s>(
   messages
 }
 
-fn find_stalled_top_level_await<'s>(
-  scope: &'s mut v8::HandleScope,
+fn find_stalled_top_level_await(
+  scope: &mut v8::HandleScope,
 ) -> Vec<v8::Global<v8::Message>> {
   let module_map = JsRuntime::module_map(scope);
   let module_map = module_map.borrow();

@@ -460,6 +460,13 @@ impl CliOptions {
     self.flags.log_level
   }
 
+  pub fn is_quiet(&self) -> bool {
+    self
+      .log_level()
+      .map(|l| l == log::Level::Error)
+      .unwrap_or(false)
+  }
+
   pub fn location_flag(&self) -> Option<&Url> {
     self.flags.location.as_ref()
   }
