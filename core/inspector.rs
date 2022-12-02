@@ -130,7 +130,9 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().on_pause = true;
+    eprintln!("poll_sessions_sync run_message_loop_on_pause");
     self.poll_sessions_sync();
+    eprintln!("poll_sessions_sync run_message_loop_on_pause end");
     assert!(
       !self.flags.borrow().on_pause,
       "V8InspectorClientImpl::run_message_loop_on_pause returned before quit_message_loop_on_pause was called"
@@ -227,7 +229,9 @@ impl JsRuntimeInspector {
         aux_data_view,
       );
 
+    eprintln!("poll_sessions_sync on start");
     self_.poll_sessions_sync();
+    eprintln!("poll_sessions_sync on start end");
     drop(self_);
 
     self__
@@ -247,6 +251,10 @@ impl JsRuntimeInspector {
       .context_destroyed(context);
   }
 
+  pub fn waker(&self) -> Arc<InspectorWaker> {
+    self.waker.clone()
+  }
+
   pub fn has_active_sessions(&self) -> bool {
     self.sessions.borrow().has_active_sessions()
   }
@@ -261,7 +269,7 @@ impl JsRuntimeInspector {
       assert!(prev_poll_state != PollState::SyncPolling);
 
       let prev_task_waker = w.task_waker.take();
-
+      w.inspector_ptr = Some(NonNull::from(self));
       (prev_poll_state, prev_task_waker)
     });
 
@@ -301,6 +309,7 @@ impl JsRuntimeInspector {
       match w.poll_state {
         PollState::Idle | PollState::Woken => {
           w.poll_state = PollState::Polling;
+          eprintln!("setting inspector ptr");
           w.inspector_ptr = Some(NonNull::from(self));
         }
         s => unreachable!("state in poll_sessions {:#?}", s),
@@ -380,6 +389,7 @@ impl JsRuntimeInspector {
         // Don't hold the borrow on sessions while dispatching a message, as it
         // might result in a call to `poll_sessions_sync`.
         drop(sessions);
+        eprintln!("dispatching message {}", msg);
         InspectorSession::dispatch_message(v8_session_ptr, msg);
         // Loop around. We need to keep polling established sessions and
         // accepting new ones until eventually everything is `Pending`.
@@ -404,7 +414,9 @@ impl JsRuntimeInspector {
         }
         None => {
           self.flags.get_mut().waiting_for_session = true;
+          eprintln!("poll_sessions_sync wait for session");
           self.poll_sessions_sync();
+          eprintln!("poll_sessions_sync wait for session end");
         }
       };
     }
@@ -524,7 +536,7 @@ struct InspectorWakerInner {
 // SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for InspectorWakerInner {}
 
-struct InspectorWaker(Mutex<InspectorWakerInner>);
+pub struct InspectorWaker(Mutex<InspectorWakerInner>);
 
 impl InspectorWaker {
   fn new(isolate_handle: v8::IsolateHandle) -> Arc<Self> {
@@ -550,7 +562,9 @@ extern "C" fn handle_interrupt(_isolate: &mut v8::Isolate, arg: *mut c_void) {
   // SAFETY: `InspectorWaker` is owned by `JsRuntimeInspector`, so the
   // pointer to the latter is valid as long as waker is alive.
   let inspector = unsafe { &*(arg as *mut JsRuntimeInspector) };
+  eprintln!("poll_sessions_sync handle interrupt");
   inspector.poll_sessions_sync();
+  eprintln!("poll_sessions_sync handle interrupt end");
 }
 
 impl task::ArcWake for InspectorWaker {
@@ -558,10 +572,13 @@ impl task::ArcWake for InspectorWaker {
     arc_self.update(|w| {
       // Determine whether, given the current poll state, waking up is possible
       // and necessary. If it is, change the poll state to `Woken`.
+      eprintln!("inspector woken {:?}", w.poll_state);
       match w.poll_state {
         PollState::Idle | PollState::Polling => w.poll_state = PollState::Woken,
         PollState::Woken | PollState::Dropped => return, // Nothing to do.
-        PollState::SyncPolling => panic!("wake() called while sync polling"),
+        PollState::SyncPolling => {
+          eprintln!("wake() called when sync polling, ignoring");
+        },
       };
 
       // Wake the task, if any, that has polled the Inspector future last.
@@ -571,6 +588,7 @@ impl task::ArcWake for InspectorWaker {
 
       // Request an interrupt from the isolate, if the isolate is currently
       // running and there isn't already an interrupt request in flight.
+      eprintln!("waker will request interrupt {}", w.inspector_ptr.is_some());
       if let Some(arg) = w
         .inspector_ptr
         .take()
