@@ -41,11 +41,11 @@ impl Resource for CompressionResource {
 #[op]
 pub fn op_compression_new(
   state: &mut OpState,
-  format: String,
+  format: &str,
   is_decoder: bool,
 ) -> ResourceId {
   let w = Vec::new();
-  let inner = match (format.as_str(), is_decoder) {
+  let inner = match (format, is_decoder) {
     ("deflate", true) => Inner::DeflateDecoder(ZlibDecoder::new(w)),
     ("deflate", false) => {
       Inner::DeflateEncoder(ZlibEncoder::new(w, Compression::default()))
