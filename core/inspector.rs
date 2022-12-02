@@ -291,16 +291,20 @@ impl JsRuntimeInspector {
         if let Poll::Ready(Some(session_stream_item)) = poll_result {
           let (v8_session_ptr, msg) = session_stream_item;
           InspectorSession::dispatch_message(v8_session_ptr, msg);
-          // Loop around. We need to keep polling established and new session
-          // until eventually everything is `Pending`.
+          // Loop around. We need to keep polling established sessions and
+          // accepting new ones until eventually everything is `Pending`.
           continue;
         }
 
         // Check the `on_pause` and `waiting_for_session` flags. If either of
         // them is set, we need to keep the thread blocked until they're both
         // clear.
-        break if self.flags.borrow().on_pause_or_waiting_for_session() {
-          Poll::Pending
+        let InspectorFlags {
+          on_pause,
+          waiting_for_session,
+        } = *self.flags.borrow();
+        break if on_pause || waiting_for_session {
+          Poll::Pending // Block the thread.
         } else {
           Poll::Ready(())
         };
@@ -349,18 +353,11 @@ impl JsRuntimeInspector {
         let poll_result =
           self.sessions.borrow_mut().session_rx.poll_next_unpin(cx);
         if let Poll::Ready(Some(session_proxy)) = poll_result {
-          let mut session = InspectorSession::new(
+          let session = InspectorSession::new(
             self.v8_inspector.clone(),
             session_proxy,
             false,
           );
-
-          if let Poll::Ready(Some(session_stream_item)) =
-            session.poll_next_unpin(cx)
-          {
-            let (v8_session_ptr, msg) = session_stream_item;
-            InspectorSession::dispatch_message(v8_session_ptr, msg);
-          }
           self.sessions.borrow_mut().established.push(session);
           continue;
         }
@@ -489,12 +486,6 @@ impl JsRuntimeInspector {
 struct InspectorFlags {
   waiting_for_session: bool,
   on_pause: bool,
-}
-
-impl InspectorFlags {
-  fn on_pause_or_waiting_for_session(&self) -> bool {
-    self.on_pause || self.waiting_for_session
-  }
 }
 
 /// A helper structure that helps coordinate sessions during different
