@@ -107,14 +107,14 @@ export async function runSingleTest(
       "[]",
     );
 
-    const proc = Deno.spawnChild(denoBinary(), {
+    const proc = new Deno.Command(denoBinary(), {
       args,
       env: {
         NO_COLOR: "1",
       },
       stdout: "null",
       stderr: "piped",
-    });
+    }).spawn();
 
     const cases = [];
     let stderr = "";
