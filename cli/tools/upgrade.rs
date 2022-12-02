@@ -349,10 +349,13 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   check_exe(&new_exe_path)?;
 
   if !upgrade_flags.dry_run {
-    let output_result = match upgrade_flags.output {
-      Some(path) => fs::rename(&new_exe_path, &path)
-        .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ())),
-      None => replace_exe(&new_exe_path, &current_exe_path),
+    let output_exe_path =
+      upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
+    let output_result = if *output_exe_path == current_exe_path {
+      replace_exe(&new_exe_path, output_exe_path)
+    } else {
+      fs::rename(&new_exe_path, output_exe_path)
+        .or_else(|_| fs::copy(&new_exe_path, output_exe_path).map(|_| ()))
     };
     if let Err(err) = output_result {
       const WIN_ERROR_ACCESS_DENIED: i32 = 5;
@@ -360,11 +363,14 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
         return Err(err).with_context(|| {
           format!(
             concat!(
-            "Could not replace the old executable. ",
-            "Please ensure there are no running deno processes (ex. Stop-Process -Name deno ; deno {}) ",
-            "and close any editors before upgrading."
+              "Access denied: Could not replace the deno executable. This may be ",
+              "because an existing deno process is running. Please ensure there ",
+              "are no running deno processes (ex. Stop-Process -Name deno ; deno {}), ",
+              "close any editors before upgrading, and ensure you have sufficient ",
+              "permission to '{}'."
             ),
             std::env::args().collect::<Vec<_>>().join(" "),
+            output_exe_path.display(),
           )
         });
       } else {
