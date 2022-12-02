@@ -377,7 +377,7 @@ impl JsRuntimeInspector {
       let poll_result = sessions.established.poll_next_unpin(cx);
       if let Poll::Ready(Some(session_stream_item)) = poll_result {
         let (v8_session_ptr, msg) = session_stream_item;
-        // Don't hold the borrow on sessionswhile dispatching a message as it
+        // Don't hold the borrow on sessions while dispatching a message, as it
         // might result in a call to `poll_sessions_sync`.
         drop(sessions);
         InspectorSession::dispatch_message(v8_session_ptr, msg);
