@@ -556,23 +556,28 @@ extern "C" fn handle_interrupt(_isolate: &mut v8::Isolate, arg: *mut c_void) {
 impl task::ArcWake for InspectorWaker {
   fn wake_by_ref(arc_self: &Arc<Self>) {
     arc_self.update(|w| {
-      // TODO(bartlomieju): assert other states can't happen?
-      if w.poll_state == PollState::Idle {
-        // Wake the task, if any, that has polled the Inspector future last.
-        if let Some(waker) = w.task_waker.take() {
-          waker.wake()
-        }
-        // Request an interrupt from the isolate if it's running and there's
-        // not unhandled interrupt request in flight.
-        if let Some(arg) = w
-          .inspector_ptr
-          .take()
-          .map(|ptr| ptr.as_ptr() as *mut c_void)
-        {
-          w.isolate_handle.request_interrupt(handle_interrupt, arg);
-        }
+      // Determine whether, given the current poll state, a wak-up is possible
+      // and necessary. If it is, change the poll state to `Woken`.
+      match w.poll_state {
+        PollState::Idle | PollState::Polling => w.poll_state = PollState::Woken,
+        PollState::Woken | PollState::Dropped => return, // Nothing to do.
+        PollState::SyncPolling => panic!("wake() called while sync polling"),
+      };
+
+      // Wake the task, if any, that has polled the Inspector future last.
+      if let Some(waker) = w.task_waker.take() {
+        waker.wake()
       }
-      w.poll_state = PollState::Woken;
+
+      // Request an interrupt from the isolate, if the isolate is currently
+      // running and there isn't already an interrupt request in flight.
+      if let Some(arg) = w
+        .inspector_ptr
+        .take()
+        .map(|ptr| ptr.cast::<c_void>().as_ptr())
+      {
+        w.isolate_handle.request_interrupt(handle_interrupt, arg);
+      }
     });
   }
 }
