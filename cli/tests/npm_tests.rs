@@ -320,27 +320,27 @@ mod npm {
   });
 
   itest!(types_entry_value_not_exists {
-    args: "run --check=all npm/types_entry_value_not_exists/main.ts",
+    args: "check --remote npm/types_entry_value_not_exists/main.ts",
     output: "npm/types_entry_value_not_exists/main.out",
     envs: env_vars_for_npm_tests(),
     http_server: true,
-    exit_code: 0,
+    exit_code: 1,
   });
 
   itest!(types_exports_import_types {
-    args: "run --check=all npm/types_exports_import_types/main.ts",
+    args: "check --remote npm/types_exports_import_types/main.ts",
     output: "npm/types_exports_import_types/main.out",
     envs: env_vars_for_npm_tests(),
     http_server: true,
-    exit_code: 0,
+    exit_code: 1,
   });
 
   itest!(types_no_types_entry {
-    args: "run --check=all npm/types_no_types_entry/main.ts",
+    args: "check --remote npm/types_no_types_entry/main.ts",
     output: "npm/types_no_types_entry/main.out",
     envs: env_vars_for_npm_tests(),
     http_server: true,
-    exit_code: 0,
+    exit_code: 1,
   });
 
   itest!(typescript_file_in_package {
