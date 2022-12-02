@@ -103,10 +103,14 @@ mod coverage {
       .arg(format!("coverage/{}_test.{}", test_name, extension))
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::inherit())
-      .status()
+      .output()
       .unwrap();
 
-    assert!(status.success());
+    let stdout = std::str::from_utf8(&status.stdout).unwrap();
+    let stderr = std::str::from_utf8(&status.stderr).unwrap();
+    eprintln!("stdout {}", stdout);
+    eprintln!("stderr {}", stderr);
+    assert!(status.status.success());
 
     let output = util::deno_cmd_with_deno_dir(&deno_dir)
       .current_dir(util::testdata_path())
