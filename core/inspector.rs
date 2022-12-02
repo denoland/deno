@@ -302,7 +302,7 @@ impl JsRuntimeInspector {
       match w.poll_state {
         PollState::Idle | PollState::Woken => {
           w.poll_state = PollState::Polling;
-          w.inspector_ptr = NonNull::new(self as *const _ as *mut Self);
+          w.inspector_ptr = Some(NonNull::from(self));
         }
         s => unreachable!("state in poll_sessions {:#?}", s),
       };
