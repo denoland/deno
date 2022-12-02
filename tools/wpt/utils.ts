@@ -148,12 +148,12 @@ export async function checkPy3Available() {
 
 export async function cargoBuild() {
   if (binary) return;
-  const { success } = await Deno.spawn("cargo", {
+  const { success } = await new Deno.Command("cargo", {
     args: ["build", ...(release ? ["--release"] : [])],
     cwd: ROOT_PATH,
     stdout: "inherit",
     stderr: "inherit",
-  });
+  }).output();
   assert(success, "cargo build failed");
 }
 
@@ -175,16 +175,16 @@ export async function generateRunInfo(): Promise<unknown> {
     "darwin": "mac",
     "linux": "linux",
   };
-  const proc = await Deno.spawn("git", {
+  const proc = await new Deno.Command("git", {
     args: ["rev-parse", "HEAD"],
     cwd: join(ROOT_PATH, "test_util", "wpt"),
     stderr: "inherit",
-  });
+  }).output();
   const revision = (new TextDecoder().decode(proc.stdout)).trim();
-  const proc2 = await Deno.spawn(denoBinary(), {
+  const proc2 = await new Deno.Command(denoBinary(), {
     args: ["eval", "console.log(JSON.stringify(Deno.version))"],
     cwd: join(ROOT_PATH, "test_util", "wpt"),
-  });
+  }).output();
   const version = JSON.parse(new TextDecoder().decode(proc2.stdout));
   const runInfo = {
     "os": oses[Deno.build.os],
