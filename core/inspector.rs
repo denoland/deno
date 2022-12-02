@@ -556,7 +556,7 @@ extern "C" fn handle_interrupt(_isolate: &mut v8::Isolate, arg: *mut c_void) {
 impl task::ArcWake for InspectorWaker {
   fn wake_by_ref(arc_self: &Arc<Self>) {
     arc_self.update(|w| {
-      // Determine whether, given the current poll state, a wak-up is possible
+      // Determine whether, given the current poll state, waking up is possible
       // and necessary. If it is, change the poll state to `Woken`.
       match w.poll_state {
         PollState::Idle | PollState::Polling => w.poll_state = PollState::Woken,
