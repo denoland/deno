@@ -16,7 +16,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -671,7 +670,7 @@ impl Resource for StdFileResource {
 #[op]
 pub fn op_print(
   state: &mut OpState,
-  msg: String,
+  msg: &str,
   is_err: bool,
 ) -> Result<(), AnyError> {
   let rid = if is_err { 2 } else { 1 };
@@ -683,32 +682,32 @@ pub fn op_print(
   })
 }
 
-#[op]
+#[op(fast)]
 fn op_read_sync(
   state: &mut OpState,
-  rid: ResourceId,
-  mut buf: ZeroCopyBuf,
+  rid: u32,
+  buf: &mut [u8],
 ) -> Result<u32, AnyError> {
   StdFileResource::with_resource(state, rid, move |resource| {
     resource.with_inner_and_metadata(|inner, _| {
       inner
-        .read(&mut buf)
+        .read(buf)
         .map(|n: usize| n as u32)
         .map_err(AnyError::from)
     })
   })
 }
 
-#[op]
+#[op(fast)]
 fn op_write_sync(
   state: &mut OpState,
-  rid: ResourceId,
-  buf: ZeroCopyBuf,
+  rid: u32,
+  buf: &mut [u8],
 ) -> Result<u32, AnyError> {
   StdFileResource::with_resource(state, rid, move |resource| {
     resource.with_inner_and_metadata(|inner, _| {
       inner
-        .write_and_maybe_flush(&buf)
+        .write_and_maybe_flush(buf)
         .map(|nwritten: usize| nwritten as u32)
         .map_err(AnyError::from)
     })

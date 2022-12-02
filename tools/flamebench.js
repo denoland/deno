@@ -3,11 +3,11 @@
 import { join, ROOT_PATH as ROOT } from "./util.js";
 
 async function bashOut(subcmd) {
-  const { success, stdout } = await Deno.spawn("bash", {
+  const { success, stdout } = await new Deno.Command("bash", {
     args: ["-c", subcmd],
     stdout: "piped",
     stderr: "null",
-  });
+  }).output();
 
   // Check for failure
   if (!success) {
@@ -20,12 +20,12 @@ async function bashOut(subcmd) {
 }
 
 async function bashThrough(subcmd, opts = {}) {
-  const { success, code } = await Deno.spawn("bash", {
+  const { success, code } = await new Deno.Command("bash", {
     ...opts,
     args: ["-c", subcmd],
     stdout: "inherit",
     stderr: "inherit",
-  });
+  }).output();
 
   // Exit process on failure
   if (!success) {
