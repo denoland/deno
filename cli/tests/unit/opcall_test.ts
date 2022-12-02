@@ -20,17 +20,13 @@ Deno.test(async function sendAsyncStackTrace() {
   }
 });
 
-declare global {
-  namespace Deno {
-    // deno-lint-ignore no-explicit-any, no-var
-    var core: any;
-  }
-}
+// @ts-ignore This is not publicly typed namespace, but it's there for sure.
+const core = Deno[Deno.internal].core;
 
 Deno.test(async function opsAsyncBadResource() {
   try {
     const nonExistingRid = 9999;
-    await Deno[Deno.internal].core.read(
+    await core.read(
       nonExistingRid,
       new Uint8Array(0),
     );
@@ -44,7 +40,7 @@ Deno.test(async function opsAsyncBadResource() {
 Deno.test(function opsSyncBadResource() {
   try {
     const nonExistingRid = 9999;
-    Deno[Deno.internal].core.ops.op_read_sync(
+    core.ops.op_read_sync(
       nonExistingRid,
       new Uint8Array(0),
     );
