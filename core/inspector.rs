@@ -352,7 +352,7 @@ impl JsRuntimeInspector {
   /// Accepts incoming connections from inspector clients, and polls established
   /// inspector sessions for messages that need to be dispatched to V8. This
   /// function will repeatedly poll its innner streams and will not return until
-  /// they all yield `Pending`.
+  /// they all yield `Pending` or have ended.
   fn poll_sessions_inner(&self, cx: &mut Context) {
     loop {
       let mut sessions = self.sessions.borrow_mut();
@@ -374,8 +374,7 @@ impl JsRuntimeInspector {
         Poll::Pending => {}
       }
 
-      // Poll alk established inspector sessions, dispatching any incoming
-      // messages to the V8 inspector.
+      // Poll established inspector sessions.
       let poll_result = sessions.established.poll_next_unpin(cx);
       if let Poll::Ready(Some(session_stream_item)) = poll_result {
         let (v8_session_ptr, msg) = session_stream_item;
