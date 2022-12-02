@@ -267,47 +267,15 @@ impl JsRuntimeInspector {
     });
 
     futures::executor::block_on(futures::future::poll_fn(|cx| {
-      let mut sessions = self.sessions.borrow_mut();
-      loop {
-        // Accept new connections.
-        let poll_result = sessions.session_rx.poll_next_unpin(cx);
-        match poll_result {
-          Poll::Ready(Some(session_proxy)) => {
-            let session = InspectorSession::new(
-              self.v8_inspector.clone(),
-              session_proxy,
-              false,
-            );
-            sessions.established.push(session);
-            continue; // Poll `session_rx` until it returns `Pending`.
-          }
-          Poll::Ready(None) => unreachable!(), // Is it really unreachable?.
-          Poll::Pending => {}
-        }
+      self.poll_sessions_inner(cx);
 
-        // Poll all established sessions for incoming messages, and dispatch
-        // them to the V8 inspector.
-        let poll_result = sessions.established.poll_next_unpin(cx);
-        if let Poll::Ready(Some(session_stream_item)) = poll_result {
-          let (v8_session_ptr, msg) = session_stream_item;
-          InspectorSession::dispatch_message(v8_session_ptr, msg);
-          // Loop around. We need to keep polling established sessions and
-          // accepting new ones until eventually everything is `Pending`.
-          continue;
-        }
-
-        // Check the `on_pause` and `waiting_for_session` flags. If either of
-        // them is set, we need to keep the thread blocked until they're both
-        // clear.
-        let InspectorFlags {
-          on_pause,
-          waiting_for_session,
-        } = *self.flags.borrow();
-        break if on_pause || waiting_for_session {
-          Poll::Pending // Block the thread.
-        } else {
-          Poll::Ready(())
-        };
+      // Block the thread if either the `on_pause` or the `waiting_for_session`.
+      // is set. Otherwise, return `Ready(_)` to make `block_on()` return.
+      let flags = self.flags.borrow();
+      if flags.on_pause || flags.waiting_for_session {
+        Poll::Pending
+      } else {
+        Poll::Ready(())
       }
     }));
 
@@ -336,9 +304,7 @@ impl JsRuntimeInspector {
           w.poll_state = PollState::Polling;
           w.inspector_ptr = NonNull::new(self as *const _ as *mut Self);
         }
-        s => {
-          unreachable!("state in poll_sessions {:#?}", s)
-        }
+        s => unreachable!("state in poll_sessions {:#?}", s),
       };
     });
 
@@ -348,33 +314,7 @@ impl JsRuntimeInspector {
     let cx = &mut Context::from_waker(&waker_ref);
 
     loop {
-      loop {
-        // Accept new connections.
-        let poll_result =
-          self.sessions.borrow_mut().session_rx.poll_next_unpin(cx);
-        if let Poll::Ready(Some(session_proxy)) = poll_result {
-          let session = InspectorSession::new(
-            self.v8_inspector.clone(),
-            session_proxy,
-            false,
-          );
-          self.sessions.borrow_mut().established.push(session);
-          continue;
-        }
-
-        // Poll established sessions.
-        let poll_result =
-          self.sessions.borrow_mut().established.poll_next_unpin(cx);
-        match poll_result {
-          Poll::Ready(Some(session_stream_item)) => {
-            let (v8_session_ptr, msg) = session_stream_item;
-            InspectorSession::dispatch_message(v8_session_ptr, msg);
-            continue;
-          }
-          Poll::Ready(None) => break,
-          Poll::Pending => break,
-        };
-      }
+      self.poll_sessions_inner(cx);
 
       {
         let flags = self.flags.borrow();
@@ -382,19 +322,18 @@ impl JsRuntimeInspector {
         assert!(!flags.waiting_for_session);
       }
 
-      let new_state = self.waker.update(|w| {
+      let new_poll_state = self.waker.update(|w| {
         match w.poll_state {
           PollState::Woken => {
-            // The inspector was woken while the session handler was being
-            // polled, so we poll it another time.
+            // The inspector got woken up before the last round of polling was
+            // even over, so we need to do another round.
             w.poll_state = PollState::Polling;
           }
           PollState::Polling => {
-            // The session handler doesn't need to be polled any longer, we're
-            // about the return from this function.
+            // Since all streams were polled until they all yielded `Pending`,
+            // there's nothing else we can do right now.
             w.poll_state = PollState::Idle;
-            // Register the task waker that can be used to wake the parent
-            // task that will poll the inspector future.
+            // Capture the waker that, when used, will get the inspector polled.
             w.task_waker.replace(invoker_cx.waker().clone());
           }
           _ => unreachable!(),
@@ -402,16 +341,53 @@ impl JsRuntimeInspector {
         w.poll_state
       });
 
-      match new_state {
-        PollState::Idle => {
-          // Yield back to the calling task.
-          break Poll::Pending;
-        }
-        PollState::Polling => {
-          // Poll the session handler again.
-        }
+      match new_poll_state {
+        PollState::Idle => break Poll::Pending,
+        PollState::Polling => continue, // Poll the session handler again.
         _ => unreachable!(),
       };
+    }
+  }
+
+  /// Accepts connecting inspector clients, and it polls the established
+  /// sessions for messages that need to be dispatched to V8. It returns when
+  /// all incoming connections and messages have been processed, and
+  /// `session_rx` and `established` streams are both `Pending`.
+  fn poll_sessions_inner(&self, cx: &mut Context) {
+    loop {
+      let mut sessions = self.sessions.borrow_mut();
+
+      // Accept new connections.
+      let poll_result = sessions.session_rx.poll_next_unpin(cx);
+      match poll_result {
+        Poll::Ready(Some(session_proxy)) => {
+          let session = InspectorSession::new(
+            self.v8_inspector.clone(),
+            session_proxy,
+            false,
+          );
+          sessions.established.push(session);
+          // `session_rx` needs to be polled repeatedly until it is `Pending`.
+          continue;
+        }
+        Poll::Ready(None) => unreachable!(), // `session_rx` should never end.
+        Poll::Pending => {}
+      }
+
+      // Poll alk established inspector sessions, dispatching any incoming
+      // messages to the V8 inspector.
+      let poll_result = sessions.established.poll_next_unpin(cx);
+      if let Poll::Ready(Some(session_stream_item)) = poll_result {
+        let (v8_session_ptr, msg) = session_stream_item;
+        // Don't hold the borrow on `sessions` while dispatching a message.
+        drop(sessions);
+        InspectorSession::dispatch_message(v8_session_ptr, msg);
+        // Loop around. We need to keep polling established sessions and
+        // accepting new ones until eventually everything is `Pending`.
+        continue;
+      }
+
+      break;
     }
   }
 
