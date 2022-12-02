@@ -173,9 +173,10 @@ mod repl {
       assert_contains!(output, "Hello World");
       assert_contains!(
         output,
-        // on windows, could contain either (it's flaky)
+        // on windows, could any (it's flaky)
         "\ntesting output",
         "testing output\u{1b}",
+        "\r\n\u{1b}[?25htesting output",
       );
     });
 
