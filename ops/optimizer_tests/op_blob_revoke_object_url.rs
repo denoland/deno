@@ -1,5 +1,5 @@
 pub fn op_blob_revoke_object_url(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   url: String,
 ) -> Result<(), AnyError> {
   let url = Url::parse(&url)?;
