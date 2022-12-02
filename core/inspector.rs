@@ -26,6 +26,7 @@ use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::mem::replace;
 use std::mem::take;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
@@ -66,10 +67,6 @@ enum PollState {
   // Inspector is being polled synchronously, possibly in a reentrant way
   // (e.g. from a callback invoked by V8).
   SyncPolling,
-  // We are blocking the thread until both conditions are met:
-  //   * At least one debugger session is connected.
-  //   * Execution is not on pause.
-  Blocking,
   // TODO(bartlomieju): feels like this is not needed
   // Inspector has been dropped already, but wakers might outlive the inspector
   // so make sure nothing gets woken at this point.
@@ -260,107 +257,71 @@ impl JsRuntimeInspector {
   }
 
   fn poll_sessions_sync(&self) {
-    let prev_state = self.waker.update(|w| {
-      let prev_state = w.poll_state;
-      assert!(prev_state != PollState::SyncPolling);
-      w.poll_state = PollState::SyncPolling;
+    let (prev_poll_state, mut prev_task_waker) = self.waker.update(|w| {
+      let prev_poll_state = replace(&mut w.poll_state, PollState::SyncPolling);
+      assert!(prev_poll_state != PollState::SyncPolling);
 
-      // Register the address of the inspector, which allows the waker
-      // to request an interrupt from the isolate.
-      w.inspector_ptr = NonNull::new(self as *const _ as *mut Self);
+      let prev_task_waker = w.task_waker.take();
 
-      prev_state
+      (prev_poll_state, prev_task_waker)
     });
 
-    let mut sessions = self.sessions.borrow_mut();
-
-    loop {
-      sessions.sync_poll();
-
-      let (on_pause, waiting_for_session) = {
-        let flags = self.flags.borrow();
-        (flags.on_pause, flags.waiting_for_session)
-      };
-
-      let new_state = self.waker.update(|w| {
-        match w.poll_state {
-          PollState::SyncPolling if on_pause || waiting_for_session => {
-            // Isolate execution has been paused but there are no more
-            // events to process, so this thread will block until more
-            // events arrive.
-            w.poll_state = PollState::Blocking
+    futures::executor::block_on(futures::future::poll_fn(|cx| {
+      let mut sessions = self.sessions.borrow_mut();
+      loop {
+        // Accept new connections.
+        let poll_result = sessions.session_rx.poll_next_unpin(cx);
+        match poll_result {
+          Poll::Ready(Some(session_proxy)) => {
+            let session = InspectorSession::new(
+              self.v8_inspector.clone(),
+              session_proxy,
+              false,
+            );
+            sessions.established.push(session);
+            continue; // Poll `session_rx` until it returns `Pending`.
           }
-          PollState::SyncPolling => {
-            // We're done, we're about return from this function.
-          }
-          _ => unreachable!(),
+          Poll::Ready(None) => unreachable!(), // Is it really unreachable?.
+          Poll::Pending => {}
+        }
+
+        // Poll all established sessions for incoming messages, and dispatch
+        // them to the V8 inspector.
+        let poll_result = sessions.established.poll_next_unpin(cx);
+        if let Poll::Ready(Some(session_stream_item)) = poll_result {
+          let (v8_session_ptr, msg) = session_stream_item;
+          InspectorSession::dispatch_message(v8_session_ptr, msg);
+          // Loop around. We need to keep polling established and new session
+          // until eventually everything is `Pending`.
+          continue;
+        }
+
+        // Check the `on_pause` and `waiting_for_session` flags. If either of
+        // them is set, we need to keep the thread blocked until they're both
+        // clear.
+        break if self.flags.borrow().on_pause_or_waiting_for_session() {
+          Poll::Pending
+        } else {
+          Poll::Ready(())
         };
-        w.poll_state
-      });
+      }
+    }));
 
-      match new_state {
-        PollState::SyncPolling => {
-          // TODO(bartlomieju): should we actually wake a task here?
-          self.waker.update(|w| {
-            if let Some(waker) = w.task_waker.take() {
-              waker.wake()
-            }
-            // Restore previous state, which might be significant if this
-            // function was called while session were polled asynchronously.
-            w.poll_state = prev_state;
-          });
-          break;
-        }
-        PollState::Blocking => {
-          futures::executor::block_on(futures::future::poll_fn(|cx| {
-            loop {
-              // Accept new connections.
-              let poll_result = sessions.session_rx.poll_next_unpin(cx);
-              match poll_result {
-                Poll::Ready(Some(session_proxy)) => {
-                  let session = InspectorSession::new(
-                    self.v8_inspector.clone(),
-                    session_proxy,
-                    false,
-                  );
-                  sessions.established.push(session);
-                  continue; // Poll `session_rx` until it returns `Pending`.
-                }
-                Poll::Ready(None) => unreachable!(), // Is it really unreachable?.
-                Poll::Pending => {}
-              }
+    // Restore the previous poll state.
+    self.waker.update(|w| {
+      let replaced = replace(&mut w.poll_state, prev_poll_state);
+      assert_eq!(replaced, PollState::SyncPolling);
+    });
 
-              // Poll all established sessions for incoming messages, and dispatch
-              // them to the V8 inspector.
-              let poll_result = sessions.established.poll_next_unpin(cx);
-              match poll_result {
-                Poll::Ready(Some(session_stream_item)) => {
-                  let (v8_session_ptr, msg) = session_stream_item;
-                  InspectorSession::dispatch_message(v8_session_ptr, msg);
-                  continue; // Keep polling established sessions and accepting new ones, until everything is `Pending`.
-                }
-                Poll::Ready(None) => unreachable!(), // Is it really unreachable?.
-                Poll::Pending => {}
-              }
-
-              // Check the `on_pause` and `waiting_for_session` flags. We'll
-              // cease blocking the thread once they are both clear.
-              let flags = self.flags.borrow();
-              return if flags.on_pause || flags.waiting_for_session {
-                Poll::Pending
-              } else {
-                Poll::Ready(())
-              };
-            }
-          }));
-          // We're no longer blocking the thread, so restore the previous state.
-          self.waker.update(|w| {
-            assert_eq!(w.poll_state, PollState::Blocking);
-            w.poll_state = PollState::SyncPolling;
-          });
-        }
-        _ => unreachable!(),
-      };
+    // The `block_on(...)` call above must have created a new `Waker` that will
+    // now be registered with `sessions.session_rx` and `sessions.established`.
+    // This has the consequence that when either of those streams transitions
+    // from `Pending` to `Ready`, they'll wake that (stale) waker, and the
+    // inspector task won't get notified. To avoid a hang, explicitly wake the
+    // inspector task here; when it gets polled, it will re-register the right
+    // waker (the `InspectorWaker`) with those streams.
+    if let Some(waker) = prev_task_waker.take() {
+      waker.wake();
     }
   }
 
@@ -530,6 +491,12 @@ struct InspectorFlags {
   on_pause: bool,
 }
 
+impl InspectorFlags {
+  fn on_pause_or_waiting_for_session(&self) -> bool {
+    self.on_pause || self.waiting_for_session
+  }
+}
+
 /// A helper structure that helps coordinate sessions during different
 /// parts of their lifecycle.
 struct SessionContainer {
@@ -577,52 +544,6 @@ impl SessionContainer {
       v8_inspector: Default::default(),
       session_rx: rx,
       established: SelectAll::new(),
-    }
-  }
-
-  fn sync_poll(&mut self) {
-    'outer: loop {
-      // Accept new connections.
-      let poll_result = self.session_rx.try_next();
-      if let Ok(Some(session_proxy)) = poll_result {
-        let mut session = InspectorSession::new(
-          self.v8_inspector.clone(),
-          session_proxy,
-          false,
-        );
-
-        if let Some(session_stream_item) = session.try_recv() {
-          let (v8_session_ptr, msg) = session_stream_item;
-          InspectorSession::dispatch_message(v8_session_ptr, msg);
-        }
-        self.established.push(session);
-        continue;
-      }
-
-      // Poll established sessions.
-      loop {
-        if self.established.is_empty() {
-          break 'outer;
-        }
-
-        let mut had_msg = false;
-        for session in self.established.iter_mut() {
-          loop {
-            let poll_result = session.try_recv();
-            if let Some(session_stream_item) = poll_result {
-              had_msg = true;
-              let (v8_session_ptr, msg) = session_stream_item;
-              InspectorSession::dispatch_message(v8_session_ptr, msg);
-            } else {
-              break;
-            }
-          }
-        }
-
-        if !had_msg {
-          break 'outer;
-        }
-      }
     }
   }
 }
@@ -765,16 +686,6 @@ impl InspectorSession {
     // TODO(bartlomieju): use raw `*mut V8InspectorSession` pointer, as this
     // reference may become aliased.
     (*self.v8_session).schedule_pause_on_next_statement(reason, detail);
-  }
-
-  fn try_recv(
-    &mut self,
-  ) -> Option<(*mut v8::inspector::V8InspectorSession, String)> {
-    if let Ok(Some(msg)) = self.proxy.rx.try_next() {
-      return Some((&mut *self.v8_session, msg));
-    }
-
-    None
   }
 }
 
