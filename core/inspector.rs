@@ -349,10 +349,10 @@ impl JsRuntimeInspector {
     }
   }
 
-  /// Accepts connecting inspector clients, and it polls the established
-  /// sessions for messages that need to be dispatched to V8. It returns when
-  /// all incoming connections and messages have been processed, and
-  /// `session_rx` and `established` streams are both `Pending`.
+  /// Accepts incoming connections from inspector clients, and polls established
+  /// inspector sessions for messages that need to be dispatched to V8. This
+  /// function will repeatedly poll its innner streams and will not return until
+  /// they all yield `Pending`.
   fn poll_sessions_inner(&self, cx: &mut Context) {
     loop {
       let mut sessions = self.sessions.borrow_mut();
