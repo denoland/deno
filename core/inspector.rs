@@ -67,7 +67,6 @@ enum PollState {
   // Inspector is being polled synchronously, possibly in a reentrant way
   // (e.g. from a callback invoked by V8).
   SyncPolling,
-  // TODO(bartlomieju): feels like this is not needed
   // Inspector has been dropped already, but wakers might outlive the inspector
   // so make sure nothing gets woken at this point.
   Dropped,
@@ -378,7 +377,8 @@ impl JsRuntimeInspector {
       let poll_result = sessions.established.poll_next_unpin(cx);
       if let Poll::Ready(Some(session_stream_item)) = poll_result {
         let (v8_session_ptr, msg) = session_stream_item;
-        // Don't hold the borrow on `sessions` while dispatching a message.
+        // Don't hold the borrow on sessionswhile dispatching a message as it
+        // might result in a call to `poll_sessions_sync`.
         drop(sessions);
         InspectorSession::dispatch_message(v8_session_ptr, msg);
         // Loop around. We need to keep polling established sessions and
