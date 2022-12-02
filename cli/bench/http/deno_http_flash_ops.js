@@ -3,12 +3,10 @@
 // deno-lint-ignore-file
 
 const {
-  core: {
-    opAsync,
-    ops: { op_flash_make_request, op_flash_serve },
-    encode,
-  },
-} = Deno;
+  opAsync,
+  ops: { op_flash_make_request, op_flash_serve },
+  encode,
+} = Deno[Deno.internal].core;
 const addr = Deno.args[0] || "127.0.0.1:4500";
 const [hostname, port] = addr.split(":");
 const serverId = op_flash_serve({ hostname, port, reuseport: true });
