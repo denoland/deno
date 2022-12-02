@@ -4,8 +4,8 @@ use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::TypeCheckMode;
-use crate::fs_util;
 use crate::npm::NpmPackageReference;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -107,9 +107,7 @@ exec deno {} "$@"
 fn get_installer_root() -> Result<PathBuf, io::Error> {
   if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT") {
     if !env_dir.is_empty() {
-      return fs_util::canonicalize_path_maybe_not_exists(&PathBuf::from(
-        env_dir,
-      ));
+      return canonicalize_path_maybe_not_exists(&PathBuf::from(env_dir));
     }
   }
   // Note: on Windows, the $HOME environment variable may be set by users or by
@@ -167,7 +165,7 @@ pub fn infer_name_from_url(url: &Url) -> Option<String> {
 
 pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
   let root = if let Some(root) = root {
-    fs_util::canonicalize_path_maybe_not_exists(&root)?
+    canonicalize_path_maybe_not_exists(&root)?
   } else {
     get_installer_root()?
   };
@@ -275,7 +273,7 @@ fn resolve_shim_data(
   install_flags: &InstallFlags,
 ) -> Result<ShimData, AnyError> {
   let root = if let Some(root) = &install_flags.root {
-    fs_util::canonicalize_path_maybe_not_exists(root)?
+    canonicalize_path_maybe_not_exists(root)?
   } else {
     get_installer_root()?
   };
@@ -450,6 +448,7 @@ mod tests {
   use super::*;
 
   use crate::args::ConfigFlag;
+  use crate::util::fs::canonicalize_path;
   use std::process::Command;
   use test_util::testdata_path;
   use test_util::TempDir;
@@ -746,7 +745,7 @@ mod tests {
 
   #[test]
   fn install_npm_lockfile_default() {
-    let temp_dir = fs_util::canonicalize_path(&env::temp_dir()).unwrap();
+    let temp_dir = canonicalize_path(&env::temp_dir()).unwrap();
     let shim_data = resolve_shim_data(
       &Flags {
         allow_all: true,

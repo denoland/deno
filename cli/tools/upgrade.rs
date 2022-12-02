@@ -4,6 +4,7 @@
 
 use crate::args::UpgradeFlags;
 use crate::colors;
+use crate::util::progress_bar::ProgressBar;
 use crate::version;
 
 use deno_core::anyhow::bail;
@@ -17,7 +18,6 @@ use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
 use std::fs;
-use std::io::Write;
 use std::ops::Sub;
 use std::path::Path;
 use std::path::PathBuf;
@@ -31,7 +31,6 @@ const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 
 // How often query server for new version. In hours.
 const UPGRADE_CHECK_INTERVAL: i64 = 24;
-const UPGRADE_CHECK_FILE_NAME: &str = "latest.txt";
 
 const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
 
@@ -47,14 +46,14 @@ trait UpdateCheckerEnvironment: Clone + Send + Sync {
 
 #[derive(Clone)]
 struct RealUpdateCheckerEnvironment {
-  cache_dir: PathBuf,
+  cache_file_path: PathBuf,
   current_time: chrono::DateTime<chrono::Utc>,
 }
 
 impl RealUpdateCheckerEnvironment {
-  pub fn new(cache_dir: PathBuf) -> Self {
+  pub fn new(cache_file_path: PathBuf) -> Self {
     Self {
-      cache_dir,
+      cache_file_path,
       // cache the current time
       current_time: chrono::Utc::now(),
     }
@@ -79,12 +78,11 @@ impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
   }
 
   fn read_check_file(&self) -> String {
-    std::fs::read_to_string(self.cache_dir.join(UPGRADE_CHECK_FILE_NAME))
-      .unwrap_or_default()
+    std::fs::read_to_string(&self.cache_file_path).unwrap_or_default()
   }
 
   fn write_check_file(&self, text: &str) {
-    let _ = std::fs::write(self.cache_dir.join(UPGRADE_CHECK_FILE_NAME), text);
+    let _ = std::fs::write(&self.cache_file_path, text);
   }
 
   fn current_time(&self) -> chrono::DateTime<chrono::Utc> {
@@ -160,12 +158,12 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
   }
 }
 
-pub fn check_for_upgrades(cache_dir: PathBuf) {
+pub fn check_for_upgrades(cache_file_path: PathBuf) {
   if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
     return;
   }
 
-  let env = RealUpdateCheckerEnvironment::new(cache_dir);
+  let env = RealUpdateCheckerEnvironment::new(cache_file_path);
   let update_checker = UpdateChecker::new(env);
 
   if update_checker.should_check_for_new_version() {
@@ -283,7 +281,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
         && upgrade_flags.output.is_none()
         && current_is_passed
       {
-        println!("Version {} is already installed", crate::version::deno());
+        log::info!("Version {} is already installed", crate::version::deno());
         return Ok(());
       } else {
         passed_version
@@ -291,10 +289,10 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
     }
     None => {
       let latest_version = if upgrade_flags.canary {
-        println!("Looking up latest canary version");
+        log::info!("Looking up latest canary version");
         get_latest_canary_version(&client).await?
       } else {
-        println!("Looking up latest version");
+        log::info!("Looking up latest version");
         get_latest_release_version(&client).await?
       };
 
@@ -313,13 +311,13 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
         && upgrade_flags.output.is_none()
         && current_is_most_recent
       {
-        println!(
+        log::info!(
           "Local deno version {} is the most recent release",
           crate::version::deno()
         );
         return Ok(());
       } else {
-        println!("Found latest version {}", latest_version);
+        log::info!("Found latest version {}", latest_version);
         latest_version
       }
     }
@@ -343,7 +341,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
 
   let archive_data = download_package(client, &download_url).await?;
 
-  println!("Deno is upgrading to version {}", &install_version);
+  log::info!("Deno is upgrading to version {}", &install_version);
 
   let new_exe_path = unpack(archive_data, cfg!(windows))?;
   fs::set_permissions(&new_exe_path, permissions)?;
@@ -359,7 +357,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
     }
   }
 
-  println!("Upgraded successfully");
+  log::info!("Upgraded successfully");
 
   Ok(())
 }
@@ -409,7 +407,7 @@ async fn download_package(
   client: Client,
   download_url: &str,
 ) -> Result<Vec<u8>, AnyError> {
-  println!("Checking {}", &download_url);
+  log::info!("Downloading {}", &download_url);
 
   let res = client.get(download_url).send().await?;
 
@@ -419,32 +417,27 @@ async fn download_package(
     let mut data = Vec::with_capacity(total_size as usize);
     let mut stream = res.bytes_stream();
     let mut skip_print = 0;
-    let is_tty = atty::is(atty::Stream::Stdout);
     const MEBIBYTE: f64 = 1024.0 * 1024.0;
+    let progress_bar = ProgressBar::default();
+    let clear_guard = progress_bar.clear_guard();
     while let Some(item) = stream.next().await {
       let bytes = item?;
       current_size += bytes.len() as f64;
       data.extend_from_slice(&bytes);
       if skip_print == 0 {
-        if is_tty {
-          print!("\u{001b}[1G\u{001b}[2K");
-        }
-        print!(
+        progress_bar.update(&format!(
           "{:>4.1} MiB / {:.1} MiB ({:^5.1}%)",
           current_size / MEBIBYTE,
           total_size / MEBIBYTE,
           (current_size / total_size) * 100.0,
-        );
-        std::io::stdout().flush()?;
+        ));
         skip_print = 10;
       } else {
         skip_print -= 1;
       }
     }
-    if is_tty {
-      print!("\u{001b}[1G\u{001b}[2K");
-    }
-    println!(
+    drop(clear_guard);
+    log::info!(
       "{:.1} MiB / {:.1} MiB (100.0%)",
       current_size / MEBIBYTE,
       total_size / MEBIBYTE
@@ -452,7 +445,7 @@ async fn download_package(
 
     Ok(data)
   } else {
-    println!("Download could not be found, aborting");
+    log::info!("Download could not be found, aborting");
     std::process::exit(1)
   }
 }

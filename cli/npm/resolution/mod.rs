@@ -10,7 +10,7 @@ use deno_core::parking_lot::RwLock;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::lockfile::Lockfile;
+use crate::args::Lockfile;
 
 use self::graph::GraphDependencyResolver;
 use self::snapshot::NpmPackagesPartitioned;

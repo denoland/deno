@@ -13,7 +13,7 @@ use deno_core::parking_lot::Mutex;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::lockfile::Lockfile;
+use crate::args::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::registry::NpmPackageVersionDistInfo;

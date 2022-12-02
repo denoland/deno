@@ -122,7 +122,7 @@ mod ts {
       "esnext.intl",
     ];
 
-    let path_dts = cwd.join("dts");
+    let path_dts = cwd.join("tsc/dts");
     // ensure we invalidate the build properly.
     for name in libs.iter() {
       println!(
@@ -243,6 +243,7 @@ mod ts {
           Ok(())
         })
         .build()],
+      extensions_with_js: vec![],
       additional_files: files,
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         vec.extend_from_slice(
@@ -304,6 +305,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
     snapshot_path,
     startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
     extensions,
+    extensions_with_js: vec![],
     additional_files: files,
     compression_cb: Some(Box::new(|vec, snapshot_slice| {
       lzzzz::lz4_hc::compress_to_vec(
@@ -351,7 +353,7 @@ fn main() {
     panic!("Cross compiling with snapshot is not supported.");
   }
 
-  let symbols_path = std::path::Path::new(
+  let symbols_path = std::path::Path::new("napi").join(
     format!("generated_symbol_exports_list_{}.def", env::consts::OS).as_str(),
   )
   .canonicalize()
@@ -476,5 +478,8 @@ fn main() {
 
 fn deno_webgpu_get_declaration() -> PathBuf {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  manifest_dir.join("dts").join("lib.deno_webgpu.d.ts")
+  manifest_dir
+    .join("tsc")
+    .join("dts")
+    .join("lib.deno_webgpu.d.ts")
 }

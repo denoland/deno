@@ -34,8 +34,8 @@ Cases where code is optimized away:
 The macro will infer and try to auto generate V8 fast API call trait impl for
 `sync` ops with:
 
-- arguments: integers, bool, `&mut OpState`, `&[u8]`, &mut [u8]`,`&[u32]`,`&mut
-  [u32]`
+- arguments: integers, bool, `&mut OpState`, `&[u8]`, `&mut [u8]`, `&[u32]`,
+  `&mut [u32]`
 - return_type: integers, bool
 
 The `#[op(fast)]` attribute should be used to enforce fast call generation at
@@ -43,3 +43,20 @@ compile time.
 
 Trait gen for `async` ops & a ZeroCopyBuf equivalent type is planned and will be
 added soon.
+
+### Wasm calls
+
+The `#[op(wasm)]` attribute should be used for calls expected to be called from
+Wasm. This enables the fast call generation and allows seamless `WasmMemory`
+integration for generic and fast calls.
+
+```rust
+#[op(wasm)]
+pub fn op_args_get(
+  offset: i32,
+  buffer_offset: i32,
+  memory: Option<&[u8]>, // Must be last parameter. Some(..) when entered from Wasm.
+) {
+  // ...
+}
+```
