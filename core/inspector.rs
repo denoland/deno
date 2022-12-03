@@ -574,8 +574,11 @@ impl task::ArcWake for InspectorWaker {
       // and necessary. If it is, change the poll state to `Woken`.
       match w.poll_state {
         PollState::Idle | PollState::Polling => w.poll_state = PollState::Woken,
-        PollState::Dropped => return, // Nothing to do.
-        PollState::Woken | PollState::SyncPolling => {}
+        PollState::Woken => {} // Even if already woken, schedule an interrupt.
+        // TODO(bartlomieju): drill down why this happens
+        // If we're already polling, schedule another interrupt.
+        PollState::SyncPolling => {},
+        PollState::Dropped => return, // Don't do anything.
       };
 
       // Wake the task, if any, that has polled the Inspector future last.
