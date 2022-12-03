@@ -3,23 +3,23 @@
 use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
-use deno_core::futures::task;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::future;
 use deno_core::futures::future::Future;
-use deno_core::InspectorWaker;
 use deno_core::futures::pin_mut;
 use deno_core::futures::prelude::*;
 use deno_core::futures::select;
 use deno_core::futures::stream::StreamExt;
+use deno_core::futures::task;
 use deno_core::futures::task::Poll;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionProxy;
+use deno_core::InspectorWaker;
 use deno_core::JsRuntime;
 use deno_websocket::tokio_tungstenite::tungstenite;
 use deno_websocket::tokio_tungstenite::WebSocketStream;
@@ -29,9 +29,9 @@ use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::process;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::thread;
 use uuid::Uuid;
-use std::sync::Arc;
 
 /// Websocket server that is used to proxy connections from
 /// devtools to the inspector.
@@ -353,7 +353,6 @@ async fn pump_websocket_messages(
         // Messages that cannot be converted to strings are ignored.
         if let Ok(msg_text) = msg.into_text() {
           let _ = inbound_tx.unbounded_send(msg_text);
-          eprintln!("waking inspector");
           task::ArcWake::wake_by_ref(&waker);
         }
       })
