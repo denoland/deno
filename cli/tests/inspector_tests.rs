@@ -1407,4 +1407,83 @@ mod inspector {
     drop(stdin);
     child.wait().unwrap();
   }
+
+  #[tokio::test]
+  async fn inspector_works_with_busy_loop() {
+    let script = util::testdata_path().join("inspector/busy_loop.js");
+    let mut child = util::deno_cmd()
+      .arg("run")
+      .arg(inspect_flag_with_unique_port("--inspect"))
+      .env("NO_COLOR", "1")
+      .arg(script)
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap();
+
+    let stderr = child.stderr.as_mut().unwrap();
+    let mut stderr_lines =
+      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
+    let (socket, response) =
+      tokio_tungstenite::connect_async(ws_url).await.unwrap();
+    assert_eq!(response.status(), 101); // Switching protocols.
+
+    let (mut socket_tx, socket_rx) = socket.split();
+    let mut socket_rx = socket_rx
+      .map(|msg| msg.unwrap().to_string())
+      .filter(|msg| {
+        let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+        futures::future::ready(pass)
+      })
+      .boxed_local();
+
+    assert_stderr_for_inspect(&mut stderr_lines);
+
+    assert_inspector_messages(
+      &mut socket_tx,
+      &[
+        r#"{"id":1,"method":"Runtime.enable"}"#,
+        r#"{"id":2,"method":"Debugger.enable"}"#,
+        r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#,
+      ],
+      &mut socket_rx,
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+        r#"{"id":3,"result":{}}"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+        r#"{"method":"Runtime.consoleAPICalled","#,
+      ],
+    )
+    .await;
+
+    assert_inspector_messages(
+      &mut socket_tx,
+      &[
+        r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"1 + 1","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
+      ],
+      &mut socket_rx,
+      &[r#"{"id":4,"result":{"result":{"type":"number","value":2,"description":"2"}}}"#],
+      &[],
+    )
+    .await;
+
+    assert_inspector_messages(
+      &mut socket_tx,
+      &[
+        r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"1 + 2","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
+      ],
+      &mut socket_rx,
+      &[r#"{"id":5,"result":{"result":{"type":"number","value":3,"description":"3"}}}"#],
+      &[],
+    )
+    .await;
+
+    child.kill().unwrap();
+    child.wait().unwrap();
+  }
 }

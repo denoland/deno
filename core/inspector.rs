@@ -266,7 +266,7 @@ impl JsRuntimeInspector {
   fn poll_sessions_sync(&self) {
     let (prev_poll_state, mut prev_task_waker) = self.waker.update(|w| {
       let prev_poll_state = replace(&mut w.poll_state, PollState::SyncPolling);
-      assert!(prev_poll_state != PollState::SyncPolling);
+      // assert!(prev_poll_state != PollState::SyncPolling);
 
       let prev_task_waker = w.task_waker.take();
       w.inspector_ptr = Some(NonNull::from(self));
@@ -309,7 +309,6 @@ impl JsRuntimeInspector {
       match w.poll_state {
         PollState::Idle | PollState::Woken => {
           w.poll_state = PollState::Polling;
-          // eprintln!("setting inspector ptr");
           w.inspector_ptr = Some(NonNull::from(self));
         }
         s => unreachable!("state in poll_sessions {:#?}", s),
@@ -389,7 +388,6 @@ impl JsRuntimeInspector {
         // Don't hold the borrow on sessions while dispatching a message, as it
         // might result in a call to `poll_sessions_sync`.
         drop(sessions);
-        // eprintln!("dispatching message {}", msg);
         InspectorSession::dispatch_message(v8_session_ptr, msg);
         // Loop around. We need to keep polling established sessions and
         // accepting new ones until eventually everything is `Pending`.
@@ -577,7 +575,7 @@ impl task::ArcWake for InspectorWaker {
         PollState::Woken => {} // Even if already woken, schedule an interrupt.
         // TODO(bartlomieju): drill down why this happens
         // If we're already polling, schedule another interrupt.
-        PollState::SyncPolling => {},
+        PollState::SyncPolling => {}
         PollState::Dropped => return, // Don't do anything.
       };
 
