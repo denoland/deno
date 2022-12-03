@@ -683,13 +683,14 @@ mod inspector {
   }
 
   #[tokio::test]
-  #[ignore] // https://github.com/denoland/deno/issues/13491
   async fn inspector_break_on_first_line_in_test() {
     let script = util::testdata_path().join("inspector/inspector_test.js");
     let mut child = util::deno_cmd()
       .arg("test")
+      .arg("--quiet")
       .arg(inspect_flag_with_unique_port("--inspect-brk"))
       .arg(script)
+      .env("NO_COLOR", "1")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
       .spawn()
@@ -746,17 +747,15 @@ mod inspector {
     .await;
 
     assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
-    &[],
-  )
-  .await;
-
-    assert_eq!(&stdout_lines.next().unwrap(), "hello from the inspector");
+      &mut socket_tx,
+      &[
+        r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"1 + 1","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
+      ],
+      &mut socket_rx,
+      &[r#"{"id":4,"result":{"result":{"type":"number","value":2,"description":"2"}}}"#],
+      &[],
+    )
+    .await;
 
     assert_inspector_messages(
       &mut socket_tx,
@@ -768,10 +767,7 @@ mod inspector {
     .await;
 
     assert_starts_with!(&stdout_lines.next().unwrap(), "running 1 test from");
-    assert!(&stdout_lines
-      .next()
-      .unwrap()
-      .contains("test has finished running"));
+    assert!(&stdout_lines.next().unwrap().contains("basic test ... ok"));
 
     child.kill().unwrap();
     child.wait().unwrap();
