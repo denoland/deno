@@ -1483,6 +1483,41 @@ mod inspector {
     )
     .await;
 
+    // NOTE: since busy loop is running, we are never yielding to the event loop
+    // and this timeout should never fire
+    assert_inspector_messages(
+      &mut socket_tx,
+      &[
+        r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"setTimeout(() => console.log('hello'), 1)","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
+      ],
+      &mut socket_rx,
+      &[],
+      &[],
+    )
+    .await;
+
+    for i in 0..128u32 {
+      let request_id = i + 6;
+
+      let msg = format!(
+        r#"{{"id":{},"method":"Runtime.evaluate","params":{{"expression":"1 + 2","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}}}"#,
+        request_id
+      );
+      let expected_msg = format!(
+        r#"{{"id":{},"result":{{"result":{{"type":"number","value":3,"description":"3"}}}}}}"#,
+        request_id
+      );
+
+      assert_inspector_messages(
+        &mut socket_tx,
+        &[&msg],
+        &mut socket_rx,
+        &[&expected_msg],
+        &[],
+      )
+      .await;
+    }
+
     child.kill().unwrap();
     child.wait().unwrap();
   }
