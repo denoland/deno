@@ -560,7 +560,8 @@ impl task::ArcWake for InspectorWaker {
       // and necessary. If it is, change the poll state to `Woken`.
       match w.poll_state {
         PollState::Idle | PollState::Polling => w.poll_state = PollState::Woken,
-        PollState::Woken | PollState::Dropped => return, // Nothing to do.
+        PollState::Woken => {} // Even if already woken, schedule an interrupt.
+        PollState::Dropped => return, // Don't do anything.
         PollState::SyncPolling => panic!("wake() called while sync polling"),
       };
 
