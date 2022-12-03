@@ -168,13 +168,7 @@ fn op_read_fast_fn<'scope>(
             as *const _ops::OpCtx)
     };
     let state = __ctx.state.clone();
-    let buf = match unsafe { &*buf }.get_storage_if_aligned() {
-        Some(v) => v,
-        None => {
-            unsafe { &mut *fast_api_callback_options }.fallback = true;
-            return Default::default();
-        }
-    };
+    let buf = unsafe { (&*buf).get_storage_if_aligned().unwrap_unchecked() };
     let result = op_read::call(state, rid, buf);
     let __op_id = __ctx.id;
     let __state = ::std::cell::RefCell::borrow(&__ctx.state);

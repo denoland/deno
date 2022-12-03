@@ -162,6 +162,11 @@
   webidl.configurePrototype(TextDecoder);
   const TextDecoderPrototype = TextDecoder.prototype;
 
+  const encodeIntoResult = {
+    read: 0,
+    written: 0,
+  };
+
   class TextEncoder {
     constructor() {
       this[webidl.brand] = webidl.brand;
@@ -195,24 +200,10 @@
      * @returns {TextEncoderEncodeIntoResult}
      */
     encodeInto(source, destination) {
-      webidl.assertBranded(this, TextEncoderPrototype);
-      const prefix = "Failed to execute 'encodeInto' on 'TextEncoder'";
-      // The WebIDL type of `source` is `USVString`, but the ops bindings
-      // already convert lone surrogates to the replacement character.
-      source = webidl.converters.DOMString(source, {
-        prefix,
-        context: "Argument 1",
-      });
-      destination = webidl.converters.Uint8Array(destination, {
-        prefix,
-        context: "Argument 2",
-        allowShared: true,
-      });
       ops.op_encoding_encode_into(source, destination, encodeIntoBuf);
-      return {
-        read: encodeIntoBuf[0],
-        written: encodeIntoBuf[1],
-      };
+      encodeIntoResult.read = encodeIntoBuf[0];
+      encodeIntoResult.written = encodeIntoBuf[1];
+      return encodeIntoResult;
     }
   }
 

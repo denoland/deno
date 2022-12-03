@@ -142,13 +142,7 @@ where
             as *const _ops::OpCtx)
     };
     let state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
-    let buf = match unsafe { &*buf }.get_storage_if_aligned() {
-        Some(v) => v,
-        None => {
-            unsafe { &mut *fast_api_callback_options }.fallback = true;
-            return Default::default();
-        }
-    };
+    let buf = unsafe { (&*buf).get_storage_if_aligned().unwrap_unchecked() };
     let result = op_now::call::<TP>(state, buf);
     result
 }

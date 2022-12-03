@@ -123,13 +123,8 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u32> };
 
         q!(Vars { var: &ident }, {
-          let var = match unsafe { &*var }.get_storage_if_aligned() {
-            Some(v) => v,
-            None => {
-              unsafe { &mut *fast_api_callback_options }.fallback = true;
-              return Default::default();
-            }
-          };
+          let var =
+            unsafe { (&*var).get_storage_if_aligned().unwrap_unchecked() };
         })
       }
       // &[u8]
@@ -138,13 +133,8 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
 
         q!(Vars { var: &ident }, {
-          let var = match unsafe { &*var }.get_storage_if_aligned() {
-            Some(v) => v,
-            None => {
-              unsafe { &mut *fast_api_callback_options }.fallback = true;
-              return Default::default();
-            }
-          };
+          let var =
+            unsafe { (&*var).get_storage_if_aligned().unwrap_unchecked() };
         })
       }
       // &str
@@ -678,7 +668,6 @@ impl Optimizer {
               match segment {
                 // Is `T` a u8?
                 PathSegment { ident, .. } if ident == "u8" => {
-                  self.needs_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint8Array);
                   assert!(self
                     .transforms
@@ -687,7 +676,6 @@ impl Optimizer {
                 }
                 // Is `T` a u32?
                 PathSegment { ident, .. } if ident == "u32" => {
-                  self.needs_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint32Array);
                   assert!(self
                     .transforms

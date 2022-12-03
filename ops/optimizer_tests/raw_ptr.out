@@ -176,13 +176,7 @@ where
             return Default::default();
         }
     };
-    let out = match unsafe { &*out }.get_storage_if_aligned() {
-        Some(v) => v,
-        None => {
-            unsafe { &mut *fast_api_callback_options }.fallback = true;
-            return Default::default();
-        }
-    };
+    let out = unsafe { (&*out).get_storage_if_aligned().unwrap_unchecked() };
     let result = op_ffi_ptr_of::call::<FP>(state, buf, out);
     result
 }

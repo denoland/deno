@@ -388,7 +388,7 @@ fn op_encoding_encode_into(
     Cow::Borrowed(v) => v[..boundary].len() as u32,
     Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
   };
-  out_buf[1] = boundary as u32;
+  out_buf[1] = boundary as u32
 }
 
 #[op(v8)]
