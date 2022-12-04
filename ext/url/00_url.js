@@ -56,12 +56,12 @@
   function opUrlParse(href, maybeBase) {
     let status;
     if (maybeBase === undefined) {
-      status = ops.op_url_parse(href, componentsBuf.buffer);
+      status = ops.op_url_parse(href, componentsBuf);
     } else {
-      status = core.ops.op_url_parse_with_base(
+      status = ops.op_url_parse_with_base(
         href,
         maybeBase,
-        componentsBuf.buffer,
+        componentsBuf,
       );
     }
     return getSerialization(status, href);
@@ -71,7 +71,7 @@
     if (status === 0) {
       return href;
     } else if (status === 1) {
-      return core.ops.op_url_get_serialization();
+      return ops.op_url_get_serialization();
     } else {
       throw new TypeError("Invalid URL");
     }

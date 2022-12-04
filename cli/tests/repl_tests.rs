@@ -173,9 +173,10 @@ mod repl {
       assert_contains!(output, "Hello World");
       assert_contains!(
         output,
-        // on windows, could contain either (it's flaky)
+        // on windows, could any (it's flaky)
         "\ntesting output",
         "testing output\u{1b}",
+        "\r\n\u{1b}[?25htesting output",
       );
     });
 
@@ -732,7 +733,7 @@ mod repl {
     );
     assert_contains!(
       test_util::strip_ansi_codes(&out),
-      "error in --eval flag. parse error: Unexpected token `%`."
+      "Error in --eval flag: parse error: Unexpected token `%`."
     );
     assert_contains!(out, "2500"); // should not prevent input
     assert!(err.is_empty());
@@ -747,7 +748,7 @@ mod repl {
       None,
       false,
     );
-    assert_contains!(out, "error in --eval flag. Uncaught Error: Testing");
+    assert_contains!(out, "Error in --eval flag: Uncaught Error: Testing");
     assert_contains!(out, "2500"); // should not prevent input
     assert!(err.is_empty());
   }
@@ -879,6 +880,21 @@ mod repl {
     );
 
     assert_contains!(out, "AggregateError");
+    assert!(err.is_empty());
+  }
+
+  #[test]
+  fn repl_with_quiet_flag() {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet"],
+      Some(vec!["await Promise.resolve('done')"]),
+      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+      false,
+    );
+    assert!(!out.contains("Deno"));
+    assert!(!out.contains("exit using ctrl+d, ctrl+c, or close()"));
+    assert_ends_with!(out, "\"done\"\n");
     assert!(err.is_empty());
   }
 }

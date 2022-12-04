@@ -1,4 +1,5 @@
 import { getValue } from "npm:@denotest/types-entry-value-not-exists";
 
-const result: 5 = getValue();
+// should error here
+const result: string = getValue();
 console.log(result);
