@@ -525,7 +525,6 @@ pub async fn run_benchmarks_with_watch(
     Permissions::from_options(&ps.options.permissions_options())?;
 
   let include = bench_flags.include.unwrap_or_else(|| vec![".".to_string()]);
-  println!("{:?}", include);
   let ignore = bench_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
