@@ -2099,22 +2099,6 @@ impl JsRuntime {
     let handle = state.pending_promise_exceptions.remove(&key).unwrap();
     drop(state);
 
-    {
-      eprintln!("check promise exceptions {}", self.state.borrow().inspector.is_some());
-      if self.state.borrow().inspector.is_some() {
-        let inspector = self.inspector();
-        let context = self.global_context();
-        let scope = &mut self.handle_scope();
-        let message = v8::Local::new(scope, handle.clone());
-        inspector.borrow_mut().exception_thrown(
-          scope,
-          context,
-          "Uncaught",
-          message,
-        );
-      }
-    }
-
     let scope = &mut self.handle_scope();
     let exception = v8::Local::new(scope, handle);
     exception_to_err_result(scope, exception, true)
@@ -2197,6 +2181,7 @@ impl JsRuntime {
       let this = v8::undefined(tc_scope).into();
       loop {
         let is_done = js_macrotask_cb.call(tc_scope, this, &[]);
+
         if let Some(exception) = tc_scope.exception() {
           return exception_to_err_result(tc_scope, exception, false);
         }

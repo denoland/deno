@@ -228,45 +228,6 @@ impl JsRuntimeInspector {
       .context_destroyed(context);
   }
 
-  pub fn exception_thrown(
-    &mut self,
-    scope: &mut HandleScope,
-    context: v8::Global<v8::Context>,
-    message: &str,
-    exception: v8::Local<v8::Value>,
-  ) {
-    // FIXME:
-    let line_number = 1;
-    let column_number = 1;
-    let script_id = 1;
-    let stack_trace_ptr = unsafe { 
-      v8::UniquePtr::from_raw(std::ptr::null_mut())
-    };
-    let detailed_message_string_view = v8::inspector::StringView::from("foo".as_bytes());
-    let url_string_view = v8::inspector::StringView::from("foo".as_bytes());
-    // end FIXME
-    
-    let message_string_view = v8::inspector::StringView::from(message.as_bytes());
-
-    let context = v8::Local::new(scope, context);
-    self
-      .v8_inspector
-      .borrow_mut()
-      .as_mut()
-      .unwrap()
-      .exception_thrown(
-        context,
-        message_string_view,
-        exception,
-        detailed_message_string_view,
-        url_string_view,
-        line_number,
-        column_number,
-        stack_trace_ptr,
-        script_id,
-      );
-  }
-
   pub fn has_active_sessions(&self) -> bool {
     self.sessions.borrow().has_active_sessions()
   }
