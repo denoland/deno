@@ -142,8 +142,6 @@ pub async fn run(
         editor.update_history(line.clone());
         let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
-        eprintln!("notifications {:#?}", repl_session.session.notifications());
-
         // We check for close and break here instead of making it a loop condition to get
         // consistent behavior in when the user evaluates a call to close().
         if repl_session.closing().await? {
