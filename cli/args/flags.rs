@@ -50,7 +50,7 @@ static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct BenchFlags {
   pub ignore: Vec<PathBuf>,
-  pub include: Option<Vec<String>>,
+  pub include: Vec<String>,
   pub filter: Option<String>,
 }
 
@@ -185,12 +185,12 @@ pub struct TaskFlags {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct TestFlags {
   pub ignore: Vec<PathBuf>,
+  pub include: Vec<String>,
+  pub filter: Option<String>,
   pub doc: bool,
   pub no_run: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub allow_none: bool,
-  pub include: Vec<String>,
-  pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_ops: bool,
@@ -2285,14 +2285,13 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 
   let include = if matches.is_present("files") {
-    let files: Vec<String> = matches
+    matches
       .values_of("files")
       .unwrap()
       .map(String::from)
-      .collect();
-    Some(files)
+      .collect::<Vec<_>>()
   } else {
-    None
+    Vec::new()
   };
 
   watch_arg_parse(flags, matches, false);
@@ -6322,7 +6321,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: Some("- foo".to_string()),
-          include: Some(svec!["dir1/", "dir2/"]),
+          include: svec!["dir1/", "dir2/"],
           ignore: vec![],
         }),
         unstable: true,
