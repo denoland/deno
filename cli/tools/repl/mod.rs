@@ -5,6 +5,7 @@ use deno_core::error::AnyError;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use rustyline::error::ReadlineError;
+use deno_core::serde_json;
 
 mod cdp;
 mod channel;
@@ -142,8 +143,6 @@ pub async fn run(
         editor.update_history(line.clone());
         let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
-        eprintln!("notifications {:#?}", repl_session.session.notifications());
-
         // We check for close and break here instead of making it a loop condition to get
         // consistent behavior in when the user evaluates a call to close().
         if repl_session.closing().await? {
@@ -151,6 +150,26 @@ pub async fn run(
         }
 
         println!("{}", output);
+
+        for notification in repl_session.session.notifications() {
+          let method = notification.get("method").unwrap().as_str().unwrap();
+          let params = notification.get("params").unwrap();
+          if method == "Runtime.exceptionThrown" {
+            eprintln!("params {:#?}", params);
+            let exception_details = params
+              .get("exceptionDetails")
+              .unwrap();
+            let exception_details = serde_json::from_value::<cdp::ExceptionDetails>(exception_details.clone()).unwrap();
+            let description = match exception_details.exception {
+              Some(exception) => exception
+                .description
+                .unwrap_or_else(|| "Unknown exception".to_string()),
+              None => "Unknown exception".to_string(),
+            };
+            println!("{}", EvaluationOutput::Error(format!("{} {}", exception_details.text, description)));
+          }
+        }
+
       }
       Err(ReadlineError::Interrupted) => {
         if should_exit_on_interrupt {
