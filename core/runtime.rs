@@ -928,7 +928,6 @@ impl JsRuntime {
 
     if module.get_status() == v8::ModuleStatus::Errored {
       let exception = module.get_exception();
-      eprintln!("we're here!");
       return exception_to_err_result(scope, exception, false);
     }
 
@@ -1385,7 +1384,6 @@ pub(crate) fn exception_to_err_result<'s, T>(
   exception: v8::Local<v8::Value>,
   in_promise: bool,
 ) -> Result<T, Error> {
-  // panic!();
   let state_rc = JsRuntime::state(scope);
 
   let was_terminating_execution = scope.is_execution_terminating();
@@ -1403,10 +1401,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
     exception = state
       .dispatched_exceptions
       .back()
-      .map(|exception| {
-        eprintln!("has dispatched exception!");
-        v8::Local::new(scope, exception.clone())
-      })
+      .map(|exception| v8::Local::new(scope, exception.clone()))
       .unwrap_or_else(|| {
         // Maybe make a new exception object.
         if was_terminating_execution && exception.is_null_or_undefined() {
