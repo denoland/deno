@@ -928,7 +928,6 @@ impl JsRuntime {
 
     if module.get_status() == v8::ModuleStatus::Errored {
       let exception = module.get_exception();
-      eprintln!("we're here!");
       return exception_to_err_result(scope, exception, false);
     }
 
@@ -1385,7 +1384,6 @@ pub(crate) fn exception_to_err_result<'s, T>(
   exception: v8::Local<v8::Value>,
   in_promise: bool,
 ) -> Result<T, Error> {
-  // panic!();
   let state_rc = JsRuntime::state(scope);
 
   let was_terminating_execution = scope.is_execution_terminating();
@@ -2197,6 +2195,7 @@ impl JsRuntime {
       let this = v8::undefined(tc_scope).into();
       loop {
         let is_done = js_macrotask_cb.call(tc_scope, this, &[]);
+
         if let Some(exception) = tc_scope.exception() {
           return exception_to_err_result(tc_scope, exception, false);
         }
