@@ -646,6 +646,13 @@ delete Intl.v8BreakIterator;
       ),
     });
 
+    // FIXME(bartlomieju): temporarily add whole `Deno.core` to
+    // `Deno[Deno.internal]` namespace. It should be removed and only necessary
+    // methods should be left there.
+    ObjectAssign(internals, {
+      core,
+    });
+
     const finalDenoNs = {
       internal: internalSymbol,
       [internalSymbol]: internals,

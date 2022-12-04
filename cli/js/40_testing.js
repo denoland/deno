@@ -708,7 +708,7 @@
       );
     }
     testDesc.origin = getTestOrigin();
-    const jsError = Deno[Deno.internal].core.destructureError(new Error());
+    const jsError = core.destructureError(new Error());
     testDesc.location = {
       fileName: jsError.frames[1].fileName,
       lineNumber: jsError.frames[1].lineNumber,
@@ -1290,7 +1290,7 @@
         stepDesc.sanitizeResources ??= desc.sanitizeResources;
         stepDesc.sanitizeExit ??= desc.sanitizeExit;
         stepDesc.origin = getTestOrigin();
-        const jsError = Deno[Deno.internal].core.destructureError(new Error());
+        const jsError = core.destructureError(new Error());
         stepDesc.location = {
           fileName: jsError.frames[1].fileName,
           lineNumber: jsError.frames[1].lineNumber,
