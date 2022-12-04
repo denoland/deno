@@ -1338,7 +1338,7 @@ pub async fn run_tests(
     Permissions::from_options(&ps.options.permissions_options())?;
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     &ps,
-    test_flags.include,
+    test_flags.include.unwrap_or_else(|| vec![".".to_string()]),
     test_flags.ignore.clone(),
     test_flags.doc,
   )
@@ -1378,7 +1378,7 @@ pub async fn run_tests_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let include = test_flags.include;
+  let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
   let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
