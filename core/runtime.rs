@@ -928,6 +928,7 @@ impl JsRuntime {
 
     if module.get_status() == v8::ModuleStatus::Errored {
       let exception = module.get_exception();
+      eprintln!("we're here!");
       return exception_to_err_result(scope, exception, false);
     }
 
@@ -1384,6 +1385,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
   exception: v8::Local<v8::Value>,
   in_promise: bool,
 ) -> Result<T, Error> {
+  // panic!();
   let state_rc = JsRuntime::state(scope);
 
   let was_terminating_execution = scope.is_execution_terminating();
@@ -1401,7 +1403,10 @@ pub(crate) fn exception_to_err_result<'s, T>(
     exception = state
       .dispatched_exceptions
       .back()
-      .map(|exception| v8::Local::new(scope, exception.clone()))
+      .map(|exception| {
+        eprintln!("has dispatched exception!");
+        v8::Local::new(scope, exception.clone())
+      })
       .unwrap_or_else(|| {
         // Maybe make a new exception object.
         if was_terminating_execution && exception.is_null_or_undefined() {
@@ -2094,6 +2099,22 @@ impl JsRuntime {
     let handle = state.pending_promise_exceptions.remove(&key).unwrap();
     drop(state);
 
+    {
+      eprintln!("check promise exceptions {}", self.state.borrow().inspector.is_some());
+      if self.state.borrow().inspector.is_some() {
+        let inspector = self.inspector();
+        let context = self.global_context();
+        let scope = &mut self.handle_scope();
+        let message = v8::Local::new(scope, handle.clone());
+        inspector.borrow_mut().exception_thrown(
+          scope,
+          context,
+          "Uncaught",
+          message,
+        );
+      }
+    }
+
     let scope = &mut self.handle_scope();
     let exception = v8::Local::new(scope, handle);
     exception_to_err_result(scope, exception, true)
@@ -2176,7 +2197,6 @@ impl JsRuntime {
       let this = v8::undefined(tc_scope).into();
       loop {
         let is_done = js_macrotask_cb.call(tc_scope, this, &[]);
-
         if let Some(exception) = tc_scope.exception() {
           return exception_to_err_result(tc_scope, exception, false);
         }

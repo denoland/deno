@@ -356,6 +356,7 @@ delete Intl.v8BreakIterator;
         continue;
       }
 
+      console.log("dispatching unhandledrejection");
       const rejectionEvent = new event.PromiseRejectionEvent(
         "unhandledrejection",
         {
@@ -374,11 +375,17 @@ delete Intl.v8BreakIterator;
       // if error is thrown during dispatch of "unhandledrejection"
       // event.
       globalThis.addEventListener("error", errorEventCb);
-      globalThis.dispatchEvent(rejectionEvent);
+      try {
+        globalThis.dispatchEvent(rejectionEvent);
+      } catch (e) {
+        console.log("thrown in dispatch", e);
+        throw e;
+      }
       globalThis.removeEventListener("error", errorEventCb);
 
       // If event was not prevented (or "unhandledrejection" listeners didn't
       // throw) we will let Rust side handle it.
+      console.log("dispatching unhandledrejection prevented", rejectionEvent.defaultPrevented);
       if (rejectionEvent.defaultPrevented) {
         ops.op_remove_pending_promise_exception(promise);
       }

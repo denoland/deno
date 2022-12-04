@@ -67,7 +67,7 @@ struct TsEvaluateResponse {
 
 pub struct ReplSession {
   pub worker: MainWorker,
-  session: LocalInspectorSession,
+  pub session: LocalInspectorSession,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
 }

@@ -770,8 +770,15 @@ fn op_dispatch_exception(
     scope.terminate_execution();
     return;
   }
+
+  eprintln!("can borrow inspector {:#?}", state.inspector().try_borrow().is_err());
   match state.inspector().try_borrow() {
     Ok(inspector) if !inspector.has_active_sessions() => {
+      eprintln!("terminating execution");
+      scope.terminate_execution();
+    }
+    Ok(inspector) if inspector.has_active_sessions() => {
+      eprintln!("terminating execution2");
       scope.terminate_execution();
     }
     // If the inspector is borrowed at this time, assume an inspector is active.
