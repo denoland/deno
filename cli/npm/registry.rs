@@ -234,18 +234,20 @@ impl RealNpmRegistryApi {
       let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
       match Url::parse(&registry_url) {
         Ok(url) => {
-          log::warn!(
-            "{}",
-            colors::yellow(
-              "Note: DENO_NPM_REGISTRY is unstable and may change."
-            )
+          let message = format!(
+            "Note: {} is unstable and may break in a future release.",
+            env_var_name
           );
+          log::warn!("{}", colors::yellow(message));
           url
         }
         Err(err) => {
-          eprintln!("{}: Invalid {} environment variable. Please provide a valid url.\n\n{:#}",
-          colors::red_bold("error"),
-          env_var_name, err);
+          eprintln!(
+            "{}: Invalid {} environment variable. Please provide a valid url.\n\n{:#}",
+            colors::red_bold("error"),
+            env_var_name,
+            err,
+          );
           std::process::exit(1);
         }
       }
