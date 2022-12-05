@@ -1,4 +1,4 @@
-use crate::fast_call;
+use crate::turbocall;
 use crate::{
   check_unstable,
   symbol::{NativeType, Symbol},
@@ -263,11 +263,11 @@ fn make_sync_fn<'s>(
 
   let mut fast_call_alloc = None;
 
-  let func = if fast_call::is_compatible(sym) {
-    let trampoline = fast_call::compile_trampoline(sym);
+  let func = if turbocall::is_compatible(sym) {
+    let trampoline = turbocall::compile_trampoline(sym);
     let func = builder.build_fast(
       scope,
-      &fast_call::make_template(sym, &trampoline),
+      &turbocall::make_template(sym, &trampoline),
       None,
     );
     fast_call_alloc = Some(Box::into_raw(Box::new(trampoline)));

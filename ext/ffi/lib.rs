@@ -37,7 +37,7 @@ use std::task::Poll;
 use std::task::Waker;
 
 mod dlfcn;
-mod fast_call;
+mod turbocall;
 mod repr;
 mod symbol;
 
