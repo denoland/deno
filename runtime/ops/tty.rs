@@ -16,10 +16,6 @@ use deno_core::error::custom_error;
 use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
 use winapi::um::wincon;
-#[cfg(windows)]
-const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
-  | wincon::ENABLE_ECHO_INPUT
-  | wincon::ENABLE_PROCESSED_INPUT;
 
 #[cfg(windows)]
 fn get_windows_handle(
@@ -85,11 +81,16 @@ fn op_stdin_set_raw(
       {
         return Err(Error::last_os_error().into());
       }
+
+      const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
+        | wincon::ENABLE_ECHO_INPUT
+        | wincon::ENABLE_PROCESSED_INPUT;
       let new_mode = if is_raw {
-        original_mode & !RAW_MODE_MASK
+        original_mode & !RAW_MODE_MASK | wincon::ENABLE_VIRTUAL_TERMINAL_INPUT
       } else {
-        original_mode | RAW_MODE_MASK
+        original_mode | RAW_MODE_MASK & !wincon::ENABLE_VIRTUAL_TERMINAL_INPUT
       };
+
       // SAFETY: winapi call
       if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
         return Err(Error::last_os_error().into());
