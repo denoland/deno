@@ -13,8 +13,8 @@ use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_graph::Resolved;
 
-use crate::fs_util::path_with_stem_suffix;
-use crate::fs_util::relative_specifier;
+use crate::util::path::path_with_stem_suffix;
+use crate::util::path::relative_specifier;
 
 use super::specifiers::dir_name_for_root;
 use super::specifiers::get_unique_path;

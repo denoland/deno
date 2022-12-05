@@ -22,6 +22,10 @@ pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
 pub use config_file::TsTypeLib;
+use deno_runtime::deno_tls::rustls;
+use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
+use deno_runtime::deno_tls::rustls_pemfile;
+use deno_runtime::deno_tls::webpki_roots;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
@@ -40,15 +44,129 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use std::collections::BTreeMap;
 use std::env;
+use std::io::BufReader;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cache::DenoDir;
-use crate::file_fetcher::get_root_cert_store;
-use crate::file_fetcher::CacheSetting;
-use crate::fs_util;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
+
+/// Indicates how cached source files should be handled.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum CacheSetting {
+  /// Only the cached files should be used.  Any files not in the cache will
+  /// error.  This is the equivalent of `--cached-only` in the CLI.
+  Only,
+  /// No cached source files should be used, and all files should be reloaded.
+  /// This is the equivalent of `--reload` in the CLI.
+  ReloadAll,
+  /// Only some cached resources should be used.  This is the equivalent of
+  /// `--reload=https://deno.land/std` or
+  /// `--reload=https://deno.land/std,https://deno.land/x/example`.
+  ReloadSome(Vec<String>),
+  /// The usability of a cached value is determined by analyzing the cached
+  /// headers and other metadata associated with a cached response, reloading
+  /// any cached "non-fresh" cached responses.
+  RespectHeaders,
+  /// The cached source files should be used for local modules.  This is the
+  /// default behavior of the CLI.
+  Use,
+}
+
+impl CacheSetting {
+  pub fn should_use_for_npm_package(&self, package_name: &str) -> bool {
+    match self {
+      CacheSetting::ReloadAll => false,
+      CacheSetting::ReloadSome(list) => {
+        if list.iter().any(|i| i == "npm:") {
+          return false;
+        }
+        let specifier = format!("npm:{}", package_name);
+        if list.contains(&specifier) {
+          return false;
+        }
+        true
+      }
+      _ => true,
+    }
+  }
+}
+
+/// Create and populate a root cert store based on the passed options and
+/// environment.
+pub fn get_root_cert_store(
+  maybe_root_path: Option<PathBuf>,
+  maybe_ca_stores: Option<Vec<String>>,
+  maybe_ca_file: Option<String>,
+) -> Result<RootCertStore, AnyError> {
+  let mut root_cert_store = RootCertStore::empty();
+  let ca_stores: Vec<String> = maybe_ca_stores
+    .or_else(|| {
+      let env_ca_store = env::var("DENO_TLS_CA_STORE").ok()?;
+      Some(
+        env_ca_store
+          .split(',')
+          .map(|s| s.trim().to_string())
+          .filter(|s| !s.is_empty())
+          .collect(),
+      )
+    })
+    .unwrap_or_else(|| vec!["mozilla".to_string()]);
+
+  for store in ca_stores.iter() {
+    match store.as_str() {
+      "mozilla" => {
+        root_cert_store.add_server_trust_anchors(
+          webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+            rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+              ta.subject,
+              ta.spki,
+              ta.name_constraints,
+            )
+          }),
+        );
+      }
+      "system" => {
+        let roots = load_native_certs().expect("could not load platform certs");
+        for root in roots {
+          root_cert_store
+            .add(&rustls::Certificate(root.0))
+            .expect("Failed to add platform cert to root cert store");
+        }
+      }
+      _ => {
+        return Err(anyhow!("Unknown certificate store \"{}\" specified (allowed: \"system,mozilla\")", store));
+      }
+    }
+  }
+
+  let ca_file = maybe_ca_file.or_else(|| env::var("DENO_CERT").ok());
+  if let Some(ca_file) = ca_file {
+    let ca_file = if let Some(root) = &maybe_root_path {
+      root.join(&ca_file)
+    } else {
+      PathBuf::from(ca_file)
+    };
+    let certfile = std::fs::File::open(&ca_file)?;
+    let mut reader = BufReader::new(certfile);
+
+    match rustls_pemfile::certs(&mut reader) {
+      Ok(certs) => {
+        root_cert_store.add_parsable_certificates(&certs);
+      }
+      Err(e) => {
+        return Err(anyhow!(
+          "Unable to add pem file to certificate store: {}",
+          e
+        ));
+      }
+    }
+  }
+
+  Ok(root_cert_store)
+}
 
 /// Overrides for the options below that when set will
 /// use these values over the values derived from the
@@ -176,7 +294,7 @@ impl CliOptions {
     } else {
       std::env::current_dir()?.join("node_modules")
     };
-    Ok(Some(fs_util::canonicalize_path_maybe_not_exists(&path)?))
+    Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
   }
 
   pub fn resolve_root_cert_store(&self) -> Result<RootCertStore, AnyError> {
@@ -340,6 +458,13 @@ impl CliOptions {
 
   pub fn log_level(&self) -> Option<log::Level> {
     self.flags.log_level
+  }
+
+  pub fn is_quiet(&self) -> bool {
+    self
+      .log_level()
+      .map(|l| l == log::Level::Error)
+      .unwrap_or(false)
   }
 
   pub fn location_flag(&self) -> Option<&Url> {

@@ -443,7 +443,7 @@ declare namespace Deno {
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerValue, definition: Fn);
+    constructor(pointer: PointerValue, definition: Const<Fn>);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -494,7 +494,7 @@ declare namespace Deno {
     Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
   > {
     constructor(
-      definition: Definition,
+      definition: Const<Definition>,
       callback: UnsafeCallbackFunction<
         Definition["parameters"],
         Definition["result"]
@@ -562,6 +562,17 @@ declare namespace Deno {
     close(): void;
   }
 
+  /**
+   *  This magic code used to implement better type hints for {@linkcode Deno.dlopen}
+   */
+  type Cast<A, B> = A extends B ? A : B;
+  type Const<T> = Cast<
+    T,
+    | (T extends string | number | bigint | boolean ? T : never)
+    | { [K in keyof T]: Const<T[K]> }
+    | []
+  >;
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Opens an external dynamic library and registers symbols, making foreign
@@ -611,7 +622,7 @@ declare namespace Deno {
    */
   export function dlopen<S extends ForeignLibraryInterface>(
     filename: string | URL,
-    symbols: S,
+    symbols: Const<S>,
   ): DynamicLibrary<S>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1639,14 +1650,14 @@ declare namespace Deno {
    *   ],
    *   stdin: "piped",
    * });
-   * command.spawn();
+   * const child = command.spawn();
    *
    * // open a file and pipe the subprocess output to it.
-   * command.stdout.pipeTo(Deno.openSync("output").writable);
+   * child.stdout.pipeTo(Deno.openSync("output").writable);
    *
    * // manually close stdin
-   * command.stdin.close();
-   * const status = await command.status;
+   * child.stdin.close();
+   * const status = await child.status;
    * ```
    *
    * ```ts
@@ -1678,13 +1689,6 @@ declare namespace Deno {
    * @category Sub Process
    */
   export class Command {
-    get stdin(): WritableStream<Uint8Array>;
-    get stdout(): ReadableStream<Uint8Array>;
-    get stderr(): ReadableStream<Uint8Array>;
-    readonly pid: number;
-    /** Get the status of the child process. */
-    readonly status: Promise<CommandStatus>;
-
     constructor(command: string | URL, options?: CommandOptions);
     /**
      * Executes the {@linkcode Deno.Command}, waiting for it to finish and
@@ -1711,8 +1715,27 @@ declare namespace Deno {
     /**
      * Spawns a streamable subprocess, allowing to use the other methods.
      */
-    spawn(): void;
+    spawn(): ChildProcess;
+  }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * The interface for handling a child process returned from
+   * {@linkcode Deno.Command.spawn}.
+   *
+   * @category Sub Process
+   */
+  export class ChildProcess {
+    get stdin(): WritableStream<Uint8Array>;
+    get stdout(): ReadableStream<Uint8Array>;
+    get stderr(): ReadableStream<Uint8Array>;
+    readonly pid: number;
+    /** Get the status of the child. */
+    readonly status: Promise<CommandStatus>;
+
+    /** Waits for the child to exit completely, returning all its output and
+     * status. */
+    output(): Promise<CommandOutput>;
     /** Kills the process with given {@linkcode Deno.Signal}. Defaults to
      * `"SIGTERM"`. */
     kill(signo?: Signal): void;

@@ -44,7 +44,7 @@ impl EmitCache {
   pub fn get_emit_code(
     &self,
     specifier: &ModuleSpecifier,
-    expected_source_hash: Option<u64>,
+    expected_source_hash: u64,
   ) -> Option<String> {
     let meta_filename = self.get_meta_filename(specifier)?;
     let emit_filename = self.get_emit_filename(specifier)?;
@@ -52,10 +52,8 @@ impl EmitCache {
     // load and verify the meta data file is for this source and CLI version
     let bytes = self.disk_cache.get(&meta_filename).ok()?;
     let meta: EmitMetadata = serde_json::from_slice(&bytes).ok()?;
-    if let Some(expected_source_hash) = expected_source_hash {
-      if meta.source_hash != expected_source_hash.to_string() {
-        return None;
-      }
+    if meta.source_hash != expected_source_hash.to_string() {
+      return None;
     }
 
     // load and verify the emit is for the meta data
@@ -173,31 +171,26 @@ mod test {
     let specifier2 =
       ModuleSpecifier::from_file_path(temp_dir.path().join("file2.ts"))
         .unwrap();
-    assert_eq!(cache.get_emit_code(&specifier1, Some(1)), None);
+    assert_eq!(cache.get_emit_code(&specifier1, 1), None);
     let emit_code1 = "text1".to_string();
     let emit_code2 = "text2".to_string();
     cache.set_emit_code(&specifier1, 10, &emit_code1);
     cache.set_emit_code(&specifier2, 2, &emit_code2);
     // providing the incorrect source hash
-    assert_eq!(cache.get_emit_code(&specifier1, Some(5)), None);
+    assert_eq!(cache.get_emit_code(&specifier1, 5), None);
     // providing the correct source hash
     assert_eq!(
-      cache.get_emit_code(&specifier1, Some(10)),
+      cache.get_emit_code(&specifier1, 10),
       Some(emit_code1.clone()),
     );
-    assert_eq!(cache.get_emit_code(&specifier2, Some(2)), Some(emit_code2));
-    // providing no hash
-    assert_eq!(
-      cache.get_emit_code(&specifier1, None),
-      Some(emit_code1.clone()),
-    );
+    assert_eq!(cache.get_emit_code(&specifier2, 2), Some(emit_code2));
 
     // try changing the cli version (should not load previous ones)
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       cli_version: "2.0.0".to_string(),
     };
-    assert_eq!(cache.get_emit_code(&specifier1, Some(10)), None);
+    assert_eq!(cache.get_emit_code(&specifier1, 10), None);
     cache.set_emit_code(&specifier1, 5, &emit_code1);
 
     // recreating the cache should still load the data because the CLI version is the same
@@ -205,12 +198,12 @@ mod test {
       disk_cache,
       cli_version: "2.0.0".to_string(),
     };
-    assert_eq!(cache.get_emit_code(&specifier1, Some(5)), Some(emit_code1));
+    assert_eq!(cache.get_emit_code(&specifier1, 5), Some(emit_code1));
 
     // adding when already exists should not cause issue
     let emit_code3 = "asdf".to_string();
     cache.set_emit_code(&specifier1, 20, &emit_code3);
-    assert_eq!(cache.get_emit_code(&specifier1, Some(5)), None);
-    assert_eq!(cache.get_emit_code(&specifier1, Some(20)), Some(emit_code3));
+    assert_eq!(cache.get_emit_code(&specifier1, 5), None);
+    assert_eq!(cache.get_emit_code(&specifier1, 20), Some(emit_code3));
   }
 }

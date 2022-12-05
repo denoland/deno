@@ -1168,7 +1168,7 @@ impl JsRuntime {
       return Poll::Ready(Ok(()));
     }
 
-    let mut state = self.state.borrow_mut();
+    let state = self.state.borrow();
 
     // Check if more async ops have been dispatched
     // during this turn of event loop.
@@ -1185,6 +1185,8 @@ impl JsRuntime {
       state.waker.wake();
     }
 
+    drop(state);
+
     if pending_state.has_pending_module_evaluation {
       if pending_state.has_pending_refed_ops
         || pending_state.has_pending_dyn_imports
@@ -1195,8 +1197,16 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else {
-        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promises.";
-        return Poll::Ready(Err(generic_error(msg)));
+        let scope = &mut self.handle_scope();
+        let messages = find_stalled_top_level_await(scope);
+        // We are gonna print only a single message to provide a nice formatting
+        // with source line of offending promise shown. Once user fixed it, then
+        // they will get another error message for the next promise (but this
+        // situation is gonna be very rare, if ever happening).
+        assert!(!messages.is_empty());
+        let msg = v8::Local::new(scope, messages[0].clone());
+        let js_error = JsError::from_v8_message(scope, msg);
+        return Poll::Ready(Err(js_error.into()));
       }
     }
 
@@ -1207,19 +1217,19 @@ impl JsRuntime {
         || pending_state.has_tick_scheduled
       {
         // pass, will be polled again
-      } else if state.dyn_module_evaluate_idle_counter >= 1 {
-        let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promises.
-Pending dynamic modules:\n".to_string();
-        let module_map = self.module_map.as_mut().unwrap().borrow_mut();
-        for pending_evaluate in &state.pending_dyn_mod_evaluate {
-          let module_info = module_map
-            .get_info_by_id(&pending_evaluate.module_id)
-            .unwrap();
-          msg.push_str("- ");
-          msg.push_str(module_info.name.as_str());
-        }
-        return Poll::Ready(Err(generic_error(msg)));
+      } else if self.state.borrow().dyn_module_evaluate_idle_counter >= 1 {
+        let scope = &mut self.handle_scope();
+        let messages = find_stalled_top_level_await(scope);
+        // We are gonna print only a single message to provide a nice formatting
+        // with source line of offending promise shown. Once user fixed it, then
+        // they will get another error message for the next promise (but this
+        // situation is gonna be very rare, if ever happening).
+        assert!(!messages.is_empty());
+        let msg = v8::Local::new(scope, messages[0].clone());
+        let js_error = JsError::from_v8_message(scope, msg);
+        return Poll::Ready(Err(js_error.into()));
       } else {
+        let mut state = self.state.borrow_mut();
         // Delay the above error by one spin of the event loop. A dynamic import
         // evaluation may complete during this, in which case the counter will
         // reset.
@@ -1267,6 +1277,59 @@ Pending dynamic modules:\n".to_string();
       has_tick_scheduled: state.has_tick_scheduled,
     }
   }
+}
+
+fn get_stalled_top_level_await_message_for_module(
+  scope: &mut v8::HandleScope,
+  module_id: ModuleId,
+) -> Vec<v8::Global<v8::Message>> {
+  let module_map = JsRuntime::module_map(scope);
+  let module_map = module_map.borrow();
+  let module_handle = module_map.handles_by_id.get(&module_id).unwrap();
+
+  let module = v8::Local::new(scope, module_handle);
+  let stalled = module.get_stalled_top_level_await_message(scope);
+  let mut messages = vec![];
+  for (_, message) in stalled {
+    messages.push(v8::Global::new(scope, message));
+  }
+  messages
+}
+
+fn find_stalled_top_level_await(
+  scope: &mut v8::HandleScope,
+) -> Vec<v8::Global<v8::Message>> {
+  let module_map = JsRuntime::module_map(scope);
+  let module_map = module_map.borrow();
+
+  // First check if that's root module
+  let root_module_id = module_map
+    .info
+    .values()
+    .filter(|m| m.main)
+    .map(|m| m.id)
+    .next();
+
+  if let Some(root_module_id) = root_module_id {
+    let messages =
+      get_stalled_top_level_await_message_for_module(scope, root_module_id);
+    if !messages.is_empty() {
+      return messages;
+    }
+  }
+
+  // It wasn't a top module, so iterate over all modules and try to find
+  // any with stalled top level await
+  let module_ids = module_map.handles_by_id.keys().copied().collect::<Vec<_>>();
+  for module_id in module_ids {
+    let messages =
+      get_stalled_top_level_await_message_for_module(scope, module_id);
+    if !messages.is_empty() {
+      return messages;
+    }
+  }
+
+  unreachable!()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
