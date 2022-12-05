@@ -1572,6 +1572,8 @@ pub async fn run_tests_with_watch(
   Ok(())
 }
 
+/// Tracks failures for the `--fail-fast` argument in
+/// order to tell when to stop running tests.
 #[derive(Clone)]
 pub struct FailFastTracker {
   max_count: Option<usize>,

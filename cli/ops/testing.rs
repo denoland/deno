@@ -199,6 +199,5 @@ fn op_dispatch_test_event(
 
 #[op]
 fn op_tests_should_stop(state: &mut OpState) -> bool {
-  let fail_fast_tracker = state.borrow::<FailFastTracker>();
-  fail_fast_tracker.should_stop()
+  state.borrow::<FailFastTracker>().should_stop()
 }
