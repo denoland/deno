@@ -145,6 +145,7 @@ impl LspTestFilter {
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn test_specifier(
   ps: proc_state::ProcState,
   permissions: Permissions,
