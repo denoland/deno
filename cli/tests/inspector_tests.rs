@@ -132,6 +132,23 @@ mod inspector {
     fn stdout_line(&mut self) -> String {
       self.stdout_lines.next().unwrap()
     }
+
+    fn assert_stderr_for_inspect(&mut self) {
+      assert_stderr(
+        &mut self.stderr_lines,
+        &["Visit chrome://inspect to connect to the debugger."],
+      );
+    }
+
+    fn assert_stderr_for_inspect_brk(&mut self) {
+      assert_stderr(
+        &mut self.stderr_lines,
+        &[
+          "Visit chrome://inspect to connect to the debugger.",
+          "Deno is waiting for debugger to connect.",
+        ],
+      );
+    }
   }
 
   macro_rules! assert_starts_with {
@@ -142,6 +159,24 @@ mod inspector {
     }
   }
 }
+
+  fn assert_stderr(
+    stderr_lines: &mut impl std::iter::Iterator<Item = String>,
+    expected_lines: &[&str],
+  ) {
+    let mut expected_index = 0;
+
+    loop {
+      let line = skip_check_line(stderr_lines);
+
+      assert_eq!(line, expected_lines[expected_index]);
+      expected_index += 1;
+
+      if expected_index >= expected_lines.len() {
+        break;
+      }
+    }
+  }
 
   fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
     use std::sync::atomic::{AtomicU16, Ordering};
@@ -175,45 +210,6 @@ mod inspector {
 
       return line;
     }
-  }
-
-  fn assert_stderr(
-    stderr_lines: &mut impl std::iter::Iterator<Item = String>,
-    expected_lines: &[&str],
-  ) {
-    let mut expected_index = 0;
-
-    loop {
-      let line = skip_check_line(stderr_lines);
-
-      assert_eq!(line, expected_lines[expected_index]);
-      expected_index += 1;
-
-      if expected_index >= expected_lines.len() {
-        break;
-      }
-    }
-  }
-
-  fn assert_stderr_for_inspect(
-    stderr_lines: &mut impl std::iter::Iterator<Item = String>,
-  ) {
-    assert_stderr(
-      stderr_lines,
-      &["Visit chrome://inspect to connect to the debugger."],
-    );
-  }
-
-  fn assert_stderr_for_inspect_brk(
-    stderr_lines: &mut impl std::iter::Iterator<Item = String>,
-  ) {
-    assert_stderr(
-      stderr_lines,
-      &[
-        "Visit chrome://inspect to connect to the debugger.",
-        "Deno is waiting for debugger to connect.",
-      ],
-    );
   }
 
   #[tokio::test]
@@ -255,7 +251,7 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
+    tester.assert_stderr_for_inspect_brk();
 
     tester
       .send_many(&[
@@ -420,7 +416,7 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
+    tester.assert_stderr_for_inspect_brk();
 
     tester
       .send_many(&[
@@ -538,7 +534,7 @@ mod inspector {
 
     let stdin = tester.child.stdin.take().unwrap();
 
-    assert_stderr_for_inspect(&mut tester.stderr_lines);
+    tester.assert_stderr_for_inspect();
     assert_starts_with!(&tester.stdout_line(), "Deno");
     assert_eq!(
       &tester.stdout_line(),
@@ -731,7 +727,7 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
+    tester.assert_stderr_for_inspect_brk();
 
     tester
       .send_many(&[
@@ -818,7 +814,7 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, notification_filter).await;
 
-    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
+    tester.assert_stderr_for_inspect_brk();
 
     tester
       .send_many(&[
@@ -931,7 +927,7 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
+    tester.assert_stderr_for_inspect_brk();
 
     tester
       .send_many(&[
@@ -1032,7 +1028,7 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
+    tester.assert_stderr_for_inspect_brk();
 
     tester
       .send_many(&[
@@ -1118,7 +1114,7 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
+    tester.assert_stderr_for_inspect_brk();
 
     tester
       .send_many(&[
@@ -1183,7 +1179,7 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
+    tester.assert_stderr_for_inspect_brk();
 
     tester
       .send_many(&[
@@ -1248,7 +1244,7 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
+    tester.assert_stderr_for_inspect_brk();
 
     tester
       .send_many(&[
