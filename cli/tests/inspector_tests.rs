@@ -18,6 +18,82 @@ use util::http_server;
 mod inspector {
   use super::*;
 
+  struct InspectorTester {
+    socket_tx: SplitSink<
+      tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<TcpStream>,
+      >,
+      tungstenite::Message,
+    >,
+    socket_rx: Pin<Box<dyn Stream<Item = String>>>,
+  }
+
+  impl InspectorTester {
+    async fn create(ws_url: url::Url) -> Self {
+      let (socket, response) =
+        tokio_tungstenite::connect_async(ws_url).await.unwrap();
+      assert_eq!(response.status(), 101); // Switching protocols.
+
+      let (socket_tx, socket_rx) = socket.split();
+      let socket_rx = socket_rx
+        .map(|msg| msg.unwrap().to_string())
+        .filter(|msg| {
+          let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+          futures::future::ready(pass)
+        })
+        .boxed_local();
+
+      Self {
+        socket_tx,
+        socket_rx,
+      }
+    }
+
+    async fn send_messages(&mut self, messages: &[serde_json::Value]) {
+      // TODO(bartlomieju): add graceful error handling
+      for msg in messages {
+        self.socket_tx.send(msg.to_string().into()).await.unwrap();
+      }
+    }
+
+    async fn send_message(&mut self, message: serde_json::Value) {
+      self.send_messages(&[message]).await;
+    }
+
+    async fn assert_received_messages(
+      &mut self,
+      responses: &[&str],
+      notifications: &[&str],
+    ) {
+      let expected_messages = responses.len() + notifications.len();
+      let mut responses_idx = 0;
+      let mut notifications_idx = 0;
+
+      for _ in 0..expected_messages {
+        // TODO(bartlomieju): graceful error handling
+        let msg = self.socket_rx.next().await.unwrap();
+
+        if msg.starts_with(r#"{"id":"#) {
+          assert!(
+            msg.starts_with(responses[responses_idx]),
+            "Doesn't start with {}, instead received {}",
+            responses[responses_idx],
+            msg
+          );
+          responses_idx += 1;
+        } else {
+          assert!(
+            msg.starts_with(notifications[notifications_idx]),
+            "Doesn't start with {}, instead received {}",
+            notifications[notifications_idx],
+            msg
+          );
+          notifications_idx += 1;
+        }
+      }
+    }
+  }
+
   macro_rules! assert_starts_with {
   ($string:expr, $($test:expr),+) => {
     let string = $string; // This might be a function call or something
@@ -201,18 +277,7 @@ mod inspector {
       std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
     let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-    let (socket, response) =
-      tokio_tungstenite::connect_async(ws_url).await.unwrap();
-    assert_eq!(response.status(), 101); // Switching protocols.
-
-    let (mut socket_tx, socket_rx) = socket.split();
-    let mut socket_rx = socket_rx
-      .map(|msg| msg.unwrap().to_string())
-      .filter(|msg| {
-        let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-        futures::future::ready(pass)
-      })
-      .boxed_local();
+    let mut tester = InspectorTester::create(ws_url).await;
 
     let stdout = child.stdout.as_mut().unwrap();
     let mut stdout_lines =
@@ -220,16 +285,13 @@ mod inspector {
 
     assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-    send_messages(
-      &mut socket_tx,
-      &[
+    tester
+      .send_messages(&[
         json!({"id":1,"method":"Runtime.enable"}),
         json!({"id":2,"method":"Debugger.enable"}),
-      ],
-    )
-    .await;
-    assert_received_messages(
-      &mut socket_rx,
+      ])
+      .await;
+    tester.assert_received_messages(
       &[
         r#"{"id":1,"result":{}}"#,
         r#"{"id":2,"result":{"debuggerId":"#,
@@ -240,21 +302,18 @@ mod inspector {
     )
     .await;
 
-    send_message(
-      &mut socket_tx,
-      json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
-    )
-    .await;
-    assert_received_messages(
-      &mut socket_rx,
-      &[r#"{"id":3,"result":{}}"#],
-      &[r#"{"method":"Debugger.paused","#],
-    )
-    .await;
+    tester
+      .send_message(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
+      .await;
+    tester
+      .assert_received_messages(
+        &[r#"{"id":3,"result":{}}"#],
+        &[r#"{"method":"Debugger.paused","#],
+      )
+      .await;
 
-    send_message(
-      &mut socket_tx,
-      json!({
+    tester
+      .send_message(json!({
         "id":4,
         "method":"Runtime.evaluate",
         "params":{
@@ -264,21 +323,22 @@ mod inspector {
           "silent":false,
           "returnByValue":true
         }
-      }),
-    )
-    .await;
-    assert_received_messages(
-      &mut socket_rx,
-      &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
-      &[],
-    )
-    .await;
+      }))
+      .await;
+    tester
+      .assert_received_messages(
+        &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
+        &[],
+      )
+      .await;
 
     assert_eq!(&stdout_lines.next().unwrap(), "hello from the inspector");
 
-    send_message(&mut socket_tx, json!({"id":5,"method":"Debugger.resume"}))
+    tester
+      .send_message(json!({"id":5,"method":"Debugger.resume"}))
       .await;
-    assert_received_messages(&mut socket_rx, &[r#"{"id":5,"result":{}}"#], &[])
+    tester
+      .assert_received_messages(&[r#"{"id":5,"result":{}}"#], &[])
       .await;
 
     assert_eq!(&stdout_lines.next().unwrap(), "hello from the script");
