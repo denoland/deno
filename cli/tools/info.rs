@@ -311,7 +311,7 @@ impl NpmInfo {
     }
 
     for (specifier, _) in graph.specifiers() {
-      if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+      if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
         info
           .specifiers
           .insert(specifier.clone(), reference.req.clone());

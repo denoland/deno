@@ -81,23 +81,23 @@ impl GraphData {
     let mut has_npm_specifier_in_graph = false;
 
     for (specifier, result) in graph.specifiers() {
-      if NpmPackageReference::from_specifier(&specifier).is_ok() {
+      if NpmPackageReference::from_specifier(specifier).is_ok() {
         has_npm_specifier_in_graph = true;
         continue;
       }
 
-      if !reload && self.modules.contains_key(&specifier) {
+      if !reload && self.modules.contains_key(specifier) {
         continue;
       }
 
-      if let Some(found) = graph.redirects.get(&specifier) {
+      if let Some(found) = graph.redirects.get(specifier) {
         let module_entry = ModuleEntry::Redirect(found.clone());
         self.modules.insert(specifier.clone(), module_entry);
         continue;
       }
       match result {
         Ok((_, _, media_type)) => {
-          let module = graph.get(&specifier).unwrap();
+          let module = graph.get(specifier).unwrap();
           let code = match &module.maybe_source {
             Some(source) => source.clone(),
             None => continue,
