@@ -1388,7 +1388,7 @@ mod inspector {
 
     assert_eq!(child.wait().unwrap().code(), Some(1));
   }
-  
+
   // https://github.com/denoland/deno/issues/11570
   #[tokio::test]
   async fn inspector_repl_debugger_statement() {
