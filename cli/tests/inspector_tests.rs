@@ -4,6 +4,7 @@ use deno_core::futures;
 use deno_core::futures::prelude::*;
 use deno_core::futures::stream::SplitSink;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
@@ -106,7 +107,7 @@ mod inspector {
       >,
       tungstenite::Message,
     >,
-    messages: &[&str],
+    messages: &[serde_json::Value],
     socket_rx: &mut Pin<Box<dyn Stream<Item = String>>>,
     responses: &[&str],
     notifications: &[&str],
@@ -206,8 +207,8 @@ mod inspector {
     assert_inspector_messages(
     &mut socket_tx,
     &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
     ],
     &mut socket_rx,
     &[
@@ -222,7 +223,7 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
+      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
@@ -230,21 +231,29 @@ mod inspector {
     .await;
 
     assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
-    &[],
-  )
-  .await;
+      &mut socket_tx,
+      &[json!({
+        "id":4,
+        "method":"Runtime.evaluate",
+        "params":{
+          "expression":"Deno.core.print(\"hello from the inspector\\n\")",
+          "contextId":1,
+          "includeCommandLineAPI":true,
+          "silent":false,
+          "returnByValue":true
+        }
+      })],
+      &mut socket_rx,
+      &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
+      &[],
+    )
+    .await;
 
     assert_eq!(&stdout_lines.next().unwrap(), "hello from the inspector");
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":5,"method":"Debugger.resume"}"#],
+      &[json!({"id":5,"method":"Debugger.resume"})],
       &mut socket_rx,
       &[r#"{"id":5,"result":{}}"#],
       &[],
@@ -405,8 +414,8 @@ mod inspector {
     assert_inspector_messages(
     &mut socket_tx,
     &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
     ],
     &mut socket_rx,
     &[
@@ -421,7 +430,7 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
+      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
@@ -430,7 +439,7 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":4,"method":"Debugger.resume"}"#],
+      &[json!({"id":4,"method":"Debugger.resume"})],
       &mut socket_rx,
       &[r#"{"id":4,"result":{}}"#],
       &[r#"{"method":"Debugger.resumed","params":{}}"#],
@@ -457,10 +466,7 @@ mod inspector {
 
       assert_inspector_messages(
         &mut socket_tx,
-        &[&format!(
-          r#"{{"id":{},"method":"Debugger.resume"}}"#,
-          request_id
-        )],
+        &[json!({"id":request_id,"method":"Debugger.resume"})],
         &mut socket_rx,
         &[&format!(r#"{{"id":{},"result":{{}}}}"#, request_id)],
         &[r#"{"method":"Debugger.resumed","params":{}}"#],
@@ -553,8 +559,8 @@ mod inspector {
     assert_inspector_messages(
     &mut socket_tx,
     &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
     ],
     &mut socket_rx,
     &[
@@ -568,31 +574,68 @@ mod inspector {
   .await;
 
     assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":3,"method":"Runtime.compileScript","params":{"expression":"Deno.cwd()","sourceURL":"","persistScript":false,"executionContextId":1}}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":3,"result":{}}"#], &[]
-  ).await;
+      &mut socket_tx,
+      &[json!({
+        "id":3,
+        "method":"Runtime.compileScript",
+        "params":{
+          "expression":"Deno.cwd()",
+          "sourceURL":"",
+          "persistScript":false,
+          "executionContextId":1
+        }
+      })],
+      &mut socket_rx,
+      &[r#"{"id":3,"result":{}}"#],
+      &[],
+    )
+    .await;
     assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.cwd()","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":4,"result":{"result":{"type":"string","value":""#],
-    &[],
-  ).await;
+      &mut socket_tx,
+      &[json!({
+        "id":4,
+        "method":"Runtime.evaluate",
+        "params":{
+          "expression":"Deno.cwd()",
+          "objectGroup":"console",
+          "includeCommandLineAPI":true,
+          "silent":false,
+          "contextId":1,
+          "returnByValue":true,
+          "generatePreview":true,
+          "userGesture":true,
+          "awaitPromise":false,
+          "replMode":true
+        }
+      })],
+      &mut socket_rx,
+      &[r#"{"id":4,"result":{"result":{"type":"string","value":""#],
+      &[],
+    )
+    .await;
     assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"console.error('done');","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#],
-    &[r#"{"method":"Runtime.consoleAPICalled"#],
-  ).await;
+      &mut socket_tx,
+      &[json!({
+        "id":5,
+        "method":"Runtime.evaluate",
+        "params":{
+          "expression":"console.error('done');",
+          "objectGroup":"console",
+          "includeCommandLineAPI":true,
+          "silent":false,
+          "contextId":1,
+          "returnByValue":true,
+          "generatePreview":true,
+          "userGesture":true,
+          "awaitPromise":false,
+          "replMode":true
+        }
+      })],
+      &mut socket_rx,
+      &[r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#],
+      &[r#"{"method":"Runtime.consoleAPICalled"#],
+    )
+    .await;
     assert_eq!(&stderr_lines.next().unwrap(), "done");
     drop(stdin);
     child.wait().unwrap();
@@ -721,25 +764,25 @@ mod inspector {
     assert_stderr_for_inspect_brk(&mut stderr_lines);
 
     assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#,
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ],
-  )
-  .await;
+      &mut socket_tx,
+      &[
+        json!({"id":1,"method":"Runtime.enable"}),
+        json!({"id":2,"method":"Debugger.enable"}),
+      ],
+      &mut socket_rx,
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
+      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
@@ -749,7 +792,17 @@ mod inspector {
     assert_inspector_messages(
       &mut socket_tx,
       &[
-        r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"1 + 1","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
+        json!({
+          "id":4,
+          "method":"Runtime.evaluate",
+          "params":{
+            "expression":"1 + 1",
+            "contextId":1,
+            "includeCommandLineAPI":true,
+            "silent":false,
+            "returnByValue":true
+          }
+        }),
       ],
       &mut socket_rx,
       &[r#"{"id":4,"result":{"result":{"type":"number","value":2,"description":"2"}}}"#],
@@ -759,7 +812,7 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":5,"method":"Debugger.resume"}"#],
+      &[json!({"id":5,"method":"Debugger.resume"})],
       &mut socket_rx,
       &[r#"{"id":5,"result":{}}"#],
       &[],
@@ -815,8 +868,8 @@ mod inspector {
     assert_inspector_messages(
     &mut socket_tx,
     &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
     ],
     &mut socket_rx,
     &[
@@ -859,7 +912,7 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
+      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
@@ -869,9 +922,9 @@ mod inspector {
     assert_inspector_messages(
     &mut socket_tx,
     &[
-      &format!(r#"{{"id":4,"method":"Debugger.getScriptSource","params":{{"scriptId":"{}"}}}}"#, script1_id),
-      &format!(r#"{{"id":5,"method":"Debugger.getScriptSource","params":{{"scriptId":"{}"}}}}"#, script2_id),
-      &format!(r#"{{"id":6,"method":"Debugger.getScriptSource","params":{{"scriptId":"{}"}}}}"#, script3_id),
+      json!({"id":4,"method":"Debugger.getScriptSource","params":{"scriptId":script1_id.as_str()}}),
+      json!({"id":5,"method":"Debugger.getScriptSource","params":{"scriptId":script2_id.as_str()}}),
+      json!({"id":6,"method":"Debugger.getScriptSource","params":{"scriptId":script3_id.as_str()}}),
     ],
     &mut socket_rx,
     &[
@@ -885,7 +938,7 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":7,"method":"Debugger.resume"}"#],
+      &[json!({"id":7,"method":"Debugger.resume"})],
       &mut socket_rx,
       &[r#"{"id":7,"result":{}}"#],
       &[],
@@ -954,8 +1007,8 @@ mod inspector {
     assert_inspector_messages(
     &mut socket_tx,
     &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
 
     ],
     &mut socket_rx,
@@ -972,8 +1025,8 @@ mod inspector {
     assert_inspector_messages(
       &mut socket_tx,
       &[
-        r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#,
-        r#"{"id":4,"method":"HeapProfiler.enable"}"#,
+        json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
+        json!({"id":4,"method":"HeapProfiler.enable"}),
       ],
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
@@ -983,7 +1036,7 @@ mod inspector {
 
     socket_tx
       .send(
-        r#"{"id":5,"method":"Runtime.getHeapUsage", "params": {}}"#
+        json!({"id":5,"method":"Runtime.getHeapUsage", "params": {}})
           .to_string()
           .into(),
       )
@@ -998,10 +1051,22 @@ mod inspector {
         <= result["totalSize"].as_i64().unwrap()
     );
 
-    socket_tx.send(
-    r#"{"id":6,"method":"HeapProfiler.takeHeapSnapshot","params": {"reportProgress": true, "treatGlobalObjectsAsRoots": true, "captureNumberValue": false}}"#
-      .to_string().into()
-  ).await.unwrap();
+    socket_tx
+      .send(
+        json!({
+          "id":6,
+          "method":"HeapProfiler.takeHeapSnapshot",
+          "params": {
+            "reportProgress": true,
+            "treatGlobalObjectsAsRoots": true,
+            "captureNumberValue": false
+          }
+        })
+        .to_string()
+        .into(),
+      )
+      .await
+      .unwrap();
 
     let mut progress_report_completed = false;
     loop {
@@ -1068,8 +1133,8 @@ mod inspector {
     assert_inspector_messages(
     &mut socket_tx,
     &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
 
     ],
     &mut socket_rx,
@@ -1086,8 +1151,8 @@ mod inspector {
     assert_inspector_messages(
       &mut socket_tx,
       &[
-        r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#,
-        r#"{"id":4,"method":"Profiler.enable"}"#,
+        json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
+        json!({"id":4,"method":"Profiler.enable"}),
       ],
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
@@ -1098,8 +1163,8 @@ mod inspector {
     assert_inspector_messages(
     &mut socket_tx,
     &[
-      r#"{"id":5,"method":"Profiler.setSamplingInterval","params":{"interval": 100}}"#,
-      r#"{"id":6,"method":"Profiler.start","params":{}}"#,
+      json!({"id":5,"method":"Profiler.setSamplingInterval","params":{"interval": 100}}),
+      json!({"id":6,"method":"Profiler.start","params":{}}),
     ],
     &mut socket_rx,
     &[r#"{"id":5,"result":{}}"#, r#"{"id":6,"result":{}}"#],
@@ -1111,7 +1176,9 @@ mod inspector {
 
     socket_tx
       .send(
-        r#"{"id":7,"method":"Profiler.stop", "params": {}}"#.to_string().into(),
+        json!({"id":7,"method":"Profiler.stop", "params": {}})
+          .to_string()
+          .into(),
       )
       .await
       .unwrap();
@@ -1177,8 +1244,8 @@ mod inspector {
     assert_inspector_messages(
       &mut socket_tx,
       &[
-        r#"{"id":1,"method":"Runtime.enable"}"#,
-        r#"{"id":2,"method":"Debugger.enable"}"#,
+        json!({"id":1,"method":"Runtime.enable"}),
+        json!({"id":2,"method":"Debugger.enable"}),
       ],
       &mut socket_rx,
       &[
@@ -1193,7 +1260,7 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
+      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
@@ -1202,7 +1269,7 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":4,"method":"Debugger.resume"}"#],
+      &[json!({"id":4,"method":"Debugger.resume"})],
       &mut socket_rx,
       &[r#"{"id":4,"result":{}}"#],
       &[],
@@ -1263,8 +1330,8 @@ mod inspector {
     assert_inspector_messages(
       &mut socket_tx,
       &[
-        r#"{"id":1,"method":"Runtime.enable"}"#,
-        r#"{"id":2,"method":"Debugger.enable"}"#,
+        json!({"id":1,"method":"Runtime.enable"}),
+        json!({"id":2,"method":"Debugger.enable"}),
       ],
       &mut socket_rx,
       &[
@@ -1279,7 +1346,7 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
+      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
@@ -1288,7 +1355,7 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":4,"method":"Debugger.resume"}"#],
+      &[json!({"id":4,"method":"Debugger.resume"})],
       &mut socket_rx,
       &[r#"{"id":4,"result":{}}"#],
       &[],
@@ -1345,8 +1412,8 @@ mod inspector {
     assert_inspector_messages(
       &mut socket_tx,
       &[
-        r#"{"id":1,"method":"Runtime.enable"}"#,
-        r#"{"id":2,"method":"Debugger.enable"}"#,
+        json!({"id":1,"method":"Runtime.enable"}),
+        json!({"id":2,"method":"Debugger.enable"}),
       ],
       &mut socket_rx,
       &[
@@ -1361,7 +1428,7 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
+      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
@@ -1370,7 +1437,7 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[r#"{"id":4,"method":"Debugger.resume"}"#],
+      &[json!({"id":4,"method":"Debugger.resume"})],
       &mut socket_rx,
       &[r#"{"id":4,"result":{}}"#],
       &[],
