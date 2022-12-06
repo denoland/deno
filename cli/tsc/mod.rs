@@ -542,7 +542,8 @@ fn op_resolve(
   args: ResolveArgs,
 ) -> Result<Vec<(String, String)>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mut resolved: Vec<(String, String)> = Vec::new();
+  let mut resolved: Vec<(String, String)> =
+    Vec::with_capacity(args.specifiers.len());
   let referrer = if let Some(remapped_specifier) =
     state.remapped_specifiers.get(&args.base)
   {
@@ -661,6 +662,7 @@ fn op_resolve(
           ".d.ts".to_string(),
         ),
       };
+      log::debug!("Resolved {} to {:?}", specifier, result);
       resolved.push(result);
     }
   }

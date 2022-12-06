@@ -737,7 +737,7 @@ fn napi_make_callback(
   }
 
   if !async_context.is_null() {
-    eprintln!("napi_make_callback: async_context is not supported");
+    log::info!("napi_make_callback: async_context is not supported");
   }
 
   let recv = transmute::<napi_value, v8::Local<v8::Value>>(recv);
@@ -1006,7 +1006,7 @@ fn napi_add_finalizer(
   _finalize_hint: *const c_void,
   _result: *mut napi_ref,
 ) -> Result {
-  eprintln!("napi_add_finalizer is not yet supported.");
+  log::info!("napi_add_finalizer is not yet supported.");
   Ok(())
 }
 

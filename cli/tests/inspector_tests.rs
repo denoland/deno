@@ -1304,23 +1304,27 @@ mod inspector {
     child.wait().unwrap();
   }
 
-  // https://github.com/denoland/deno/issues/11570
   #[tokio::test]
-  async fn inspector_repl_debugger_statement() {
+  async fn inspector_error_with_npm_import() {
+    let script =
+      util::testdata_path().join("inspector/error_with_npm_import.js");
+    let _server = http_server();
+
     let mut child = util::deno_cmd()
-      .arg("repl")
-      .arg(inspect_flag_with_unique_port("--inspect"))
-      .stdin(std::process::Stdio::piped())
+      .arg("run")
+      .arg("--quiet")
+      .arg("-A")
+      .arg(inspect_flag_with_unique_port("--inspect-brk"))
+      .arg(script)
+      .envs(util::env_vars_for_npm_tests())
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
       .spawn()
       .unwrap();
 
     let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines = std::io::BufReader::new(stderr)
-      .lines()
-      .map(|r| r.unwrap())
-      .filter(|s| s.as_str() != "Debugger session started.");
+    let mut stderr_lines =
+      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
     let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
     let (socket, response) =
@@ -1336,19 +1340,7 @@ mod inspector {
       })
       .boxed_local();
 
-    let stdin = child.stdin.take().unwrap();
-
-    let stdout = child.stdout.as_mut().unwrap();
-    let mut stdout_lines = std::io::BufReader::new(stdout)
-      .lines()
-      .map(|r| r.unwrap())
-      .filter(|s| !s.starts_with("Deno "));
-
-    assert_stderr_for_inspect(&mut stderr_lines);
-    assert_eq!(
-      &stdout_lines.next().unwrap(),
-      "exit using ctrl+d, ctrl+c, or close()"
-    );
+    assert_stderr_for_inspect_brk(&mut stderr_lines);
 
     assert_inspector_messages(
       &mut socket_tx,
@@ -1369,42 +1361,31 @@ mod inspector {
 
     assert_inspector_messages(
       &mut socket_tx,
-      &[
-        r#"{"id":3,"method":"Runtime.evaluate","params":{"expression":"debugger","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
-      ],
+      &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
       &mut socket_rx,
+      &[r#"{"id":3,"result":{}}"#],
+      &[r#"{"method":"Debugger.paused","#],
+    )
+    .await;
+
+    assert_inspector_messages(
+      &mut socket_tx,
+      &[r#"{"id":4,"method":"Debugger.resume"}"#],
+      &mut socket_rx,
+      &[r#"{"id":4,"result":{}}"#],
       &[],
-      &[
-        r#"{"method":"Debugger.paused""#,
-      ],
-    ).await;
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[
-        r#"{"id":4,"method":"Debugger.resume","params":{"terminateOnResume":false}}"#,
-      ],
-      &mut socket_rx,
-      &[
-        r#"{"id":4,"result":{}}"#,
-        r#"{"id":3,"result":{"result":{"type":"undefined"}}}"#,
-      ],
-      &[
-        r#"{"method":"Debugger.resumed""#,
-      ],
-    ).await;
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[
-        r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"1","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
-      ],
-      &mut socket_rx,
-      &[
-        r#"{"id":5,"result":{"result":{"type":"number","value":1,"description":"1"}}}"#,
-      ],
-      &[
-      ],
-    ).await;
-    drop(stdin);
-    child.wait().unwrap();
+    )
+    .await;
+
+    // TODO(bartlomieju): this is a partial fix, we should assert that
+    // "Runtime.exceptionThrown" notification was sent, but a bindings for this
+    // notification is not yet there
+    assert_eq!(&stderr_lines.next().unwrap(), "Debugger session started.");
+    assert_eq!(
+      &stderr_lines.next().unwrap(),
+      "error: Uncaught Error: boom!"
+    );
+
+    assert_eq!(child.wait().unwrap().code(), Some(1));
   }
 }
