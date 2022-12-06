@@ -1,9 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::futures;
 use deno_core::futures::prelude::*;
 use deno_core::futures::stream::SplitSink;
+use deno_core::futures::stream::SplitStream;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url;
@@ -11,7 +11,6 @@ use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
 use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
 use std::io::BufRead;
-use std::pin::Pin;
 use std::process::Child;
 use test_util as util;
 use tokio::net::TcpStream;
@@ -27,22 +26,25 @@ mod inspector {
       >,
       tungstenite::Message,
     >,
-    socket_rx: Pin<Box<dyn Stream<Item = String>>>,
+    socket_rx: SplitStream<
+      tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<TcpStream>,
+      >,
+    >,
+    notification_filter: Box<dyn FnMut(&str) -> bool + 'static>,
     child: Child,
     stderr_lines: Box<dyn Iterator<Item = String>>,
     stdout_lines: Box<dyn Iterator<Item = String>>,
   }
 
-  #[allow(clippy::ptr_arg)]
-  fn ignore_script_parsed(msg: &String) -> Pin<Box<dyn Future<Output = bool>>> {
-    let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-    futures::future::ready(pass).boxed_local()
+  fn ignore_script_parsed(msg: &str) -> bool {
+    !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
   }
 
   impl InspectorTester {
     async fn create<F>(mut child: Child, notification_filter: F) -> Self
     where
-      F: FnMut(&String) -> Pin<Box<dyn Future<Output = bool>>> + 'static,
+      F: FnMut(&str) -> bool + 'static,
     {
       let stdout = child.stdout.take().unwrap();
       let stdout_lines =
@@ -59,14 +61,11 @@ mod inspector {
       assert_eq!(response.status(), 101); // Switching protocols.
 
       let (socket_tx, socket_rx) = socket.split();
-      let socket_rx = socket_rx
-        .map(|msg| msg.unwrap().to_string())
-        .filter(notification_filter)
-        .boxed_local();
 
       Self {
         socket_tx,
         socket_rx,
+        notification_filter: Box::new(notification_filter),
         child,
         stderr_lines: Box::new(stderr_lines),
         stdout_lines: Box::new(stdout_lines),
@@ -114,8 +113,13 @@ mod inspector {
     }
 
     async fn recv(&mut self) -> String {
-      // TODO(bartlomieju): graceful error handling
-      self.socket_rx.next().await.unwrap()
+      loop {
+        let result = self.socket_rx.next().await.unwrap().map_err(|e| e.into());
+        let message = self.handle_error(result).to_string();
+        if (self.notification_filter)(&message) {
+          return message;
+        }
+      }
     }
 
     async fn recv_as_json(&mut self) -> serde_json::Value {
@@ -832,14 +836,10 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    #[allow(clippy::ptr_arg)]
-    fn notification_filter(
-      msg: &String,
-    ) -> Pin<Box<dyn Future<Output = bool>>> {
-      let pass = (msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
+    fn notification_filter(msg: &str) -> bool {
+      (msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
         && msg.contains("testdata/inspector"))
-        || !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-      futures::future::ready(pass).boxed_local()
+        || !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
     }
 
     let mut tester = InspectorTester::create(child, notification_filter).await;
