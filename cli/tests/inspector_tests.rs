@@ -11,13 +11,12 @@ use deno_runtime::deno_websocket::tokio_tungstenite;
 use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
 use std::io::BufRead;
 use std::pin::Pin;
+use std::process::Child;
 use test_util as util;
 use tokio::net::TcpStream;
 use util::http_server;
 
 mod inspector {
-  use util::assert_contains;
-
   use super::*;
 
   struct InspectorTester {
@@ -28,10 +27,17 @@ mod inspector {
       tungstenite::Message,
     >,
     socket_rx: Pin<Box<dyn Stream<Item = String>>>,
+    child: Child,
+    stderr_lines: Box<dyn Iterator<Item = String>>,
   }
 
   impl InspectorTester {
-    async fn create(ws_url: url::Url, filter_script_parsed: bool) -> Self {
+    async fn create(mut child: Child, filter_script_parsed: bool) -> Self {
+      let stderr = child.stderr.take().unwrap();
+      let mut stderr_lines =
+        std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+      let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
       let (socket, response) =
         tokio_tungstenite::connect_async(ws_url).await.unwrap();
       assert_eq!(response.status(), 101); // Switching protocols.
@@ -53,6 +59,8 @@ mod inspector {
       Self {
         socket_tx,
         socket_rx,
+        child,
+        stderr_lines: Box::new(stderr_lines),
       }
     }
 
@@ -279,7 +287,7 @@ mod inspector {
   #[tokio::test]
   async fn inspector_break_on_first_line() {
     let script = util::testdata_path().join("inspector/inspector2.js");
-    let mut child = util::deno_cmd()
+    let child = util::deno_cmd()
       .arg("run")
       .arg(inspect_flag_with_unique_port("--inspect-brk"))
       .arg(script)
@@ -288,18 +296,13 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+    let mut tester = InspectorTester::create(child, true).await;
 
-    let mut tester = InspectorTester::create(ws_url, true).await;
-
-    let stdout = child.stdout.as_mut().unwrap();
+    let stdout = tester.child.stdout.take().unwrap();
     let mut stdout_lines =
       std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
 
-    assert_stderr_for_inspect_brk(&mut stderr_lines);
+    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
       .send_many(&[
@@ -359,27 +362,23 @@ mod inspector {
 
     assert_eq!(&stdout_lines.next().unwrap(), "hello from the script");
 
-    child.kill().unwrap();
-    child.wait().unwrap();
+    tester.child.kill().unwrap();
+    tester.child.wait().unwrap();
   }
 
   #[tokio::test]
   async fn inspector_pause() {
     let script = util::testdata_path().join("inspector/inspector1.js");
-    let mut child = util::deno_cmd()
+    let child = util::deno_cmd()
       .arg("run")
       .arg(inspect_flag_with_unique_port("--inspect"))
       .arg(script)
+      .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
       .spawn()
       .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
-
-    let mut tester = InspectorTester::create(ws_url, true).await;
+    let mut tester = InspectorTester::create(child, true).await;
 
     tester
       .send(json!({"id":6,"method":"Debugger.enable"}))
@@ -396,7 +395,7 @@ mod inspector {
       .assert_received_messages(&[r#"{"id":31,"result":{}}"#], &[])
       .await;
 
-    child.kill().unwrap();
+    tester.child.kill().unwrap();
   }
 
   #[tokio::test]
@@ -450,7 +449,7 @@ mod inspector {
   #[tokio::test]
   async fn inspector_does_not_hang() {
     let script = util::testdata_path().join("inspector/inspector3.js");
-    let mut child = util::deno_cmd()
+    let child = util::deno_cmd()
       .arg("run")
       .arg(inspect_flag_with_unique_port("--inspect-brk"))
       .env("NO_COLOR", "1")
@@ -460,18 +459,13 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+    let mut tester = InspectorTester::create(child, true).await;
 
-    let mut tester = InspectorTester::create(ws_url, true).await;
-
-    let stdout = child.stdout.as_mut().unwrap();
+    let stdout = tester.child.stdout.take().unwrap();
     let mut stdout_lines =
       std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
 
-    assert_stderr_for_inspect_brk(&mut stderr_lines);
+    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
       .send_many(&[
@@ -542,7 +536,7 @@ mod inspector {
     tester.socket_rx.for_each(|_| async {}).await;
 
     assert_eq!(&stdout_lines.next().unwrap(), "done");
-    assert!(child.wait().unwrap().success());
+    assert!(tester.child.wait().unwrap().success());
   }
 
   #[tokio::test]
@@ -576,7 +570,7 @@ mod inspector {
 
   #[tokio::test]
   async fn inspector_runtime_evaluate_does_not_crash() {
-    let mut child = util::deno_cmd()
+    let child = util::deno_cmd()
       .arg("repl")
       .arg(inspect_flag_with_unique_port("--inspect"))
       .stdin(std::process::Stdio::piped())
@@ -585,27 +579,24 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines = std::io::BufReader::new(stderr)
-      .lines()
-      .map(|r| r.unwrap())
-      .filter(|s| s.as_str() != "Debugger session started.");
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+    let mut tester = InspectorTester::create(child, true).await;
 
-    let mut tester = InspectorTester::create(ws_url, true).await;
+    let stdin = tester.child.stdin.take().unwrap();
 
-    let stdin = child.stdin.take().unwrap();
-
-    let stdout = child.stdout.as_mut().unwrap();
+    let stdout = tester.child.stdout.take().unwrap();
     let mut stdout_lines = std::io::BufReader::new(stdout)
       .lines()
       .map(|r| r.unwrap())
       .filter(|s| !s.starts_with("Deno "));
 
-    assert_stderr_for_inspect(&mut stderr_lines);
+    assert_stderr_for_inspect(&mut tester.stderr_lines);
     assert_eq!(
       &stdout_lines.next().unwrap(),
       "exit using ctrl+d, ctrl+c, or close()"
+    );
+    assert_eq!(
+      &tester.stderr_lines.next().unwrap(),
+      "Debugger session started."
     );
 
     tester
@@ -688,9 +679,9 @@ mod inspector {
         &[r#"{"method":"Runtime.consoleAPICalled"#],
       )
       .await;
-    assert_eq!(&stderr_lines.next().unwrap(), "done");
+    assert_eq!(&tester.stderr_lines.next().unwrap(), "done");
     drop(stdin);
-    child.wait().unwrap();
+    tester.child.wait().unwrap();
   }
 
   #[tokio::test]
@@ -780,7 +771,7 @@ mod inspector {
   #[tokio::test]
   async fn inspector_break_on_first_line_in_test() {
     let script = util::testdata_path().join("inspector/inspector_test.js");
-    let mut child = util::deno_cmd()
+    let child = util::deno_cmd()
       .arg("test")
       .arg("--quiet")
       .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -791,18 +782,13 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+    let mut tester = InspectorTester::create(child, true).await;
 
-    let mut tester = InspectorTester::create(ws_url, true).await;
-
-    let stdout = child.stdout.as_mut().unwrap();
+    let stdout = tester.child.stdout.take().unwrap();
     let mut stdout_lines =
       std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
 
-    assert_stderr_for_inspect_brk(&mut stderr_lines);
+    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
       .send_many(&[
@@ -860,8 +846,8 @@ mod inspector {
     assert_starts_with!(&stdout_lines.next().unwrap(), "running 1 test from");
     assert!(&stdout_lines.next().unwrap().contains("basic test ... ok"));
 
-    child.kill().unwrap();
-    child.wait().unwrap();
+    tester.child.kill().unwrap();
+    tester.child.wait().unwrap();
   }
 
   #[tokio::test]
@@ -1013,7 +999,7 @@ mod inspector {
   #[tokio::test]
   async fn inspector_memory() {
     let script = util::testdata_path().join("inspector/memory.js");
-    let mut child = util::deno_cmd()
+    let child = util::deno_cmd()
       .arg("run")
       .arg(inspect_flag_with_unique_port("--inspect-brk"))
       .arg(script)
@@ -1022,14 +1008,9 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+    let mut tester = InspectorTester::create(child, true).await;
 
-    let mut tester = InspectorTester::create(ws_url, true).await;
-
-    assert_stderr_for_inspect_brk(&mut stderr_lines);
+    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
       .send_many(&[
@@ -1112,14 +1093,14 @@ mod inspector {
       }
     }
 
-    child.kill().unwrap();
-    child.wait().unwrap();
+    tester.child.kill().unwrap();
+    tester.child.wait().unwrap();
   }
 
   #[tokio::test]
   async fn inspector_profile() {
     let script = util::testdata_path().join("inspector/memory.js");
-    let mut child = util::deno_cmd()
+    let child = util::deno_cmd()
       .arg("run")
       .arg(inspect_flag_with_unique_port("--inspect-brk"))
       .arg(script)
@@ -1128,14 +1109,9 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+    let mut tester = InspectorTester::create(child, true).await;
 
-    let mut tester = InspectorTester::create(ws_url, true).await;
-
-    assert_stderr_for_inspect_brk(&mut stderr_lines);
+    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
       .send_many(&[
@@ -1196,15 +1172,15 @@ mod inspector {
     profile["samples"].as_array().unwrap();
     profile["nodes"].as_array().unwrap();
 
-    child.kill().unwrap();
-    child.wait().unwrap();
+    tester.child.kill().unwrap();
+    tester.child.wait().unwrap();
   }
 
   #[tokio::test]
   async fn inspector_break_on_first_line_npm_esm() {
     let _server = http_server();
 
-    let mut child = util::deno_cmd()
+    let child = util::deno_cmd()
       .arg("run")
       .arg("--quiet")
       .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -1219,18 +1195,13 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+    let mut tester = InspectorTester::create(child, true).await;
 
-    let mut tester = InspectorTester::create(ws_url, true).await;
-
-    let stdout = child.stdout.as_mut().unwrap();
+    let stdout = tester.child.stdout.take().unwrap();
     let mut stdout_lines =
       std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
 
-    assert_stderr_for_inspect_brk(&mut stderr_lines);
+    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
       .send_many(&[
@@ -1271,14 +1242,14 @@ mod inspector {
     assert_eq!(&stdout_lines.next().unwrap(), "a");
     assert_eq!(&stdout_lines.next().unwrap(), "test");
 
-    child.kill().unwrap();
-    child.wait().unwrap();
+    tester.child.kill().unwrap();
+    tester.child.wait().unwrap();
   }
 
   #[tokio::test]
   async fn inspector_break_on_first_line_npm_cjs() {
     let _server = http_server();
-    let mut child = util::deno_cmd()
+    let child = util::deno_cmd()
       .arg("run")
       .arg("--quiet")
       .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -1293,18 +1264,13 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+    let mut tester = InspectorTester::create(child, true).await;
 
-    let mut tester = InspectorTester::create(ws_url, true).await;
-
-    let stdout = child.stdout.as_mut().unwrap();
+    let stdout = tester.child.stdout.take().unwrap();
     let mut stdout_lines =
       std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
 
-    assert_stderr_for_inspect_brk(&mut stderr_lines);
+    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
       .send_many(&[
@@ -1345,8 +1311,8 @@ mod inspector {
     assert_eq!(&stdout_lines.next().unwrap(), "a");
     assert_eq!(&stdout_lines.next().unwrap(), "test");
 
-    child.kill().unwrap();
-    child.wait().unwrap();
+    tester.child.kill().unwrap();
+    tester.child.wait().unwrap();
   }
 
   #[tokio::test]
@@ -1355,7 +1321,7 @@ mod inspector {
       util::testdata_path().join("inspector/error_with_npm_import.js");
     let _server = http_server();
 
-    let mut child = util::deno_cmd()
+    let child = util::deno_cmd()
       .arg("run")
       .arg("--quiet")
       .arg("-A")
@@ -1367,14 +1333,9 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+    let mut tester = InspectorTester::create(child, true).await;
 
-    let mut tester = InspectorTester::create(ws_url, true).await;
-
-    assert_stderr_for_inspect_brk(&mut stderr_lines);
+    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
       .send_many(&[
@@ -1413,12 +1374,15 @@ mod inspector {
     // TODO(bartlomieju): this is a partial fix, we should assert that
     // "Runtime.exceptionThrown" notification was sent, but a bindings for this
     // notification is not yet there
-    assert_eq!(&stderr_lines.next().unwrap(), "Debugger session started.");
     assert_eq!(
-      &stderr_lines.next().unwrap(),
+      &tester.stderr_lines.next().unwrap(),
+      "Debugger session started."
+    );
+    assert_eq!(
+      &tester.stderr_lines.next().unwrap(),
       "error: Uncaught Error: boom!"
     );
 
-    assert_eq!(child.wait().unwrap().code(), Some(1));
+    assert_eq!(tester.child.wait().unwrap().code(), Some(1));
   }
 }
