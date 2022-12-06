@@ -1322,7 +1322,7 @@ mod inspector {
   // https://github.com/denoland/deno/issues/11570
   #[tokio::test]
   async fn inspector_repl_debugger_statement() {
-    let mut child = util::deno_cmd()
+    let child = util::deno_cmd()
       .arg("repl")
       .arg(inspect_flag_with_unique_port("--inspect"))
       .stdin(std::process::Stdio::piped())
@@ -1331,47 +1331,24 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines = std::io::BufReader::new(stderr)
-      .lines()
-      .map(|r| r.unwrap())
-      .filter(|s| s.as_str() != "Debugger session started.");
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+    let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    let (socket, response) =
-      tokio_tungstenite::connect_async(ws_url).await.unwrap();
-    assert_eq!(response.status(), 101); // Switching protocols.
+    let stdin = tester.child.stdin.take().unwrap();
 
-    let (mut socket_tx, socket_rx) = socket.split();
-    let mut socket_rx = socket_rx
-      .map(|msg| msg.unwrap().to_string())
-      .filter(|msg| {
-        let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-        futures::future::ready(pass)
-      })
-      .boxed_local();
-
-    let stdin = child.stdin.take().unwrap();
-
-    let stdout = child.stdout.as_mut().unwrap();
-    let mut stdout_lines = std::io::BufReader::new(stdout)
-      .lines()
-      .map(|r| r.unwrap())
-      .filter(|s| !s.starts_with("Deno "));
-
-    assert_stderr_for_inspect(&mut stderr_lines);
+    tester.assert_stderr_for_inspect();
+    assert_starts_with!(&tester.stdout_line(), "Deno");
     assert_eq!(
-      &stdout_lines.next().unwrap(),
+      &tester.stdout_line(),
       "exit using ctrl+d, ctrl+c, or close()"
     );
 
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[
-        r#"{"id":1,"method":"Runtime.enable"}"#,
-        r#"{"id":2,"method":"Debugger.enable"}"#,
-      ],
-      &mut socket_rx,
+    tester
+      .send_many(&[
+        json!({"id":1,"method":"Runtime.enable"}),
+        json!({"id":2,"method":"Debugger.enable"}),
+      ])
+      .await;
+    tester.assert_received_messages(
       &[
         r#"{"id":1,"result":{}}"#,
         r#"{"id":2,"result":{"debuggerId":"#,
@@ -1382,37 +1359,62 @@ mod inspector {
     )
     .await;
 
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[
-        r#"{"id":3,"method":"Runtime.evaluate","params":{"expression":"debugger","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
-      ],
-      &mut socket_rx,
-      &[],
-      &[
-        r#"{"method":"Debugger.paused""#,
-      ],
-    ).await;
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[
-        r#"{"id":4,"method":"Debugger.resume","params":{"terminateOnResume":false}}"#,
-      ],
-      &mut socket_rx,
-      &[
-        r#"{"id":4,"result":{}}"#,
-        r#"{"id":3,"result":{"result":{"type":"undefined"}}}"#,
-      ],
-      &[
-        r#"{"method":"Debugger.resumed""#,
-      ],
-    ).await;
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[
-        r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"1","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
-      ],
-      &mut socket_rx,
+    tester
+      .send(json!({
+        "id":3,
+        "method":"Runtime.evaluate",
+        "params":{
+          "expression":"debugger",
+          "objectGroup":"console",
+          "includeCommandLineAPI":true,
+          "silent":false,
+          "contextId":1,
+          "returnByValue":true,
+          "generatePreview":true,
+          "userGesture":true,
+          "awaitPromise":false,
+          "replMode":true
+        }
+      }))
+      .await;
+    tester
+      .assert_received_messages(&[], &[r#"{"method":"Debugger.paused""#])
+      .await;
+    tester
+      .send(json!({
+        "id":4,
+        "method":"Debugger.resume",
+        "params":{"terminateOnResume":false}
+      }))
+      .await;
+    tester
+      .assert_received_messages(
+        &[
+          r#"{"id":4,"result":{}}"#,
+          r#"{"id":3,"result":{"result":{"type":"undefined"}}}"#,
+        ],
+        &[r#"{"method":"Debugger.resumed""#],
+      )
+      .await;
+    tester
+      .send(json!({
+        "id":5,
+        "method":"Runtime.evaluate",
+        "params":{
+          "expression":"1",
+          "objectGroup":"console",
+          "includeCommandLineAPI":true,
+          "silent":false,
+          "contextId":1,
+          "returnByValue":true,
+          "generatePreview":true,
+          "userGesture":true,
+          "awaitPromise":false,
+          "replMode":true
+        }
+      }))
+      .await;
+    tester.assert_received_messages(
       &[
         r#"{"id":5,"result":{"result":{"type":"number","value":1,"description":"1"}}}"#,
       ],
@@ -1420,6 +1422,6 @@ mod inspector {
       ],
     ).await;
     drop(stdin);
-    child.wait().unwrap();
+    tester.child.wait().unwrap();
   }
 }
