@@ -982,9 +982,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.50.0"
+version = "0.51.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc40beda42f25219236ea7a517c63c6ad57375cba5ecf1a00aa4a21a0c294f90"
+checksum = "7a5f0f24f690e9c0c1d22fe9c9da68b65d7378a5c10afe4a61398134eb031e21"
 dependencies = [
  "cfg-if",
  "deno_ast",
@@ -1000,9 +1000,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7be76420d8eaac9d82295eb51cb2c0aebd326d305a2ecbeab6582343fb1b743c"
+checksum = "c721cb4e2ca7d94702f6987c2050aedfd270d18f87020080e396865a65dd957e"
 dependencies = [
  "anyhow",
  "base64",
@@ -1063,14 +1063,14 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "anyhow",
  "cfg-if",
  "data-url",
  "deno_ast",
  "futures",
- "lazy_static",
+ "once_cell",
  "parking_lot 0.12.1",
  "regex",
  "serde",
@@ -1657,9 +1657,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.30.0"
+version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fdf9b31295c768c806cbc0d08d98868b4382684b002d216a16eb661bb8e8575"
+checksum = "d8119eb19b5b7f9c6b6da550781249bb05562fbdadb10f80f0a3afb96dde4944"
 dependencies = [
  "anyhow",
  "base64",
@@ -3021,9 +3021,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.14.0"
+version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f7254b99e31cad77da24b08ebf628882739a608578bb1bcdfc1f9c21260d7c0"
+checksum = "86f0b0d4bf799edbc74508c1e8bf170ff5f41238e5f8225603ca7caaae2b7860"
 
 [[package]]
 name = "opaque-debug"
