@@ -124,6 +124,14 @@ mod inspector {
         }
       }
     }
+
+    fn stderr_line(&mut self) -> String {
+      self.stderr_lines.next().unwrap()
+    }
+
+    fn stdout_line(&mut self) -> String {
+      self.stdout_lines.next().unwrap()
+    }
   }
 
   macro_rules! assert_starts_with {
@@ -531,15 +539,12 @@ mod inspector {
     let stdin = tester.child.stdin.take().unwrap();
 
     assert_stderr_for_inspect(&mut tester.stderr_lines);
-    assert_starts_with!(&tester.stdout_lines.next().unwrap(), "Deno");
+    assert_starts_with!(&tester.stdout_line(), "Deno");
     assert_eq!(
-      &tester.stdout_lines.next().unwrap(),
+      &tester.stdout_line(),
       "exit using ctrl+d, ctrl+c, or close()"
     );
-    assert_eq!(
-      &tester.stderr_lines.next().unwrap(),
-      "Debugger session started."
-    );
+    assert_eq!(&tester.stderr_line(), "Debugger session started.");
 
     tester
       .send_many(&[
@@ -621,7 +626,7 @@ mod inspector {
         &[r#"{"method":"Runtime.consoleAPICalled"#],
       )
       .await;
-    assert_eq!(&tester.stderr_lines.next().unwrap(), "done");
+    assert_eq!(&tester.stderr_line(), "done");
     drop(stdin);
     tester.child.wait().unwrap();
   }
@@ -781,15 +786,8 @@ mod inspector {
       .assert_received_messages(&[r#"{"id":5,"result":{}}"#], &[])
       .await;
 
-    assert_starts_with!(
-      &tester.stdout_lines.next().unwrap(),
-      "running 1 test from"
-    );
-    assert!(&tester
-      .stdout_lines
-      .next()
-      .unwrap()
-      .contains("basic test ... ok"));
+    assert_starts_with!(&tester.stdout_line(), "running 1 test from");
+    assert!(&tester.stdout_line().contains("basic test ... ok"));
 
     tester.child.kill().unwrap();
     tester.child.wait().unwrap();
@@ -896,8 +894,8 @@ mod inspector {
       .assert_received_messages(&[r#"{"id":7,"result":{}}"#], &[])
       .await;
 
-    assert_eq!(&tester.stdout_lines.next().unwrap(), "hello");
-    assert_eq!(&tester.stdout_lines.next().unwrap(), "world");
+    assert_eq!(&tester.stdout_line(), "hello");
+    assert_eq!(&tester.stdout_line(), "world");
 
     tester.assert_received_messages(
       &[],
@@ -909,10 +907,9 @@ mod inspector {
       ],
     )
     .await;
-    let line = &tester.stdout_lines.next().unwrap();
 
     assert_eq!(
-      line,
+      &tester.stdout_line(),
       "Program finished. Waiting for inspector to disconnect to exit the process..."
     );
 
@@ -1157,10 +1154,10 @@ mod inspector {
       .assert_received_messages(&[r#"{"id":4,"result":{}}"#], &[])
       .await;
 
-    assert_eq!(&tester.stdout_lines.next().unwrap(), "this");
-    assert_eq!(&tester.stdout_lines.next().unwrap(), "is");
-    assert_eq!(&tester.stdout_lines.next().unwrap(), "a");
-    assert_eq!(&tester.stdout_lines.next().unwrap(), "test");
+    assert_eq!(&tester.stdout_line(), "this");
+    assert_eq!(&tester.stdout_line(), "is");
+    assert_eq!(&tester.stdout_line(), "a");
+    assert_eq!(&tester.stdout_line(), "test");
 
     tester.child.kill().unwrap();
     tester.child.wait().unwrap();
@@ -1222,10 +1219,10 @@ mod inspector {
       .assert_received_messages(&[r#"{"id":4,"result":{}}"#], &[])
       .await;
 
-    assert_eq!(&tester.stdout_lines.next().unwrap(), "this");
-    assert_eq!(&tester.stdout_lines.next().unwrap(), "is");
-    assert_eq!(&tester.stdout_lines.next().unwrap(), "a");
-    assert_eq!(&tester.stdout_lines.next().unwrap(), "test");
+    assert_eq!(&tester.stdout_line(), "this");
+    assert_eq!(&tester.stdout_line(), "is");
+    assert_eq!(&tester.stdout_line(), "a");
+    assert_eq!(&tester.stdout_line(), "test");
 
     tester.child.kill().unwrap();
     tester.child.wait().unwrap();
@@ -1290,14 +1287,8 @@ mod inspector {
     // TODO(bartlomieju): this is a partial fix, we should assert that
     // "Runtime.exceptionThrown" notification was sent, but a bindings for this
     // notification is not yet there
-    assert_eq!(
-      &tester.stderr_lines.next().unwrap(),
-      "Debugger session started."
-    );
-    assert_eq!(
-      &tester.stderr_lines.next().unwrap(),
-      "error: Uncaught Error: boom!"
-    );
+    assert_eq!(&tester.stderr_line(), "Debugger session started.");
+    assert_eq!(&tester.stderr_line(), "error: Uncaught Error: boom!");
 
     assert_eq!(tester.child.wait().unwrap().code(), Some(1));
   }
