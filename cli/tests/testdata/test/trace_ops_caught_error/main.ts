@@ -3,7 +3,7 @@ Deno.test("handle thrown error in async function", async () => {
   const filePath = `${dirPath}/file.txt`;
   try {
     await Deno.stat(filePath);
-  } catch (e) {
+  } catch {
     await Deno.writeTextFile(filePath, "");
   } finally {
     await Deno.remove(filePath);
