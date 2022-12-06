@@ -43,9 +43,9 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core.workspace = true
-deno_doc = "0.50.0"
-deno_emit = "0.11.0"
-deno_graph = "0.38.0"
+deno_doc = "0.51.0"
+deno_emit = "0.12.0"
+deno_graph = "0.39.0"
 deno_lint = { version = "0.35.0", features = ["docs"] }
 deno_runtime.workspace = true
 deno_task_shell = "0.8.1"
@@ -66,7 +66,7 @@ dprint-plugin-markdown = "=0.14.3"
 dprint-plugin-typescript = "=0.78.0"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
-eszip = "=0.30.0"
+eszip = "=0.31.0"
 fancy-regex = "=0.10.0"
 flate2.workspace = true
 http.workspace = true

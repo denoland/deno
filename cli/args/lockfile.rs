@@ -2,18 +2,13 @@
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
-use deno_core::ModuleSpecifier;
 use log::debug;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
 
 use crate::args::ConfigFile;
 use crate::npm::NpmPackageId;
@@ -96,15 +91,6 @@ pub struct Lockfile {
 }
 
 impl Lockfile {
-  pub fn as_maybe_locker(
-    lockfile: Option<Arc<Mutex<Lockfile>>>,
-  ) -> Option<Rc<RefCell<dyn deno_graph::source::Locker>>> {
-    lockfile.as_ref().map(|lf| {
-      Rc::new(RefCell::new(Locker(Some(lf.clone()))))
-        as Rc<RefCell<dyn deno_graph::source::Locker>>
-    })
-  }
-
   pub fn discover(
     flags: &Flags,
     maybe_config_file: Option<&ConfigFile>,
@@ -339,33 +325,6 @@ Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
       .specifiers
       .insert(package_req.to_string(), package_id.as_serialized());
     self.has_content_changed = true;
-  }
-}
-
-#[derive(Debug)]
-pub struct Locker(Option<Arc<Mutex<Lockfile>>>);
-
-impl deno_graph::source::Locker for Locker {
-  fn check_or_insert(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    source: &str,
-  ) -> bool {
-    if let Some(lock_file) = &self.0 {
-      let mut lock_file = lock_file.lock();
-      lock_file.check_or_insert_remote(specifier.as_str(), source)
-    } else {
-      true
-    }
-  }
-
-  fn get_checksum(&self, content: &str) -> String {
-    util::checksum::gen(&[content.as_bytes()])
-  }
-
-  fn get_filename(&self) -> Option<String> {
-    let lock_file = self.0.as_ref()?.lock();
-    lock_file.filename.to_str().map(|s| s.to_string())
   }
 }
 
