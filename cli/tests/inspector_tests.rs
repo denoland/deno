@@ -31,8 +31,17 @@ mod inspector {
     stderr_lines: Box<dyn Iterator<Item = String>>,
   }
 
+  #[allow(clippy::ptr_arg)]
+  fn ignore_script_parsed(msg: &String) -> Pin<Box<dyn Future<Output = bool>>> {
+    let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+    futures::future::ready(pass).boxed_local()
+  }
+
   impl InspectorTester {
-    async fn create(mut child: Child, filter_script_parsed: bool) -> Self {
+    async fn create<F>(mut child: Child, notification_filter: F) -> Self
+    where
+      F: FnMut(&String) -> Pin<Box<dyn Future<Output = bool>>> + 'static,
+    {
       let stderr = child.stderr.take().unwrap();
       let mut stderr_lines =
         std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
@@ -43,18 +52,10 @@ mod inspector {
       assert_eq!(response.status(), 101); // Switching protocols.
 
       let (socket_tx, socket_rx) = socket.split();
-      let mut socket_rx =
-        socket_rx.map(|msg| msg.unwrap().to_string()).boxed_local();
-
-      if filter_script_parsed {
-        socket_rx = socket_rx
-          .filter(|msg| {
-            let pass =
-              !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-            futures::future::ready(pass)
-          })
-          .boxed_local();
-      }
+      let socket_rx = socket_rx
+        .map(|msg| msg.unwrap().to_string())
+        .filter(notification_filter)
+        .boxed_local();
 
       Self {
         socket_tx,
@@ -200,65 +201,6 @@ mod inspector {
     );
   }
 
-  async fn send_messages(
-    socket_tx: &mut SplitSink<
-      tokio_tungstenite::WebSocketStream<
-        tokio_tungstenite::MaybeTlsStream<TcpStream>,
-      >,
-      tungstenite::Message,
-    >,
-    messages: &[serde_json::Value],
-  ) {
-    // TODO(bartlomieju): add graceful error handling
-    for msg in messages {
-      socket_tx.send(msg.to_string().into()).await.unwrap();
-    }
-  }
-
-  async fn send_message(
-    socket_tx: &mut SplitSink<
-      tokio_tungstenite::WebSocketStream<
-        tokio_tungstenite::MaybeTlsStream<TcpStream>,
-      >,
-      tungstenite::Message,
-    >,
-    message: serde_json::Value,
-  ) {
-    send_messages(socket_tx, &[message]).await;
-  }
-
-  async fn assert_received_messages(
-    socket_rx: &mut Pin<Box<dyn Stream<Item = String>>>,
-    responses: &[&str],
-    notifications: &[&str],
-  ) {
-    let expected_messages = responses.len() + notifications.len();
-    let mut responses_idx = 0;
-    let mut notifications_idx = 0;
-
-    for _ in 0..expected_messages {
-      let msg = socket_rx.next().await.unwrap();
-
-      if msg.starts_with(r#"{"id":"#) {
-        assert!(
-          msg.starts_with(responses[responses_idx]),
-          "Doesn't start with {}, instead received {}",
-          responses[responses_idx],
-          msg
-        );
-        responses_idx += 1;
-      } else {
-        assert!(
-          msg.starts_with(notifications[notifications_idx]),
-          "Doesn't start with {}, instead received {}",
-          notifications[notifications_idx],
-          msg
-        );
-        notifications_idx += 1;
-      }
-    }
-  }
-
   #[tokio::test]
   async fn inspector_connect() {
     let script = util::testdata_path().join("inspector/inspector1.js");
@@ -296,7 +238,7 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let mut tester = InspectorTester::create(child, true).await;
+    let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
     let stdout = tester.child.stdout.take().unwrap();
     let mut stdout_lines =
@@ -378,7 +320,7 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let mut tester = InspectorTester::create(child, true).await;
+    let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
     tester
       .send(json!({"id":6,"method":"Debugger.enable"}))
@@ -459,7 +401,7 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let mut tester = InspectorTester::create(child, true).await;
+    let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
     let stdout = tester.child.stdout.take().unwrap();
     let mut stdout_lines =
@@ -579,7 +521,7 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let mut tester = InspectorTester::create(child, true).await;
+    let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
     let stdin = tester.child.stdin.take().unwrap();
 
@@ -782,7 +724,7 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let mut tester = InspectorTester::create(child, true).await;
+    let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
     let stdout = tester.child.stdout.take().unwrap();
     let mut stdout_lines =
@@ -853,7 +795,7 @@ mod inspector {
   #[tokio::test]
   async fn inspector_with_ts_files() {
     let script = util::testdata_path().join("inspector/test.ts");
-    let mut child = util::deno_cmd()
+    let child = util::deno_cmd()
       .arg("run")
       .arg("--check")
       .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -863,42 +805,31 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+    #[allow(clippy::ptr_arg)]
+    fn notification_filter(
+      msg: &String,
+    ) -> Pin<Box<dyn Future<Output = bool>>> {
+      let pass = (msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
+        && msg.contains("testdata/inspector"))
+        || !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+      futures::future::ready(pass).boxed_local()
+    }
 
-    let (socket, response) =
-      tokio_tungstenite::connect_async(ws_url).await.unwrap();
-    assert_eq!(response.status(), 101); // Switching protocols.
+    let mut tester = InspectorTester::create(child, notification_filter).await;
 
-    let (mut socket_tx, socket_rx) = socket.split();
-    let mut socket_rx = socket_rx
-      .map(|msg| msg.unwrap().to_string())
-      .filter(|msg| {
-        let pass = (msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
-          && msg.contains("testdata/inspector"))
-          || !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-        futures::future::ready(pass)
-      })
-      .boxed_local();
-
-    let stdout = child.stdout.as_mut().unwrap();
+    let stdout = tester.child.stdout.take().unwrap();
     let mut stdout_lines =
       std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
 
-    assert_stderr_for_inspect_brk(&mut stderr_lines);
+    assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
-    send_messages(
-      &mut socket_tx,
-      &[
+    tester
+      .send_many(&[
         json!({"id":1,"method":"Runtime.enable"}),
         json!({"id":2,"method":"Debugger.enable"}),
-      ],
-    )
-    .await;
-    assert_received_messages(
-      &mut socket_rx,
+      ])
+      .await;
+    tester.assert_received_messages(
       &[
         r#"{"id":1,"result":{}}"#,
       ],
@@ -909,54 +840,47 @@ mod inspector {
     .await;
 
     // receive messages with sources from this test
-    let script1 = socket_rx.next().await.unwrap();
+    let script1 = tester.recv().await;
     assert!(script1.contains("testdata/inspector/test.ts"));
     let script1_id = {
       let v: serde_json::Value = serde_json::from_str(&script1).unwrap();
       v["params"]["scriptId"].as_str().unwrap().to_string()
     };
-    let script2 = socket_rx.next().await.unwrap();
+    let script2 = tester.recv().await;
     assert!(script2.contains("testdata/inspector/foo.ts"));
     let script2_id = {
       let v: serde_json::Value = serde_json::from_str(&script2).unwrap();
       v["params"]["scriptId"].as_str().unwrap().to_string()
     };
-    let script3 = socket_rx.next().await.unwrap();
+    let script3 = tester.recv().await;
     assert!(script3.contains("testdata/inspector/bar.js"));
     let script3_id = {
       let v: serde_json::Value = serde_json::from_str(&script3).unwrap();
       v["params"]["scriptId"].as_str().unwrap().to_string()
     };
 
-    assert_received_messages(
-      &mut socket_rx,
-      &[r#"{"id":2,"result":{"debuggerId":"#],
-      &[],
-    )
-    .await;
+    tester
+      .assert_received_messages(&[r#"{"id":2,"result":{"debuggerId":"#], &[])
+      .await;
 
-    send_message(
-      &mut socket_tx,
-      json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
-    )
-    .await;
-    assert_received_messages(
-      &mut socket_rx,
-      &[r#"{"id":3,"result":{}}"#],
-      &[r#"{"method":"Debugger.paused","#],
-    )
-    .await;
+    tester
+      .send(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
+      .await;
+    tester
+      .assert_received_messages(
+        &[r#"{"id":3,"result":{}}"#],
+        &[r#"{"method":"Debugger.paused","#],
+      )
+      .await;
 
-    send_messages(
-    &mut socket_tx,
+    tester.send_many(
     &[
       json!({"id":4,"method":"Debugger.getScriptSource","params":{"scriptId":script1_id.as_str()}}),
       json!({"id":5,"method":"Debugger.getScriptSource","params":{"scriptId":script2_id.as_str()}}),
       json!({"id":6,"method":"Debugger.getScriptSource","params":{"scriptId":script3_id.as_str()}}),
     ])
     .await;
-    assert_received_messages(
-      &mut socket_rx,
+    tester.assert_received_messages(
       &[
         r#"{"id":4,"result":{"scriptSource":"import { foo } from \"./foo.ts\";\nimport { bar } from \"./bar.js\";\nconsole.log(foo());\nconsole.log(bar());\n//# sourceMappingURL=data:application/json;base64,"#,
         r#"{"id":5,"result":{"scriptSource":"class Foo {\n    hello() {\n        return \"hello\";\n    }\n}\nexport function foo() {\n    const f = new Foo();\n    return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
@@ -966,16 +890,17 @@ mod inspector {
     )
     .await;
 
-    send_message(&mut socket_tx, json!({"id":7,"method":"Debugger.resume"}))
+    tester
+      .send(json!({"id":7,"method":"Debugger.resume"}))
       .await;
-    assert_received_messages(&mut socket_rx, &[r#"{"id":7,"result":{}}"#], &[])
+    tester
+      .assert_received_messages(&[r#"{"id":7,"result":{}}"#], &[])
       .await;
 
     assert_eq!(&stdout_lines.next().unwrap(), "hello");
     assert_eq!(&stdout_lines.next().unwrap(), "world");
 
-    assert_received_messages(
-      &mut socket_rx,
+    tester.assert_received_messages(
       &[],
       &[
         r#"{"method":"Debugger.resumed","params":{}}"#,
@@ -992,8 +917,8 @@ mod inspector {
       "Program finished. Waiting for inspector to disconnect to exit the process..."
     );
 
-    child.kill().unwrap();
-    child.wait().unwrap();
+    tester.child.kill().unwrap();
+    tester.child.wait().unwrap();
   }
 
   #[tokio::test]
@@ -1008,7 +933,7 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let mut tester = InspectorTester::create(child, true).await;
+    let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
     assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
@@ -1109,7 +1034,7 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let mut tester = InspectorTester::create(child, true).await;
+    let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
     assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
@@ -1195,7 +1120,7 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let mut tester = InspectorTester::create(child, true).await;
+    let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
     let stdout = tester.child.stdout.take().unwrap();
     let mut stdout_lines =
@@ -1264,7 +1189,7 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let mut tester = InspectorTester::create(child, true).await;
+    let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
     let stdout = tester.child.stdout.take().unwrap();
     let mut stdout_lines =
@@ -1333,7 +1258,7 @@ mod inspector {
       .spawn()
       .unwrap();
 
-    let mut tester = InspectorTester::create(child, true).await;
+    let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
     assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
