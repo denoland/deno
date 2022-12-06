@@ -29,6 +29,7 @@ mod inspector {
     socket_rx: Pin<Box<dyn Stream<Item = String>>>,
     child: Child,
     stderr_lines: Box<dyn Iterator<Item = String>>,
+    stdout_lines: Box<dyn Iterator<Item = String>>,
   }
 
   #[allow(clippy::ptr_arg)]
@@ -42,9 +43,14 @@ mod inspector {
     where
       F: FnMut(&String) -> Pin<Box<dyn Future<Output = bool>>> + 'static,
     {
+      let stdout = child.stdout.take().unwrap();
+      let stdout_lines =
+        std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+
       let stderr = child.stderr.take().unwrap();
       let mut stderr_lines =
         std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
       let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
       let (socket, response) =
@@ -62,6 +68,7 @@ mod inspector {
         socket_rx,
         child,
         stderr_lines: Box::new(stderr_lines),
+        stdout_lines: Box::new(stdout_lines),
       }
     }
 
@@ -240,10 +247,6 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    let stdout = tester.child.stdout.take().unwrap();
-    let mut stdout_lines =
-      std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
-
     assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
@@ -293,7 +296,10 @@ mod inspector {
       )
       .await;
 
-    assert_eq!(&stdout_lines.next().unwrap(), "hello from the inspector");
+    assert_eq!(
+      &tester.stdout_lines.next().unwrap(),
+      "hello from the inspector"
+    );
 
     tester
       .send(json!({"id":5,"method":"Debugger.resume"}))
@@ -302,7 +308,10 @@ mod inspector {
       .assert_received_messages(&[r#"{"id":5,"result":{}}"#], &[])
       .await;
 
-    assert_eq!(&stdout_lines.next().unwrap(), "hello from the script");
+    assert_eq!(
+      &tester.stdout_lines.next().unwrap(),
+      "hello from the script"
+    );
 
     tester.child.kill().unwrap();
     tester.child.wait().unwrap();
@@ -403,10 +412,6 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    let stdout = tester.child.stdout.take().unwrap();
-    let mut stdout_lines =
-      std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
-
     assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
@@ -450,7 +455,7 @@ mod inspector {
       let request_id = i + 10;
       // Expect the number {i} on stdout.
       let s = i.to_string();
-      assert_eq!(stdout_lines.next().unwrap(), s);
+      assert_eq!(tester.stdout_lines.next().unwrap(), s);
 
       tester
         .assert_received_messages(
@@ -477,7 +482,7 @@ mod inspector {
     tester.socket_tx.close().await.unwrap();
     tester.socket_rx.for_each(|_| async {}).await;
 
-    assert_eq!(&stdout_lines.next().unwrap(), "done");
+    assert_eq!(&tester.stdout_lines.next().unwrap(), "done");
     assert!(tester.child.wait().unwrap().success());
   }
 
@@ -525,15 +530,10 @@ mod inspector {
 
     let stdin = tester.child.stdin.take().unwrap();
 
-    let stdout = tester.child.stdout.take().unwrap();
-    let mut stdout_lines = std::io::BufReader::new(stdout)
-      .lines()
-      .map(|r| r.unwrap())
-      .filter(|s| !s.starts_with("Deno "));
-
     assert_stderr_for_inspect(&mut tester.stderr_lines);
+    assert_starts_with!(&tester.stdout_lines.next().unwrap(), "Deno");
     assert_eq!(
-      &stdout_lines.next().unwrap(),
+      &tester.stdout_lines.next().unwrap(),
       "exit using ctrl+d, ctrl+c, or close()"
     );
     assert_eq!(
@@ -726,10 +726,6 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    let stdout = tester.child.stdout.take().unwrap();
-    let mut stdout_lines =
-      std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
-
     assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
@@ -785,8 +781,15 @@ mod inspector {
       .assert_received_messages(&[r#"{"id":5,"result":{}}"#], &[])
       .await;
 
-    assert_starts_with!(&stdout_lines.next().unwrap(), "running 1 test from");
-    assert!(&stdout_lines.next().unwrap().contains("basic test ... ok"));
+    assert_starts_with!(
+      &tester.stdout_lines.next().unwrap(),
+      "running 1 test from"
+    );
+    assert!(&tester
+      .stdout_lines
+      .next()
+      .unwrap()
+      .contains("basic test ... ok"));
 
     tester.child.kill().unwrap();
     tester.child.wait().unwrap();
@@ -816,10 +819,6 @@ mod inspector {
     }
 
     let mut tester = InspectorTester::create(child, notification_filter).await;
-
-    let stdout = tester.child.stdout.take().unwrap();
-    let mut stdout_lines =
-      std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
 
     assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
@@ -897,8 +896,8 @@ mod inspector {
       .assert_received_messages(&[r#"{"id":7,"result":{}}"#], &[])
       .await;
 
-    assert_eq!(&stdout_lines.next().unwrap(), "hello");
-    assert_eq!(&stdout_lines.next().unwrap(), "world");
+    assert_eq!(&tester.stdout_lines.next().unwrap(), "hello");
+    assert_eq!(&tester.stdout_lines.next().unwrap(), "world");
 
     tester.assert_received_messages(
       &[],
@@ -910,7 +909,7 @@ mod inspector {
       ],
     )
     .await;
-    let line = &stdout_lines.next().unwrap();
+    let line = &tester.stdout_lines.next().unwrap();
 
     assert_eq!(
       line,
@@ -1122,10 +1121,6 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    let stdout = tester.child.stdout.take().unwrap();
-    let mut stdout_lines =
-      std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
-
     assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
@@ -1162,10 +1157,10 @@ mod inspector {
       .assert_received_messages(&[r#"{"id":4,"result":{}}"#], &[])
       .await;
 
-    assert_eq!(&stdout_lines.next().unwrap(), "this");
-    assert_eq!(&stdout_lines.next().unwrap(), "is");
-    assert_eq!(&stdout_lines.next().unwrap(), "a");
-    assert_eq!(&stdout_lines.next().unwrap(), "test");
+    assert_eq!(&tester.stdout_lines.next().unwrap(), "this");
+    assert_eq!(&tester.stdout_lines.next().unwrap(), "is");
+    assert_eq!(&tester.stdout_lines.next().unwrap(), "a");
+    assert_eq!(&tester.stdout_lines.next().unwrap(), "test");
 
     tester.child.kill().unwrap();
     tester.child.wait().unwrap();
@@ -1191,10 +1186,6 @@ mod inspector {
 
     let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-    let stdout = tester.child.stdout.take().unwrap();
-    let mut stdout_lines =
-      std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
-
     assert_stderr_for_inspect_brk(&mut tester.stderr_lines);
 
     tester
@@ -1231,10 +1222,10 @@ mod inspector {
       .assert_received_messages(&[r#"{"id":4,"result":{}}"#], &[])
       .await;
 
-    assert_eq!(&stdout_lines.next().unwrap(), "this");
-    assert_eq!(&stdout_lines.next().unwrap(), "is");
-    assert_eq!(&stdout_lines.next().unwrap(), "a");
-    assert_eq!(&stdout_lines.next().unwrap(), "test");
+    assert_eq!(&tester.stdout_lines.next().unwrap(), "this");
+    assert_eq!(&tester.stdout_lines.next().unwrap(), "is");
+    assert_eq!(&tester.stdout_lines.next().unwrap(), "a");
+    assert_eq!(&tester.stdout_lines.next().unwrap(), "test");
 
     tester.child.kill().unwrap();
     tester.child.wait().unwrap();
