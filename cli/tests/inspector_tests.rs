@@ -100,7 +100,7 @@ mod inspector {
     );
   }
 
-  async fn assert_inspector_messages(
+  async fn send_messages(
     socket_tx: &mut SplitSink<
       tokio_tungstenite::WebSocketStream<
         tokio_tungstenite::MaybeTlsStream<TcpStream>,
@@ -108,14 +108,30 @@ mod inspector {
       tungstenite::Message,
     >,
     messages: &[serde_json::Value],
+  ) {
+    // TODO(bartlomieju): add graceful error handling
+    for msg in messages {
+      socket_tx.send(msg.to_string().into()).await.unwrap();
+    }
+  }
+
+  async fn send_message(
+    socket_tx: &mut SplitSink<
+      tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<TcpStream>,
+      >,
+      tungstenite::Message,
+    >,
+    message: serde_json::Value,
+  ) {
+    send_messages(socket_tx, &[message]).await;
+  }
+
+  async fn assert_received_messages(
     socket_rx: &mut Pin<Box<dyn Stream<Item = String>>>,
     responses: &[&str],
     notifications: &[&str],
   ) {
-    for msg in messages {
-      socket_tx.send(msg.to_string().into()).await.unwrap();
-    }
-
     let expected_messages = responses.len() + notifications.len();
     let mut responses_idx = 0;
     let mut notifications_idx = 0;
@@ -204,35 +220,41 @@ mod inspector {
 
     assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-    assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      json!({"id":1,"method":"Runtime.enable"}),
-      json!({"id":2,"method":"Debugger.enable"}),
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#,
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ],
-  )
-  .await;
-
-    assert_inspector_messages(
+    send_messages(
       &mut socket_tx,
-      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
+      &[
+        json!({"id":1,"method":"Runtime.enable"}),
+        json!({"id":2,"method":"Debugger.enable"}),
+      ],
+    )
+    .await;
+    assert_received_messages(
+      &mut socket_rx,
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
+
+    send_message(
+      &mut socket_tx,
+      json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
 
-    assert_inspector_messages(
+    send_message(
       &mut socket_tx,
-      &[json!({
+      json!({
         "id":4,
         "method":"Runtime.evaluate",
         "params":{
@@ -242,7 +264,10 @@ mod inspector {
           "silent":false,
           "returnByValue":true
         }
-      })],
+      }),
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
       &[],
@@ -251,14 +276,10 @@ mod inspector {
 
     assert_eq!(&stdout_lines.next().unwrap(), "hello from the inspector");
 
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[json!({"id":5,"method":"Debugger.resume"})],
-      &mut socket_rx,
-      &[r#"{"id":5,"result":{}}"#],
-      &[],
-    )
-    .await;
+    send_message(&mut socket_tx, json!({"id":5,"method":"Debugger.resume"}))
+      .await;
+    assert_received_messages(&mut socket_rx, &[r#"{"id":5,"result":{}}"#], &[])
+      .await;
 
     assert_eq!(&stdout_lines.next().unwrap(), "hello from the script");
 
@@ -307,6 +328,7 @@ mod inspector {
       unreachable!()
     }
 
+    // TODO(bartlomieju): rewrite to use common API
     socket
       .send(r#"{"id":6,"method":"Debugger.enable"}"#.into())
       .await
@@ -411,35 +433,41 @@ mod inspector {
 
     assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-    assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      json!({"id":1,"method":"Runtime.enable"}),
-      json!({"id":2,"method":"Debugger.enable"}),
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#
-    ],
-  )
-  .await;
-
-    assert_inspector_messages(
+    send_messages(
       &mut socket_tx,
-      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
+      &[
+        json!({"id":1,"method":"Runtime.enable"}),
+        json!({"id":2,"method":"Debugger.enable"}),
+      ],
+    )
+    .await;
+    assert_received_messages(
+      &mut socket_rx,
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#
+      ],
+    )
+    .await;
+
+    send_message(
+      &mut socket_tx,
+      json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
 
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[json!({"id":4,"method":"Debugger.resume"})],
+    send_message(&mut socket_tx, json!({"id":4,"method":"Debugger.resume"}))
+      .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":4,"result":{}}"#],
       &[r#"{"method":"Debugger.resumed","params":{}}"#],
@@ -452,9 +480,7 @@ mod inspector {
       let s = i.to_string();
       assert_eq!(stdout_lines.next().unwrap(), s);
 
-      assert_inspector_messages(
-        &mut socket_tx,
-        &[],
+      assert_received_messages(
         &mut socket_rx,
         &[],
         &[
@@ -464,9 +490,12 @@ mod inspector {
       )
       .await;
 
-      assert_inspector_messages(
+      send_message(
         &mut socket_tx,
-        &[json!({"id":request_id,"method":"Debugger.resume"})],
+        json!({"id":request_id,"method":"Debugger.resume"}),
+      )
+      .await;
+      assert_received_messages(
         &mut socket_rx,
         &[&format!(r#"{{"id":{},"result":{{}}}}"#, request_id)],
         &[r#"{"method":"Debugger.resumed","params":{}}"#],
@@ -556,26 +585,29 @@ mod inspector {
       "exit using ctrl+d, ctrl+c, or close()"
     );
 
-    assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      json!({"id":1,"method":"Runtime.enable"}),
-      json!({"id":2,"method":"Debugger.enable"}),
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#,
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ],
-  )
-  .await;
-
-    assert_inspector_messages(
+    send_messages(
       &mut socket_tx,
-      &[json!({
+      &[
+        json!({"id":1,"method":"Runtime.enable"}),
+        json!({"id":2,"method":"Debugger.enable"}),
+      ],
+    )
+    .await;
+    assert_received_messages(
+      &mut socket_rx,
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
+
+    send_message(
+      &mut socket_tx,
+      json!({
         "id":3,
         "method":"Runtime.compileScript",
         "params":{
@@ -584,15 +616,14 @@ mod inspector {
           "persistScript":false,
           "executionContextId":1
         }
-      })],
-      &mut socket_rx,
-      &[r#"{"id":3,"result":{}}"#],
-      &[],
+      }),
     )
     .await;
-    assert_inspector_messages(
+    assert_received_messages(&mut socket_rx, &[r#"{"id":3,"result":{}}"#], &[])
+      .await;
+    send_message(
       &mut socket_tx,
-      &[json!({
+      json!({
         "id":4,
         "method":"Runtime.evaluate",
         "params":{
@@ -607,15 +638,18 @@ mod inspector {
           "awaitPromise":false,
           "replMode":true
         }
-      })],
+      }),
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":4,"result":{"result":{"type":"string","value":""#],
       &[],
     )
     .await;
-    assert_inspector_messages(
+    send_message(
       &mut socket_tx,
-      &[json!({
+      json!({
         "id":5,
         "method":"Runtime.evaluate",
         "params":{
@@ -630,7 +664,10 @@ mod inspector {
           "awaitPromise":false,
           "replMode":true
         }
-      })],
+      }),
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#],
       &[r#"{"method":"Runtime.consoleAPICalled"#],
@@ -763,12 +800,15 @@ mod inspector {
 
     assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-    assert_inspector_messages(
+    send_messages(
       &mut socket_tx,
       &[
         json!({"id":1,"method":"Runtime.enable"}),
         json!({"id":2,"method":"Debugger.enable"}),
       ],
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[
         r#"{"id":1,"result":{}}"#,
@@ -780,44 +820,44 @@ mod inspector {
     )
     .await;
 
-    assert_inspector_messages(
+    send_message(
       &mut socket_tx,
-      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
+      json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
 
-    assert_inspector_messages(
+    send_message(
       &mut socket_tx,
-      &[
-        json!({
-          "id":4,
-          "method":"Runtime.evaluate",
-          "params":{
-            "expression":"1 + 1",
-            "contextId":1,
-            "includeCommandLineAPI":true,
-            "silent":false,
-            "returnByValue":true
-          }
-        }),
-      ],
+      json!({
+        "id":4,
+        "method":"Runtime.evaluate",
+        "params":{
+          "expression":"1 + 1",
+          "contextId":1,
+          "includeCommandLineAPI":true,
+          "silent":false,
+          "returnByValue":true
+        }
+      }),
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":4,"result":{"result":{"type":"number","value":2,"description":"2"}}}"#],
       &[],
     )
     .await;
 
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[json!({"id":5,"method":"Debugger.resume"})],
-      &mut socket_rx,
-      &[r#"{"id":5,"result":{}}"#],
-      &[],
-    )
-    .await;
+    send_message(&mut socket_tx, json!({"id":5,"method":"Debugger.resume"}))
+      .await;
+    assert_received_messages(&mut socket_rx, &[r#"{"id":5,"result":{}}"#], &[])
+      .await;
 
     assert_starts_with!(&stdout_lines.next().unwrap(), "running 1 test from");
     assert!(&stdout_lines.next().unwrap().contains("basic test ... ok"));
@@ -865,21 +905,24 @@ mod inspector {
 
     assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-    assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      json!({"id":1,"method":"Runtime.enable"}),
-      json!({"id":2,"method":"Debugger.enable"}),
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ],
-  )
-  .await;
+    send_messages(
+      &mut socket_tx,
+      &[
+        json!({"id":1,"method":"Runtime.enable"}),
+        json!({"id":2,"method":"Debugger.enable"}),
+      ],
+    )
+    .await;
+    assert_received_messages(
+      &mut socket_rx,
+      &[
+        r#"{"id":1,"result":{}}"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
 
     // receive messages with sources from this test
     let script1 = socket_rx.next().await.unwrap();
@@ -901,56 +944,53 @@ mod inspector {
       v["params"]["scriptId"].as_str().unwrap().to_string()
     };
 
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[],
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":2,"result":{"debuggerId":"#],
       &[],
     )
     .await;
 
-    assert_inspector_messages(
+    send_message(
       &mut socket_tx,
-      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
+      json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
 
-    assert_inspector_messages(
+    send_messages(
     &mut socket_tx,
     &[
       json!({"id":4,"method":"Debugger.getScriptSource","params":{"scriptId":script1_id.as_str()}}),
       json!({"id":5,"method":"Debugger.getScriptSource","params":{"scriptId":script2_id.as_str()}}),
       json!({"id":6,"method":"Debugger.getScriptSource","params":{"scriptId":script3_id.as_str()}}),
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":4,"result":{"scriptSource":"import { foo } from \"./foo.ts\";\nimport { bar } from \"./bar.js\";\nconsole.log(foo());\nconsole.log(bar());\n//# sourceMappingURL=data:application/json;base64,"#,
-      r#"{"id":5,"result":{"scriptSource":"class Foo {\n    hello() {\n        return \"hello\";\n    }\n}\nexport function foo() {\n    const f = new Foo();\n    return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
-      r#"{"id":6,"result":{"scriptSource":"export function bar() {\n  return \"world\";\n}\n"#,
-    ],
-    &[],
-  )
-  .await;
-
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[json!({"id":7,"method":"Debugger.resume"})],
+    ])
+    .await;
+    assert_received_messages(
       &mut socket_rx,
-      &[r#"{"id":7,"result":{}}"#],
+      &[
+        r#"{"id":4,"result":{"scriptSource":"import { foo } from \"./foo.ts\";\nimport { bar } from \"./bar.js\";\nconsole.log(foo());\nconsole.log(bar());\n//# sourceMappingURL=data:application/json;base64,"#,
+        r#"{"id":5,"result":{"scriptSource":"class Foo {\n    hello() {\n        return \"hello\";\n    }\n}\nexport function foo() {\n    const f = new Foo();\n    return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
+        r#"{"id":6,"result":{"scriptSource":"export function bar() {\n  return \"world\";\n}\n"#,
+      ],
       &[],
     )
     .await;
 
+    send_message(&mut socket_tx, json!({"id":7,"method":"Debugger.resume"}))
+      .await;
+    assert_received_messages(&mut socket_rx, &[r#"{"id":7,"result":{}}"#], &[])
+      .await;
+
     assert_eq!(&stdout_lines.next().unwrap(), "hello");
     assert_eq!(&stdout_lines.next().unwrap(), "world");
 
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[],
+    assert_received_messages(
       &mut socket_rx,
       &[],
       &[
@@ -1004,44 +1044,46 @@ mod inspector {
 
     assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-    assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      json!({"id":1,"method":"Runtime.enable"}),
-      json!({"id":2,"method":"Debugger.enable"}),
+    send_messages(
+      &mut socket_tx,
+      &[
+        json!({"id":1,"method":"Runtime.enable"}),
+        json!({"id":2,"method":"Debugger.enable"}),
+      ],
+    )
+    .await;
+    assert_received_messages(
+      &mut socket_rx,
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
 
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#,
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ],
-  )
-  .await;
-
-    assert_inspector_messages(
+    send_messages(
       &mut socket_tx,
       &[
         json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
         json!({"id":4,"method":"HeapProfiler.enable"}),
       ],
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
 
-    socket_tx
-      .send(
-        json!({"id":5,"method":"Runtime.getHeapUsage", "params": {}})
-          .to_string()
-          .into(),
-      )
-      .await
-      .unwrap();
+    send_message(
+      &mut socket_tx,
+      json!({"id":5,"method":"Runtime.getHeapUsage", "params": {}}),
+    )
+    .await;
     let msg = socket_rx.next().await.unwrap();
     let json_msg: serde_json::Value = serde_json::from_str(&msg).unwrap();
     assert_eq!(json_msg["id"].as_i64().unwrap(), 5);
@@ -1051,22 +1093,19 @@ mod inspector {
         <= result["totalSize"].as_i64().unwrap()
     );
 
-    socket_tx
-      .send(
-        json!({
-          "id":6,
-          "method":"HeapProfiler.takeHeapSnapshot",
-          "params": {
-            "reportProgress": true,
-            "treatGlobalObjectsAsRoots": true,
-            "captureNumberValue": false
-          }
-        })
-        .to_string()
-        .into(),
-      )
-      .await
-      .unwrap();
+    send_message(
+      &mut socket_tx,
+      json!({
+        "id":6,
+        "method":"HeapProfiler.takeHeapSnapshot",
+        "params": {
+          "reportProgress": true,
+          "treatGlobalObjectsAsRoots": true,
+          "captureNumberValue": false
+        }
+      }),
+    )
+    .await;
 
     let mut progress_report_completed = false;
     loop {
@@ -1130,58 +1169,62 @@ mod inspector {
 
     assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-    assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      json!({"id":1,"method":"Runtime.enable"}),
-      json!({"id":2,"method":"Debugger.enable"}),
+    send_messages(
+      &mut socket_tx,
+      &[
+        json!({"id":1,"method":"Runtime.enable"}),
+        json!({"id":2,"method":"Debugger.enable"}),
+      ],
+    )
+    .await;
+    assert_received_messages(
+      &mut socket_rx,
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
 
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#,
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ],
-  )
-  .await;
-
-    assert_inspector_messages(
+    send_messages(
       &mut socket_tx,
       &[
         json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
         json!({"id":4,"method":"Profiler.enable"}),
       ],
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
 
-    assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      json!({"id":5,"method":"Profiler.setSamplingInterval","params":{"interval": 100}}),
-      json!({"id":6,"method":"Profiler.start","params":{}}),
-    ],
-    &mut socket_rx,
-    &[r#"{"id":5,"result":{}}"#, r#"{"id":6,"result":{}}"#],
-    &[],
-  )
-  .await;
+    send_messages(
+      &mut socket_tx,
+      &[
+        json!({"id":5,"method":"Profiler.setSamplingInterval","params":{"interval": 100}}),
+        json!({"id":6,"method":"Profiler.start","params":{}}),
+      ],
+    ).await;
+    assert_received_messages(
+      &mut socket_rx,
+      &[r#"{"id":5,"result":{}}"#, r#"{"id":6,"result":{}}"#],
+      &[],
+    )
+    .await;
 
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-    socket_tx
-      .send(
-        json!({"id":7,"method":"Profiler.stop", "params": {}})
-          .to_string()
-          .into(),
-      )
-      .await
-      .unwrap();
+    send_message(
+      &mut socket_tx,
+      json!({"id":7,"method":"Profiler.stop", "params": {}}),
+    )
+    .await;
     let msg = socket_rx.next().await.unwrap();
     let json_msg: serde_json::Value = serde_json::from_str(&msg).unwrap();
     assert_eq!(json_msg["id"].as_i64().unwrap(), 7);
@@ -1241,12 +1284,15 @@ mod inspector {
 
     assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-    assert_inspector_messages(
+    send_messages(
       &mut socket_tx,
       &[
         json!({"id":1,"method":"Runtime.enable"}),
         json!({"id":2,"method":"Debugger.enable"}),
       ],
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[
         r#"{"id":1,"result":{}}"#,
@@ -1258,23 +1304,22 @@ mod inspector {
     )
     .await;
 
-    assert_inspector_messages(
+    send_message(
       &mut socket_tx,
-      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
+      json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
 
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[json!({"id":4,"method":"Debugger.resume"})],
-      &mut socket_rx,
-      &[r#"{"id":4,"result":{}}"#],
-      &[],
-    )
-    .await;
+    send_message(&mut socket_tx, json!({"id":4,"method":"Debugger.resume"}))
+      .await;
+    assert_received_messages(&mut socket_rx, &[r#"{"id":4,"result":{}}"#], &[])
+      .await;
 
     assert_eq!(&stdout_lines.next().unwrap(), "this");
     assert_eq!(&stdout_lines.next().unwrap(), "is");
@@ -1327,12 +1372,15 @@ mod inspector {
 
     assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-    assert_inspector_messages(
+    send_messages(
       &mut socket_tx,
       &[
         json!({"id":1,"method":"Runtime.enable"}),
         json!({"id":2,"method":"Debugger.enable"}),
       ],
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[
         r#"{"id":1,"result":{}}"#,
@@ -1344,23 +1392,22 @@ mod inspector {
     )
     .await;
 
-    assert_inspector_messages(
+    send_message(
       &mut socket_tx,
-      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
+      json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
 
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[json!({"id":4,"method":"Debugger.resume"})],
-      &mut socket_rx,
-      &[r#"{"id":4,"result":{}}"#],
-      &[],
-    )
-    .await;
+    send_message(&mut socket_tx, json!({"id":4,"method":"Debugger.resume"}))
+      .await;
+    assert_received_messages(&mut socket_rx, &[r#"{"id":4,"result":{}}"#], &[])
+      .await;
 
     assert_eq!(&stdout_lines.next().unwrap(), "this");
     assert_eq!(&stdout_lines.next().unwrap(), "is");
@@ -1409,12 +1456,15 @@ mod inspector {
 
     assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-    assert_inspector_messages(
+    send_messages(
       &mut socket_tx,
       &[
         json!({"id":1,"method":"Runtime.enable"}),
         json!({"id":2,"method":"Debugger.enable"}),
       ],
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[
         r#"{"id":1,"result":{}}"#,
@@ -1426,23 +1476,22 @@ mod inspector {
     )
     .await;
 
-    assert_inspector_messages(
+    send_message(
       &mut socket_tx,
-      &[json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"})],
+      json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
+    )
+    .await;
+    assert_received_messages(
       &mut socket_rx,
       &[r#"{"id":3,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
 
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[json!({"id":4,"method":"Debugger.resume"})],
-      &mut socket_rx,
-      &[r#"{"id":4,"result":{}}"#],
-      &[],
-    )
-    .await;
+    send_message(&mut socket_tx, json!({"id":4,"method":"Debugger.resume"}))
+      .await;
+    assert_received_messages(&mut socket_rx, &[r#"{"id":4,"result":{}}"#], &[])
+      .await;
 
     // TODO(bartlomieju): this is a partial fix, we should assert that
     // "Runtime.exceptionThrown" notification was sent, but a bindings for this
