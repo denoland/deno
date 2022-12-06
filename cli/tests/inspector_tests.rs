@@ -152,13 +152,13 @@ mod inspector {
   }
 
   macro_rules! assert_starts_with {
-  ($string:expr, $($test:expr),+) => {
-    let string = $string; // This might be a function call or something
-    if !($(string.starts_with($test))||+) {
-      panic!("{:?} does not start with {:?}", string, [$($test),+]);
+    ($string:expr, $($test:expr),+) => {
+      let string = $string; // This might be a function call or something
+      if !($(string.starts_with($test))||+) {
+        panic!("{:?} does not start with {:?}", string, [$($test),+]);
+      }
     }
   }
-}
 
   fn assert_stderr(
     stderr_lines: &mut impl std::iter::Iterator<Item = String>,
