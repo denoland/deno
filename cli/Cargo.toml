@@ -48,7 +48,7 @@ deno_emit = "0.11.0"
 deno_graph = "0.38.0"
 deno_lint = { version = "0.35.0", features = ["docs"] }
 deno_runtime.workspace = true
-deno_task_shell = "0.7.3"
+deno_task_shell = "0.8.1"
 napi_sym.workspace = true
 
 atty.workspace = true

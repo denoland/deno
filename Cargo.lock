@@ -1225,9 +1225,9 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.7.3"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a071a6407ade5107091a2481a502e7e6a9a96c5a631c71748058c5a28928fcd3"
+checksum = "b8ee71b861a4b9ad21e4a9fa4136bc1900fe6216115b439220ce3df9cc987403"
 dependencies = [
  "anyhow",
  "futures",
@@ -4803,9 +4803,9 @@ dependencies = [
 
 [[package]]
 name = "textwrap"
-version = "0.15.1"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "949517c0cf1bf4ee812e2e07e08ab448e3ae0d23472aee8a06c985f0c8815b16"
+checksum = "b7b3e525a49ec206798b40326a44121291b530c963cfb01018f63e135bac543d"
 
 [[package]]
 name = "thiserror"
