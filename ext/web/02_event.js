@@ -1473,7 +1473,7 @@
     });
     // Avoid recursing `reportException()` via error handlers more than once.
     if (reportExceptionStackedCalls > 1 || window.dispatchEvent(event)) {
-      console.log("dispatching exception",reportExceptionStackedCalls);
+      console.log("dispatching exception", reportExceptionStackedCalls);
       ops.op_dispatch_exception(error);
     }
     reportExceptionStackedCalls--;

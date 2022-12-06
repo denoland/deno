@@ -2,10 +2,10 @@
 
 use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use rustyline::error::ReadlineError;
-use deno_core::serde_json;
 
 mod cdp;
 mod channel;
@@ -156,20 +156,26 @@ pub async fn run(
           let params = notification.get("params").unwrap();
           if method == "Runtime.exceptionThrown" {
             eprintln!("params {:#?}", params);
-            let exception_details = params
-              .get("exceptionDetails")
-              .unwrap();
-            let exception_details = serde_json::from_value::<cdp::ExceptionDetails>(exception_details.clone()).unwrap();
+            let exception_details = params.get("exceptionDetails").unwrap();
+            let exception_details = serde_json::from_value::<
+              cdp::ExceptionDetails,
+            >(exception_details.clone())
+            .unwrap();
             let description = match exception_details.exception {
               Some(exception) => exception
                 .description
                 .unwrap_or_else(|| "Unknown exception".to_string()),
               None => "Unknown exception".to_string(),
             };
-            println!("{}", EvaluationOutput::Error(format!("{} {}", exception_details.text, description)));
+            println!(
+              "{}",
+              EvaluationOutput::Error(format!(
+                "{} {}",
+                exception_details.text, description
+              ))
+            );
           }
         }
-
       }
       Err(ReadlineError::Interrupted) => {
         if should_exit_on_interrupt {

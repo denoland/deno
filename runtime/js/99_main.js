@@ -385,7 +385,10 @@ delete Intl.v8BreakIterator;
 
       // If event was not prevented (or "unhandledrejection" listeners didn't
       // throw) we will let Rust side handle it.
-      console.log("dispatching unhandledrejection prevented", rejectionEvent.defaultPrevented);
+      console.log(
+        "dispatching unhandledrejection prevented",
+        rejectionEvent.defaultPrevented,
+      );
       if (rejectionEvent.defaultPrevented) {
         ops.op_remove_pending_promise_exception(promise);
       }

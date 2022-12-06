@@ -239,14 +239,15 @@ impl JsRuntimeInspector {
     let line_number = 1;
     let column_number = 1;
     let script_id = 1;
-    let stack_trace_ptr = unsafe { 
-      v8::UniquePtr::from_raw(std::ptr::null_mut())
-    };
-    let detailed_message_string_view = v8::inspector::StringView::from("foo".as_bytes());
+    let stack_trace_ptr =
+      unsafe { v8::UniquePtr::from_raw(std::ptr::null_mut()) };
+    let detailed_message_string_view =
+      v8::inspector::StringView::from("foo".as_bytes());
     let url_string_view = v8::inspector::StringView::from("foo".as_bytes());
     // end FIXME
-    
-    let message_string_view = v8::inspector::StringView::from(message.as_bytes());
+
+    let message_string_view =
+      v8::inspector::StringView::from(message.as_bytes());
 
     let context = v8::Local::new(scope, context);
     self

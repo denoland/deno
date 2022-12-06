@@ -2098,18 +2098,18 @@ impl JsRuntime {
     drop(state);
 
     {
-      eprintln!("check promise exceptions {}", self.state.borrow().inspector.is_some());
+      eprintln!(
+        "check promise exceptions {}",
+        self.state.borrow().inspector.is_some()
+      );
       if self.state.borrow().inspector.is_some() {
         let inspector = self.inspector();
         let context = self.global_context();
         let scope = &mut self.handle_scope();
         let message = v8::Local::new(scope, handle.clone());
-        inspector.borrow_mut().exception_thrown(
-          scope,
-          context,
-          "Uncaught",
-          message,
-        );
+        inspector
+          .borrow_mut()
+          .exception_thrown(scope, context, "Uncaught", message);
       }
     }
 
