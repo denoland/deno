@@ -1776,9 +1776,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
-  async function fetchBlobUrl(): Promise<
-    void
-  > {
+  async function fetchBlobUrl(): Promise<void> {
     const blob = new Blob(["ok"], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const res = await fetch(url);
@@ -1803,5 +1801,30 @@ Deno.test(
     assertEquals(response.body!.locked, true);
 
     await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchConstructorClones() {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      body: "foo",
+    });
+    assertEquals(await req.text(), "foo");
+    await assertRejects(() => req.text());
+
+    const req2 = new Request(req, { method: "PUT", body: "bar" }); // should not have any impact on req
+    await assertRejects(() => req.text());
+    assertEquals(await req2.text(), "bar");
+
+    assertEquals(req.method, "POST");
+    assertEquals(req2.method, "PUT");
+
+    assertEquals(req.headers.get("x-foo"), null);
+    assertEquals(req2.headers.get("x-foo"), null);
+    req2.headers.set("x-foo", "bar"); // should not have any impact on req
+    assertEquals(req.headers.get("x-foo"), null);
+    assertEquals(req2.headers.get("x-foo"), "bar");
   },
 );

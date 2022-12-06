@@ -189,7 +189,11 @@ impl NpmPackageResolver {
       .inner
       .resolve_package_folder_from_deno_module(pkg_req)?;
     let path = canonicalize_path_maybe_not_exists(&path)?;
-    log::debug!("Resolved {} to {}", pkg_req, path.display());
+    log::debug!(
+      "Resolved package folder of {} to {}",
+      pkg_req,
+      path.display()
+    );
     Ok(path)
   }
 
@@ -217,7 +221,11 @@ impl NpmPackageResolver {
     let path = self
       .inner
       .resolve_package_folder_from_specifier(specifier)?;
-    log::debug!("Resolved {} to {}", specifier, path.display());
+    log::debug!(
+      "Resolved package folder of {} to {}",
+      specifier,
+      path.display()
+    );
     Ok(path)
   }
 

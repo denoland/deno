@@ -4,9 +4,11 @@
 
 use crate::args::UpgradeFlags;
 use crate::colors;
+use crate::util::progress_bar::ProgressBar;
 use crate::version;
 
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
@@ -17,7 +19,6 @@ use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
 use std::fs;
-use std::io::Write;
 use std::ops::Sub;
 use std::path::Path;
 use std::path::PathBuf;
@@ -234,14 +235,14 @@ async fn fetch_and_store_latest_version<
 }
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
-  let old_exe_path = std::env::current_exe()?;
-  let metadata = fs::metadata(&old_exe_path)?;
+  let current_exe_path = std::env::current_exe()?;
+  let metadata = fs::metadata(&current_exe_path)?;
   let permissions = metadata.permissions();
 
   if permissions.readonly() {
     bail!(
       "You do not have write permission to {}",
-      old_exe_path.display()
+      current_exe_path.display()
     );
   }
   #[cfg(unix)]
@@ -252,7 +253,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
       "You don't have write permission to {} because it's owned by root.\n",
       "Consider updating deno through your package manager if its installed from it.\n",
       "Otherwise run `deno upgrade` as root.",
-    ), old_exe_path.display());
+    ), current_exe_path.display());
   }
 
   let client = build_http_client(upgrade_flags.ca_file)?;
@@ -281,7 +282,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
         && upgrade_flags.output.is_none()
         && current_is_passed
       {
-        println!("Version {} is already installed", crate::version::deno());
+        log::info!("Version {} is already installed", crate::version::deno());
         return Ok(());
       } else {
         passed_version
@@ -289,10 +290,10 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
     }
     None => {
       let latest_version = if upgrade_flags.canary {
-        println!("Looking up latest canary version");
+        log::info!("Looking up latest canary version");
         get_latest_canary_version(&client).await?
       } else {
-        println!("Looking up latest version");
+        log::info!("Looking up latest version");
         get_latest_release_version(&client).await?
       };
 
@@ -311,13 +312,13 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
         && upgrade_flags.output.is_none()
         && current_is_most_recent
       {
-        println!(
+        log::info!(
           "Local deno version {} is the most recent release",
           crate::version::deno()
         );
         return Ok(());
       } else {
-        println!("Found latest version {}", latest_version);
+        log::info!("Found latest version {}", latest_version);
         latest_version
       }
     }
@@ -341,23 +342,44 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
 
   let archive_data = download_package(client, &download_url).await?;
 
-  println!("Deno is upgrading to version {}", &install_version);
+  log::info!("Deno is upgrading to version {}", &install_version);
 
   let new_exe_path = unpack(archive_data, cfg!(windows))?;
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
   if !upgrade_flags.dry_run {
-    match upgrade_flags.output {
-      Some(path) => {
-        fs::rename(&new_exe_path, &path)
-          .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))?;
+    let output_exe_path =
+      upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
+    let output_result = if *output_exe_path == current_exe_path {
+      replace_exe(&new_exe_path, output_exe_path)
+    } else {
+      fs::rename(&new_exe_path, output_exe_path)
+        .or_else(|_| fs::copy(&new_exe_path, output_exe_path).map(|_| ()))
+    };
+    if let Err(err) = output_result {
+      const WIN_ERROR_ACCESS_DENIED: i32 = 5;
+      if cfg!(windows) && err.raw_os_error() == Some(WIN_ERROR_ACCESS_DENIED) {
+        return Err(err).with_context(|| {
+          format!(
+            concat!(
+              "Access denied: Could not replace the deno executable. This may be ",
+              "because an existing deno process is running. Please ensure there ",
+              "are no running deno processes (ex. Stop-Process -Name deno ; deno {}), ",
+              "close any editors before upgrading, and ensure you have sufficient ",
+              "permission to '{}'."
+            ),
+            std::env::args().collect::<Vec<_>>().join(" "),
+            output_exe_path.display(),
+          )
+        });
+      } else {
+        return Err(err.into());
       }
-      None => replace_exe(&new_exe_path, &old_exe_path)?,
     }
   }
 
-  println!("Upgraded successfully");
+  log::info!("Upgraded successfully");
 
   Ok(())
 }
@@ -407,7 +429,7 @@ async fn download_package(
   client: Client,
   download_url: &str,
 ) -> Result<Vec<u8>, AnyError> {
-  println!("Checking {}", &download_url);
+  log::info!("Downloading {}", &download_url);
 
   let res = client.get(download_url).send().await?;
 
@@ -417,32 +439,27 @@ async fn download_package(
     let mut data = Vec::with_capacity(total_size as usize);
     let mut stream = res.bytes_stream();
     let mut skip_print = 0;
-    let is_tty = atty::is(atty::Stream::Stdout);
     const MEBIBYTE: f64 = 1024.0 * 1024.0;
+    let progress_bar = ProgressBar::default();
+    let clear_guard = progress_bar.clear_guard();
     while let Some(item) = stream.next().await {
       let bytes = item?;
       current_size += bytes.len() as f64;
       data.extend_from_slice(&bytes);
       if skip_print == 0 {
-        if is_tty {
-          print!("\u{001b}[1G\u{001b}[2K");
-        }
-        print!(
+        progress_bar.update(&format!(
           "{:>4.1} MiB / {:.1} MiB ({:^5.1}%)",
           current_size / MEBIBYTE,
           total_size / MEBIBYTE,
           (current_size / total_size) * 100.0,
-        );
-        std::io::stdout().flush()?;
+        ));
         skip_print = 10;
       } else {
         skip_print -= 1;
       }
     }
-    if is_tty {
-      print!("\u{001b}[1G\u{001b}[2K");
-    }
-    println!(
+    drop(clear_guard);
+    log::info!(
       "{:.1} MiB / {:.1} MiB (100.0%)",
       current_size / MEBIBYTE,
       total_size / MEBIBYTE
@@ -450,7 +467,7 @@ async fn download_package(
 
     Ok(data)
   } else {
-    println!("Download could not be found, aborting");
+    log::info!("Download could not be found, aborting");
     std::process::exit(1)
   }
 }
@@ -524,17 +541,17 @@ pub fn unpack(
   Ok(exe_path)
 }
 
-fn replace_exe(new: &Path, old: &Path) -> Result<(), std::io::Error> {
+fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
   if cfg!(windows) {
     // On windows you cannot replace the currently running executable.
     // so first we rename it to deno.old.exe
-    fs::rename(old, old.with_extension("old.exe"))?;
+    fs::rename(to, to.with_extension("old.exe"))?;
   } else {
-    fs::remove_file(old)?;
+    fs::remove_file(to)?;
   }
   // Windows cannot rename files across device boundaries, so if rename fails,
   // we try again with copy.
-  fs::rename(new, old).or_else(|_| fs::copy(new, old).map(|_| ()))?;
+  fs::rename(from, to).or_else(|_| fs::copy(from, to).map(|_| ()))?;
   Ok(())
 }
 

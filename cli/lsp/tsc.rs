@@ -2726,7 +2726,7 @@ fn op_resolve(
   let referrer = state.normalize_specifier(&args.base)?;
 
   let result = if let Some(resolved) = state.state_snapshot.documents.resolve(
-    args.specifiers,
+    &args.specifiers,
     &referrer,
     state.state_snapshot.maybe_npm_resolver.as_ref(),
   ) {
