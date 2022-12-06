@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::prelude::*;
 use deno_core::futures::stream::SplitSink;
@@ -75,12 +76,41 @@ mod inspector {
     async fn send_many(&mut self, messages: &[serde_json::Value]) {
       // TODO(bartlomieju): add graceful error handling
       for msg in messages {
-        self.socket_tx.send(msg.to_string().into()).await.unwrap();
+        let result = self
+          .socket_tx
+          .send(msg.to_string().into())
+          .await
+          .map_err(|e| e.into());
+        self.handle_error(result);
       }
     }
 
     async fn send(&mut self, message: serde_json::Value) {
       self.send_many(&[message]).await;
+    }
+
+    fn handle_error<T>(&mut self, result: Result<T, AnyError>) -> T {
+      match result {
+        Ok(result) => result,
+        Err(err) => {
+          let mut stdout = vec![];
+          for line in self.stdout_lines.by_ref() {
+            stdout.push(line);
+          }
+          let mut stderr = vec![];
+          for line in self.stderr_lines.by_ref() {
+            stderr.push(line);
+          }
+          let stdout = stdout.join("\n");
+          let stderr = stderr.join("\n");
+          self.child.kill().unwrap();
+
+          panic!(
+            "Inspector test failed with error: {:?}.\nstdout:\n{}\nstderr:\n{}",
+            err, stdout, stderr
+          );
+        }
+      }
     }
 
     async fn recv(&mut self) -> String {
