@@ -5690,6 +5690,32 @@ mod tests {
   }
 
   #[test]
+  fn test_watch_cwd_explicit() {
+    let r = flags_from_vec(svec!["deno", "test", "--watch", "./"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          shuffle: None,
+          include: Some(svec!["./",],),
+          ignore: vec![],
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
+        }),
+        no_prompt: true,
+        type_check_mode: TypeCheckMode::Local,
+        watch: Some(vec![]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn test_watch_with_no_clear_screen() {
     let r =
       flags_from_vec(svec!["deno", "test", "--watch", "--no-clear-screen"]);
