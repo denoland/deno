@@ -9,7 +9,7 @@ use syn::{
   parse_quote, punctuated::Punctuated, token::Colon2,
   AngleBracketedGenericArguments, FnArg, GenericArgument, PatType, Path,
   PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypePtr,
-  TypeReference, TypeSlice,
+  TypeReference, TypeSlice, TypeTuple,
 };
 
 #[derive(Debug)]
@@ -20,12 +20,21 @@ pub(crate) enum BailoutReason {
 }
 
 #[derive(Debug, PartialEq)]
+enum StringType {
+  Cow,
+  Ref,
+  Owned,
+}
+
+#[derive(Debug, PartialEq)]
 enum TransformKind {
   // serde_v8::Value
   V8Value,
   SliceU32(bool),
   SliceU8(bool),
+  SeqOneByteString(StringType),
   PtrU8,
+  WasmMemory,
 }
 
 impl Transform {
@@ -46,6 +55,20 @@ impl Transform {
   fn slice_u8(index: usize, is_mut: bool) -> Self {
     Transform {
       kind: TransformKind::SliceU8(is_mut),
+      index,
+    }
+  }
+
+  fn seq_one_byte_string(index: usize, is_ref: StringType) -> Self {
+    Transform {
+      kind: TransformKind::SeqOneByteString(is_ref),
+      index,
+    }
+  }
+
+  fn wasm_memory(index: usize) -> Self {
+    Transform {
+      kind: TransformKind::WasmMemory,
       index,
     }
   }
@@ -124,6 +147,31 @@ impl Transform {
           };
         })
       }
+      // &str
+      TransformKind::SeqOneByteString(str_ty) => {
+        *ty = parse_quote! { *const #core::v8::fast_api::FastApiOneByteString };
+        match str_ty {
+          StringType::Ref => q!(Vars { var: &ident }, {
+            let var = unsafe { &*var }.as_str();
+          }),
+          StringType::Cow => q!(Vars { var: &ident }, {
+            let var = ::std::borrow::Cow::Borrowed(unsafe { &*var }.as_str());
+          }),
+          StringType::Owned => q!(Vars { var: &ident }, {
+            let var = unsafe { &*var }.as_str().to_owned();
+          }),
+        }
+      }
+      TransformKind::WasmMemory => {
+        // Note: `ty` is correctly set to __opts by the fast call tier.
+        q!(Vars { var: &ident, core }, {
+          let var = unsafe {
+            &*(__opts.wasm_memory
+              as *const core::v8::fast_api::FastApiTypedArray<u8>)
+          }
+          .get_storage_if_aligned();
+        })
+      }
       // *const u8
       TransformKind::PtrU8 => {
         *ty =
@@ -180,6 +228,7 @@ pub(crate) enum FastValue {
   V8Value,
   Uint8Array,
   Uint32Array,
+  SeqOneByteString,
 }
 
 impl Default for FastValue {
@@ -196,7 +245,12 @@ pub(crate) struct Optimizer {
 
   pub(crate) has_rc_opstate: bool,
 
+  // Do we need an explict FastApiCallbackOptions argument?
   pub(crate) has_fast_callback_option: bool,
+  // Do we depend on FastApiCallbackOptions?
+  pub(crate) needs_fast_callback_option: bool,
+
+  pub(crate) has_wasm_memory: bool,
 
   pub(crate) fast_result: Option<FastValue>,
   pub(crate) fast_parameters: Vec<FastValue>,
@@ -217,6 +271,11 @@ impl Debug for Optimizer {
       f,
       "has_fast_callback_option: {}",
       self.has_fast_callback_option
+    )?;
+    writeln!(
+      f,
+      "needs_fast_callback_option: {}",
+      self.needs_fast_callback_option
     )?;
     writeln!(f, "fast_result: {:?}", self.fast_result)?;
     writeln!(f, "fast_parameters: {:?}", self.fast_parameters)?;
@@ -254,6 +313,9 @@ impl Optimizer {
 
     self.is_async = op.is_async;
     self.fast_compatible = true;
+    // Just assume for now. We will validate later.
+    self.has_wasm_memory = op.attrs.is_wasm;
+
     let sig = &op.item.sig;
 
     // Analyze return type
@@ -298,6 +360,9 @@ impl Optimizer {
 
   fn analyze_return_type(&mut self, ty: &Type) -> Result<(), BailoutReason> {
     match ty {
+      Type::Tuple(TypeTuple { elems, .. }) if elems.is_empty() => {
+        self.fast_result = Some(FastValue::Void);
+      }
       Type::Path(TypePath {
         path: Path { segments, .. },
         ..
@@ -332,6 +397,14 @@ impl Optimizer {
 
                   self.fast_compatible = false;
                   return Err(BailoutReason::FastUnsupportedParamType);
+                }
+                Some(GenericArgument::Type(Type::Tuple(TypeTuple {
+                  elems,
+                  ..
+                })))
+                  if elems.is_empty() =>
+                {
+                  self.fast_result = Some(FastValue::Void);
                 }
                 _ => return Err(BailoutReason::FastUnsupportedParamType),
               }
@@ -400,22 +473,51 @@ impl Optimizer {
                   TypeReference { elem, .. },
                 ))) = args.last()
                 {
-                  if let Type::Path(TypePath {
+                  if self.has_wasm_memory {
+                    // -> Option<&mut [u8]>
+                    if let Type::Slice(TypeSlice { elem, .. }) = &**elem {
+                      if let Type::Path(TypePath {
+                        path: Path { segments, .. },
+                        ..
+                      }) = &**elem
+                      {
+                        let segment = single_segment(segments)?;
+
+                        match segment {
+                          // Is `T` a u8?
+                          PathSegment { ident, .. } if ident == "u8" => {
+                            self.needs_fast_callback_option = true;
+                            assert!(self
+                              .transforms
+                              .insert(index, Transform::wasm_memory(index))
+                              .is_none());
+                          }
+                          _ => {
+                            return Err(BailoutReason::FastUnsupportedParamType)
+                          }
+                        }
+                      }
+                    }
+                  } else if let Type::Path(TypePath {
                     path: Path { segments, .. },
                     ..
                   }) = &**elem
                   {
                     let segment = single_segment(segments)?;
                     match segment {
-                      // Is `T` a FastApiCallbackOption?
+                      // Is `T` a FastApiCallbackOptions?
                       PathSegment { ident, .. }
-                        if ident == "FastApiCallbackOption" =>
+                        if ident == "FastApiCallbackOptions" =>
                       {
                         self.has_fast_callback_option = true;
                       }
-                      _ => {}
+                      _ => return Err(BailoutReason::FastUnsupportedParamType),
                     }
+                  } else {
+                    return Err(BailoutReason::FastUnsupportedParamType);
                   }
+                } else {
+                  return Err(BailoutReason::FastUnsupportedParamType);
                 }
               }
             }
@@ -479,10 +581,58 @@ impl Optimizer {
                 }
               }
             }
+            // Cow<'_, str>
+            PathSegment {
+              ident, arguments, ..
+            } if ident == "Cow" => {
+              if let PathArguments::AngleBracketed(
+                AngleBracketedGenericArguments { args, .. },
+              ) = arguments
+              {
+                assert_eq!(args.len(), 2);
+
+                let ty = &args[1];
+                match ty {
+                  GenericArgument::Type(Type::Path(TypePath {
+                    path: Path { segments, .. },
+                    ..
+                  })) => {
+                    let segment = single_segment(segments)?;
+                    match segment {
+                      PathSegment { ident, .. } if ident == "str" => {
+                        self.fast_parameters.push(FastValue::SeqOneByteString);
+                        assert!(self
+                          .transforms
+                          .insert(
+                            index,
+                            Transform::seq_one_byte_string(
+                              index,
+                              StringType::Cow
+                            )
+                          )
+                          .is_none());
+                      }
+                      _ => return Err(BailoutReason::FastUnsupportedParamType),
+                    }
+                  }
+                  _ => return Err(BailoutReason::FastUnsupportedParamType),
+                }
+              }
+            }
             // Is `T` a fast scalar?
             PathSegment { ident, .. } => {
               if let Some(val) = get_fast_scalar(ident.to_string().as_str()) {
                 self.fast_parameters.push(val);
+              } else if ident == "String" {
+                // Is `T` an owned String?
+                self.fast_parameters.push(FastValue::SeqOneByteString);
+                assert!(self
+                  .transforms
+                  .insert(
+                    index,
+                    Transform::seq_one_byte_string(index, StringType::Owned)
+                  )
+                  .is_none());
               } else {
                 return Err(BailoutReason::FastUnsupportedParamType);
               }
@@ -500,8 +650,21 @@ impl Optimizer {
             let segment = single_segment(segments)?;
             match segment {
               // Is `T` a OpState?
-              PathSegment { ident, .. } if ident == "OpState" => {
+              PathSegment { ident, .. }
+                if ident == "OpState" && !self.is_async =>
+              {
                 self.has_ref_opstate = true;
+              }
+              // Is `T` a str?
+              PathSegment { ident, .. } if ident == "str" => {
+                self.fast_parameters.push(FastValue::SeqOneByteString);
+                assert!(self
+                  .transforms
+                  .insert(
+                    index,
+                    Transform::seq_one_byte_string(index, StringType::Ref)
+                  )
+                  .is_none());
               }
               _ => return Err(BailoutReason::FastUnsupportedParamType),
             }
@@ -517,7 +680,7 @@ impl Optimizer {
               match segment {
                 // Is `T` a u8?
                 PathSegment { ident, .. } if ident == "u8" => {
-                  self.has_fast_callback_option = true;
+                  self.needs_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint8Array);
                   assert!(self
                     .transforms
@@ -526,7 +689,7 @@ impl Optimizer {
                 }
                 // Is `T` a u32?
                 PathSegment { ident, .. } if ident == "u32" => {
-                  self.has_fast_callback_option = true;
+                  self.needs_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint32Array);
                   assert!(self
                     .transforms
@@ -554,7 +717,7 @@ impl Optimizer {
             match segment {
               // Is `T` a u8?
               PathSegment { ident, .. } if ident == "u8" => {
-                self.has_fast_callback_option = true;
+                self.needs_fast_callback_option = true;
                 self.fast_parameters.push(FastValue::Uint8Array);
                 assert!(self
                   .transforms
@@ -631,6 +794,10 @@ mod tests {
       .expect("Failed to read expected file");
 
     let mut attrs = Attributes::default();
+    if source.contains("// @test-attr:wasm") {
+      attrs.must_be_fast = true;
+      attrs.is_wasm = true;
+    }
     if source.contains("// @test-attr:fast") {
       attrs.must_be_fast = true;
     }

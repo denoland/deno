@@ -173,9 +173,10 @@ mod repl {
       assert_contains!(output, "Hello World");
       assert_contains!(
         output,
-        // on windows, could contain either (it's flaky)
+        // on windows, could any (it's flaky)
         "\ntesting output",
         "testing output\u{1b}",
+        "\r\n\u{1b}[?25htesting output",
       );
     });
 
@@ -459,9 +460,9 @@ mod repl {
 
   #[test]
   fn import() {
-    let (out, _) = util::run_and_collect_output(
+    let (out, _) = util::run_and_collect_output_with_args(
       true,
-      "repl",
+      vec![],
       Some(vec!["import('./subdir/auto_print_hello.ts')"]),
       Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
       false,
@@ -471,9 +472,9 @@ mod repl {
 
   #[test]
   fn import_declarations() {
-    let (out, _) = util::run_and_collect_output(
+    let (out, _) = util::run_and_collect_output_with_args(
       true,
-      "repl",
+      vec!["repl", "--allow-read"],
       Some(vec!["import './subdir/auto_print_hello.ts';"]),
       Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
       false,
@@ -732,7 +733,7 @@ mod repl {
     );
     assert_contains!(
       test_util::strip_ansi_codes(&out),
-      "error in --eval flag. parse error: Unexpected token `%`."
+      "Error in --eval flag: parse error: Unexpected token `%`."
     );
     assert_contains!(out, "2500"); // should not prevent input
     assert!(err.is_empty());
@@ -747,7 +748,7 @@ mod repl {
       None,
       false,
     );
-    assert_contains!(out, "error in --eval flag. Uncaught Error: Testing");
+    assert_contains!(out, "Error in --eval flag: Uncaught Error: Testing");
     assert_contains!(out, "2500"); // should not prevent input
     assert!(err.is_empty());
   }
@@ -795,7 +796,7 @@ mod repl {
   fn eval_file_flag_multiple_files() {
     let (out, err) = util::run_and_collect_output_with_args(
     true,
-    vec!["repl", "--eval-file=http://127.0.0.1:4545/repl/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
+    vec!["repl", "--allow-read", "--eval-file=http://127.0.0.1:4545/repl/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
     Some(vec!["b.method1=v4", "b.method1()+foo.toUpperCase()"]),
     None,
     true,
@@ -879,6 +880,21 @@ mod repl {
     );
 
     assert_contains!(out, "AggregateError");
+    assert!(err.is_empty());
+  }
+
+  #[test]
+  fn repl_with_quiet_flag() {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet"],
+      Some(vec!["await Promise.resolve('done')"]),
+      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+      false,
+    );
+    assert!(!out.contains("Deno"));
+    assert!(!out.contains("exit using ctrl+d, ctrl+c, or close()"));
+    assert_ends_with!(out, "\"done\"\n");
     assert!(err.is_empty());
   }
 }

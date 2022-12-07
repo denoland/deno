@@ -6,9 +6,9 @@ use crate::graph_util::ModuleEntry;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
-use crate::node::NodeResolutionMode;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
+use crate::util::checksum;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -32,6 +32,7 @@ use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::Resolved;
+use deno_runtime::deno_node::NodeResolutionMode;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -178,7 +179,7 @@ fn get_maybe_hash(
   if let Some(source) = maybe_source {
     let mut data = vec![source.as_bytes().to_owned()];
     data.extend_from_slice(hash_data);
-    Some(crate::checksum::gen(&data))
+    Some(checksum::gen(&data))
   } else {
     None
   }
@@ -186,7 +187,7 @@ fn get_maybe_hash(
 
 /// Hash the URL so it can be sent to `tsc` in a supportable way
 fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
-  let hash = crate::checksum::gen(&[specifier.path().as_bytes()]);
+  let hash = checksum::gen(&[specifier.path().as_bytes()]);
   format!(
     "{}:///{}{}",
     specifier.scheme(),
@@ -365,7 +366,7 @@ fn op_create_hash(s: &mut OpState, args: Value) -> Result<Value, AnyError> {
     .context("Invalid request from JavaScript for \"op_create_hash\".")?;
   let mut data = vec![v.data.as_bytes().to_owned()];
   data.extend_from_slice(&state.hash_data);
-  let hash = crate::checksum::gen(&data);
+  let hash = checksum::gen(&data);
   Ok(json!({ "hash": hash }))
 }
 
@@ -541,7 +542,8 @@ fn op_resolve(
   args: ResolveArgs,
 ) -> Result<Vec<(String, String)>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mut resolved: Vec<(String, String)> = Vec::new();
+  let mut resolved: Vec<(String, String)> =
+    Vec::with_capacity(args.specifiers.len());
   let referrer = if let Some(remapped_specifier) =
     state.remapped_specifiers.get(&args.base)
   {
@@ -618,7 +620,7 @@ fn op_resolve(
                 node::node_resolve(
                   specifier,
                   &referrer,
-                  node::NodeResolutionMode::Types,
+                  NodeResolutionMode::Types,
                   npm_resolver,
                 )
                 .ok()
@@ -660,6 +662,7 @@ fn op_resolve(
           ".d.ts".to_string(),
         ),
       };
+      log::debug!("Resolved {} to {:?}", specifier, result);
       resolved.push(result);
     }
   }
@@ -682,9 +685,9 @@ pub fn resolve_npm_package_reference_types(
 }
 
 #[op]
-fn op_is_node_file(state: &mut OpState, path: String) -> bool {
+fn op_is_node_file(state: &mut OpState, path: &str) -> bool {
   let state = state.borrow::<State>();
-  match ModuleSpecifier::parse(&path) {
+  match ModuleSpecifier::parse(path) {
     Ok(specifier) => state
       .maybe_npm_resolver
       .as_ref()
@@ -860,7 +863,6 @@ mod tests {
         is_dynamic: false,
         imports: None,
         resolver: None,
-        locker: None,
         module_analyzer: None,
         reporter: None,
       },
@@ -893,7 +895,6 @@ mod tests {
         is_dynamic: false,
         imports: None,
         resolver: None,
-        locker: None,
         module_analyzer: None,
         reporter: None,
       },

@@ -18,10 +18,10 @@ use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::args::TsConfig;
-use crate::fs_util::relative_specifier;
-use crate::fs_util::specifier_to_file_path;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
+use crate::util::path::relative_specifier;
+use crate::util::path::specifier_to_file_path;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
@@ -2726,7 +2726,7 @@ fn op_resolve(
   let referrer = state.normalize_specifier(&args.base)?;
 
   let result = if let Some(resolved) = state.state_snapshot.documents.resolve(
-    args.specifiers,
+    &args.specifiers,
     &referrer,
     state.state_snapshot.maybe_npm_resolver.as_ref(),
   ) {
@@ -3445,7 +3445,7 @@ pub fn request(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::http_cache::HttpCache;
+  use crate::cache::HttpCache;
   use crate::http_util::HeadersMap;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
@@ -3913,7 +3913,7 @@ mod tests {
 
     // You might have found this assertion starts failing after upgrading TypeScript.
     // Just update the new number of assets (declaration files) for this number.
-    assert_eq!(assets.len(), 71);
+    assert_eq!(assets.len(), 72);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;

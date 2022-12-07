@@ -472,7 +472,7 @@ fn op_serialize(
         }
 
         let backing_store = buf.get_backing_store();
-        buf.detach(v8::undefined(scope).into());
+        buf.detach(None);
         let id = shared_array_buffer_store.insert(backing_store);
         value_serializer.transfer_array_buffer(id, buf);
         let id = v8::Number::new(scope, id as f64).into();
@@ -770,12 +770,13 @@ fn op_dispatch_exception(
     scope.terminate_execution();
     return;
   }
-  match state.inspector().try_borrow() {
-    Ok(inspector) if !inspector.has_active_sessions() => {
-      scope.terminate_execution();
-    }
+
+  // FIXME(bartlomieju): I'm not sure if this assumption is valid... Maybe when
+  // inspector is polling on pause?
+  if state.inspector().try_borrow().is_ok() {
+    scope.terminate_execution();
+  } else {
     // If the inspector is borrowed at this time, assume an inspector is active.
-    _ => {}
   }
 }
 

@@ -11,6 +11,7 @@ use crate::cache;
 use crate::cache::DenoDir;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
+use crate::cache::HttpCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
@@ -19,7 +20,6 @@ use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
-use crate::http_cache;
 use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
@@ -28,9 +28,9 @@ use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 use crate::npm::RealNpmRegistryApi;
-use crate::progress_bar::ProgressBar;
 use crate::resolver::CliResolver;
 use crate::tools::check;
+use crate::util::progress_bar::ProgressBar;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -53,6 +53,7 @@ use deno_graph::source::Resolver;
 use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
@@ -153,7 +154,7 @@ impl ProcState {
     let compiled_wasm_module_store = CompiledWasmModuleStore::default();
     let dir = cli_options.resolve_deno_dir()?;
     let deps_cache_location = dir.deps_folder_path();
-    let http_cache = http_cache::HttpCache::new(&deps_cache_location);
+    let http_cache = HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
     let progress_bar = ProgressBar::default();
@@ -225,7 +226,6 @@ impl ProcState {
     let api = RealNpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
-      cli_options.cache_setting(),
       http_client,
       progress_bar.clone(),
     );
@@ -329,7 +329,6 @@ impl ProcState {
       root_permissions.clone(),
       dynamic_permissions.clone(),
     );
-    let maybe_locker = Lockfile::as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_resolver =
       self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
@@ -383,16 +382,16 @@ impl ProcState {
         is_dynamic,
         imports: maybe_imports,
         resolver: maybe_resolver,
-        locker: maybe_locker,
         module_analyzer: Some(&*analyzer),
         reporter: maybe_file_watcher_reporter,
       },
     )
     .await;
 
-    // If there was a locker, validate the integrity of all the modules in the
-    // locker.
-    graph_lock_or_exit(&graph);
+    // If there is a lockfile, validate the integrity of all the modules.
+    if let Some(lockfile) = &self.lockfile {
+      graph_lock_or_exit(&graph, &mut lockfile.lock());
+    }
 
     // Determine any modules that have already been emitted this session and
     // should be skipped.
@@ -515,7 +514,7 @@ impl ProcState {
           .handle_node_resolve_result(node::node_resolve(
             specifier,
             &referrer,
-            node::NodeResolutionMode::Execution,
+            NodeResolutionMode::Execution,
             &self.npm_resolver,
           ))
           .with_context(|| {
@@ -548,7 +547,7 @@ impl ProcState {
             return self
               .handle_node_resolve_result(node::node_resolve_npm_reference(
                 &reference,
-                node::NodeResolutionMode::Execution,
+                NodeResolutionMode::Execution,
                 &self.npm_resolver,
               ))
               .with_context(|| format!("Could not resolve '{}'.", reference));
@@ -639,7 +638,6 @@ impl ProcState {
     roots: Vec<(ModuleSpecifier, ModuleKind)>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let maybe_locker = Lockfile::as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
 
     let maybe_cli_resolver = CliResolver::maybe_new(
@@ -657,7 +655,6 @@ impl ProcState {
         is_dynamic: false,
         imports: maybe_imports,
         resolver: maybe_graph_resolver,
-        locker: maybe_locker,
         module_analyzer: Some(&*analyzer),
         reporter: None,
       },

@@ -453,9 +453,9 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
 #[op]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: String,
+  sig: &str,
 ) -> Result<ResourceId, AnyError> {
-  let signo = signal_str_to_int(&sig)?;
+  let signo = signal_str_to_int(sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
     return Err(type_error(format!(
       "Binding to signal '{}' is not allowed",
@@ -474,9 +474,9 @@ fn op_signal_bind(
 #[op]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: String,
+  sig: &str,
 ) -> Result<ResourceId, AnyError> {
-  let signo = signal_str_to_int(&sig)?;
+  let signo = signal_str_to_int(sig)?;
   let resource = SignalStreamResource {
     signal: AsyncRefCell::new(match signo {
       // SIGINT

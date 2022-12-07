@@ -708,7 +708,7 @@
       );
     }
     testDesc.origin = getTestOrigin();
-    const jsError = Deno.core.destructureError(new Error());
+    const jsError = core.destructureError(new Error());
     testDesc.location = {
       fileName: jsError.frames[1].fileName,
       lineNumber: jsError.frames[1].lineNumber,
@@ -1086,6 +1086,9 @@
     }
 
     for (const desc of filtered) {
+      if (ops.op_tests_should_stop()) {
+        break;
+      }
       ops.op_dispatch_test_event({ wait: desc.id });
       const earlier = DateNow();
       const result = await runTest(desc);
@@ -1290,7 +1293,7 @@
         stepDesc.sanitizeResources ??= desc.sanitizeResources;
         stepDesc.sanitizeExit ??= desc.sanitizeExit;
         stepDesc.origin = getTestOrigin();
-        const jsError = Deno.core.destructureError(new Error());
+        const jsError = core.destructureError(new Error());
         stepDesc.location = {
           fileName: jsError.frames[1].fileName,
           lineNumber: jsError.frames[1].lineNumber,

@@ -1,21 +1,26 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 
+use crate::args::CacheSetting;
 use crate::cache::DenoDir;
-use crate::file_fetcher::CacheSetting;
-use crate::fs_util;
 use crate::http_util::HttpClient;
-use crate::progress_bar::ProgressBar;
+use crate::util::fs::canonicalize_path;
+use crate::util::fs::hard_link_dir_recursive;
+use crate::util::path::root_url_to_safe_local_dirname;
+use crate::util::progress_bar::ProgressBar;
 
 use super::registry::NpmPackageVersionDistInfo;
 use super::semver::NpmVersion;
@@ -159,7 +164,7 @@ impl ReadonlyNpmCache {
         std::fs::create_dir_all(root_dir)
           .with_context(|| format!("Error creating {}", root_dir.display()))?;
       }
-      Ok(crate::fs_util::canonicalize_path(root_dir)?)
+      Ok(canonicalize_path(root_dir)?)
     }
 
     // this may fail on readonly file systems, so just ignore if so
@@ -224,7 +229,7 @@ impl ReadonlyNpmCache {
   pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
     self
       .root_dir
-      .join(fs_util::root_url_to_safe_local_dirname(registry_url))
+      .join(root_url_to_safe_local_dirname(registry_url))
   }
 
   pub fn resolve_package_folder_id_from_specifier(
@@ -249,7 +254,7 @@ impl ReadonlyNpmCache {
       .root_dir_url
       .join(&format!(
         "{}/",
-        fs_util::root_url_to_safe_local_dirname(registry_url)
+        root_url_to_safe_local_dirname(registry_url)
           .to_string_lossy()
           .replace('\\', "/")
       ))
@@ -317,6 +322,8 @@ pub struct NpmCache {
   cache_setting: CacheSetting,
   http_client: HttpClient,
   progress_bar: ProgressBar,
+  /// ensures a package is only downloaded once per run
+  previously_reloaded_packages: Arc<Mutex<HashSet<String>>>,
 }
 
 impl NpmCache {
@@ -331,11 +338,32 @@ impl NpmCache {
       cache_setting,
       http_client,
       progress_bar,
+      previously_reloaded_packages: Default::default(),
     }
   }
 
   pub fn as_readonly(&self) -> ReadonlyNpmCache {
     self.readonly.clone()
+  }
+
+  pub fn cache_setting(&self) -> &CacheSetting {
+    &self.cache_setting
+  }
+
+  /// Checks if the cache should be used for the provided name and version.
+  /// NOTE: Subsequent calls for the same package will always return `true`
+  /// to ensure a package is only downloaded once per run of the CLI. This
+  /// prevents downloads from re-occurring when someone has `--reload` and
+  /// and imports a dynamic import that imports the same package again for example.
+  fn should_use_global_cache_for_package(
+    &self,
+    package: (&str, &NpmVersion),
+  ) -> bool {
+    self.cache_setting.should_use_for_npm_package(package.0)
+      || !self
+        .previously_reloaded_packages
+        .lock()
+        .insert(format!("{}@{}", package.0, package.1))
   }
 
   pub async fn ensure_package(
@@ -352,10 +380,6 @@ impl NpmCache {
       })
   }
 
-  pub fn should_use_cache_for_npm_package(&self, package_name: &str) -> bool {
-    self.cache_setting.should_use_for_npm_package(package_name)
-  }
-
   async fn ensure_package_inner(
     &self,
     package: (&str, &NpmVersion),
@@ -367,11 +391,11 @@ impl NpmCache {
       package.1,
       registry_url,
     );
-    if package_folder.exists()
+    if self.should_use_global_cache_for_package(package)
+      && package_folder.exists()
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
-      && self.should_use_cache_for_npm_package(package.0)
     {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {
@@ -435,12 +459,7 @@ impl NpmCache {
     with_folder_sync_lock(
       (id.name.as_str(), &id.version),
       &package_folder,
-      || {
-        fs_util::hard_link_dir_recursive(
-          &original_package_folder,
-          &package_folder,
-        )
-      },
+      || hard_link_dir_recursive(&original_package_folder, &package_folder),
     )?;
     Ok(())
   }

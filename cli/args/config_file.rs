@@ -3,10 +3,9 @@
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::TaskFlags;
-use crate::fs_util;
-use crate::fs_util::canonicalize_path;
-use crate::fs_util::specifier_parent;
-use crate::fs_util::specifier_to_file_path;
+use crate::util::fs::canonicalize_path;
+use crate::util::path::specifier_parent;
+use crate::util::path::specifier_to_file_path;
 
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -467,7 +466,7 @@ impl ConfigFile {
             ..
           }) = &flags.subcommand
           {
-            let task_cwd = fs_util::canonicalize_path(&PathBuf::from(path))?;
+            let task_cwd = canonicalize_path(&PathBuf::from(path))?;
             if let Some(path) = Self::discover_from(&task_cwd, &mut checked)? {
               return Ok(Some(path));
             }
