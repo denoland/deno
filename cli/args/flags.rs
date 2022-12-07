@@ -545,6 +545,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          (module downloads, fetch)
     HTTPS_PROXY          Proxy address for HTTPS requests
                          (module downloads, fetch)
+    NPM_CONFIG_REGISTRY  URL to use for the npm registry.
     NO_COLOR             Set to disable color
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)"#;
