@@ -913,7 +913,7 @@ mod repl {
     {
       let (out, err) = util::run_and_collect_output_with_args(
         true,
-        vec!["repl", "--quiet"],
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
         Some(vec![
           r#"import chalk from "npm:chalk";"#,
           "chalk.red('hello')",
@@ -923,13 +923,14 @@ mod repl {
       );
 
       assert_contains!(out, "hello");
+      eprintln!("{}", err);
       assert!(err.is_empty());
     }
 
     {
       let (out, err) = util::run_and_collect_output_with_args(
         true,
-        vec!["repl", "--quiet"],
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
         Some(vec![
           r#"const chalk = await import("npm:chalk");"#,
           "chalk.default.red('hello')",
