@@ -234,6 +234,7 @@ impl VendorTestBuilder {
       &parsed_source_cache,
       &output_dir,
       self.original_import_map.as_ref(),
+      None,
       &self.environment,
     )?;
 
@@ -273,7 +274,6 @@ async fn build_test_graph(
       is_dynamic: false,
       imports: None,
       resolver: resolver.as_ref().map(|r| r.as_graph_resolver()),
-      locker: None,
       module_analyzer: Some(analyzer),
       reporter: None,
     },

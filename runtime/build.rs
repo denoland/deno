@@ -120,7 +120,7 @@ mod not_docs {
   }
 
   fn create_runtime_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
-    let extensions: Vec<Extension> = vec![
+    let extensions_with_js: Vec<Extension> = vec![
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
@@ -154,7 +154,8 @@ mod not_docs {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions,
+      extensions: vec![],
+      extensions_with_js,
       additional_files: files,
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         lzzzz::lz4_hc::compress_to_vec(
@@ -168,7 +169,14 @@ mod not_docs {
   }
 
   pub fn build_snapshot(runtime_snapshot_path: PathBuf) {
-    let js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js");
+    #[allow(unused_mut)]
+    let mut js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js");
+    #[cfg(not(feature = "snapshot_from_snapshot"))]
+    {
+      let manifest = env!("CARGO_MANIFEST_DIR");
+      let path = PathBuf::from(manifest);
+      js_files.push(path.join("js").join("99_main.js"));
+    }
     create_runtime_snapshot(runtime_snapshot_path, js_files);
   }
 }

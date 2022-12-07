@@ -1,8 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::cdp;
 use crate::colors;
-use crate::emit::TsTypeLib;
+use crate::args::TsTypeLib;
 use crate::lsp::ReplLanguageServer;
 use crate::Permissions;
 use crate::ProcState;
@@ -20,6 +19,8 @@ use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
 use deno_runtime::worker::MainWorker;
 use std::sync::Arc;
+
+use super::cdp;
 
 static PRELUDE: &str = r#"
 Object.defineProperty(globalThis, "_", {
@@ -104,17 +105,19 @@ impl ReplSession {
     for notification in session.notifications() {
       let method = notification.get("method").unwrap().as_str().unwrap();
       let params = notification.get("params").unwrap();
-
       if method == "Runtime.executionContextCreated" {
-        context_id = params
-          .get("context")
+        let context = params.get("context").unwrap();
+        assert!(context
+          .get("auxData")
           .unwrap()
-          .get("id")
+          .get("isDefault")
           .unwrap()
-          .as_u64()
-          .unwrap();
+          .as_bool()
+          .unwrap());
+        context_id = context.get("id").unwrap().as_u64().unwrap();
       }
     }
+    assert_ne!(context_id, 0);
 
     let mut repl_session = ReplSession {
       proc_state,

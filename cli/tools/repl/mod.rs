@@ -1,11 +1,14 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::ReplFlags;
+use crate::colors;
 use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use rustyline::error::ReadlineError;
 
+mod cdp;
 mod channel;
 mod editor;
 mod session;
@@ -76,8 +79,7 @@ async fn read_eval_file(
 pub async fn run(
   ps: &ProcState,
   worker: MainWorker,
-  maybe_eval_files: Option<Vec<String>>,
-  maybe_eval: Option<String>,
+  repl_flags: ReplFlags,
 ) -> Result<i32, AnyError> {
   let mut repl_session = ReplSession::initialize(ps.clone(), worker).await?;
   let mut rustyline_channel = rustyline_channel();
@@ -88,10 +90,10 @@ pub async fn run(
     sync_sender: rustyline_channel.0,
   };
 
-  let history_file_path = ps.dir.root.join("deno_history.txt");
-  let editor = ReplEditor::new(helper, history_file_path);
+  let history_file_path = ps.dir.repl_history_file_path();
+  let editor = ReplEditor::new(helper, history_file_path)?;
 
-  if let Some(eval_files) = maybe_eval_files {
+  if let Some(eval_files) = repl_flags.eval_files {
     for eval_file in eval_files {
       match read_eval_file(ps, &eval_file).await {
         Ok(eval_source) => {
@@ -100,26 +102,40 @@ pub async fn run(
             .await?;
           // only output errors
           if let EvaluationOutput::Error(error_text) = output {
-            println!("error in --eval-file file {}. {}", eval_file, error_text);
+            println!(
+              "Error in --eval-file file \"{}\": {}",
+              eval_file, error_text
+            );
           }
         }
         Err(e) => {
-          println!("error in --eval-file file {}. {}", eval_file, e);
+          println!("Error in --eval-file file \"{}\": {}", eval_file, e);
         }
       }
     }
   }
 
-  if let Some(eval) = maybe_eval {
+  if let Some(eval) = repl_flags.eval {
     let output = repl_session.evaluate_line_and_get_output(&eval).await?;
     // only output errors
     if let EvaluationOutput::Error(error_text) = output {
-      println!("error in --eval flag. {}", error_text);
+      println!("Error in --eval flag: {}", error_text);
     }
   }
 
-  println!("Deno {}", crate::version::deno());
-  println!("exit using ctrl+d, ctrl+c, or close()");
+  // Doing this manually, instead of using `log::info!` because these messages
+  // are supposed to go to stdout, not stderr.
+  if !ps.options.is_quiet() {
+    println!("Deno {}", crate::version::deno());
+    println!("exit using ctrl+d, ctrl+c, or close()");
+    if repl_flags.is_default_command {
+      println!(
+        "{}",
+        colors::yellow("REPL is running with all permissions allowed.")
+      );
+      println!("To specify permissions, run `deno repl` with allow flags.")
+    }
+  }
 
   loop {
     let line = read_line_and_poll(
@@ -131,6 +147,7 @@ pub async fn run(
     match line {
       Ok(line) => {
         should_exit_on_interrupt = false;
+        editor.update_history(line.clone());
         let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
         // We check for close and break here instead of making it a loop condition to get
@@ -140,8 +157,6 @@ pub async fn run(
         }
 
         println!("{}", output);
-
-        editor.add_history_entry(line);
       }
       Err(ReadlineError::Interrupted) => {
         if should_exit_on_interrupt {
@@ -160,8 +175,6 @@ pub async fn run(
       }
     }
   }
-
-  editor.save_history()?;
 
   Ok(repl_session.worker.get_exit_code())
 }
