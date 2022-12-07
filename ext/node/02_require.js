@@ -353,7 +353,7 @@
         }
       }
 
-      const isDenoDirPackage = Deno.core.ops.op_require_is_deno_dir_package(
+      const isDenoDirPackage = core.ops.op_require_is_deno_dir_package(
         curPath,
       );
       const isRelative = ops.op_require_is_request_relative(

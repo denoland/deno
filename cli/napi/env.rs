@@ -59,7 +59,7 @@ fn napi_add_env_cleanup_hook(
   _hook: extern "C" fn(*const c_void),
   _data: *const c_void,
 ) -> Result {
-  eprintln!("napi_add_env_cleanup_hook is currently not supported");
+  log::info!("napi_add_env_cleanup_hook is currently not supported");
   Ok(())
 }
 
@@ -69,7 +69,7 @@ fn napi_remove_env_cleanup_hook(
   _hook: extern "C" fn(*const c_void),
   _data: *const c_void,
 ) -> Result {
-  eprintln!("napi_remove_env_cleanup_hook is currently not supported");
+  log::info!("napi_remove_env_cleanup_hook is currently not supported");
   Ok(())
 }
 
