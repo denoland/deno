@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use crate::turbocall;
 use crate::{
   check_unstable,

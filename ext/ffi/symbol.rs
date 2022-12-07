@@ -1,8 +1,8 @@
-use serde::Deserialize;
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// Defines the accepted types that can be used as
 /// parameters and return values in FFI.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, serde::Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum NativeType {
   Void,

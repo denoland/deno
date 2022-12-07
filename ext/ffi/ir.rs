@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use crate::symbol::NativeType;
 use crate::{MAX_SAFE_INTEGER, MIN_SAFE_INTEGER};
 use deno_core::{

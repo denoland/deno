@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use crate::{check_unstable, FfiPermissions};
 use deno_core::{
   error::{range_error, type_error, AnyError},

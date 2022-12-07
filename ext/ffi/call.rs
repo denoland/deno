@@ -1,8 +1,11 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use crate::callback::PtrSymbol;
 use crate::ir::{ffi_parse_args, NativeValue, *};
 use crate::symbol::{NativeType, Symbol};
 use crate::{
-  check_unstable2, DynamicLibraryResource, FfiPermissions, ForeignFunction,
+  check_unstable2, dlfcn::DynamicLibraryResource, FfiPermissions,
+  ForeignFunction,
 };
 use deno_core::{
   anyhow::anyhow,
