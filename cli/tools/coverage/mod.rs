@@ -6,7 +6,7 @@ use crate::colors;
 use crate::emit::get_source_hash;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
-use crate::util::fs::collect_files;
+use crate::util::fs::FileCollector;
 use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
@@ -558,9 +558,13 @@ fn collect_coverages(
   ignore: Vec<PathBuf>,
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
-  let file_paths = collect_files(&files, &ignore, |file_path| {
+  let file_paths = FileCollector::new(|file_path| {
     file_path.extension().map_or(false, |ext| ext == "json")
-  })?;
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .add_ignore_paths(&ignore)
+  .collect_files(&files)?;
 
   for file_path in file_paths {
     let json = fs::read_to_string(file_path.as_path())?;

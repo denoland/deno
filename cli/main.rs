@@ -585,13 +585,7 @@ async fn repl_command(
   )
   .await?;
   worker.setup_repl().await?;
-  tools::repl::run(
-    &ps,
-    worker.into_main_worker(),
-    repl_flags.eval_files,
-    repl_flags.eval,
-  )
-  .await
+  tools::repl::run(&ps, worker.into_main_worker(), repl_flags).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
