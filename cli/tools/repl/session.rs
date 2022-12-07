@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use crate::args::TsTypeLib;
+use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::Permissions;
 use crate::ProcState;
