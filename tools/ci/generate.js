@@ -101,7 +101,7 @@ const INSTALL_RUST = {
 const INSTALL_DENO = {
   name: "Install Deno",
   uses: "denoland/setup-deno@v1",
-  with: { "deno-version": "v1.25.4" },
+  with: { "deno-version": "v1.28.3" },
 };
 
 const INSTALL_PYTHON = {
