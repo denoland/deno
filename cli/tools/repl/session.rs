@@ -463,7 +463,7 @@ impl ReplSession {
 
 /// Walk an AST and get all import specifiers for analysis if any of them is
 /// an npm specifier.
-pub struct ImportCollector {
+struct ImportCollector {
   pub imports: Vec<String>,
 }
 
