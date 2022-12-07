@@ -492,12 +492,23 @@ impl Visit for ImportCollector {
   fn visit_module_decl(&mut self, module_decl: &swc_ast::ModuleDecl) {
     use deno_ast::swc::ast::*;
 
-    if let ModuleDecl::Import(import_decl) = module_decl {
-      if import_decl.type_only {
-        return;
-      }
+    match module_decl {
+      ModuleDecl::Import(import_decl) => {
+        if import_decl.type_only {
+          return;
+        }
 
-      self.imports.push(import_decl.src.value.to_string());
+        self.imports.push(import_decl.src.value.to_string());
+      }
+      ModuleDecl::ExportAll(export_all) => {
+        self.imports.push(export_all.src.value.to_string());
+      }
+      ModuleDecl::ExportNamed(export_named) => {
+        if let Some(src) = &export_named.src {
+          self.imports.push(src.value.to_string());
+        }
+      }
+      _ => {}
     }
   }
 }
