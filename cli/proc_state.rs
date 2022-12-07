@@ -571,8 +571,6 @@ impl ProcState {
     let referrer = if referrer.is_empty()
       && matches!(self.options.sub_command(), DenoSubcommand::Repl(_))
     {
-      let referrer = deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap();
-
       // FIXME(bartlomieju): this is another hack way to provide NPM specifier
       // support in REPL. This should be fixed.
       if let Ok(reference) = NpmPackageReference::from_str(specifier) {
@@ -585,7 +583,7 @@ impl ProcState {
           .with_context(|| format!("Could not resolve '{}'.", reference));
       }
 
-      referrer
+      deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()
     } else {
       deno_core::resolve_url_or_path(referrer).unwrap()
     };
