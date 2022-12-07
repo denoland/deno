@@ -18,7 +18,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
 use deno_runtime::worker::MainWorker;
-use std::sync::Arc;
 
 use super::cdp;
 
@@ -362,7 +361,7 @@ impl ReplSession {
       scope_analysis: false,
     })?;
 
-    self.check_for_npm_imports(parsed_module.program()).await?;
+    self.check_for_npm_imports(&parsed_module.program()).await?;
 
     let transpiled_src = parsed_module
       .transpile(&deno_ast::EmitOptions {
@@ -397,7 +396,7 @@ impl ReplSession {
 
   async fn check_for_npm_imports(
     &mut self,
-    program: Arc<swc_ast::Program>,
+    program: &swc_ast::Program,
   ) -> Result<(), AnyError> {
     let mut collector = ImportCollector::new();
     program.visit_with(&mut collector);
@@ -458,7 +457,7 @@ impl ReplSession {
 }
 
 /// Walk an AST and get all import specifiers for analysis if any of them is
-/// an NPM specifier.
+/// an npm specifier.
 pub struct ImportCollector {
   pub imports: Vec<String>,
 }

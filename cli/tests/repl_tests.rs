@@ -900,15 +900,8 @@ mod repl {
 
   #[test]
   fn npm_packages() {
-    let env_vars = vec![
-      ("DENO_NODE_COMPAT_URL".to_string(), util::std_file_url()),
-      ("DENO_NPM_REGISTRY".to_string(), util::npm_registry_url()),
-      ("NO_COLOR".to_string(), "1".to_string()),
-      (
-        "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
-        "1".to_string(),
-      ),
-    ];
+    let mut env_vars = util::env_vars_for_npm_tests();
+    env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
 
     {
       let (out, err) = util::run_and_collect_output_with_args(
