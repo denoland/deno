@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::ReplFlags;
+use crate::colors;
 use crate::proc_state::ProcState;
 use crate::worker::create_main_worker_with_extensions;
 use deno_core::anyhow::Context;
@@ -105,8 +107,7 @@ pub fn op_repl_save(
 async fn create_repl_session(
   ps: &ProcState,
   module_url: ModuleSpecifier,
-  maybe_eval_files: Option<Vec<String>>,
-  maybe_eval: Option<String>,
+  repl_flags: ReplFlags,
 ) -> Result<ReplSession, AnyError> {
   let extension = Extension::builder()
     .ops(vec![op_repl_reload::decl(), op_repl_save::decl()])
@@ -129,9 +130,10 @@ async fn create_repl_session(
   .await?;
   worker.setup_repl().await?;
   let worker = worker.into_main_worker();
+
   let mut repl_session = ReplSession::initialize(worker).await?;
 
-  if let Some(eval_files) = maybe_eval_files {
+  if let Some(eval_files) = repl_flags.eval_files {
     for eval_file in eval_files {
       match read_eval_file(ps, &eval_file).await {
         Ok(eval_source) => {
@@ -140,21 +142,24 @@ async fn create_repl_session(
             .await?;
           // only output errors
           if let EvaluationOutput::Error(error_text) = output {
-            println!("error in --eval-file file {}. {}", eval_file, error_text);
+            println!(
+              "Error in --eval-file file \"{}\": {}",
+              eval_file, error_text
+            );
           }
         }
         Err(e) => {
-          println!("error in --eval-file file {}. {}", eval_file, e);
+          println!("Error in --eval-file file \"{}\": {}", eval_file, e);
         }
       }
     }
   }
 
-  if let Some(eval) = maybe_eval {
+  if let Some(eval) = repl_flags.eval {
     let output = repl_session.evaluate_line_and_get_output(&eval).await?;
     // only output errors
     if let EvaluationOutput::Error(error_text) = output {
-      println!("error in --eval flag. {}", error_text);
+      println!("Error in --eval flag: {}", error_text);
     }
   }
 
@@ -178,16 +183,10 @@ fn save_session_to_file(
 pub async fn run(
   ps: &ProcState,
   module_url: ModuleSpecifier,
-  maybe_eval_files: Option<Vec<String>>,
-  maybe_eval: Option<String>,
+  repl_flags: ReplFlags,
 ) -> Result<i32, AnyError> {
-  let mut repl_session = create_repl_session(
-    ps,
-    module_url.clone(),
-    maybe_eval_files.clone(),
-    maybe_eval.clone(),
-  )
-  .await?;
+  let mut repl_session =
+    create_repl_session(ps, module_url.clone(), repl_flags.clone()).await?;
   let mut rustyline_channel = rustyline_channel();
   let mut should_exit_on_interrupt = false;
 
@@ -200,9 +199,20 @@ pub async fn run(
   let history_file_path = ps.dir.repl_history_file_path();
   let editor = ReplEditor::new(helper, history_file_path)?;
 
-  println!("Deno {}", crate::version::deno());
-  println!("Run repl.help() for help");
-  println!("Exit using ctrl+d, ctrl+c, or close()");
+  // Doing this manually, instead of using `log::info!` because these messages
+  // are supposed to go to stdout, not stderr.
+  if !ps.options.is_quiet() {
+    println!("Deno {}", crate::version::deno());
+    println!("Run repl.help() for help");
+    println!("exit using ctrl+d, ctrl+c, or close()");
+    if repl_flags.is_default_command {
+      println!(
+        "{}",
+        colors::yellow("REPL is running with all permissions allowed.")
+      );
+      println!("To specify permissions, run `deno repl` with allow flags.")
+    }
+  }
 
   let mut session_history: Vec<String> = vec![];
   loop {
@@ -236,13 +246,9 @@ pub async fn run(
           };
           if repl_state.needs_reload {
             drop(op_state);
-            repl_session = create_repl_session(
-              ps,
-              module_url.clone(),
-              maybe_eval_files.clone(),
-              maybe_eval.clone(),
-            )
-            .await?;
+            repl_session =
+              create_repl_session(ps, module_url.clone(), repl_flags.clone())
+                .await?;
             println!("Started a new REPL session. Global scope is now clean.");
           } else if repl_state.needs_save {
             let mut op_state = op_state.borrow_mut();
