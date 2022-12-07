@@ -702,7 +702,7 @@ fn get_document_path(
   let scheme = specifier.scheme();
 
   if scheme == "npm" || scheme == "node" {
-    return None;
+    None
   } else if scheme == "file" {
     specifier_to_file_path(specifier).ok()
   } else {
