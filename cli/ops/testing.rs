@@ -1,10 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
 use crate::tools::test::TestFilter;
 use crate::tools::test::TestLocation;
+use crate::tools::test::TestResult;
 use crate::tools::test::TestStepDescription;
 
 use deno_core::error::generic_error;
@@ -23,7 +25,11 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
 
-pub fn init(sender: TestEventSender, filter: TestFilter) -> Extension {
+pub fn init(
+  sender: TestEventSender,
+  fail_fast_tracker: FailFastTracker,
+  filter: TestFilter,
+) -> Extension {
   Extension::builder()
     .ops(vec![
       op_pledge_test_permissions::decl(),
@@ -32,9 +38,11 @@ pub fn init(sender: TestEventSender, filter: TestFilter) -> Extension {
       op_register_test::decl(),
       op_register_test_step::decl(),
       op_dispatch_test_event::decl(),
+      op_tests_should_stop::decl(),
     ])
     .state(move |state| {
       state.put(sender.clone());
+      state.put(fail_fast_tracker.clone());
       state.put(filter.clone());
       Ok(())
     })
@@ -178,7 +186,18 @@ fn op_dispatch_test_event(
   state: &mut OpState,
   event: TestEvent,
 ) -> Result<(), AnyError> {
+  if matches!(
+    event,
+    TestEvent::Result(_, TestResult::Cancelled | TestResult::Failed(_), _)
+  ) {
+    state.borrow::<FailFastTracker>().add_failure();
+  }
   let mut sender = state.borrow::<TestEventSender>().clone();
   sender.send(event).ok();
   Ok(())
+}
+
+#[op]
+fn op_tests_should_stop(state: &mut OpState) -> bool {
+  state.borrow::<FailFastTracker>().should_stop()
 }

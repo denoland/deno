@@ -2,9 +2,9 @@
 
 use super::lsp_custom;
 
-use crate::checksum;
 use crate::lsp::analysis::source_range_to_lsp_range;
 use crate::lsp::client::TestingNotification;
+use crate::util::checksum;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
