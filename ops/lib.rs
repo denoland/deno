@@ -193,7 +193,8 @@ fn codegen_v8_async(
     .inputs
     .iter()
     .map_while(|a| {
-      (if is_v8 { scope_arg(a) } else { None }).or_else(|| opstate_arg(a))
+      (if is_v8 { scope_arg(a) } else { None })
+        .or_else(|| rc_refcell_opstate_arg(a))
     })
     .collect::<Vec<_>>();
   let rust_i0 = special_args.len();
@@ -287,6 +288,16 @@ fn opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
     arg if is_mut_ref_opstate(arg) => {
       Some(quote! { &mut std::cell::RefCell::borrow_mut(&ctx.state), })
     }
+    _ => None,
+  }
+}
+
+fn rc_refcell_opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
+  match arg {
+    arg if is_rc_refcell_opstate(arg) => Some(quote! { ctx.state.clone(), }),
+    arg if is_mut_ref_opstate(arg) => Some(
+      quote! { compile_error!("mutable opstate is not supported in async ops"), },
+    ),
     _ => None,
   }
 }
@@ -400,10 +411,27 @@ fn codegen_arg(
     return quote! { let #ident = (); };
   }
   // Fast path for `String`
-  if is_string(&**ty) {
+  if let Some(is_ref) = is_string(&**ty) {
+    let ref_block = if is_ref {
+      quote! { let #ident = #ident.as_ref(); }
+    } else {
+      quote! {}
+    };
     return quote! {
       let #ident = match #core::v8::Local::<#core::v8::String>::try_from(args.get(#idx as i32)) {
         Ok(v8_string) => #core::serde_v8::to_utf8(v8_string, scope),
+        Err(_) => {
+          return #core::_ops::throw_type_error(scope, format!("Expected string at position {}", #idx));
+        }
+      };
+      #ref_block
+    };
+  }
+  // Fast path for `Cow<'_, str>`
+  if is_cow_str(&**ty) {
+    return quote! {
+      let #ident = match #core::v8::Local::<#core::v8::String>::try_from(args.get(#idx as i32)) {
+        Ok(v8_string) => ::std::borrow::Cow::Owned(#core::serde_v8::to_utf8(v8_string, scope)),
         Err(_) => {
           return #core::_ops::throw_type_error(scope, format!("Expected string at position {}", #idx));
         }
@@ -618,12 +646,23 @@ fn is_result(ty: impl ToTokens) -> bool {
   }
 }
 
-fn is_string(ty: impl ToTokens) -> bool {
-  tokens(ty) == "String"
+fn is_string(ty: impl ToTokens) -> Option<bool> {
+  let toks = tokens(ty);
+  if toks == "String" {
+    return Some(false);
+  }
+  if toks == "& str" {
+    return Some(true);
+  }
+  None
 }
 
 fn is_option_string(ty: impl ToTokens) -> bool {
   tokens(ty) == "Option < String >"
+}
+
+fn is_cow_str(ty: impl ToTokens) -> bool {
+  tokens(&ty).starts_with("Cow <") && tokens(&ty).ends_with("str >")
 }
 
 enum SliceType {

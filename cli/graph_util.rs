@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::Lockfile;
 use crate::args::TsTypeLib;
 use crate::colors;
 use crate::errors::get_error_class_name;
@@ -80,23 +81,23 @@ impl GraphData {
     let mut has_npm_specifier_in_graph = false;
 
     for (specifier, result) in graph.specifiers() {
-      if NpmPackageReference::from_specifier(&specifier).is_ok() {
+      if NpmPackageReference::from_specifier(specifier).is_ok() {
         has_npm_specifier_in_graph = true;
         continue;
       }
 
-      if !reload && self.modules.contains_key(&specifier) {
+      if !reload && self.modules.contains_key(specifier) {
         continue;
       }
 
-      if let Some(found) = graph.redirects.get(&specifier) {
+      if let Some(found) = graph.redirects.get(specifier) {
         let module_entry = ModuleEntry::Redirect(found.clone());
         self.modules.insert(specifier.clone(), module_entry);
         continue;
       }
       match result {
         Ok((_, _, media_type)) => {
-          let module = graph.get(&specifier).unwrap();
+          let module = graph.get(specifier).unwrap();
           let code = match &module.maybe_source {
             Some(source) => source.clone(),
             None => continue,
@@ -134,11 +135,11 @@ impl GraphData {
             checked_libs: Default::default(),
             maybe_types,
           };
-          self.modules.insert(specifier, module_entry);
+          self.modules.insert(specifier.clone(), module_entry);
         }
         Err(error) => {
-          let module_entry = ModuleEntry::Error(error);
-          self.modules.insert(specifier, module_entry);
+          let module_entry = ModuleEntry::Error(error.clone());
+          self.modules.insert(specifier.clone(), module_entry);
         }
       }
     }
@@ -475,10 +476,23 @@ pub fn graph_valid(
     .unwrap()
 }
 
-/// Calls `graph.lock()` and exits on errors.
-pub fn graph_lock_or_exit(graph: &ModuleGraph) {
-  if let Err(err) = graph.lock() {
-    log::error!("{} {}", colors::red("error:"), err);
-    std::process::exit(10);
+/// Checks the lockfile against the graph and and exits on errors.
+pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
+  for module in graph.modules() {
+    if let Some(source) = &module.maybe_source {
+      if !lockfile.check_or_insert_remote(module.specifier.as_str(), source) {
+        let err = format!(
+          concat!(
+            "The source code is invalid, as it does not match the expected hash in the lock file.\n",
+            "  Specifier: {}\n",
+            "  Lock file: {}",
+          ),
+          module.specifier,
+          lockfile.filename.display(),
+        );
+        log::error!("{} {}", colors::red("error:"), err);
+        std::process::exit(10);
+      }
+    }
   }
 }

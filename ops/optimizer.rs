@@ -20,11 +20,19 @@ pub(crate) enum BailoutReason {
 }
 
 #[derive(Debug, PartialEq)]
+enum StringType {
+  Cow,
+  Ref,
+  Owned,
+}
+
+#[derive(Debug, PartialEq)]
 enum TransformKind {
   // serde_v8::Value
   V8Value,
   SliceU32(bool),
   SliceU8(bool),
+  SeqOneByteString(StringType),
   PtrU8,
   WasmMemory,
 }
@@ -47,6 +55,13 @@ impl Transform {
   fn slice_u8(index: usize, is_mut: bool) -> Self {
     Transform {
       kind: TransformKind::SliceU8(is_mut),
+      index,
+    }
+  }
+
+  fn seq_one_byte_string(index: usize, is_ref: StringType) -> Self {
+    Transform {
+      kind: TransformKind::SeqOneByteString(is_ref),
       index,
     }
   }
@@ -132,6 +147,21 @@ impl Transform {
           };
         })
       }
+      // &str
+      TransformKind::SeqOneByteString(str_ty) => {
+        *ty = parse_quote! { *const #core::v8::fast_api::FastApiOneByteString };
+        match str_ty {
+          StringType::Ref => q!(Vars { var: &ident }, {
+            let var = unsafe { &*var }.as_str();
+          }),
+          StringType::Cow => q!(Vars { var: &ident }, {
+            let var = ::std::borrow::Cow::Borrowed(unsafe { &*var }.as_str());
+          }),
+          StringType::Owned => q!(Vars { var: &ident }, {
+            let var = unsafe { &*var }.as_str().to_owned();
+          }),
+        }
+      }
       TransformKind::WasmMemory => {
         // Note: `ty` is correctly set to __opts by the fast call tier.
         q!(Vars { var: &ident, core }, {
@@ -198,6 +228,7 @@ pub(crate) enum FastValue {
   V8Value,
   Uint8Array,
   Uint32Array,
+  SeqOneByteString,
 }
 
 impl Default for FastValue {
@@ -550,10 +581,58 @@ impl Optimizer {
                 }
               }
             }
+            // Cow<'_, str>
+            PathSegment {
+              ident, arguments, ..
+            } if ident == "Cow" => {
+              if let PathArguments::AngleBracketed(
+                AngleBracketedGenericArguments { args, .. },
+              ) = arguments
+              {
+                assert_eq!(args.len(), 2);
+
+                let ty = &args[1];
+                match ty {
+                  GenericArgument::Type(Type::Path(TypePath {
+                    path: Path { segments, .. },
+                    ..
+                  })) => {
+                    let segment = single_segment(segments)?;
+                    match segment {
+                      PathSegment { ident, .. } if ident == "str" => {
+                        self.fast_parameters.push(FastValue::SeqOneByteString);
+                        assert!(self
+                          .transforms
+                          .insert(
+                            index,
+                            Transform::seq_one_byte_string(
+                              index,
+                              StringType::Cow
+                            )
+                          )
+                          .is_none());
+                      }
+                      _ => return Err(BailoutReason::FastUnsupportedParamType),
+                    }
+                  }
+                  _ => return Err(BailoutReason::FastUnsupportedParamType),
+                }
+              }
+            }
             // Is `T` a fast scalar?
             PathSegment { ident, .. } => {
               if let Some(val) = get_fast_scalar(ident.to_string().as_str()) {
                 self.fast_parameters.push(val);
+              } else if ident == "String" {
+                // Is `T` an owned String?
+                self.fast_parameters.push(FastValue::SeqOneByteString);
+                assert!(self
+                  .transforms
+                  .insert(
+                    index,
+                    Transform::seq_one_byte_string(index, StringType::Owned)
+                  )
+                  .is_none());
               } else {
                 return Err(BailoutReason::FastUnsupportedParamType);
               }
@@ -571,8 +650,21 @@ impl Optimizer {
             let segment = single_segment(segments)?;
             match segment {
               // Is `T` a OpState?
-              PathSegment { ident, .. } if ident == "OpState" => {
+              PathSegment { ident, .. }
+                if ident == "OpState" && !self.is_async =>
+              {
                 self.has_ref_opstate = true;
+              }
+              // Is `T` a str?
+              PathSegment { ident, .. } if ident == "str" => {
+                self.fast_parameters.push(FastValue::SeqOneByteString);
+                assert!(self
+                  .transforms
+                  .insert(
+                    index,
+                    Transform::seq_one_byte_string(index, StringType::Ref)
+                  )
+                  .is_none());
               }
               _ => return Err(BailoutReason::FastUnsupportedParamType),
             }

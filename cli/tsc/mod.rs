@@ -542,7 +542,8 @@ fn op_resolve(
   args: ResolveArgs,
 ) -> Result<Vec<(String, String)>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mut resolved: Vec<(String, String)> = Vec::new();
+  let mut resolved: Vec<(String, String)> =
+    Vec::with_capacity(args.specifiers.len());
   let referrer = if let Some(remapped_specifier) =
     state.remapped_specifiers.get(&args.base)
   {
@@ -661,6 +662,7 @@ fn op_resolve(
           ".d.ts".to_string(),
         ),
       };
+      log::debug!("Resolved {} to {:?}", specifier, result);
       resolved.push(result);
     }
   }
@@ -683,9 +685,9 @@ pub fn resolve_npm_package_reference_types(
 }
 
 #[op]
-fn op_is_node_file(state: &mut OpState, path: String) -> bool {
+fn op_is_node_file(state: &mut OpState, path: &str) -> bool {
   let state = state.borrow::<State>();
-  match ModuleSpecifier::parse(&path) {
+  match ModuleSpecifier::parse(path) {
     Ok(specifier) => state
       .maybe_npm_resolver
       .as_ref()
@@ -861,7 +863,6 @@ mod tests {
         is_dynamic: false,
         imports: None,
         resolver: None,
-        locker: None,
         module_analyzer: None,
         reporter: None,
       },
@@ -894,7 +895,6 @@ mod tests {
         is_dynamic: false,
         imports: None,
         resolver: None,
-        locker: None,
         module_analyzer: None,
         reporter: None,
       },

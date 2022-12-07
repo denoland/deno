@@ -95,15 +95,11 @@ impl NodeResolution {
           },
         )
       }
-      maybe_response => {
-        let specifier = match maybe_response {
-          Some(response) => response.into_url(),
-          None => {
-            ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap()
-          }
-        };
-        (specifier, MediaType::Dts)
-      }
+      Some(resolution) => (resolution.into_url(), MediaType::Dts),
+      None => (
+        ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap(),
+        MediaType::Dts,
+      ),
     }
   }
 }
