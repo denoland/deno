@@ -797,12 +797,20 @@ Future runs of this module will trigger no downloads or compilation unless \
 
 fn check_subcommand<'a>() -> Command<'a> {
   compile_args_without_check_args(Command::new("check"))
-  .arg(
-    Arg::new("remote")
-      .long("remote")
-      .help("Type-check all modules, including remote")
-      .conflicts_with("no-remote")
+    .arg(
+      Arg::new("all")
+        .long("all")
+        .help("Type-check all code, including remote modules and npm packages")
+        .conflicts_with("no-remote")
     )
+    .arg(
+      // past alias for --all
+      Arg::new("remote")
+        .long("remote")
+        .help("Type-check all modules, including remote")
+        .conflicts_with("no-remote")
+        .hide(true)
+      )
     .arg(
       Arg::new("file")
         .takes_value(true)
@@ -2343,7 +2351,7 @@ fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     .unwrap()
     .map(String::from)
     .collect();
-  if matches.is_present("remote") {
+  if matches.is_present("all") || matches.is_present("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
   flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
@@ -4001,26 +4009,28 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "check", "--remote", "script.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Check(CheckFlags {
-          files: svec!["script.ts"],
-        }),
-        type_check_mode: TypeCheckMode::All,
-        ..Flags::default()
-      }
-    );
+    for all_flag in ["--remote", "--all"] {
+      let r = flags_from_vec(svec!["deno", "check", all_flag, "script.ts"]);
+      assert_eq!(
+        r.unwrap(),
+        Flags {
+          subcommand: DenoSubcommand::Check(CheckFlags {
+            files: svec!["script.ts"],
+          }),
+          type_check_mode: TypeCheckMode::All,
+          ..Flags::default()
+        }
+      );
 
-    let r = flags_from_vec(svec![
-      "deno",
-      "check",
-      "--remote",
-      "--no-remote",
-      "script.ts"
-    ]);
-    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::ArgumentConflict);
+      let r = flags_from_vec(svec![
+        "deno",
+        "check",
+        all_flag,
+        "--no-remote",
+        "script.ts"
+      ]);
+      assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::ArgumentConflict);
+    }
   }
 
   #[test]

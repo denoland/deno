@@ -28,7 +28,7 @@ mod check {
   });
 
   itest!(check_all {
-    args: "check --quiet --remote check/check_all.ts",
+    args: "check --quiet --all check/check_all.ts",
     output: "check/check_all.out",
     http_server: true,
     exit_code: 1,
