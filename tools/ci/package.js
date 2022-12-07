@@ -40,20 +40,13 @@ for (let i = 0; i < ARCHIVE_COUNT; i += 1) {
     i * artifactsPerArchive,
     (i + 1) * artifactsPerArchive,
   );
-  const tarProgram = Deno.build.os === "darwin" ? "gtar" : "tar";
-  const compressProgram = Deno.build.os === "windows"
-    ? ['"zstd -d"']
-    : ["unzstd"];
-  const args = [
-    tarProgram,
-    "--use-compress-program",
-    ...compressProgram,
-    "-cvf",
-    path,
-    ...files,
-  ];
+  const tar = Deno.build.os === "darwin" ? "gtar" : "tar";
+  const comparessProgram = Deno.build.os === "windows"
+    ? '--use-compress-program="zstd -d --long=30"'
+    : "--use-compress-program=zstd";
+
   const proc = Deno.run({
-    cmd: args,
+    cmd: [tar, comparessProgram, "-cvf", path, ...files],
   });
   const { success } = await proc.status();
   if (!success) {
