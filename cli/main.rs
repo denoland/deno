@@ -3,24 +3,13 @@
 mod args;
 mod auth_tokens;
 mod cache;
-mod cdp;
-mod checksum;
-mod deno_dir;
 mod deno_std;
-mod diagnostics;
-mod diff;
-mod display;
 mod emit;
 mod errors;
 mod file_fetcher;
-mod file_watcher;
-mod fs_util;
 mod graph_util;
-mod http_cache;
 mod http_util;
 mod js;
-mod lockfile;
-mod logger;
 mod lsp;
 mod module_loader;
 mod napi;
@@ -28,15 +17,12 @@ mod node;
 mod npm;
 mod ops;
 mod proc_state;
-mod progress_bar;
 mod resolver;
 mod standalone;
-mod text_encoding;
 mod tools;
 mod tsc;
-mod unix_util;
+mod util;
 mod version;
-mod windows_util;
 mod worker;
 
 use crate::args::flags_from_vec;
@@ -60,18 +46,19 @@ use crate::args::ReplFlags;
 use crate::args::RunFlags;
 use crate::args::TaskFlags;
 use crate::args::TestFlags;
+use crate::args::TsConfigType;
 use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UpgradeFlags;
 use crate::args::VendorFlags;
 use crate::cache::TypeCheckCache;
-use crate::emit::TsConfigType;
 use crate::file_fetcher::File;
-use crate::file_watcher::ResolutionResult;
 use crate::graph_util::graph_lock_or_exit;
 use crate::proc_state::ProcState;
 use crate::resolver::CliResolver;
 use crate::tools::check;
+use crate::util::display;
+use crate::util::file_watcher::ResolutionResult;
 
 use args::CliOptions;
 use deno_ast::MediaType;
@@ -327,7 +314,6 @@ async fn create_graph_and_maybe_check(
     Permissions::allow_all(),
     Permissions::allow_all(),
   );
-  let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_cli_resolver = CliResolver::maybe_new(
     ps.options.to_maybe_jsx_import_source_config(),
@@ -344,7 +330,6 @@ async fn create_graph_and_maybe_check(
         is_dynamic: false,
         imports: maybe_imports,
         resolver: maybe_graph_resolver,
-        locker: maybe_locker,
         module_analyzer: Some(&*analyzer),
         reporter: None,
       },
@@ -365,7 +350,9 @@ async fn create_graph_and_maybe_check(
   ps.npm_resolver
     .add_package_reqs(graph_data.npm_package_reqs().clone())
     .await?;
-  graph_lock_or_exit(&graph);
+  if let Some(lockfile) = &ps.lockfile {
+    graph_lock_or_exit(&graph, &mut lockfile.lock());
+  }
 
   if ps.options.type_check_mode() != TypeCheckMode::None {
     let ts_config_result =
@@ -445,7 +432,6 @@ async fn bundle_command(
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()
-        .iter()
         .filter_map(|(_, r)| {
           r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
         })
@@ -485,7 +471,7 @@ async fn bundle_command(
       if let Some(out_file) = out_file.as_ref() {
         let output_bytes = bundle_output.code.as_bytes();
         let output_len = output_bytes.len();
-        fs_util::write_file(out_file, output_bytes, 0o644)?;
+        util::fs::write_file(out_file, output_bytes, 0o644)?;
         info!(
           "{} {:?} ({})",
           colors::green("Emit"),
@@ -501,7 +487,7 @@ async fn bundle_command(
             "map".to_string()
           };
           let map_out_file = out_file.with_extension(ext);
-          fs_util::write_file(&map_out_file, map_bytes, 0o644)?;
+          util::fs::write_file(&map_out_file, map_bytes, 0o644)?;
           info!(
             "{} {:?} ({})",
             colors::green("Emit"),
@@ -518,10 +504,10 @@ async fn bundle_command(
   };
 
   if cli_options.watch_paths().is_some() {
-    file_watcher::watch_func(
+    util::file_watcher::watch_func(
       resolver,
       operation,
-      file_watcher::PrintConfig {
+      util::file_watcher::PrintConfig {
         job_name: "Bundle".to_string(),
         clear_screen: !cli_options.no_clear_screen(),
       },
@@ -545,9 +531,8 @@ fn error_for_any_npm_specifier(
 ) -> Result<(), AnyError> {
   let first_npm_specifier = graph
     .specifiers()
-    .values()
-    .filter_map(|r| match r {
-      Ok((specifier, kind, _)) if *kind == deno_graph::ModuleKind::External => {
+    .filter_map(|(_, r)| match r {
+      Ok((specifier, kind, _)) if kind == deno_graph::ModuleKind::External => {
         Some(specifier.clone())
       }
       _ => None,
@@ -657,11 +642,11 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     })
   };
 
-  file_watcher::watch_func2(
+  util::file_watcher::watch_func2(
     receiver,
     operation,
     (sender, main_module),
-    file_watcher::PrintConfig {
+    util::file_watcher::PrintConfig {
       job_name: "Process".to_string(),
       clear_screen: !flags.no_clear_screen,
     },
@@ -702,7 +687,7 @@ To grant permissions, set them before the script argument. For example:
 
   // Run a background task that checks for available upgrades. If an earlier
   // run of this background task found a new version of Deno.
-  tools::upgrade::check_for_upgrades(ps.dir.root.clone());
+  tools::upgrade::check_for_upgrades(ps.dir.upgrade_check_file_path());
 
   let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
   {
@@ -931,7 +916,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 
       if let Some(e) = error.downcast_ref::<JsError>() {
         error_string = format_js_error(e);
-      } else if let Some(e) = error.downcast_ref::<lockfile::LockfileError>() {
+      } else if let Some(e) = error.downcast_ref::<args::LockfileError>() {
         error_string = e.to_string();
         error_code = 10;
       }
@@ -949,8 +934,8 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 pub fn main() {
   setup_panic_hook();
 
-  unix_util::raise_fd_limit();
-  windows_util::ensure_stdio_open();
+  util::unix::raise_fd_limit();
+  util::windows::ensure_stdio_open();
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
 
@@ -981,7 +966,7 @@ pub fn main() {
       init_v8_flags(&flags.v8_flags);
     }
 
-    logger::init(flags.log_level);
+    util::logger::init(flags.log_level);
 
     get_subcommand(flags).await
   };

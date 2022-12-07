@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::flags::ReplFlags;
+use crate::args::ReplFlags;
 use crate::colors;
 use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
@@ -8,6 +8,7 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use rustyline::error::ReadlineError;
 
+mod cdp;
 mod channel;
 mod editor;
 mod session;
@@ -89,7 +90,7 @@ pub async fn run(
     sync_sender: rustyline_channel.0,
   };
 
-  let history_file_path = ps.dir.root.join("deno_history.txt");
+  let history_file_path = ps.dir.repl_history_file_path();
   let editor = ReplEditor::new(helper, history_file_path)?;
 
   if let Some(eval_files) = repl_flags.eval_files {
@@ -101,11 +102,14 @@ pub async fn run(
             .await?;
           // only output errors
           if let EvaluationOutput::Error(error_text) = output {
-            println!("error in --eval-file file {}. {}", eval_file, error_text);
+            println!(
+              "Error in --eval-file file \"{}\": {}",
+              eval_file, error_text
+            );
           }
         }
         Err(e) => {
-          println!("error in --eval-file file {}. {}", eval_file, e);
+          println!("Error in --eval-file file \"{}\": {}", eval_file, e);
         }
       }
     }
@@ -115,18 +119,22 @@ pub async fn run(
     let output = repl_session.evaluate_line_and_get_output(&eval).await?;
     // only output errors
     if let EvaluationOutput::Error(error_text) = output {
-      println!("error in --eval flag. {}", error_text);
+      println!("Error in --eval flag: {}", error_text);
     }
   }
 
-  println!("Deno {}", crate::version::deno());
-  println!("exit using ctrl+d, ctrl+c, or close()");
-  if repl_flags.is_default_command {
-    println!(
-      "{}",
-      colors::yellow("REPL is running with all permissions allowed.")
-    );
-    println!("To specify permissions, run `deno repl` with allow flags.")
+  // Doing this manually, instead of using `log::info!` because these messages
+  // are supposed to go to stdout, not stderr.
+  if !ps.options.is_quiet() {
+    println!("Deno {}", crate::version::deno());
+    println!("exit using ctrl+d, ctrl+c, or close()");
+    if repl_flags.is_default_command {
+      println!(
+        "{}",
+        colors::yellow("REPL is running with all permissions allowed.")
+      );
+      println!("To specify permissions, run `deno repl` with allow flags.")
+    }
   }
 
   loop {

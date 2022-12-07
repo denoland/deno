@@ -8,8 +8,9 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 
-use crate::fs_util;
-use crate::fs_util::path_with_stem_suffix;
+use crate::util::path::is_banned_path_char;
+use crate::util::path::path_with_stem_suffix;
+use crate::util::path::root_url_to_safe_local_dirname;
 
 /// Partitions the provided specifiers by the non-path and non-query parts of a specifier.
 pub fn partition_by_root_specifiers<'a>(
@@ -30,7 +31,7 @@ pub fn partition_by_root_specifiers<'a>(
 
 /// Gets the directory name to use for the provided root.
 pub fn dir_name_for_root(root: &ModuleSpecifier) -> PathBuf {
-  fs_util::root_url_to_safe_local_dirname(root)
+  root_url_to_safe_local_dirname(root)
 }
 
 /// Gets a unique file path given the provided file path
@@ -68,19 +69,14 @@ pub fn is_remote_specifier(specifier: &ModuleSpecifier) -> bool {
 }
 
 pub fn is_remote_specifier_text(text: &str) -> bool {
-  text.trim_start().to_lowercase().starts_with("http")
+  let text = text.trim_start().to_lowercase();
+  text.starts_with("http:") || text.starts_with("https:")
 }
 
 pub fn sanitize_filepath(text: &str) -> String {
   text
     .chars()
-    .map(|c| {
-      if fs_util::is_banned_path_char(c) {
-        '_'
-      } else {
-        c
-      }
-    })
+    .map(|c| if is_banned_path_char(c) { '_' } else { c })
     .collect()
 }
 

@@ -144,6 +144,7 @@
     funlock: __bootstrap.fs.funlock,
     funlockSync: __bootstrap.fs.funlockSync,
     Child: __bootstrap.spawn.Child,
+    ChildProcess: __bootstrap.spawn.ChildProcess,
     spawnChild: __bootstrap.spawn.spawnChild,
     spawn: __bootstrap.spawn.spawn,
     spawnSync: __bootstrap.spawn.spawnSync,
