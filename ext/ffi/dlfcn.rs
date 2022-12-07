@@ -216,7 +216,7 @@ fn make_sync_fn<'s>(
         true => Some(args.get(symbol.parameter_types.len() as i32)),
         false => None,
       };
-      match crate::ffi_call_sync(scope, args, symbol) {
+      match crate::call::ffi_call_sync(scope, args, symbol) {
         Ok(result) => {
           match needs_unwrap {
             Some(v) => {
