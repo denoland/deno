@@ -22,7 +22,7 @@ jobs:
   lint:
     name: lint
     runs-on: "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}"
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - name: Configure Git
         run: |-
@@ -40,7 +40,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Install Rust
         run: |-
           cargo --version
@@ -59,7 +59,7 @@ jobs:
   build-debug-linux:
     name: build/linux (debug)
     runs-on: "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}"
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - name: Configure Git
         run: |-
@@ -75,7 +75,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Install Rust
         run: |-
           cargo --version
@@ -133,7 +133,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -149,7 +149,7 @@ jobs:
   build-release-linux:
     name: build/linux (release)
     runs-on: "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}"
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - name: Configure Git
         run: |-
@@ -165,7 +165,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Install Rust
         run: |-
           cargo --version
@@ -221,7 +221,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -264,7 +264,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Install Python
         uses: actions/setup-python@v4
         with:
@@ -273,8 +273,6 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: build-release-linux
-      - name: Install Node
-        uses: actions/setup-node@v3
       - name: Unpack artifacts
         run: |-
           tar --use-compress-program=unzstd -xpf artifacts_1.tar.gz
@@ -291,7 +289,7 @@ jobs:
   build-debug-macos:
     name: build/macos (debug)
     runs-on: macos-11
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - name: Configure Git
         run: |-
@@ -307,7 +305,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Install Rust
         run: |-
           cargo --version
@@ -367,7 +365,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -385,7 +383,7 @@ jobs:
   build-release-macos:
     name: build/macos (release)
     runs-on: macos-11
-    timeout-minutes: 90
+    timeout-minutes: 120
     if: "(github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))"
     steps:
       - name: Configure Git
@@ -402,7 +400,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Install Rust
         run: |-
           cargo --version
@@ -460,7 +458,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -478,7 +476,7 @@ jobs:
   build-debug-windows:
     name: build/windows (debug)
     runs-on: "${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}"
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - name: Configure Git
         run: |-
@@ -497,7 +495,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Install Rust
         run: |-
           cargo --version
@@ -560,7 +558,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -576,7 +574,7 @@ jobs:
   build-release-windows:
     name: build/windows (release)
     runs-on: "${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}"
-    timeout-minutes: 90
+    timeout-minutes: 120
     if: "(github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))"
     steps:
       - name: Configure Git
@@ -596,7 +594,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Install Rust
         run: |-
           cargo --version
@@ -657,7 +655,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.25.4
+          deno-version: v1.28.3
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:

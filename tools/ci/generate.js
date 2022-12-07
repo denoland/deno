@@ -106,7 +106,7 @@ const INSTALL_DENO = {
 
 const INSTALL_PYTHON = {
   name: "Install Python",
-  uses: "actions/setup-python@v1",
+  uses: "actions/setup-python@v4",
   with: { "python-version": "3.8" },
 };
 
@@ -209,7 +209,7 @@ for (const platform of PLATFORMS) {
     const build = CI.jobs[BUILD_JOB_ID] = {
       name: BUILD_JOB_NAME,
       "runs-on": RUNNERS[platform.name],
-      "timeout-minutes": 90,
+      "timeout-minutes": 120,
       if: true,
       steps: [
         ...CHECKOUT_STEPS(["./test_util/std"]),
