@@ -42,8 +42,8 @@ for (let i = 0; i < ARCHIVE_COUNT; i += 1) {
   );
   const tarProgram = Deno.build.os === "darwin" ? "gtar" : "tar";
   const compressProgram = Deno.build.os === "windows"
-    ? ['"zstd -d --long=30"']
-    : ["unzstd", "--long=30"];
+    ? ['"zstd -d"']
+    : ["unzstd"];
   const args = [
     tarProgram,
     "--use-compress-program",
