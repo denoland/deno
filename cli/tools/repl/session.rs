@@ -79,6 +79,7 @@ pub struct ReplSession {
   session: LocalInspectorSession,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
+  has_initialized_node_runtime: bool,
 }
 
 impl ReplSession {
@@ -124,6 +125,7 @@ impl ReplSession {
       session,
       context_id,
       language_server,
+      has_initialized_node_runtime: false,
     };
 
     // inject prelude
@@ -408,8 +410,11 @@ impl ReplSession {
       .flat_map(|i| ModuleSpecifier::parse(i))
       .collect::<Vec<ModuleSpecifier>>();
     if !npm_imports.is_empty() {
-      self.proc_state.prepare_node_std_graph().await?;
-      crate::node::initialize_runtime(&mut self.worker.js_runtime).await?;
+      if !self.has_initialized_node_runtime {
+        self.proc_state.prepare_node_std_graph().await?;
+        crate::node::initialize_runtime(&mut self.worker.js_runtime).await?;
+        self.has_initialized_node_runtime = true;
+      }
 
       self
         .proc_state
