@@ -91,6 +91,11 @@ declare namespace Deno {
     hostname?: string;
   }
 
+  /** @category Network */
+  // deno-lint-ignore no-empty-interface
+  export interface TcpListenOptions extends ListenOptions {
+  }
+
   /** Listen announces on the local transport address.
    *
    * ```ts
@@ -106,11 +111,11 @@ declare namespace Deno {
    * @category Network
    */
   export function listen(
-    options: ListenOptions & { transport?: "tcp" },
+    options: TcpListenOptions & { transport?: "tcp" },
   ): Listener;
 
   /** @category Network */
-  export interface ListenTlsOptions extends ListenOptions {
+  export interface ListenTlsOptions extends TcpListenOptions {
     /** Server private key in PEM format */
     key?: string;
     /** Cert chain in PEM format */

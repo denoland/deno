@@ -74,10 +74,10 @@ Deno.test(
       console.log(
         ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env.get(k))
       )`;
-      const { success, stdout } = await Deno.spawn(Deno.execPath(), {
+      const { success, stdout } = await new Deno.Command(Deno.execPath(), {
         args: ["eval", src],
         env: { ...inputEnv, NO_COLOR: "1" },
-      });
+      }).output();
       assertEquals(success, true);
       const expectedValues = Object.values(expectedEnv);
       const actualValues = JSON.parse(new TextDecoder().decode(stdout));
@@ -162,10 +162,10 @@ Deno.test(
   { permissions: { run: true, read: true } },
   async function osPpidIsEqualToPidOfParentProcess() {
     const decoder = new TextDecoder();
-    const { stdout } = await Deno.spawn(Deno.execPath(), {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
       args: ["eval", "-p", "--unstable", "Deno.ppid"],
       env: { NO_COLOR: "true" },
-    });
+    }).output();
 
     const expected = Deno.pid;
     const actual = parseInt(decoder.decode(stdout));
@@ -208,6 +208,18 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { run: [Deno.execPath()], read: true } },
+  // See https://github.com/denoland/deno/issues/16527
+  async function hostnameWithoutOtherNetworkUsages() {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
+      args: ["eval", "-p", "Deno.hostname()"],
+    }).output();
+    const hostname = new TextDecoder().decode(stdout).trim();
+    assert(hostname.length > 0);
+  },
+);
+
 Deno.test({ permissions: { sys: false } }, function hostnamePerm() {
   assertThrows(() => {
     Deno.hostname();
@@ -241,21 +253,21 @@ Deno.test(
   },
 );
 
-Deno.test({ permissions: { sys: ["getUid"] } }, function getUid() {
+Deno.test({ permissions: { sys: ["uid"] } }, function getUid() {
   if (Deno.build.os === "windows") {
-    assertEquals(Deno.getUid(), null);
+    assertEquals(Deno.uid(), null);
   } else {
-    const uid = Deno.getUid();
+    const uid = Deno.uid();
     assert(typeof uid === "number");
     assert(uid > 0);
   }
 });
 
-Deno.test({ permissions: { sys: ["getGid"] } }, function getGid() {
+Deno.test({ permissions: { sys: ["gid"] } }, function getGid() {
   if (Deno.build.os === "windows") {
-    assertEquals(Deno.getGid(), null);
+    assertEquals(Deno.gid(), null);
   } else {
-    const gid = Deno.getGid();
+    const gid = Deno.gid();
     assert(typeof gid === "number");
     assert(gid > 0);
   }

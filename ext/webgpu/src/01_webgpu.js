@@ -27,12 +27,12 @@
     ObjectDefineProperty,
     ObjectPrototypeIsPrototypeOf,
     Promise,
-    PromiseAll,
     PromisePrototypeCatch,
     PromisePrototypeThen,
     PromiseReject,
     PromiseResolve,
     SafeArrayIterator,
+    SafePromiseAll,
     Set,
     SetPrototypeEntries,
     SetPrototypeForEach,
@@ -1517,7 +1517,7 @@
           "OperationError",
         );
       }
-      const operations = PromiseAll(scope.operations);
+      const operations = SafePromiseAll(scope.operations);
       return PromisePrototypeThen(
         operations,
         () => PromiseResolve(null),

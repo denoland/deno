@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::runtime::GetErrorClassFn;
-use crate::runtime::JsRealm;
 use crate::runtime::JsRuntime;
 use crate::source_map::apply_source_map;
 use crate::source_map::get_source_line;
@@ -98,7 +97,7 @@ pub fn to_v8_error<'a>(
   get_class: GetErrorClassFn,
   error: &Error,
 ) -> v8::Local<'a, v8::Value> {
-  let cb = JsRealm::state_from_scope(scope)
+  let cb = JsRuntime::state(scope)
     .borrow()
     .js_build_custom_error_cb
     .clone()
@@ -106,7 +105,7 @@ pub fn to_v8_error<'a>(
   let cb = cb.open(scope);
   let this = v8::undefined(scope).into();
   let class = v8::String::new(scope, get_class(error)).unwrap();
-  let message = v8::String::new(scope, &error.to_string()).unwrap();
+  let message = v8::String::new(scope, &format!("{:#}", error)).unwrap();
   let mut args = vec![class.into(), message.into()];
   if let Some(code) = crate::error_codes::get_error_code(error) {
     args.push(v8::String::new(scope, code).unwrap().into());
@@ -120,6 +119,8 @@ pub fn to_v8_error<'a>(
 /// A `JsError` represents an exception coming from V8, with stack frames and
 /// line numbers. The deno_cli crate defines another `JsError` type, which wraps
 /// the one defined here, that adds source map support and colorful formatting.
+/// When updating this struct, also update errors_are_equal_without_cause() in
+/// fmt_error.rs.
 #[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsError {
@@ -206,6 +207,84 @@ impl JsError {
     Self::inner_from_v8_exception(scope, exception, Default::default())
   }
 
+  pub fn from_v8_message<'a>(
+    scope: &'a mut v8::HandleScope,
+    msg: v8::Local<'a, v8::Message>,
+  ) -> Self {
+    // Create a new HandleScope because we're creating a lot of new local
+    // handles below.
+    let scope = &mut v8::HandleScope::new(scope);
+
+    let exception_message = msg.get(scope).to_rust_string_lossy(scope);
+    let state_rc = JsRuntime::state(scope);
+
+    // Convert them into Vec<JsStackFrame>
+    let mut frames: Vec<JsStackFrame> = vec![];
+
+    let mut source_line = None;
+    let mut source_line_frame_index = None;
+    {
+      let state = &mut *state_rc.borrow_mut();
+
+      let script_resource_name = msg
+        .get_script_resource_name(scope)
+        .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
+        .map(|v| v.to_rust_string_lossy(scope));
+      let line_number: Option<i64> =
+        msg.get_line_number(scope).and_then(|v| v.try_into().ok());
+      let column_number: Option<i64> = msg.get_start_column().try_into().ok();
+      if let (Some(f), Some(l), Some(c)) =
+        (script_resource_name, line_number, column_number)
+      {
+        // V8's column numbers are 0-based, we want 1-based.
+        let c = c + 1;
+        if let Some(source_map_getter) = &state.source_map_getter {
+          let (f, l, c) = apply_source_map(
+            f,
+            l,
+            c,
+            &mut state.source_map_cache,
+            source_map_getter.as_ref(),
+          );
+          frames = vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
+        } else {
+          frames = vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
+        }
+      }
+
+      if let Some(source_map_getter) = &state.source_map_getter {
+        for (i, frame) in frames.iter().enumerate() {
+          if let (Some(file_name), Some(line_number)) =
+            (&frame.file_name, frame.line_number)
+          {
+            if !file_name.trim_start_matches('[').starts_with("deno:") {
+              source_line = get_source_line(
+                file_name,
+                line_number,
+                &mut state.source_map_cache,
+                source_map_getter.as_ref(),
+              );
+              source_line_frame_index = Some(i);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    Self {
+      name: None,
+      message: None,
+      exception_message,
+      cause: None,
+      source_line,
+      source_line_frame_index,
+      frames,
+      stack: None,
+      aggregated: None,
+    }
+  }
+
   fn inner_from_v8_exception<'a>(
     scope: &'a mut v8::HandleScope,
     exception: v8::Local<'a, v8::Value>,
@@ -218,10 +297,10 @@ impl JsError {
     let msg = v8::Exception::create_message(scope, exception);
 
     let mut exception_message = None;
-    let realm_state_rc = JsRealm::state_from_scope(scope);
+    let state_rc = JsRuntime::state(scope);
 
     let js_format_exception_cb =
-      realm_state_rc.borrow().js_format_exception_cb.clone();
+      state_rc.borrow().js_format_exception_cb.clone();
     if let Some(format_exception_cb) = js_format_exception_cb {
       let format_exception_cb = format_exception_cb.open(scope);
       let this = v8::undefined(scope).into();
@@ -241,7 +320,7 @@ impl JsError {
         serde_v8::from_v8(scope, exception.into()).unwrap_or_default();
       // Get the message by formatting error.name and error.message.
       let name = e.name.clone().unwrap_or_else(|| "Error".to_string());
-      let message_prop = e.message.clone().unwrap_or_else(|| "".to_string());
+      let message_prop = e.message.clone().unwrap_or_default();
       let exception_message = exception_message.unwrap_or_else(|| {
         if !name.is_empty() && !message_prop.is_empty() {
           format!("Uncaught {}: {}", name, message_prop)
@@ -286,7 +365,6 @@ impl JsError {
       let mut source_line = None;
       let mut source_line_frame_index = None;
       {
-        let state_rc = JsRuntime::state(scope);
         let state = &mut *state_rc.borrow_mut();
 
         // When the stack frame array is empty, but the source location given by
@@ -330,7 +408,6 @@ impl JsError {
               (&frame.file_name, frame.line_number)
             {
               if !file_name.trim_start_matches('[').starts_with("deno:") {
-                // Source lookup expects a 0-based line number, ours are 1-based.
                 source_line = get_source_line(
                   file_name,
                   line_number,

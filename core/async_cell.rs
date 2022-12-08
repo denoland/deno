@@ -220,13 +220,13 @@ impl<T> Deref for RcRef<T> {
 
 impl<T> Borrow<T> for RcRef<T> {
   fn borrow(&self) -> &T {
-    &**self
+    self
   }
 }
 
 impl<T> AsRef<T> for RcRef<T> {
   fn as_ref(&self) -> &T {
-    &**self
+    self
   }
 }
 
@@ -478,13 +478,13 @@ mod internal {
 
   impl<T, M: BorrowModeTrait> Borrow<T> for AsyncBorrowImpl<T, M> {
     fn borrow(&self) -> &T {
-      &**self
+      self
     }
   }
 
   impl<T, M: BorrowModeTrait> AsRef<T> for AsyncBorrowImpl<T, M> {
     fn as_ref(&self) -> &T {
-      &**self
+      self
     }
   }
 
@@ -500,13 +500,13 @@ mod internal {
 
   impl<T> BorrowMut<T> for AsyncBorrowImpl<T, Exclusive> {
     fn borrow_mut(&mut self) -> &mut T {
-      &mut **self
+      self
     }
   }
 
   impl<T> AsMut<T> for AsyncBorrowImpl<T, Exclusive> {
     fn as_mut(&mut self) -> &mut T {
-      &mut **self
+      self
     }
   }
 

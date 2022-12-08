@@ -1,8 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::Lockfile;
+use crate::args::TsTypeLib;
 use crate::colors;
-use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
+use crate::npm::resolve_npm_package_reqs;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
 
@@ -50,10 +52,10 @@ pub enum ModuleEntry {
 #[derive(Debug, Default)]
 pub struct GraphData {
   modules: HashMap<ModuleSpecifier, ModuleEntry>,
-  npm_packages: HashSet<NpmPackageReq>,
+  npm_packages: Vec<NpmPackageReq>,
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
-  referrer_map: HashMap<ModuleSpecifier, Range>,
+  referrer_map: HashMap<ModuleSpecifier, Box<Range>>,
   graph_imports: Vec<GraphImport>,
   cjs_esm_translations: HashMap<ModuleSpecifier, String>,
 }
@@ -76,24 +78,26 @@ impl GraphData {
       self.graph_imports.push(graph_import.clone())
     }
 
+    let mut has_npm_specifier_in_graph = false;
+
     for (specifier, result) in graph.specifiers() {
-      if self.modules.contains_key(&specifier) {
+      if NpmPackageReference::from_specifier(specifier).is_ok() {
+        has_npm_specifier_in_graph = true;
         continue;
       }
-      if specifier.scheme() == "npm" {
-        if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
-          self.npm_packages.insert(reference.req);
-          continue;
-        }
+
+      if self.modules.contains_key(specifier) {
+        continue;
       }
-      if let Some(found) = graph.redirects.get(&specifier) {
+
+      if let Some(found) = graph.redirects.get(specifier) {
         let module_entry = ModuleEntry::Redirect(found.clone());
         self.modules.insert(specifier.clone(), module_entry);
         continue;
       }
       match result {
         Ok((_, _, media_type)) => {
-          let module = graph.get(&specifier).unwrap();
+          let module = graph.get(specifier).unwrap();
           let code = match &module.maybe_source {
             Some(source) => source.clone(),
             None => continue,
@@ -131,13 +135,17 @@ impl GraphData {
             checked_libs: Default::default(),
             maybe_types,
           };
-          self.modules.insert(specifier, module_entry);
+          self.modules.insert(specifier.clone(), module_entry);
         }
         Err(error) => {
-          let module_entry = ModuleEntry::Error(error);
-          self.modules.insert(specifier, module_entry);
+          let module_entry = ModuleEntry::Error(error.clone());
+          self.modules.insert(specifier.clone(), module_entry);
         }
       }
+    }
+
+    if has_npm_specifier_in_graph {
+      self.npm_packages.extend(resolve_npm_package_reqs(graph));
     }
   }
 
@@ -147,9 +155,10 @@ impl GraphData {
     self.modules.iter()
   }
 
-  /// Gets the unique npm package requirements from all the encountered graphs.
-  pub fn npm_package_reqs(&self) -> Vec<NpmPackageReq> {
-    self.npm_packages.iter().cloned().collect()
+  /// Gets the npm package requirements from all the encountered graphs
+  /// in the order that they should be resolved.
+  pub fn npm_package_reqs(&self) -> &Vec<NpmPackageReq> {
+    &self.npm_packages
   }
 
   /// Walk dependencies from `roots` and return every encountered specifier.
@@ -467,10 +476,23 @@ pub fn graph_valid(
     .unwrap()
 }
 
-/// Calls `graph.lock()` and exits on errors.
-pub fn graph_lock_or_exit(graph: &ModuleGraph) {
-  if let Err(err) = graph.lock() {
-    log::error!("{} {}", colors::red("error:"), err);
-    std::process::exit(10);
+/// Checks the lockfile against the graph and and exits on errors.
+pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
+  for module in graph.modules() {
+    if let Some(source) = &module.maybe_source {
+      if !lockfile.check_or_insert_remote(module.specifier.as_str(), source) {
+        let err = format!(
+          concat!(
+            "The source code is invalid, as it does not match the expected hash in the lock file.\n",
+            "  Specifier: {}\n",
+            "  Lock file: {}",
+          ),
+          module.specifier,
+          lockfile.filename.display(),
+        );
+        log::error!("{} {}", colors::red("error:"), err);
+        std::process::exit(10);
+      }
+    }
   }
 }

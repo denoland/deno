@@ -1,3 +1,6 @@
+Download http://localhost:4545/npm/registry/@denotest/dual-cjs-esm
 Download http://localhost:4545/npm/registry/chalk
+Download http://localhost:4545/npm/registry/@denotest/dual-cjs-esm/1.0.0.tgz
 Download http://localhost:4545/npm/registry/chalk/chalk-5.0.1.tgz
 chalk import map loads
+esm

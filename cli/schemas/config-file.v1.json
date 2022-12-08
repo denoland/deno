@@ -249,6 +249,15 @@
               "uniqueItems": true
             }
           }
+        },
+        "report": {
+          "default": "pretty",
+          "enum": [
+            "pretty",
+            "json",
+            "compact"
+          ],
+          "description": "The default report format to use when linting"
         }
       }
     },
@@ -346,6 +355,11 @@
           }
         }
       }
+    },
+    "lock": {
+      "description": "Whether to use a lock file or the path to use for the lock file. Can be overridden by CLI arguments.",
+      "type": ["string", "boolean"],
+      "default": true
     }
   }
 }

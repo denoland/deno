@@ -2,7 +2,8 @@
 
 use super::client::Client;
 use super::logging::lsp_log;
-use crate::fs_util;
+use crate::util::path::ensure_directory_specifier;
+use crate::util::path::specifier_to_file_path;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -168,14 +169,14 @@ pub struct InlayHintsVarTypesOptions {
   #[serde(default)]
   pub enabled: bool,
   #[serde(default = "is_true")]
-  pub suppress_when_argument_matches_name: bool,
+  pub suppress_when_type_matches_name: bool,
 }
 
 impl Default for InlayHintsVarTypesOptions {
   fn default() -> Self {
     Self {
       enabled: false,
-      suppress_when_argument_matches_name: true,
+      suppress_when_type_matches_name: true,
     }
   }
 }
@@ -549,11 +550,11 @@ impl Config {
     workspace: &ModuleSpecifier,
     enabled_paths: Vec<String>,
   ) -> bool {
-    let workspace = fs_util::ensure_directory_specifier(workspace.clone());
+    let workspace = ensure_directory_specifier(workspace.clone());
     let key = workspace.to_string();
     let mut touched = false;
     if !enabled_paths.is_empty() {
-      if let Ok(workspace_path) = fs_util::specifier_to_file_path(&workspace) {
+      if let Ok(workspace_path) = specifier_to_file_path(&workspace) {
         let mut paths = Vec::new();
         for path in &enabled_paths {
           let fs_path = workspace_path.join(path);
@@ -685,7 +686,7 @@ mod tests {
           parameter_types: InlayHintsParamTypesOptions { enabled: false },
           variable_types: InlayHintsVarTypesOptions {
             enabled: false,
-            suppress_when_argument_matches_name: true
+            suppress_when_type_matches_name: true
           },
           property_declaration_types: InlayHintsPropDeclTypesOptions {
             enabled: false
