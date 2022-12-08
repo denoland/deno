@@ -40,8 +40,7 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   let main_test_ts = include_str!("./templates/main_test.ts")
     .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL.as_str());
   create_file(&dir, "main_test.ts", &main_test_ts)?;
-  let main_bench_ts = include_str!("./templates/main_bench.ts")
-    .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL.as_str());
+  let main_bench_ts = include_str!("./templates/main_bench.ts");
   create_file(&dir, "main_bench.ts", &main_bench_ts)?;
 
   create_file(&dir, "deno.json", include_str!("./templates/deno.json"))?;
@@ -65,6 +64,8 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   info!("");
   info!("  {}", colors::gray("// Run the tests"));
   info!("  deno test");
+  info!("");
+  info!("  {}", colors::gray("// Run the benchmarks"));
   info!("  deno bench");
   Ok(())
 }
