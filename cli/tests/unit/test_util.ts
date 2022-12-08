@@ -29,16 +29,53 @@ export function pathToAbsoluteFileUrl(path: string): URL {
   return new URL(`file://${Deno.build.os === "windows" ? "/" : ""}${path}`);
 }
 
-const decoder = new TextDecoder();
+export function execCode(code: string): Promise<readonly [number, string]> {
+  return execCode2(code).finished();
+}
 
-export async function execCode(code: string): Promise<[number, string]> {
-  const output = await Deno.spawn(Deno.execPath(), {
+export function execCode2(code: string) {
+  const command = new Deno.Command(Deno.execPath(), {
     args: [
       "eval",
       "--unstable",
       "--no-check",
       code,
     ],
+    stdout: "piped",
+    stderr: "inherit",
   });
-  return [output.code, decoder.decode(output.stdout)];
+
+  const child = command.spawn();
+  const stdout = child.stdout.pipeThrough(new TextDecoderStream()).getReader();
+  let output = "";
+
+  return {
+    async waitStdoutText(text: string) {
+      while (true) {
+        const readData = await stdout.read();
+        if (readData.value) {
+          output += readData.value;
+          if (output.includes(text)) {
+            return;
+          }
+        }
+        if (readData.done) {
+          throw new Error(`Did not find text '${text}' in stdout.`);
+        }
+      }
+    },
+    async finished() {
+      while (true) {
+        const readData = await stdout.read();
+        if (readData.value) {
+          output += readData.value;
+        }
+        if (readData.done) {
+          break;
+        }
+      }
+      const status = await child.status;
+      return [status.code, output] as const;
+    },
+  };
 }

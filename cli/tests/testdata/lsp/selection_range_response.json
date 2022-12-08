@@ -47,7 +47,7 @@
             "range": {
               "start": {
                 "line": 1,
-                "character": 2
+                "character": 12
               },
               "end": {
                 "line": 6,
@@ -57,23 +57,35 @@
             "parent": {
               "range": {
                 "start": {
-                  "line": 0,
-                  "character": 11
+                  "line": 1,
+                  "character": 2
                 },
                 "end": {
-                  "line": 7,
-                  "character": 0
+                  "line": 6,
+                  "character": 3
                 }
               },
               "parent": {
                 "range": {
                   "start": {
                     "line": 0,
-                    "character": 0
+                    "character": 11
                   },
                   "end": {
                     "line": 7,
-                    "character": 1
+                    "character": 0
+                  }
+                },
+                "parent": {
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 1
+                    }
                   }
                 }
               }

@@ -240,6 +240,7 @@ impl MainWorker {
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
+      is_main: true,
       ..Default::default()
     });
 
@@ -249,6 +250,12 @@ impl MainWorker {
         &mut js_runtime,
         options.should_break_on_first_statement,
       );
+
+      // Put inspector handle into the op state so we can put a breakpoint when
+      // executing a CJS entrypoint.
+      let op_state = js_runtime.op_state();
+      let inspector = js_runtime.inspector();
+      op_state.borrow_mut().put(inspector);
     }
 
     Self {
