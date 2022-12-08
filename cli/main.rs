@@ -119,10 +119,9 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
           fmt_flags,
           maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
         )?;
-        return Ok(0);
+      } else {
+        tools::fmt::format(&config, fmt_flags).await?;
       }
-
-      tools::fmt::format(&config, fmt_flags).await?;
       Ok(0)
     }
     DenoSubcommand::Init(init_flags) => {
