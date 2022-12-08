@@ -80,6 +80,7 @@ pub struct ReplSession {
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
   has_initialized_node_runtime: bool,
+  referrer: ModuleSpecifier,
 }
 
 impl ReplSession {
@@ -119,6 +120,8 @@ impl ReplSession {
     }
     assert_ne!(context_id, 0);
 
+    let referrer = deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap();
+
     let mut repl_session = ReplSession {
       proc_state,
       worker,
@@ -126,6 +129,7 @@ impl ReplSession {
       context_id,
       language_server,
       has_initialized_node_runtime: false,
+      referrer,
     };
 
     // inject prelude
@@ -406,8 +410,8 @@ impl ReplSession {
     let npm_imports = collector
       .imports
       .iter()
-      .filter(|i| i.starts_with("npm:"))
-      .flat_map(|i| ModuleSpecifier::parse(i))
+      .flat_map(|i| self.proc_state.resolve(i, self.referrer.as_str()))
+      .filter(|i| i.as_str().starts_with("npm:"))
       .collect::<Vec<ModuleSpecifier>>();
     if !npm_imports.is_empty() {
       if !self.has_initialized_node_runtime {

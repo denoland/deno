@@ -1,5 +1,5 @@
 {
-    "imports": {
-        "chalk": "npm:chalk"
-    }
+  "imports": {
+    "chalk": "npm:chalk"
+  }
 }
