@@ -8,7 +8,12 @@ use once_cell::sync::Lazy;
 pub const PERMISSION_EMOJI: &str = "⚠️";
 
 static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
-  Lazy::new(|| Mutex::new(Box::new(TtyPrompter)));
+  Lazy::new(|| {
+    Mutex::new(Box::new(TtyPrompter {
+      maybe_before_prompt_callback: None,
+      maybe_after_prompt_callback: None,
+    }))
+  });
 
 pub fn permission_prompt(
   message: &str,
@@ -18,17 +23,56 @@ pub fn permission_prompt(
   PERMISSION_PROMPTER.lock().prompt(message, flag, api_name)
 }
 
-pub trait PermissionPrompter: Send + Sync {
-  fn prompt(&self, message: &str, name: &str, api_name: Option<&str>) -> bool;
-  // fn add_before_prompt_callback();
-  // fn add_after_prompt_callback();
+pub fn set_prompt_callback(
+  before_callback: Option<PromptCallback>,
+  after_callback: Option<PromptCallback>,
+) {
+  let mut prompter = PERMISSION_PROMPTER.lock();
+  prompter.set_before_prompt_callback(before_callback);
+  prompter.set_after_prompt_callback(after_callback);
 }
 
-pub struct TtyPrompter;
+pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
+
+pub trait PermissionPrompter: Send + Sync {
+  fn prompt(
+    &mut self,
+    message: &str,
+    name: &str,
+    api_name: Option<&str>,
+  ) -> bool;
+  fn set_before_prompt_callback(&mut self, callback: Option<PromptCallback>);
+  fn set_after_prompt_callback(&mut self, callback: Option<PromptCallback>);
+}
+
+pub struct TtyPrompter {
+  maybe_before_prompt_callback: Option<PromptCallback>,
+  maybe_after_prompt_callback: Option<PromptCallback>,
+}
 
 impl PermissionPrompter for TtyPrompter {
-  fn prompt(&self, message: &str, name: &str, api_name: Option<&str>) -> bool {
+  fn set_before_prompt_callback(&mut self, callback: Option<PromptCallback>) {
+    self.maybe_before_prompt_callback = callback;
+  }
+
+  fn set_after_prompt_callback(&mut self, callback: Option<PromptCallback>) {
+    self.maybe_after_prompt_callback = callback;
+  }
+
+  fn prompt(
+    &mut self,
+    message: &str,
+    name: &str,
+    api_name: Option<&str>,
+  ) -> bool {
+    if let Some(callback) = self.maybe_before_prompt_callback.as_mut() {
+      callback();
+    }
+
     if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
+      if let Some(callback) = self.maybe_after_prompt_callback.as_mut() {
+        callback();
+      }
       return false;
     };
 
@@ -152,6 +196,9 @@ impl PermissionPrompter for TtyPrompter {
     // buffered data cannot effect the prompt.
     if let Err(err) = clear_stdin() {
       eprintln!("Error clearing stdin for permission prompt. {:#}", err);
+      if let Some(callback) = self.maybe_after_prompt_callback.as_mut() {
+        callback();
+      }
       return false; // don't grant permission if this fails
     }
 
@@ -171,15 +218,15 @@ impl PermissionPrompter for TtyPrompter {
     eprintln!("{}", colors::italic(&msg));
     eprint!("   └ {}", colors::bold("Allow?"));
     eprint!(" {} > ", OPTS);
-    loop {
+    let value = loop {
       let mut input = String::new();
       let stdin = std::io::stdin();
       let result = stdin.read_line(&mut input);
       if result.is_err() {
-        return false;
+        break false;
       };
       let ch = match input.chars().next() {
-        None => return false,
+        None => break false,
         Some(v) => v,
       };
       match ch.to_ascii_lowercase() {
@@ -187,13 +234,13 @@ impl PermissionPrompter for TtyPrompter {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
           let msg = format!("Granted {}.", message);
           eprintln!("✅ {}", colors::bold(&msg));
-          return true;
+          break true;
         }
         'n' => {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
           let msg = format!("Denied {}.", message);
           eprintln!("❌ {}", colors::bold(&msg));
-          return false;
+          break false;
         }
         _ => {
           // If we don't get a recognized option try again.
@@ -202,7 +249,12 @@ impl PermissionPrompter for TtyPrompter {
           eprint!(" {} > ", OPTS);
         }
       };
+    };
+
+    if let Some(callback) = self.maybe_after_prompt_callback.as_mut() {
+      callback();
     }
+    value
   }
 }
 
@@ -216,12 +268,23 @@ pub mod tests {
 
   impl PermissionPrompter for TestPrompter {
     fn prompt(
-      &self,
+      &mut self,
       _message: &str,
       _name: &str,
       _api_name: Option<&str>,
     ) -> bool {
       STUB_PROMPT_VALUE.load(Ordering::SeqCst)
+    }
+
+    fn set_before_prompt_callback(
+      &mut self,
+      _callback: Option<PromptCallback>,
+    ) {
+      panic!("not supported");
+    }
+
+    fn set_after_prompt_callback(&mut self, _callback: Option<PromptCallback>) {
+      panic!("not supported");
     }
   }
 
