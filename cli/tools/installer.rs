@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::resolve_no_prompt;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
@@ -357,7 +358,7 @@ fn resolve_shim_data(
     executable_args.push("--cached-only".to_string());
   }
 
-  if flags.no_prompt {
+  if resolve_no_prompt(flags) {
     executable_args.push("--no-prompt".to_string());
   }
 

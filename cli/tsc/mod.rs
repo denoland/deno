@@ -87,6 +87,31 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   },
 );
 
+pub fn get_types_declaration_file_text(unstable: bool) -> String {
+  let mut types = vec![
+    DENO_NS_LIB,
+    DENO_CONSOLE_LIB,
+    DENO_URL_LIB,
+    DENO_WEB_LIB,
+    DENO_FETCH_LIB,
+    DENO_WEBGPU_LIB,
+    DENO_WEBSOCKET_LIB,
+    DENO_WEBSTORAGE_LIB,
+    DENO_CRYPTO_LIB,
+    DENO_BROADCAST_CHANNEL_LIB,
+    DENO_NET_LIB,
+    SHARED_GLOBALS_LIB,
+    DENO_CACHE_LIB,
+    WINDOW_LIB,
+  ];
+
+  if unstable {
+    types.push(UNSTABLE_NS_LIB);
+  }
+
+  types.join("\n")
+}
+
 pub fn compiler_snapshot() -> Snapshot {
   Snapshot::Static(&COMPILER_SNAPSHOT)
 }
