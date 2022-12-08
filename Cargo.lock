@@ -613,6 +613,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossterm"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e64e6c0fbe2c17357405f7c758c1ef960fce08bdfb2c03d88d2a18d7e09c4b67"
+dependencies = [
+ "bitflags",
+ "crossterm_winapi",
+ "libc",
+ "mio",
+ "parking_lot 0.12.1",
+ "signal-hook",
+ "signal-hook-mio",
+ "winapi 0.3.9",
+]
+
+[[package]]
+name = "crossterm_winapi"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ae1b35a484aa10e07fe0638d02301c5ad24de82d310ccbd2f3693da5f09bf1c"
+dependencies = [
+ "winapi 0.3.9",
+]
+
+[[package]]
 name = "crypto-bigint"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -778,6 +803,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "clap_complete_fig",
+ "crossterm",
  "data-url",
  "deno_ast",
  "deno_bench_util",
@@ -4030,6 +4056,27 @@ name = "shell-escape"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "45bb67a18fa91266cc7807181f62f9178a6873bfad7dc788c42e6430db40184f"
+
+[[package]]
+name = "signal-hook"
+version = "0.3.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a253b5e89e2698464fc26b545c9edceb338e18a89effeeecfea192c3025be29d"
+dependencies = [
+ "libc",
+ "signal-hook-registry",
+]
+
+[[package]]
+name = "signal-hook-mio"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29ad2e15f37ec9a6cc544097b78a1ec90001e9f71b81338ca39f430adaca99af"
+dependencies = [
+ "libc",
+ "mio",
+ "signal-hook",
+]
 
 [[package]]
 name = "signal-hook-registry"
