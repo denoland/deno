@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::InitFlags;
+use crate::colors;
 use crate::deno_std;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -40,12 +41,26 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
     .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL.as_str());
   create_file(&dir, "main_test.ts", &main_test_ts)?;
 
-  info!("✅ Project initialized");
-  info!("Run these commands to get started");
+  create_file(&dir, "deno.json", include_str!("./templates/deno.json"))?;
+
+  info!("✅ {}", colors::green("Project initialized"));
+  info!("");
+  info!("{}", colors::gray("Run these commands to get started"));
+  info!("");
   if let Some(dir) = init_flags.dir {
     info!("  cd {}", dir);
+    info!("");
   }
+  info!("  {}", colors::gray("// Run the program"));
   info!("  deno run main.ts");
+  info!("");
+  info!(
+    "  {}",
+    colors::gray("// Run the program and watch for file changes")
+  );
+  info!("  deno task dev");
+  info!("");
+  info!("  {}", colors::gray("// Run the tests"));
   info!("  deno test");
   Ok(())
 }
