@@ -41,13 +41,6 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   create_file(&dir, "main_test.ts", &main_test_ts)?;
 
   create_file(&dir, "deno.json", include_str!("./templates/deno.json"))?;
-  let vscode_dir = dir.join(".vscode");
-  std::fs::create_dir_all(&vscode_dir)?;
-  create_file(
-    &vscode_dir,
-    "settings.json",
-    include_str!("./templates/settings.json"),
-  )?;
 
   info!("✅ Project initialized");
   info!("Run these commands to get started");

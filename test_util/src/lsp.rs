@@ -159,7 +159,7 @@ pub struct LspClient {
   request_id: u64,
   start: Instant,
   writer: io::BufWriter<ChildStdin>,
-  _temp_deno_dir: TempDir, // directory will be deleted on drop
+  deno_dir: TempDir,
 }
 
 impl Drop for LspClient {
@@ -234,7 +234,7 @@ impl LspClient {
     command
       .env("DENO_DIR", deno_dir.path())
       .env("DENO_NODE_COMPAT_URL", std_file_url())
-      .env("DENO_NPM_REGISTRY", npm_registry_url())
+      .env("NPM_CONFIG_REGISTRY", npm_registry_url())
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
@@ -255,8 +255,12 @@ impl LspClient {
       request_id: 1,
       start: Instant::now(),
       writer,
-      _temp_deno_dir: deno_dir,
+      deno_dir,
     })
+  }
+
+  pub fn deno_dir(&self) -> &TempDir {
+    &self.deno_dir
   }
 
   pub fn duration(&self) -> Duration {

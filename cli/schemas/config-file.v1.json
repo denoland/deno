@@ -355,6 +355,11 @@
           }
         }
       }
+    },
+    "lock": {
+      "description": "Whether to use a lock file or the path to use for the lock file. Can be overridden by CLI arguments.",
+      "type": ["string", "boolean"],
+      "default": true
     }
   }
 }
