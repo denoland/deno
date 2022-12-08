@@ -256,20 +256,20 @@ fn create_install_shim(
     fs::write(path, contents)?;
   }
 
-  log::info!("✅ Successfully installed {}", shim_data.name);
-  log::info!("{}", shim_data.file_path.display());
+  println!("✅ Successfully installed {}", shim_data.name);
+  println!("{}", shim_data.file_path.display());
   if cfg!(windows) {
     let display_path = shim_data.file_path.with_extension("");
-    log::info!("{} (shell)", display_path.display());
+    println!("{} (shell)", display_path.display());
   }
   let installation_dir_str = shim_data.installation_dir.to_string_lossy();
 
   if !is_in_path(&shim_data.installation_dir) {
-    log::info!("ℹ️  Add {} to PATH", installation_dir_str);
+    println!("ℹ️  Add {} to PATH", installation_dir_str);
     if cfg!(windows) {
-      log::info!("    set PATH=%PATH%;{}", installation_dir_str);
+      println!("    set PATH=%PATH%;{}", installation_dir_str);
     } else {
-      log::info!("    export PATH=\"{}:$PATH\"", installation_dir_str);
+      println!("    export PATH=\"{}:$PATH\"", installation_dir_str);
     }
   }
 
