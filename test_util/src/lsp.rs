@@ -234,7 +234,7 @@ impl LspClient {
     command
       .env("DENO_DIR", deno_dir.path())
       .env("DENO_NODE_COMPAT_URL", std_file_url())
-      .env("DENO_NPM_REGISTRY", npm_registry_url())
+      .env("NPM_CONFIG_REGISTRY", npm_registry_url())
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
