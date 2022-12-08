@@ -61,9 +61,9 @@ clap_complete = "=3.1.2"
 clap_complete_fig = "=3.1.5"
 data-url.workspace = true
 dissimilar = "=1.0.4"
-dprint-plugin-json = "=0.16.0"
-dprint-plugin-markdown = "=0.14.3"
-dprint-plugin-typescript = "=0.78.0"
+dprint-plugin-json = "=0.17.0"
+dprint-plugin-markdown = "=0.15.0"
+dprint-plugin-typescript = "=0.79.0"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
 eszip = "=0.31.0"
@@ -71,7 +71,7 @@ fancy-regex = "=0.10.0"
 flate2.workspace = true
 http.workspace = true
 import_map = "=0.13.0"
-indexmap = "=1.9.1"
+indexmap = "=1.9.2"
 indicatif = "=0.17.1"
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc.workspace = true

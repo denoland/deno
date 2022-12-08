@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::PathBuf;
 
+use crate::args::config_file::LockConfig;
 use crate::args::ConfigFile;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
@@ -104,9 +105,23 @@ impl Lockfile {
       None => match maybe_config_file {
         Some(config_file) => {
           if config_file.specifier.scheme() == "file" {
-            let mut path = config_file.specifier.to_file_path().unwrap();
-            path.set_file_name("deno.lock");
-            path
+            match config_file.clone().to_lock_config()? {
+              Some(LockConfig::Bool(lock)) if !lock => {
+                return Ok(None);
+              }
+              Some(LockConfig::PathBuf(lock)) => config_file
+                .specifier
+                .to_file_path()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join(lock),
+              _ => {
+                let mut path = config_file.specifier.to_file_path().unwrap();
+                path.set_file_name("deno.lock");
+                path
+              }
+            }
           } else {
             return Ok(None);
           }
