@@ -18,4 +18,4 @@ deno_core.workspace = true
 once_cell.workspace = true
 path-clean = "=0.1.0"
 regex.workspace = true
-serde = "1.0.144"
+serde = "1.0.149"
