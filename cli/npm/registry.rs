@@ -228,22 +228,37 @@ pub struct RealNpmRegistryApi(Arc<RealNpmRegistryApiInner>);
 
 impl RealNpmRegistryApi {
   pub fn default_url() -> Url {
-    let env_var_name = "DENO_NPM_REGISTRY";
-    if let Ok(registry_url) = std::env::var(env_var_name) {
-      // ensure there is a trailing slash for the directory
-      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-      match Url::parse(&registry_url) {
-        Ok(url) => url,
-        Err(err) => {
-          eprintln!("{}: Invalid {} environment variable. Please provide a valid url.\n\n{:#}",
-          colors::red_bold("error"),
-          env_var_name, err);
-          std::process::exit(1);
+    // todo(dsherret): remove DENO_NPM_REGISTRY in the future (maybe May 2023)
+    let env_var_names = ["NPM_CONFIG_REGISTRY", "DENO_NPM_REGISTRY"];
+    for env_var_name in env_var_names {
+      if let Ok(registry_url) = std::env::var(env_var_name) {
+        // ensure there is a trailing slash for the directory
+        let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+        match Url::parse(&registry_url) {
+          Ok(url) => {
+            if env_var_name == "DENO_NPM_REGISTRY" {
+              log::warn!(
+                "{}",
+                colors::yellow(concat!(
+                  "DENO_NPM_REGISTRY was intended for internal testing purposes only. ",
+                  "Please update to NPM_CONFIG_REGISTRY instead.",
+                )),
+              );
+            }
+            return url;
+          }
+          Err(err) => {
+            log::debug!(
+              "Invalid {} environment variable: {:#}",
+              env_var_name,
+              err,
+            );
+          }
         }
       }
-    } else {
-      Url::parse("https://registry.npmjs.org").unwrap()
     }
+
+    Url::parse("https://registry.npmjs.org").unwrap()
   }
 
   pub fn new(

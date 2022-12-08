@@ -1426,7 +1426,7 @@ mod lsp {
             "language": "typescript",
             "value": "(method) DateConstructor.now(): number",
           },
-          ""
+          "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
         ],
         "range": {
           "start": {
@@ -1464,7 +1464,7 @@ mod lsp {
             "language": "typescript",
             "value": "(method) DateConstructor.now(): number",
           },
-          ""
+          "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
         ],
         "range": {
           "start": {
