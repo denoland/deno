@@ -160,9 +160,7 @@ impl ProcState {
     let progress_bar = ProgressBar::default();
     let http_client = HttpClient::new(
       Some(root_cert_store.clone()),
-      cli_options
-        .unsafely_ignore_certificate_errors()
-        .map(ToOwned::to_owned),
+      cli_options.unsafely_ignore_certificate_errors().clone(),
     )?;
     let file_fetcher = FileFetcher::new(
       http_cache,
