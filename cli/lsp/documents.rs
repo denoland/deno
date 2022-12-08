@@ -943,7 +943,7 @@ impl Documents {
   /// tsc when type checking.
   pub fn resolve(
     &self,
-    specifiers: Vec<String>,
+    specifiers: &[String],
     referrer: &ModuleSpecifier,
     maybe_npm_resolver: Option<&NpmPackageResolver>,
   ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
@@ -955,7 +955,7 @@ impl Documents {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
             node::node_resolve(
-              &specifier,
+              specifier,
               referrer,
               NodeResolutionMode::Types,
               npm_resolver,
@@ -968,13 +968,13 @@ impl Documents {
       }
       // handle npm:<package> urls
       if specifier.starts_with("asset:") {
-        if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
+        if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
           let media_type = MediaType::from(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
         }
-      } else if let Some(dep) = dependencies.deps.get(&specifier) {
+      } else if let Some(dep) = dependencies.deps.get(specifier) {
         if let Resolved::Ok { specifier, .. } = &dep.maybe_type {
           results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
         } else if let Resolved::Ok { specifier, .. } = &dep.maybe_code {
@@ -983,12 +983,12 @@ impl Documents {
           results.push(None);
         }
       } else if let Some(Resolved::Ok { specifier, .. }) =
-        self.resolve_imports_dependency(&specifier)
+        self.resolve_imports_dependency(specifier)
       {
         // clone here to avoid double borrow of self
         let specifier = specifier.clone();
         results.push(self.resolve_dependency(&specifier, maybe_npm_resolver));
-      } else if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
+      } else if let Ok(npm_ref) = NpmPackageReference::from_str(specifier) {
         results.push(maybe_npm_resolver.map(|npm_resolver| {
           NodeResolution::into_specifier_and_media_type(
             node_resolve_npm_reference(

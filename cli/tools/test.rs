@@ -53,6 +53,7 @@ use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -713,18 +714,25 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  sender: &TestEventSender,
+  sender: TestEventSender,
+  fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
+  let stdout = StdioPipe::File(sender.stdout());
+  let stderr = StdioPipe::File(sender.stderr());
   let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::testing::init(sender.clone(), options.filter.clone())],
+    vec![ops::testing::init(
+      sender,
+      fail_fast_tracker,
+      options.filter.clone(),
+    )],
     Stdio {
       stdin: StdioPipe::Inherit,
-      stdout: StdioPipe::File(sender.stdout()),
-      stderr: StdioPipe::File(sender.stderr()),
+      stdout,
+      stderr,
     },
   )
   .await?;
@@ -999,9 +1007,9 @@ async fn test_specifiers(
   };
 
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
+  let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
   let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
-  let fail_fast = options.fail_fast;
 
   let join_handles =
     specifiers_with_mode.iter().map(move |(specifier, mode)| {
@@ -1011,15 +1019,21 @@ async fn test_specifiers(
       let mode = mode.clone();
       let mut sender = sender.clone();
       let options = options.clone();
+      let fail_fast_tracker = fail_fast_tracker.clone();
 
       tokio::task::spawn_blocking(move || {
+        if fail_fast_tracker.should_stop() {
+          return Ok(());
+        }
+
         let origin = specifier.to_string();
         let file_result = run_local(test_specifier(
           ps,
           permissions,
           specifier,
           mode,
-          &sender,
+          sender.clone(),
+          fail_fast_tracker,
           options,
         ));
         if let Err(error) = file_result {
@@ -1146,12 +1160,6 @@ async fn test_specifiers(
               &tests,
               &test_steps,
             );
-          }
-        }
-
-        if let Some(x) = fail_fast {
-          if summary.failed >= x.get() {
-            break;
           }
         }
       }
@@ -1564,6 +1572,42 @@ pub async fn run_tests_with_watch(
   Ok(())
 }
 
+/// Tracks failures for the `--fail-fast` argument in
+/// order to tell when to stop running tests.
+#[derive(Clone)]
+pub struct FailFastTracker {
+  max_count: Option<usize>,
+  failure_count: Arc<AtomicUsize>,
+}
+
+impl FailFastTracker {
+  pub fn new(fail_fast: Option<NonZeroUsize>) -> Self {
+    Self {
+      max_count: fail_fast.map(|v| v.into()),
+      failure_count: Default::default(),
+    }
+  }
+
+  pub fn add_failure(&self) -> bool {
+    if let Some(max_count) = &self.max_count {
+      self
+        .failure_count
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        >= *max_count
+    } else {
+      false
+    }
+  }
+
+  pub fn should_stop(&self) -> bool {
+    if let Some(max_count) = &self.max_count {
+      self.failure_count.load(std::sync::atomic::Ordering::SeqCst) >= *max_count
+    } else {
+      false
+    }
+  }
+}
+
 #[derive(Clone)]
 pub struct TestEventSender {
   sender: UnboundedSender<TestEvent>,
@@ -1596,6 +1640,7 @@ impl TestEventSender {
       TestEvent::Result(_, _, _)
         | TestEvent::StepWait(_)
         | TestEvent::StepResult(_, _, _)
+        | TestEvent::UncaughtError(_, _)
     ) {
       self.flush_stdout_and_stderr();
     }
