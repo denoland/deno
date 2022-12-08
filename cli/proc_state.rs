@@ -573,7 +573,16 @@ impl ProcState {
     {
       // FIXME(bartlomieju): this is another hack way to provide NPM specifier
       // support in REPL. This should be fixed.
-      if let Ok(reference) = NpmPackageReference::from_str(specifier) {
+      let referrer = deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap();
+      let specifier = if let Some(resolver) = &self.maybe_resolver {
+        let r = resolver.resolve(specifier, &referrer).to_result();
+        eprintln!("result {:#?}", r);
+        r?.to_string()
+      } else {
+        specifier.to_string()
+      };
+      
+      if let Ok(reference) = NpmPackageReference::from_str(&specifier) {
         return self
           .handle_node_resolve_result(node::node_resolve_npm_reference(
             &reference,
