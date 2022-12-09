@@ -1967,7 +1967,7 @@ fn inspect_args(app: Command) -> Command {
         .long("inspect-brk")
         .value_name("HOST:PORT")
         .help(
-          "Activate inspector on host:port and break at start of user script",
+          "Activate inspector on host:port, wait for debugger to connect and break at the start of user script",
         )
         .min_values(0)
         .max_values(1)
