@@ -6,6 +6,7 @@ use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::TypeCheckMode;
 use crate::npm::NpmPackageReference;
+use crate::proc_state::ProcState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -215,7 +216,21 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
   Ok(())
 }
 
-pub fn install(
+pub async fn install_command(
+  flags: Flags,
+  install_flags: InstallFlags,
+) -> Result<(), AnyError> {
+  // ensure the module is cached
+  ProcState::build(flags.clone())
+    .await?
+    .load_and_type_check_files(&[install_flags.module_url.clone()])
+    .await?;
+
+  // create the install shim
+  create_install_shim(flags, install_flags)
+}
+
+fn create_install_shim(
   flags: Flags,
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
@@ -567,7 +582,7 @@ mod tests {
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
-    install(
+    create_install_shim(
       Flags {
         unstable: true,
         ..Flags::default()
@@ -810,7 +825,7 @@ mod tests {
     let local_module_url = Url::from_file_path(&local_module).unwrap();
     let local_module_str = local_module.to_string_lossy();
 
-    install(
+    create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: local_module_str.to_string(),
@@ -838,7 +853,7 @@ mod tests {
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
-    install(
+    create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
@@ -857,7 +872,7 @@ mod tests {
     assert!(file_path.exists());
 
     // No force. Install failed.
-    let no_force_result = install(
+    let no_force_result = create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
@@ -877,7 +892,7 @@ mod tests {
     assert!(file_content.contains("echo_server.ts"));
 
     // Force. Install success.
-    let force_result = install(
+    let force_result = create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
@@ -903,7 +918,7 @@ mod tests {
     let result = config_file.write_all(config.as_bytes());
     assert!(result.is_ok());
 
-    let result = install(
+    let result = create_install_shim(
       Flags {
         config_flag: ConfigFlag::Path(
           config_file_path.to_string_lossy().to_string(),
@@ -936,7 +951,7 @@ mod tests {
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
-    install(
+    create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
@@ -976,7 +991,7 @@ mod tests {
     let local_module_str = local_module.to_string_lossy();
     std::fs::write(&local_module, "// Some JavaScript I guess").unwrap();
 
-    install(
+    create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: local_module_str.to_string(),
@@ -1016,7 +1031,7 @@ mod tests {
     let result = import_map_file.write_all(import_map.as_bytes());
     assert!(result.is_ok());
 
-    let result = install(
+    let result = create_install_shim(
       Flags {
         import_map_path: Some(import_map_path.to_string_lossy().to_string()),
         ..Flags::default()
@@ -1062,7 +1077,7 @@ mod tests {
       Url::from_file_path(module_path).unwrap().to_string();
     assert!(file_module_string.starts_with("file:///"));
 
-    let result = install(
+    let result = create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: file_module_string.to_string(),
