@@ -143,7 +143,7 @@ fn bundle_module_graph(
     .resolve_ts_config_for_emit(TsConfigType::Bundle)?;
   if ps.options.type_check_mode() == TypeCheckMode::None {
     if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
-      eprintln!("{}", ignored_options);
+      log::warn!("{}", ignored_options);
     }
   }
 
