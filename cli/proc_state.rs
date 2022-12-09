@@ -41,6 +41,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
+use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
@@ -90,7 +91,7 @@ pub struct Inner {
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
   pub parsed_source_cache: ParsedSourceCache,
-  maybe_resolver: Option<Arc<CliResolver>>,
+  pub maybe_resolver: Option<Arc<CliResolver>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
   pub npm_cache: NpmCache,
@@ -160,9 +161,7 @@ impl ProcState {
     let progress_bar = ProgressBar::default();
     let http_client = HttpClient::new(
       Some(root_cert_store.clone()),
-      cli_options
-        .unsafely_ignore_certificate_errors()
-        .map(ToOwned::to_owned),
+      cli_options.unsafely_ignore_certificate_errors().clone(),
     )?;
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -471,6 +470,30 @@ impl ProcState {
     Ok(())
   }
 
+  /// Helper around prepare_module_load that loads and type checks
+  /// the provided files.
+  pub async fn load_and_type_check_files(
+    &self,
+    files: &[String],
+  ) -> Result<(), AnyError> {
+    let lib = self.options.ts_type_lib_window();
+
+    let specifiers = files
+      .iter()
+      .map(|file| resolve_url_or_path(file))
+      .collect::<Result<Vec<_>, _>>()?;
+    self
+      .prepare_module_load(
+        specifiers,
+        false,
+        lib,
+        Permissions::allow_all(),
+        Permissions::allow_all(),
+        false,
+      )
+      .await
+  }
+
   /// Add the builtin node modules to the graph data.
   pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
     if self.node_std_graph_prepared.load(Ordering::Relaxed) {
@@ -573,14 +596,6 @@ impl ProcState {
     {
       // FIXME(bartlomieju): this is another hack way to provide NPM specifier
       // support in REPL. This should be fixed.
-      let referrer = deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap();
-      let specifier = if let Some(resolver) = &self.maybe_resolver {
-        let r = resolver.resolve(specifier, &referrer).to_result();
-        r?.to_string()
-      } else {
-        specifier.to_string()
-      };
-
       if let Ok(reference) = NpmPackageReference::from_str(&specifier) {
         return self
           .handle_node_resolve_result(node::node_resolve_npm_reference(

@@ -161,7 +161,7 @@ mod repl {
 
   #[test]
   fn pty_complete_imports() {
-    util::with_pty(&["repl"], |mut console| {
+    util::with_pty(&["repl", "-A"], |mut console| {
       // single quotes
       console.write_line("import './run/001_hel\t'");
       // double quotes
@@ -181,7 +181,7 @@ mod repl {
     });
 
     // ensure when the directory changes that the suggestions come from the cwd
-    util::with_pty(&["repl"], |mut console| {
+    util::with_pty(&["repl", "-A"], |mut console| {
       console.write_line("Deno.chdir('./subdir');");
       console.write_line("import '../run/001_hel\t'");
       console.write_line("close();");

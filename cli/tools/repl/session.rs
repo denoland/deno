@@ -3,7 +3,6 @@
 use crate::args::TsTypeLib;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
-use crate::Permissions;
 use crate::ProcState;
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::visit::noop_visit_type;
@@ -17,6 +16,8 @@ use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
+use deno_graph::source::Resolver;
+use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 
 use super::cdp;
@@ -410,8 +411,19 @@ impl ReplSession {
     let npm_imports = collector
       .imports
       .iter()
-      .flat_map(|i| self.proc_state.resolve(i, self.referrer.as_str()))
-      .filter(|i| i.as_str().starts_with("npm:"))
+      .flat_map(|i| {
+let r =        if let Some(resolver) = &self.proc_state.maybe_resolver {
+          resolver.resolve(i, &self.referrer).to_result()
+        } else {
+          deno_core::resolve_import(i, self.referrer.as_str())
+            .map_err(|err| err.into())
+        };
+
+        eprintln!("r {:#?}", r);
+        r
+      })
+      .filter(|i| i.scheme() == "npm:")
+      .flat_map(|i| self.proc_state.resolve(i.as_str(), ""))
       .collect::<Vec<ModuleSpecifier>>();
     if !npm_imports.is_empty() {
       if !self.has_initialized_node_runtime {
