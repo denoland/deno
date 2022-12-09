@@ -7,29 +7,25 @@ use std::sync::Arc;
 use std::time::Duration;
 
 mod dprint {
-  use crossterm::style::Stylize;
-  use crossterm::tty::IsTty;
-  use deno_core::anyhow::Result;
   use deno_core::parking_lot::RwLock;
+  use deno_runtime::colors;
+  use deno_runtime::ops::tty::ConsoleSize;
   use std::sync::Arc;
   use std::time::Duration;
   use std::time::SystemTime;
 
-  pub fn get_terminal_width() -> Option<u16> {
-    get_terminal_size().map(|(cols, _)| cols)
+  pub fn get_terminal_width() -> Option<u32> {
+    get_terminal_size().map(|size| size.cols)
   }
 
-  /// Gets the terminal size (width/cols, height/rows).
-  pub fn get_terminal_size() -> Option<(u16, u16)> {
-    match crossterm::terminal::size() {
-      Ok(size) => Some(size),
-      Err(_) => None,
-    }
+  /// Gets the terminal size.
+  pub fn get_terminal_size() -> Option<ConsoleSize> {
+    let stderr = &deno_runtime::ops::io::STDERR_HANDLE;
+    deno_runtime::ops::tty::console_size(stderr).ok()
   }
 
   // Inspired by Indicatif, but this custom implementation allows for more control over
-  // what's going on under the hood and it works better with the multi-threading model
-  // going on in dprint.
+  // what's going on under the hood.
 
   #[derive(Clone, Copy, PartialEq, Eq)]
   pub enum ProgressBarStyle {
@@ -78,7 +74,7 @@ mod dprint {
   impl ProgressBars {
     /// Checks if progress bars are supported
     pub fn are_supported() -> bool {
-      std::io::stderr().is_tty() && get_terminal_width().is_some()
+      atty::is(atty::Stream::Stderr) && get_terminal_width().is_some()
     }
 
     /// Creates a new ProgressBars or returns None when not supported.
@@ -142,7 +138,7 @@ mod dprint {
       internal_state.drawer_id += 1;
       let drawer_id = internal_state.drawer_id;
       let internal_state = self.state.clone();
-      std::thread::spawn(move || {
+      tokio::task::spawn_blocking(move || {
         loop {
           {
             let internal_state = internal_state.read();
@@ -155,7 +151,7 @@ mod dprint {
 
             let terminal_width = get_terminal_width().unwrap();
             let mut text = String::new();
-            let progress_bar = internal_state.progress_bars[0];
+            let progress_bar = &internal_state.progress_bars[0];
 
             text.push_str(&get_progress_bar_text(
               terminal_width,
@@ -175,7 +171,7 @@ mod dprint {
   }
 
   fn get_progress_bar_text(
-    terminal_width: u16,
+    terminal_width: u32,
     pos: usize,
     total: usize,
     pb_style: ProgressBarStyle,
@@ -208,15 +204,15 @@ mod dprint {
       if completed_bars > 0 {
         text.push_str(&format!(
           "{}",
-          format!("{}{}", "#".repeat(completed_bars - 1), ">").cyan()
+          colors::cyan(format!("{}{}", "#".repeat(completed_bars - 1), ">"))
         ))
       }
       text.push_str(&format!(
         "{}",
-        "-".repeat(total_bars - completed_bars).blue()
+        colors::intense_blue("-".repeat(total_bars - completed_bars))
       ))
     } else {
-      text.push_str(&format!("{}", "#".repeat(completed_bars).cyan()))
+      text.push_str(&format!("{}", colors::cyan("#".repeat(completed_bars))))
     }
     text.push(']');
 
