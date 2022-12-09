@@ -2805,7 +2805,11 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
         .unwrap_or(NonZeroUsize::new(1).unwrap())
     }
   } else if matches.is_present("jobs") {
-    println!(
+    // We can't change this to use the log crate because its not configured
+    // yet at this point since the flags haven't been parsed. This flag is
+    // deprecated though so it's not worth changing the code to use the log
+    // crate here and this is only done for testing anyway.
+    eprintln!(
       "{}",
       crate::colors::yellow("Warning: --jobs flag is deprecated. Use the --parallel flag with possibly the 'DENO_JOBS' environment variable."),
     );

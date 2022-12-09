@@ -122,15 +122,15 @@ async fn download_base_binary(
   let client_builder = Client::builder();
   let client = client_builder.build()?;
 
-  println!("Checking {}", &download_url);
+  log::info!("Checking {}", &download_url);
 
   let res = client.get(&download_url).send().await?;
 
   let binary_content = if res.status().is_success() {
-    println!("Download has been found");
+    log::info!("Download has been found");
     res.bytes().await?.to_vec()
   } else {
-    println!("Download could not be found, aborting");
+    log::info!("Download could not be found, aborting");
     std::process::exit(1)
   };
 

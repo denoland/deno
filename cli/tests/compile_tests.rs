@@ -153,7 +153,6 @@ mod compile {
       .wait_with_output()
       .unwrap();
     assert!(!output.status.success());
-    println!("{:#?}", &output);
     assert_eq!(output.stdout, b"hello\n");
     let stderr = String::from_utf8(output.stderr).unwrap();
     let stderr = util::strip_ansi_codes(&stderr).to_string();

@@ -563,7 +563,7 @@ pub async fn create_graph_and_maybe_check(
         lib: ps.options.ts_type_lib_window(),
       })?;
     if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
-      eprintln!("{}", ignored_options);
+      log::warn!("{}", ignored_options);
     }
     let maybe_config_specifier = ps.options.maybe_config_file_specifier();
     let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
