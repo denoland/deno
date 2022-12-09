@@ -41,6 +41,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
+use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
@@ -160,9 +161,7 @@ impl ProcState {
     let progress_bar = ProgressBar::default();
     let http_client = HttpClient::new(
       Some(root_cert_store.clone()),
-      cli_options
-        .unsafely_ignore_certificate_errors()
-        .map(ToOwned::to_owned),
+      cli_options.unsafely_ignore_certificate_errors().clone(),
     )?;
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -469,6 +468,30 @@ impl ProcState {
     log::debug!("Prepared module load.");
 
     Ok(())
+  }
+
+  /// Helper around prepare_module_load that loads and type checks
+  /// the provided files.
+  pub async fn load_and_type_check_files(
+    &self,
+    files: &[String],
+  ) -> Result<(), AnyError> {
+    let lib = self.options.ts_type_lib_window();
+
+    let specifiers = files
+      .iter()
+      .map(|file| resolve_url_or_path(file))
+      .collect::<Result<Vec<_>, _>>()?;
+    self
+      .prepare_module_load(
+        specifiers,
+        false,
+        lib,
+        Permissions::allow_all(),
+        Permissions::allow_all(),
+        false,
+      )
+      .await
   }
 
   /// Add the builtin node modules to the graph data.

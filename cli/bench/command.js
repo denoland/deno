@@ -1,11 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 Deno.bench("echo deno", async () => {
-  await Deno.spawn("echo", { args: ["deno"] });
+  await new Deno.Command("echo", { args: ["deno"] }).output();
 });
 
 Deno.bench("cat 128kb", async () => {
-  await Deno.spawn("cat", {
+  await new Deno.Command("cat", {
     args: ["./cli/bench/testdata/128k.bin"],
-  });
+  }).output();
 });
