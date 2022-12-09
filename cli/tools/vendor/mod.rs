@@ -53,7 +53,7 @@ pub async fn vendor(
     &build::RealVendorEnvironment,
   )?;
 
-  eprintln!(
+  log::info!(
     concat!("Vendored {} {} into {} directory.",),
     vendored_count,
     if vendored_count == 1 {
@@ -66,7 +66,7 @@ pub async fn vendor(
   if vendored_count > 0 {
     let import_map_path = raw_output_dir.join("import_map.json");
     if maybe_update_config_file(&output_dir, &ps) {
-      eprintln!(
+      log::info!(
         concat!(
           "\nUpdated your local Deno configuration file with a reference to the ",
           "new vendored import map at {}. Invoking Deno subcommands will now ",
@@ -77,7 +77,7 @@ pub async fn vendor(
         import_map_path.display(),
       );
     } else {
-      eprintln!(
+      log::info!(
         concat!(
           "\nTo use vendored modules, specify the `--import-map {}` flag when ",
           r#"invoking Deno subcommands or add an `"importMap": "<path_to_vendored_import_map>"` "#,

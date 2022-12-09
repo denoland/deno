@@ -43,7 +43,7 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   let main_bench_ts = include_str!("./templates/main_bench.ts");
   create_file(&dir, "main_bench.ts", main_bench_ts)?;
 
-  create_file(&dir, "deno.json", include_str!("./templates/deno.json"))?;
+  create_file(&dir, "deno.jsonc", include_str!("./templates/deno.jsonc"))?;
 
   info!("✅ {}", colors::green("Project initialized"));
   info!("");

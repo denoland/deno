@@ -32,7 +32,7 @@ mod init {
     assert_contains!(stderr, "deno test");
     assert_contains!(stderr, "deno bench");
 
-    assert!(cwd.join("deno.json").exists());
+    assert!(cwd.join("deno.jsonc").exists());
 
     let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
     let output = deno_cmd
@@ -100,7 +100,7 @@ mod init {
     assert_contains!(stderr, "deno test");
     assert_contains!(stderr, "deno bench");
 
-    assert!(cwd.join("my_dir/deno.json").exists());
+    assert!(cwd.join("my_dir/deno.jsonc").exists());
 
     let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
     let output = deno_cmd
@@ -164,7 +164,7 @@ mod init {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_eq!(stdout, "");
-    assert!(cwd.join("deno.json").exists());
+    assert!(cwd.join("deno.jsonc").exists());
 
     let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
     let output = deno_cmd
