@@ -361,13 +361,14 @@ impl MainWorker {
   }
 
   fn wait_for_inspector_session(&mut self) {
-    let inspector = self.js_runtime.inspector();
-    let mut inspector = inspector.borrow_mut();
-
     if self.should_break_on_first_statement {
-      inspector.wait_for_session_and_break_on_next_statement();
+      self
+        .js_runtime
+        .inspector()
+        .borrow_mut()
+        .wait_for_session_and_break_on_next_statement();
     } else if self.should_wait_for_inspector_session {
-      inspector.wait_for_session();
+      self.js_runtime.inspector().borrow_mut().wait_for_session();
     }
   }
 

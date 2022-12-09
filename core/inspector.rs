@@ -352,7 +352,10 @@ impl JsRuntimeInspector {
   pub fn wait_for_session(&mut self) {
     loop {
       match self.sessions.get_mut().established.iter_mut().next() {
-        Some(_session) => break,
+        Some(_session) => {
+          self.flags.get_mut().waiting_for_session = false;
+          break;
+        }
         None => {
           self.flags.get_mut().waiting_for_session = true;
           let _ = self.poll_sessions(None).unwrap();
