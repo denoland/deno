@@ -340,7 +340,11 @@ impl CliOptions {
   }
 
   pub fn resolve_inspector_server(&self) -> Option<InspectorServer> {
-    let maybe_inspect_host = self.flags.inspect.or(self.flags.inspect_brk);
+    let maybe_inspect_host = self
+      .flags
+      .inspect
+      .or(self.flags.inspect_brk)
+      .or(self.flags.inspect_wait);
     maybe_inspect_host
       .map(|host| InspectorServer::new(host, version::get_user_agent()))
   }
@@ -457,11 +461,17 @@ impl CliOptions {
 
   /// If the --inspect or --inspect-brk flags are used.
   pub fn is_inspecting(&self) -> bool {
-    self.flags.inspect.is_some() || self.flags.inspect_brk.is_some()
+    self.flags.inspect.is_some()
+      || self.flags.inspect_brk.is_some()
+      || self.flags.inspect_wait.is_some()
   }
 
   pub fn inspect_brk(&self) -> Option<SocketAddr> {
     self.flags.inspect_brk
+  }
+
+  pub fn inspect_wait(&self) -> Option<SocketAddr> {
+    self.flags.inspect_wait
   }
 
   pub fn log_level(&self) -> Option<log::Level> {

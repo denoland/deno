@@ -312,6 +312,7 @@ pub struct Flags {
   pub ignore: Vec<PathBuf>,
   pub import_map_path: Option<String>,
   pub inspect_brk: Option<SocketAddr>,
+  pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
   pub location: Option<Url>,
   pub lock_write: bool,
@@ -1482,6 +1483,7 @@ fn run_subcommand<'a>() -> Command<'a> {
     .arg(
       watch_arg(true)
         .conflicts_with("inspect")
+        .conflicts_with("inspect-wait")
         .conflicts_with("inspect-brk"),
     )
     .arg(no_clear_screen_arg())
@@ -1622,6 +1624,7 @@ fn test_subcommand<'a>() -> Command<'a> {
         .takes_value(true)
         .value_name("DIR")
         .conflicts_with("inspect")
+        .conflicts_with("inspect-wait")
         .conflicts_with("inspect-brk")
         .help("UNSTABLE: Collect coverage profile data into DIR"),
     )
@@ -1965,6 +1968,19 @@ fn inspect_args(app: Command) -> Command {
         .value_name("HOST:PORT")
         .help(
           "Activate inspector on host:port and break at start of user script",
+        )
+        .min_values(0)
+        .max_values(1)
+        .require_equals(true)
+        .takes_value(true)
+        .validator(inspect_arg_validate),
+    )
+    .arg(
+      Arg::new("inspect-wait")
+        .long("inspect-wait")
+        .value_name("HOST:PORT")
+        .help(
+          "Activate inspector on host:port and wait for debugger to connect before running user code",
         )
         .min_values(0)
         .max_values(1)
@@ -3029,6 +3045,15 @@ fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
   flags.inspect_brk = if matches.is_present("inspect-brk") {
     if let Some(host) = matches.value_of("inspect-brk") {
+      Some(host.parse().unwrap())
+    } else {
+      Some(default())
+    }
+  } else {
+    None
+  };
+  flags.inspect_wait = if matches.is_present("inspect-wait") {
+    if let Some(host) = matches.value_of("inspect-wait") {
       Some(host.parse().unwrap())
     } else {
       Some(default())
@@ -5866,6 +5891,38 @@ mod tests {
           script: "foo.js".to_string(),
         }),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn inspect_wait() {
+    let r = flags_from_vec(svec!["deno", "run", "--inspect-wait", "foo.js"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "foo.js".to_string(),
+        }),
+        inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect-wait=127.0.0.1:3567",
+      "foo.js"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "foo.js".to_string(),
+        }),
+        inspect_wait: Some("127.0.0.1:3567".parse().unwrap()),
         ..Flags::default()
       }
     );
