@@ -88,60 +88,26 @@ use std::pin::Pin;
 use std::sync::Arc;
 use worker::create_main_worker;
 
-pub fn get_types(unstable: bool) -> String {
-  let mut types = vec![
-    tsc::DENO_NS_LIB,
-    tsc::DENO_CONSOLE_LIB,
-    tsc::DENO_URL_LIB,
-    tsc::DENO_WEB_LIB,
-    tsc::DENO_FETCH_LIB,
-    tsc::DENO_WEBGPU_LIB,
-    tsc::DENO_WEBSOCKET_LIB,
-    tsc::DENO_WEBSTORAGE_LIB,
-    tsc::DENO_CRYPTO_LIB,
-    tsc::DENO_BROADCAST_CHANNEL_LIB,
-    tsc::DENO_NET_LIB,
-    tsc::SHARED_GLOBALS_LIB,
-    tsc::DENO_CACHE_LIB,
-    tsc::WINDOW_LIB,
-  ];
-
-  if unstable {
-    types.push(tsc::UNSTABLE_NS_LIB);
-  }
-
-  types.join("\n")
-}
-
 async fn compile_command(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<i32, AnyError> {
-  let debug = flags.log_level == Some(log::Level::Debug);
-
-  let run_flags = tools::standalone::compile_to_runtime_flags(
-    &flags,
-    compile_flags.args.clone(),
-  )?;
-
+  let ps = ProcState::build(flags.clone()).await?;
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
-  let ps = ProcState::build(flags).await?;
   let deno_dir = &ps.dir;
 
   let output_path =
     tools::standalone::resolve_compile_executable_output_path(&compile_flags)?;
 
   let graph = Arc::try_unwrap(
-    create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?,
+    create_graph_and_maybe_check(module_specifier.clone(), &ps).await?,
   )
-  .map_err(|_| {
-    generic_error("There should only be one reference to ModuleGraph")
-  })?;
+  .unwrap();
 
   // at the moment, we don't support npm specifiers in deno_compile, so show an error
   error_for_any_npm_specifier(&graph)?;
 
-  graph.valid().unwrap();
+  graph.valid()?;
 
   let parser = ps.parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
@@ -161,7 +127,7 @@ async fn compile_command(
     original_binary,
     eszip,
     module_specifier.clone(),
-    run_flags,
+    &compile_flags,
     ps,
   )
   .await?;
@@ -275,8 +241,9 @@ async fn eval_command(
   // type, and so our "fake" specifier needs to have the proper extension.
   let main_module =
     resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext))?;
-  let permissions = Permissions::from_options(&flags.permissions_options())?;
   let ps = ProcState::build(flags).await?;
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options())?;
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions).await?;
   // Create a dummy source file.
@@ -306,7 +273,6 @@ async fn eval_command(
 async fn create_graph_and_maybe_check(
   root: ModuleSpecifier,
   ps: &ProcState,
-  debug: bool,
 ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
   let mut cache = cache::FetchCacher::new(
     ps.emit_cache.clone(),
@@ -371,7 +337,7 @@ async fn create_graph_and_maybe_check(
       ps.npm_resolver.clone(),
       check::CheckOptions {
         type_check_mode: ps.options.type_check_mode(),
-        debug,
+        debug: ps.options.log_level() == Some(log::Level::Debug),
         maybe_config_specifier,
         ts_config: ts_config_result.ts_config,
         log_checks: true,
@@ -416,7 +382,6 @@ async fn bundle_command(
   flags: Flags,
   bundle_flags: BundleFlags,
 ) -> Result<i32, AnyError> {
-  let debug = flags.log_level == Some(log::Level::Debug);
   let cli_options = Arc::new(CliOptions::from_flags(flags)?);
   let resolver = |_| {
     let cli_options = cli_options.clone();
@@ -427,8 +392,7 @@ async fn bundle_command(
 
       debug!(">>>>> bundle START");
       let ps = ProcState::from_options(cli_options).await?;
-      let graph =
-        create_graph_and_maybe_check(module_specifier, &ps, debug).await?;
+      let graph = create_graph_and_maybe_check(module_specifier, &ps).await?;
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()
@@ -629,11 +593,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     ModuleSpecifier,
   )| {
     let flags = flags.clone();
-    let permissions = Permissions::from_options(&flags.permissions_options())?;
     Ok(async move {
       let ps =
         ProcState::build_for_file_watcher((*flags).clone(), sender.clone())
           .await?;
+      let permissions =
+        Permissions::from_options(&ps.options.permissions_options())?;
       let worker =
         create_main_worker(&ps, main_module.clone(), permissions).await?;
       worker.run_for_watcher().await?;
@@ -766,7 +731,7 @@ async fn completions_command(
 }
 
 async fn types_command(flags: Flags) -> Result<i32, AnyError> {
-  let types = get_types(flags.unstable);
+  let types = tsc::get_types_declaration_file_text(flags.unstable);
   display::write_to_stdout_ignore_sigpipe(types.as_bytes())?;
   Ok(0)
 }

@@ -1,10 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CompileFlags;
-use crate::args::DenoSubcommand;
-use crate::args::Flags;
-use crate::args::RunFlags;
-use crate::args::TypeCheckMode;
 use crate::cache::DenoDir;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
@@ -21,7 +17,7 @@ use deno_graph::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest::Client;
 use deno_runtime::permissions::Permissions;
 use std::env;
-use std::fs::read;
+use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::io::Seek;
@@ -98,47 +94,46 @@ pub async fn create_standalone_binary(
   mut original_bin: Vec<u8>,
   eszip: eszip::EszipV2,
   entrypoint: ModuleSpecifier,
-  flags: Flags,
+  compile_flags: &CompileFlags,
   ps: ProcState,
 ) -> Result<Vec<u8>, AnyError> {
   let mut eszip_archive = eszip.into_bytes();
 
-  let ca_data = match &flags.ca_file {
-    Some(ca_file) => Some(read(ca_file)?),
-    None => None,
-  };
-  let maybe_import_map: Option<(Url, String)> = match flags
-    .import_map_path
-    .as_ref()
-  {
-    None => None,
-    Some(import_map_url) => {
-      let import_map_specifier = deno_core::resolve_url_or_path(import_map_url)
-        .context(format!("Bad URL (\"{}\") for import map.", import_map_url))?;
-      let file = ps
-        .file_fetcher
-        .fetch(&import_map_specifier, &mut Permissions::allow_all())
-        .await
-        .context(format!(
-          "Unable to load '{}' import map",
-          import_map_specifier
-        ))?;
-
-      Some((import_map_specifier, file.source.to_string()))
+  let ca_data = match ps.options.ca_file() {
+    Some(ca_file) => {
+      Some(fs::read(ca_file).with_context(|| format!("Reading: {}", ca_file))?)
     }
+    None => None,
   };
+  let maybe_import_map: Option<(Url, String)> =
+    match ps.options.resolve_import_map_specifier()? {
+      None => None,
+      Some(import_map_specifier) => {
+        let file = ps
+          .file_fetcher
+          .fetch(&import_map_specifier, &mut Permissions::allow_all())
+          .await
+          .context(format!(
+            "Unable to load '{}' import map",
+            import_map_specifier
+          ))?;
+
+        Some((import_map_specifier, file.source.to_string()))
+      }
+    };
   let metadata = Metadata {
-    argv: flags.argv.clone(),
-    unstable: flags.unstable,
-    seed: flags.seed,
-    location: flags.location.clone(),
-    permissions: flags.permissions_options(),
-    v8_flags: flags.v8_flags.clone(),
-    unsafely_ignore_certificate_errors: flags
-      .unsafely_ignore_certificate_errors
+    argv: compile_flags.args.clone(),
+    unstable: ps.options.unstable(),
+    seed: ps.options.seed(),
+    location: ps.options.location_flag().clone(),
+    permissions: ps.options.permissions_options(),
+    v8_flags: ps.options.v8_flags().clone(),
+    unsafely_ignore_certificate_errors: ps
+      .options
+      .unsafely_ignore_certificate_errors()
       .clone(),
-    log_level: flags.log_level,
-    ca_stores: flags.ca_stores,
+    log_level: ps.options.log_level(),
+    ca_stores: ps.options.ca_stores().clone(),
     ca_data,
     entrypoint,
     maybe_import_map,
@@ -231,67 +226,6 @@ pub async fn write_standalone_binary(
   }
 
   Ok(())
-}
-
-/// Transform the flags passed to `deno compile` to flags that would be used at
-/// runtime, as if `deno run` were used.
-/// - Flags that affect module resolution, loading, type checking, etc. aren't
-///   applicable at runtime so are set to their defaults like `false`.
-/// - Other flags are inherited.
-pub fn compile_to_runtime_flags(
-  flags: &Flags,
-  baked_args: Vec<String>,
-) -> Result<Flags, AnyError> {
-  // IMPORTANT: Don't abbreviate any of this to `..flags` or
-  // `..Default::default()`. That forces us to explicitly consider how any
-  // change to `Flags` should be reflected here.
-  Ok(Flags {
-    argv: baked_args,
-    subcommand: DenoSubcommand::Run(RunFlags {
-      script: "placeholder".to_string(),
-    }),
-    allow_all: flags.allow_all,
-    allow_env: flags.allow_env.clone(),
-    allow_hrtime: flags.allow_hrtime,
-    allow_net: flags.allow_net.clone(),
-    allow_ffi: flags.allow_ffi.clone(),
-    allow_read: flags.allow_read.clone(),
-    allow_run: flags.allow_run.clone(),
-    allow_sys: flags.allow_sys.clone(),
-    allow_write: flags.allow_write.clone(),
-    ca_stores: flags.ca_stores.clone(),
-    ca_file: flags.ca_file.clone(),
-    cache_blocklist: vec![],
-    cache_path: None,
-    cached_only: false,
-    config_flag: Default::default(),
-    coverage_dir: flags.coverage_dir.clone(),
-    enable_testing_features: false,
-    ignore: vec![],
-    import_map_path: flags.import_map_path.clone(),
-    inspect_brk: None,
-    inspect: None,
-    node_modules_dir: false,
-    location: flags.location.clone(),
-    lock_write: false,
-    lock: None,
-    log_level: flags.log_level,
-    type_check_mode: TypeCheckMode::Local,
-    unsafely_ignore_certificate_errors: flags
-      .unsafely_ignore_certificate_errors
-      .clone(),
-    no_remote: false,
-    no_lock: false,
-    no_npm: false,
-    no_prompt: flags.no_prompt,
-    reload: false,
-    seed: flags.seed,
-    unstable: flags.unstable,
-    v8_flags: flags.v8_flags.clone(),
-    version: false,
-    watch: None,
-    no_clear_screen: false,
-  })
 }
 
 pub fn resolve_compile_executable_output_path(

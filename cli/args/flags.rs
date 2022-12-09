@@ -10,7 +10,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Url;
 use deno_runtime::permissions::parse_sys_kind;
-use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -482,20 +481,6 @@ impl Flags {
     }
   }
 
-  pub fn permissions_options(&self) -> PermissionsOptions {
-    PermissionsOptions {
-      allow_env: self.allow_env.clone(),
-      allow_hrtime: self.allow_hrtime,
-      allow_net: self.allow_net.clone(),
-      allow_ffi: self.allow_ffi.clone(),
-      allow_read: self.allow_read.clone(),
-      allow_run: self.allow_run.clone(),
-      allow_sys: self.allow_sys.clone(),
-      allow_write: self.allow_write.clone(),
-      prompt: !self.no_prompt,
-    }
-  }
-
   pub fn has_permission(&self) -> bool {
     self.allow_all
       || self.allow_hrtime
@@ -547,6 +532,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          (module downloads, fetch)
     HTTPS_PROXY          Proxy address for HTTPS requests
                          (module downloads, fetch)
+    NPM_CONFIG_REGISTRY  URL to use for the npm registry.
     NO_COLOR             Set to disable color
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)"#;
@@ -2996,11 +2982,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
-  #[cfg(not(test))]
-  let has_no_prompt_env = env::var("DENO_NO_PROMPT") == Ok("1".to_string());
-  #[cfg(test)]
-  let has_no_prompt_env = false;
-  if has_no_prompt_env || matches.is_present("no-prompt") {
+  if matches.is_present("no-prompt") {
     flags.no_prompt = true;
   }
 }

@@ -510,7 +510,7 @@ async fn create_main_worker_internal(
         .map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: ps.options.enable_testing_features(),
       locale: deno_core::v8::icu::get_language_tag(),
-      location: ps.options.location_flag().map(ToOwned::to_owned),
+      location: ps.options.location_flag().clone(),
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
       runtime_version: version::deno(),
@@ -524,7 +524,7 @@ async fn create_main_worker_internal(
     unsafely_ignore_certificate_errors: ps
       .options
       .unsafely_ignore_certificate_errors()
-      .map(ToOwned::to_owned),
+      .clone(),
     root_cert_store: Some(ps.root_cert_store.clone()),
     seed: ps.options.seed(),
     source_map_getter: Some(Box::new(module_loader.clone())),
@@ -685,7 +685,7 @@ fn create_web_worker_callback(
       unsafely_ignore_certificate_errors: ps
         .options
         .unsafely_ignore_certificate_errors()
-        .map(ToOwned::to_owned),
+        .clone(),
       root_cert_store: Some(ps.root_cert_store.clone()),
       seed: ps.options.seed(),
       create_web_worker_cb,

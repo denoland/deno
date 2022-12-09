@@ -430,6 +430,13 @@ pub struct TestConfig {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum LockConfig {
+  Bool(bool),
+  PathBuf(PathBuf),
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
@@ -438,6 +445,7 @@ pub struct ConfigFileJson {
   pub fmt: Option<Value>,
   pub tasks: Option<Value>,
   pub test: Option<Value>,
+  pub lock: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -757,6 +765,16 @@ impl ConfigFile {
       Ok(tasks_config)
     } else {
       bail!("No tasks found in configuration file")
+    }
+  }
+
+  pub fn to_lock_config(&self) -> Result<Option<LockConfig>, AnyError> {
+    if let Some(config) = self.json.lock.clone() {
+      let lock_config: LockConfig = serde_json::from_value(config)
+        .context("Failed to parse \"lock\" configuration")?;
+      Ok(Some(lock_config))
+    } else {
+      Ok(None)
     }
   }
 }
