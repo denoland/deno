@@ -186,7 +186,7 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
 
   if file_path.exists() {
     fs::remove_file(&file_path)?;
-    println!("deleted {}", file_path.to_string_lossy());
+    log::info!("deleted {}", file_path.to_string_lossy());
     removed = true
   };
 
@@ -194,7 +194,7 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
     let file_path = file_path.with_extension("cmd");
     if file_path.exists() {
       fs::remove_file(&file_path)?;
-      println!("deleted {}", file_path.to_string_lossy());
+      log::info!("deleted {}", file_path.to_string_lossy());
       removed = true
     }
   }
@@ -208,11 +208,11 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
     let file_path = file_path.with_extension(ext);
     if file_path.exists() {
       fs::remove_file(&file_path)?;
-      println!("deleted {}", file_path.to_string_lossy());
+      log::info!("deleted {}", file_path.to_string_lossy());
     }
   }
 
-  println!("✅ Successfully uninstalled {}", name);
+  log::info!("✅ Successfully uninstalled {}", name);
   Ok(())
 }
 
@@ -256,20 +256,20 @@ fn create_install_shim(
     fs::write(path, contents)?;
   }
 
-  println!("✅ Successfully installed {}", shim_data.name);
-  println!("{}", shim_data.file_path.display());
+  log::info!("✅ Successfully installed {}", shim_data.name);
+  log::info!("{}", shim_data.file_path.display());
   if cfg!(windows) {
     let display_path = shim_data.file_path.with_extension("");
-    println!("{} (shell)", display_path.display());
+    log::info!("{} (shell)", display_path.display());
   }
   let installation_dir_str = shim_data.installation_dir.to_string_lossy();
 
   if !is_in_path(&shim_data.installation_dir) {
-    println!("ℹ️  Add {} to PATH", installation_dir_str);
+    log::info!("ℹ️  Add {} to PATH", installation_dir_str);
     if cfg!(windows) {
-      println!("    set PATH=%PATH%;{}", installation_dir_str);
+      log::info!("    set PATH=%PATH%;{}", installation_dir_str);
     } else {
-      println!("    export PATH=\"{}:$PATH\"", installation_dir_str);
+      log::info!("    export PATH=\"{}:$PATH\"", installation_dir_str);
     }
   }
 
@@ -605,7 +605,6 @@ mod tests {
     assert!(file_path.exists());
 
     let content = fs::read_to_string(file_path).unwrap();
-    println!("this is the file path {:?}", content);
     if cfg!(windows) {
       assert!(content.contains(
         r#""run" "--unstable" "http://localhost:4545/echo_server.ts""#
@@ -970,7 +969,6 @@ mod tests {
 
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
-    println!("{}", content);
     if cfg!(windows) {
       // TODO: see comment above this test
     } else {

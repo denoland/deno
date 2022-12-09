@@ -28,6 +28,7 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use log::debug;
 use log::info;
+use log::warn;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -325,8 +326,8 @@ async fn check_source_files(
         Err(e) => {
           not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
           let _g = output_lock.lock();
-          eprintln!("Error checking: {}", file_path.to_string_lossy());
-          eprintln!("   {}", e);
+          warn!("Error checking: {}", file_path.to_string_lossy());
+          warn!("   {}", e);
         }
       }
       Ok(())
