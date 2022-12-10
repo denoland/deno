@@ -156,11 +156,17 @@ impl Default for InlayHintsParamNamesEnabled {
   }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsParamTypesOptions {
   #[serde(default = "is_true")]
   pub enabled: bool,
+}
+
+impl Default for InlayHintsParamTypesOptions {
+  fn default() -> Self {
+    Self { enabled: true }
+  }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -181,25 +187,43 @@ impl Default for InlayHintsVarTypesOptions {
   }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsPropDeclTypesOptions {
   #[serde(default = "is_true")]
   pub enabled: bool,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+impl Default for InlayHintsPropDeclTypesOptions {
+  fn default() -> Self {
+    Self { enabled: true }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsFuncLikeReturnTypesOptions {
   #[serde(default = "is_true")]
   pub enabled: bool,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+impl Default for InlayHintsFuncLikeReturnTypesOptions {
+  fn default() -> Self {
+    Self { enabled: true }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsEnumMemberValuesOptions {
   #[serde(default = "is_true")]
   pub enabled: bool,
+}
+
+impl Default for InlayHintsEnumMemberValuesOptions {
+  fn default() -> Self {
+    Self { enabled: true }
+  }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
