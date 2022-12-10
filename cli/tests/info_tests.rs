@@ -34,7 +34,6 @@ mod init {
       .unwrap();
 
     let str_output = std::str::from_utf8(&output.stdout).unwrap().trim();
-    eprintln!("{}", str_output);
     // check the output of the test.ts program.
     assert!(str_output.contains("emit: "));
     assert_eq!(output.stderr, b"");

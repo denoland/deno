@@ -161,7 +161,7 @@ mod repl {
 
   #[test]
   fn pty_complete_imports() {
-    util::with_pty(&["repl"], |mut console| {
+    util::with_pty(&["repl", "-A"], |mut console| {
       // single quotes
       console.write_line("import './run/001_hel\t'");
       // double quotes
@@ -181,7 +181,7 @@ mod repl {
     });
 
     // ensure when the directory changes that the suggestions come from the cwd
-    util::with_pty(&["repl"], |mut console| {
+    util::with_pty(&["repl", "-A"], |mut console| {
       console.write_line("Deno.chdir('./subdir');");
       console.write_line("import '../run/001_hel\t'");
       console.write_line("close();");
@@ -460,9 +460,9 @@ mod repl {
 
   #[test]
   fn import() {
-    let (out, _) = util::run_and_collect_output(
+    let (out, _) = util::run_and_collect_output_with_args(
       true,
-      "repl",
+      vec![],
       Some(vec!["import('./subdir/auto_print_hello.ts')"]),
       Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
       false,
@@ -472,9 +472,9 @@ mod repl {
 
   #[test]
   fn import_declarations() {
-    let (out, _) = util::run_and_collect_output(
+    let (out, _) = util::run_and_collect_output_with_args(
       true,
-      "repl",
+      vec!["repl", "--allow-read"],
       Some(vec!["import './subdir/auto_print_hello.ts';"]),
       Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
       false,
@@ -796,7 +796,7 @@ mod repl {
   fn eval_file_flag_multiple_files() {
     let (out, err) = util::run_and_collect_output_with_args(
     true,
-    vec!["repl", "--eval-file=http://127.0.0.1:4545/repl/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
+    vec!["repl", "--allow-read", "--eval-file=http://127.0.0.1:4545/repl/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
     Some(vec!["b.method1=v4", "b.method1()+foo.toUpperCase()"]),
     None,
     true,

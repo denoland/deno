@@ -276,7 +276,7 @@ impl HttpClient {
     let response_headers = response.headers();
 
     if let Some(warning) = response_headers.get("X-Deno-Warning") {
-      eprintln!(
+      log::warn!(
         "{} {}",
         crate::colors::yellow("Warning"),
         warning.to_str().unwrap()
