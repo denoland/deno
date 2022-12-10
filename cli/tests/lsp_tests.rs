@@ -1280,97 +1280,100 @@ mod lsp {
       )
       .unwrap();
     assert!(maybe_err.is_none());
-    assert_eq!(json!(maybe_res), json!([
-      {
-        "position": {
-          "line": 0,
-          "character": 21
+    assert_eq!(
+      json!(maybe_res),
+      json!([
+        {
+          "position": {
+            "line": 0,
+            "character": 21
+          },
+          "label": ": string",
+          "kind": 1,
+          "paddingLeft": true
         },
-        "label": ": string",
-        "kind": 1,
-        "paddingLeft": true
-      },
-      {
-        "position": {
-          "line": 4,
-          "character": 10
+        {
+          "position": {
+            "line": 4,
+            "character": 10
+          },
+          "label": "b:",
+          "kind": 2,
+          "paddingRight": true
         },
-        "label": "b:",
-        "kind": 2,
-        "paddingRight": true
-      },
-      {
-        "position": {
-          "line": 7,
-          "character": 11
+        {
+          "position": {
+            "line": 7,
+            "character": 11
+          },
+          "label": "= 0",
+          "paddingLeft": true
         },
-        "label": "= 0",
-        "paddingLeft": true
-      },
-      {
-        "position": {
-          "line": 10,
-          "character": 17
+        {
+          "position": {
+            "line": 10,
+            "character": 17
+          },
+          "label": "string:",
+          "kind": 2,
+          "paddingRight": true
         },
-        "label": "string:",
-        "kind": 2,
-        "paddingRight": true
-      },
-      {
-        "position": {
-          "line": 10,
-          "character": 24
+        {
+          "position": {
+            "line": 10,
+            "character": 24
+          },
+          "label": "radix:",
+          "kind": 2,
+          "paddingRight": true
         },
-        "label": "radix:",
-        "kind": 2,
-        "paddingRight": true
-      },
-      {
-        "position": {
-          "line": 12,
-          "character": 15
+        {
+          "position": {
+            "line": 12,
+            "character": 15
+          },
+          "label": ": number",
+          "kind": 1,
+          "paddingLeft": true
         },
-        "label": ": number",
-        "kind": 1,
-        "paddingLeft": true
-      },
-      {
-        "position": {
-          "line": 15,
-          "character": 11
+        {
+          "position": {
+            "line": 15,
+            "character": 11
+          },
+          "label": ": number",
+          "kind": 1,
+          "paddingLeft": true
         },
-        "label": ": number",
-        "kind": 1,
-        "paddingLeft": true
-      },
-      {
-        "position": {
-          "line": 18,
-          "character": 18
+        {
+          "position": {
+            "line": 18,
+            "character": 18
+          },
+          "label": "callbackfn:",
+          "kind": 2,
+          "paddingRight": true
         },
-        "label": "callbackfn:",
-        "kind": 2,
-        "paddingRight": true
-      },
-      {
-        "position": {
-          "line": 18,
-          "character": 20
+        {
+          "position": {
+            "line": 18,
+            "character": 20
+          },
+          "label": ": string",
+          "kind": 1,
+          "paddingLeft": true
         },
-        "label": ": string",
-        "kind": 1,
-        "paddingLeft": true
-      },
-      {
-        "position": {
-          "line": 18,
-          "character": 21
+        {
+          "position": {
+            "line": 18,
+            "character": 21
+          },
+          "label": ": string",
+          "kind": 1,
+          "paddingLeft": true
         },
-        "label": ": string",
-        "kind": 1,
-        "paddingLeft": true
-      },
-    ]));
+      ])
+    );
   }
 
   #[test]
