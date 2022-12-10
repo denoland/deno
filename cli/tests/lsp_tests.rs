@@ -1227,7 +1227,7 @@ mod lsp {
   }
 
   #[test]
-  fn lsp_inlay_hints_not_enabled() {
+  fn lsp_inlay_hints_enabled() {
     let mut client = init("initialize_params.json");
     did_open(
       &mut client,
@@ -1280,7 +1280,97 @@ mod lsp {
       )
       .unwrap();
     assert!(maybe_err.is_none());
-    assert_eq!(json!(maybe_res), json!(null));
+    assert_eq!(json!(maybe_res), json!([
+      {
+        "position": {
+          "line": 0,
+          "character": 21
+        },
+        "label": ": string",
+        "kind": 1,
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 4,
+          "character": 10
+        },
+        "label": "b:",
+        "kind": 2,
+        "paddingRight": true
+      },
+      {
+        "position": {
+          "line": 7,
+          "character": 11
+        },
+        "label": "= 0",
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 10,
+          "character": 17
+        },
+        "label": "string:",
+        "kind": 2,
+        "paddingRight": true
+      },
+      {
+        "position": {
+          "line": 10,
+          "character": 24
+        },
+        "label": "radix:",
+        "kind": 2,
+        "paddingRight": true
+      },
+      {
+        "position": {
+          "line": 12,
+          "character": 15
+        },
+        "label": ": number",
+        "kind": 1,
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 15,
+          "character": 11
+        },
+        "label": ": number",
+        "kind": 1,
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 18,
+          "character": 18
+        },
+        "label": "callbackfn:",
+        "kind": 2,
+        "paddingRight": true
+      },
+      {
+        "position": {
+          "line": 18,
+          "character": 20
+        },
+        "label": ": string",
+        "kind": 1,
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 18,
+          "character": 21
+        },
+        "label": ": string",
+        "kind": 1,
+        "paddingLeft": true
+      },
+    ]));
   }
 
   #[test]
