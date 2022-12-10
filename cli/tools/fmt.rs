@@ -17,7 +17,6 @@ use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
-use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
 use deno_ast::ParsedSource;
 use deno_core::anyhow::bail;
@@ -42,6 +41,8 @@ use std::sync::Arc;
 
 use crate::cache::IncrementalCache;
 
+use super::bench::handle_filters;
+
 /// Format JavaScript/TypeScript files.
 pub async fn format(
   config: &CliOptions,
@@ -49,43 +50,10 @@ pub async fn format(
 ) -> Result<(), AnyError> {
   let maybe_fmt_config = config.to_fmt_config()?;
   let deno_dir = config.resolve_deno_dir()?;
-  let FmtFlags {
-    files,
-    ignore,
-    check,
-    ..
-  } = fmt_flags.clone();
+  let FmtFlags { check, .. } = fmt_flags.clone();
 
   // First, prepare final configuration.
-  // Collect included and ignored files. CLI flags take precendence
-  // over config file, ie. if there's `files.ignore` in config file
-  // and `--ignore` CLI flag, only the flag value is taken into account.
-  let mut include_files = files.clone();
-  let mut exclude_files = ignore;
-
-  if let Some(fmt_config) = maybe_fmt_config.as_ref() {
-    if include_files.is_empty() {
-      include_files = fmt_config
-        .files
-        .include
-        .iter()
-        .filter_map(|s| specifier_to_file_path(s).ok())
-        .collect::<Vec<_>>();
-    }
-
-    if exclude_files.is_empty() {
-      exclude_files = fmt_config
-        .files
-        .exclude
-        .iter()
-        .filter_map(|s| specifier_to_file_path(s).ok())
-        .collect::<Vec<_>>();
-    }
-  }
-
-  if include_files.is_empty() {
-    include_files = [std::env::current_dir()?].to_vec();
-  }
+  let selection = handle_filters(&fmt_flags, &maybe_fmt_config);
 
   // Now do the same for options
   let fmt_options = resolve_fmt_options(
@@ -97,7 +65,7 @@ pub async fn format(
     let files_changed = changed.is_some();
 
     let result =
-      collect_fmt_files(&include_files, &exclude_files).map(|files| {
+      collect_fmt_files(&selection.include, &selection.ignore).map(|files| {
         let refmt_files = if let Some(paths) = changed {
           if check {
             files
@@ -117,7 +85,7 @@ pub async fn format(
         (refmt_files, fmt_options.clone())
       });
 
-    let paths_to_watch = include_files.clone();
+    let paths_to_watch = selection.include.clone();
     async move {
       if files_changed
         && matches!(result, Ok((ref files, _)) if files.is_empty())
@@ -159,8 +127,8 @@ pub async fn format(
     )
     .await?;
   } else {
-    let files =
-      collect_fmt_files(&include_files, &exclude_files).and_then(|files| {
+    let files = collect_fmt_files(&selection.include, &selection.ignore)
+      .and_then(|files| {
         if files.is_empty() {
           Err(generic_error("No target files found."))
         } else {

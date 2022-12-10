@@ -1241,7 +1241,7 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
-  include: Vec<String>,
+  include: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
   include_inline: bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
@@ -1289,7 +1289,7 @@ async fn fetch_specifiers_with_test_mode(
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let maybe_test_config = ps.options.to_test_config()?;
 
-  let selection = handle_filters(test_flags, maybe_test_config);
+  let selection = handle_filters(test_flags, &maybe_test_config);
 
   let mut specifiers_with_mode = collect_specifiers_with_test_mode(
     selection.include,

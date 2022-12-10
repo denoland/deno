@@ -496,7 +496,7 @@ pub async fn run_benchmarks(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let selection = handle_filters(&bench_flags, ps.options.to_bench_config()?);
+  let selection = handle_filters(&bench_flags, &ps.options.to_bench_config()?);
 
   let specifiers = collect_specifiers(
     selection.include,
@@ -532,7 +532,7 @@ pub async fn run_benchmarks_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let selection = handle_filters(&bench_flags, ps.options.to_bench_config()?);
+  let selection = handle_filters(&bench_flags, &ps.options.to_bench_config()?);
 
   let paths_to_watch: Vec<_> =
     selection.include.iter().map(PathBuf::from).collect();
@@ -659,8 +659,11 @@ pub async fn run_benchmarks_with_watch(
   Ok(())
 }
 
-// TODO: find a way to reuse this in lint/fmt also
-pub fn handle_filters<T, U>(flags: &T, maybe_config: Option<U>) -> Filters
+// Collect included and ignored files. CLI flags take precedence
+// over config file, i.e. if there's `files.ignore` in config file
+// and `--ignore` CLI flag, only the flag value is taken into account.
+// TODO: find a way to reuse this in lint.rs also
+pub fn handle_filters<T, U>(flags: &T, maybe_config: &Option<U>) -> Filters
 where
   T: FiltersFiles,
   U: ConfiguresFiles,
@@ -670,15 +673,13 @@ where
   let mut include = filters.include;
   let mut ignore = filters.ignore;
 
-  // See if there are include/ignore config file fields. Values from CLI flags
-  // take precedence.
   if let Some(config) = maybe_config {
     if include.is_empty() {
       include = config
         .get_files_config()
         .include
         .iter()
-        .map(|s| s.to_string())
+        .filter_map(|s| specifier_to_file_path(s).ok())
         .collect::<Vec<_>>();
     }
 
@@ -695,7 +696,7 @@ where
   // When include is not set as a flag or a config file field, default to
   // current working dir
   if include.is_empty() {
-    include.push(".".to_string());
+    include.push(std::env::current_dir().unwrap());
   }
 
   Filters { include, ignore }

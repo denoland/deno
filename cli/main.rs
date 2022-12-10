@@ -111,8 +111,8 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Fmt(fmt_flags) => {
       let config = CliOptions::from_flags(flags)?;
 
-      if fmt_flags.files.len() == 1
-        && fmt_flags.files[0].to_string_lossy() == "-"
+      if fmt_flags.include.len() == 1
+        && fmt_flags.include[0].to_string_lossy() == "-"
       {
         let maybe_fmt_config = config.to_fmt_config()?;
         tools::fmt::format_stdin(

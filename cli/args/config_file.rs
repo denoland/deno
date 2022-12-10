@@ -409,6 +409,12 @@ pub struct FmtConfig {
   pub files: FilesConfig,
 }
 
+impl ConfiguresFiles for FmtConfig {
+  fn get_files_config(&self) -> FilesConfig {
+    self.files.clone()
+  }
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedTestConfig {
