@@ -366,6 +366,12 @@ pub struct LintConfig {
   pub report: Option<String>,
 }
 
+impl ConfiguresFiles for LintConfig {
+  fn get_files_config(&self) -> FilesConfig {
+    self.files.clone()
+  }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum ProseWrap {

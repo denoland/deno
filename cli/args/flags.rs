@@ -176,7 +176,7 @@ pub struct UninstallFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct LintFlags {
-  pub files: Vec<PathBuf>,
+  pub include: Vec<PathBuf>,
   pub ignore: Vec<PathBuf>,
   pub rules: bool,
   pub maybe_rules_tags: Option<Vec<String>>,
@@ -184,6 +184,15 @@ pub struct LintFlags {
   pub maybe_rules_exclude: Option<Vec<String>>,
   pub json: bool,
   pub compact: bool,
+}
+
+impl FiltersFiles for LintFlags {
+  fn get_filters(&self) -> Filters {
+    Filters {
+      include: self.include.clone(),
+      ignore: self.ignore.clone(),
+    }
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -497,7 +506,7 @@ impl Flags {
     use DenoSubcommand::*;
     if let Fmt(FmtFlags { include: files, .. }) = &self.subcommand {
       Some(files.clone())
-    } else if let Lint(LintFlags { files, .. }) = &self.subcommand {
+    } else if let Lint(LintFlags { include: files, .. }) = &self.subcommand {
       Some(files.clone())
     } else if let Run(RunFlags { script }) = &self.subcommand {
       if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
@@ -2674,7 +2683,7 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let json = matches.is_present("json");
   let compact = matches.is_present("compact");
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
-    files,
+    include: files,
     rules,
     maybe_rules_tags,
     maybe_rules_include,
@@ -3794,7 +3803,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          files: vec![
+          include: vec![
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
           ],
@@ -3821,7 +3830,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          files: vec![
+          include: vec![
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
           ],
@@ -3850,7 +3859,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          files: vec![
+          include: vec![
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
           ],
@@ -3874,7 +3883,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          files: vec![],
+          include: vec![],
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -3895,7 +3904,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          files: vec![],
+          include: vec![],
           rules: true,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -3919,7 +3928,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          files: vec![],
+          include: vec![],
           rules: false,
           maybe_rules_tags: Some(svec![""]),
           maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
@@ -3937,7 +3946,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          files: vec![PathBuf::from("script_1.ts")],
+          include: vec![PathBuf::from("script_1.ts")],
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -3962,7 +3971,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          files: vec![PathBuf::from("script_1.ts")],
+          include: vec![PathBuf::from("script_1.ts")],
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
@@ -3988,7 +3997,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          files: vec![PathBuf::from("script_1.ts")],
+          include: vec![PathBuf::from("script_1.ts")],
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
