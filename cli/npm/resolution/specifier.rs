@@ -947,7 +947,6 @@ mod tests {
         is_dynamic: false,
         imports: None,
         resolver: None,
-        locker: None,
         module_analyzer: Some(&analyzer),
         reporter: None,
       },

@@ -41,6 +41,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
+use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
@@ -160,9 +161,7 @@ impl ProcState {
     let progress_bar = ProgressBar::default();
     let http_client = HttpClient::new(
       Some(root_cert_store.clone()),
-      cli_options
-        .unsafely_ignore_certificate_errors()
-        .map(ToOwned::to_owned),
+      cli_options.unsafely_ignore_certificate_errors().clone(),
     )?;
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -329,7 +328,6 @@ impl ProcState {
       root_permissions.clone(),
       dynamic_permissions.clone(),
     );
-    let maybe_locker = Lockfile::as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_resolver =
       self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
@@ -383,16 +381,16 @@ impl ProcState {
         is_dynamic,
         imports: maybe_imports,
         resolver: maybe_resolver,
-        locker: maybe_locker,
         module_analyzer: Some(&*analyzer),
         reporter: maybe_file_watcher_reporter,
       },
     )
     .await;
 
-    // If there was a locker, validate the integrity of all the modules in the
-    // locker.
-    graph_lock_or_exit(&graph);
+    // If there is a lockfile, validate the integrity of all the modules.
+    if let Some(lockfile) = &self.lockfile {
+      graph_lock_or_exit(&graph, &mut lockfile.lock());
+    }
 
     // Determine any modules that have already been emitted this session and
     // should be skipped.
@@ -470,6 +468,30 @@ impl ProcState {
     log::debug!("Prepared module load.");
 
     Ok(())
+  }
+
+  /// Helper around prepare_module_load that loads and type checks
+  /// the provided files.
+  pub async fn load_and_type_check_files(
+    &self,
+    files: &[String],
+  ) -> Result<(), AnyError> {
+    let lib = self.options.ts_type_lib_window();
+
+    let specifiers = files
+      .iter()
+      .map(|file| resolve_url_or_path(file))
+      .collect::<Result<Vec<_>, _>>()?;
+    self
+      .prepare_module_load(
+        specifiers,
+        false,
+        lib,
+        Permissions::allow_all(),
+        Permissions::allow_all(),
+        false,
+      )
+      .await
   }
 
   /// Add the builtin node modules to the graph data.
@@ -639,7 +661,6 @@ impl ProcState {
     roots: Vec<(ModuleSpecifier, ModuleKind)>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let maybe_locker = Lockfile::as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
 
     let maybe_cli_resolver = CliResolver::maybe_new(
@@ -657,7 +678,6 @@ impl ProcState {
         is_dynamic: false,
         imports: maybe_imports,
         resolver: maybe_graph_resolver,
-        locker: maybe_locker,
         module_analyzer: Some(&*analyzer),
         reporter: None,
       },

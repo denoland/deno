@@ -1829,9 +1829,10 @@ impl Future for CallbackInfo {
 
 #[op]
 fn op_ffi_unsafe_callback_ref(
-  state: &mut deno_core::OpState,
+  state: Rc<RefCell<deno_core::OpState>>,
   rid: ResourceId,
 ) -> Result<impl Future<Output = Result<(), AnyError>>, AnyError> {
+  let state = state.borrow();
   let callback_resource =
     state.resource_table.get::<UnsafeCallbackResource>(rid)?;
 
