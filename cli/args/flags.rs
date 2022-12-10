@@ -21,6 +21,7 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use super::config_file::FilesConfig;
 use super::flags_allow_net;
 
 static LONG_VERSION: Lazy<String> = Lazy::new(|| {
@@ -46,11 +47,29 @@ static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
     .to_string()
 });
 
+pub struct Filters {
+  pub ignore: Vec<PathBuf>,
+  pub include: Vec<String>,
+}
+
+pub trait FiltersFiles {
+  fn get_filters(&self) -> Filters;
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct BenchFlags {
   pub ignore: Vec<PathBuf>,
   pub include: Option<Vec<String>>,
   pub filter: Option<String>,
+}
+
+impl FiltersFiles for BenchFlags {
+  fn get_filters(&self) -> Filters {
+    Filters {
+      include: self.include.clone().unwrap_or_default(),
+      ignore: self.ignore.clone(),
+    }
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -182,6 +201,10 @@ pub struct TaskFlags {
   pub task: String,
 }
 
+pub trait ConfiguresFiles {
+  fn get_files_config(&self) -> FilesConfig;
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct TestFlags {
   pub ignore: Vec<PathBuf>,
@@ -194,6 +217,15 @@ pub struct TestFlags {
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_ops: bool,
+}
+
+impl FiltersFiles for TestFlags {
+  fn get_filters(&self) -> Filters {
+    Filters {
+      include: self.include.clone(),
+      ignore: self.ignore.clone(),
+    }
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

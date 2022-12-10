@@ -7,6 +7,7 @@ use crate::colors;
 use crate::display;
 use crate::file_fetcher::File;
 use crate::graph_util::contains_specifier;
+use crate::graph_util::get_dependencies;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
@@ -16,7 +17,6 @@ use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_supported_ext;
-use crate::util::path::specifier_to_file_path;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_ast::swc::common::comments::CommentKind;
@@ -59,6 +59,8 @@ use std::time::Duration;
 use std::time::Instant;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
+
+use super::bench::handle_filters;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -1283,43 +1285,16 @@ fn collect_specifiers_with_test_mode(
 /// as well.
 async fn fetch_specifiers_with_test_mode(
   ps: &ProcState,
-  include: Vec<String>,
-  ignore: Vec<PathBuf>,
-  include_inline: bool,
+  test_flags: &TestFlags,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let maybe_test_config = ps.options.to_test_config()?;
 
-  let mut include_files = include.clone();
-  let mut exclude_files = ignore.clone();
-
-  if let Some(test_config) = maybe_test_config.as_ref() {
-    if include_files.is_empty() {
-      include_files = test_config
-        .files
-        .include
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>();
-    }
-
-    if exclude_files.is_empty() {
-      exclude_files = test_config
-        .files
-        .exclude
-        .iter()
-        .filter_map(|s| specifier_to_file_path(s).ok())
-        .collect::<Vec<_>>();
-    }
-  }
-
-  if include_files.is_empty() {
-    include_files.push(".".to_string());
-  }
+  let selection = handle_filters(test_flags, maybe_test_config);
 
   let mut specifiers_with_mode = collect_specifiers_with_test_mode(
-    include_files,
-    exclude_files,
-    include_inline,
+    selection.include,
+    selection.ignore,
+    test_flags.doc,
   )?;
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = ps
@@ -1344,13 +1319,8 @@ pub async fn run_tests(
   let ps = ProcState::build(flags).await?;
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
-  let specifiers_with_mode = fetch_specifiers_with_test_mode(
-    &ps,
-    test_flags.include,
-    test_flags.ignore.clone(),
-    test_flags.doc,
-  )
-  .await?;
+  let specifiers_with_mode =
+    fetch_specifiers_with_test_mode(&ps, &test_flags).await?;
 
   if !test_flags.allow_none && specifiers_with_mode.is_empty() {
     return Err(generic_error("No test modules found"));
@@ -1386,7 +1356,7 @@ pub async fn run_tests_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let include = test_flags.include;
+  let include = test_flags.include.clone();
   let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
@@ -1428,44 +1398,6 @@ pub async fn run_tests_with_watch(
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
-        fn get_dependencies<'a>(
-          graph: &'a deno_graph::ModuleGraph,
-          maybe_module: Option<&'a deno_graph::Module>,
-          // This needs to be accessible to skip getting dependencies if they're already there,
-          // otherwise this will cause a stack overflow with circular dependencies
-          output: &mut HashSet<&'a ModuleSpecifier>,
-          no_check: bool,
-        ) {
-          if let Some(module) = maybe_module {
-            for dep in module.dependencies.values() {
-              if let Some(specifier) = &dep.get_code() {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-                  get_dependencies(
-                    graph,
-                    graph.get(specifier),
-                    output,
-                    no_check,
-                  );
-                }
-              }
-              if !no_check {
-                if let Some(specifier) = &dep.get_type() {
-                  if !output.contains(specifier) {
-                    output.insert(specifier);
-                    get_dependencies(
-                      graph,
-                      graph.get(specifier),
-                      output,
-                      no_check,
-                    );
-                  }
-                }
-              }
-            }
-          }
-        }
-
         // This test module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
@@ -1513,28 +1445,21 @@ pub async fn run_tests_with_watch(
     })
   };
 
-  let cli_options = ps.options.clone();
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let filter = test_flags.filter.clone();
-    let include = include.clone();
-    let ignore = ignore.clone();
     let permissions = permissions.clone();
     let ps = ps.clone();
+    let test_flags = test_flags.clone();
 
     async move {
-      let specifiers_with_mode = fetch_specifiers_with_test_mode(
-        &ps,
-        include.clone(),
-        ignore.clone(),
-        test_flags.doc,
-      )
-      .await?
-      .iter()
-      .filter(|(specifier, _)| {
-        contains_specifier(&modules_to_reload, specifier)
-      })
-      .cloned()
-      .collect::<Vec<(ModuleSpecifier, TestMode)>>();
+      let specifiers_with_mode =
+        fetch_specifiers_with_test_mode(&ps, &test_flags)
+          .await?
+          .iter()
+          .filter(|(specifier, _)| {
+            contains_specifier(&modules_to_reload, specifier)
+          })
+          .cloned()
+          .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
         .await?;
@@ -1550,7 +1475,7 @@ pub async fn run_tests_with_watch(
         TestSpecifierOptions {
           concurrent_jobs: test_flags.concurrent_jobs,
           fail_fast: test_flags.fail_fast,
-          filter: TestFilter::from_flag(&filter),
+          filter: TestFilter::from_flag(&test_flags.filter),
         },
       )
       .await?;
@@ -1564,7 +1489,7 @@ pub async fn run_tests_with_watch(
     operation,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),
-      clear_screen: !cli_options.no_clear_screen(),
+      clear_screen: !ps.options.no_clear_screen(),
     },
   )
   .await?;

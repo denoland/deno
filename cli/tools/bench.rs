@@ -1,11 +1,14 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::BenchConfig;
 use crate::args::BenchFlags;
+use crate::args::ConfiguresFiles;
+use crate::args::Filters;
+use crate::args::FiltersFiles;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::graph_util::contains_specifier;
+use crate::graph_util::get_dependencies;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
@@ -493,8 +496,7 @@ pub async fn run_benchmarks(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let selection =
-    collect_include_ignore(&bench_flags, ps.options.to_bench_config()?);
+  let selection = handle_filters(&bench_flags, ps.options.to_bench_config()?);
 
   let specifiers = collect_specifiers(
     selection.include,
@@ -530,8 +532,7 @@ pub async fn run_benchmarks_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let selection =
-    collect_include_ignore(&bench_flags, ps.options.to_bench_config()?);
+  let selection = handle_filters(&bench_flags, ps.options.to_bench_config()?);
 
   let paths_to_watch: Vec<_> =
     selection.include.iter().map(PathBuf::from).collect();
@@ -571,44 +572,6 @@ pub async fn run_benchmarks_with_watch(
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in bench_modules {
-        fn get_dependencies<'a>(
-          graph: &'a deno_graph::ModuleGraph,
-          maybe_module: Option<&'a deno_graph::Module>,
-          // This needs to be accessible to skip getting dependencies if they're already there,
-          // otherwise this will cause a stack overflow with circular dependencies
-          output: &mut HashSet<&'a ModuleSpecifier>,
-          no_check: bool,
-        ) {
-          if let Some(module) = maybe_module {
-            for dep in module.dependencies.values() {
-              if let Some(specifier) = &dep.get_code() {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-                  get_dependencies(
-                    graph,
-                    graph.get(specifier),
-                    output,
-                    no_check,
-                  );
-                }
-              }
-              if !no_check {
-                if let Some(specifier) = &dep.get_type() {
-                  if !output.contains(specifier) {
-                    output.insert(specifier);
-                    get_dependencies(
-                      graph,
-                      graph.get(specifier),
-                      output,
-                      no_check,
-                    );
-                  }
-                }
-              }
-            }
-          }
-        }
-
         // This bench module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
@@ -696,22 +659,23 @@ pub async fn run_benchmarks_with_watch(
   Ok(())
 }
 
-struct IncludeIgnoreCollection {
-  include: Vec<String>,
-  ignore: Vec<PathBuf>,
-}
+// TODO: find a way to reuse this in lint/fmt also
+pub fn handle_filters<T, U>(flags: &T, maybe_config: Option<U>) -> Filters
+where
+  T: FiltersFiles,
+  U: ConfiguresFiles,
+{
+  let filters = flags.get_filters();
 
-fn collect_include_ignore(
-  bench_flags: &BenchFlags,
-  maybe_bench_config: Option<BenchConfig>,
-) -> IncludeIgnoreCollection {
-  let mut include = bench_flags.include.clone().unwrap_or_default();
-  let mut ignore = bench_flags.ignore.clone();
+  let mut include = filters.include;
+  let mut ignore = filters.ignore;
 
-  if let Some(bench_config) = maybe_bench_config {
+  // See if there are include/ignore config file fields. Values from CLI flags
+  // take precedence.
+  if let Some(config) = maybe_config {
     if include.is_empty() {
-      include = bench_config
-        .files
+      include = config
+        .get_files_config()
         .include
         .iter()
         .map(|s| s.to_string())
@@ -719,8 +683,8 @@ fn collect_include_ignore(
     }
 
     if ignore.is_empty() {
-      ignore = bench_config
-        .files
+      ignore = config
+        .get_files_config()
         .exclude
         .iter()
         .filter_map(|s| specifier_to_file_path(s).ok())
@@ -728,9 +692,11 @@ fn collect_include_ignore(
     }
   }
 
+  // When include is not set as a flag or a config file field, default to
+  // current working dir
   if include.is_empty() {
     include.push(".".to_string());
   }
 
-  IncludeIgnoreCollection { include, ignore }
+  Filters { include, ignore }
 }

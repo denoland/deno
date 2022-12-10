@@ -25,6 +25,8 @@ use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 
+use super::ConfiguresFiles;
+
 pub type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
 
@@ -429,6 +431,12 @@ pub struct TestConfig {
   pub files: FilesConfig,
 }
 
+impl ConfiguresFiles for TestConfig {
+  fn get_files_config(&self) -> FilesConfig {
+    self.files.clone()
+  }
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedBenchConfig {
@@ -449,6 +457,12 @@ impl SerializedBenchConfig {
 #[derive(Clone, Debug, Default)]
 pub struct BenchConfig {
   pub files: FilesConfig,
+}
+
+impl ConfiguresFiles for BenchConfig {
+  fn get_files_config(&self) -> FilesConfig {
+    self.files.clone()
+  }
 }
 
 #[derive(Clone, Debug, Deserialize)]
