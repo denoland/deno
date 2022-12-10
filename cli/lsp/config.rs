@@ -136,7 +136,7 @@ pub struct InlayHintsParamNamesOptions {
 impl Default for InlayHintsParamNamesOptions {
   fn default() -> Self {
     Self {
-      enabled: InlayHintsParamNamesEnabled::None,
+      enabled: InlayHintsParamNamesEnabled::All,
       suppress_when_argument_matches_name: true,
     }
   }
@@ -152,21 +152,21 @@ pub enum InlayHintsParamNamesEnabled {
 
 impl Default for InlayHintsParamNamesEnabled {
   fn default() -> Self {
-    Self::None
+    Self::All
   }
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsParamTypesOptions {
-  #[serde(default)]
+  #[serde(default = "is_true")]
   pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsVarTypesOptions {
-  #[serde(default)]
+  #[serde(default = "is_true")]
   pub enabled: bool,
   #[serde(default = "is_true")]
   pub suppress_when_type_matches_name: bool,
@@ -175,7 +175,7 @@ pub struct InlayHintsVarTypesOptions {
 impl Default for InlayHintsVarTypesOptions {
   fn default() -> Self {
     Self {
-      enabled: false,
+      enabled: true,
       suppress_when_type_matches_name: true,
     }
   }
@@ -184,21 +184,21 @@ impl Default for InlayHintsVarTypesOptions {
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsPropDeclTypesOptions {
-  #[serde(default)]
+  #[serde(default = "is_true")]
   pub enabled: bool,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsFuncLikeReturnTypesOptions {
-  #[serde(default)]
+  #[serde(default = "is_true")]
   pub enabled: bool,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsEnumMemberValuesOptions {
-  #[serde(default)]
+  #[serde(default = "is_true")]
   pub enabled: bool,
 }
 
@@ -680,22 +680,22 @@ mod tests {
         },
         inlay_hints: InlayHintsSettings {
           parameter_names: InlayHintsParamNamesOptions {
-            enabled: InlayHintsParamNamesEnabled::None,
+            enabled: InlayHintsParamNamesEnabled::All,
             suppress_when_argument_matches_name: true
           },
-          parameter_types: InlayHintsParamTypesOptions { enabled: false },
+          parameter_types: InlayHintsParamTypesOptions { enabled: true },
           variable_types: InlayHintsVarTypesOptions {
-            enabled: false,
+            enabled: true,
             suppress_when_type_matches_name: true
           },
           property_declaration_types: InlayHintsPropDeclTypesOptions {
-            enabled: false
+            enabled: true
           },
           function_like_return_types: InlayHintsFuncLikeReturnTypesOptions {
-            enabled: false
+            enabled: true
           },
           enum_member_values: InlayHintsEnumMemberValuesOptions {
-            enabled: false
+            enabled: true
           },
         },
         internal_debug: false,
