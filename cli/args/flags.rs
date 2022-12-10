@@ -10,7 +10,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Url;
 use deno_runtime::permissions::parse_sys_kind;
-use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -479,20 +478,6 @@ impl Flags {
       }
     } else {
       Some(vec![])
-    }
-  }
-
-  pub fn permissions_options(&self) -> PermissionsOptions {
-    PermissionsOptions {
-      allow_env: self.allow_env.clone(),
-      allow_hrtime: self.allow_hrtime,
-      allow_net: self.allow_net.clone(),
-      allow_ffi: self.allow_ffi.clone(),
-      allow_read: self.allow_read.clone(),
-      allow_run: self.allow_run.clone(),
-      allow_sys: self.allow_sys.clone(),
-      allow_write: self.allow_write.clone(),
-      prompt: !self.no_prompt,
     }
   }
 
@@ -2820,7 +2805,11 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
         .unwrap_or(NonZeroUsize::new(1).unwrap())
     }
   } else if matches.is_present("jobs") {
-    println!(
+    // We can't change this to use the log crate because its not configured
+    // yet at this point since the flags haven't been parsed. This flag is
+    // deprecated though so it's not worth changing the code to use the log
+    // crate here and this is only done for testing anyway.
+    eprintln!(
       "{}",
       crate::colors::yellow("Warning: --jobs flag is deprecated. Use the --parallel flag with possibly the 'DENO_JOBS' environment variable."),
     );
@@ -2997,11 +2986,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
-  #[cfg(not(test))]
-  let has_no_prompt_env = env::var("DENO_NO_PROMPT") == Ok("1".to_string());
-  #[cfg(test)]
-  let has_no_prompt_env = false;
-  if has_no_prompt_env || matches.is_present("no-prompt") {
+  if matches.is_present("no-prompt") {
     flags.no_prompt = true;
   }
 }

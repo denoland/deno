@@ -1,15 +1,24 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::Lockfile;
+use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
+use crate::args::TypeCheckMode;
+use crate::cache;
+use crate::cache::TypeCheckCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
 use crate::npm::resolve_npm_package_reqs;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
+use crate::proc_state::ProcState;
+use crate::resolver::CliResolver;
+use crate::tools::check;
 
+use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
 use deno_graph::GraphImport;
@@ -19,6 +28,7 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::Range;
 use deno_graph::Resolved;
+use deno_runtime::permissions::Permissions;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -494,5 +504,107 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
         std::process::exit(10);
       }
     }
+  }
+}
+
+pub async fn create_graph_and_maybe_check(
+  root: ModuleSpecifier,
+  ps: &ProcState,
+) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
+  let mut cache = cache::FetchCacher::new(
+    ps.emit_cache.clone(),
+    ps.file_fetcher.clone(),
+    Permissions::allow_all(),
+    Permissions::allow_all(),
+  );
+  let maybe_imports = ps.options.to_maybe_imports()?;
+  let maybe_cli_resolver = CliResolver::maybe_new(
+    ps.options.to_maybe_jsx_import_source_config(),
+    ps.maybe_import_map.clone(),
+  );
+  let maybe_graph_resolver =
+    maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
+  let analyzer = ps.parsed_source_cache.as_analyzer();
+  let graph = Arc::new(
+    deno_graph::create_graph(
+      vec![(root, deno_graph::ModuleKind::Esm)],
+      &mut cache,
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: maybe_imports,
+        resolver: maybe_graph_resolver,
+        module_analyzer: Some(&*analyzer),
+        reporter: None,
+      },
+    )
+    .await,
+  );
+
+  let check_js = ps.options.check_js();
+  let mut graph_data = GraphData::default();
+  graph_data.add_graph(&graph, false);
+  graph_data
+    .check(
+      &graph.roots,
+      ps.options.type_check_mode() != TypeCheckMode::None,
+      check_js,
+    )
+    .unwrap()?;
+  ps.npm_resolver
+    .add_package_reqs(graph_data.npm_package_reqs().clone())
+    .await?;
+  if let Some(lockfile) = &ps.lockfile {
+    graph_lock_or_exit(&graph, &mut lockfile.lock());
+  }
+
+  if ps.options.type_check_mode() != TypeCheckMode::None {
+    let ts_config_result =
+      ps.options.resolve_ts_config_for_emit(TsConfigType::Check {
+        lib: ps.options.ts_type_lib_window(),
+      })?;
+    if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
+      log::warn!("{}", ignored_options);
+    }
+    let maybe_config_specifier = ps.options.maybe_config_file_specifier();
+    let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
+    let check_result = check::check(
+      &graph.roots,
+      Arc::new(RwLock::new(graph_data)),
+      &cache,
+      ps.npm_resolver.clone(),
+      check::CheckOptions {
+        type_check_mode: ps.options.type_check_mode(),
+        debug: ps.options.log_level() == Some(log::Level::Debug),
+        maybe_config_specifier,
+        ts_config: ts_config_result.ts_config,
+        log_checks: true,
+        reload: ps.options.reload_flag(),
+      },
+    )?;
+    log::debug!("{}", check_result.stats);
+    if !check_result.diagnostics.is_empty() {
+      return Err(check_result.diagnostics.into());
+    }
+  }
+
+  Ok(graph)
+}
+
+pub fn error_for_any_npm_specifier(
+  graph: &deno_graph::ModuleGraph,
+) -> Result<(), AnyError> {
+  let first_npm_specifier = graph
+    .specifiers()
+    .filter_map(|(_, r)| match r {
+      Ok((specifier, kind, _)) if kind == deno_graph::ModuleKind::External => {
+        Some(specifier.clone())
+      }
+      _ => None,
+    })
+    .next();
+  if let Some(npm_specifier) = first_npm_specifier {
+    bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", npm_specifier)
+  } else {
+    Ok(())
   }
 }

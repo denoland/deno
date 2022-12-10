@@ -13,6 +13,7 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
@@ -608,6 +609,10 @@ pub async fn cover_files(
   flags: Flags,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
+  if coverage_flags.files.is_empty() {
+    return Err(generic_error("No matching coverage profiles found"));
+  }
+
   let ps = ProcState::build(flags).await?;
 
   let script_coverages =
