@@ -60,7 +60,7 @@
 
   function createSpawnChild(opFn) {
     return function spawnChild(command, options = {}) {
-      return spawnChildInner(opFn, command, "Deno.spawnChild()", options);
+      return spawnChildInner(opFn, command, "Deno.Command().spawn()", options);
     };
   }
 
@@ -219,10 +219,11 @@
     return function spawn(command, options) {
       if (options?.stdin === "piped") {
         throw new TypeError(
-          "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+          "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
         );
       }
-      return spawnChildInner(opFn, command, "Deno.spawn()", options).output();
+      return spawnChildInner(opFn, command, "Deno.Command().output()", options)
+        .output();
     };
   }
 
@@ -241,7 +242,7 @@
     } = {}) {
       if (stdin === "piped") {
         throw new TypeError(
-          "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+          "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
         );
       }
       const result = opFn({
