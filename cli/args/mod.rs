@@ -6,6 +6,7 @@ mod lockfile;
 
 mod flags_allow_net;
 
+pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
 pub use config_file::EmitConfigOptions;
@@ -396,6 +397,14 @@ impl CliOptions {
   pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
       config_file.to_test_config()
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn to_bench_config(&self) -> Result<Option<BenchConfig>, AnyError> {
+    if let Some(config_file) = &self.maybe_config_file {
+      config_file.to_bench_config()
     } else {
       Ok(None)
     }

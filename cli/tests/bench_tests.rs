@@ -165,6 +165,24 @@ mod bench {
     exit_code: 1,
   });
 
+  itest!(bench_with_config {
+    args: "bench --config bench/collect/deno.jsonc bench/collect",
+    exit_code: 0,
+    output: "bench/collect.out",
+  });
+
+  itest!(bench_with_config2 {
+    args: "bench --config bench/collect/deno2.jsonc bench/collect",
+    exit_code: 0,
+    output: "bench/collect2.out",
+  });
+
+  itest!(bench_with_malformed_config {
+    args: "bench --config bench/collect/deno.malformed.jsonc",
+    exit_code: 1,
+    output: "bench/collect_with_malformed_config.out",
+  });
+
   #[test]
   fn recursive_permissions_pledge() {
     let output = util::deno_cmd()
