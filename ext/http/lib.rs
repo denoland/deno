@@ -568,6 +568,11 @@ async fn op_http_write_headers(
   }
   ensure_vary_accept_encoding(hmap);
 
+  // Content-Length header is forbidden to be modified by user.
+  // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Length
+  // Drop it, it will be set by hyper.
+  hmap.remove(hyper::header::CONTENT_LENGTH);
+
   let accepts_compression =
     matches!(encoding, Encoding::Brotli | Encoding::Gzip);
   let compressing = accepts_compression
@@ -576,8 +581,6 @@ async fn op_http_write_headers(
 
   if compressing {
     weaken_etag(hmap);
-    // Drop 'content-length' header. Hyper will update it using compressed body.
-    hmap.remove(hyper::header::CONTENT_LENGTH);
     // Content-Encoding header
     hmap.insert(
       hyper::header::CONTENT_ENCODING,
