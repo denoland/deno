@@ -1285,17 +1285,12 @@ fn collect_specifiers_with_test_mode(
 /// as well.
 async fn fetch_specifiers_with_test_mode(
   ps: &ProcState,
-  test_flags: &TestFlags,
+  include: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
+  doc: bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let maybe_test_config = ps.options.to_test_config()?;
-
-  let filters = collect_filters(test_flags, &maybe_test_config)?;
-
-  let mut specifiers_with_mode = collect_specifiers_with_test_mode(
-    filters.include,
-    filters.ignore,
-    test_flags.doc,
-  )?;
+  let mut specifiers_with_mode =
+    collect_specifiers_with_test_mode(include, ignore, doc)?;
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = ps
       .file_fetcher
@@ -1319,8 +1314,16 @@ pub async fn run_tests(
   let ps = ProcState::build(flags).await?;
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
-  let specifiers_with_mode =
-    fetch_specifiers_with_test_mode(&ps, &test_flags).await?;
+
+  let filters = collect_filters(&test_flags, &ps.options.to_test_config()?)?;
+
+  let specifiers_with_mode = fetch_specifiers_with_test_mode(
+    &ps,
+    filters.include,
+    filters.ignore,
+    test_flags.doc,
+  )
+  .await?;
 
   if !test_flags.allow_none && specifiers_with_mode.is_empty() {
     return Err(generic_error("No test modules found"));
@@ -1356,8 +1359,10 @@ pub async fn run_tests_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let include = test_flags.include.clone();
-  let ignore = test_flags.ignore.clone();
+  let filters = collect_filters(&test_flags, &ps.options.to_test_config()?)?;
+
+  let include = filters.include;
+  let ignore = filters.ignore;
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
@@ -1449,10 +1454,12 @@ pub async fn run_tests_with_watch(
     let permissions = permissions.clone();
     let ps = ps.clone();
     let test_flags = test_flags.clone();
+    let include = include.clone();
+    let ignore = ignore.clone();
 
     async move {
       let specifiers_with_mode =
-        fetch_specifiers_with_test_mode(&ps, &test_flags)
+        fetch_specifiers_with_test_mode(&ps, include, ignore, test_flags.doc)
           .await?
           .iter()
           .filter(|(specifier, _)| {
