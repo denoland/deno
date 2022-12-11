@@ -520,6 +520,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_static_text"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f87a027f5756ec1f69c01fc26de00d4c597ae5721c08148b2d39517eabc4c9a"
+
+[[package]]
 name = "const-oid"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -784,6 +790,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "clap_complete_fig",
+ "console_static_text",
  "data-url",
  "deno_ast",
  "deno_bench_util",

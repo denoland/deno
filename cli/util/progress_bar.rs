@@ -3,8 +3,11 @@
 use crate::colors;
 
 mod dprint {
+  use console_static_text::ConsoleStaticText;
+  use console_static_text::ConsoleStaticTextOptions;
   use deno_core::parking_lot::Mutex;
   use deno_runtime::colors;
+  use std::borrow::Cow;
   use std::sync::atomic::AtomicU64;
   use std::sync::atomic::Ordering;
   use std::sync::Arc;
@@ -14,7 +17,6 @@ mod dprint {
   use crate::util::console::console_size;
   use crate::util::console::hide_cursor;
   use crate::util::console::show_cursor;
-  use crate::util::console::StaticConsoleText;
   use crate::util::display::human_download_size;
 
   // Inspired by Indicatif, but this custom implementation allows for more control over
@@ -86,7 +88,7 @@ mod dprint {
     has_draw_thread: bool,
     total_entries: usize,
     entries: Vec<ProgressBarEntry>,
-    text: StaticConsoleText,
+    text: ConsoleStaticText,
   }
 
   impl ProgressBar {
@@ -107,7 +109,16 @@ mod dprint {
           has_draw_thread: false,
           total_entries: 0,
           entries: Vec::new(),
-          text: StaticConsoleText::default(),
+          text: ConsoleStaticText::new(ConsoleStaticTextOptions {
+            terminal_width: Box::new(|| console_size().unwrap().cols as u16),
+            strip_ansi_codes: Box::new(|text| {
+              strip_ansi_escapes::strip(&text)
+                .ok()
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+                .map(Cow::Owned)
+                .unwrap_or(Cow::Borrowed(text))
+            }),
+          }),
         })),
       }
     }
@@ -160,7 +171,7 @@ mod dprint {
       internal_state.keep_alive_count -= 1;
 
       if internal_state.keep_alive_count == 0 {
-        internal_state.text.clear(console_size().unwrap().cols);
+        internal_state.text.eprint_clear();
         // bump the drawer id to exit the draw thread
         internal_state.drawer_id += 1;
         internal_state.has_draw_thread = false;
@@ -216,7 +227,9 @@ mod dprint {
                 internal_state.start_time.elapsed().unwrap(),
               );
 
-              internal_state.text.set(&text, terminal_width);
+              internal_state
+                .text
+                .eprint_with_width(&text, terminal_width as u16);
             }
           }
 
