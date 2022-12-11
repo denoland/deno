@@ -1,118 +1,135 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use deno_core::parking_lot::Mutex;
-use indexmap::IndexSet;
-use std::sync::Arc;
-use std::time::Duration;
 
 mod dprint {
-  use deno_core::parking_lot::RwLock;
+  use deno_core::parking_lot::Mutex;
   use deno_runtime::colors;
-  use deno_runtime::ops::tty::ConsoleSize;
+  use std::sync::atomic::AtomicU64;
+  use std::sync::atomic::Ordering;
   use std::sync::Arc;
   use std::time::Duration;
   use std::time::SystemTime;
 
-  pub fn get_terminal_width() -> Option<u32> {
-    get_terminal_size().map(|size| size.cols)
-  }
-
-  /// Gets the terminal size.
-  pub fn get_terminal_size() -> Option<ConsoleSize> {
-    let stderr = &deno_runtime::ops::io::STDERR_HANDLE;
-    deno_runtime::ops::tty::console_size(stderr).ok()
-  }
+  use crate::util::console::console_size;
+  use crate::util::console::hide_cursor;
+  use crate::util::console::show_cursor;
+  use crate::util::console::StaticConsoleText;
+  use crate::util::display::human_download_size;
 
   // Inspired by Indicatif, but this custom implementation allows for more control over
   // what's going on under the hood.
 
-  #[derive(Clone, Copy, PartialEq, Eq)]
-  pub enum ProgressBarStyle {
-    Download,
+  #[derive(Clone, Debug)]
+  pub enum ProgressBarEntryStyle {
+    Download {
+      pos: Arc<AtomicU64>,
+      total_size: u64,
+    },
     Action,
   }
 
-  #[derive(Clone)]
-  pub struct ProgressBar {
-    id: usize,
-    start_time: SystemTime,
-    progress_bars: ProgressBars,
-    message: String,
-    size: usize,
-    style: ProgressBarStyle,
-    pos: Arc<RwLock<usize>>,
+  impl ProgressBarEntryStyle {
+    pub fn download(total_size: u64) -> Self {
+      Self::Download {
+        pos: Default::default(),
+        total_size,
+      }
+    }
+
+    pub fn action() -> Self {
+      Self::Action
+    }
+
+    fn percent(&self) -> f64 {
+      match self {
+        ProgressBarEntryStyle::Download { pos, total_size } => {
+          let pos = pos.load(Ordering::Relaxed) as f64;
+          pos / (*total_size as f64)
+        }
+        ProgressBarEntryStyle::Action => 0f64,
+      }
+    }
   }
 
-  impl ProgressBar {
-    pub fn set_position(&self, new_pos: usize) {
-      let mut pos = self.pos.write();
-      *pos = new_pos;
+  #[derive(Clone, Debug)]
+  pub struct ProgressBarEntry {
+    id: usize,
+    message: String,
+    style: ProgressBarEntryStyle,
+    progress_bar: ProgressBar,
+  }
+
+  impl ProgressBarEntry {
+    pub fn set_position(&self, new_pos: u64) {
+      if let ProgressBarEntryStyle::Download { pos, .. } = &self.style {
+        pos.store(new_pos, Ordering::Relaxed);
+      }
     }
 
     pub fn finish(&self) {
-      self.progress_bars.finish_progress(self.id);
+      self.progress_bar.finish_progress(self.id);
     }
   }
 
-  #[derive(Clone)]
-  pub struct ProgressBars {
-    state: Arc<RwLock<InternalState>>,
+  #[derive(Clone, Debug)]
+  pub struct ProgressBar {
+    state: Arc<Mutex<InternalState>>,
   }
 
+  #[derive(Debug)]
   struct InternalState {
+    start_time: SystemTime,
     // this ensures only one draw thread is running
     drawer_id: usize,
-    progress_bar_counter: usize,
-    progress_bars: Vec<ProgressBar>,
+    keep_alive_count: usize,
+    has_draw_thread: bool,
+    total_entries: usize,
+    entries: Vec<ProgressBarEntry>,
+    text: StaticConsoleText,
   }
 
-  fn clear_previous_line() {
-    eprint!("\x1B[1A\x1B[0J");
-  }
-
-  impl ProgressBars {
+  impl ProgressBar {
     /// Checks if progress bars are supported
     pub fn are_supported() -> bool {
-      atty::is(atty::Stream::Stderr) && get_terminal_width().is_some()
+      atty::is(atty::Stream::Stderr)
+        && console_size().is_some()
+        && log::log_enabled!(log::Level::Info)
     }
 
-    /// Creates a new ProgressBars or returns None when not supported.
-    pub fn new() -> Option<Self> {
-      if ProgressBars::are_supported() {
-        Some(ProgressBars {
-          state: Arc::new(RwLock::new(InternalState {
-            drawer_id: 0,
-            progress_bar_counter: 0,
-            progress_bars: Vec::new(),
-          })),
-        })
-      } else {
-        None
+    /// Creates a new ProgressBar.
+    pub fn new() -> Self {
+      ProgressBar {
+        state: Arc::new(Mutex::new(InternalState {
+          start_time: SystemTime::now(),
+          drawer_id: 0,
+          keep_alive_count: 0,
+          has_draw_thread: false,
+          total_entries: 0,
+          entries: Vec::new(),
+          text: StaticConsoleText::default(),
+        })),
       }
     }
 
     pub fn add_progress(
       &self,
       message: String,
-      style: ProgressBarStyle,
-      total_size: usize,
-    ) -> ProgressBar {
-      let mut internal_state = self.state.write();
-      let id = internal_state.progress_bar_counter;
-      let pb = ProgressBar {
+      style: ProgressBarEntryStyle,
+    ) -> ProgressBarEntry {
+      let mut internal_state = self.state.lock();
+      let id = internal_state.total_entries;
+      let pb = ProgressBarEntry {
         id,
-        progress_bars: self.clone(),
-        start_time: SystemTime::now(),
+        progress_bar: self.clone(),
         message,
-        size: total_size,
         style,
-        pos: Arc::new(RwLock::new(0)),
       };
-      internal_state.progress_bars.push(pb.clone());
-      internal_state.progress_bar_counter += 1;
+      internal_state.entries.push(pb.clone());
+      internal_state.total_entries += 1;
+      internal_state.keep_alive_count += 1;
 
-      if internal_state.progress_bars.len() == 1 {
+      if !internal_state.has_draw_thread {
         self.start_draw_thread(&mut internal_state);
       }
 
@@ -120,51 +137,90 @@ mod dprint {
     }
 
     fn finish_progress(&self, progress_bar_id: usize) {
-      let mut internal_state = self.state.write();
+      let mut internal_state = self.state.lock();
 
       if let Some(index) = internal_state
-        .progress_bars
+        .entries
         .iter()
         .position(|p| p.id == progress_bar_id)
       {
-        internal_state.progress_bars.remove(index);
+        internal_state.entries.remove(index);
       }
 
-      // Remove last printed line
-      clear_previous_line();
+      internal_state.keep_alive_count -= 1;
+    }
+
+    pub fn increment_clear(&self) {
+      let mut internal_state = self.state.lock();
+      internal_state.keep_alive_count += 1;
+    }
+
+    pub fn decrement_clear(&self) {
+      let mut internal_state = self.state.lock();
+      internal_state.keep_alive_count -= 1;
+
+      if internal_state.keep_alive_count == 0 {
+        internal_state.text.clear(console_size().unwrap().cols);
+        // bump the drawer id to exit the draw thread
+        internal_state.drawer_id += 1;
+        internal_state.has_draw_thread = false;
+        show_cursor();
+      }
     }
 
     fn start_draw_thread(&self, internal_state: &mut InternalState) {
+      hide_cursor();
       internal_state.drawer_id += 1;
+      internal_state.total_entries = 1; // reset
+      internal_state.start_time = SystemTime::now();
+      internal_state.has_draw_thread = true;
       let drawer_id = internal_state.drawer_id;
       let internal_state = self.state.clone();
       tokio::task::spawn_blocking(move || {
         loop {
           {
-            let internal_state = internal_state.read();
-            // exit if not the current draw thread or there are no more progress bars
-            if internal_state.drawer_id != drawer_id
-              || internal_state.progress_bars.is_empty()
-            {
+            let mut internal_state = internal_state.lock();
+            // exit if not the current draw thread
+            if internal_state.drawer_id != drawer_id {
               break;
             }
 
-            let terminal_width = get_terminal_width().unwrap();
-            let mut text = String::new();
-            let progress_bar = &internal_state.progress_bars[0];
+            if !internal_state.entries.is_empty() {
+              // prefer displaying download entries because they have more activity
+              let displayed_entry = internal_state
+                .entries
+                .iter()
+                .filter(|e| {
+                  matches!(e.style, ProgressBarEntryStyle::Download { .. })
+                })
+                .next()
+                .unwrap_or(&internal_state.entries[0]);
 
-            text.push_str(&get_progress_bar_text(
-              terminal_width,
-              *progress_bar.pos.read(),
-              progress_bar.size,
-              progress_bar.style,
-              progress_bar.start_time.elapsed().unwrap(),
-            ));
+              let mut total_percent = 0f64;
+              for entry in &internal_state.entries {
+                total_percent += entry.style.percent();
+              }
+              total_percent += (internal_state.total_entries
+                - internal_state.entries.len())
+                as f64;
+              let percent_done =
+                total_percent / (internal_state.total_entries as f64);
 
-            eprint!("{}", text);
+              let terminal_width = console_size().unwrap().cols;
+              let text = get_progress_bar_text(
+                terminal_width,
+                &displayed_entry,
+                percent_done,
+                internal_state.entries.len(),
+                internal_state.total_entries,
+                internal_state.start_time.elapsed().unwrap(),
+              );
+
+              internal_state.text.set(&text, terminal_width);
+            }
           }
 
-          std::thread::sleep(Duration::from_millis(100));
+          std::thread::sleep(Duration::from_millis(120));
         }
       });
     }
@@ -172,33 +228,53 @@ mod dprint {
 
   fn get_progress_bar_text(
     terminal_width: u32,
-    pos: usize,
-    total: usize,
-    pb_style: ProgressBarStyle,
+    display_entry: &ProgressBarEntry,
+    total_percent: f64,
+    remaining_entries: usize,
+    total_entries: usize,
     duration: Duration,
   ) -> String {
-    let total = std::cmp::max(pos, total); // increase the total when pos > total
-    let bytes_text = if pb_style == ProgressBarStyle::Download {
-      format!(
-        " {}/{}",
-        get_bytes_text(pos, total),
-        get_bytes_text(total, total)
-      )
+    let (bytes_text, bytes_text_max_width) = match &display_entry.style {
+      ProgressBarEntryStyle::Download { pos, total_size } => {
+        let total_size_str = human_download_size(*total_size, *total_size);
+        (
+          format!(
+            " {}/{}",
+            human_download_size(pos.load(Ordering::Relaxed), *total_size),
+            total_size_str,
+          ),
+          2 + total_size_str.len() * 2,
+        )
+      }
+      ProgressBarEntryStyle::Action => (String::new(), 0),
+    };
+    let (total_text, total_text_max_width) = if total_entries <= 1 {
+      (String::new(), 0)
     } else {
-      String::new()
+      let total_entries_str = total_entries.to_string();
+      (
+        format!(" ({}/{})", total_entries - remaining_entries, total_entries),
+        4 + total_entries_str.len() * 2,
+      )
     };
 
     let elapsed_text = get_elapsed_text(duration);
     let mut text = String::new();
+    if !display_entry.message.is_empty() {
+      text.push_str(&format!(
+        "{} {}{}\n",
+        colors::green("Download"),
+        display_entry.message,
+        bytes_text,
+      ));
+    }
     text.push_str(&elapsed_text);
-    // get progress bar
-    let percent = pos as f32 / total as f32;
-    // don't include the bytes text in this because a string going from X.XXMB to XX.XXMB should not adjust the progress bar
-    let total_bars = (std::cmp::min(50, terminal_width - 15) as usize)
+    let total_bars = (std::cmp::min(75, terminal_width - 5) as usize)
       - elapsed_text.len()
-      - 1
-      - 2;
-    let completed_bars = (total_bars as f32 * percent).floor() as usize;
+      - total_text_max_width
+      - bytes_text_max_width
+      - 3; // space, open and close brace
+    let completed_bars = (total_bars as f64 * total_percent).floor() as usize;
     text.push_str(" [");
     if completed_bars != total_bars {
       if completed_bars > 0 {
@@ -216,38 +292,20 @@ mod dprint {
     }
     text.push(']');
 
-    // bytes text
-    text.push_str(&bytes_text);
+    // suffix
+    if display_entry.message.is_empty() {
+      text.push_str(&bytes_text);
+    }
+    text.push_str(&total_text);
 
     text
-  }
-
-  fn get_bytes_text(byte_count: usize, total_bytes: usize) -> String {
-    let bytes_to_kb = 1_000;
-    let bytes_to_mb = 1_000_000;
-    return if total_bytes < bytes_to_mb {
-      get_in_format(byte_count, bytes_to_kb, "KB")
-    } else {
-      get_in_format(byte_count, bytes_to_mb, "MB")
-    };
-
-    fn get_in_format(
-      byte_count: usize,
-      conversion: usize,
-      suffix: &str,
-    ) -> String {
-      let converted_value = byte_count / conversion;
-      let decimal = (byte_count % conversion) * 100 / conversion;
-      format!("{}.{:0>2}{}", converted_value, decimal, suffix)
-    }
   }
 
   fn get_elapsed_text(elapsed: Duration) -> String {
     let elapsed_secs = elapsed.as_secs();
     let seconds = elapsed_secs % 60;
-    let minutes = (elapsed_secs / 60) % 60;
-    let hours = (elapsed_secs / 60) / 60;
-    format!("[{:0>2}:{:0>2}:{:0>2}]", hours, minutes, seconds)
+    let minutes = elapsed_secs / 60;
+    format!("[{:0>2}:{:0>2}]", minutes, seconds)
   }
 
   #[cfg(test)]
@@ -256,172 +314,122 @@ mod dprint {
     use std::time::Duration;
 
     #[test]
-    fn should_get_bytes_text() {
-      assert_eq!(get_bytes_text(9, 999), "0.00KB");
-      assert_eq!(get_bytes_text(10, 999), "0.01KB");
-      assert_eq!(get_bytes_text(100, 999), "0.10KB");
-      assert_eq!(get_bytes_text(200, 999), "0.20KB");
-      assert_eq!(get_bytes_text(520, 999), "0.52KB");
-      assert_eq!(get_bytes_text(1000, 10_000), "1.00KB");
-      assert_eq!(get_bytes_text(10_000, 10_000), "10.00KB");
-      assert_eq!(get_bytes_text(999_999, 990_999), "999.99KB");
-      assert_eq!(get_bytes_text(1_000_000, 1_000_000), "1.00MB");
-      assert_eq!(get_bytes_text(9_524_102, 10_000_000), "9.52MB");
-    }
-
-    #[test]
     fn should_get_elapsed_text() {
-      assert_eq!(get_elapsed_text(Duration::from_secs(1)), "[00:00:01]");
-      assert_eq!(get_elapsed_text(Duration::from_secs(20)), "[00:00:20]");
-      assert_eq!(get_elapsed_text(Duration::from_secs(59)), "[00:00:59]");
-      assert_eq!(get_elapsed_text(Duration::from_secs(60)), "[00:01:00]");
+      assert_eq!(get_elapsed_text(Duration::from_secs(1)), "[00:01]");
+      assert_eq!(get_elapsed_text(Duration::from_secs(20)), "[00:20]");
+      assert_eq!(get_elapsed_text(Duration::from_secs(59)), "[00:59]");
+      assert_eq!(get_elapsed_text(Duration::from_secs(60)), "[01:00]");
       assert_eq!(
         get_elapsed_text(Duration::from_secs(60 * 5 + 23)),
-        "[00:05:23]"
+        "[05:23]"
       );
       assert_eq!(
         get_elapsed_text(Duration::from_secs(60 * 59 + 59)),
-        "[00:59:59]"
+        "[59:59]"
       );
       assert_eq!(get_elapsed_text(Duration::from_secs(60 * 60)), "[01:00:00]");
       assert_eq!(
         get_elapsed_text(Duration::from_secs(60 * 60 * 3 + 20 * 60 + 2)),
-        "[03:20:02]"
+        "[200:02]"
       );
       assert_eq!(
         get_elapsed_text(Duration::from_secs(60 * 60 * 99)),
-        "[99:00:00]"
-      );
-      assert_eq!(
-        get_elapsed_text(Duration::from_secs(60 * 60 * 120)),
-        "[120:00:00]"
+        "[5940:00]"
       );
     }
   }
 }
-#[derive(Clone, Debug, Default)]
-pub struct ProgressBar(Arc<Mutex<ProgressBarInner>>);
-
-#[derive(Debug)]
-struct ProgressBarInner {
-  pb: Option<indicatif::ProgressBar>,
-  is_tty: bool,
-  in_flight: IndexSet<String>,
+#[derive(Clone, Debug)]
+pub struct ProgressBar {
+  pb: Option<dprint::ProgressBar>,
 }
 
-impl Default for ProgressBarInner {
+impl Default for ProgressBar {
   fn default() -> Self {
     Self {
-      pb: None,
-      is_tty: colors::is_tty(),
-      in_flight: IndexSet::default(),
-    }
-  }
-}
-
-impl ProgressBarInner {
-  fn get_or_create_pb(&mut self) -> indicatif::ProgressBar {
-    if let Some(pb) = self.pb.as_ref() {
-      return pb.clone();
-    }
-
-    let pb = indicatif::ProgressBar::new_spinner();
-    pb.enable_steady_tick(Duration::from_millis(120));
-    pb.set_prefix("Download");
-    pb.set_style(
-      indicatif::ProgressStyle::with_template(
-        "{prefix:.green} {spinner:.green} {msg}",
-      )
-      .unwrap()
-      .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
-    );
-    self.pb = Some(pb);
-    self.pb.as_ref().unwrap().clone()
-  }
-
-  fn add_in_flight(&mut self, msg: &str) {
-    if self.in_flight.contains(msg) {
-      return;
-    }
-
-    self.in_flight.insert(msg.to_string());
-  }
-
-  /// Returns if removed "in-flight" was last entry and progress
-  /// bar needs to be updated.
-  fn remove_in_flight(&mut self, msg: &str) -> bool {
-    if !self.in_flight.contains(msg) {
-      return false;
-    }
-
-    let mut is_last = false;
-    if let Some(last) = self.in_flight.last() {
-      is_last = last == msg;
-    }
-    self.in_flight.remove(msg);
-    is_last
-  }
-
-  fn update_progress_bar(&mut self) {
-    let pb = self.get_or_create_pb();
-    if let Some(msg) = self.in_flight.last() {
-      pb.set_message(msg.clone());
+      pb: match dprint::ProgressBar::are_supported() {
+        true => Some(dprint::ProgressBar::new()),
+        false => None,
+      },
     }
   }
 }
 
 pub struct UpdateGuard {
-  pb: ProgressBar,
-  msg: String,
-  noop: bool,
+  maybe_entry: Option<dprint::ProgressBarEntry>,
 }
 
 impl Drop for UpdateGuard {
   fn drop(&mut self) {
-    if self.noop {
-      return;
+    if let Some(entry) = &self.maybe_entry {
+      entry.finish();
     }
+  }
+}
 
-    let mut inner = self.pb.0.lock();
-    if inner.remove_in_flight(&self.msg) {
-      inner.update_progress_bar();
+pub struct UpdateGuardWithProgress(UpdateGuard);
+
+impl UpdateGuardWithProgress {
+  pub fn update(&self, value: u64) {
+    if let Some(entry) = &self.0.maybe_entry {
+      entry.set_position(value);
     }
   }
 }
 
 impl ProgressBar {
-  pub fn update(&self, msg: &str) -> UpdateGuard {
-    let mut guard = UpdateGuard {
-      pb: self.clone(),
-      msg: msg.to_string(),
-      noop: false,
-    };
-    let mut inner = self.0.lock();
-
-    // If we're not running in TTY we're just gonna fallback
-    // to using logger crate.
-    if !inner.is_tty {
-      log::log!(log::Level::Info, "{} {}", colors::green("Download"), msg);
-      guard.noop = true;
-      return guard;
-    }
-
-    inner.add_in_flight(msg);
-    inner.update_progress_bar();
-    guard
+  pub fn is_enabled(&self) -> bool {
+    self.pb.is_some()
   }
 
-  pub fn clear(&self) {
-    let mut inner = self.0.lock();
+  pub fn update(&self, msg: &str) -> UpdateGuard {
+    self.update_inner(msg.to_string(), dprint::ProgressBarEntryStyle::action())
+  }
 
-    if let Some(pb) = inner.pb.as_ref() {
-      pb.finish_and_clear();
-      inner.pb = None;
+  pub fn update_with_progress(
+    &self,
+    msg: String,
+    total_size: u64,
+  ) -> UpdateGuardWithProgress {
+    UpdateGuardWithProgress(
+      self
+        .update_inner(msg, dprint::ProgressBarEntryStyle::download(total_size)),
+    )
+  }
+
+  fn update_inner(
+    &self,
+    msg: String,
+    style: dprint::ProgressBarEntryStyle,
+  ) -> UpdateGuard {
+    match &self.pb {
+      Some(pb) => {
+        let entry = pb.add_progress(msg.to_string(), style);
+        UpdateGuard {
+          maybe_entry: Some(entry),
+        }
+      }
+      None => {
+        // if we're not running in TTY, fallback to using logger crate
+        if !msg.is_empty() {
+          log::log!(log::Level::Info, "{} {}", colors::green("Download"), msg);
+        }
+        return UpdateGuard { maybe_entry: None };
+      }
     }
   }
 
   pub fn clear_guard(&self) -> ClearGuard {
+    if let Some(pb) = &self.pb {
+      pb.increment_clear();
+    }
     ClearGuard { pb: self.clone() }
+  }
+
+  fn decrement_clear(&self) {
+    if let Some(pb) = &self.pb {
+      pb.decrement_clear();
+    }
   }
 }
 
@@ -431,6 +439,6 @@ pub struct ClearGuard {
 
 impl Drop for ClearGuard {
   fn drop(&mut self) {
-    self.pb.clear();
+    self.pb.decrement_clear();
   }
 }

@@ -26,6 +26,24 @@ pub fn human_size(size: f64) -> String {
   format!("{}{}{}", negative, pretty_bytes, unit)
 }
 
+/// Gets the size used for downloading data. The total bytes is used to
+/// determine the units to use.
+pub fn human_download_size(byte_count: u64, total_bytes: u64) -> String {
+  const BYTES_TO_KIB: u64 = 2u64.pow(10);
+  const BYTES_TO_MIB: u64 = 2u64.pow(20);
+  return if total_bytes < BYTES_TO_MIB {
+    get_in_format(byte_count, BYTES_TO_KIB, "KiB")
+  } else {
+    get_in_format(byte_count, BYTES_TO_MIB, "MiB")
+  };
+
+  fn get_in_format(byte_count: u64, conversion: u64, suffix: &str) -> String {
+    let converted_value = byte_count / conversion;
+    let decimal = (byte_count % conversion) * 100 / conversion;
+    format!("{}.{:0>2}{}", converted_value, decimal, suffix)
+  }
+}
+
 /// A function that converts a milisecond elapsed time to a string that
 /// represents a human readable version of that time.
 pub fn human_elapsed(elapsed: u128) -> String {
@@ -82,6 +100,20 @@ mod tests {
     );
     assert_eq!(human_size(0_f64), "0B");
     assert_eq!(human_size(-10_f64), "-10B");
+  }
+
+  #[test]
+  fn test_human_download_size() {
+    assert_eq!(human_download_size(9, 999), "0.00KB");
+    assert_eq!(human_download_size(10, 999), "0.01KB");
+    assert_eq!(human_download_size(100, 999), "0.10KB");
+    assert_eq!(human_download_size(200, 999), "0.20KB");
+    assert_eq!(human_download_size(520, 999), "0.52KB");
+    assert_eq!(human_download_size(1000, 10_000), "1.00KB");
+    assert_eq!(human_download_size(10_000, 10_000), "10.00KB");
+    assert_eq!(human_download_size(999_999, 990_999), "999.99KB");
+    assert_eq!(human_download_size(1_000_000, 1_000_000), "1.00MB");
+    assert_eq!(human_download_size(9_524_102, 10_000_000), "9.52MB");
   }
 
   #[test]
