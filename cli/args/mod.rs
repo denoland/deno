@@ -9,6 +9,7 @@ mod flags_allow_net;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
+pub use config_file::ConfiguresFiles;
 pub use config_file::EmitConfigOptions;
 pub use config_file::FmtConfig;
 pub use config_file::FmtOptionsConfig;

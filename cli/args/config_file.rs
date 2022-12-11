@@ -25,8 +25,6 @@ use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 
-use super::ConfiguresFiles;
-
 pub type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
 
@@ -357,6 +355,10 @@ impl SerializedLintConfig {
       report: self.report,
     })
   }
+}
+
+pub trait ConfiguresFiles {
+  fn get_files_config(&self) -> FilesConfig;
 }
 
 #[derive(Clone, Debug, Default)]

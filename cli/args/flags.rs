@@ -21,7 +21,6 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use super::config_file::FilesConfig;
 use super::flags_allow_net;
 
 static LONG_VERSION: Lazy<String> = Lazy::new(|| {
@@ -217,10 +216,6 @@ impl RunFlags {
 pub struct TaskFlags {
   pub cwd: Option<String>,
   pub task: String,
-}
-
-pub trait ConfiguresFiles {
-  fn get_files_config(&self) -> FilesConfig;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
