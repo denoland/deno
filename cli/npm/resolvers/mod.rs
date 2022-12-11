@@ -11,6 +11,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use global::GlobalNpmPackageResolver;
@@ -22,8 +23,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::fs_util;
-use crate::lockfile::Lockfile;
+use crate::args::Lockfile;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
@@ -104,10 +105,16 @@ impl NpmPackageResolver {
 
   /// This function will replace current resolver with a new one built from a
   /// snapshot created out of the lockfile.
-  pub async fn add_lockfile(
+  pub async fn add_lockfile_and_maybe_regenerate_snapshot(
     &mut self,
     lockfile: Arc<Mutex<Lockfile>>,
   ) -> Result<(), AnyError> {
+    self.maybe_lockfile = Some(lockfile.clone());
+
+    if lockfile.lock().overwrite {
+      return Ok(());
+    }
+
     let snapshot =
       NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &self.api)
         .await
@@ -117,7 +124,6 @@ impl NpmPackageResolver {
             lockfile.lock().filename.display()
           )
         })?;
-    self.maybe_lockfile = Some(lockfile);
     if let Some(node_modules_folder) = &self.local_node_modules_path {
       self.inner = Arc::new(LocalNpmPackageResolver::new(
         self.cache.clone(),
@@ -182,8 +188,12 @@ impl NpmPackageResolver {
     let path = self
       .inner
       .resolve_package_folder_from_deno_module(pkg_req)?;
-    let path = fs_util::canonicalize_path_maybe_not_exists(&path)?;
-    log::debug!("Resolved {} to {}", pkg_req, path.display());
+    let path = canonicalize_path_maybe_not_exists(&path)?;
+    log::debug!(
+      "Resolved package folder of {} to {}",
+      pkg_req,
+      path.display()
+    );
     Ok(path)
   }
 
@@ -192,11 +202,11 @@ impl NpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let path = self
       .inner
-      .resolve_package_folder_from_package(name, referrer, conditions)?;
+      .resolve_package_folder_from_package(name, referrer, mode)?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
     Ok(path)
   }
@@ -211,7 +221,11 @@ impl NpmPackageResolver {
     let path = self
       .inner
       .resolve_package_folder_from_specifier(specifier)?;
-    log::debug!("Resolved {} to {}", specifier, path.display());
+    log::debug!(
+      "Resolved package folder of {} to {}",
+      specifier,
+      path.display()
+    );
     Ok(path)
   }
 
@@ -325,10 +339,10 @@ impl RequireNpmResolver for NpmPackageResolver {
     &self,
     specifier: &str,
     referrer: &std::path::Path,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let referrer = path_to_specifier(referrer)?;
-    self.resolve_package_folder_from_package(specifier, &referrer, conditions)
+    self.resolve_package_folder_from_package(specifier, &referrer, mode)
   }
 
   fn resolve_package_folder_from_path(

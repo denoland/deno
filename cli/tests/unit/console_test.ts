@@ -336,6 +336,9 @@ Deno.test(function consoleTestStringifyCircular() {
   groupEnd: [Function: groupEnd],
   clear: [Function: clear],
   trace: [Function: trace],
+  profile: [Function: profile],
+  profileEnd: [Function: profileEnd],
+  timeStamp: [Function: timeStamp],
   indentLevel: 0,
   [Symbol(isConsoleInstance)]: true
 }`,
@@ -2102,4 +2105,10 @@ Deno.test(async function inspectAggregateError() {
       "AggregateError: All promises were rejected",
     );
   }
+});
+
+Deno.test(function inspectorMethods() {
+  console.timeStamp("test");
+  console.profile("test");
+  console.profileEnd("test");
 });

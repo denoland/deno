@@ -1,5 +1,10 @@
-Check [WILDCARD]/test/unresolved_promise.ts
-
-ok | 0 passed | 0 failed ([WILDCARD])
-
-error: Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promises.
+[WILDCARD]
+./test/unresolved_promise.ts (uncaught error)
+error: Top-level await promise never resolved
+await new Promise((_resolve, _reject) => {});
+^
+    at <anonymous> ([WILDCARD]/test/unresolved_promise.ts:1:1)
+This error was not caught from a test and caused the test runner to fail on the referenced module.
+It most likely originated from a dangling promise, event/timeout handler or top-level code.
+[WILDCARD]
+error: Test failed

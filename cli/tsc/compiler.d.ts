@@ -2,7 +2,7 @@
 
 // Contains types that can be used to validate and check `99_main_compiler.js`
 
-import * as _ts from "../dts/typescript";
+import * as _ts from "./dts/typescript";
 
 declare global {
   namespace ts {

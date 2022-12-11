@@ -754,8 +754,8 @@ pub(crate) enum ModuleError {
 pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
-  handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
-  info: HashMap<ModuleId, ModuleInfo>,
+  pub handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
+  pub info: HashMap<ModuleId, ModuleInfo>,
   by_name: HashMap<(String, AssertedModuleType), SymbolicModule>,
   next_module_id: ModuleId,
   next_load_id: ModuleLoadId,

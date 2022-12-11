@@ -1,10 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::cdp;
 use crate::colors;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
+use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -27,8 +27,11 @@ use rustyline::{ConditionalEventHandler, Event, EventContext, RepeatCount};
 use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
+use super::cdp;
 use super::channel::RustylineSyncMessageSender;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
@@ -368,10 +371,14 @@ impl Highlighter for EditorHelper {
 pub struct ReplEditor {
   inner: Arc<Mutex<Editor<EditorHelper>>>,
   history_file_path: PathBuf,
+  errored_on_history_save: Arc<AtomicBool>,
 }
 
 impl ReplEditor {
-  pub fn new(helper: EditorHelper, history_file_path: PathBuf) -> Self {
+  pub fn new(
+    helper: EditorHelper,
+    history_file_path: PathBuf,
+  ) -> Result<Self, AnyError> {
     let editor_config = Config::builder()
       .completion_type(CompletionType::List)
       .build();
@@ -389,25 +396,35 @@ impl ReplEditor {
       EventHandler::Conditional(Box::new(TabEventHandler)),
     );
 
-    ReplEditor {
+    let history_file_dir = history_file_path.parent().unwrap();
+    std::fs::create_dir_all(history_file_dir).with_context(|| {
+      format!(
+        "Unable to create directory for the history file: {}",
+        history_file_dir.display()
+      )
+    })?;
+
+    Ok(ReplEditor {
       inner: Arc::new(Mutex::new(editor)),
       history_file_path,
-    }
+      errored_on_history_save: Arc::new(AtomicBool::new(false)),
+    })
   }
 
   pub fn readline(&self) -> Result<String, ReadlineError> {
     self.inner.lock().readline("> ")
   }
 
-  pub fn add_history_entry(&self, entry: String) {
+  pub fn update_history(&self, entry: String) {
     self.inner.lock().add_history_entry(entry);
-  }
+    if let Err(e) = self.inner.lock().append_history(&self.history_file_path) {
+      if self.errored_on_history_save.load(Relaxed) {
+        return;
+      }
 
-  pub fn save_history(&self) -> Result<(), AnyError> {
-    std::fs::create_dir_all(self.history_file_path.parent().unwrap())?;
-
-    self.inner.lock().save_history(&self.history_file_path)?;
-    Ok(())
+      self.errored_on_history_save.store(true, Relaxed);
+      eprintln!("Unable to save history file: {}", e);
+    }
   }
 }
 

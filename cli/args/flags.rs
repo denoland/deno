@@ -10,7 +10,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Url;
 use deno_runtime::permissions::parse_sys_kind;
-use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -163,6 +162,7 @@ pub struct LintFlags {
 pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
   pub eval: Option<String>,
+  pub is_default_command: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -245,6 +245,7 @@ impl Default for DenoSubcommand {
     DenoSubcommand::Repl(ReplFlags {
       eval_files: None,
       eval: None,
+      is_default_command: true,
     })
   }
 }
@@ -480,18 +481,30 @@ impl Flags {
     }
   }
 
-  pub fn permissions_options(&self) -> PermissionsOptions {
-    PermissionsOptions {
-      allow_env: self.allow_env.clone(),
-      allow_hrtime: self.allow_hrtime,
-      allow_net: self.allow_net.clone(),
-      allow_ffi: self.allow_ffi.clone(),
-      allow_read: self.allow_read.clone(),
-      allow_run: self.allow_run.clone(),
-      allow_sys: self.allow_sys.clone(),
-      allow_write: self.allow_write.clone(),
-      prompt: !self.no_prompt,
-    }
+  pub fn has_permission(&self) -> bool {
+    self.allow_all
+      || self.allow_hrtime
+      || self.allow_env.is_some()
+      || self.allow_ffi.is_some()
+      || self.allow_net.is_some()
+      || self.allow_read.is_some()
+      || self.allow_run.is_some()
+      || self.allow_sys.is_some()
+      || self.allow_write.is_some()
+  }
+
+  pub fn has_permission_in_argv(&self) -> bool {
+    self.argv.iter().any(|arg| {
+      arg == "--allow-all"
+        || arg == "--allow-hrtime"
+        || arg.starts_with("--allow-env")
+        || arg.starts_with("--allow-ffi")
+        || arg.starts_with("--allow-net")
+        || arg.starts_with("--allow-read")
+        || arg.starts_with("--allow-run")
+        || arg.starts_with("--allow-sys")
+        || arg.starts_with("--allow-write")
+    })
   }
 }
 
@@ -519,6 +532,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          (module downloads, fetch)
     HTTPS_PROXY          Proxy address for HTTPS requests
                          (module downloads, fetch)
+    NPM_CONFIG_REGISTRY  URL to use for the npm registry.
     NO_COLOR             Set to disable color
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)"#;
@@ -598,6 +612,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
       ReplFlags {
         eval_files: None,
         eval: None,
+        is_default_command: true,
       },
     ),
   }
@@ -606,15 +621,18 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
 }
 
 fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
+  // If user runs just `deno` binary we enter REPL and allow all permissions.
+  if repl_flags.is_default_command {
+    flags.allow_net = Some(vec![]);
+    flags.allow_env = Some(vec![]);
+    flags.allow_run = Some(vec![]);
+    flags.allow_read = Some(vec![]);
+    flags.allow_sys = Some(vec![]);
+    flags.allow_write = Some(vec![]);
+    flags.allow_ffi = Some(vec![]);
+    flags.allow_hrtime = true;
+  }
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
-  flags.allow_net = Some(vec![]);
-  flags.allow_env = Some(vec![]);
-  flags.allow_run = Some(vec![]);
-  flags.allow_read = Some(vec![]);
-  flags.allow_sys = Some(vec![]);
-  flags.allow_write = Some(vec![]);
-  flags.allow_ffi = Some(vec![]);
-  flags.allow_hrtime = true;
 }
 
 fn clap_root(version: &str) -> Command {
@@ -637,7 +655,7 @@ fn clap_root(version: &str) -> Command {
         .help("Set log level")
         .hide(true)
         .takes_value(true)
-        .possible_values(&["debug", "info"])
+        .possible_values(["debug", "info"])
         .global(true),
     )
     .arg(
@@ -771,12 +789,20 @@ Future runs of this module will trigger no downloads or compilation unless \
 
 fn check_subcommand<'a>() -> Command<'a> {
   compile_args_without_check_args(Command::new("check"))
-  .arg(
-    Arg::new("remote")
-      .long("remote")
-      .help("Type-check all modules, including remote")
-      .conflicts_with("no-remote")
+    .arg(
+      Arg::new("all")
+        .long("all")
+        .help("Type-check all code, including remote modules and npm packages")
+        .conflicts_with("no-remote")
     )
+    .arg(
+      // past alias for --all
+      Arg::new("remote")
+        .long("remote")
+        .help("Type-check all modules, including remote")
+        .conflicts_with("no-remote")
+        .hide(true)
+      )
     .arg(
       Arg::new("file")
         .takes_value(true)
@@ -811,7 +837,7 @@ fn compile_subcommand<'a>() -> Command<'a> {
         .long("target")
         .help("Target OS architecture")
         .takes_value(true)
-        .possible_values(&[
+        .possible_values([
           "x86_64-unknown-linux-gnu",
           "x86_64-pc-windows-msvc",
           "x86_64-apple-darwin",
@@ -848,7 +874,7 @@ fn completions_subcommand<'a>() -> Command<'a> {
     .disable_help_subcommand(true)
     .arg(
       Arg::new("shell")
-        .possible_values(&["bash", "fish", "powershell", "zsh", "fig"])
+        .possible_values(["bash", "fish", "powershell", "zsh", "fig"])
         .required(true),
     )
     .about("Generate shell completions")
@@ -1049,7 +1075,7 @@ This command has implicit access to all permissions (--allow-all).",
         .help("Set standard input (stdin) content type")
         .takes_value(true)
         .default_value("js")
-        .possible_values(&["ts", "tsx", "js", "jsx"]),
+        .possible_values(["ts", "tsx", "js", "jsx"]),
     )
     .arg(
       Arg::new("print")
@@ -1106,7 +1132,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .help("Set standard input (stdin) content type")
         .takes_value(true)
         .default_value("ts")
-        .possible_values(&["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
+        .possible_values(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
     )
     .arg(
       Arg::new("ignore")
@@ -1165,7 +1191,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       Arg::new("options-prose-wrap")
         .long("options-prose-wrap")
         .takes_value(true)
-        .possible_values(&["always", "never", "preserve"])
+        .possible_values(["always", "never", "preserve"])
         .help("Define how prose should be wrapped. Defaults to always."),
     )
 }
@@ -1430,7 +1456,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
 }
 
 fn repl_subcommand<'a>() -> Command<'a> {
-  runtime_args(Command::new("repl"), false, true)
+  runtime_args(Command::new("repl"), true, true)
     .about("Read Eval Print Loop")
     .arg(
       Arg::new("eval-file")
@@ -1449,7 +1475,6 @@ fn repl_subcommand<'a>() -> Command<'a> {
         .takes_value(true)
         .value_name("code"),
     )
-    .arg(unsafely_ignore_certificate_errors_arg())
 }
 
 fn run_subcommand<'a>() -> Command<'a> {
@@ -2317,7 +2342,7 @@ fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     .unwrap()
     .map(String::from)
     .collect();
-  if matches.is_present("remote") {
+  if matches.is_present("all") || matches.is_present("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
   flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
@@ -2620,7 +2645,7 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  runtime_args_parse(flags, matches, false, true);
+  runtime_args_parse(flags, matches, true, true);
   unsafely_ignore_certificate_errors_parse(flags, matches);
 
   let eval_files: Option<Vec<String>> = matches
@@ -2632,6 +2657,7 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     ReplFlags {
       eval_files,
       eval: matches.value_of("eval").map(ToOwned::to_owned),
+      is_default_command: false,
     },
   );
 }
@@ -2779,7 +2805,11 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
         .unwrap_or(NonZeroUsize::new(1).unwrap())
     }
   } else if matches.is_present("jobs") {
-    println!(
+    // We can't change this to use the log crate because its not configured
+    // yet at this point since the flags haven't been parsed. This flag is
+    // deprecated though so it's not worth changing the code to use the log
+    // crate here and this is only done for testing anyway.
+    eprintln!(
       "{}",
       crate::colors::yellow("Warning: --jobs flag is deprecated. Use the --parallel flag with possibly the 'DENO_JOBS' environment variable."),
     );
@@ -2956,11 +2986,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
-  #[cfg(not(test))]
-  let has_no_prompt_env = env::var("DENO_NO_PROMPT") == Ok("1".to_string());
-  #[cfg(test)]
-  let has_no_prompt_env = false;
-  if has_no_prompt_env || matches.is_present("no-prompt") {
+  if matches.is_present("no-prompt") {
     flags.no_prompt = true;
   }
 }
@@ -3386,6 +3412,24 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn has_permission() {
+    let r = flags_from_vec(svec!["deno", "run", "--allow-read", "x.ts"]);
+    assert_eq!(r.unwrap().has_permission(), true);
+
+    let r = flags_from_vec(svec!["deno", "run", "x.ts"]);
+    assert_eq!(r.unwrap().has_permission(), false);
+  }
+
+  #[test]
+  fn has_permission_in_argv() {
+    let r = flags_from_vec(svec!["deno", "run", "x.ts", "--allow-read"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), true);
+
+    let r = flags_from_vec(svec!["deno", "run", "x.ts"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), false);
   }
 
   #[test]
@@ -3957,26 +4001,28 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "check", "--remote", "script.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Check(CheckFlags {
-          files: svec!["script.ts"],
-        }),
-        type_check_mode: TypeCheckMode::All,
-        ..Flags::default()
-      }
-    );
+    for all_flag in ["--remote", "--all"] {
+      let r = flags_from_vec(svec!["deno", "check", all_flag, "script.ts"]);
+      assert_eq!(
+        r.unwrap(),
+        Flags {
+          subcommand: DenoSubcommand::Check(CheckFlags {
+            files: svec!["script.ts"],
+          }),
+          type_check_mode: TypeCheckMode::All,
+          ..Flags::default()
+        }
+      );
 
-    let r = flags_from_vec(svec![
-      "deno",
-      "check",
-      "--remote",
-      "--no-remote",
-      "script.ts"
-    ]);
-    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::ArgumentConflict);
+      let r = flags_from_vec(svec![
+        "deno",
+        "check",
+        all_flag,
+        "--no-remote",
+        "script.ts"
+      ]);
+      assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::ArgumentConflict);
+    }
   }
 
   #[test]
@@ -4222,7 +4268,8 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
-          eval: None
+          eval: None,
+          is_default_command: true,
         }),
         allow_net: Some(vec![]),
         unsafely_ignore_certificate_errors: None,
@@ -4241,13 +4288,14 @@ mod tests {
   #[test]
   fn repl_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors"]);
+    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
-          eval: None
+          eval: None,
+          is_default_command: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -4262,6 +4310,7 @@ mod tests {
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        allow_all: true,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
@@ -4279,22 +4328,16 @@ mod tests {
   #[test]
   fn repl_with_eval_flag() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "--eval", "console.log('hello');"]);
+    let r = flags_from_vec(svec!["deno", "repl", "--allow-write", "--eval", "console.log('hello');"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
           eval: Some("console.log('hello');".to_string()),
+          is_default_command: false,
         }),
-        allow_net: Some(vec![]),
-        allow_env: Some(vec![]),
-        allow_run: Some(vec![]),
-        allow_read: Some(vec![]),
-        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_ffi: Some(vec![]),
-        allow_hrtime: true,
         type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
@@ -4315,15 +4358,8 @@ mod tests {
             "https://examples.deno.land/hello-world.ts".to_string()
           ]),
           eval: None,
+          is_default_command: false,
         }),
-        allow_net: Some(vec![]),
-        allow_env: Some(vec![]),
-        allow_run: Some(vec![]),
-        allow_read: Some(vec![]),
-        allow_sys: Some(vec![]),
-        allow_write: Some(vec![]),
-        allow_ffi: Some(vec![]),
-        allow_hrtime: true,
         type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
@@ -5118,16 +5154,9 @@ mod tests {
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
           eval: Some("console.log('hello');".to_string()),
+          is_default_command: false,
         }),
         unsafely_ignore_certificate_errors: Some(vec![]),
-        allow_net: Some(vec![]),
-        allow_env: Some(vec![]),
-        allow_run: Some(vec![]),
-        allow_read: Some(vec![]),
-        allow_sys: Some(vec![]),
-        allow_write: Some(vec![]),
-        allow_ffi: Some(vec![]),
-        allow_hrtime: true,
         type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
@@ -5192,7 +5221,8 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Repl(ReplFlags {
           eval_files: None,
-          eval: None
+          eval: None,
+          is_default_command: false,
         }),
         unsafely_ignore_certificate_errors: Some(svec![
           "deno.land",
@@ -5202,14 +5232,6 @@ mod tests {
           "[::1]",
           "1.2.3.4"
         ]),
-        allow_net: Some(vec![]),
-        allow_env: Some(vec![]),
-        allow_run: Some(vec![]),
-        allow_read: Some(vec![]),
-        allow_sys: Some(vec![]),
-        allow_write: Some(vec![]),
-        allow_ffi: Some(vec![]),
-        allow_hrtime: true,
         type_check_mode: TypeCheckMode::None,
         ..Flags::default()
       }
