@@ -42,7 +42,7 @@ use std::sync::Mutex;
 
 use crate::cache::IncrementalCache;
 
-use super::bench::handle_filters;
+use super::utils::collect_filters;
 
 static STDIN_FILE_NAME: &str = "_stdin.ts";
 
@@ -65,7 +65,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   let maybe_lint_config = ps.options.to_lint_config()?;
 
-  let selection = handle_filters(&lint_flags, &maybe_lint_config);
+  let filters = collect_filters(&lint_flags, &maybe_lint_config)?;
 
   let mut maybe_reporter_kind = if lint_flags.json {
     Some(LintReporterKind::Json)
@@ -75,6 +75,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     None
   };
 
+  // TODO: this check is already being made in collect_filters
   if let Some(lint_config) = maybe_lint_config.as_ref() {
     if maybe_reporter_kind.is_none() {
       maybe_reporter_kind = match lint_config.report.as_deref() {
@@ -108,7 +109,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
     let result =
-      collect_lint_files(&selection.include, &selection.ignore).map(|files| {
+      collect_lint_files(&filters.include, &filters.ignore).map(|files| {
         if let Some(paths) = changed {
           files
             .iter()
@@ -120,7 +121,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
         }
       });
 
-    let paths_to_watch = selection.include.clone();
+    let paths_to_watch = filters.include.clone();
 
     async move {
       if files_changed && matches!(result, Ok(ref files) if files.is_empty()) {
@@ -215,16 +216,14 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       );
       reporter_lock.lock().unwrap().close(1);
     } else {
-      let target_files =
-        collect_lint_files(&selection.include, &selection.ignore).and_then(
-          |files| {
-            if files.is_empty() {
-              Err(generic_error("No target files found."))
-            } else {
-              Ok(files)
-            }
-          },
-        )?;
+      let target_files = collect_lint_files(&filters.include, &filters.ignore)
+        .and_then(|files| {
+          if files.is_empty() {
+            Err(generic_error("No target files found."))
+          } else {
+            Ok(files)
+          }
+        })?;
       debug!("Found {} files", target_files.len());
       operation(target_files).await?;
     };

@@ -41,7 +41,7 @@ use std::sync::Arc;
 
 use crate::cache::IncrementalCache;
 
-use super::bench::handle_filters;
+use super::utils::collect_filters;
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
@@ -53,7 +53,7 @@ pub async fn format(
   let FmtFlags { check, .. } = fmt_flags.clone();
 
   // First, prepare final configuration.
-  let selection = handle_filters(&fmt_flags, &maybe_fmt_config);
+  let filters = collect_filters(&fmt_flags, &maybe_fmt_config)?;
 
   // Now do the same for options
   let fmt_options = resolve_fmt_options(
@@ -65,7 +65,7 @@ pub async fn format(
     let files_changed = changed.is_some();
 
     let result =
-      collect_fmt_files(&selection.include, &selection.ignore).map(|files| {
+      collect_fmt_files(&filters.include, &filters.ignore).map(|files| {
         let refmt_files = if let Some(paths) = changed {
           if check {
             files
@@ -85,7 +85,7 @@ pub async fn format(
         (refmt_files, fmt_options.clone())
       });
 
-    let paths_to_watch = selection.include.clone();
+    let paths_to_watch = filters.include.clone();
     async move {
       if files_changed
         && matches!(result, Ok((ref files, _)) if files.is_empty())
@@ -127,14 +127,15 @@ pub async fn format(
     )
     .await?;
   } else {
-    let files = collect_fmt_files(&selection.include, &selection.ignore)
-      .and_then(|files| {
+    let files = collect_fmt_files(&filters.include, &filters.ignore).and_then(
+      |files| {
         if files.is_empty() {
           Err(generic_error("No target files found."))
         } else {
           Ok(files)
         }
-      })?;
+      },
+    )?;
     operation((files, fmt_options.clone())).await?;
   }
 

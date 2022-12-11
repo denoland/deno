@@ -60,7 +60,7 @@ use std::time::Instant;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
-use super::bench::handle_filters;
+use super::utils::collect_filters;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -1289,11 +1289,11 @@ async fn fetch_specifiers_with_test_mode(
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let maybe_test_config = ps.options.to_test_config()?;
 
-  let selection = handle_filters(test_flags, &maybe_test_config);
+  let filters = collect_filters(test_flags, &maybe_test_config)?;
 
   let mut specifiers_with_mode = collect_specifiers_with_test_mode(
-    selection.include,
-    selection.ignore,
+    filters.include,
+    filters.ignore,
     test_flags.doc,
   )?;
   for (specifier, mode) in &mut specifiers_with_mode {

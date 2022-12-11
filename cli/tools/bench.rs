@@ -1,9 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::BenchFlags;
-use crate::args::ConfiguresFiles;
-use crate::args::Filters;
-use crate::args::FiltersFiles;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::colors;
@@ -18,7 +15,6 @@ use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_supported_ext;
-use crate::util::path::specifier_to_file_path;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
@@ -41,6 +37,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
+
+use super::utils::collect_filters;
 
 #[derive(Debug, Clone, Deserialize)]
 struct BenchSpecifierOptions {
@@ -496,11 +494,11 @@ pub async fn run_benchmarks(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let selection = handle_filters(&bench_flags, &ps.options.to_bench_config()?);
+  let filters = collect_filters(&bench_flags, &ps.options.to_bench_config()?)?;
 
   let specifiers = collect_specifiers(
-    selection.include,
-    &selection.ignore,
+    filters.include,
+    &filters.ignore,
     is_supported_bench_path,
   )?;
 
@@ -532,10 +530,10 @@ pub async fn run_benchmarks_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let selection = handle_filters(&bench_flags, &ps.options.to_bench_config()?);
+  let filters = collect_filters(&bench_flags, &ps.options.to_bench_config()?)?;
 
   let paths_to_watch: Vec<_> =
-    selection.include.iter().map(PathBuf::from).collect();
+    filters.include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
@@ -543,8 +541,8 @@ pub async fn run_benchmarks_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = selection.include.clone();
-    let ignore = selection.ignore.clone();
+    let include = filters.include.clone();
+    let ignore = filters.ignore.clone();
     let ps = ps.clone();
 
     async move {
@@ -621,8 +619,8 @@ pub async fn run_benchmarks_with_watch(
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
     let filter = bench_flags.filter.clone();
-    let include = selection.include.clone();
-    let ignore = selection.ignore.clone();
+    let include = filters.include.clone();
+    let ignore = filters.ignore.clone();
     let permissions = permissions.clone();
     let ps = ps.clone();
 
@@ -657,47 +655,4 @@ pub async fn run_benchmarks_with_watch(
   .await?;
 
   Ok(())
-}
-
-// Collect included and ignored files. CLI flags take precedence
-// over config file, i.e. if there's `files.ignore` in config file
-// and `--ignore` CLI flag, only the flag value is taken into account.
-// TODO: find a way to reuse this in lint.rs also
-pub fn handle_filters<T, U>(flags: &T, maybe_config: &Option<U>) -> Filters
-where
-  T: FiltersFiles,
-  U: ConfiguresFiles,
-{
-  let filters = flags.get_filters();
-
-  let mut include = filters.include;
-  let mut ignore = filters.ignore;
-
-  if let Some(config) = maybe_config {
-    if include.is_empty() {
-      include = config
-        .get_files_config()
-        .include
-        .iter()
-        .filter_map(|s| specifier_to_file_path(s).ok())
-        .collect::<Vec<_>>();
-    }
-
-    if ignore.is_empty() {
-      ignore = config
-        .get_files_config()
-        .exclude
-        .iter()
-        .filter_map(|s| specifier_to_file_path(s).ok())
-        .collect::<Vec<_>>();
-    }
-  }
-
-  // When include is not set as a flag or a config file field, default to
-  // current working dir
-  if include.is_empty() {
-    include.push(std::env::current_dir().unwrap());
-  }
-
-  Filters { include, ignore }
 }
