@@ -187,8 +187,8 @@
             // Rethrow the error
             throw err;
           }
-          handleOpCallTracing("${name}", id, promise);
-          promise[promiseIdSymbol] = id;          
+          promise = handleOpCallTracing("${name}", id, promise);
+          promise[promiseIdSymbol] = id;
           return promise;
         }
       `,
@@ -218,10 +218,12 @@
     if (opCallTracingEnabled) {
       const stack = StringPrototypeSlice(new Error().stack, 6);
       MapPrototypeSet(opCallTraces, promiseId, { opName, stack });
-      p = PromisePrototypeFinally(
+      return PromisePrototypeFinally(
         p,
         () => MapPrototypeDelete(opCallTraces, promiseId),
       );
+    } else {
+      return p;
     }
   }
 

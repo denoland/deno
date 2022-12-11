@@ -94,6 +94,24 @@ lazy_static! {
   static ref GUARD: Mutex<HttpServerCount> = Mutex::new(HttpServerCount::default());
 }
 
+pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
+  vec![
+    ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
+    ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("NO_COLOR".to_string(), "1".to_string()),
+  ]
+}
+
+pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
+  let mut env_vars = env_vars_for_npm_tests_no_sync_download();
+  env_vars.push((
+    // make downloads determinstic
+    "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
+    "1".to_string(),
+  ));
+  env_vars
+}
+
 pub fn root_path() -> PathBuf {
   PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
     .parent()
@@ -1088,7 +1106,7 @@ async fn download_npm_registry_file(
       .into_bytes()
   };
   std::fs::create_dir_all(file_path.parent().unwrap())?;
-  std::fs::write(&file_path, bytes)?;
+  std::fs::write(file_path, bytes)?;
   Ok(())
 }
 
@@ -1918,7 +1936,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       command.env_clear();
     }
     command.envs(self.envs.clone());
-    command.current_dir(&cwd);
+    command.current_dir(cwd);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();
     command.stderr(writer_clone);
@@ -2163,13 +2181,13 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   let mut latency = None;
 
   for line in output.lines() {
-    if requests == None {
+    if requests.is_none() {
       if let Some(cap) = REQUESTS_RX.captures(line) {
         requests =
           Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
       }
     }
-    if latency == None {
+    if latency.is_none() {
       if let Some(cap) = LATENCY_RX.captures(line) {
         let time = cap.get(1).unwrap();
         let unit = cap.get(2).unwrap();

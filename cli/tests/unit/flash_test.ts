@@ -1033,11 +1033,11 @@ Deno.test(
     await listeningPromise;
     const url = `http://${hostname}:${port}/`;
     const args = ["-X", "DELETE", url];
-    const { success } = await Deno.spawn("curl", {
+    const { success } = await new Deno.Command("curl", {
       args,
       stdout: "null",
       stderr: "null",
-    });
+    }).output();
     assert(success);
     await promise;
     ac.abort();
