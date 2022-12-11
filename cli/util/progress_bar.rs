@@ -4,10 +4,9 @@ use crate::colors;
 
 mod dprint {
   use console_static_text::ConsoleStaticText;
-  use console_static_text::ConsoleStaticTextOptions;
   use deno_core::parking_lot::Mutex;
   use deno_runtime::colors;
-  use std::borrow::Cow;
+  use deno_runtime::ops::tty::ConsoleSize;
   use std::sync::atomic::AtomicU64;
   use std::sync::atomic::Ordering;
   use std::sync::Arc;
@@ -109,15 +108,12 @@ mod dprint {
           has_draw_thread: false,
           total_entries: 0,
           entries: Vec::new(),
-          text: ConsoleStaticText::new(ConsoleStaticTextOptions {
-            terminal_width: Box::new(|| console_size().unwrap().cols as u16),
-            strip_ansi_codes: Box::new(|text| {
-              strip_ansi_escapes::strip(&text)
-                .ok()
-                .and_then(|bytes| String::from_utf8(bytes).ok())
-                .map(Cow::Owned)
-                .unwrap_or(Cow::Borrowed(text))
-            }),
+          text: ConsoleStaticText::new(|| {
+            let size = console_size().unwrap();
+            console_static_text::ConsoleSize {
+              cols: Some(size.cols as u16),
+              rows: Some(size.rows as u16),
+            }
           }),
         })),
       }
@@ -188,7 +184,9 @@ mod dprint {
       let drawer_id = internal_state.drawer_id;
       let internal_state = self.state.clone();
       tokio::task::spawn_blocking(move || {
+        let mut previous_size = console_size().unwrap();
         loop {
+          let mut delay_ms = 120;
           {
             let mut internal_state = internal_state.lock();
             // exit if not the current draw thread
@@ -196,7 +194,13 @@ mod dprint {
               break;
             }
 
-            if !internal_state.entries.is_empty() {
+            let size = console_size().unwrap();
+            if size != previous_size {
+              // means the user is actively resizing the console...
+              // wait a little bit until they stop resizing
+              previous_size = size;
+              delay_ms = 400;
+            } else if !internal_state.entries.is_empty() {
               // prefer displaying download entries because they have more activity
               let displayed_entry = internal_state
                 .entries
@@ -217,9 +221,8 @@ mod dprint {
               let percent_done =
                 total_percent / (internal_state.total_entries as f64);
 
-              let terminal_width = console_size().unwrap().cols;
               let text = get_progress_bar_text(
-                terminal_width,
+                size.cols,
                 &displayed_entry,
                 percent_done,
                 internal_state.entries.len(),
@@ -227,13 +230,17 @@ mod dprint {
                 internal_state.start_time.elapsed().unwrap(),
               );
 
-              internal_state
-                .text
-                .eprint_with_width(&text, terminal_width as u16);
+              internal_state.text.eprint_with_size(
+                &text,
+                console_static_text::ConsoleSize {
+                  cols: Some(size.cols as u16),
+                  rows: Some(size.rows as u16),
+                },
+              );
             }
           }
 
-          std::thread::sleep(Duration::from_millis(120));
+          std::thread::sleep(Duration::from_millis(delay_ms));
         }
       });
     }

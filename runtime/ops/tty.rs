@@ -221,6 +221,7 @@ fn op_console_size(
   last_result
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ConsoleSize {
   pub cols: u32,
   pub rows: u32,
