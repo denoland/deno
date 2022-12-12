@@ -264,8 +264,8 @@ pub fn console_size(
         return Err(Error::last_os_error());
       }
       Ok(ConsoleSize {
-        col: size.ws_col as u32,
-        row: size.ws_row as u32,
+        cols: size.ws_col as u32,
+        rows: size.ws_row as u32,
       })
     }
   }
