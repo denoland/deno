@@ -152,7 +152,6 @@
   }
 
   /**
-   * 
    * @param {Deno.PermissionDescriptor} desc
    * @returns {Deno.PermissionDescriptor}
    */
