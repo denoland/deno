@@ -1,9 +1,13 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::Flags;
+use crate::args::ReplFlags;
+use crate::colors;
 use crate::proc_state::ProcState;
+use crate::worker::create_main_worker;
 use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::worker::MainWorker;
 use rustyline::error::ReadlineError;
 
 mod cdp;
@@ -74,12 +78,17 @@ async fn read_eval_file(
   Ok((*file.source).to_string())
 }
 
-pub async fn run(
-  ps: &ProcState,
-  worker: MainWorker,
-  maybe_eval_files: Option<Vec<String>>,
-  maybe_eval: Option<String>,
-) -> Result<i32, AnyError> {
+pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
+  let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
+  let ps = ProcState::build(flags).await?;
+  let mut worker = create_main_worker(
+    &ps,
+    main_module.clone(),
+    Permissions::from_options(&ps.options.permissions_options())?,
+  )
+  .await?;
+  worker.setup_repl().await?;
+  let worker = worker.into_main_worker();
   let mut repl_session = ReplSession::initialize(worker).await?;
   let mut rustyline_channel = rustyline_channel();
   let mut should_exit_on_interrupt = false;
@@ -92,9 +101,9 @@ pub async fn run(
   let history_file_path = ps.dir.repl_history_file_path();
   let editor = ReplEditor::new(helper, history_file_path)?;
 
-  if let Some(eval_files) = maybe_eval_files {
+  if let Some(eval_files) = repl_flags.eval_files {
     for eval_file in eval_files {
-      match read_eval_file(ps, &eval_file).await {
+      match read_eval_file(&ps, &eval_file).await {
         Ok(eval_source) => {
           let output = repl_session
             .evaluate_line_and_get_output(&eval_source)
@@ -114,7 +123,7 @@ pub async fn run(
     }
   }
 
-  if let Some(eval) = maybe_eval {
+  if let Some(eval) = repl_flags.eval {
     let output = repl_session.evaluate_line_and_get_output(&eval).await?;
     // only output errors
     if let EvaluationOutput::Error(error_text) = output {
@@ -127,6 +136,13 @@ pub async fn run(
   if !ps.options.is_quiet() {
     println!("Deno {}", crate::version::deno());
     println!("exit using ctrl+d, ctrl+c, or close()");
+    if repl_flags.is_default_command {
+      println!(
+        "{}",
+        colors::yellow("REPL is running with all permissions allowed.")
+      );
+      println!("To specify permissions, run `deno repl` with allow flags.")
+    }
   }
 
   loop {

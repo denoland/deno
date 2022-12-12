@@ -227,6 +227,12 @@ mod test {
     output: "test/ops_sanitizer_multiple_timeout_tests_no_trace.out",
   });
 
+  itest!(trace_ops_catch_error {
+    args: "test -A --trace-ops test/trace_ops_caught_error/main.ts",
+    exit_code: 0,
+    output: "test/trace_ops_caught_error/main.out",
+  });
+
   // TODO(@littledivy): re-enable this test, recent optimizations made output non deterministic.
   // https://github.com/denoland/deno/issues/14268
   //

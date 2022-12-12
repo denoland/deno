@@ -28,7 +28,11 @@ mod init {
     assert_contains!(stderr, "Project initialized");
     assert!(!stderr.contains("cd"));
     assert_contains!(stderr, "deno run main.ts");
+    assert_contains!(stderr, "deno task dev");
     assert_contains!(stderr, "deno test");
+    assert_contains!(stderr, "deno bench");
+
+    assert!(cwd.join("deno.jsonc").exists());
 
     let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
     let output = deno_cmd
@@ -57,6 +61,18 @@ mod init {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_contains!(stdout, "1 passed");
+
+    let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
+    let output = deno_cmd
+      .current_dir(cwd)
+      .env("NO_COLOR", "1")
+      .arg("bench")
+      .stdout(Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
   }
 
   #[test]
@@ -80,7 +96,11 @@ mod init {
     assert_contains!(stderr, "Project initialized");
     assert_contains!(stderr, "cd my_dir");
     assert_contains!(stderr, "deno run main.ts");
+    assert_contains!(stderr, "deno task dev");
     assert_contains!(stderr, "deno test");
+    assert_contains!(stderr, "deno bench");
+
+    assert!(cwd.join("my_dir/deno.jsonc").exists());
 
     let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
     let output = deno_cmd
@@ -110,6 +130,19 @@ mod init {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_contains!(stdout, "1 passed");
+
+    let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
+    let output = deno_cmd
+      .current_dir(cwd)
+      .env("NO_COLOR", "1")
+      .arg("bench")
+      .arg("my_dir/main_bench.ts")
+      .stdout(Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
   }
 
   #[test]
@@ -131,6 +164,7 @@ mod init {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_eq!(stdout, "");
+    assert!(cwd.join("deno.jsonc").exists());
 
     let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
     let output = deno_cmd
@@ -159,5 +193,17 @@ mod init {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_contains!(stdout, "1 passed");
+
+    let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
+    let output = deno_cmd
+      .current_dir(cwd)
+      .env("NO_COLOR", "1")
+      .arg("bench")
+      .stdout(Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
   }
 }
