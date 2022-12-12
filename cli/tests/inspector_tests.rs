@@ -13,6 +13,7 @@ use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
 use std::io::BufRead;
 use std::process::Child;
 use test_util as util;
+use test_util::TempDir;
 use tokio::net::TcpStream;
 use util::http_server;
 
@@ -1318,5 +1319,60 @@ mod inspector {
     assert_eq!(&tester.stderr_line(), "error: Uncaught Error: boom!");
 
     assert_eq!(tester.child.wait().unwrap().code(), Some(1));
+  }
+
+  #[tokio::test]
+  async fn inspector_wait() {
+    let script = util::testdata_path().join("inspector/inspect_wait.js");
+    let temp_dir = TempDir::new();
+
+    let child = util::deno_cmd()
+      .current_dir(temp_dir.path())
+      .arg("run")
+      .arg("--quiet")
+      .arg("-A")
+      .arg(inspect_flag_with_unique_port("--inspect-wait"))
+      .arg(script)
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+    assert!(!temp_dir.path().join("hello.txt").exists());
+
+    let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
+
+    tester.assert_stderr_for_inspect_brk();
+    tester
+      .send_many(&[
+        json!({"id":1,"method":"Runtime.enable"}),
+        json!({"id":2,"method":"Debugger.enable"}),
+      ])
+      .await;
+    tester.assert_received_messages(
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
+    // TODO(bartlomieju): ideally this shouldn't be needed, but currently there's
+    // no way to express that in inspector code. Most clients always send this
+    // message anyway.
+    tester
+      .send(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
+      .await;
+    tester
+      .assert_received_messages(&[r#"{"id":3,"result":{}}"#], &[])
+      .await;
+    assert_eq!(&tester.stderr_line(), "Debugger session started.");
+    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+    assert_eq!(&tester.stderr_line(), "did run");
+    assert!(temp_dir.path().join("hello.txt").exists());
+    tester.child.kill().unwrap();
   }
 }

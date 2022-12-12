@@ -472,7 +472,6 @@ async fn create_main_worker_internal(
   let module_loader = CliModuleLoader::new(ps.clone());
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
-  let should_break_on_first_statement = ps.options.inspect_brk().is_some();
 
   let create_web_worker_cb =
     create_web_worker_callback(ps.clone(), stdio.clone());
@@ -510,7 +509,7 @@ async fn create_main_worker_internal(
         .map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: ps.options.enable_testing_features(),
       locale: deno_core::v8::icu::get_language_tag(),
-      location: ps.options.location_flag().map(ToOwned::to_owned),
+      location: ps.options.location_flag().clone(),
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
       runtime_version: version::deno(),
@@ -524,7 +523,7 @@ async fn create_main_worker_internal(
     unsafely_ignore_certificate_errors: ps
       .options
       .unsafely_ignore_certificate_errors()
-      .map(ToOwned::to_owned),
+      .clone(),
     root_cert_store: Some(ps.root_cert_store.clone()),
     seed: ps.options.seed(),
     source_map_getter: Some(Box::new(module_loader.clone())),
@@ -533,7 +532,8 @@ async fn create_main_worker_internal(
     web_worker_preload_module_cb,
     web_worker_pre_execute_module_cb,
     maybe_inspector_server,
-    should_break_on_first_statement,
+    should_break_on_first_statement: ps.options.inspect_brk().is_some(),
+    should_wait_for_inspector_session: ps.options.inspect_wait().is_some(),
     module_loader,
     npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
     get_error_class_fn: Some(&errors::get_error_class_name),
@@ -685,7 +685,7 @@ fn create_web_worker_callback(
       unsafely_ignore_certificate_errors: ps
         .options
         .unsafely_ignore_certificate_errors()
-        .map(ToOwned::to_owned),
+        .clone(),
       root_cert_store: Some(ps.root_cert_store.clone()),
       seed: ps.options.seed(),
       create_web_worker_cb,
@@ -755,6 +755,7 @@ mod tests {
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
+      should_wait_for_inspector_session: false,
       module_loader: Rc::new(FsModuleLoader),
       npm_resolver: None,
       get_error_class_fn: None,

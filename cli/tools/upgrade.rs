@@ -351,6 +351,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   check_exe(&new_exe_path)?;
 
   if upgrade_flags.dry_run {
+    fs::remove_file(&new_exe_path)?;
     log::info!("Upgraded successfully (dry run)");
   } else {
     let output_exe_path =
@@ -525,7 +526,7 @@ pub fn unpack(
       fs::write(&archive_path, &archive_data)?;
       Command::new("unzip")
         .current_dir(&temp_dir)
-        .arg(archive_path)
+        .arg(&archive_path)
         .spawn()
         .map_err(|err| {
           if err.kind() == std::io::ErrorKind::NotFound {
@@ -543,6 +544,7 @@ pub fn unpack(
   };
   assert!(unpack_status.success());
   assert!(exe_path.exists());
+  fs::remove_file(&archive_path)?;
   Ok(exe_path)
 }
 
