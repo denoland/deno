@@ -437,8 +437,7 @@ fn napi_create_int32(
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   check_arg!(result);
-  // TODO(@littledivy): Expose v8::Number::NewFromUnsigned from rusty_v8.
-  *result = v8::Number::new(&mut env.scope(), value as f64).into();
+  *result = v8::Integer::new(&mut env.scope(), value).into();
   Ok(())
 }
 
@@ -450,8 +449,7 @@ fn napi_create_uint32(
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   check_arg!(result);
-  // TODO(@littledivy): Expose v8::Number::NewFromUnsigned from rusty_v8.
-  *result = v8::Number::new(&mut env.scope(), value as f64).into();
+  *result = v8::Integer::new_from_unsigned(&mut env.scope(), value).into();
   Ok(())
 }
 
