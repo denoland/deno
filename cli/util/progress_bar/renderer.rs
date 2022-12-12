@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use deno_runtime::colors;
@@ -31,14 +30,13 @@ impl<'a> ProgressData<'a> {
     self
       .entries
       .iter()
-      .filter(|e| e.percent() > 0f64)
-      .next()
-      .or_else(|| self.entries.iter().next())
+      .find(|e| e.percent() > 0f64)
+      .or_else(|| self.entries.iter().last())
   }
 }
 
 pub trait ProgressBarRenderer: Send + std::fmt::Debug {
-  fn render<'a>(&self, data: ProgressData<'a>) -> String;
+  fn render(&self, data: ProgressData) -> String;
 }
 
 /// Indicatif style progress bar.
@@ -46,7 +44,7 @@ pub trait ProgressBarRenderer: Send + std::fmt::Debug {
 pub struct BarProgressBarRenderer;
 
 impl ProgressBarRenderer for BarProgressBarRenderer {
-  fn render<'a>(&self, data: ProgressData<'a>) -> String {
+  fn render(&self, data: ProgressData) -> String {
     let display_entry = match data.preferred_display_entry() {
       Some(v) => v,
       None => return String::new(),
@@ -134,7 +132,7 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
 pub struct TextOnlyProgressBarRenderer;
 
 impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
-  fn render<'a>(&self, data: ProgressData<'a>) -> String {
+  fn render(&self, data: ProgressData) -> String {
     let display_entry = match data.preferred_display_entry() {
       Some(v) => v,
       None => return String::new(),

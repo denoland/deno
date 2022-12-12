@@ -243,7 +243,7 @@ pub fn console_size(
       if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
         == 0
       {
-        return Err(Error::last_os_error().into());
+        return Err(Error::last_os_error());
       }
       Ok(ConsoleSize {
         cols: bufinfo.dwSize.X as u32,
@@ -261,7 +261,7 @@ pub fn console_size(
     unsafe {
       let mut size: libc::winsize = std::mem::zeroed();
       if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-        return Err(Error::last_os_error().into());
+        return Err(Error::last_os_error());
       }
       Ok(ConsoleSize {
         col: size.ws_col as u32,

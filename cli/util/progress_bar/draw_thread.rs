@@ -15,9 +15,6 @@ use crate::util::console::show_cursor;
 use super::renderer::ProgressBarRenderer;
 use super::renderer::ProgressData;
 
-// Inspired by Indicatif, but this custom implementation allows
-// for more control over what's going on under the hood.
-
 #[derive(Clone, Debug)]
 pub struct ProgressBarEntry {
   id: usize,

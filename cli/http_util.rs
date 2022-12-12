@@ -266,23 +266,21 @@ impl HttpClient {
           None => String::new(),
         }
       );
-    } else {
-      if let Some(total_size) = response.content_length() {
-        progress_guard.set_total_size(total_size);
-        let mut current_size = 0;
-        let mut data = Vec::with_capacity(total_size as usize);
-        let mut stream = response.bytes_stream();
-        while let Some(item) = stream.next().await {
-          let bytes = item?;
-          current_size += bytes.len() as u64;
-          progress_guard.set_position(current_size);
-          data.extend(bytes.into_iter());
-        }
-        Ok(Some(data))
-      } else {
-        let bytes = response.bytes().await?;
-        Ok(Some(bytes.into()))
+    } else if let Some(total_size) = response.content_length() {
+      progress_guard.set_total_size(total_size);
+      let mut current_size = 0;
+      let mut data = Vec::with_capacity(total_size as usize);
+      let mut stream = response.bytes_stream();
+      while let Some(item) = stream.next().await {
+        let bytes = item?;
+        current_size += bytes.len() as u64;
+        progress_guard.set_position(current_size);
+        data.extend(bytes.into_iter());
       }
+      Ok(Some(data))
+    } else {
+      let bytes = response.bytes().await?;
+      Ok(Some(bytes.into()))
     }
   }
 

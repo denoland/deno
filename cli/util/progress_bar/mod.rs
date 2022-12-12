@@ -10,6 +10,9 @@ use super::console::console_size;
 mod draw_thread;
 mod renderer;
 
+// Inspired by Indicatif, but this custom implementation allows
+// for more control over what's going on under the hood.
+
 pub struct UpdateGuard {
   maybe_entry: Option<ProgressBarEntry>,
 }
@@ -88,7 +91,7 @@ impl ProgressBar {
         if !msg.is_empty() {
           log::log!(log::Level::Info, "{} {}", colors::green("Download"), msg);
         }
-        return UpdateGuard { maybe_entry: None };
+        UpdateGuard { maybe_entry: None }
       }
     }
   }

@@ -446,24 +446,21 @@ async fn download_package(
     let progress = progress_bar.update("");
     progress.set_total_size(total_size);
     while let Some(item) = stream.next().await {
-      std::thread::sleep_ms(10); // todo: obviously remove
       let bytes = item?;
       current_size += bytes.len() as u64;
       data.extend_from_slice(&bytes);
       if progress_bar.is_enabled() {
         progress.set_position(current_size);
+      } else if skip_print == 0 {
+        log::info!(
+          "{} / {} ({:^5.1}%)",
+          human_download_size(current_size, total_size),
+          human_download_size(total_size, total_size),
+          (current_size as f64 / total_size as f64) * 100.0,
+        );
+        skip_print = 10;
       } else {
-        if skip_print == 0 {
-          log::info!(
-            "{} / {} ({:^5.1}%)",
-            human_download_size(current_size, total_size),
-            human_download_size(total_size, total_size),
-            (current_size as f64 / total_size as f64) * 100.0,
-          );
-          skip_print = 10;
-        } else {
-          skip_print -= 1;
-        }
+        skip_print -= 1;
       }
     }
     drop(progress);
