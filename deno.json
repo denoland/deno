@@ -1,0 +1,6 @@
+{
+  "tasks": {
+    "format": "deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js",
+    "lint": "deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js"
+  }
+}

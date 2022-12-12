@@ -295,14 +295,14 @@ jobs:
                       ~/.cargo/registry/index/github.com-1ecc6299db9ec823
           fi
 
-      - name: test_format.js
+      - name: Format
         if: matrix.job == 'lint'
-        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
+        run: deno task format --check
 
-      - name: lint.js
+      - name: Lint
         if: matrix.job == 'lint'
         # TODO(ry) assert matrix.profile == "debug"
-        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
+        run: deno task lint
 
       - name: Build debug
         if: |
