@@ -648,7 +648,7 @@ fn napi_create_symbol(
   let description = description
     .map(|d| match d.to_string(scope) {
       Some(s) => Ok(s),
-      None => return Err(Error::StringExpected),
+      None => Err(Error::StringExpected),
     })
     .transpose()?;
   *result = v8::Symbol::new(scope, description).into();
