@@ -100,9 +100,9 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
 
     // suffix
     if data.display_entry.message.is_empty() {
-      text.push_str(&bytes_text);
+      text.push_str(&colors::gray(bytes_text).to_string());
     }
-    text.push_str(&total_text);
+    text.push_str(&colors::gray(total_text).to_string());
 
     text
   }
@@ -141,8 +141,8 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
       "{} {}{}{}",
       colors::green("Download"),
       data.display_entry.message,
-      bytes_text,
-      total_text,
+      colors::gray(bytes_text),
+      colors::gray(total_text),
     )
   }
 }
