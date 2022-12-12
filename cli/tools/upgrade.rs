@@ -6,6 +6,7 @@ use crate::args::UpgradeFlags;
 use crate::colors;
 use crate::util::display::human_download_size;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
 
 use deno_core::anyhow::bail;
@@ -440,7 +441,7 @@ async fn download_package(
     let mut data = Vec::with_capacity(total_size as usize);
     let mut stream = res.bytes_stream();
     let mut skip_print = 0;
-    let progress_bar = ProgressBar::default();
+    let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
     let clear_guard = progress_bar.clear_guard();
     let progress =
       progress_bar.update_with_progress(String::new(), total_size as u64);
