@@ -8,28 +8,35 @@ use once_cell::sync::Lazy;
 pub const PERMISSION_EMOJI: &str = "⚠️";
 
 static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
-  Lazy::new(|| {
-    Mutex::new(Box::new(TtyPrompter {
-      maybe_before_prompt_callback: None,
-      maybe_after_prompt_callback: None,
-    }))
-  });
+  Lazy::new(|| Mutex::new(Box::new(TtyPrompter)));
+
+static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
+  Lazy::new(|| Mutex::new(None));
+
+static MAYBE_AFTER_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
+  Lazy::new(|| Mutex::new(None));
 
 pub fn permission_prompt(
   message: &str,
   flag: &str,
   api_name: Option<&str>,
 ) -> bool {
-  PERMISSION_PROMPTER.lock().prompt(message, flag, api_name)
+  if let Some(before_callback) = MAYBE_BEFORE_PROMPT_CALLBACK.lock().as_mut() {
+    before_callback();
+  }
+  let r = PERMISSION_PROMPTER.lock().prompt(message, flag, api_name);
+  if let Some(after_callback) = MAYBE_AFTER_PROMPT_CALLBACK.lock().as_mut() {
+    after_callback();
+  }
+  r
 }
 
-pub fn set_prompt_callback(
+pub fn set_prompt_callbacks(
   before_callback: Option<PromptCallback>,
   after_callback: Option<PromptCallback>,
 ) {
-  let mut prompter = PERMISSION_PROMPTER.lock();
-  prompter.set_before_prompt_callback(before_callback);
-  prompter.set_after_prompt_callback(after_callback);
+  *MAYBE_BEFORE_PROMPT_CALLBACK.lock() = before_callback;
+  *MAYBE_AFTER_PROMPT_CALLBACK.lock() = after_callback;
 }
 
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
@@ -41,38 +48,18 @@ pub trait PermissionPrompter: Send + Sync {
     name: &str,
     api_name: Option<&str>,
   ) -> bool;
-  fn set_before_prompt_callback(&mut self, callback: Option<PromptCallback>);
-  fn set_after_prompt_callback(&mut self, callback: Option<PromptCallback>);
 }
 
-pub struct TtyPrompter {
-  maybe_before_prompt_callback: Option<PromptCallback>,
-  maybe_after_prompt_callback: Option<PromptCallback>,
-}
+pub struct TtyPrompter;
 
 impl PermissionPrompter for TtyPrompter {
-  fn set_before_prompt_callback(&mut self, callback: Option<PromptCallback>) {
-    self.maybe_before_prompt_callback = callback;
-  }
-
-  fn set_after_prompt_callback(&mut self, callback: Option<PromptCallback>) {
-    self.maybe_after_prompt_callback = callback;
-  }
-
   fn prompt(
     &mut self,
     message: &str,
     name: &str,
     api_name: Option<&str>,
   ) -> bool {
-    if let Some(callback) = self.maybe_before_prompt_callback.as_mut() {
-      callback();
-    }
-
     if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-      if let Some(callback) = self.maybe_after_prompt_callback.as_mut() {
-        callback();
-      }
       return false;
     };
 
@@ -196,9 +183,6 @@ impl PermissionPrompter for TtyPrompter {
     // buffered data cannot effect the prompt.
     if let Err(err) = clear_stdin() {
       eprintln!("Error clearing stdin for permission prompt. {:#}", err);
-      if let Some(callback) = self.maybe_after_prompt_callback.as_mut() {
-        callback();
-      }
       return false; // don't grant permission if this fails
     }
 
@@ -251,9 +235,6 @@ impl PermissionPrompter for TtyPrompter {
       };
     };
 
-    if let Some(callback) = self.maybe_after_prompt_callback.as_mut() {
-      callback();
-    }
     value
   }
 }
@@ -274,17 +255,6 @@ pub mod tests {
       _api_name: Option<&str>,
     ) -> bool {
       STUB_PROMPT_VALUE.load(Ordering::SeqCst)
-    }
-
-    fn set_before_prompt_callback(
-      &mut self,
-      _callback: Option<PromptCallback>,
-    ) {
-      panic!("not supported");
-    }
-
-    fn set_after_prompt_callback(&mut self, _callback: Option<PromptCallback>) {
-      panic!("not supported");
     }
   }
 

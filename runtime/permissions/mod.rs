@@ -27,7 +27,7 @@ mod prompter;
 use prompter::permission_prompt;
 use prompter::PERMISSION_EMOJI;
 
-pub use prompter::set_prompt_callback;
+pub use prompter::set_prompt_callbacks;
 pub use prompter::PromptCallback;
 
 static DEBUG_LOG_ENABLED: Lazy<bool> =
