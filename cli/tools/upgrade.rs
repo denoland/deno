@@ -350,7 +350,9 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
-  if !upgrade_flags.dry_run {
+  if upgrade_flags.dry_run {
+    log::info!("Upgraded successfully (dry run)");
+  } else {
     let output_exe_path =
       upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
     let output_result = if *output_exe_path == current_exe_path {
@@ -379,9 +381,8 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
         return Err(err.into());
       }
     }
+    log::info!("Upgraded successfully");
   }
-
-  log::info!("Upgraded successfully");
 
   Ok(())
 }
