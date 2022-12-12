@@ -97,23 +97,35 @@ pub fn to_v8_error<'a>(
   get_class: GetErrorClassFn,
   error: &Error,
 ) -> v8::Local<'a, v8::Value> {
-  let cb = JsRuntime::state(scope)
+  let tc_scope = &mut v8::TryCatch::new(scope);
+  let cb = JsRuntime::state(tc_scope)
     .borrow()
     .js_build_custom_error_cb
     .clone()
     .expect("Custom error builder must be set");
-  let cb = cb.open(scope);
-  let this = v8::undefined(scope).into();
-  let class = v8::String::new(scope, get_class(error)).unwrap();
-  let message = v8::String::new(scope, &format!("{:#}", error)).unwrap();
+  let cb = cb.open(tc_scope);
+  let this = v8::undefined(tc_scope).into();
+  let class = v8::String::new(tc_scope, get_class(error)).unwrap();
+  let message = v8::String::new(tc_scope, &format!("{:#}", error)).unwrap();
   let mut args = vec![class.into(), message.into()];
   if let Some(code) = crate::error_codes::get_error_code(error) {
-    args.push(v8::String::new(scope, code).unwrap().into());
+    args.push(v8::String::new(tc_scope, code).unwrap().into());
   }
-  let exception = cb
-    .call(scope, this, &args)
-    .expect("Custom error class must have a builder registered");
-  exception
+  let maybe_exception = cb.call(tc_scope, this, &args);
+
+  match maybe_exception {
+    Some(exception) => exception,
+    None => {
+      let mut msg =
+        "Custom error class must have a builder registered".to_string();
+      if tc_scope.has_caught() {
+        let e = tc_scope.exception().unwrap();
+        let js_error = JsError::from_v8_exception(tc_scope, e);
+        msg = format!("{}: {}", msg, js_error.exception_message);
+      }
+      panic!("{}", msg);
+    }
+  }
 }
 
 /// A `JsError` represents an exception coming from V8, with stack frames and
