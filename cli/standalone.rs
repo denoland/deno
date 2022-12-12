@@ -6,7 +6,7 @@ use crate::file_fetcher::get_source_from_data_url;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::version;
-use crate::ImportMapResolver;
+use crate::CliResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
@@ -125,7 +125,7 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
 
 struct EmbeddedModuleLoader {
   eszip: eszip::EszipV2,
-  maybe_import_map_resolver: Option<ImportMapResolver>,
+  maybe_import_map_resolver: Option<CliResolver>,
 }
 
 impl ModuleLoader for EmbeddedModuleLoader {
@@ -231,7 +231,7 @@ pub async fn run(
     eszip,
     maybe_import_map_resolver: metadata.maybe_import_map.map(
       |(base, source)| {
-        ImportMapResolver::new(Arc::new(
+        CliResolver::with_import_map(Arc::new(
           parse_from_json(&base, &source).unwrap().import_map,
         ))
       },
@@ -276,6 +276,7 @@ pub async fn run(
         .unwrap_or(1),
       debug_flag: metadata.log_level.map_or(false, |l| l == Level::Debug),
       enable_testing_features: false,
+      locale: deno_core::v8::icu::get_language_tag(),
       location: metadata.location,
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
@@ -286,6 +287,7 @@ pub async fn run(
       inspect: ps.options.is_inspecting(),
     },
     extensions: ops::cli_exts(ps.clone()),
+    startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
     root_cert_store: Some(root_cert_store),
@@ -297,6 +299,7 @@ pub async fn run(
     web_worker_pre_execute_module_cb: web_worker_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
+    should_wait_for_inspector_session: false,
     module_loader,
     npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),

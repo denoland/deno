@@ -31,6 +31,7 @@
     readableStreamClose,
     readableStreamDisturb,
     readableStreamCollectIntoUint8Array,
+    readableStreamThrowIfErrored,
     createProxy,
     ReadableStreamPrototype,
   } = globalThis.__bootstrap.streams;
@@ -41,7 +42,6 @@
     JSONParse,
     ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
-    PromiseResolve,
     TypedArrayPrototypeSlice,
     TypeError,
     Uint8Array,
@@ -147,6 +147,7 @@
           this.streamOrStatic,
         )
       ) {
+        readableStreamThrowIfErrored(this.stream);
         return readableStreamCollectIntoUint8Array(this.stream);
       } else {
         this.streamOrStatic.consumed = true;
@@ -222,11 +223,17 @@
    * @returns {void}
    */
   function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
-    function consumeBody(object) {
-      if (object[bodySymbol] !== null) {
-        return object[bodySymbol].consume();
-      }
-      return PromiseResolve(new Uint8Array());
+    async function consumeBody(object, type) {
+      webidl.assertBranded(object, prototype);
+
+      const body = object[bodySymbol] !== null
+        ? await object[bodySymbol].consume()
+        : new Uint8Array();
+
+      const mimeType = type === "Blob" || type === "FormData"
+        ? object[mimeTypeSymbol]
+        : null;
+      return packageData(body, type, mimeType);
     }
 
     /** @type {PropertyDescriptorMap} */
@@ -262,10 +269,8 @@
       },
       arrayBuffer: {
         /** @returns {Promise<ArrayBuffer>} */
-        value: async function arrayBuffer() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "ArrayBuffer");
+        value: function arrayBuffer() {
+          return consumeBody(this, "ArrayBuffer");
         },
         writable: true,
         configurable: true,
@@ -273,10 +278,8 @@
       },
       blob: {
         /** @returns {Promise<Blob>} */
-        value: async function blob() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "Blob", this[mimeTypeSymbol]);
+        value: function blob() {
+          return consumeBody(this, "Blob");
         },
         writable: true,
         configurable: true,
@@ -284,10 +287,8 @@
       },
       formData: {
         /** @returns {Promise<FormData>} */
-        value: async function formData() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "FormData", this[mimeTypeSymbol]);
+        value: function formData() {
+          return consumeBody(this, "FormData");
         },
         writable: true,
         configurable: true,
@@ -295,10 +296,8 @@
       },
       json: {
         /** @returns {Promise<any>} */
-        value: async function json() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "JSON");
+        value: function json() {
+          return consumeBody(this, "JSON");
         },
         writable: true,
         configurable: true,
@@ -306,10 +305,8 @@
       },
       text: {
         /** @returns {Promise<string>} */
-        value: async function text() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "text");
+        value: function text() {
+          return consumeBody(this, "text");
         },
         writable: true,
         configurable: true,

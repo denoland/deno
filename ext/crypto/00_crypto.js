@@ -393,16 +393,16 @@
         if (algorithm.length === undefined) {
           switch (algorithm.hash.name) {
             case "SHA-1":
-              length = 160;
+              length = 512;
               break;
             case "SHA-256":
-              length = 256;
+              length = 512;
               break;
             case "SHA-384":
-              length = 384;
+              length = 1024;
               break;
             case "SHA-512":
-              length = 512;
+              length = 1024;
               break;
             default:
               throw new DOMException(
@@ -2880,10 +2880,10 @@
 
         // 7.
         if (
-          keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sign"
+          keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig"
         ) {
           throw new DOMException(
-            "'use' property of JsonWebKey must be 'sign'",
+            "'use' property of JsonWebKey must be 'sig'",
             "DataError",
           );
         }
@@ -4652,6 +4652,11 @@
       webidl.assertBranded(this, CryptoPrototype);
       const prefix = "Failed to execute 'getRandomValues' on 'Crypto'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
+      // Fast path for Uint8Array
+      if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, arrayBufferView)) {
+        ops.op_crypto_get_random_values(arrayBufferView);
+        return arrayBufferView;
+      }
       arrayBufferView = webidl.converters.ArrayBufferView(arrayBufferView, {
         prefix,
         context: "Argument 1",

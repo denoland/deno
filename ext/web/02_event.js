@@ -139,6 +139,8 @@
   const _dispatched = Symbol("[[dispatched]]");
   const _isTrusted = Symbol("[[isTrusted]]");
   const _path = Symbol("[[path]]");
+  // internal.
+  const _skipInternalInit = Symbol("[[skipSlowInit]]");
 
   class Event {
     constructor(type, eventInitDict = {}) {
@@ -152,29 +154,47 @@
       this[_isTrusted] = false;
       this[_path] = [];
 
-      webidl.requiredArguments(arguments.length, 1, {
-        prefix: "Failed to construct 'Event'",
-      });
-      type = webidl.converters.DOMString(type, {
-        prefix: "Failed to construct 'Event'",
-        context: "Argument 1",
-      });
-      const eventInit = eventInitConverter(eventInitDict, {
-        prefix: "Failed to construct 'Event'",
-        context: "Argument 2",
-      });
-      this[_attributes] = {
-        type,
-        ...eventInit,
-        currentTarget: null,
-        eventPhase: Event.NONE,
-        target: null,
-        timeStamp: DateNow(),
-      };
-      ReflectDefineProperty(this, "isTrusted", {
-        enumerable: true,
-        get: isTrusted,
-      });
+      if (!eventInitDict[_skipInternalInit]) {
+        webidl.requiredArguments(arguments.length, 1, {
+          prefix: "Failed to construct 'Event'",
+        });
+        type = webidl.converters.DOMString(type, {
+          prefix: "Failed to construct 'Event'",
+          context: "Argument 1",
+        });
+        const eventInit = eventInitConverter(eventInitDict, {
+          prefix: "Failed to construct 'Event'",
+          context: "Argument 2",
+        });
+        this[_attributes] = {
+          type,
+          ...eventInit,
+          currentTarget: null,
+          eventPhase: Event.NONE,
+          target: null,
+          timeStamp: DateNow(),
+        };
+        // [LegacyUnforgeable]
+        ReflectDefineProperty(this, "isTrusted", {
+          enumerable: true,
+          get: isTrusted,
+        });
+      } else {
+        this[_attributes] = {
+          type,
+          data: eventInitDict.data ?? null,
+          bubbles: eventInitDict.bubbles ?? false,
+          cancelable: eventInitDict.cancelable ?? false,
+          composed: eventInitDict.composed ?? false,
+          currentTarget: null,
+          eventPhase: Event.NONE,
+          target: null,
+          timeStamp: DateNow(),
+        };
+        // TODO(@littledivy): Not spec compliant but performance is hurt badly
+        // for users of `_skipInternalInit`.
+        this.isTrusted = false;
+      }
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -1191,6 +1211,7 @@
         bubbles: eventInitDict?.bubbles ?? false,
         cancelable: eventInitDict?.cancelable ?? false,
         composed: eventInitDict?.composed ?? false,
+        [_skipInternalInit]: eventInitDict?.[_skipInternalInit],
       });
 
       this.data = eventInitDict?.data ?? null;
@@ -1471,19 +1492,6 @@
     reportException(error);
   }
 
-  window[webidl.brand] = webidl.brand;
-  window.Event = Event;
-  window.EventTarget = EventTarget;
-  window.ErrorEvent = ErrorEvent;
-  window.CloseEvent = CloseEvent;
-  window.MessageEvent = MessageEvent;
-  window.CustomEvent = CustomEvent;
-  window.ProgressEvent = ProgressEvent;
-  window.PromiseRejectionEvent = PromiseRejectionEvent;
-  window.dispatchEvent = EventTarget.prototype.dispatchEvent;
-  window.addEventListener = EventTarget.prototype.addEventListener;
-  window.removeEventListener = EventTarget.prototype.removeEventListener;
-  window.reportError = reportError;
   window.__bootstrap.eventTarget = {
     EventTarget,
     setEventTargetData,
@@ -1494,5 +1502,14 @@
     setIsTrusted,
     setTarget,
     defineEventHandler,
+    _skipInternalInit,
+    Event,
+    ErrorEvent,
+    CloseEvent,
+    MessageEvent,
+    CustomEvent,
+    ProgressEvent,
+    PromiseRejectionEvent,
+    reportError,
   };
 })(this);

@@ -5,12 +5,15 @@ import { getPrebuiltToolPath, join, ROOT_PATH } from "./util.js";
 async function dprint() {
   const configFile = join(ROOT_PATH, ".dprint.json");
   const execPath = getPrebuiltToolPath("dprint");
-  const { success } = await Deno.spawn(execPath, {
+  const cmd = new Deno.Command(execPath, {
     args: ["fmt", "--config=" + configFile],
     stdout: "inherit",
     stderr: "inherit",
   });
-  if (!success) {
+
+  const { code } = await cmd.output();
+
+  if (code > 0) {
     throw new Error("dprint failed");
   }
 }
@@ -20,12 +23,14 @@ async function main() {
   await dprint();
 
   if (Deno.args.includes("--check")) {
-    const { success, stdout } = await Deno.spawn("git", {
+    const cmd = new Deno.Command("git", {
       args: ["status", "-uno", "--porcelain", "--ignore-submodules"],
       stderr: "inherit",
     });
 
-    if (!success) {
+    const { code, stdout } = await cmd.output();
+
+    if (code > 0) {
       throw new Error("git status failed");
     }
     const out = new TextDecoder().decode(stdout);

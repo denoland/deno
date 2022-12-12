@@ -770,7 +770,7 @@ fn napi_make_callback(
   }
 
   if !async_context.is_null() {
-    eprintln!("napi_make_callback: async_context is not supported");
+    log::info!("napi_make_callback: async_context is not supported");
   }
 
   let recv = transmute::<napi_value, v8::Local<v8::Value>>(recv);
@@ -1039,7 +1039,7 @@ fn napi_add_finalizer(
   _finalize_hint: *const c_void,
   _result: *mut napi_ref,
 ) -> Result {
-  eprintln!("napi_add_finalizer is not yet supported.");
+  log::info!("napi_add_finalizer is not yet supported.");
   Ok(())
 }
 
@@ -1285,7 +1285,7 @@ fn napi_delete_reference(env: *mut Env, _nref: napi_ref) -> Result {
 fn napi_detach_arraybuffer(_env: *mut Env, value: napi_value) -> Result {
   let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
   let ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  ab.detach();
+  ab.detach(None);
   Ok(())
 }
 
@@ -1355,7 +1355,7 @@ fn napi_get_boolean(
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   check_arg!(result);
-  *result = v8::Boolean::new(&mut env.scope(), value).into();
+  *result = v8::Boolean::new(env.isolate(), value).into();
   Ok(())
 }
 
@@ -1544,7 +1544,7 @@ fn napi_get_new_target(
 fn napi_get_null(env: *mut Env, result: *mut napi_value) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   check_arg!(result);
-  *result = v8::null(&mut env.scope()).into();
+  *result = v8::null(env.isolate()).into();
   Ok(())
 }
 
@@ -1635,7 +1635,7 @@ fn napi_get_typedarray_info(
 fn napi_get_undefined(env: *mut Env, result: *mut napi_value) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   check_arg!(result);
-  *result = v8::undefined(&mut env.scope()).into();
+  *result = v8::undefined(env.isolate()).into();
   Ok(())
 }
 
@@ -1823,9 +1823,7 @@ fn napi_is_detached_arraybuffer(
 ) -> Result {
   let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
   let _ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  // TODO: what is API for checking if ArrayBuffer is detached?
-  // there's only is_detachable I could find.
-  *result = false;
+  *result = _ab.was_detached();
   Ok(())
 }
 

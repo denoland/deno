@@ -1,4 +1,0 @@
-[WILDCARD]error: Uncaught PermissionDenied: Requires env access to "NODE_DEBUG", run again with the --allow-env flag
-console.log(Deno.env.get("NODE_DEBUG") ?? "ok");
-                     ^
-    at [WILDCARD]

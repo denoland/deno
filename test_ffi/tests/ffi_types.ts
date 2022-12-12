@@ -5,7 +5,7 @@
 const remote = Deno.dlopen(
   "dummy_lib.so",
   {
-    method1: { parameters: ["usize", "usize"], result: "void", callback: true },
+    method1: { parameters: ["usize", "bool"], result: "void", callback: true },
     method2: { parameters: [], result: "void" },
     method3: { parameters: ["usize"], result: "void" },
     method4: { parameters: ["isize"], result: "void" },
@@ -61,16 +61,16 @@ const remote = Deno.dlopen(
     static13: { type: "f32" },
     static14: { type: "f64" },
     static15: { type: "bool" },
-  } as const,
+  },
 );
 
 Deno.dlopen(
   "dummy_lib_2.so",
-  // @ts-expect-error: Returning a function pointer
   // is declared using "pointer" or "function" + UnsafeFnPointer
   {
     wrong_method1: {
       parameters: [],
+      // @ts-expect-error not assignable to type 'NativeResultType'
       result: {
         function: {
           parameters: [],
@@ -78,14 +78,18 @@ Deno.dlopen(
         },
       },
     },
-  } as const,
+  },
 );
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method1(0);
+// @ts-expect-error: Invalid argument
+remote.symbols.method1(0, 0);
+// @ts-expect-error: Invalid argument
+remote.symbols.method1(true, true);
 // @ts-expect-error: Invalid return type
-<number> remote.symbols.method1(0, 0);
-<void> remote.symbols.method1(0n, 0n);
+<number> remote.symbols.method1(0, true);
+<void> remote.symbols.method1(0n, true);
 
 // @ts-expect-error: Expected 0 arguments, but got 1.
 remote.symbols.method2(null);
@@ -157,12 +161,12 @@ result2.then((_1: Deno.PointerValue) => {});
 
 const result3 = remote.symbols.method18();
 // @ts-expect-error: Invalid argument
-let r3_0: Deno.TypedArray = result3;
+let r3_0: Deno.BufferSource = result3;
 let r3_1: Deno.UnsafePointer = result3;
 
 const result4 = remote.symbols.method19();
 // @ts-expect-error: Invalid argument
-result4.then((_0: Deno.TypedArray) => {});
+result4.then((_0: Deno.BufferSource) => {});
 result4.then((_1: Deno.UnsafePointer) => {});
 
 const fnptr = new Deno.UnsafeFnPointer(
@@ -170,7 +174,7 @@ const fnptr = new Deno.UnsafeFnPointer(
   {
     parameters: ["u32", "pointer"],
     result: "void",
-  } as const,
+  },
 );
 // @ts-expect-error: Invalid argument
 fnptr.call(null, null);
@@ -180,7 +184,7 @@ const unsafe_callback_wrong1 = new Deno.UnsafeCallback(
   {
     parameters: ["i8"],
     result: "void",
-  } as const,
+  },
   // @ts-expect-error: i8 is not a pointer
   (_: bigint) => {},
 );
@@ -188,7 +192,7 @@ const unsafe_callback_wrong2 = new Deno.UnsafeCallback(
   {
     parameters: ["pointer"],
     result: "u64",
-  } as const,
+  },
   // @ts-expect-error: must return a number or bigint
   (_: Deno.UnsafePointer) => {},
 );
@@ -196,7 +200,7 @@ const unsafe_callback_wrong3 = new Deno.UnsafeCallback(
   {
     parameters: [],
     result: "void",
-  } as const,
+  },
   // @ts-expect-error: no parameters
   (_: Deno.UnsafePointer) => {},
 );
@@ -204,7 +208,7 @@ const unsafe_callback_wrong4 = new Deno.UnsafeCallback(
   {
     parameters: ["u64"],
     result: "void",
-  } as const,
+  },
   // @ts-expect-error: Callback's 64bit parameters are either number or bigint
   (_: number) => {},
 );
@@ -212,21 +216,21 @@ const unsafe_callback_right1 = new Deno.UnsafeCallback(
   {
     parameters: ["u8", "u32", "pointer"],
     result: "void",
-  } as const,
+  },
   (_1: number, _2: number, _3: Deno.PointerValue) => {},
 );
 const unsafe_callback_right2 = new Deno.UnsafeCallback(
   {
     parameters: [],
     result: "u8",
-  } as const,
+  },
   () => 3,
 );
 const unsafe_callback_right3 = new Deno.UnsafeCallback(
   {
     parameters: [],
     result: "function",
-  } as const,
+  },
   // Callbacks can return other callbacks' pointers, if really wanted.
   () => unsafe_callback_right2.pointer,
 );
@@ -234,14 +238,14 @@ const unsafe_callback_right4 = new Deno.UnsafeCallback(
   {
     parameters: ["u8", "u32", "pointer"],
     result: "u8",
-  } as const,
+  },
   (_1: number, _2: number, _3: Deno.PointerValue) => 3,
 );
 const unsafe_callback_right5 = new Deno.UnsafeCallback(
   {
     parameters: ["u8", "i32", "pointer"],
     result: "void",
-  } as const,
+  },
   (_1: number, _2: number, _3: Deno.PointerValue) => {},
 );
 
@@ -345,19 +349,6 @@ type AssertNotEqual<
   $ = [Equal<Expected, Got>] extends [true] ? never : Expected,
 > = never;
 
-type TypedArray =
-  | Int8Array
-  | Uint8Array
-  | Int16Array
-  | Uint16Array
-  | Int32Array
-  | Uint32Array
-  | Uint8ClampedArray
-  | Float32Array
-  | Float64Array
-  | BigInt64Array
-  | BigUint64Array;
-
 type __Tests__ = [
   empty: AssertEqual<
     { symbols: Record<never, never>; close(): void },
@@ -371,7 +362,7 @@ type __Tests__ = [
     {
       symbols: {
         pushBuf: (
-          buf: TypedArray | null,
+          buf: BufferSource | null,
           ptr: Deno.PointerValue | null,
           func: Deno.PointerValue | null,
         ) => void;
@@ -391,7 +382,7 @@ type __Tests__ = [
     {
       symbols: {
         pushBuf: (
-          buf: TypedArray | null,
+          buf: BufferSource | null,
           ptr: Deno.PointerValue | null,
           func: Deno.PointerValue | null,
         ) => Deno.PointerValue;

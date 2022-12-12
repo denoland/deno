@@ -1,19 +1,18 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CacheSetting;
 use crate::auth_tokens::AuthTokens;
+use crate::cache::HttpCache;
 use crate::colors;
-use crate::http_cache::HttpCache;
-use crate::http_util::fetch_once;
 use crate::http_util::CacheSemantics;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
-use crate::progress_bar::ProgressBar;
-use crate::text_encoding;
-use crate::version::get_user_agent;
+use crate::http_util::HttpClient;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::text_encoding;
 
 use data_url::DataUrl;
 use deno_ast::MediaType;
-use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::uri_error;
@@ -22,13 +21,6 @@ use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
-use deno_runtime::deno_fetch::create_http_client;
-use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_tls::rustls;
-use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
-use deno_runtime::deno_tls::rustls_pemfile;
-use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use log::debug;
@@ -37,7 +29,6 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::future::Future;
-use std::io::BufReader;
 use std::io::Read;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -85,86 +76,6 @@ impl FileCache {
   }
 }
 
-/// Indicates how cached source files should be handled.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum CacheSetting {
-  /// Only the cached files should be used.  Any files not in the cache will
-  /// error.  This is the equivalent of `--cached-only` in the CLI.
-  Only,
-  /// No cached source files should be used, and all files should be reloaded.
-  /// This is the equivalent of `--reload` in the CLI.
-  ReloadAll,
-  /// Only some cached resources should be used.  This is the equivalent of
-  /// `--reload=https://deno.land/std` or
-  /// `--reload=https://deno.land/std,https://deno.land/x/example`.
-  ReloadSome(Vec<String>),
-  /// The usability of a cached value is determined by analyzing the cached
-  /// headers and other metadata associated with a cached response, reloading
-  /// any cached "non-fresh" cached responses.
-  RespectHeaders,
-  /// The cached source files should be used for local modules.  This is the
-  /// default behavior of the CLI.
-  Use,
-}
-
-impl CacheSetting {
-  /// Returns if the cache should be used for a given specifier.
-  pub fn should_use(
-    &self,
-    specifier: &ModuleSpecifier,
-    http_cache: &HttpCache,
-  ) -> bool {
-    match self {
-      CacheSetting::ReloadAll => false,
-      CacheSetting::Use | CacheSetting::Only => true,
-      CacheSetting::RespectHeaders => {
-        if let Ok((_, headers, cache_time)) = http_cache.get(specifier) {
-          let cache_semantics =
-            CacheSemantics::new(headers, cache_time, SystemTime::now());
-          cache_semantics.should_use()
-        } else {
-          false
-        }
-      }
-      CacheSetting::ReloadSome(list) => {
-        let mut url = specifier.clone();
-        url.set_fragment(None);
-        if list.contains(&url.as_str().to_string()) {
-          return false;
-        }
-        url.set_query(None);
-        let mut path = PathBuf::from(url.as_str());
-        loop {
-          if list.contains(&path.to_str().unwrap().to_string()) {
-            return false;
-          }
-          if !path.pop() {
-            break;
-          }
-        }
-        true
-      }
-    }
-  }
-
-  pub fn should_use_for_npm_package(&self, package_name: &str) -> bool {
-    match self {
-      CacheSetting::ReloadAll => false,
-      CacheSetting::ReloadSome(list) => {
-        if list.contains(&"npm:".to_string()) {
-          return false;
-        }
-        let specifier = format!("npm:{}", package_name);
-        if list.contains(&specifier) {
-          return false;
-        }
-        true
-      }
-      _ => true,
-    }
-  }
-}
-
 /// Fetch a source file from the local file system.
 fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let local = specifier.to_file_path().map_err(|_| {
@@ -183,80 +94,6 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
     specifier: specifier.clone(),
     maybe_headers: None,
   })
-}
-
-/// Create and populate a root cert store based on the passed options and
-/// environment.
-pub fn get_root_cert_store(
-  maybe_root_path: Option<PathBuf>,
-  maybe_ca_stores: Option<Vec<String>>,
-  maybe_ca_file: Option<String>,
-) -> Result<RootCertStore, AnyError> {
-  let mut root_cert_store = RootCertStore::empty();
-  let ca_stores: Vec<String> = maybe_ca_stores
-    .or_else(|| {
-      let env_ca_store = env::var("DENO_TLS_CA_STORE").ok()?;
-      Some(
-        env_ca_store
-          .split(',')
-          .map(|s| s.trim().to_string())
-          .filter(|s| !s.is_empty())
-          .collect(),
-      )
-    })
-    .unwrap_or_else(|| vec!["mozilla".to_string()]);
-
-  for store in ca_stores.iter() {
-    match store.as_str() {
-      "mozilla" => {
-        root_cert_store.add_server_trust_anchors(
-          webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
-            rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-              ta.subject,
-              ta.spki,
-              ta.name_constraints,
-            )
-          }),
-        );
-      }
-      "system" => {
-        let roots = load_native_certs().expect("could not load platform certs");
-        for root in roots {
-          root_cert_store
-            .add(&rustls::Certificate(root.0))
-            .expect("Failed to add platform cert to root cert store");
-        }
-      }
-      _ => {
-        return Err(anyhow!("Unknown certificate store \"{}\" specified (allowed: \"system,mozilla\")", store));
-      }
-    }
-  }
-
-  let ca_file = maybe_ca_file.or_else(|| env::var("DENO_CERT").ok());
-  if let Some(ca_file) = ca_file {
-    let ca_file = if let Some(root) = &maybe_root_path {
-      root.join(&ca_file)
-    } else {
-      PathBuf::from(ca_file)
-    };
-    let certfile = fs::File::open(&ca_file)?;
-    let mut reader = BufReader::new(certfile);
-
-    match rustls_pemfile::certs(&mut reader) {
-      Ok(certs) => {
-        root_cert_store.add_parsable_certificates(&certs);
-      }
-      Err(e) => {
-        return Err(anyhow!(
-          "Unable to add pem file to certificate store: {}",
-          e
-        ));
-      }
-    }
-  }
-
-  Ok(root_cert_store)
 }
 
 /// Returns the decoded body and content-type of a provided
@@ -333,7 +170,7 @@ pub struct FileFetcher {
   cache: FileCache,
   cache_setting: CacheSetting,
   pub http_cache: HttpCache,
-  http_client: reqwest::Client,
+  http_client: HttpClient,
   blob_store: BlobStore,
   download_log_level: log::Level,
   progress_bar: Option<ProgressBar>,
@@ -344,9 +181,8 @@ impl FileFetcher {
     http_cache: HttpCache,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    root_cert_store: Option<RootCertStore>,
+    http_client: HttpClient,
     blob_store: BlobStore,
-    unsafely_ignore_certificate_errors: Option<Vec<String>>,
     progress_bar: Option<ProgressBar>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
@@ -355,14 +191,7 @@ impl FileFetcher {
       cache: Default::default(),
       cache_setting,
       http_cache,
-      http_client: create_http_client(
-        get_user_agent(),
-        root_cert_store,
-        vec![],
-        None,
-        unsafely_ignore_certificate_errors,
-        None,
-      )?,
+      http_client,
       blob_store,
       download_log_level: log::Level::Info,
       progress_bar,
@@ -582,7 +411,7 @@ impl FileFetcher {
       return futures::future::err(err).boxed();
     }
 
-    if self.cache_setting.should_use(specifier, &self.http_cache) {
+    if self.should_use_cache(specifier) {
       match self.fetch_cached(specifier, redirect_limit) {
         Ok(Some(file)) => {
           return futures::future::ok(file).boxed();
@@ -628,14 +457,14 @@ impl FileFetcher {
     let file_fetcher = self.clone();
     // A single pass of fetch either yields code or yields a redirect.
     async move {
-      match fetch_once(FetchOnceArgs {
-        client,
-        url: specifier.clone(),
-        maybe_accept: maybe_accept.clone(),
-        maybe_etag,
-        maybe_auth_token,
-      })
-      .await?
+      match client
+        .fetch_once(FetchOnceArgs {
+          url: specifier.clone(),
+          maybe_accept: maybe_accept.clone(),
+          maybe_etag,
+          maybe_auth_token,
+        })
+        .await?
       {
         FetchOnceResult::NotModified => {
           let file = file_fetcher.fetch_cached(&specifier, 10)?.unwrap();
@@ -663,6 +492,41 @@ impl FileFetcher {
       }
     }
     .boxed()
+  }
+
+  /// Returns if the cache should be used for a given specifier.
+  fn should_use_cache(&self, specifier: &ModuleSpecifier) -> bool {
+    match &self.cache_setting {
+      CacheSetting::ReloadAll => false,
+      CacheSetting::Use | CacheSetting::Only => true,
+      CacheSetting::RespectHeaders => {
+        if let Ok((_, headers, cache_time)) = self.http_cache.get(specifier) {
+          let cache_semantics =
+            CacheSemantics::new(headers, cache_time, SystemTime::now());
+          cache_semantics.should_use()
+        } else {
+          false
+        }
+      }
+      CacheSetting::ReloadSome(list) => {
+        let mut url = specifier.clone();
+        url.set_fragment(None);
+        if list.contains(&url.as_str().to_string()) {
+          return false;
+        }
+        url.set_query(None);
+        let mut path = PathBuf::from(url.as_str());
+        loop {
+          if list.contains(&path.to_str().unwrap().to_string()) {
+            return false;
+          }
+          if !path.pop() {
+            break;
+          }
+        }
+        true
+      }
+    }
   }
 
   /// Fetch a source file and asynchronously return it.
@@ -765,6 +629,9 @@ impl FileFetcher {
 
 #[cfg(test)]
 mod tests {
+  use crate::cache::CachedUrlMetadata;
+  use crate::http_util::HttpClient;
+
   use super::*;
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
@@ -793,9 +660,8 @@ mod tests {
       HttpCache::new(&location),
       cache_setting,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       blob_store.clone(),
-      None,
       None,
     )
     .unwrap();
@@ -1185,8 +1051,7 @@ mod tests {
       .http_cache
       .get_cache_filename(&specifier)
       .unwrap();
-    let mut metadata =
-      crate::http_cache::Metadata::read(&cache_filename).unwrap();
+    let mut metadata = CachedUrlMetadata::read(&cache_filename).unwrap();
     metadata.headers = HashMap::new();
     metadata
       .headers
@@ -1232,9 +1097,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::ReloadAll,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1259,9 +1123,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1277,8 +1140,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
 
-    let metadata_filename =
-      crate::http_cache::Metadata::filename(&cache_filename);
+    let metadata_filename = CachedUrlMetadata::filename(&cache_filename);
     let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
@@ -1287,9 +1149,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1298,8 +1159,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
 
-    let metadata_filename =
-      crate::http_cache::Metadata::filename(&cache_filename);
+    let metadata_filename = CachedUrlMetadata::filename(&cache_filename);
     let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
@@ -1431,9 +1291,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1452,7 +1311,7 @@ mod tests {
     assert!(result.is_ok());
 
     let metadata_filename =
-      crate::http_cache::Metadata::filename(&redirected_cache_filename);
+      CachedUrlMetadata::filename(&redirected_cache_filename);
     let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
@@ -1461,9 +1320,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1473,7 +1331,7 @@ mod tests {
     assert!(result.is_ok());
 
     let metadata_filename =
-      crate::http_cache::Metadata::filename(&redirected_cache_filename);
+      CachedUrlMetadata::filename(&redirected_cache_filename);
     let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
@@ -1562,9 +1420,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       false,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1589,9 +1446,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Only,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();
@@ -1599,9 +1455,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      None,
+      HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
-      None,
       None,
     )
     .unwrap();

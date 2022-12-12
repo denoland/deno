@@ -251,9 +251,7 @@ Deno.test(
       Deno.statSync(path); // check if unix socket exists
 
       await Deno[method](path);
-      assertThrows(() => {
-        Deno.statSync(path);
-      }, Deno.errors.NotFound);
+      assertThrows(() => Deno.statSync(path), Deno.errors.NotFound);
     }
   },
 );
@@ -262,10 +260,10 @@ if (Deno.build.os === "windows") {
   Deno.test(
     { permissions: { run: true, write: true, read: true } },
     async function removeFileSymlink() {
-      const { success } = await Deno.spawn("cmd", {
+      const { success } = await new Deno.Command("cmd", {
         args: ["/c", "mklink", "file_link", "bar"],
         stdout: "null",
-      });
+      }).output();
 
       assert(success);
       await Deno.remove("file_link");
@@ -278,10 +276,10 @@ if (Deno.build.os === "windows") {
   Deno.test(
     { permissions: { run: true, write: true, read: true } },
     async function removeDirSymlink() {
-      const { success } = await Deno.spawn("cmd", {
+      const { success } = await new Deno.Command("cmd", {
         args: ["/c", "mklink", "/d", "dir_link", "bar"],
         stdout: "null",
-      });
+      }).output();
 
       assert(success);
       await Deno.remove("dir_link");

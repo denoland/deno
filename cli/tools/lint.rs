@@ -10,13 +10,13 @@ use crate::args::Flags;
 use crate::args::LintConfig;
 use crate::args::LintFlags;
 use crate::colors;
-use crate::file_watcher;
-use crate::file_watcher::ResolutionResult;
-use crate::fs_util::collect_files;
-use crate::fs_util::is_supported_ext;
-use crate::fs_util::specifier_to_file_path;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::run_parallelized;
+use crate::util::file_watcher;
+use crate::util::file_watcher::ResolutionResult;
+use crate::util::fs::FileCollector;
+use crate::util::path::is_supported_ext;
+use crate::util::path::specifier_to_file_path;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::generic_error;
@@ -77,6 +77,13 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   // and `--ignore` CLI flag, only the flag value is taken into account.
   let mut include_files = args.clone();
   let mut exclude_files = ignore.clone();
+  let mut maybe_reporter_kind = if json {
+    Some(LintReporterKind::Json)
+  } else if compact {
+    Some(LintReporterKind::Compact)
+  } else {
+    None
+  };
 
   let ps = ProcState::build(flags).await?;
   let maybe_lint_config = ps.options.to_lint_config()?;
@@ -99,18 +106,27 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
         .filter_map(|s| specifier_to_file_path(s).ok())
         .collect::<Vec<_>>();
     }
+
+    if maybe_reporter_kind.is_none() {
+      maybe_reporter_kind = match lint_config.report.as_deref() {
+        Some("json") => Some(LintReporterKind::Json),
+        Some("compact") => Some(LintReporterKind::Compact),
+        Some("pretty") => Some(LintReporterKind::Pretty),
+        Some(_) => {
+          return Err(anyhow!("Invalid lint report type in config file"))
+        }
+        None => Some(LintReporterKind::Pretty),
+      }
+    }
   }
 
   if include_files.is_empty() {
     include_files = [std::env::current_dir()?].to_vec();
   }
 
-  let reporter_kind = if json {
-    LintReporterKind::Json
-  } else if compact {
-    LintReporterKind::Compact
-  } else {
-    LintReporterKind::Pretty
+  let reporter_kind = match maybe_reporter_kind {
+    Some(report) => report,
+    None => LintReporterKind::Pretty,
   };
 
   let has_error = Arc::new(AtomicBool::new(false));
@@ -127,19 +143,17 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
     let result =
-      collect_files(&include_files, &exclude_files, is_supported_ext).map(
-        |files| {
-          if let Some(paths) = changed {
-            files
-              .iter()
-              .any(|path| paths.contains(path))
-              .then_some(files)
-              .unwrap_or_else(|| [].to_vec())
-          } else {
-            files
-          }
-        },
-      );
+      collect_lint_files(&include_files, &exclude_files).map(|files| {
+        if let Some(paths) = changed {
+          files
+            .iter()
+            .any(|path| paths.contains(path))
+            .then_some(files)
+            .unwrap_or_else(|| [].to_vec())
+        } else {
+          files
+        }
+      });
 
     let paths_to_watch = include_files.clone();
 
@@ -235,15 +249,14 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       );
       reporter_lock.lock().unwrap().close(1);
     } else {
-      let target_files =
-        collect_files(&include_files, &exclude_files, is_supported_ext)
-          .and_then(|files| {
-            if files.is_empty() {
-              Err(generic_error("No target files found."))
-            } else {
-              Ok(files)
-            }
-          })?;
+      let target_files = collect_lint_files(&include_files, &exclude_files)
+        .and_then(|files| {
+          if files.is_empty() {
+            Err(generic_error("No target files found."))
+          } else {
+            Ok(files)
+          }
+        })?;
       debug!("Found {} files", target_files.len());
       operation(target_files).await?;
     };
@@ -254,6 +267,17 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   }
 
   Ok(())
+}
+
+fn collect_lint_files(
+  include_files: &[PathBuf],
+  exclude_files: &[PathBuf],
+) -> Result<Vec<PathBuf>, AnyError> {
+  FileCollector::new(is_supported_ext)
+    .ignore_git_folder()
+    .ignore_node_modules()
+    .add_ignore_paths(exclude_files)
+    .collect_files(include_files)
 }
 
 pub fn print_rules_list(json: bool) {

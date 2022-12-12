@@ -3,15 +3,17 @@
 use crate::args::CoverageFlags;
 use crate::args::Flags;
 use crate::colors;
-use crate::fs_util::collect_files;
+use crate::emit::get_source_hash;
 use crate::proc_state::ProcState;
-use crate::text_encoding::source_map_from_code;
 use crate::tools::fmt::format_json;
+use crate::util::fs::FileCollector;
+use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
@@ -557,9 +559,13 @@ fn collect_coverages(
   ignore: Vec<PathBuf>,
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
-  let file_paths = collect_files(&files, &ignore, |file_path| {
+  let file_paths = FileCollector::new(|file_path| {
     file_path.extension().map_or(false, |ext| ext == "json")
-  })?;
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .add_ignore_paths(&ignore)
+  .collect_files(&files)?;
 
   for file_path in file_paths {
     let json = fs::read_to_string(file_path.as_path())?;
@@ -603,6 +609,10 @@ pub async fn cover_files(
   flags: Flags,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
+  if coverage_flags.files.is_empty() {
+    return Err(generic_error("No matching coverage profiles found"));
+  }
+
   let ps = ProcState::build(flags).await?;
 
   let script_coverages =
@@ -677,7 +687,8 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        match ps.emit_cache.get_emit_code(&file.specifier, None) {
+        let source_hash = get_source_hash(&file.source, ps.emit_options_hash);
+        match ps.emit_cache.get_emit_code(&file.specifier, source_hash) {
           Some(code) => code,
           None => {
             return Err(anyhow!(

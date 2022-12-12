@@ -7,7 +7,7 @@ import {
   BufReader,
   BufWriter,
 } from "../../../test_util/std/io/buffer.ts";
-import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
+import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
   assertEquals,
@@ -763,7 +763,7 @@ Deno.test(
       const tpr = new TextProtoReader(r);
       const statusLine = await tpr.readLine();
       assert(statusLine !== null);
-      const headers = await tpr.readMIMEHeader();
+      const headers = await tpr.readMimeHeader();
       assert(headers !== null);
 
       const chunkedReader = chunkedBodyReader(headers, r);
@@ -920,7 +920,7 @@ Deno.test(
       assert(m !== null, "must be matched");
       const [_, _proto, status, _ok] = m;
       assertEquals(status, "200");
-      const headers = await tpr.readMIMEHeader();
+      const headers = await tpr.readMimeHeader();
       assert(headers !== null);
     }
 
@@ -1033,11 +1033,11 @@ Deno.test(
     await listeningPromise;
     const url = `http://${hostname}:${port}/`;
     const args = ["-X", "DELETE", url];
-    const { success } = await Deno.spawn("curl", {
+    const { success } = await new Deno.Command("curl", {
       args,
       stdout: "null",
       stderr: "null",
-    });
+    }).output();
     assert(success);
     await promise;
     ac.abort();
@@ -2227,6 +2227,32 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function serveWithPromisePrototypeThenOverride() {
+    const originalThen = Promise.prototype.then;
+    try {
+      Promise.prototype.then = () => {
+        throw new Error();
+      };
+      const ac = new AbortController();
+      const listeningPromise = deferred();
+      const server = Deno.serve({
+        handler: (_req) => new Response("ok"),
+        hostname: "localhost",
+        port: 4501,
+        signal: ac.signal,
+        onListen: onListen(listeningPromise),
+        onError: createOnErrorCb(ac),
+      });
+      ac.abort();
+      await server;
+    } finally {
+      Promise.prototype.then = originalThen;
+    }
+  },
+);
+
 // https://github.com/denoland/deno/issues/15549
 Deno.test(
   { permissions: { net: true } },
@@ -2244,6 +2270,40 @@ Deno.test(
 
         const res2 = await fetch("http://localhost:9000/");
         assertEquals(await res2.text(), "hello world 2");
+
+        promise.resolve();
+        ac.abort();
+      },
+      signal: ac.signal,
+    });
+
+    await promise;
+    await server;
+  },
+);
+
+// Checks large streaming response
+// https://github.com/denoland/deno/issues/16567
+Deno.test(
+  { permissions: { net: true } },
+  async function testIssue16567() {
+    const ac = new AbortController();
+    const promise = deferred();
+    const server = Deno.serve(() =>
+      new Response(
+        new ReadableStream({
+          start(c) {
+            // 2MB "a...a" response with 40 chunks
+            for (const _ of Array(40)) {
+              c.enqueue(new Uint8Array(50_000).fill(97));
+            }
+            c.close();
+          },
+        }),
+      ), {
+      async onListen() {
+        const res1 = await fetch("http://localhost:9000/");
+        assertEquals((await res1.text()).length, 40 * 50_000);
 
         promise.resolve();
         ac.abort();
@@ -2342,7 +2402,7 @@ async function readTrailers(
   if (trailers == null) return;
   const trailerNames = [...trailers.keys()];
   const tp = new TextProtoReader(r);
-  const result = await tp.readMIMEHeader();
+  const result = await tp.readMimeHeader();
   if (result == null) {
     throw new Deno.errors.InvalidData("Missing trailer header.");
   }

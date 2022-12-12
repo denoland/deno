@@ -91,9 +91,11 @@ pub fn init<P: TimersPermission + 'static>(
       op_base64_btoa::decl(),
       op_encoding_normalize_label::decl(),
       op_encoding_decode_single::decl(),
+      op_encoding_decode_utf8::decl(),
       op_encoding_new_decoder::decl(),
       op_encoding_decode::decl(),
       op_encoding_encode_into::decl(),
+      op_encode_binary_string::decl(),
       op_blob_create_part::decl(),
       op_blob_slice_part::decl(),
       op_blob_read_part::decl(),
@@ -111,6 +113,7 @@ pub fn init<P: TimersPermission + 'static>(
       op_timer_handle::decl(),
       op_cancel_handle::decl(),
       op_sleep::decl(),
+      op_transfer_arraybuffer::decl(),
     ])
     .state(move |state| {
       state.put(blob_store.clone());
@@ -177,6 +180,39 @@ fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
   Ok(encoding.name().to_lowercase())
 }
 
+#[op(v8)]
+fn op_encoding_decode_utf8<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  zero_copy: &[u8],
+  ignore_bom: bool,
+) -> Result<serde_v8::Value<'a>, AnyError> {
+  let buf = &zero_copy;
+
+  let buf = if !ignore_bom
+    && buf.len() >= 3
+    && buf[0] == 0xef
+    && buf[1] == 0xbb
+    && buf[2] == 0xbf
+  {
+    &buf[3..]
+  } else {
+    buf
+  };
+
+  // If `String::new_from_utf8()` returns `None`, this means that the
+  // length of the decoded string would be longer than what V8 can
+  // handle. In this case we return `RangeError`.
+  //
+  // For more details see:
+  // - https://encoding.spec.whatwg.org/#dom-textdecoder-decode
+  // - https://github.com/denoland/deno/issues/6649
+  // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
+  match v8::String::new_from_utf8(scope, buf, v8::NewStringType::Normal) {
+    Some(text) => Ok(serde_v8::from_v8(scope, text.into())?),
+    None => Err(type_error("buffer exceeds maximum length")),
+  }
+}
+
 #[op]
 fn op_encoding_decode_single(
   data: &[u8],
@@ -234,7 +270,7 @@ fn op_encoding_decode_single(
 #[op]
 fn op_encoding_new_decoder(
   state: &mut OpState,
-  label: String,
+  label: &str,
   fatal: bool,
   ignore_bom: bool,
 ) -> Result<ResourceId, AnyError> {
@@ -316,30 +352,70 @@ impl Resource for TextDecoderResource {
   }
 }
 
-#[op(v8)]
+#[op]
 fn op_encoding_encode_into(
-  scope: &mut v8::HandleScope,
-  input: serde_v8::Value,
+  input: Cow<'_, str>,
   buffer: &mut [u8],
   out_buf: &mut [u32],
-) -> Result<(), AnyError> {
-  let s = v8::Local::<v8::String>::try_from(input.v8_value)?;
+) {
+  // Since `input` is already UTF-8, we can simply find the last UTF-8 code
+  // point boundary from input that fits in `buffer`, and copy the bytes up to
+  // that point.
+  let boundary = if buffer.len() >= input.len() {
+    input.len()
+  } else {
+    let mut boundary = buffer.len();
 
-  let mut nchars = 0;
-  out_buf[1] = s.write_utf8(
-    scope,
-    buffer,
-    Some(&mut nchars),
-    v8::WriteOptions::NO_NULL_TERMINATION
-      | v8::WriteOptions::REPLACE_INVALID_UTF8,
-  ) as u32;
-  out_buf[0] = nchars as u32;
-  Ok(())
+    // The maximum length of a UTF-8 code point is 4 bytes.
+    for _ in 0..4 {
+      if input.is_char_boundary(boundary) {
+        break;
+      }
+      debug_assert!(boundary > 0);
+      boundary -= 1;
+    }
+
+    debug_assert!(input.is_char_boundary(boundary));
+    boundary
+  };
+
+  buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
+
+  // The `read` output parameter is measured in UTF-16 code units.
+  out_buf[0] = match input {
+    // Borrowed Cow strings are zero-copy views into the V8 heap.
+    // Thus, they are guarantee to be SeqOneByteString.
+    Cow::Borrowed(v) => v[..boundary].len() as u32,
+    Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
+  };
+  out_buf[1] = boundary as u32;
+}
+
+#[op(v8)]
+fn op_transfer_arraybuffer<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  input: serde_v8::Value<'a>,
+) -> Result<serde_v8::Value<'a>, AnyError> {
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(input.v8_value)?;
+  if !ab.is_detachable() {
+    return Err(type_error("ArrayBuffer is not detachable"));
+  }
+  let bs = ab.get_backing_store();
+  ab.detach(None);
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
+  Ok(serde_v8::Value {
+    v8_value: ab.into(),
+  })
+}
+
+#[op]
+fn op_encode_binary_string(s: &[u8]) -> ByteString {
+  ByteString::from(s)
 }
 
 /// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
-#[op]
-pub fn op_cancel_handle(state: &mut OpState) -> ResourceId {
+#[op(fast)]
+pub fn op_cancel_handle(state: &mut OpState) -> u32 {
   state.resource_table.add(CancelHandle::new())
 }
 

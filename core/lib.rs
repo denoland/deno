@@ -8,6 +8,7 @@ mod extensions;
 mod flags;
 mod gotham_state;
 mod inspector;
+mod io;
 mod module_specifier;
 mod modules;
 mod normalize_path;
@@ -17,6 +18,7 @@ mod ops_builtin_v8;
 mod ops_metrics;
 mod resources;
 mod runtime;
+pub mod snapshot_util;
 mod source_map;
 
 // Re-exports
@@ -58,6 +60,9 @@ pub use crate::inspector::InspectorMsgKind;
 pub use crate::inspector::InspectorSessionProxy;
 pub use crate::inspector::JsRuntimeInspector;
 pub use crate::inspector::LocalInspectorSession;
+pub use crate::io::BufMutView;
+pub use crate::io::BufView;
+pub use crate::io::WriteOutcome;
 pub use crate::module_specifier::resolve_import;
 pub use crate::module_specifier::resolve_path;
 pub use crate::module_specifier::resolve_url;
@@ -117,7 +122,9 @@ pub mod _ops {
   pub use super::error_codes::get_error_code;
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;
+  pub use super::ops::OpResult;
   pub use super::runtime::queue_async_op;
+  pub use super::runtime::queue_fast_async_op;
   pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
   pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
 }
