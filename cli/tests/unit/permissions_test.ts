@@ -13,7 +13,7 @@ Deno.test(async function permissionInvalidName() {
   }, TypeError);
 });
 
-Deno.test(async function permissionInvalidNameSync() {
+Deno.test(function permissionInvalidNameSync() {
   assertThrows(() => {
     // deno-lint-ignore no-explicit-any
     Deno.permissions.querySync({ name: "foo" as any });
@@ -26,7 +26,7 @@ Deno.test(async function permissionNetInvalidHost() {
   }, URIError);
 });
 
-Deno.test(async function permissionNetInvalidHostSync() {
+Deno.test(function permissionNetInvalidHostSync() {
   assertThrows(() => {
     Deno.permissions.querySync({ name: "net", host: ":" });
   }, URIError);
@@ -42,7 +42,7 @@ Deno.test(async function permissionSysValidKind() {
   await Deno.permissions.query({ name: "sys", kind: "gid" });
 });
 
-Deno.test(async function permissionSysValidKindSync() {
+Deno.test(function permissionSysValidKindSync() {
   Deno.permissions.querySync({ name: "sys", kind: "loadavg" });
   Deno.permissions.querySync({ name: "sys", kind: "osRelease" });
   Deno.permissions.querySync({ name: "sys", kind: "networkInterfaces" });
@@ -196,7 +196,7 @@ Deno.test(async function permissionStatusObjectsNotEqual() {
   );
 });
 
-Deno.test(async function permissionStatusObjectsNotEqualSync() {
+Deno.test(function permissionStatusObjectsNotEqualSync() {
   assert(
     Deno.permissions.querySync({ name: "env", variable: "A" }) !=
       Deno.permissions.querySync({ name: "env", variable: "B" }),
