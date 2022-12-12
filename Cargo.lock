@@ -501,9 +501,9 @@ dependencies = [
 
 [[package]]
 name = "console_static_text"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "016e1fc53d4f669b41ff4617f68807464192a02cda44c71a1e2270eb2d142e8e"
+checksum = "3d749e1f5316d8a15ec592516a631ab9b8099cc6d085b69b905462fc071caedb"
 dependencies = [
  "unicode-width",
  "vte",

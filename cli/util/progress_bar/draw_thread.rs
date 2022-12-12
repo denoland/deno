@@ -9,8 +9,6 @@ use std::time::Duration;
 use std::time::SystemTime;
 
 use crate::util::console::console_size;
-use crate::util::console::hide_cursor;
-use crate::util::console::show_cursor;
 
 use super::renderer::ProgressBarRenderer;
 use super::renderer::ProgressData;
@@ -148,12 +146,10 @@ impl DrawThread {
       // bump the drawer id to exit the draw thread
       internal_state.drawer_id += 1;
       internal_state.has_draw_thread = false;
-      show_cursor();
     }
   }
 
   fn start_draw_thread(&self, internal_state: &mut InternalState) {
-    hide_cursor();
     internal_state.drawer_id += 1;
     internal_state.start_time = SystemTime::now();
     internal_state.has_draw_thread = true;
