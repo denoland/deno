@@ -6,33 +6,19 @@ use deno_runtime::colors;
 
 use crate::util::display::human_download_size;
 
-use super::draw_thread::ProgressBarEntry;
-
-pub struct ProgressData<'a> {
-  pub terminal_width: u32,
-  pub entries: &'a Vec<ProgressBarEntry>,
-  pub total_entries: usize,
-  pub duration: Duration,
+pub struct ProgressDataDisplayEntry {
+  pub message: String,
+  pub position: u64,
+  pub total_size: u64,
 }
 
-impl<'a> ProgressData<'a> {
-  pub fn precent_done(&self) -> f64 {
-    let mut total_percent_sum = 0f64;
-    for entry in self.entries {
-      total_percent_sum += entry.percent();
-    }
-    total_percent_sum += (self.total_entries - self.entries.len()) as f64;
-    total_percent_sum / (self.total_entries as f64)
-  }
-
-  pub fn preferred_display_entry(&self) -> Option<&ProgressBarEntry> {
-    // prefer displaying download entries because they have more activity
-    self
-      .entries
-      .iter()
-      .find(|e| e.percent() > 0f64)
-      .or_else(|| self.entries.iter().last())
-  }
+pub struct ProgressData {
+  pub terminal_width: u32,
+  pub display_entry: ProgressDataDisplayEntry,
+  pub pending_entries: usize,
+  pub percent_done: f64,
+  pub total_entries: usize,
+  pub duration: Duration,
 }
 
 pub trait ProgressBarRenderer: Send + std::fmt::Debug {
@@ -45,15 +31,9 @@ pub struct BarProgressBarRenderer;
 
 impl ProgressBarRenderer for BarProgressBarRenderer {
   fn render(&self, data: ProgressData) -> String {
-    let display_entry = match data.preferred_display_entry() {
-      Some(v) => v,
-      None => return String::new(),
-    };
-    let percent_done = data.precent_done();
-
     let (bytes_text, bytes_text_max_width) = {
-      let total_size = display_entry.total_size();
-      let pos = display_entry.position();
+      let total_size = data.display_entry.total_size;
+      let pos = data.display_entry.position;
       if total_size == 0 {
         (String::new(), 0)
       } else {
@@ -75,7 +55,7 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
       (
         format!(
           " ({}/{})",
-          data.total_entries - data.entries.len(),
+          data.total_entries - data.pending_entries,
           data.total_entries
         ),
         4 + total_entries_str.len() * 2,
@@ -84,11 +64,11 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
 
     let elapsed_text = get_elapsed_text(data.duration);
     let mut text = String::new();
-    if !display_entry.message.is_empty() {
+    if !data.display_entry.message.is_empty() {
       text.push_str(&format!(
         "{} {}{}\n",
         colors::green("Download"),
-        display_entry.message,
+        data.display_entry.message,
         bytes_text,
       ));
     }
@@ -99,7 +79,8 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
       - total_text_max_width
       - bytes_text_max_width
       - 3; // space, open and close brace
-    let completed_bars = (total_bars as f64 * percent_done).floor() as usize;
+    let completed_bars =
+      (total_bars as f64 * data.percent_done).floor() as usize;
     text.push_str(" [");
     if completed_bars != total_bars {
       if completed_bars > 0 {
@@ -118,7 +99,7 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
     text.push(']');
 
     // suffix
-    if display_entry.message.is_empty() {
+    if data.display_entry.message.is_empty() {
       text.push_str(&bytes_text);
     }
     text.push_str(&total_text);
@@ -133,14 +114,9 @@ pub struct TextOnlyProgressBarRenderer;
 
 impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
   fn render(&self, data: ProgressData) -> String {
-    let display_entry = match data.preferred_display_entry() {
-      Some(v) => v,
-      None => return String::new(),
-    };
-
     let bytes_text = {
-      let total_size = display_entry.total_size();
-      let pos = display_entry.position();
+      let total_size = data.display_entry.total_size;
+      let pos = data.display_entry.position;
       if total_size == 0 {
         String::new()
       } else {
@@ -156,7 +132,7 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
     } else {
       format!(
         " ({}/{})",
-        data.total_entries - data.entries.len(),
+        data.total_entries - data.pending_entries,
         data.total_entries
       )
     };
@@ -164,7 +140,7 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
     format!(
       "{} {}{}{}",
       colors::green("Download"),
-      display_entry.message,
+      data.display_entry.message,
       bytes_text,
       total_text,
     )

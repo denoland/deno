@@ -14,6 +14,7 @@ use crate::util::console::show_cursor;
 
 use super::renderer::ProgressBarRenderer;
 use super::renderer::ProgressData;
+use super::renderer::ProgressDataDisplayEntry;
 
 #[derive(Clone, Debug)]
 pub struct ProgressBarEntry {
@@ -172,11 +173,32 @@ impl DrawThread {
             previous_size = size;
             delay_ms = 200;
           } else if !internal_state.entries.is_empty() {
+            let preferred_entry = internal_state
+              .entries
+              .iter()
+              .find(|e| e.percent() > 0f64)
+              .or_else(|| internal_state.entries.iter().last())
+              .unwrap();
             let text = internal_state.renderer.render(ProgressData {
               duration: internal_state.start_time.elapsed().unwrap(),
-              entries: &internal_state.entries,
               terminal_width: size.cols,
+              pending_entries: internal_state.entries.len(),
               total_entries: internal_state.total_entries,
+              display_entry: ProgressDataDisplayEntry {
+                message: preferred_entry.message.clone(),
+                position: preferred_entry.position(),
+                total_size: preferred_entry.total_size(),
+              },
+              percent_done: {
+                let mut total_percent_sum = 0f64;
+                for entry in &internal_state.entries {
+                  total_percent_sum += entry.percent();
+                }
+                total_percent_sum += (internal_state.total_entries
+                  - internal_state.entries.len())
+                  as f64;
+                total_percent_sum / (internal_state.total_entries as f64)
+              },
             });
 
             internal_state.static_text.eprint_with_size(
