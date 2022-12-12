@@ -6,12 +6,14 @@ use deno_runtime::colors;
 
 use crate::util::display::human_download_size;
 
+#[derive(Clone)]
 pub struct ProgressDataDisplayEntry {
   pub message: String,
   pub position: u64,
   pub total_size: u64,
 }
 
+#[derive(Clone)]
 pub struct ProgressData {
   pub terminal_width: u32,
   pub display_entry: ProgressDataDisplayEntry,
@@ -73,12 +75,16 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
       ));
     }
     text.push_str(&elapsed_text);
-    // todo: handle subtracting going below zero here
-    let total_bars = (std::cmp::min(75, data.terminal_width - 5) as usize)
-      - elapsed_text.len()
-      - total_text_max_width
-      - bytes_text_max_width
-      - 3; // space, open and close brace
+    let max_width =
+      std::cmp::max(10, std::cmp::min(75, data.terminal_width as i32 - 5))
+        as usize;
+    let same_line_text_width =
+      elapsed_text.len() + total_text_max_width + bytes_text_max_width + 3; // space, open and close brace
+    let total_bars = if same_line_text_width > max_width {
+      1
+    } else {
+      max_width - same_line_text_width
+    };
     let completed_bars =
       (total_bars as f64 * data.percent_done).floor() as usize;
     text.push_str(" [");
@@ -108,7 +114,6 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
   }
 }
 
-/// Indicatif style progress bar.
 #[derive(Debug)]
 pub struct TextOnlyProgressBarRenderer;
 
@@ -157,6 +162,7 @@ fn get_elapsed_text(elapsed: Duration) -> String {
 #[cfg(test)]
 mod test {
   use super::*;
+  use pretty_assertions::assert_eq;
   use std::time::Duration;
 
   #[test]
@@ -182,5 +188,91 @@ mod test {
       get_elapsed_text(Duration::from_secs(60 * 60 * 99)),
       "[5940:00]"
     );
+  }
+
+  const BYTES_TO_KIB: u64 = 2u64.pow(10);
+
+  #[test]
+  fn should_render_bar_progress() {
+    let renderer = BarProgressBarRenderer;
+    let mut data = ProgressData {
+      display_entry: ProgressDataDisplayEntry {
+        message: "data".to_string(),
+        position: 0,
+        total_size: 10 * BYTES_TO_KIB,
+      },
+      duration: Duration::from_secs(1),
+      pending_entries: 1,
+      total_entries: 1,
+      percent_done: 0f64,
+      terminal_width: 50,
+    };
+    let text = renderer.render(data.clone());
+    let text = test_util::strip_ansi_codes(&text);
+    assert_eq!(
+      text,
+      concat!(
+        "Download data 0.00KiB/10.00KiB\n",
+        "[00:01] [-----------------]",
+      ),
+    );
+
+    data.percent_done = 0.5f64;
+    data.display_entry.position = 5 * BYTES_TO_KIB;
+    data.display_entry.message = String::new();
+    data.total_entries = 3;
+    let text = renderer.render(data.clone());
+    let text = test_util::strip_ansi_codes(&text);
+    assert_eq!(text, "[00:01] [####>------] 5.00KiB/10.00KiB (2/3)",);
+
+    // just ensure this doesn't panic
+    data.terminal_width = 0;
+    let text = renderer.render(data.clone());
+    let text = test_util::strip_ansi_codes(&text);
+    assert_eq!(text, "[00:01] [-] 5.00KiB/10.00KiB (2/3)",);
+
+    data.terminal_width = 50;
+    data.pending_entries = 0;
+    data.display_entry.position = 10 * BYTES_TO_KIB;
+    data.percent_done = 1.0f64;
+    let text = renderer.render(data.clone());
+    let text = test_util::strip_ansi_codes(&text);
+    assert_eq!(text, "[00:01] [###########] 10.00KiB/10.00KiB (3/3)",);
+
+    data.display_entry.position = 0;
+    data.display_entry.total_size = 0;
+    data.pending_entries = 0;
+    data.total_entries = 1;
+    let text = renderer.render(data);
+    let text = test_util::strip_ansi_codes(&text);
+    assert_eq!(text, "[00:01] [###################################]",);
+  }
+
+  #[test]
+  fn should_render_text_only_progress() {
+    let renderer = TextOnlyProgressBarRenderer;
+    let mut data = ProgressData {
+      display_entry: ProgressDataDisplayEntry {
+        message: "data".to_string(),
+        position: 0,
+        total_size: 10 * BYTES_TO_KIB,
+      },
+      duration: Duration::from_secs(1),
+      pending_entries: 1,
+      total_entries: 3,
+      percent_done: 0f64,
+      terminal_width: 50,
+    };
+    let text = renderer.render(data.clone());
+    let text = test_util::strip_ansi_codes(&text);
+    assert_eq!(text, "Download data 0.00KiB/10.00KiB (2/3)");
+
+    data.pending_entries = 0;
+    data.total_entries = 1;
+    data.display_entry.position = 0;
+    data.display_entry.total_size = 0;
+    let text = renderer.render(data);
+    let text = test_util::strip_ansi_codes(&text);
+    assert_eq!(text, "Download data");
   }
 }

@@ -54,8 +54,10 @@ impl ProgressBar {
   /// Checks if progress bars are supported
   pub fn are_supported() -> bool {
     atty::is(atty::Stream::Stderr)
-      && console_size().is_some()
       && log::log_enabled!(log::Level::Info)
+      && console_size()
+        .map(|s| s.cols > 0 && s.rows > 0)
+        .unwrap_or(false)
   }
 
   pub fn new(style: ProgressBarStyle) -> Self {

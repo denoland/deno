@@ -442,7 +442,6 @@ async fn download_package(
     let mut stream = res.bytes_stream();
     let mut skip_print = 0;
     let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
-    let clear_guard = progress_bar.clear_guard();
     let progress = progress_bar.update("");
     progress.set_total_size(total_size);
     while let Some(item) = stream.next().await {
@@ -464,7 +463,6 @@ async fn download_package(
       }
     }
     drop(progress);
-    drop(clear_guard);
     log::info!(
       "{} / {} (100.0%)",
       human_download_size(current_size, total_size),
