@@ -557,6 +557,7 @@ mod run {
     Input("n\n"),
     Output("granted\r\n"),
     Output("prompt\r\n"),
+    Output("prompt\r\n"),
     Output("denied\r\n"),
   ]);
   }
@@ -2275,6 +2276,7 @@ mod run {
       Output("⚠️  ️Deno requests read access to \"bar\". Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
       Input("n\n"),
       Output("granted\r\n"),
+      Output("granted\r\n"),
       Output("prompt\r\n"),
       Output("denied\r\n"),
     ]);
@@ -2287,6 +2289,8 @@ mod run {
       util::test_pty2(args, vec![
       Output("⚠️  ️Deno requests read access. Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)] "),
       Input("y\n"),
+      Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
+      Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
       Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
       Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
       Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
