@@ -152,21 +152,6 @@
   }
 
   /**
-   * @param {Deno.PermissionDescriptor} desc
-   * @returns {Deno.PermissionDescriptor}
-   */
-  function formDescriptor(desc) {
-    if (
-      desc.name === "read" || desc.name === "write" || desc.name === "ffi"
-    ) {
-      desc.path = pathFromURL(desc.path);
-    } else if (desc.name === "run") {
-      desc.command = pathFromURL(desc.command);
-    }
-    return desc;
-  }
-
-  /**
    * @param {unknown} desc
    * @returns {desc is Deno.PermissionDescriptor}
    */
@@ -191,7 +176,13 @@
         );
       }
 
-      desc = formDescriptor(desc);
+      if (
+        desc.name === "read" || desc.name === "write" || desc.name === "ffi"
+      ) {
+        desc.path = pathFromURL(desc.path);
+      } else if (desc.name === "run") {
+        desc.command = pathFromURL(desc.command);
+      }
 
       const state = opQuery(desc);
       return PromiseResolve(cache(desc, state));
@@ -204,7 +195,13 @@
         );
       }
 
-      desc = formDescriptor(desc);
+      if (
+        desc.name === "read" || desc.name === "write" || desc.name === "ffi"
+      ) {
+        desc.path = pathFromURL(desc.path);
+      } else if (desc.name === "run") {
+        desc.command = pathFromURL(desc.command);
+      }
 
       const state = opQuery(desc);
       return cache(desc, state);
