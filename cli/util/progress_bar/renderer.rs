@@ -179,7 +179,7 @@ mod test {
       get_elapsed_text(Duration::from_secs(60 * 59 + 59)),
       "[59:59]"
     );
-    assert_eq!(get_elapsed_text(Duration::from_secs(60 * 60)), "[01:00:00]");
+    assert_eq!(get_elapsed_text(Duration::from_secs(60 * 60)), "[60:00]");
     assert_eq!(
       get_elapsed_text(Duration::from_secs(60 * 60 * 3 + 20 * 60 + 2)),
       "[200:02]"
