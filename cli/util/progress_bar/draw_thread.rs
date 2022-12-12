@@ -126,7 +126,7 @@ impl DrawThread {
       .binary_search_by(|e| e.id.cmp(&entry_id))
     {
       internal_state.entries.remove(index);
-      internal_state.keep_alive_count -= 1;
+      self.decrement_keep_alive(&mut internal_state);
     }
   }
 
@@ -137,6 +137,10 @@ impl DrawThread {
 
   pub fn decrement_clear(&self) {
     let mut internal_state = self.state.lock();
+    self.decrement_keep_alive(&mut internal_state);
+  }
+
+  fn decrement_keep_alive(&self, internal_state: &mut InternalState) {
     internal_state.keep_alive_count -= 1;
 
     if internal_state.keep_alive_count == 0 {
