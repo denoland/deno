@@ -443,15 +443,15 @@ async fn download_package(
     let mut skip_print = 0;
     let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
     let clear_guard = progress_bar.clear_guard();
-    let progress =
-      progress_bar.update_with_progress(String::new(), total_size as u64);
+    let progress = progress_bar.update("");
+    progress.set_total_size(total_size);
     while let Some(item) = stream.next().await {
       std::thread::sleep_ms(10); // todo: obviously remove
       let bytes = item?;
       current_size += bytes.len() as u64;
       data.extend_from_slice(&bytes);
       if progress_bar.is_enabled() {
-        progress.update(current_size);
+        progress.set_position(current_size);
       } else {
         if skip_print == 0 {
           log::info!(

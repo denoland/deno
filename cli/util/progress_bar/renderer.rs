@@ -8,7 +8,6 @@ use deno_runtime::colors;
 use crate::util::display::human_download_size;
 
 use super::draw_thread::ProgressBarEntry;
-use super::draw_thread::ProgressBarEntryStyle;
 
 pub struct ProgressData<'a> {
   pub terminal_width: u32,
@@ -21,7 +20,7 @@ impl<'a> ProgressData<'a> {
   pub fn precent_done(&self) -> f64 {
     let mut total_percent_sum = 0f64;
     for entry in self.entries {
-      total_percent_sum += entry.style.percent();
+      total_percent_sum += entry.percent();
     }
     total_percent_sum += (self.total_entries - self.entries.len()) as f64;
     total_percent_sum / (self.total_entries as f64)
@@ -32,7 +31,7 @@ impl<'a> ProgressData<'a> {
     self
       .entries
       .iter()
-      .filter(|e| matches!(e.style, ProgressBarEntryStyle::Download { .. }))
+      .filter(|e| e.percent() > 0f64)
       .next()
       .or_else(|| self.entries.iter().next())
   }
@@ -54,19 +53,22 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
     };
     let percent_done = data.precent_done();
 
-    let (bytes_text, bytes_text_max_width) = match &display_entry.style {
-      ProgressBarEntryStyle::Download { pos, total_size } => {
-        let total_size_str = human_download_size(*total_size, *total_size);
+    let (bytes_text, bytes_text_max_width) = {
+      let total_size = display_entry.total_size();
+      let pos = display_entry.position();
+      if total_size == 0 {
+        (String::new(), 0)
+      } else {
+        let total_size_str = human_download_size(total_size, total_size);
         (
           format!(
             " {}/{}",
-            human_download_size(pos.load(Ordering::Relaxed), *total_size),
+            human_download_size(pos, total_size),
             total_size_str,
           ),
           2 + total_size_str.len() * 2,
         )
       }
-      ProgressBarEntryStyle::Action => (String::new(), 0),
     };
     let (total_text, total_text_max_width) = if data.total_entries <= 1 {
       (String::new(), 0)
@@ -138,16 +140,18 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
       None => return String::new(),
     };
 
-    let bytes_text = match &display_entry.style {
-      ProgressBarEntryStyle::Download { pos, total_size } => {
-        let total_size_str = human_download_size(*total_size, *total_size);
+    let bytes_text = {
+      let total_size = display_entry.total_size();
+      let pos = display_entry.position();
+      if total_size == 0 {
+        String::new()
+      } else {
         format!(
           " {}/{}",
-          human_download_size(pos.load(Ordering::Relaxed), *total_size),
-          total_size_str,
+          human_download_size(pos, total_size),
+          human_download_size(total_size, total_size)
         )
       }
-      ProgressBarEntryStyle::Action => String::new(),
     };
     let total_text = if data.total_entries <= 1 {
       String::new()

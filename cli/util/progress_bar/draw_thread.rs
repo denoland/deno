@@ -19,54 +19,43 @@ use super::renderer::ProgressData;
 // for more control over what's going on under the hood.
 
 #[derive(Clone, Debug)]
-pub enum ProgressBarEntryStyle {
-  Download {
-    pos: Arc<AtomicU64>,
-    total_size: u64,
-  },
-  Action,
-}
-
-impl ProgressBarEntryStyle {
-  pub fn download(total_size: u64) -> Self {
-    Self::Download {
-      pos: Default::default(),
-      total_size,
-    }
-  }
-
-  pub fn action() -> Self {
-    Self::Action
-  }
-
-  pub fn percent(&self) -> f64 {
-    match self {
-      ProgressBarEntryStyle::Download { pos, total_size } => {
-        let pos = pos.load(Ordering::Relaxed) as f64;
-        pos / (*total_size as f64)
-      }
-      ProgressBarEntryStyle::Action => 0f64,
-    }
-  }
-}
-
-#[derive(Clone, Debug)]
 pub struct ProgressBarEntry {
   id: usize,
   pub message: String,
-  pub style: ProgressBarEntryStyle,
+  pos: Arc<AtomicU64>,
+  total_size: Arc<AtomicU64>,
   draw_thread: DrawThread,
 }
 
 impl ProgressBarEntry {
+  pub fn position(&self) -> u64 {
+    self.pos.load(Ordering::Relaxed)
+  }
+
   pub fn set_position(&self, new_pos: u64) {
-    if let ProgressBarEntryStyle::Download { pos, .. } = &self.style {
-      pos.store(new_pos, Ordering::Relaxed);
-    }
+    self.pos.store(new_pos, Ordering::Relaxed);
+  }
+
+  pub fn total_size(&self) -> u64 {
+    self.total_size.load(Ordering::Relaxed)
+  }
+
+  pub fn set_total_size(&self, new_size: u64) {
+    self.total_size.store(new_size, Ordering::Relaxed);
   }
 
   pub fn finish(&self) {
     self.draw_thread.finish_entry(self.id);
+  }
+
+  pub fn percent(&self) -> f64 {
+    let pos = self.pos.load(Ordering::Relaxed) as f64;
+    let total_size = self.total_size.load(Ordering::Relaxed) as f64;
+    if total_size == 0f64 {
+      0f64
+    } else {
+      pos / total_size
+    }
   }
 }
 
@@ -110,18 +99,15 @@ impl DrawThread {
     }
   }
 
-  pub fn add_entry(
-    &self,
-    message: String,
-    style: ProgressBarEntryStyle,
-  ) -> ProgressBarEntry {
+  pub fn add_entry(&self, message: String) -> ProgressBarEntry {
     let mut internal_state = self.state.lock();
     let id = internal_state.total_entries;
     let entry = ProgressBarEntry {
       id,
       draw_thread: self.clone(),
       message,
-      style,
+      pos: Default::default(),
+      total_size: Default::default(),
     };
     internal_state.entries.push(entry.clone());
     internal_state.total_entries += 1;
