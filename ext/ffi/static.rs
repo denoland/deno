@@ -1,13 +1,15 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::{
-  dlfcn::DynamicLibraryResource, symbol::NativeType, MAX_SAFE_INTEGER,
-  MIN_SAFE_INTEGER,
-};
-use deno_core::{
-  error::{type_error, AnyError},
-  op, serde_v8, v8, ResourceId,
-};
+use crate::dlfcn::DynamicLibraryResource;
+use crate::symbol::NativeType;
+use crate::MAX_SAFE_INTEGER;
+use crate::MIN_SAFE_INTEGER;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::serde_v8;
+use deno_core::v8;
+use deno_core::ResourceId;
 use std::ptr;
 
 #[op(v8)]

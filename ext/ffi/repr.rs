@@ -1,14 +1,17 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::{check_unstable, FfiPermissions};
-use deno_core::{
-  error::{range_error, type_error, AnyError},
-  op, serde_v8, v8,
-};
-use std::{
-  ffi::{c_char, c_void, CStr},
-  ptr,
-};
+use crate::check_unstable;
+use crate::FfiPermissions;
+use deno_core::error::range_error;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::serde_v8;
+use deno_core::v8;
+use std::ffi::c_char;
+use std::ffi::c_void;
+use std::ffi::CStr;
+use std::ptr;
 
 #[op(fast)]
 pub fn op_ffi_ptr_of<FP>(

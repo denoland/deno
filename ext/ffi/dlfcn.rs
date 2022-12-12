@@ -1,15 +1,17 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::check_unstable;
+use crate::symbol::NativeType;
+use crate::symbol::Symbol;
 use crate::turbocall;
-use crate::{
-  check_unstable,
-  symbol::{NativeType, Symbol},
-  FfiPermissions,
-};
-use deno_core::{
-  error::{generic_error, AnyError},
-  op, serde_v8, v8, Resource, ResourceId,
-};
+use crate::FfiPermissions;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::serde_v8;
+use deno_core::v8;
+use deno_core::Resource;
+use deno_core::ResourceId;
 use dlopen::raw::Library;
 use serde::Deserialize;
 use std::borrow::Cow;

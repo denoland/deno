@@ -1,17 +1,24 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::check_unstable;
 use crate::symbol::NativeType;
-use crate::{
-  check_unstable, FfiPermissions, FfiState, ForeignFunction,
-  PendingFfiAsyncWork, LOCAL_ISOLATE_POINTER, MAX_SAFE_INTEGER,
-  MIN_SAFE_INTEGER,
-};
+use crate::FfiPermissions;
+use crate::FfiState;
+use crate::ForeignFunction;
+use crate::PendingFfiAsyncWork;
+use crate::LOCAL_ISOLATE_POINTER;
+use crate::MAX_SAFE_INTEGER;
+use crate::MIN_SAFE_INTEGER;
+use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
+use deno_core::op;
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_core::CancelFuture;
-use deno_core::{
-  error::AnyError, op, serde_v8, v8, CancelHandle, OpState, Resource,
-  ResourceId,
-};
+use deno_core::CancelHandle;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::ResourceId;
 use libffi::middle::Cif;
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -26,7 +33,6 @@ use std::rc::Rc;
 use std::sync::mpsc::sync_channel;
 use std::task::Poll;
 use std::task::Waker;
-
 #[derive(Clone)]
 pub struct PtrSymbol {
   pub cif: libffi::middle::Cif,

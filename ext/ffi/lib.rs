@@ -24,17 +24,18 @@ mod r#static;
 mod symbol;
 mod turbocall;
 
-use call::{
-  op_ffi_call_nonblocking, op_ffi_call_ptr, op_ffi_call_ptr_nonblocking,
-};
-use callback::{
-  op_ffi_unsafe_callback_create, op_ffi_unsafe_callback_ref,
-  op_ffi_unsafe_callback_unref,
-};
-use dlfcn::{op_ffi_load, ForeignFunction};
+use call::op_ffi_call_nonblocking;
+use call::op_ffi_call_ptr;
+use call::op_ffi_call_ptr_nonblocking;
+use callback::op_ffi_unsafe_callback_create;
+use callback::op_ffi_unsafe_callback_ref;
+use callback::op_ffi_unsafe_callback_unref;
+use dlfcn::op_ffi_load;
+use dlfcn::ForeignFunction;
 use r#static::op_ffi_get_static;
 use repr::*;
-use symbol::{NativeType, Symbol};
+use symbol::NativeType;
+use symbol::Symbol;
 
 #[cfg(not(target_pointer_width = "64"))]
 compile_error!("platform not supported");
