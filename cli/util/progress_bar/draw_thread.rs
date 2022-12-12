@@ -170,7 +170,7 @@ impl DrawThread {
             // means the user is actively resizing the console...
             // wait a little bit until they stop resizing
             previous_size = size;
-            delay_ms = 400;
+            delay_ms = 200;
           } else if !internal_state.entries.is_empty() {
             let text = internal_state.renderer.render(ProgressData {
               duration: internal_state.start_time.elapsed().unwrap(),
