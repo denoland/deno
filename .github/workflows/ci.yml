@@ -177,19 +177,16 @@ jobs:
         uses: Swatinem/rust-cache@v1
         with:
           key: release
-      - name: Install Cross
-        run: cargo install cross
-      - name: Set up cross
-        run: |
-          cat <<EOF
-          [target.x86_64-unknown-linux-gnu]
-          image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:main-centos"
-          EOF
+      - name: Install zig
+        uses: goto-bus-stop/setup-zig@v2
+      - name: Install Zigbuild
+        run: cargo install cargo-zigbuild
       - name: Build
         shell: bash
         run: |-
           mkdir -p target/release
-            cross build --release --locked --all-targets --tests --message-format=json > target/release/cargo_build_manifest.json
+          cargo zigbuild --target=x86_64-unknown-linux-gnu.2.17 --release --locked --all-targets --tests --message-format=json > target/release/cargo_build_manifest.json
+          tree target || true
       - name: Package artifacts
         run: deno run --allow-read --allow-run --unstable ./tools/ci/package.js release
       - name: Upload artifacts
