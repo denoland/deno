@@ -2777,6 +2777,7 @@ declare var PermissionStatus: {
 
 interface Permissions {
     query(permissionDesc: PermissionDescriptor): Promise<PermissionStatus>;
+    querySync(permissionDesc: PermissionDescriptor): PermissionStatus;
 }
 
 declare var Permissions: {
