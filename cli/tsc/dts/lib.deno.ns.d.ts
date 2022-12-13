@@ -3296,6 +3296,10 @@ declare namespace Deno {
     /** Sets the option to allow creating a new file, if one doesn't already
      * exist at the specified path (defaults to `true`). */
     create?: boolean;
+    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
+     * allowed to exist at the target location. When createNew is set to `true`,
+     * `create` is ignored. */
+    createNew?: boolean;
     /** Permissions always applied to file. */
     mode?: number;
     /** An abort signal to allow cancellation of the file write operation.

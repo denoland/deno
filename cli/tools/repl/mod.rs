@@ -89,7 +89,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   .await?;
   worker.setup_repl().await?;
   let worker = worker.into_main_worker();
-  let mut repl_session = ReplSession::initialize(worker).await?;
+  let mut repl_session = ReplSession::initialize(ps.clone(), worker).await?;
   let mut rustyline_channel = rustyline_channel();
   let mut should_exit_on_interrupt = false;
 

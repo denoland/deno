@@ -91,6 +91,7 @@ Deno.test(
         "await Deno.stdout.write(new TextEncoder().encode('hello'))",
       ],
       stderr: "null",
+      stdout: "piped",
     });
     const child = command.spawn();
 
@@ -124,6 +125,7 @@ Deno.test(
         "await Deno.stderr.write(new TextEncoder().encode('hello'))",
       ],
       stdout: "null",
+      stderr: "piped",
     });
     const child = command.spawn();
 
@@ -163,6 +165,8 @@ Deno.test(
         "eval",
         "Deno.stderr.write(new TextEncoder().encode('error\\n')); Deno.stdout.write(new TextEncoder().encode('output\\n'));",
       ],
+      stdout: "piped",
+      stderr: "piped",
     });
     const child = command.spawn();
     await child.stdout.pipeTo(file.writable, {

@@ -203,7 +203,6 @@ pub struct UpgradeFlags {
   pub canary: bool,
   pub version: Option<String>,
   pub output: Option<PathBuf>,
-  pub ca_file: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -2882,14 +2881,12 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   } else {
     None
   };
-  let ca_file = matches.value_of("cert").map(|s| s.to_string());
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
     force,
     canary,
     version,
     output,
-    ca_file,
   });
 }
 
@@ -3302,7 +3299,6 @@ mod tests {
           canary: false,
           version: None,
           output: None,
-          ca_file: None,
         }),
         ..Flags::default()
       }
@@ -5754,7 +5750,6 @@ mod tests {
           canary: false,
           version: None,
           output: None,
-          ca_file: Some("example.crt".to_owned()),
         }),
         ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
