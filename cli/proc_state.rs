@@ -31,6 +31,7 @@ use crate::npm::RealNpmRegistryApi;
 use crate::resolver::CliResolver;
 use crate::tools::check;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -41,6 +42,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
+use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
@@ -76,6 +78,7 @@ pub struct ProcState(Arc<Inner>);
 pub struct Inner {
   pub dir: DenoDir,
   pub file_fetcher: FileFetcher,
+  pub http_client: HttpClient,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
   pub emit_options: deno_ast::EmitOptions,
@@ -90,7 +93,7 @@ pub struct Inner {
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
   pub parsed_source_cache: ParsedSourceCache,
-  maybe_resolver: Option<Arc<CliResolver>>,
+  pub maybe_resolver: Option<Arc<CliResolver>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
   pub npm_cache: NpmCache,
@@ -157,12 +160,10 @@ impl ProcState {
     let http_cache = HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
-    let progress_bar = ProgressBar::default();
+    let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
     let http_client = HttpClient::new(
       Some(root_cert_store.clone()),
-      cli_options
-        .unsafely_ignore_certificate_errors()
-        .map(ToOwned::to_owned),
+      cli_options.unsafely_ignore_certificate_errors().clone(),
     )?;
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -226,7 +227,7 @@ impl ProcState {
     let api = RealNpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
-      http_client,
+      http_client.clone(),
       progress_bar.clone(),
     );
     let maybe_lockfile = lockfile.as_ref().cloned();
@@ -256,6 +257,7 @@ impl ProcState {
         .finish(),
       emit_options,
       file_fetcher,
+      http_client,
       graph_data: Default::default(),
       lockfile,
       maybe_import_map,
@@ -471,6 +473,30 @@ impl ProcState {
     Ok(())
   }
 
+  /// Helper around prepare_module_load that loads and type checks
+  /// the provided files.
+  pub async fn load_and_type_check_files(
+    &self,
+    files: &[String],
+  ) -> Result<(), AnyError> {
+    let lib = self.options.ts_type_lib_window();
+
+    let specifiers = files
+      .iter()
+      .map(|file| resolve_url_or_path(file))
+      .collect::<Result<Vec<_>, _>>()?;
+    self
+      .prepare_module_load(
+        specifiers,
+        false,
+        lib,
+        Permissions::allow_all(),
+        Permissions::allow_all(),
+        false,
+      )
+      .await
+  }
+
   /// Add the builtin node modules to the graph data.
   pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
     if self.node_std_graph_prepared.load(Ordering::Relaxed) {
@@ -568,13 +594,35 @@ impl ProcState {
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
     // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
     // but sadly that's not the case due to missing APIs in V8.
-    let referrer = if referrer.is_empty()
-      && matches!(self.options.sub_command(), DenoSubcommand::Repl(_))
-    {
+    let is_repl = matches!(self.options.sub_command(), DenoSubcommand::Repl(_));
+    let referrer = if referrer.is_empty() && is_repl {
       deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()
     } else {
       deno_core::resolve_url_or_path(referrer).unwrap()
     };
+
+    // FIXME(bartlomieju): this is another hack way to provide NPM specifier
+    // support in REPL. This should be fixed.
+    if is_repl {
+      let specifier = self
+        .maybe_resolver
+        .as_ref()
+        .and_then(|resolver| {
+          resolver.resolve(specifier, &referrer).to_result().ok()
+        })
+        .or_else(|| ModuleSpecifier::parse(specifier).ok());
+      if let Some(specifier) = specifier {
+        if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+          return self
+            .handle_node_resolve_result(node::node_resolve_npm_reference(
+              &reference,
+              deno_runtime::deno_node::NodeResolutionMode::Execution,
+              &self.npm_resolver,
+            ))
+            .with_context(|| format!("Could not resolve '{}'.", reference));
+        }
+      }
+    }
 
     if let Some(resolver) = &self.maybe_resolver {
       resolver.resolve(specifier, &referrer).to_result()

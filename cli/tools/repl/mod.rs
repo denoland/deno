@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::Flags;
 use crate::args::ReplFlags;
 use crate::colors;
 use crate::proc_state::ProcState;
@@ -7,6 +8,7 @@ use crate::worker::create_main_worker_with_extensions;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::resolve_url_or_path;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -105,7 +107,7 @@ pub fn op_repl_save(
 }
 
 async fn create_repl_session(
-  ps: &ProcState,
+  ps: ProcState,
   module_url: ModuleSpecifier,
   repl_flags: ReplFlags,
 ) -> Result<ReplSession, AnyError> {
@@ -122,7 +124,7 @@ async fn create_repl_session(
     .build();
 
   let mut worker = create_main_worker_with_extensions(
-    ps,
+    &ps,
     module_url.clone(),
     Permissions::from_options(&ps.options.permissions_options())?,
     vec![extension],
@@ -131,11 +133,11 @@ async fn create_repl_session(
   worker.setup_repl().await?;
   let worker = worker.into_main_worker();
 
-  let mut repl_session = ReplSession::initialize(worker).await?;
+  let mut repl_session = ReplSession::initialize(ps.clone(), worker).await?;
 
   if let Some(eval_files) = repl_flags.eval_files {
     for eval_file in eval_files {
-      match read_eval_file(ps, &eval_file).await {
+      match read_eval_file(&ps, &eval_file).await {
         Ok(eval_source) => {
           let output = repl_session
             .evaluate_line_and_get_output(&eval_source)
@@ -180,13 +182,13 @@ fn save_session_to_file(
   Ok(())
 }
 
-pub async fn run(
-  ps: &ProcState,
-  module_url: ModuleSpecifier,
-  repl_flags: ReplFlags,
-) -> Result<i32, AnyError> {
+pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
+  let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
+  let ps = ProcState::build(flags).await?;
+
   let mut repl_session =
-    create_repl_session(ps, module_url.clone(), repl_flags.clone()).await?;
+    create_repl_session(ps.clone(), main_module.clone(), repl_flags.clone())
+      .await?;
   let mut rustyline_channel = rustyline_channel();
   let mut should_exit_on_interrupt = false;
 
@@ -246,9 +248,12 @@ pub async fn run(
           };
           if repl_state.needs_reload {
             drop(op_state);
-            repl_session =
-              create_repl_session(ps, module_url.clone(), repl_flags.clone())
-                .await?;
+            repl_session = create_repl_session(
+              ps.clone(),
+              main_module.clone(),
+              repl_flags.clone(),
+            )
+            .await?;
             println!("Started a new REPL session. Global scope is now clean.");
           } else if repl_state.needs_save {
             let mut op_state = op_state.borrow_mut();

@@ -151,6 +151,8 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
   const process = new Deno.Command(Deno.execPath(), {
     args: ["eval", "--unstable", scriptText],
     stdin: "piped",
+    stdout: "piped",
+    stderr: "null",
   }).spawn();
 
   const waitSignal = async () => {

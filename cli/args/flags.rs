@@ -10,7 +10,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Url;
 use deno_runtime::permissions::parse_sys_kind;
-use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -204,7 +203,6 @@ pub struct UpgradeFlags {
   pub canary: bool,
   pub version: Option<String>,
   pub output: Option<PathBuf>,
-  pub ca_file: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -313,6 +311,7 @@ pub struct Flags {
   pub ignore: Vec<PathBuf>,
   pub import_map_path: Option<String>,
   pub inspect_brk: Option<SocketAddr>,
+  pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
   pub location: Option<Url>,
   pub lock_write: bool,
@@ -479,20 +478,6 @@ impl Flags {
       }
     } else {
       Some(vec![])
-    }
-  }
-
-  pub fn permissions_options(&self) -> PermissionsOptions {
-    PermissionsOptions {
-      allow_env: self.allow_env.clone(),
-      allow_hrtime: self.allow_hrtime,
-      allow_net: self.allow_net.clone(),
-      allow_ffi: self.allow_ffi.clone(),
-      allow_read: self.allow_read.clone(),
-      allow_run: self.allow_run.clone(),
-      allow_sys: self.allow_sys.clone(),
-      allow_write: self.allow_write.clone(),
-      prompt: !self.no_prompt,
     }
   }
 
@@ -1497,6 +1482,7 @@ fn run_subcommand<'a>() -> Command<'a> {
     .arg(
       watch_arg(true)
         .conflicts_with("inspect")
+        .conflicts_with("inspect-wait")
         .conflicts_with("inspect-brk"),
     )
     .arg(no_clear_screen_arg())
@@ -1637,6 +1623,7 @@ fn test_subcommand<'a>() -> Command<'a> {
         .takes_value(true)
         .value_name("DIR")
         .conflicts_with("inspect")
+        .conflicts_with("inspect-wait")
         .conflicts_with("inspect-brk")
         .help("UNSTABLE: Collect coverage profile data into DIR"),
     )
@@ -1979,7 +1966,20 @@ fn inspect_args(app: Command) -> Command {
         .long("inspect-brk")
         .value_name("HOST:PORT")
         .help(
-          "Activate inspector on host:port and break at start of user script",
+          "Activate inspector on host:port, wait for debugger to connect and break at the start of user script",
+        )
+        .min_values(0)
+        .max_values(1)
+        .require_equals(true)
+        .takes_value(true)
+        .validator(inspect_arg_validate),
+    )
+    .arg(
+      Arg::new("inspect-wait")
+        .long("inspect-wait")
+        .value_name("HOST:PORT")
+        .help(
+          "Activate inspector on host:port and wait for debugger to connect before running user code",
         )
         .min_values(0)
         .max_values(1)
@@ -2820,7 +2820,11 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
         .unwrap_or(NonZeroUsize::new(1).unwrap())
     }
   } else if matches.is_present("jobs") {
-    println!(
+    // We can't change this to use the log crate because its not configured
+    // yet at this point since the flags haven't been parsed. This flag is
+    // deprecated though so it's not worth changing the code to use the log
+    // crate here and this is only done for testing anyway.
+    eprintln!(
       "{}",
       crate::colors::yellow("Warning: --jobs flag is deprecated. Use the --parallel flag with possibly the 'DENO_JOBS' environment variable."),
     );
@@ -2877,14 +2881,12 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   } else {
     None
   };
-  let ca_file = matches.value_of("cert").map(|s| s.to_string());
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
     force,
     canary,
     version,
     output,
-    ca_file,
   });
 }
 
@@ -2997,11 +2999,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
-  #[cfg(not(test))]
-  let has_no_prompt_env = env::var("DENO_NO_PROMPT") == Ok("1".to_string());
-  #[cfg(test)]
-  let has_no_prompt_env = false;
-  if has_no_prompt_env || matches.is_present("no-prompt") {
+  if matches.is_present("no-prompt") {
     flags.no_prompt = true;
   }
 }
@@ -3048,6 +3046,15 @@ fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
   flags.inspect_brk = if matches.is_present("inspect-brk") {
     if let Some(host) = matches.value_of("inspect-brk") {
+      Some(host.parse().unwrap())
+    } else {
+      Some(default())
+    }
+  } else {
+    None
+  };
+  flags.inspect_wait = if matches.is_present("inspect-wait") {
+    if let Some(host) = matches.value_of("inspect-wait") {
       Some(host.parse().unwrap())
     } else {
       Some(default())
@@ -3292,7 +3299,6 @@ mod tests {
           canary: false,
           version: None,
           output: None,
-          ca_file: None,
         }),
         ..Flags::default()
       }
@@ -5744,7 +5750,6 @@ mod tests {
           canary: false,
           version: None,
           output: None,
-          ca_file: Some("example.crt".to_owned()),
         }),
         ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
@@ -5885,6 +5890,38 @@ mod tests {
           script: "foo.js".to_string(),
         }),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn inspect_wait() {
+    let r = flags_from_vec(svec!["deno", "run", "--inspect-wait", "foo.js"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "foo.js".to_string(),
+        }),
+        inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect-wait=127.0.0.1:3567",
+      "foo.js"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "foo.js".to_string(),
+        }),
+        inspect_wait: Some("127.0.0.1:3567".parse().unwrap()),
         ..Flags::default()
       }
     );

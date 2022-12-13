@@ -47,7 +47,11 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     }
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&ps, info_flags.json, ps.options.location_flag())?;
+    print_cache_info(
+      &ps,
+      info_flags.json,
+      ps.options.location_flag().as_ref(),
+    )?;
   }
   Ok(())
 }
