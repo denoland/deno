@@ -2,13 +2,21 @@
 
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
+use crate::npm::NpmPackageReference;
+use crate::ProcState;
+use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::visit::noop_visit_type;
+use deno_ast::swc::visit::Visit;
+use deno_ast::swc::visit::VisitWith;
 use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
+use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
+use deno_graph::source::Resolver;
 use deno_runtime::worker::MainWorker;
 
 use super::cdp;
@@ -66,14 +74,20 @@ struct TsEvaluateResponse {
 }
 
 pub struct ReplSession {
+  proc_state: ProcState,
   pub worker: MainWorker,
   session: LocalInspectorSession,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
+  has_initialized_node_runtime: bool,
+  referrer: ModuleSpecifier,
 }
 
 impl ReplSession {
-  pub async fn initialize(mut worker: MainWorker) -> Result<Self, AnyError> {
+  pub async fn initialize(
+    proc_state: ProcState,
+    mut worker: MainWorker,
+  ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
     let mut session = worker.create_inspector_session().await;
 
@@ -106,11 +120,16 @@ impl ReplSession {
     }
     assert_ne!(context_id, 0);
 
+    let referrer = deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap();
+
     let mut repl_session = ReplSession {
+      proc_state,
       worker,
       session,
       context_id,
       language_server,
+      has_initialized_node_runtime: false,
+      referrer,
     };
 
     // inject prelude
@@ -348,6 +367,8 @@ impl ReplSession {
       scope_analysis: false,
     })?;
 
+    self.check_for_npm_imports(&parsed_module.program()).await?;
+
     let transpiled_src = parsed_module
       .transpile(&deno_ast::EmitOptions {
         emit_metadata: false,
@@ -379,6 +400,45 @@ impl ReplSession {
     })
   }
 
+  async fn check_for_npm_imports(
+    &mut self,
+    program: &swc_ast::Program,
+  ) -> Result<(), AnyError> {
+    let mut collector = ImportCollector::new();
+    program.visit_with(&mut collector);
+
+    let npm_imports = collector
+      .imports
+      .iter()
+      .flat_map(|i| {
+        self
+          .proc_state
+          .maybe_resolver
+          .as_ref()
+          .and_then(|resolver| {
+            resolver.resolve(i, &self.referrer).to_result().ok()
+          })
+          .or_else(|| ModuleSpecifier::parse(i).ok())
+          .and_then(|url| NpmPackageReference::from_specifier(&url).ok())
+      })
+      .map(|r| r.req)
+      .collect::<Vec<_>>();
+    if !npm_imports.is_empty() {
+      if !self.has_initialized_node_runtime {
+        self.proc_state.prepare_node_std_graph().await?;
+        crate::node::initialize_runtime(&mut self.worker.js_runtime).await?;
+        self.has_initialized_node_runtime = true;
+      }
+
+      self
+        .proc_state
+        .npm_resolver
+        .add_package_reqs(npm_imports)
+        .await?;
+    }
+    Ok(())
+  }
+
   async fn evaluate_expression(
     &mut self,
     expression: &str,
@@ -406,5 +466,57 @@ impl ReplSession {
       )
       .await
       .and_then(|res| serde_json::from_value(res).map_err(|e| e.into()))
+  }
+}
+
+/// Walk an AST and get all import specifiers for analysis if any of them is
+/// an npm specifier.
+struct ImportCollector {
+  pub imports: Vec<String>,
+}
+
+impl ImportCollector {
+  pub fn new() -> Self {
+    Self { imports: vec![] }
+  }
+}
+
+impl Visit for ImportCollector {
+  noop_visit_type!();
+
+  fn visit_call_expr(&mut self, call_expr: &swc_ast::CallExpr) {
+    if !matches!(call_expr.callee, swc_ast::Callee::Import(_)) {
+      return;
+    }
+
+    if !call_expr.args.is_empty() {
+      let arg = &call_expr.args[0];
+      if let swc_ast::Expr::Lit(swc_ast::Lit::Str(str_lit)) = &*arg.expr {
+        self.imports.push(str_lit.value.to_string());
+      }
+    }
+  }
+
+  fn visit_module_decl(&mut self, module_decl: &swc_ast::ModuleDecl) {
+    use deno_ast::swc::ast::*;
+
+    match module_decl {
+      ModuleDecl::Import(import_decl) => {
+        if import_decl.type_only {
+          return;
+        }
+
+        self.imports.push(import_decl.src.value.to_string());
+      }
+      ModuleDecl::ExportAll(export_all) => {
+        self.imports.push(export_all.src.value.to_string());
+      }
+      ModuleDecl::ExportNamed(export_named) => {
+        if let Some(src) = &export_named.src {
+          self.imports.push(src.value.to_string());
+        }
+      }
+      _ => {}
+    }
   }
 }
