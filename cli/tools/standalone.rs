@@ -1,7 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CompileFlags;
+use crate::args::Flags;
 use crate::cache::DenoDir;
+use crate::graph_util::create_graph_and_maybe_check;
+use crate::graph_util::error_for_any_npm_specifier;
+use crate::http_util::HttpClient;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
 use crate::util::path::path_has_trailing_slash;
@@ -14,7 +18,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleSpecifier;
-use deno_runtime::deno_fetch::reqwest::Client;
+use deno_runtime::colors;
 use deno_runtime::permissions::Permissions;
 use std::env;
 use std::fs;
@@ -25,10 +29,61 @@ use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::installer::infer_name_from_url;
 
-pub async fn get_base_binary(
+pub async fn compile(
+  flags: Flags,
+  compile_flags: CompileFlags,
+) -> Result<(), AnyError> {
+  let ps = ProcState::build(flags.clone()).await?;
+  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
+  let deno_dir = &ps.dir;
+
+  let output_path = resolve_compile_executable_output_path(&compile_flags)?;
+
+  let graph = Arc::try_unwrap(
+    create_graph_and_maybe_check(module_specifier.clone(), &ps).await?,
+  )
+  .unwrap();
+
+  // at the moment, we don't support npm specifiers in deno_compile, so show an error
+  error_for_any_npm_specifier(&graph)?;
+
+  graph.valid()?;
+
+  let parser = ps.parsed_source_cache.as_capturing_parser();
+  let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
+
+  log::info!(
+    "{} {}",
+    colors::green("Compile"),
+    module_specifier.to_string()
+  );
+
+  // Select base binary based on target
+  let original_binary =
+    get_base_binary(&ps.http_client, deno_dir, compile_flags.target.clone())
+      .await?;
+
+  let final_bin = create_standalone_binary(
+    original_binary,
+    eszip,
+    module_specifier.clone(),
+    &compile_flags,
+    ps,
+  )
+  .await?;
+
+  log::info!("{} {}", colors::green("Emit"), output_path.display());
+
+  write_standalone_binary(output_path, final_bin).await?;
+  Ok(())
+}
+
+async fn get_base_binary(
+  client: &HttpClient,
   deno_dir: &DenoDir,
   target: Option<String>,
 ) -> Result<Vec<u8>, AnyError> {
@@ -50,7 +105,8 @@ pub async fn get_base_binary(
   let binary_path = download_directory.join(&binary_path_suffix);
 
   if !binary_path.exists() {
-    download_base_binary(&download_directory, &binary_path_suffix).await?;
+    download_base_binary(client, &download_directory, &binary_path_suffix)
+      .await?;
   }
 
   let archive_data = tokio::fs::read(binary_path).await?;
@@ -61,23 +117,21 @@ pub async fn get_base_binary(
 }
 
 async fn download_base_binary(
+  client: &HttpClient,
   output_directory: &Path,
   binary_path_suffix: &str,
 ) -> Result<(), AnyError> {
   let download_url = format!("https://dl.deno.land/{}", binary_path_suffix);
 
-  let client_builder = Client::builder();
-  let client = client_builder.build()?;
-
-  println!("Checking {}", &download_url);
+  log::info!("Checking {}", &download_url);
 
   let res = client.get(&download_url).send().await?;
 
   let binary_content = if res.status().is_success() {
-    println!("Download has been found");
+    log::info!("Download has been found");
     res.bytes().await?.to_vec()
   } else {
-    println!("Download could not be found, aborting");
+    log::info!("Download could not be found, aborting");
     std::process::exit(1)
   };
 
@@ -90,7 +144,7 @@ async fn download_base_binary(
 
 /// This functions creates a standalone deno binary by appending a bundle
 /// and magic trailer to the currently executing binary.
-pub async fn create_standalone_binary(
+async fn create_standalone_binary(
   mut original_bin: Vec<u8>,
   eszip: eszip::EszipV2,
   entrypoint: ModuleSpecifier,
@@ -159,7 +213,7 @@ pub async fn create_standalone_binary(
 
 /// This function writes out a final binary to specified path. If output path
 /// is not already standalone binary it will return error instead.
-pub async fn write_standalone_binary(
+async fn write_standalone_binary(
   output_path: PathBuf,
   final_bin: Vec<u8>,
 ) -> Result<(), AnyError> {
@@ -228,7 +282,7 @@ pub async fn write_standalone_binary(
   Ok(())
 }
 
-pub fn resolve_compile_executable_output_path(
+fn resolve_compile_executable_output_path(
   compile_flags: &CompileFlags,
 ) -> Result<PathBuf, AnyError> {
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;

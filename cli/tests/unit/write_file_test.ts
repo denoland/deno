@@ -98,6 +98,20 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, write: true } },
+  function writeFileSyncCreateNew() {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    Deno.writeFileSync(filename, data, { createNew: true });
+
+    assertThrows(() => {
+      Deno.writeFileSync(filename, data, { createNew: true });
+    }, Deno.errors.AlreadyExists);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
   function writeFileSyncAppend() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -213,6 +227,19 @@ Deno.test(
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
     assertEquals(actual, "Hello");
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileCreateNew() {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    await Deno.writeFile(filename, data, { createNew: true });
+    await assertRejects(async () => {
+      await Deno.writeFile(filename, data, { createNew: true });
+    }, Deno.errors.AlreadyExists);
   },
 );
 

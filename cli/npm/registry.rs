@@ -439,38 +439,19 @@ impl RealNpmRegistryApiInner {
     }
 
     let package_url = self.get_package_url(name);
-    let _guard = self.progress_bar.update(package_url.as_str());
+    let guard = self.progress_bar.update(package_url.as_str());
 
-    let response = match self.http_client.get(package_url).send().await {
-      Ok(response) => response,
-      Err(err) => {
-        // attempt to use the local cache
-        if let Some(info) = self.load_file_cached_package_info(name) {
-          return Ok(Some(info));
-        } else {
-          return Err(err.into());
-        }
+    let maybe_bytes = self
+      .http_client
+      .download_with_progress(package_url, &guard)
+      .await?;
+    match maybe_bytes {
+      Some(bytes) => {
+        let package_info = serde_json::from_slice(&bytes)?;
+        self.save_package_info_to_file_cache(name, &package_info);
+        Ok(Some(package_info))
       }
-    };
-
-    if response.status() == 404 {
-      Ok(None)
-    } else if !response.status().is_success() {
-      let status = response.status();
-      let maybe_response_text = response.text().await.ok();
-      bail!(
-        "Bad response: {:?}{}",
-        status,
-        match maybe_response_text {
-          Some(text) => format!("\n\n{}", text),
-          None => String::new(),
-        }
-      );
-    } else {
-      let bytes = response.bytes().await?;
-      let package_info = serde_json::from_slice(&bytes)?;
-      self.save_package_info_to_file_cache(name, &package_info);
-      Ok(Some(package_info))
+      None => Ok(None),
     }
   }
 
