@@ -897,4 +897,56 @@ mod repl {
     assert_ends_with!(out, "\"done\"\n");
     assert!(err.is_empty());
   }
+
+  #[test]
+  fn npm_packages() {
+    let mut env_vars = util::env_vars_for_npm_tests();
+    env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![
+          r#"import chalk from "npm:chalk";"#,
+          "chalk.red('hel' + 'lo')",
+        ]),
+        Some(env_vars.clone()),
+        true,
+      );
+
+      assert_contains!(out, "hello");
+      assert!(err.is_empty());
+    }
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![
+          r#"const chalk = await import("npm:chalk");"#,
+          "chalk.default.red('hel' + 'lo')",
+        ]),
+        Some(env_vars.clone()),
+        true,
+      );
+
+      assert_contains!(out, "hello");
+      assert!(err.is_empty());
+    }
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![r#"export {} from "npm:chalk";"#]),
+        Some(env_vars),
+        true,
+      );
+
+      assert_contains!(out, "Module {");
+      assert_contains!(out, "Chalk: [Function: Chalk],");
+      assert!(err.is_empty());
+    }
+  }
 }
