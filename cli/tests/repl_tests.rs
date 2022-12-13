@@ -949,4 +949,72 @@ mod repl {
       assert!(err.is_empty());
     }
   }
+
+  #[test]
+  fn repl_global_repl_var() {
+    let env_vars = vec![("NO_COLOR".to_owned(), "1".to_owned())];
+
+    // repl.help()
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl"],
+        Some(vec!["repl.help()"]),
+        Some(env_vars.clone()),
+        false,
+      );
+
+      assert_contains!(out, "Available functions:");
+      assert_contains!(out, "repl.help()");
+      assert_contains!(out, "Print this message");
+      assert_contains!(out, "repl.reload()");
+      assert_contains!(out, "Create a new session without exiting the REPL");
+      assert!(err.is_empty());
+    }
+
+    // repl.reload()
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl"],
+        Some(vec![
+          "const a = 1;",
+          "console.log(a);",
+          "repl.reload()",
+          "console.log(a)",
+        ]),
+        Some(env_vars.clone()),
+        false,
+      );
+
+      assert_contains!(out, "1");
+      assert_contains!(
+        out,
+        "Started a new REPL session. Global state has been reset."
+      );
+      assert_contains!(out, "Uncaught ReferenceError: a is not defined");
+      assert!(err.is_empty());
+    }
+
+    // repl.save()
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--allow-all"],
+        Some(vec![
+          "const a = 1;",
+          "repl.save('./session.ts');",
+          "console.log(Deno.readTextFileSync('./session.ts'));",
+          "Deno.removeSync('./session.ts');",
+        ]),
+        Some(env_vars),
+        false,
+      );
+
+      assert_contains!(out, "1");
+      assert_contains!(out, "Saved session to \"./session.ts\".");
+      assert_contains!(out, "const a = 1;\nrepl.save('./session.ts');");
+      assert!(err.is_empty());
+    }
+  }
 }
