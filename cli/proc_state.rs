@@ -31,6 +31,7 @@ use crate::npm::RealNpmRegistryApi;
 use crate::resolver::CliResolver;
 use crate::tools::check;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -158,7 +159,7 @@ impl ProcState {
     let http_cache = HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
-    let progress_bar = ProgressBar::default();
+    let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
     let http_client = HttpClient::new(
       Some(root_cert_store.clone()),
       cli_options.unsafely_ignore_certificate_errors().clone(),
