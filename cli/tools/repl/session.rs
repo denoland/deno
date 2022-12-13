@@ -12,7 +12,9 @@ use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
@@ -81,6 +83,10 @@ pub struct ReplSession {
   pub language_server: ReplLanguageServer,
   has_initialized_node_runtime: bool,
   referrer: ModuleSpecifier,
+  // FIXME(bartlomieju): this field should be used to listen
+  // for "exceptionThrown" notifications
+  #[allow(dead_code)]
+  notification_rx: UnboundedReceiver<Value>,
 }
 
 impl ReplSession {
@@ -102,8 +108,11 @@ impl ReplSession {
     // Enabling the runtime domain will always send trigger one executionContextCreated for each
     // context the inspector knows about so we grab the execution context from that since
     // our inspector does not support a default context (0 is an invalid context id).
-    let mut context_id: u64 = 0;
-    for notification in session.notifications() {
+    let context_id: u64;
+    let mut notification_rx = session.take_notification_rx();
+
+    loop {
+      let notification = notification_rx.next().await.unwrap();
       let method = notification.get("method").unwrap().as_str().unwrap();
       let params = notification.get("params").unwrap();
       if method == "Runtime.executionContextCreated" {
@@ -116,6 +125,7 @@ impl ReplSession {
           .as_bool()
           .unwrap());
         context_id = context.get("id").unwrap().as_u64().unwrap();
+        break;
       }
     }
     assert_ne!(context_id, 0);
@@ -130,6 +140,7 @@ impl ReplSession {
       language_server,
       has_initialized_node_runtime: false,
       referrer,
+      notification_rx,
     };
 
     // inject prelude
