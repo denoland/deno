@@ -172,14 +172,49 @@ fn save_session_to_file(
   session_history: &[String],
   maybe_filename: Option<String>,
 ) -> Result<(), AnyError> {
-  // TODO(bartlomieju): make date shorter
   let filename = maybe_filename.unwrap_or_else(|| {
-    format!("./repl-{}.ts", chrono::Local::now().to_rfc3339())
+    format!(
+      "./repl-{}.ts",
+      chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    )
   });
   std::fs::write(&filename, session_history.join("\n"))
     .context("Unable to save session file")?;
-  println!("Saved session to {}", filename);
+  println!("Saved session to \"{}\".", filename);
   Ok(())
+}
+
+async fn handle_repl_state(
+  ps: &ProcState,
+  repl_session: &mut ReplSession,
+  main_module: &ModuleSpecifier,
+  repl_flags: &ReplFlags,
+  session_history: &[String],
+) -> Result<Option<ReplSession>, AnyError> {
+  let op_state = repl_session.worker.js_runtime.op_state();
+  let repl_state = {
+    let op_state = op_state.borrow();
+    op_state.borrow::<ReplState>().clone()
+  };
+  if repl_state.needs_reload {
+    drop(op_state);
+    let repl_session =
+      create_repl_session(ps.clone(), main_module.clone(), repl_flags.clone())
+        .await?;
+    println!("Started a new REPL session. Global state has been reset.");
+    Ok(Some(repl_session))
+  } else if repl_state.needs_save {
+    let mut op_state = op_state.borrow_mut();
+    op_state.put(ReplState {
+      needs_reload: false,
+      needs_save: false,
+      maybe_session_filename: None,
+    });
+    save_session_to_file(session_history, repl_state.maybe_session_filename)?;
+    Ok(None)
+  } else {
+    Ok(None)
+  }
 }
 
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
@@ -240,33 +275,16 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
 
         println!("{}", output);
 
-        {
-          let op_state = repl_session.worker.js_runtime.op_state();
-          let repl_state = {
-            let op_state = op_state.borrow();
-            op_state.borrow::<ReplState>().clone()
-          };
-          if repl_state.needs_reload {
-            drop(op_state);
-            repl_session = create_repl_session(
-              ps.clone(),
-              main_module.clone(),
-              repl_flags.clone(),
-            )
-            .await?;
-            println!("Started a new REPL session. Global scope is now clean.");
-          } else if repl_state.needs_save {
-            let mut op_state = op_state.borrow_mut();
-            op_state.put(ReplState {
-              needs_reload: false,
-              needs_save: false,
-              maybe_session_filename: None,
-            });
-            save_session_to_file(
-              &session_history,
-              repl_state.maybe_session_filename,
-            )?;
-          }
+        let maybe_new_session = handle_repl_state(
+          &ps,
+          &mut repl_session,
+          &main_module,
+          &repl_flags,
+          &session_history,
+        )
+        .await?;
+        if let Some(new_session) = maybe_new_session {
+          repl_session = new_session;
         }
       }
       Err(ReadlineError::Interrupted) => {
