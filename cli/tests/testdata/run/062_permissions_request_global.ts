@@ -4,7 +4,3 @@ const status2 = await Deno.permissions.query({ name: "read", path: "foo" });
 console.log(status2);
 const status3 = await Deno.permissions.query({ name: "read", path: "bar" });
 console.log(status3);
-const status4 = Deno.permissions.querySync({ name: "read", path: "foo" });
-console.log(status4);
-const status5 = Deno.permissions.querySync({ name: "read", path: "bar" });
-console.log(status3);
