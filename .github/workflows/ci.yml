@@ -575,7 +575,7 @@ jobs:
           ./tools/release/05_create_release_notes.ts
 
       - name: Upload release to GitHub
-        uses: softprops/action-gh-release@59c3b4891632ff9a897f99a91d7bc557467a3a22
+        uses: softprops/action-gh-release@v0.1.15
         if: |
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
