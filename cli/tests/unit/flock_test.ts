@@ -148,10 +148,12 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
     console.log(JSON.stringify({ enterTime, exitTime }));
 `;
 
-  const process = Deno.spawnChild(Deno.execPath(), {
+  const process = new Deno.Command(Deno.execPath(), {
     args: ["eval", "--unstable", scriptText],
     stdin: "piped",
-  });
+    stdout: "piped",
+    stderr: "null",
+  }).spawn();
 
   const waitSignal = async () => {
     const reader = process.stdout.getReader({ mode: "byob" });

@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::http_cache;
+use crate::cache::CachedUrlMetadata;
+use crate::cache::HttpCache;
 
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
@@ -49,14 +50,14 @@ struct Metadata {
 
 #[derive(Debug, Default, Clone)]
 pub struct CacheMetadata {
-  cache: http_cache::HttpCache,
+  cache: HttpCache,
   metadata: Arc<Mutex<HashMap<ModuleSpecifier, Metadata>>>,
 }
 
 impl CacheMetadata {
   pub fn new(location: &Path) -> Self {
     Self {
-      cache: http_cache::HttpCache::new(location),
+      cache: HttpCache::new(location),
       metadata: Default::default(),
     }
   }
@@ -87,8 +88,7 @@ impl CacheMetadata {
       return None;
     }
     let cache_filename = self.cache.get_cache_filename(specifier)?;
-    let specifier_metadata =
-      http_cache::Metadata::read(&cache_filename).ok()?;
+    let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
     let values = Arc::new(parse_metadata(&specifier_metadata.headers));
     let version = calculate_fs_version(&cache_filename);
     let mut metadata_map = self.metadata.lock();
@@ -98,7 +98,7 @@ impl CacheMetadata {
   }
 
   pub fn set_location(&mut self, location: &Path) {
-    self.cache = http_cache::HttpCache::new(location);
+    self.cache = HttpCache::new(location);
     self.metadata.lock().clear();
   }
 }

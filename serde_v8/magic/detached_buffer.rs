@@ -63,7 +63,7 @@ impl FromV8 for DetachedBuffer {
       return Err(crate::Error::ExpectedDetachable);
     }
     let store = b.get_backing_store();
-    b.detach(v8::undefined(scope).into()); // Detach
+    b.detach(None); // Detach
     Ok(Self(V8Slice { store, range }))
   }
 }
