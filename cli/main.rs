@@ -195,7 +195,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       Ok(0)
     }
     DenoSubcommand::Upgrade(upgrade_flags) => {
-      tools::upgrade::upgrade(upgrade_flags).await?;
+      tools::upgrade::upgrade(flags, upgrade_flags).await?;
       Ok(0)
     }
     DenoSubcommand::Vendor(vendor_flags) => {

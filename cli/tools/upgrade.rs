@@ -2,9 +2,14 @@
 
 //! This module provides feature to upgrade deno executable
 
+use crate::args::Flags;
 use crate::args::UpgradeFlags;
 use crate::colors;
+use crate::http_util::HttpClient;
+use crate::proc_state::ProcState;
+use crate::util::display::human_download_size;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
 
 use deno_core::anyhow::bail;
@@ -13,8 +18,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_fetch::reqwest::Client;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
@@ -47,13 +50,15 @@ trait UpdateCheckerEnvironment: Clone + Send + Sync {
 
 #[derive(Clone)]
 struct RealUpdateCheckerEnvironment {
+  http_client: HttpClient,
   cache_file_path: PathBuf,
   current_time: chrono::DateTime<chrono::Utc>,
 }
 
 impl RealUpdateCheckerEnvironment {
-  pub fn new(cache_file_path: PathBuf) -> Self {
+  pub fn new(http_client: HttpClient, cache_file_path: PathBuf) -> Self {
     Self {
+      http_client,
       cache_file_path,
       // cache the current time
       current_time: chrono::Utc::now(),
@@ -63,12 +68,12 @@ impl RealUpdateCheckerEnvironment {
 
 impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
   fn latest_version(&self) -> BoxFuture<'static, Result<String, AnyError>> {
-    async {
-      let client = build_http_client(None)?;
+    let http_client = self.http_client.clone();
+    async move {
       if version::is_canary() {
-        get_latest_canary_version(&client).await
+        get_latest_canary_version(&http_client).await
       } else {
-        get_latest_release_version(&client).await
+        get_latest_release_version(&http_client).await
       }
     }
     .boxed()
@@ -159,12 +164,12 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
   }
 }
 
-pub fn check_for_upgrades(cache_file_path: PathBuf) {
+pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
   if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
     return;
   }
 
-  let env = RealUpdateCheckerEnvironment::new(cache_file_path);
+  let env = RealUpdateCheckerEnvironment::new(http_client, cache_file_path);
   let update_checker = UpdateChecker::new(env);
 
   if update_checker.should_check_for_new_version() {
@@ -234,7 +239,11 @@ async fn fetch_and_store_latest_version<
   );
 }
 
-pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
+pub async fn upgrade(
+  flags: Flags,
+  upgrade_flags: UpgradeFlags,
+) -> Result<(), AnyError> {
+  let ps = ProcState::build(flags).await?;
   let current_exe_path = std::env::current_exe()?;
   let metadata = fs::metadata(&current_exe_path)?;
   let permissions = metadata.permissions();
@@ -256,7 +265,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
     ), current_exe_path.display());
   }
 
-  let client = build_http_client(upgrade_flags.ca_file)?;
+  let client = ps.http_client.clone();
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
@@ -314,7 +323,11 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
       {
         log::info!(
           "Local deno version {} is the most recent release",
-          crate::version::deno()
+          if upgrade_flags.canary {
+            crate::version::GIT_COMMIT_HASH.to_string()
+          } else {
+            crate::version::deno()
+          }
         );
         return Ok(());
       } else {
@@ -340,7 +353,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
     )
   };
 
-  let archive_data = download_package(client, &download_url).await?;
+  let archive_data = download_package(&client, &download_url).await?;
 
   log::info!("Deno is upgrading to version {}", &install_version);
 
@@ -348,7 +361,10 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
-  if !upgrade_flags.dry_run {
+  if upgrade_flags.dry_run {
+    fs::remove_file(&new_exe_path)?;
+    log::info!("Upgraded successfully (dry run)");
+  } else {
     let output_exe_path =
       upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
     let output_result = if *output_exe_path == current_exe_path {
@@ -377,36 +393,14 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
         return Err(err.into());
       }
     }
-  } else {
-    fs::remove_file(&new_exe_path)?;
+    log::info!("Upgraded successfully");
   }
-
-  log::info!("Upgraded successfully");
 
   Ok(())
 }
 
-fn build_http_client(
-  ca_file: Option<String>,
-) -> Result<reqwest::Client, AnyError> {
-  let mut client_builder =
-    Client::builder().user_agent(version::get_user_agent());
-
-  // If we have been provided a CA Certificate, add it into the HTTP client
-  let ca_file = ca_file.or_else(|| env::var("DENO_CERT").ok());
-  if let Some(ca_file) = ca_file {
-    let buf = std::fs::read(ca_file)?;
-    let cert = reqwest::Certificate::from_pem(&buf)?;
-    client_builder = client_builder.add_root_certificate(cert);
-  }
-
-  let client = client_builder.build()?;
-
-  Ok(client)
-}
-
 async fn get_latest_release_version(
-  client: &Client,
+  client: &HttpClient,
 ) -> Result<String, AnyError> {
   let res = client
     .get("https://dl.deno.land/release-latest.txt")
@@ -417,7 +411,7 @@ async fn get_latest_release_version(
 }
 
 async fn get_latest_canary_version(
-  client: &Client,
+  client: &HttpClient,
 ) -> Result<String, AnyError> {
   let res = client
     .get("https://dl.deno.land/canary-latest.txt")
@@ -428,7 +422,7 @@ async fn get_latest_canary_version(
 }
 
 async fn download_package(
-  client: Client,
+  client: &HttpClient,
   download_url: &str,
 ) -> Result<Vec<u8>, AnyError> {
   log::info!("Downloading {}", &download_url);
@@ -436,35 +430,37 @@ async fn download_package(
   let res = client.get(download_url).send().await?;
 
   if res.status().is_success() {
-    let total_size = res.content_length().unwrap() as f64;
-    let mut current_size = 0.0;
+    let total_size = res.content_length().unwrap();
+    let mut current_size = 0;
     let mut data = Vec::with_capacity(total_size as usize);
     let mut stream = res.bytes_stream();
     let mut skip_print = 0;
-    const MEBIBYTE: f64 = 1024.0 * 1024.0;
-    let progress_bar = ProgressBar::default();
-    let clear_guard = progress_bar.clear_guard();
+    let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
+    let progress = progress_bar.update("");
+    progress.set_total_size(total_size);
     while let Some(item) = stream.next().await {
       let bytes = item?;
-      current_size += bytes.len() as f64;
+      current_size += bytes.len() as u64;
       data.extend_from_slice(&bytes);
-      if skip_print == 0 {
-        progress_bar.update(&format!(
-          "{:>4.1} MiB / {:.1} MiB ({:^5.1}%)",
-          current_size / MEBIBYTE,
-          total_size / MEBIBYTE,
-          (current_size / total_size) * 100.0,
-        ));
+      if progress_bar.is_enabled() {
+        progress.set_position(current_size);
+      } else if skip_print == 0 {
+        log::info!(
+          "{} / {} ({:^5.1}%)",
+          human_download_size(current_size, total_size),
+          human_download_size(total_size, total_size),
+          (current_size as f64 / total_size as f64) * 100.0,
+        );
         skip_print = 10;
       } else {
         skip_print -= 1;
       }
     }
-    drop(clear_guard);
+    drop(progress);
     log::info!(
-      "{:.1} MiB / {:.1} MiB (100.0%)",
-      current_size / MEBIBYTE,
-      total_size / MEBIBYTE
+      "{} / {} (100.0%)",
+      human_download_size(current_size, total_size),
+      human_download_size(total_size, total_size)
     );
 
     Ok(data)

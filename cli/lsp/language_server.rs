@@ -80,6 +80,7 @@ use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::ensure_directory_specifier;
 use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
@@ -240,7 +241,7 @@ fn create_lsp_npm_resolver(
   http_client: HttpClient,
 ) -> NpmPackageResolver {
   let registry_url = RealNpmRegistryApi::default_url();
-  let progress_bar = ProgressBar::default();
+  let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
   let npm_cache = NpmCache::from_deno_dir(
     dir,
     // Use an "only" cache setting in order to make the
