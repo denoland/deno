@@ -6,6 +6,7 @@
   const ops = core.ops;
   const {
     Set,
+    SetPrototypeDelete,
     SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -60,7 +61,7 @@
     checkSignalListenerType(listener);
 
     const sigData = getSignalData(signo);
-    sigData.listeners.delete(listener);
+    SetPrototypeDelete(sigData.listeners, listener);
 
     if (sigData.listeners.size === 0 && sigData.rid) {
       unbindSignal(sigData.rid);
@@ -73,6 +74,7 @@
       if (await pollSignal(sigData.rid)) {
         return;
       }
+      // TODO(petamoriken): Prepare SafeSetIterator
       for (const listener of sigData.listeners) {
         listener();
       }

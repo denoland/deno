@@ -16,6 +16,7 @@
     MapPrototypeHas,
     MapPrototypeSet,
     RegExpPrototypeTest,
+    SafeArrayIterator,
     StringPrototypeReplaceAll,
     StringPrototypeToLowerCase,
   } = window.__bootstrap.primordials;
@@ -195,6 +196,7 @@
    */
   function serializeMimeType(mimeType) {
     let serialization = essence(mimeType);
+    // TODO(petamoriken): Prepare SafeMapIterator
     for (const param of mimeType.parameters) {
       serialization += `;${param[0]}=`;
       let value = param[1];
@@ -221,7 +223,7 @@
     let charset = null;
     let essence_ = null;
     let mimeType = null;
-    for (const value of headerValues) {
+    for (const value of new SafeArrayIterator(headerValues)) {
       const temporaryMimeType = parseMimeType(value);
       if (
         temporaryMimeType === null ||

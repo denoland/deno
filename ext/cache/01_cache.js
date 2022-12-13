@@ -6,6 +6,7 @@
   const webidl = window.__bootstrap.webidl;
   const {
     Symbol,
+    SafeArrayIterator,
     TypeError,
     ObjectPrototypeIsPrototypeOf,
   } = window.__bootstrap.primordials;
@@ -114,7 +115,7 @@
       const varyHeader = getHeader(innerResponse.headerList, "vary");
       if (varyHeader) {
         const fieldValues = varyHeader.split(",");
-        for (const field of fieldValues) {
+        for (const field of new SafeArrayIterator(fieldValues)) {
           if (field.trim() === "*") {
             throw new TypeError("Vary header must not contain '*'");
           }
