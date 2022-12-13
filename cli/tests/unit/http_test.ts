@@ -1383,6 +1383,7 @@ Deno.test({
       const { success, stdout } = await new Deno.Command("curl", {
         args,
         stderr: "null",
+        stdout: "piped",
       }).output();
       assert(success);
       const output = decoder.decode(stdout);
@@ -1430,7 +1431,11 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const proc = new Deno.Command("curl", { args, stderr: "null" }).spawn();
+      const proc = new Deno.Command("curl", {
+        args,
+        stderr: "null",
+        stdout: "piped",
+      }).spawn();
       const status = await proc.status;
       assert(status.success);
       const stdout = proc.stdout
@@ -1488,6 +1493,7 @@ Deno.test({
       const { success, stdout } = await new Deno.Command("curl", {
         args,
         stderr: "null",
+        stdout: "piped",
       }).output();
       assert(success);
       const output = decoder.decode(stdout).toLocaleLowerCase();
@@ -1543,6 +1549,7 @@ Deno.test({
       const { success, stdout } = await new Deno.Command("curl", {
         args,
         stderr: "null",
+        stdout: "piped",
       }).output();
       assert(success);
       const output = decoder.decode(stdout);
@@ -1595,6 +1602,7 @@ Deno.test({
       const { success, stdout } = await new Deno.Command("curl", {
         args,
         stderr: "null",
+        stdout: "piped",
       }).output();
       assert(success);
       const output = decoder.decode(stdout);
@@ -1651,6 +1659,7 @@ Deno.test({
       const { success, stdout } = await new Deno.Command("curl", {
         args,
         stderr: "null",
+        stdout: "piped",
       }).output();
       assert(success);
       const output = decoder.decode(stdout);
@@ -1709,6 +1718,7 @@ Deno.test({
       const { success, stdout } = await new Deno.Command("curl", {
         args,
         stderr: "null",
+        stdout: "piped",
       }).output();
       assert(success);
       const output = decoder.decode(stdout);
@@ -1767,6 +1777,7 @@ Deno.test({
       const { success, stdout } = await new Deno.Command("curl", {
         args,
         stderr: "null",
+        stdout: "piped",
       }).output();
       assert(success);
       const output = decoder.decode(stdout);
@@ -1822,6 +1833,7 @@ Deno.test({
       const { success, stdout } = await new Deno.Command("curl", {
         args,
         stderr: "null",
+        stdout: "piped",
       }).output();
       assert(success);
       const output = decoder.decode(stdout);
@@ -1883,6 +1895,7 @@ Deno.test({
       const { success, stdout } = await new Deno.Command("curl", {
         args,
         stderr: "null",
+        stdout: "piped",
       }).output();
       assert(success);
       const output = decoder.decode(stdout);
@@ -1939,7 +1952,11 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const proc = new Deno.Command("curl", { args, stderr: "null" }).spawn();
+      const proc = new Deno.Command("curl", {
+        args,
+        stderr: "null",
+        stdout: "piped",
+      }).spawn();
       const status = await proc.status;
       assert(status.success);
       const stdout = proc.stdout
@@ -2007,6 +2024,7 @@ Deno.test({
       const { success, stdout } = await new Deno.Command("curl", {
         args,
         stderr: "null",
+        stdout: "piped",
       }).output();
       assert(success);
       const output = decoder.decode(stdout);
@@ -2569,7 +2587,11 @@ Deno.test({
         "Accept-Encoding: gzip, deflate, br",
         "--no-buffer",
       ];
-      const proc = new Deno.Command("curl", { args, stderr: "null" }).spawn();
+      const proc = new Deno.Command("curl", {
+        args,
+        stderr: "null",
+        stdout: "piped",
+      }).spawn();
       const stdout = proc.stdout
         .pipeThrough(new DecompressionStream("gzip"))
         .pipeThrough(new TextDecoderStream());
