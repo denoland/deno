@@ -96,6 +96,68 @@ const INSTALL_RUST = {
   ].join("\n"),
 };
 
+const SETUP_SYSROOT = (platform) =>
+  platform === "linux"
+    ? [{
+      name: "Set up sysroot",
+      run: `
+# Avoid running man-db triggers, which sometimes takes several minutes
+# to complete.
+sudo apt-get remove --purge -y man-db
+# Install clang-15, lld-15, and debootstrap.
+echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-15.list
+curl https://apt.llvm.org/llvm-snapshot.gpg.key |
+  gpg --dearmor                                 |
+sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
+sudo apt-get update
+sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15
+# Create ubuntu-16.04 sysroot environment, which is used to avoid
+# depending on a very recent version of glibc.
+# "libc6-dev" is required for building any C source files.
+# "file" and "make" are needed to build libffi-sys.
+# "curl" is needed to build rusty_v8.
+sudo debootstrap \\
+  --include=ca-certificates,curl,file,libc6-dev,make \\
+  --no-merged-usr --variant=minbase xenial /sysroot  \\
+  http://azure.archive.ubuntu.com/ubuntu
+sudo mount --rbind /dev /sysroot/dev
+sudo mount --rbind /sys /sysroot/sys
+sudo mount --rbind /home /sysroot/home
+sudo mount -t proc /proc /sysroot/proc
+# Configure the build environment. Both Rust and Clang will produce
+# llvm bitcode only, so we can use lld's incremental LTO support.
+cat >> $GITHUB_ENV << __0
+CARGO_PROFILE_BENCH_INCREMENTAL=false
+CARGO_PROFILE_BENCH_LTO=false
+CARGO_PROFILE_RELEASE_INCREMENTAL=false
+CARGO_PROFILE_RELEASE_LTO=false
+RUSTFLAGS<<__1
+  -C linker-plugin-lto=true
+  -C linker=clang-15
+  -C link-arg=-fuse-ld=lld-15
+  -C link-arg=--sysroot=/sysroot
+  -C link-arg=-Wl,--allow-shlib-undefined
+  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  \${{ env.RUSTFLAGS }}
+__1
+RUSTDOCFLAGS<<__1
+  -C linker-plugin-lto=true
+  -C linker=clang-15
+  -C link-arg=-fuse-ld=lld-15
+  -C link-arg=--sysroot=/sysroot
+  -C link-arg=-Wl,--allow-shlib-undefined
+  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  \${{ env.RUSTFLAGS }}
+__1
+CC=clang-15
+CFLAGS=-flto=thin --sysroot=/sysroot
+__0`,
+    }]
+    : [];
+
 const INSTALL_DENO = {
   name: "Install Deno",
   uses: "denoland/setup-deno@v1",
@@ -214,6 +276,7 @@ for (const platform of PLATFORMS) {
         ...USE_GNU_TAR(platform.name),
         INSTALL_DENO,
         INSTALL_RUST,
+        ...SETUP_SYSROOT(platform.name),
         CACHE_RUST(target.target),
         {
           name: "Build",
