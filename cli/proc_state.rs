@@ -591,25 +591,35 @@ impl ProcState {
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
     // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
     // but sadly that's not the case due to missing APIs in V8.
-    let referrer = if referrer.is_empty()
-      && matches!(self.options.sub_command(), DenoSubcommand::Repl(_))
-    {
-      // FIXME(bartlomieju): this is another hack way to provide NPM specifier
-      // support in REPL. This should be fixed.
-      if let Ok(reference) = NpmPackageReference::from_str(&specifier) {
-        return self
-          .handle_node_resolve_result(node::node_resolve_npm_reference(
-            &reference,
-            deno_runtime::deno_node::NodeResolutionMode::Execution,
-            &self.npm_resolver,
-          ))
-          .with_context(|| format!("Could not resolve '{}'.", reference));
-      }
-
+    let is_repl = matches!(self.options.sub_command(), DenoSubcommand::Repl(_));
+    let referrer = if referrer.is_empty() && is_repl {
       deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()
     } else {
       deno_core::resolve_url_or_path(referrer).unwrap()
     };
+
+    // FIXME(bartlomieju): this is another hack way to provide NPM specifier
+    // support in REPL. This should be fixed.
+    if is_repl {
+      let specifier = self
+        .maybe_resolver
+        .as_ref()
+        .and_then(|resolver| {
+          resolver.resolve(specifier, &referrer).to_result().ok()
+        })
+        .or_else(|| ModuleSpecifier::parse(specifier).ok());
+      if let Some(specifier) = specifier {
+        if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+          return self
+            .handle_node_resolve_result(node::node_resolve_npm_reference(
+              &reference,
+              deno_runtime::deno_node::NodeResolutionMode::Execution,
+              &self.npm_resolver,
+            ))
+            .with_context(|| format!("Could not resolve '{}'.", reference));
+        }
+      }
+    }
 
     if let Some(resolver) = &self.maybe_resolver {
       resolver.resolve(specifier, &referrer).to_result()

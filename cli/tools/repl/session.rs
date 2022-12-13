@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::TsTypeLib;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
+use crate::npm::NpmPackageReference;
 use crate::ProcState;
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::visit::noop_visit_type;
@@ -17,7 +17,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
 use deno_graph::source::Resolver;
-use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 
 use super::cdp;
@@ -412,19 +411,18 @@ impl ReplSession {
       .imports
       .iter()
       .flat_map(|i| {
-let r =        if let Some(resolver) = &self.proc_state.maybe_resolver {
-          resolver.resolve(i, &self.referrer).to_result()
-        } else {
-          deno_core::resolve_import(i, self.referrer.as_str())
-            .map_err(|err| err.into())
-        };
-
-        eprintln!("r {:#?}", r);
-        r
+        self
+          .proc_state
+          .maybe_resolver
+          .as_ref()
+          .and_then(|resolver| {
+            resolver.resolve(i, &self.referrer).to_result().ok()
+          })
+          .or_else(|| ModuleSpecifier::parse(i).ok())
+          .and_then(|url| NpmPackageReference::from_specifier(&url).ok())
       })
-      .filter(|i| i.scheme() == "npm:")
-      .flat_map(|i| self.proc_state.resolve(i.as_str(), ""))
-      .collect::<Vec<ModuleSpecifier>>();
+      .map(|r| r.req)
+      .collect::<Vec<_>>();
     if !npm_imports.is_empty() {
       if !self.has_initialized_node_runtime {
         self.proc_state.prepare_node_std_graph().await?;
@@ -434,14 +432,8 @@ let r =        if let Some(resolver) = &self.proc_state.maybe_resolver {
 
       self
         .proc_state
-        .prepare_module_load(
-          npm_imports,
-          false,
-          TsTypeLib::DenoWindow,
-          Permissions::allow_all(),
-          Permissions::allow_all(),
-          false,
-        )
+        .npm_resolver
+        .add_package_reqs(npm_imports)
         .await?;
     }
     Ok(())
