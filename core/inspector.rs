@@ -349,6 +349,23 @@ impl JsRuntimeInspector {
 
   /// This function blocks the thread until at least one inspector client has
   /// established a websocket connection.
+  pub fn wait_for_session(&mut self) {
+    loop {
+      match self.sessions.get_mut().established.iter_mut().next() {
+        Some(_session) => {
+          self.flags.get_mut().waiting_for_session = false;
+          break;
+        }
+        None => {
+          self.flags.get_mut().waiting_for_session = true;
+          let _ = self.poll_sessions(None).unwrap();
+        }
+      };
+    }
+  }
+
+  /// This function blocks the thread until at least one inspector client has
+  /// established a websocket connection.
   ///
   /// After that, it instructs V8 to pause at the next statement.
   /// Frontend must send "Runtime.runIfWaitingForDebugger" message to resume

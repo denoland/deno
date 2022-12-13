@@ -1,13 +1,16 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::auth_tokens::AuthToken;
+use crate::util::progress_bar::UpdateGuard;
 use crate::version::get_user_agent;
 
 use cache_control::Cachability;
 use cache_control::CacheControl;
 use chrono::DateTime;
+use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures::StreamExt;
 use deno_core::url::Url;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::reqwest;
@@ -241,6 +244,44 @@ impl HttpClient {
 
   pub fn get<U: reqwest::IntoUrl>(&self, url: U) -> reqwest::RequestBuilder {
     self.0.get(url)
+  }
+
+  pub async fn download_with_progress<U: reqwest::IntoUrl>(
+    &self,
+    url: U,
+    progress_guard: &UpdateGuard,
+  ) -> Result<Option<Vec<u8>>, AnyError> {
+    let response = self.get(url).send().await?;
+
+    if response.status() == 404 {
+      Ok(None)
+    } else if !response.status().is_success() {
+      let status = response.status();
+      let maybe_response_text = response.text().await.ok();
+      bail!(
+        "Bad response: {:?}{}",
+        status,
+        match maybe_response_text {
+          Some(text) => format!("\n\n{}", text),
+          None => String::new(),
+        }
+      );
+    } else if let Some(total_size) = response.content_length() {
+      progress_guard.set_total_size(total_size);
+      let mut current_size = 0;
+      let mut data = Vec::with_capacity(total_size as usize);
+      let mut stream = response.bytes_stream();
+      while let Some(item) = stream.next().await {
+        let bytes = item?;
+        current_size += bytes.len() as u64;
+        progress_guard.set_position(current_size);
+        data.extend(bytes.into_iter());
+      }
+      Ok(Some(data))
+    } else {
+      let bytes = response.bytes().await?;
+      Ok(Some(bytes.into()))
+    }
   }
 
   /// Asynchronously fetches the given HTTP URL one pass only.

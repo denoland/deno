@@ -307,7 +307,12 @@
       }
 
       spawn() {
-        return spawnChild(this.#command, this.#options);
+        const options = {
+          ...(this.#options ?? {}),
+          stdout: this.#options?.stdout ?? "inherit",
+          stderr: this.#options?.stderr ?? "inherit",
+        };
+        return spawnChild(this.#command, options);
       }
     };
   }

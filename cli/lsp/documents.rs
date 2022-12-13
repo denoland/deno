@@ -699,10 +699,10 @@ fn get_document_path(
   cache: &HttpCache,
   specifier: &ModuleSpecifier,
 ) -> Option<PathBuf> {
-  if specifier.scheme() == "file" {
-    specifier_to_file_path(specifier).ok()
-  } else {
-    cache.get_cache_filename(specifier)
+  match specifier.scheme() {
+    "npm" | "node" => None,
+    "file" => specifier_to_file_path(specifier).ok(),
+    _ => cache.get_cache_filename(specifier),
   }
 }
 

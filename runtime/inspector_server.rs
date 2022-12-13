@@ -67,7 +67,7 @@ impl InspectorServer {
     &self,
     module_url: String,
     js_runtime: &mut JsRuntime,
-    should_break_on_first_statement: bool,
+    wait_for_session: bool,
   ) {
     let inspector_rc = js_runtime.inspector();
     let mut inspector = inspector_rc.borrow_mut();
@@ -78,7 +78,7 @@ impl InspectorServer {
       session_sender,
       deregister_rx,
       module_url,
-      should_break_on_first_statement,
+      wait_for_session,
     );
     self.register_inspector_tx.unbounded_send(info).unwrap();
   }
@@ -233,7 +233,7 @@ async fn server(
         info.get_websocket_debugger_url()
       );
       eprintln!("Visit chrome://inspect to connect to the debugger.");
-      if info.should_break_on_first_statement {
+      if info.wait_for_session {
         eprintln!("Deno is waiting for debugger to connect.");
       }
       if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
@@ -370,7 +370,7 @@ pub struct InspectorInfo {
   pub new_session_tx: UnboundedSender<InspectorSessionProxy>,
   pub deregister_rx: oneshot::Receiver<()>,
   pub url: String,
-  pub should_break_on_first_statement: bool,
+  pub wait_for_session: bool,
 }
 
 impl InspectorInfo {
@@ -379,7 +379,7 @@ impl InspectorInfo {
     new_session_tx: mpsc::UnboundedSender<InspectorSessionProxy>,
     deregister_rx: oneshot::Receiver<()>,
     url: String,
-    should_break_on_first_statement: bool,
+    wait_for_session: bool,
   ) -> Self {
     Self {
       host,
@@ -388,7 +388,7 @@ impl InspectorInfo {
       new_session_tx,
       deregister_rx,
       url,
-      should_break_on_first_statement,
+      wait_for_session,
     }
   }
 
