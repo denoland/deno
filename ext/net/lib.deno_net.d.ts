@@ -185,19 +185,13 @@ declare namespace Deno {
   /** @category Network */
   export interface TcpConn extends Conn {
     /**
-     * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
-     *
      * Enable/disable the use of Nagle's algorithm.
      *
-     * @param [nodelay=true]
+     * @param [noDelay=true]
      */
-    setNoDelay(nodelay?: boolean): void;
-    /**
-     * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
-     *
-     * Enable/disable keep-alive functionality.
-     */
-    setKeepAlive(keepalive?: boolean): void;
+    setNoDelay(noDelay?: boolean): void;
+    /** Enable/disable keep-alive functionality. */
+    setKeepAlive(keepAlive?: boolean): void;
   }
 
   /** @category Network */
