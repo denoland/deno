@@ -10,6 +10,7 @@
   const { EventTarget, listenerCount } = window.__bootstrap.eventTarget;
   const {
     SafeArrayIterator,
+    SafeSetIterator,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
@@ -77,8 +78,7 @@
       }
       this[abortReason] = reason;
       if (this[abortAlgos] !== null) {
-        // TODO(petamoriken): Prepare SafeSetIterator
-        for (const algorithm of this[abortAlgos]) {
+        for (const algorithm of new SafeSetIterator(this[abortAlgos])) {
           algorithm();
         }
         this[abortAlgos] = null;

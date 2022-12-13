@@ -5,6 +5,7 @@
   const core = window.Deno.core;
   const ops = core.ops;
   const {
+    SafeSetIterator,
     Set,
     SetPrototypeDelete,
     SymbolFor,
@@ -74,8 +75,7 @@
       if (await pollSignal(sigData.rid)) {
         return;
       }
-      // TODO(petamoriken): Prepare SafeSetIterator
-      for (const listener of sigData.listeners) {
+      for (const listener of new SafeSetIterator(sigData.listeners)) {
         listener();
       }
     }

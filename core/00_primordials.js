@@ -260,6 +260,18 @@
       },
     },
     {
+      name: "SetIterator",
+      original: {
+        prototype: Reflect.getPrototypeOf(new Set()[Symbol.iterator]()),
+      },
+    },
+    {
+      name: "MapIterator",
+      original: {
+        prototype: Reflect.getPrototypeOf(new Map()[Symbol.iterator]()),
+      },
+    },
+    {
       name: "StringIterator",
       original: {
         prototype: Reflect.getPrototypeOf(String.prototype[Symbol.iterator]()),
@@ -315,6 +327,14 @@
   primordials.SafeArrayIterator = createSafeIterator(
     primordials.ArrayPrototypeSymbolIterator,
     primordials.ArrayIteratorPrototypeNext,
+  );
+  primordials.SafeSetIterator = createSafeIterator(
+    primordials.SetPrototypeSymbolIterator,
+    primordials.SetIteratorPrototypeNext,
+  );
+  primordials.SafeMapIterator = createSafeIterator(
+    primordials.MapPrototypeSymbolIterator,
+    primordials.MapIteratorPrototypeNext,
   );
   primordials.SafeStringIterator = createSafeIterator(
     primordials.StringPrototypeSymbolIterator,
