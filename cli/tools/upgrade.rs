@@ -7,7 +7,9 @@ use crate::args::UpgradeFlags;
 use crate::colors;
 use crate::http_util::HttpClient;
 use crate::proc_state::ProcState;
+use crate::util::display::human_download_size;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
 
 use deno_core::anyhow::bail;
@@ -359,7 +361,10 @@ pub async fn upgrade(
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
-  if !upgrade_flags.dry_run {
+  if upgrade_flags.dry_run {
+    fs::remove_file(&new_exe_path)?;
+    log::info!("Upgraded successfully (dry run)");
+  } else {
     let output_exe_path =
       upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
     let output_result = if *output_exe_path == current_exe_path {
@@ -388,11 +393,8 @@ pub async fn upgrade(
         return Err(err.into());
       }
     }
-  } else {
-    fs::remove_file(&new_exe_path)?;
+    log::info!("Upgraded successfully");
   }
-
-  log::info!("Upgraded successfully");
 
   Ok(())
 }
@@ -428,35 +430,37 @@ async fn download_package(
   let res = client.get(download_url).send().await?;
 
   if res.status().is_success() {
-    let total_size = res.content_length().unwrap() as f64;
-    let mut current_size = 0.0;
+    let total_size = res.content_length().unwrap();
+    let mut current_size = 0;
     let mut data = Vec::with_capacity(total_size as usize);
     let mut stream = res.bytes_stream();
     let mut skip_print = 0;
-    const MEBIBYTE: f64 = 1024.0 * 1024.0;
-    let progress_bar = ProgressBar::default();
-    let clear_guard = progress_bar.clear_guard();
+    let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
+    let progress = progress_bar.update("");
+    progress.set_total_size(total_size);
     while let Some(item) = stream.next().await {
       let bytes = item?;
-      current_size += bytes.len() as f64;
+      current_size += bytes.len() as u64;
       data.extend_from_slice(&bytes);
-      if skip_print == 0 {
-        progress_bar.update(&format!(
-          "{:>4.1} MiB / {:.1} MiB ({:^5.1}%)",
-          current_size / MEBIBYTE,
-          total_size / MEBIBYTE,
-          (current_size / total_size) * 100.0,
-        ));
+      if progress_bar.is_enabled() {
+        progress.set_position(current_size);
+      } else if skip_print == 0 {
+        log::info!(
+          "{} / {} ({:^5.1}%)",
+          human_download_size(current_size, total_size),
+          human_download_size(total_size, total_size),
+          (current_size as f64 / total_size as f64) * 100.0,
+        );
         skip_print = 10;
       } else {
         skip_print -= 1;
       }
     }
-    drop(clear_guard);
+    drop(progress);
     log::info!(
-      "{:.1} MiB / {:.1} MiB (100.0%)",
-      current_size / MEBIBYTE,
-      total_size / MEBIBYTE
+      "{} / {} (100.0%)",
+      human_download_size(current_size, total_size),
+      human_download_size(total_size, total_size)
     );
 
     Ok(data)
