@@ -232,38 +232,35 @@ impl JsRuntimeInspector {
     &mut self,
     scope: &mut HandleScope,
     context: v8::Global<v8::Context>,
-    message: &str,
+    error_message: &str,
     exception: v8::Local<v8::Value>,
   ) {
-    let exception: v8::Local<v8::Message> =
-      unsafe { std::mem::transmute(exception) };
-    let line_number = exception.get_line_number(scope).unwrap_or(1) as u32;
-    let column_number = exception.get_start_column() as u32;
+    let message = v8::Exception::create_message(scope, exception);
+    let line_number = message.get_line_number(scope).unwrap_or(1) as u32;
+    let column_number = message.get_start_column() as u32;
     // FIXME(bartlomieju):
     let script_id = 1;
     // We're always creating stack traces for uncaught exceptions, so it's safe
     // to unwrap here.
-    let stack_trace = exception.get_stack_trace(scope).unwrap();
+    let stack_trace = message.get_stack_trace(scope).unwrap();
     let stack_trace_ptr = self
       .v8_inspector
       .borrow_mut()
       .as_mut()
       .unwrap()
       .create_stack_trace(stack_trace);
-    let detailed_message = exception.get(scope).to_rust_string_lossy(scope);
+    let detailed_message = message.get(scope).to_rust_string_lossy(scope);
     let detailed_message_string_view =
       v8::inspector::StringView::from(detailed_message.as_bytes());
-    let url = exception
+    let url = message
       .get_script_resource_name(scope)
       .map(|name| name.to_rust_string_lossy(scope))
       .unwrap_or_else(|| "<unavailable>".to_string());
     let url_string_view = v8::inspector::StringView::from(url.as_bytes());
 
     let message_string_view =
-      v8::inspector::StringView::from(message.as_bytes());
+      v8::inspector::StringView::from(error_message.as_bytes());
 
-    let exception: v8::Local<v8::Value> =
-      unsafe { std::mem::transmute(exception) };
     let context = v8::Local::new(scope, context);
     self
       .v8_inspector

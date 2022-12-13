@@ -1401,10 +1401,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
     exception = state
       .dispatched_exceptions
       .back()
-      .map(|exception| {
-        eprintln!("has dispatched exception!");
-        v8::Local::new(scope, exception.clone())
-      })
+      .map(|exception| v8::Local::new(scope, exception.clone()))
       .unwrap_or_else(|| {
         // Maybe make a new exception object.
         if was_terminating_execution && exception.is_null_or_undefined() {
@@ -2098,10 +2095,6 @@ impl JsRuntime {
     drop(state);
 
     {
-      eprintln!(
-        "check promise exceptions {}",
-        self.state.borrow().inspector.is_some()
-      );
       if self.state.borrow().inspector.is_some() {
         let inspector = self.inspector();
         let context = self.global_context();

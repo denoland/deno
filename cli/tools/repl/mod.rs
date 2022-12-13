@@ -79,6 +79,33 @@ async fn read_eval_file(
   Ok((*file.source).to_string())
 }
 
+fn handle_notifications(notifications: Vec<serde_json::Value>) {
+  for notification in notifications {
+    let method = notification.get("method").unwrap().as_str().unwrap();
+    let params = notification.get("params").unwrap();
+    if method == "Runtime.exceptionThrown" {
+      let exception_details = params.get("exceptionDetails").unwrap();
+      let exception_details = serde_json::from_value::<cdp::ExceptionDetails>(
+        exception_details.clone(),
+      )
+      .unwrap();
+      let description = match exception_details.exception {
+        Some(exception) => exception
+          .description
+          .unwrap_or_else(|| "Unknown exception".to_string()),
+        None => "Unknown exception".to_string(),
+      };
+      println!(
+        "{}",
+        EvaluationOutput::Error(format!(
+          "{} {}",
+          exception_details.text, description
+        ))
+      );
+    }
+  }
+}
+
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let ps = ProcState::build(flags).await?;
@@ -167,31 +194,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
 
         println!("{}", output);
 
-        for notification in repl_session.session.notifications() {
-          let method = notification.get("method").unwrap().as_str().unwrap();
-          let params = notification.get("params").unwrap();
-          if method == "Runtime.exceptionThrown" {
-            eprintln!("params {:#?}", params);
-            let exception_details = params.get("exceptionDetails").unwrap();
-            let exception_details = serde_json::from_value::<
-              cdp::ExceptionDetails,
-            >(exception_details.clone())
-            .unwrap();
-            let description = match exception_details.exception {
-              Some(exception) => exception
-                .description
-                .unwrap_or_else(|| "Unknown exception".to_string()),
-              None => "Unknown exception".to_string(),
-            };
-            println!(
-              "{}",
-              EvaluationOutput::Error(format!(
-                "{} {}",
-                exception_details.text, description
-              ))
-            );
-          }
-        }
+        handle_notifications(repl_session.session.notifications());
       }
       Err(ReadlineError::Interrupted) => {
         if should_exit_on_interrupt {
