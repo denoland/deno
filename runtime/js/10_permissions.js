@@ -262,7 +262,7 @@
       return PromiseResolve(cache(desc, state));
     }
 
-    request(desc) {
+    requestSync(desc) {
       if (!isValidDescriptor(desc)) {
         throw new TypeError(
           `The provided value "${desc?.name}" is not a valid permission name.`,
