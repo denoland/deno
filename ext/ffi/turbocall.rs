@@ -9,7 +9,7 @@ use dynasmrt::dynasm;
 use dynasmrt::DynasmApi;
 use dynasmrt::ExecutableBuffer;
 
-use crate::needs_unwrap;
+use crate::dlfcn::needs_unwrap;
 use crate::NativeType;
 use crate::Symbol;
 
@@ -562,7 +562,7 @@ impl SysVAmd64 {
   fn must_wrap_return_value_in_typed_array(&self, rv: NativeType) -> bool {
     // V8 only supports i32 and u32 return types for integers
     // We support 64 bit integers by wrapping them in a TypedArray out parameter
-    crate::needs_unwrap(rv)
+    crate::dlfcn::needs_unwrap(rv)
   }
 
   fn finalize(self) -> ExecutableBuffer {
@@ -1073,7 +1073,7 @@ impl Aarch64Apple {
   fn must_wrap_return_value_in_typed_array(&self, rv: NativeType) -> bool {
     // V8 only supports i32 and u32 return types for integers
     // We support 64 bit integers by wrapping them in a TypedArray out parameter
-    crate::needs_unwrap(rv)
+    crate::dlfcn::needs_unwrap(rv)
   }
 
   fn finalize(self) -> ExecutableBuffer {
@@ -1429,7 +1429,7 @@ impl Win64 {
   fn must_wrap_return_value_in_typed_array(&self, rv: NativeType) -> bool {
     // V8 only supports i32 and u32 return types for integers
     // We support 64 bit integers by wrapping them in a TypedArray out parameter
-    crate::needs_unwrap(rv)
+    crate::dlfcn::needs_unwrap(rv)
   }
 
   fn finalize(self) -> ExecutableBuffer {

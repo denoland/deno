@@ -62,6 +62,7 @@ impl ExitCode {
 pub struct MainWorker {
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
+  should_wait_for_inspector_session: bool,
   exit_code: ExitCode,
 }
 
@@ -81,7 +82,13 @@ pub struct WorkerOptions {
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  // If true, the worker will wait for inspector session and break on first
+  // statement of user code. Takes higher precedence than
+  // `should_wait_for_inspector_session`.
   pub should_break_on_first_statement: bool,
+  // If true, the worker will wait for inspector session before executing
+  // user code.
+  pub should_wait_for_inspector_session: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
@@ -108,6 +115,7 @@ impl Default for WorkerOptions {
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
       should_break_on_first_statement: Default::default(),
+      should_wait_for_inspector_session: Default::default(),
       compiled_wasm_module_store: Default::default(),
       shared_array_buffer_store: Default::default(),
       maybe_inspector_server: Default::default(),
@@ -248,7 +256,8 @@ impl MainWorker {
       server.register_inspector(
         main_module.to_string(),
         &mut js_runtime,
-        options.should_break_on_first_statement,
+        options.should_break_on_first_statement
+          || options.should_wait_for_inspector_session,
       );
 
       // Put inspector handle into the op state so we can put a breakpoint when
@@ -261,6 +270,8 @@ impl MainWorker {
     Self {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
+      should_wait_for_inspector_session: options
+        .should_wait_for_inspector_session,
       exit_code,
     }
   }
@@ -355,7 +366,9 @@ impl MainWorker {
         .js_runtime
         .inspector()
         .borrow_mut()
-        .wait_for_session_and_break_on_next_statement()
+        .wait_for_session_and_break_on_next_statement();
+    } else if self.should_wait_for_inspector_session {
+      self.js_runtime.inspector().borrow_mut().wait_for_session();
     }
   }
 
