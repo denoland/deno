@@ -1456,11 +1456,13 @@ declare namespace Deno {
     stdin?: "piped" | "inherit" | "null";
     /**  How `stdout` of the spawned process should be handled.
      *
-     * Defaults to `"piped"`. */
+     * Defaults to `"piped"` for `output` & `outputSync`,
+     * and `"inherit"` for `spawn`. */
     stdout?: "piped" | "inherit" | "null";
     /**  How `stderr` of the spawned process should be handled.
      *
-     * Defaults to "piped". */
+     * Defaults to "piped" for `output` & `outputSync`,
+     * and `"inherit"` for `spawn`. */
     stderr?: "piped" | "inherit" | "null";
 
     /** Skips quoting and escaping of the arguments on windows. This option

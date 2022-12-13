@@ -31,6 +31,7 @@ use crate::npm::RealNpmRegistryApi;
 use crate::resolver::CliResolver;
 use crate::tools::check;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -77,6 +78,7 @@ pub struct ProcState(Arc<Inner>);
 pub struct Inner {
   pub dir: DenoDir,
   pub file_fetcher: FileFetcher,
+  pub http_client: HttpClient,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
   pub emit_options: deno_ast::EmitOptions,
@@ -158,7 +160,7 @@ impl ProcState {
     let http_cache = HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
-    let progress_bar = ProgressBar::default();
+    let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
     let http_client = HttpClient::new(
       Some(root_cert_store.clone()),
       cli_options.unsafely_ignore_certificate_errors().clone(),
@@ -225,7 +227,7 @@ impl ProcState {
     let api = RealNpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
-      http_client,
+      http_client.clone(),
       progress_bar.clone(),
     );
     let maybe_lockfile = lockfile.as_ref().cloned();
@@ -255,6 +257,7 @@ impl ProcState {
         .finish(),
       emit_options,
       file_fetcher,
+      http_client,
       graph_data: Default::default(),
       lockfile,
       maybe_import_map,
