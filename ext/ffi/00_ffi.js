@@ -6,12 +6,13 @@
   const ops = core.ops;
   const __bootstrap = window.__bootstrap;
   const {
-    ObjectDefineProperty,
     ArrayPrototypeMap,
+    ArrayPrototypeJoin,
+    ObjectDefineProperty,
+    ObjectPrototypeHasOwnProperty,
+    ObjectPrototypeIsPrototypeOf,
     Number,
     NumberIsSafeInteger,
-    ArrayPrototypeJoin,
-    ObjectPrototypeIsPrototypeOf,
     TypeError,
     Int32Array,
     Uint32Array,
@@ -273,8 +274,11 @@
 
     constructor(path, symbols) {
       [this.#rid, this.symbols] = ops.op_ffi_load({ path, symbols });
-      // TODO(petamoriken): Add own property check
       for (const symbol in symbols) {
+        if (!ObjectPrototypeHasOwnProperty(symbols, symbol)) {
+          continue;
+        }
+
         if (ReflectHas(symbols[symbol], "type")) {
           const type = symbols[symbol].type;
           if (type === "void") {
