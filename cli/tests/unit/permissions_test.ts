@@ -175,7 +175,7 @@ Deno.test(async function permissionDescriptorValidation() {
 
 Deno.test(function permissionDescriptorValidationSync() {
   for (const value of [undefined, null, {}]) {
-    for (const method of ["querySync"]) {
+    for (const method of ["querySync", "revokeSync", "requestSync"]) {
       assertThrows(
         () => {
           // deno-lint-ignore no-explicit-any

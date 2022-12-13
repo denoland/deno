@@ -226,6 +226,23 @@
       return PromiseResolve(cache(desc, state));
     }
 
+    revokeSync(desc) {
+      if (!isValidDescriptor(desc)) {
+        throw new TypeError(
+          `The provided value "${desc?.name}" is not a valid permission name.`,
+        );
+      }
+
+      if (desc.name === "read" || desc.name === "write") {
+        desc.path = pathFromURL(desc.path);
+      } else if (desc.name === "run") {
+        desc.command = pathFromURL(desc.command);
+      }
+
+      const state = opRevoke(desc);
+      return cache(desc, state);
+    }
+
     request(desc) {
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
@@ -243,6 +260,23 @@
 
       const state = opRequest(desc);
       return PromiseResolve(cache(desc, state));
+    }
+
+    request(desc) {
+      if (!isValidDescriptor(desc)) {
+        throw new TypeError(
+          `The provided value "${desc?.name}" is not a valid permission name.`,
+        );
+      }
+
+      if (desc.name === "read" || desc.name === "write") {
+        desc.path = pathFromURL(desc.path);
+      } else if (desc.name === "run") {
+        desc.command = pathFromURL(desc.command);
+      }
+
+      const state = opRequest(desc);
+      return cache(desc, state);
     }
   }
 

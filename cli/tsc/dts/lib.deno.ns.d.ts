@@ -4288,6 +4288,17 @@ declare namespace Deno {
      */
     revoke(desc: PermissionDescriptor): Promise<PermissionStatus>;
 
+    /** Revokes a permission, and returns the state of the permission.
+     *
+     * ```ts
+     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     *
+     * const status = Deno.permissions.revokeSync({ name: "run" });
+     * assert(status.state !== "granted")
+     * ```
+     */
+    revokeSync(desc: PermissionDescriptor): PermissionStatus;
+
     /** Requests the permission, and resolves to the state of the permission.
      *
      * If the permission is already granted, the user will not be prompted to
@@ -4303,6 +4314,23 @@ declare namespace Deno {
      * ```
      */
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
+
+
+    /** Requests the permission, and returns the state of the permission.
+     *
+     * If the permission is already granted, the user will not be prompted to
+     * grant the permission again.
+     *
+     * ```ts
+     * const status = Deno.permissions.requestSync({ name: "env" });
+     * if (status.state === "granted") {
+     *   console.log("'env' permission is granted.");
+     * } else {
+     *   console.log("'env' permission is denied.");
+     * }
+     * ```
+     */
+    requestSync(desc: PermissionDescriptor): PermissionStatus;
   }
 
   /** Deno's permission management API.
@@ -4347,11 +4375,27 @@ declare namespace Deno {
    * const status = await Deno.permissions.revoke({ name: "run" });
    * assert(status.state !== "granted")
    * ```
+   * 
+   * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   *
+   * const status = Deno.permissions.revokeSync({ name: "run" });
+   * assert(status.state !== "granted")
+   * ```
    *
    * ### Requesting
    *
    * ```ts
    * const status = await Deno.permissions.request({ name: "env" });
+   * if (status.state === "granted") {
+   *   console.log("'env' permission is granted.");
+   * } else {
+   *   console.log("'env' permission is denied.");
+   * }
+   * ```
+   * 
+   * ```ts
+   * const status = Deno.permissions.requestSync({ name: "env" });
    * if (status.state === "granted") {
    *   console.log("'env' permission is granted.");
    * } else {
