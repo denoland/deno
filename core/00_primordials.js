@@ -248,6 +248,24 @@
     copyPrototype(original.prototype, primordials, `${name}Prototype`);
   });
 
+  const {
+    ArrayPrototypeForEach,
+    ArrayPrototypeMap,
+    FunctionPrototypeCall,
+    Map,
+    ObjectDefineProperty,
+    ObjectFreeze,
+    ObjectPrototypeIsPrototypeOf,
+    ObjectSetPrototypeOf,
+    Promise,
+    PromisePrototype,
+    PromisePrototypeThen,
+    Set,
+    SymbolIterator,
+    WeakMap,
+    WeakSet,
+  } = primordials;
+
   // Create copies of abstract intrinsic objects that are not directly exposed
   // on the global object.
   // Refs: https://tc39.es/ecma262/#sec-%typedarray%-intrinsic-object
@@ -284,24 +302,6 @@
     copyPrototype(original, primordials, name);
     copyPrototype(original.prototype, primordials, `${name}Prototype`);
   });
-
-  const {
-    ArrayPrototypeForEach,
-    ArrayPrototypeMap,
-    FunctionPrototypeCall,
-    Map,
-    ObjectDefineProperty,
-    ObjectFreeze,
-    ObjectPrototypeIsPrototypeOf,
-    ObjectSetPrototypeOf,
-    Promise,
-    PromisePrototype,
-    PromisePrototypeThen,
-    Set,
-    SymbolIterator,
-    WeakMap,
-    WeakSet,
-  } = primordials;
 
   // Because these functions are used by `makeSafe`, which is exposed
   // on the `primordials` object, it's important to use const references
