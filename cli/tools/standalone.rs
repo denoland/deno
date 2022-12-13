@@ -63,12 +63,9 @@ pub async fn compile(
   );
 
   // Select base binary based on target
-  let original_binary = get_base_binary(
-    &ps.file_fetcher.http_client,
-    deno_dir,
-    compile_flags.target.clone(),
-  )
-  .await?;
+  let original_binary =
+    get_base_binary(&ps.http_client, deno_dir, compile_flags.target.clone())
+      .await?;
 
   let final_bin = create_standalone_binary(
     original_binary,

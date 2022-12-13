@@ -263,7 +263,7 @@ pub async fn upgrade(
     ), current_exe_path.display());
   }
 
-  let client = ps.file_fetcher.http_client.clone();
+  let client = ps.http_client.clone();
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
