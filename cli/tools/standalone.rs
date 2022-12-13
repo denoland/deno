@@ -5,6 +5,7 @@ use crate::args::Flags;
 use crate::cache::DenoDir;
 use crate::graph_util::create_graph_and_maybe_check;
 use crate::graph_util::error_for_any_npm_specifier;
+use crate::http_util::HttpClient;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
 use crate::util::path::path_has_trailing_slash;
@@ -18,7 +19,6 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::colors;
-use deno_runtime::deno_fetch::reqwest::Client;
 use deno_runtime::permissions::Permissions;
 use std::env;
 use std::fs;
@@ -64,7 +64,8 @@ pub async fn compile(
 
   // Select base binary based on target
   let original_binary =
-    get_base_binary(deno_dir, compile_flags.target.clone()).await?;
+    get_base_binary(&ps.http_client, deno_dir, compile_flags.target.clone())
+      .await?;
 
   let final_bin = create_standalone_binary(
     original_binary,
@@ -82,6 +83,7 @@ pub async fn compile(
 }
 
 async fn get_base_binary(
+  client: &HttpClient,
   deno_dir: &DenoDir,
   target: Option<String>,
 ) -> Result<Vec<u8>, AnyError> {
@@ -103,7 +105,8 @@ async fn get_base_binary(
   let binary_path = download_directory.join(&binary_path_suffix);
 
   if !binary_path.exists() {
-    download_base_binary(&download_directory, &binary_path_suffix).await?;
+    download_base_binary(client, &download_directory, &binary_path_suffix)
+      .await?;
   }
 
   let archive_data = tokio::fs::read(binary_path).await?;
@@ -114,13 +117,11 @@ async fn get_base_binary(
 }
 
 async fn download_base_binary(
+  client: &HttpClient,
   output_directory: &Path,
   binary_path_suffix: &str,
 ) -> Result<(), AnyError> {
   let download_url = format!("https://dl.deno.land/{}", binary_path_suffix);
-
-  let client_builder = Client::builder();
-  let client = client_builder.build()?;
 
   log::info!("Checking {}", &download_url);
 
