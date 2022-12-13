@@ -82,12 +82,13 @@ declare namespace Deno {
     /** The port to listen on. */
     port: number;
     /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `0.0.0.0`.
      *
      * __Note about `0.0.0.0`__ While listening `0.0.0.0` works on all platforms,
      * the browsers on Windows don't work with the address `0.0.0.0`.
      * You should show the message like `server running on localhost:8080` instead of
-     * `server running on 0.0.0.0:8080` if your program supports Windows. */
+     * `server running on 0.0.0.0:8080` if your program supports Windows.
+     *
+     * @default {"0.0.0.0"} */
     hostname?: string;
   }
 
@@ -156,7 +157,9 @@ declare namespace Deno {
     /** The port to connect to. */
     port: number;
     /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `127.0.0.1`. */
+     * If not specified,
+     *
+     * @default {"127.0.0.1"} */
     hostname?: string;
     transport?: "tcp";
   }
@@ -184,7 +187,9 @@ declare namespace Deno {
     /**
      * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
      *
-     * Enable/disable the use of Nagle's algorithm. Defaults to true.
+     * Enable/disable the use of Nagle's algorithm.
+     *
+     * @param [nodelay=true]
      */
     setNoDelay(nodelay?: boolean): void;
     /**
@@ -204,7 +209,8 @@ declare namespace Deno {
     /** The port to connect to. */
     port: number;
     /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `127.0.0.1`. */
+     *
+     * @default {"127.0.0.1"} */
     hostname?: string;
     /**
      * Server certificate file.
@@ -243,7 +249,8 @@ declare namespace Deno {
   /** @category Network */
   export interface StartTlsOptions {
     /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `127.0.0.1`. */
+     *
+     * @default {"127.0.0.1"} */
     hostname?: string;
     /** A list of root certificates that will be used in addition to the
      * default root certificates to verify the peer's certificate.

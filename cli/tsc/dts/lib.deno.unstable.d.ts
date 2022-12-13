@@ -256,7 +256,7 @@ declare namespace Deno {
     /** When `true`, function calls can safely callback into JavaScript or
      * trigger a garbage collection event.
      *
-     * Default is `false`. */
+     * @default {false} */
     callback?: boolean;
   }
 
@@ -583,8 +583,7 @@ declare namespace Deno {
    * permission users should acknowledge in practice that is effectively the
    * same as running with the `allow-all` permission.
    *
-   * An example, given a C library which exports a foreign function named
-   * `add()`:
+   * @example Given a C library which exports a foreign function named `add()`
    *
    * ```ts
    * // Determine library extension based on
@@ -633,7 +632,9 @@ declare namespace Deno {
    */
   interface UnstableRunOptions extends RunOptions {
     /** If `true`, clears the environment variables before executing the
-     * sub-process.  Defaults to `false`. */
+     * sub-process.
+     *
+     * @default {false} */
     clearEnv?: boolean;
     /** For POSIX systems, sets the group ID for the sub process. */
     gid?: number;
@@ -700,7 +701,7 @@ declare namespace Deno {
    * A custom `HttpClient` for use with {@linkcode fetch} function. This is
    * designed to allow custom certificates or proxies to be used with `fetch()`.
    *
-   * ```ts
+   * @example ```ts
    * const caCert = await Deno.readTextFile("./ca.pem");
    * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
    * const req = await fetch("https://myserver.com", { client });
@@ -769,13 +770,13 @@ declare namespace Deno {
    * extension of the web platform Fetch API which allows Deno to use custom
    * TLS certificates and connect via a proxy while using `fetch()`.
    *
-   * ```ts
+   * @example ```ts
    * const caCert = await Deno.readTextFile("./ca.pem");
    * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
-   * ```ts
+   * @example ```ts
    * const client = Deno.createHttpClient({
    *   proxy: { url: "http://myproxy.com:8080" }
    * });
@@ -824,7 +825,9 @@ declare namespace Deno {
      * port.
      *
      * This flag is only supported on Linux. It is silently ignored on other
-     * platforms. Defaults to `false`. */
+     * platforms.
+     *
+     * @default {false} */
     reusePort?: boolean;
   }
 
@@ -852,7 +855,7 @@ declare namespace Deno {
      * process has already bound a socket on it. This effectively steals the
      * socket from the listener.
      *
-     * Defaults to `false`. */
+     * @default {false} */
     reuseAddress?: boolean;
   }
 
@@ -1084,9 +1087,9 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Acquire an advisory file-system lock for the provided file. `exclusive`
-   * defaults to `false`.
+   * Acquire an advisory file-system lock for the provided file.
    *
+   * @param [exclusive=false]
    * @category File System
    */
   export function flock(rid: number, exclusive?: boolean): Promise<void>;
@@ -1094,8 +1097,8 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Acquire an advisory file-system lock synchronously for the provided file.
-   * `exclusive` defaults to `false`.
    *
+   * @param [exclusive=false]
    * @category File System
    */
   export function flockSync(rid: number, exclusive?: boolean): void;
@@ -1430,6 +1433,8 @@ declare namespace Deno {
      *
      * Doesn't guarantee that only `env` variables are present, as the OS may
      * set environmental variables for processes.
+     *
+     * @default {false}
      */
     clearEnv?: boolean;
     /** Environmental variables to pass to the subprocess. */
@@ -1454,19 +1459,19 @@ declare namespace Deno {
      *
      * Defaults to `"null"`. */
     stdin?: "piped" | "inherit" | "null";
-    /**  How `stdout` of the spawned process should be handled.
+    /** How `stdout` of the spawned process should be handled.
      *
-     * Defaults to `"piped"` for `output` & `outputSync`,
-     * and `"inherit"` for `spawn`. */
+     * Defaults to `"piped". */
     stdout?: "piped" | "inherit" | "null";
-    /**  How `stderr` of the spawned process should be handled.
+    /** How `stderr` of the spawned process should be handled.
      *
-     * Defaults to "piped" for `output` & `outputSync`,
-     * and `"inherit"` for `spawn`. */
+     * Defaults to `"piped"`. */
     stderr?: "piped" | "inherit" | "null";
 
     /** Skips quoting and escaping of the arguments on windows. This option
-     * is ignored on non-windows platforms. Defaults to `false`. */
+     * is ignored on non-windows platforms.
+     *
+     * @default {false} */
     windowsRawArguments?: boolean;
   }
 
@@ -1479,6 +1484,8 @@ declare namespace Deno {
    *
    * If `stdin` is set to `"piped"`, the `stdin` {@linkcode WritableStream}
    * needs to be closed manually.
+   *
+   * @example Spawn a subprocess and pipe the output to a file
    *
    * ```ts
    * const command = new Deno.Command(Deno.execPath(), {
@@ -1498,6 +1505,8 @@ declare namespace Deno {
    * const status = await child.status;
    * ```
    *
+   * @example Spawn a subprocess and collect its output
+   *
    * ```ts
    * const command = new Deno.Command(Deno.execPath(), {
    *   args: [
@@ -1510,6 +1519,8 @@ declare namespace Deno {
    * console.assert("hello\n" === new TextDecoder().decode(stdout));
    * console.assert("world\n" === new TextDecoder().decode(stderr));
    * ```
+   *
+   * @example Spawn a subprocess and collect its output synchronously
    *
    * ```ts
    * const command = new Deno.Command(Deno.execPath(), {
@@ -1574,8 +1585,10 @@ declare namespace Deno {
     /** Waits for the child to exit completely, returning all its output and
      * status. */
     output(): Promise<CommandOutput>;
-    /** Kills the process with given {@linkcode Deno.Signal}. Defaults to
-     * `"SIGTERM"`. */
+    /** Kills the process with given {@linkcode Deno.Signal}.
+     *
+     * @param [signo="SIGTERM"]
+     */
     kill(signo?: Signal): void;
 
     /** Ensure that the status of the child process prevents the Deno process
@@ -1606,6 +1619,8 @@ declare namespace Deno {
      *
      * Doesn't guarantee that only `env` variables are present, as the OS may
      * set environmental variables for processes.
+     *
+     * @default {false}
      */
     clearEnv?: boolean;
     /** Environmental variables to pass to the subprocess. */
@@ -1622,7 +1637,7 @@ declare namespace Deno {
      * corresponding {@linkcode AbortController} by sending the process a
      * SIGTERM signal.
      *
-     * Ignored by {@linkcode Command.outputSync}.
+     * Not supported in {@linkcode Deno.spawnSync}.
      */
     signal?: AbortSignal;
 
@@ -1632,15 +1647,19 @@ declare namespace Deno {
     stdin?: "piped" | "inherit" | "null";
     /** How `stdout` of the spawned process should be handled.
      *
-     * Defaults to `"piped"`. */
+     * Defaults to `"piped"` for `output` & `outputSync`,
+     * and `"inherit"` for `spawn`. */
     stdout?: "piped" | "inherit" | "null";
     /** How `stderr` of the spawned process should be handled.
      *
-     * Defaults to "piped". */
+     * Defaults to `"piped"` for `output` & `outputSync`,
+     * and `"inherit"` for `spawn`. */
     stderr?: "piped" | "inherit" | "null";
 
-    /** Skips quoting and escaping of the arguments on Windows. This option
-     * is ignored on non-windows platforms. Defaults to `false`. */
+    /** Skips quoting and escaping of the arguments on windows. This option
+     * is ignored on non-windows platforms.
+     *
+     * @default {false} */
     windowsRawArguments?: boolean;
   }
 
