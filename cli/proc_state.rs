@@ -78,6 +78,7 @@ pub struct ProcState(Arc<Inner>);
 pub struct Inner {
   pub dir: DenoDir,
   pub file_fetcher: FileFetcher,
+  pub http_client: HttpClient,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
   pub emit_options: deno_ast::EmitOptions,
@@ -226,7 +227,7 @@ impl ProcState {
     let api = RealNpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
-      http_client,
+      http_client.clone(),
       progress_bar.clone(),
     );
     let maybe_lockfile = lockfile.as_ref().cloned();
@@ -256,6 +257,7 @@ impl ProcState {
         .finish(),
       emit_options,
       file_fetcher,
+      http_client,
       graph_data: Default::default(),
       lockfile,
       maybe_import_map,
