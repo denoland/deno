@@ -84,7 +84,6 @@ pub struct JsRuntime {
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_options: SnapshotOptions,
-  built_from_snapshot: bool,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
   extensions_with_js: Vec<Extension>,
@@ -350,10 +349,8 @@ impl JsRuntime {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(move || v8_init(v8_platform, options.will_snapshot));
 
-    let has_startup_snapshot = options.startup_snapshot.is_some();
-
     // Add builtins extension
-    if !has_startup_snapshot {
+    if options.startup_snapshot.is_none() {
       options
         .extensions_with_js
         .insert(0, crate::ops_builtin::init_builtins());
@@ -557,7 +554,6 @@ impl JsRuntime {
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
-      built_from_snapshot: has_startup_snapshot,
       snapshot_options,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
@@ -623,17 +619,12 @@ impl JsRuntime {
 
   /// Creates a new realm (V8 context) in this JS execution context,
   /// pre-initialized with all of the extensions that were passed in
-  /// [`RuntimeOptions::extensions`] when the [`JsRuntime`] was constructed.
-  ///
-  /// If the [`JsRuntime`] was not built from a snapshot (see
-  /// [`RuntimeOptions::startup_snapshot`]), the JS code for the extensions will
-  /// be run in the call to this method. In contrast, if there is a snapshot,
-  /// that will be used instead, and the extensions' initialization will come
-  /// "for free".
+  /// [`RuntimeOptions::extensions_with_js`] when the [`JsRuntime`] was
+  /// constructed.
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
       // SAFETY: Having the scope tied to self's lifetime makes it impossible to
-      // reference self.ops while the scope is alive. Here we turn it into an
+      // reference JsRealmState::op_ctxs while the scope is alive. Here we turn it into an
       // unbound lifetime, which is sound because 1. it only lives until the end
       // of this block, and 2. the HandleScope only has access to the isolate,
       // and nothing else we're accessing from self does.
@@ -643,17 +634,12 @@ impl JsRuntime {
       let context = bindings::initialize_context(
         scope,
         &self.state.borrow().op_ctxs,
-        SnapshotOptions::from_bools(
-          self.built_from_snapshot,
-          self.snapshot_options.will_snapshot(),
-        ),
+        self.snapshot_options,
       );
       JsRealm::new(v8::Global::new(scope, context))
     };
 
-    if !self.built_from_snapshot {
-      self.init_extension_js(&realm)?;
-    }
+    self.init_extension_js(&realm)?;
     Ok(realm)
   }
 
@@ -2245,7 +2231,7 @@ impl JsRuntime {
 ///
 /// # Panics
 ///
-/// Every method of [`JsRealm`] will panic if you call if with a reference to a
+/// Every method of [`JsRealm`] will panic if you call it with a reference to a
 /// [`v8::Isolate`] other than the one that corresponds to the current context.
 ///
 /// # Lifetime of the realm
