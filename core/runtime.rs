@@ -624,10 +624,10 @@ impl JsRuntime {
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
       // SAFETY: Having the scope tied to self's lifetime makes it impossible to
-      // reference JsRealmState::op_ctxs while the scope is alive. Here we turn it into an
-      // unbound lifetime, which is sound because 1. it only lives until the end
-      // of this block, and 2. the HandleScope only has access to the isolate,
-      // and nothing else we're accessing from self does.
+      // reference JsRuntimeState::op_ctxs while the scope is alive. Here we
+      // turn it into an unbound lifetime, which is sound because 1. it only
+      // lives until the end of this block, and 2. the HandleScope only has
+      // access to the isolate, and nothing else we're accessing from self does.
       let scope = &mut v8::HandleScope::new(unsafe {
         &mut *(self.v8_isolate() as *mut v8::OwnedIsolate)
       });
