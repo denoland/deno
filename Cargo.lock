@@ -1441,9 +1441,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.15.0"
+version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a56f436938566b1f638411e1f3089257a59a68b344886d75fcad0f397e5acfb"
+checksum = "0aec6d8d6d9a3a4c1a260893677d24c8feb03ce5f4ee5f6522c9da5e00e5597d"
 dependencies = [
  "anyhow",
  "dprint-core",
