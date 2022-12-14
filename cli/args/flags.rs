@@ -51,6 +51,7 @@ pub struct BenchFlags {
   pub ignore: Vec<PathBuf>,
   pub include: Option<Vec<String>>,
   pub filter: Option<String>,
+  pub json: bool
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -696,6 +697,12 @@ fn bench_subcommand<'a>() -> Command<'a> {
   runtime_args(Command::new("bench"), true, false)
     .trailing_var_arg(true)
     .arg(
+      Arg::new("json")
+        .long("json")
+        .help("Output benchmark result in JSON format")
+        .takes_value(false),
+    )
+    .arg(
       Arg::new("ignore")
         .long("ignore")
         .takes_value(true)
@@ -728,6 +735,10 @@ Evaluate the given modules, run all benches declared with 'Deno.bench()' \
 and report results to standard output:
 
   deno bench src/fetch_bench.ts src/signal_bench.ts
+
+Output benchmark result in JSON format:
+
+  deno bench --json src/fetch_bench.ts src/signal_bench.ts
 
 Directory arguments are expanded to all contained files matching the \
 glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
@@ -2279,6 +2290,8 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   // interactive prompts, unless done by user code
   flags.no_prompt = true;
 
+  let json = matches.is_present("json");
+
   let ignore = match matches.values_of("ignore") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -2314,6 +2327,7 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     include,
     ignore,
     filter,
+    json
   });
 }
 
@@ -6335,6 +6349,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "bench",
+      "--json",
       "--unstable",
       "--filter",
       "- foo",
@@ -6354,6 +6369,7 @@ mod tests {
           filter: Some("- foo".to_string()),
           include: Some(svec!["dir1/", "dir2/"]),
           ignore: vec![],
+          json: true
         }),
         unstable: true,
         type_check_mode: TypeCheckMode::Local,

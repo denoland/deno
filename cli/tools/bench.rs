@@ -42,6 +42,7 @@ use tokio::sync::mpsc::UnboundedSender;
 #[derive(Debug, Clone, Deserialize)]
 struct BenchSpecifierOptions {
   filter: Option<String>,
+  json: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
@@ -110,7 +111,13 @@ impl BenchReport {
   }
 }
 
-fn create_reporter(show_output: bool) -> Box<dyn BenchReporter + Send> {
+fn create_reporter(
+  show_output: bool,
+  json: bool,
+) -> Box<dyn BenchReporter + Send> {
+  if json {
+    return Box::new(JsonReporter::new(show_output));
+  }
   Box::new(ConsoleReporter::new(show_output))
 }
 
@@ -122,6 +129,163 @@ pub trait BenchReporter {
   fn report_wait(&mut self, desc: &BenchDescription);
   fn report_output(&mut self, output: &str);
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult);
+}
+
+struct JsonReporter {
+  name: String,
+  show_output: bool,
+  has_ungrouped: bool,
+  group: Option<String>,
+  baseline: bool,
+  group_measurements: Vec<(BenchDescription, BenchStats)>,
+  options: Option<mitata::reporter::Options>,
+}
+
+impl JsonReporter {
+  fn new(show_output: bool) -> Self {
+    Self {
+      show_output,
+      group: None,
+      options: None,
+      baseline: false,
+      name: String::new(),
+      has_ungrouped: false,
+      group_measurements: Vec::new(),
+    }
+  }
+}
+
+impl BenchReporter for JsonReporter {
+  #[cold]
+  fn report_plan(&mut self, plan: &BenchPlan) {
+    self.report_group_summary();
+    self.group = None;
+    self.baseline = false;
+    self.name = String::new();
+    self.group_measurements.clear();
+    self.options = Some(mitata::reporter::Options::new(
+      &plan.names.iter().map(|x| x.as_str()).collect::<Vec<&str>>(),
+    ));
+
+    let options = self.options.as_mut().unwrap();
+
+    options.percentiles = true;
+  }
+  fn report_register(&mut self, desc: &BenchDescription) {
+    todo!()
+  }
+
+  fn report_wait(&mut self, desc: &BenchDescription) {
+    self.name = desc.name.clone();
+
+    match &desc.group {
+      None => {
+        self.has_ungrouped = true;
+      }
+
+      Some(group) => {
+        if self.group.is_none()
+          && self.has_ungrouped
+          && self.group_measurements.is_empty()
+        {
+          println!();
+        }
+
+        if self.group.is_none() || group != self.group.as_ref().unwrap() {
+          self.report_group_summary();
+        }
+
+        if (self.group.is_none() && self.has_ungrouped)
+          || (self.group.is_some() && self.group_measurements.is_empty())
+        {
+          println!();
+        }
+
+        self.group = Some(group.clone());
+      }
+    }
+  }
+
+  fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
+    let options = self.options.as_ref().unwrap();
+
+    match result {
+      BenchResult::Ok(stats) => {
+        let mut desc = desc.clone();
+
+        if desc.baseline && !self.baseline {
+          self.baseline = true;
+        } else {
+          desc.baseline = false;
+        }
+
+        self.group_measurements.push((desc, stats.clone()));
+      }
+
+      BenchResult::Failed(js_error) => {
+        println!(
+          "{}",
+          mitata::reporter::benchmark_error(
+            &desc.name,
+            &mitata::reporter::Error {
+              stack: None,
+              message: format_test_error(js_error),
+            },
+            options
+          )
+        )
+      }
+    };
+  }
+
+  fn report_output(&mut self, output: &str) {
+    if self.show_output {
+      println!("{}", output);
+    }
+  }
+
+  fn report_group_summary(&mut self) {
+    let options = match self.options.as_ref() {
+      None => return,
+      Some(options) => options,
+    };
+
+    if 2 <= self.group_measurements.len()
+      && (self.group.is_some() || (self.group.is_none() && self.baseline))
+    {
+      println!(
+        "\n{}",
+        mitata::reporter::summary(
+          &self
+            .group_measurements
+            .iter()
+            .map(|(d, s)| mitata::reporter::GroupBenchmark {
+              name: d.name.clone(),
+              baseline: d.baseline,
+              group: d.group.as_deref().unwrap_or("").to_owned(),
+
+              stats: mitata::reporter::BenchmarkStats {
+                avg: s.avg,
+                min: s.min,
+                max: s.max,
+                p75: s.p75,
+                p99: s.p99,
+                p995: s.p995,
+              },
+            })
+            .collect::<Vec<mitata::reporter::GroupBenchmark>>(),
+          options
+        )
+      );
+    }
+
+    self.baseline = false;
+    self.group_measurements.clear();
+  }
+
+  fn report_end(&mut self, report: &BenchReport) {
+    self.report_group_summary();
+  }
 }
 
 struct ConsoleReporter {
@@ -378,12 +542,14 @@ async fn bench_specifiers(
 
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
 
+  let option_for_handles = options.clone();
+
   let join_handles = specifiers.iter().map(move |specifier| {
     let ps = ps.clone();
     let permissions = permissions.clone();
     let specifier = specifier.clone();
     let sender = sender.clone();
-    let options = options.clone();
+    let options = option_for_handles.clone();
 
     tokio::task::spawn_blocking(move || {
       let future = bench_specifier(ps, permissions, specifier, sender, options);
@@ -400,7 +566,8 @@ async fn bench_specifiers(
     tokio::task::spawn(async move {
       let mut used_only = false;
       let mut report = BenchReport::new();
-      let mut reporter = create_reporter(log_level != Some(Level::Error));
+      let mut reporter =
+        create_reporter(log_level != Some(Level::Error), options.json);
       let mut benches = IndexMap::new();
 
       while let Some(event) = receiver.recv().await {
@@ -514,6 +681,7 @@ pub async fn run_benchmarks(
     specifiers,
     BenchSpecifierOptions {
       filter: bench_flags.filter,
+      json: bench_flags.json,
     },
   )
   .await?;
@@ -675,6 +843,7 @@ pub async fn run_benchmarks_with_watch(
 
       let specifier_options = BenchSpecifierOptions {
         filter: filter.clone(),
+        json: bench_flags.json,
       };
       bench_specifiers(ps, permissions.clone(), specifiers, specifier_options)
         .await?;
