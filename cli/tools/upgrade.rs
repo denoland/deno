@@ -379,13 +379,14 @@ pub async fn upgrade(
         return Err(err).with_context(|| {
           format!(
             concat!(
-              "Access denied: Could not replace the deno executable. This may be ",
-              "because an existing deno process is running. Please ensure there ",
-              "are no running deno processes (ex. Stop-Process -Name deno ; deno {}), ",
-              "close any editors before upgrading, and ensure you have sufficient ",
-              "permission to '{}'."
+              "Could not replace the deno executable. This may be because an ",
+              "existing deno process is running. Please ensure there are no ",
+              "running deno processes (ex. Stop-Process -Name deno ; deno {}), ",
+              "close any editors before upgrading, and ensure you have ",
+              "sufficient permission to '{}'."
             ),
-            std::env::args().collect::<Vec<_>>().join(" "),
+            // skip the first argument, which is the executable path
+            std::env::args().skip(1).collect::<Vec<_>>().join(" "),
             output_exe_path.display(),
           )
         });
