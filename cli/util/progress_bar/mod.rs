@@ -76,10 +76,6 @@ impl ProgressBar {
     }
   }
 
-  pub fn is_enabled(&self) -> bool {
-    self.draw_thread.is_some()
-  }
-
   pub fn update(&self, msg: &str) -> UpdateGuard {
     match &self.draw_thread {
       Some(draw_thread) => {

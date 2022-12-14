@@ -9,6 +9,8 @@ use crate::http_util::HttpClient;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
 use crate::util::path::path_has_trailing_slash;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 use crate::ProcState;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -122,23 +124,26 @@ async fn download_base_binary(
   binary_path_suffix: &str,
 ) -> Result<(), AnyError> {
   let download_url = format!("https://dl.deno.land/{}", binary_path_suffix);
+  let maybe_bytes = {
+    let progress_bars = ProgressBar::new(ProgressBarStyle::DownloadBars);
+    let progress = progress_bars.update(&download_url);
 
-  log::info!("Checking {}", &download_url);
-
-  let res = client.get(&download_url).send().await?;
-
-  let binary_content = if res.status().is_success() {
-    log::info!("Download has been found");
-    res.bytes().await?.to_vec()
-  } else {
-    log::info!("Download could not be found, aborting");
-    std::process::exit(1)
+    client
+      .download_with_progress(download_url, &progress)
+      .await?
+  };
+  let bytes = match maybe_bytes {
+    Some(bytes) => bytes,
+    None => {
+      log::info!("Download could not be found, aborting");
+      std::process::exit(1)
+    }
   };
 
   std::fs::create_dir_all(output_directory)?;
   let output_path = output_directory.join(binary_path_suffix);
   std::fs::create_dir_all(output_path.parent().unwrap())?;
-  tokio::fs::write(output_path, binary_content).await?;
+  tokio::fs::write(output_path, bytes).await?;
   Ok(())
 }
 
