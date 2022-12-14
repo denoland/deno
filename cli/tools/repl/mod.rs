@@ -9,6 +9,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::resolve_url_or_path;
+use deno_core::serde_json;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -56,6 +57,47 @@ async fn read_line_and_poll(
           }) => {
             let result = repl_session.language_server.completions(&line_text, position).await;
             message_handler.send(RustylineSyncResponse::LspCompletions(result)).unwrap();
+          }
+          Some(RustylineSyncMessage::EvaluateExpression(expr)) => {
+            let evaluate_response = repl_session
+              .post_message_with_event_loop(
+                  "Runtime.evaluate",
+                  Some(cdp::EvaluateArgs {
+                    expression: expr.to_string(),
+                    object_group: None,
+                    include_command_line_api: None,
+                    silent: None,
+                    context_id: Some(repl_session.context_id),
+                    return_by_value: None,
+                    generate_preview: None,
+                    user_gesture: None,
+                    await_promise: None,
+                    throw_on_side_effect: Some(true),
+                    timeout: Some(200),
+                    disable_breaks: None,
+                    repl_mode: None,
+                    allow_unsafe_eval_blocked_by_csp: None,
+                    unique_context_id: None,
+                  }),
+                ).await
+                .ok();
+            let evaluate_response: Option<cdp::EvaluateResponse> =
+            evaluate_response.and_then(|value| serde_json::from_value(value).ok());
+            message_handler.send(RustylineSyncResponse::EvaluateExpression(evaluate_response)).unwrap();
+          }
+          Some(RustylineSyncMessage::GetGlobalLexicalScopeNames) => {
+            let evaluate_response = repl_session
+              .post_message_with_event_loop(
+                "Runtime.globalLexicalScopeNames",
+                Some(cdp::GlobalLexicalScopeNamesArgs {
+                  execution_context_id: Some(repl_session.context_id),
+                }),
+              )
+              .await
+              .unwrap();
+            let evaluate_response: cdp::GlobalLexicalScopeNamesResponse =
+              serde_json::from_value(evaluate_response).unwrap();
+            message_handler.send(RustylineSyncResponse::GetGlobalLexicalScopeNames(evaluate_response.names)).unwrap();
           }
           None => {}, // channel closed
         }
@@ -227,9 +269,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let mut rustyline_channel = rustyline_channel();
   let mut should_exit_on_interrupt = false;
 
-  // TODO(bartlomieju): add helper to update `context_id` in the helper
   let helper = EditorHelper {
-    context_id: repl_session.context_id,
     sync_sender: rustyline_channel.0,
   };
 

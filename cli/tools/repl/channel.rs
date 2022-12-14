@@ -14,6 +14,8 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::lsp::ReplCompletionItem;
 
+use super::cdp;
+
 /// Rustyline uses synchronous methods in its interfaces, but we need to call
 /// async methods. To get around this, we communicate with async code by using
 /// a channel and blocking on the result.
@@ -35,6 +37,8 @@ pub fn rustyline_channel(
 }
 
 pub enum RustylineSyncMessage {
+  EvaluateExpression(String),
+  GetGlobalLexicalScopeNames,
   PostMessage {
     method: String,
     params: Option<Value>,
@@ -46,6 +50,8 @@ pub enum RustylineSyncMessage {
 }
 
 pub enum RustylineSyncResponse {
+  EvaluateExpression(Option<cdp::EvaluateResponse>),
+  GetGlobalLexicalScopeNames(Vec<String>),
   PostMessage(Result<Value, AnyError>),
   LspCompletions(Vec<ReplCompletionItem>),
 }
@@ -75,7 +81,40 @@ impl RustylineSyncMessageSender {
     } else {
       match self.response_rx.borrow_mut().blocking_recv().unwrap() {
         RustylineSyncResponse::PostMessage(result) => result,
-        RustylineSyncResponse::LspCompletions(_) => unreachable!(),
+        _ => unreachable!(),
+      }
+    }
+  }
+
+  pub fn evaluate_expression(
+    &self,
+    expr: &str,
+  ) -> Option<cdp::EvaluateResponse> {
+    if self
+      .message_tx
+      .blocking_send(RustylineSyncMessage::EvaluateExpression(expr.to_string()))
+      .is_err()
+    {
+      None
+    } else {
+      match self.response_rx.borrow_mut().blocking_recv().unwrap() {
+        RustylineSyncResponse::EvaluateExpression(response) => response,
+        _ => unreachable!(),
+      }
+    }
+  }
+
+  pub fn get_global_lexical_scope_names(&self) -> Vec<String> {
+    if self
+      .message_tx
+      .blocking_send(RustylineSyncMessage::GetGlobalLexicalScopeNames)
+      .is_err()
+    {
+      Vec::new()
+    } else {
+      match self.response_rx.borrow_mut().blocking_recv().unwrap() {
+        RustylineSyncResponse::GetGlobalLexicalScopeNames(response) => response,
+        _ => unreachable!(),
       }
     }
   }
@@ -97,7 +136,7 @@ impl RustylineSyncMessageSender {
     } else {
       match self.response_rx.borrow_mut().blocking_recv().unwrap() {
         RustylineSyncResponse::LspCompletions(result) => result,
-        RustylineSyncResponse::PostMessage(_) => unreachable!(),
+        _ => unreachable!(),
       }
     }
   }

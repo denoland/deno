@@ -38,24 +38,12 @@ use super::channel::RustylineSyncMessageSender;
 // tab completion.
 #[derive(Helper, Hinter)]
 pub struct EditorHelper {
-  pub context_id: u64,
   pub sync_sender: RustylineSyncMessageSender,
 }
 
 impl EditorHelper {
   pub fn get_global_lexical_scope_names(&self) -> Vec<String> {
-    let evaluate_response = self
-      .sync_sender
-      .post_message(
-        "Runtime.globalLexicalScopeNames",
-        Some(cdp::GlobalLexicalScopeNamesArgs {
-          execution_context_id: Some(self.context_id),
-        }),
-      )
-      .unwrap();
-    let evaluate_response: cdp::GlobalLexicalScopeNamesResponse =
-      serde_json::from_value(evaluate_response).unwrap();
-    evaluate_response.names
+    self.sync_sender.get_global_lexical_scope_names()
   }
 
   pub fn get_expression_property_names(&self, expr: &str) -> Vec<String> {
@@ -118,32 +106,7 @@ impl EditorHelper {
   }
 
   fn evaluate_expression(&self, expr: &str) -> Option<cdp::EvaluateResponse> {
-    let evaluate_response = self
-      .sync_sender
-      .post_message(
-        "Runtime.evaluate",
-        Some(cdp::EvaluateArgs {
-          expression: expr.to_string(),
-          object_group: None,
-          include_command_line_api: None,
-          silent: None,
-          context_id: Some(self.context_id),
-          return_by_value: None,
-          generate_preview: None,
-          user_gesture: None,
-          await_promise: None,
-          throw_on_side_effect: Some(true),
-          timeout: Some(200),
-          disable_breaks: None,
-          repl_mode: None,
-          allow_unsafe_eval_blocked_by_csp: None,
-          unique_context_id: None,
-        }),
-      )
-      .ok()?;
-    let evaluate_response: cdp::EvaluateResponse =
-      serde_json::from_value(evaluate_response).ok()?;
-
+    let evaluate_response = self.sync_sender.evaluate_expression(expr)?;
     if evaluate_response.exception_details.is_some() {
       None
     } else {
