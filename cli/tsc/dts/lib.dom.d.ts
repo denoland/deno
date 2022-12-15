@@ -11783,6 +11783,7 @@ interface Response extends Body {
 declare var Response: {
     prototype: Response;
     new(body?: BodyInit | null, init?: ResponseInit): Response;
+    json(data: unknown, init?: ResponseInit): Response;
     error(): Response;
     redirect(url: string | URL, status?: number): Response;
 };
