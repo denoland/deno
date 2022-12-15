@@ -355,6 +355,36 @@
           }
         }
       }
+    },
+    "bench": {
+      "description": "Configuration for deno bench",
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "object",
+          "properties": {
+            "include": {
+              "type": "array",
+              "description": "List of files or directories that will be searched for benchmarks.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exclude": {
+              "type": "array",
+              "description": "List of files or directories that will not be searched for benchmarks.",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "lock": {
+      "description": "Whether to use a lock file or the path to use for the lock file. Can be overridden by CLI arguments.",
+      "type": ["string", "boolean"],
+      "default": true
     }
   }
 }

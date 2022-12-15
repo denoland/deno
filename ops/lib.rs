@@ -17,9 +17,6 @@ mod deno;
 mod fast_call;
 mod optimizer;
 
-#[cfg(test)]
-mod tests;
-
 const SCOPE_LIFETIME: &str = "'scope";
 
 /// Add the 'scope lifetime to the function signature.
@@ -60,6 +57,10 @@ impl Op {
 
     let is_async = item.sig.asyncness.is_some() || is_future(&item.sig.output);
     let type_params = exclude_lifetime_params(&item.sig.generics.params);
+
+    #[cfg(test)]
+    let core = quote!(deno_core);
+    #[cfg(not(test))]
     let core = deno::import();
 
     Self {
@@ -75,10 +76,11 @@ impl Op {
   fn gen(mut self) -> TokenStream2 {
     let mut optimizer = Optimizer::new();
     match optimizer.analyze(&mut self) {
-      Ok(_) | Err(BailoutReason::MustBeSingleSegment) => {}
-      Err(BailoutReason::FastUnsupportedParamType) => {
+      Err(BailoutReason::MustBeSingleSegment)
+      | Err(BailoutReason::FastUnsupportedParamType) => {
         optimizer.fast_compatible = false;
       }
+      _ => {}
     };
 
     let Self {
@@ -191,7 +193,8 @@ fn codegen_v8_async(
     .inputs
     .iter()
     .map_while(|a| {
-      (if is_v8 { scope_arg(a) } else { None }).or_else(|| opstate_arg(a))
+      (if is_v8 { scope_arg(a) } else { None })
+        .or_else(|| rc_refcell_opstate_arg(a))
     })
     .collect::<Vec<_>>();
   let rust_i0 = special_args.len();
@@ -285,6 +288,16 @@ fn opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
     arg if is_mut_ref_opstate(arg) => {
       Some(quote! { &mut std::cell::RefCell::borrow_mut(&ctx.state), })
     }
+    _ => None,
+  }
+}
+
+fn rc_refcell_opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
+  match arg {
+    arg if is_rc_refcell_opstate(arg) => Some(quote! { ctx.state.clone(), }),
+    arg if is_mut_ref_opstate(arg) => Some(
+      quote! { compile_error!("mutable opstate is not supported in async ops"), },
+    ),
     _ => None,
   }
 }
@@ -384,7 +397,9 @@ fn codegen_arg(
   let ident = quote::format_ident!("{name}");
   let (pat, ty) = match arg {
     syn::FnArg::Typed(pat) => {
-      if is_optional_fast_callback_option(&pat.ty) {
+      if is_optional_fast_callback_option(&pat.ty)
+        || is_optional_wasm_memory(&pat.ty)
+      {
         return quote! { let #ident = None; };
       }
       (&pat.pat, &pat.ty)
@@ -431,6 +446,13 @@ fn codegen_arg(
       };
     }
   }
+  // Fast path for `*const u8`
+  if is_ptr_u8(&**ty) {
+    let blk = codegen_u8_ptr(core, idx);
+    return quote! {
+      let #ident = #blk;
+    };
+  }
   // Otherwise deserialize it via serde_v8
   quote! {
     let #ident = args.get(#idx as i32);
@@ -449,11 +471,14 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
     let value = args.get(#idx as i32);
     match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
       Ok(b) => {
-        // Handles detached buffers.
         let byte_length = b.byte_length();
-        let store = b.data() as *mut u8;
-        // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
-        unsafe { ::std::slice::from_raw_parts_mut(store, byte_length) }
+        if let Some(data) = b.data() {
+          let store = data.cast::<u8>().as_ptr();
+          // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
+          unsafe { ::std::slice::from_raw_parts_mut(store, byte_length) }
+        } else {
+          &mut []
+        }
       },
       Err(_) => {
         if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
@@ -465,15 +490,53 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
                 return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
               }
           };
-          let store = buffer.data() as *mut u8;
-          // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
-          unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
+          if let Some(data) = buffer.data() {
+            let store = data.cast::<u8>().as_ptr();
+            // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
+            unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
+          } else {
+            &mut []
+          }
         } else {
           return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
         }
       }
     }}
   }
+}
+
+fn codegen_u8_ptr(core: &TokenStream2, idx: usize) -> TokenStream2 {
+  quote! {{
+    let value = args.get(#idx as i32);
+    match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
+      Ok(b) => {
+        if let Some(data) = b.data() {
+          data.cast::<u8>().as_ptr()
+        } else {
+          std::ptr::null::<u8>()
+        }
+      },
+      Err(_) => {
+        if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
+          let offset = view.byte_offset();
+          let buffer = match view.buffer(scope) {
+              Some(v) => v,
+              None => {
+                return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+              }
+          };
+          let store = if let Some(data) = buffer.data() {
+            data.cast::<u8>().as_ptr()
+          } else {
+            std::ptr::null_mut::<u8>()
+          };
+          unsafe { store.add(offset) }
+        } else {
+          return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+        }
+      }
+    }
+  }}
 }
 
 fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
@@ -486,9 +549,13 @@ fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
             return #core::_ops::throw_type_error(scope, format!("Expected Uint32Array at position {}", #idx));
           }
       };
-      let store = buffer.data() as *mut u8;
-      // SAFETY: buffer from Uint32Array. Rust guarantees that lifetime of slice is no longer than the call.
-      unsafe { ::std::slice::from_raw_parts_mut(store.add(offset) as *mut u32, len / 4) }
+      if let Some(data) = buffer.data() {
+        let store = data.cast::<u8>().as_ptr();
+        // SAFETY: buffer from Uint32Array. Rust guarantees that lifetime of slice is no longer than the call.
+        unsafe { ::std::slice::from_raw_parts_mut(store.add(offset) as *mut u32, len / 4) }
+      } else {
+        &mut []
+      }
     } else {
       return #core::_ops::throw_type_error(scope, format!("Expected Uint32Array at position {}", #idx));
     }
@@ -601,8 +668,16 @@ fn is_u32_slice_mut(ty: impl ToTokens) -> bool {
   tokens(ty) == "& mut [u32]"
 }
 
+fn is_ptr_u8(ty: impl ToTokens) -> bool {
+  tokens(ty) == "* const u8"
+}
+
 fn is_optional_fast_callback_option(ty: impl ToTokens) -> bool {
   tokens(&ty).contains("Option < & mut FastApiCallbackOptions")
+}
+
+fn is_optional_wasm_memory(ty: impl ToTokens) -> bool {
+  tokens(&ty).contains("Option < & mut [u8]")
 }
 
 /// Detects if the type can be set using `rv.set_uint32` fast path
@@ -667,4 +742,44 @@ fn exclude_lifetime_params(
     .filter(|t| !tokens(t).starts_with('\''))
     .cloned()
     .collect::<Punctuated<GenericParam, Comma>>()
+}
+
+#[cfg(test)]
+mod tests {
+  use crate::{Attributes, Op};
+  use std::path::PathBuf;
+
+  #[testing_macros::fixture("optimizer_tests/**/*.rs")]
+  fn test_codegen(input: PathBuf) {
+    let update_expected = std::env::var("UPDATE_EXPECTED").is_ok();
+
+    let source =
+      std::fs::read_to_string(&input).expect("Failed to read test file");
+
+    let mut attrs = Attributes::default();
+    if source.contains("// @test-attr:fast") {
+      attrs.must_be_fast = true;
+    }
+    if source.contains("// @test-attr:wasm") {
+      attrs.is_wasm = true;
+      attrs.must_be_fast = true;
+    }
+
+    let item = syn::parse_str(&source).expect("Failed to parse test file");
+    let op = Op::new(item, attrs);
+
+    let expected = std::fs::read_to_string(input.with_extension("out"))
+      .expect("Failed to read expected output file");
+
+    let actual = op.gen();
+    // Validate syntax tree.
+    let tree = syn::parse2(actual).unwrap();
+    let actual = prettyplease::unparse(&tree);
+    if update_expected {
+      std::fs::write(input.with_extension("out"), actual)
+        .expect("Failed to write expected file");
+    } else {
+      assert_eq!(actual, expected);
+    }
+  }
 }

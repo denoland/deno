@@ -13,7 +13,6 @@ use super::tsc;
 use super::tsc::TsServer;
 
 use crate::args::LintConfig;
-use crate::diagnostics;
 use crate::npm::NpmPackageReference;
 
 use deno_ast::MediaType;
@@ -43,7 +42,7 @@ pub type DiagnosticRecord =
 pub type DiagnosticVec = Vec<DiagnosticRecord>;
 type DiagnosticMap =
   HashMap<ModuleSpecifier, (Option<i32>, Vec<lsp::Diagnostic>)>;
-type TsDiagnosticsMap = HashMap<String, Vec<diagnostics::Diagnostic>>;
+type TsDiagnosticsMap = HashMap<String, Vec<crate::tsc::Diagnostic>>;
 type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp::Diagnostic>>;
 
 #[derive(Clone)]
@@ -335,25 +334,25 @@ impl DiagnosticsServer {
   }
 }
 
-impl<'a> From<&'a diagnostics::DiagnosticCategory> for lsp::DiagnosticSeverity {
-  fn from(category: &'a diagnostics::DiagnosticCategory) -> Self {
+impl<'a> From<&'a crate::tsc::DiagnosticCategory> for lsp::DiagnosticSeverity {
+  fn from(category: &'a crate::tsc::DiagnosticCategory) -> Self {
     match category {
-      diagnostics::DiagnosticCategory::Error => lsp::DiagnosticSeverity::ERROR,
-      diagnostics::DiagnosticCategory::Warning => {
+      crate::tsc::DiagnosticCategory::Error => lsp::DiagnosticSeverity::ERROR,
+      crate::tsc::DiagnosticCategory::Warning => {
         lsp::DiagnosticSeverity::WARNING
       }
-      diagnostics::DiagnosticCategory::Suggestion => {
+      crate::tsc::DiagnosticCategory::Suggestion => {
         lsp::DiagnosticSeverity::HINT
       }
-      diagnostics::DiagnosticCategory::Message => {
+      crate::tsc::DiagnosticCategory::Message => {
         lsp::DiagnosticSeverity::INFORMATION
       }
     }
   }
 }
 
-impl<'a> From<&'a diagnostics::Position> for lsp::Position {
-  fn from(pos: &'a diagnostics::Position) -> Self {
+impl<'a> From<&'a crate::tsc::Position> for lsp::Position {
+  fn from(pos: &'a crate::tsc::Position) -> Self {
     Self {
       line: pos.line as u32,
       character: pos.character as u32,
@@ -361,7 +360,7 @@ impl<'a> From<&'a diagnostics::Position> for lsp::Position {
   }
 }
 
-fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
+fn get_diagnostic_message(diagnostic: &crate::tsc::Diagnostic) -> String {
   if let Some(message) = diagnostic.message_text.clone() {
     message
   } else if let Some(message_chain) = diagnostic.message_chain.clone() {
@@ -372,8 +371,8 @@ fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
 }
 
 fn to_lsp_range(
-  start: &diagnostics::Position,
-  end: &diagnostics::Position,
+  start: &crate::tsc::Position,
+  end: &crate::tsc::Position,
 ) -> lsp::Range {
   lsp::Range {
     start: start.into(),
@@ -382,7 +381,7 @@ fn to_lsp_range(
 }
 
 fn to_lsp_related_information(
-  related_information: &Option<Vec<diagnostics::Diagnostic>>,
+  related_information: &Option<Vec<crate::tsc::Diagnostic>>,
 ) -> Option<Vec<lsp::DiagnosticRelatedInformation>> {
   related_information.as_ref().map(|related| {
     related
@@ -408,7 +407,7 @@ fn to_lsp_related_information(
 }
 
 fn ts_json_to_diagnostics(
-  diagnostics: Vec<diagnostics::Diagnostic>,
+  diagnostics: Vec<crate::tsc::Diagnostic>,
 ) -> Vec<lsp::Diagnostic> {
   diagnostics
     .iter()

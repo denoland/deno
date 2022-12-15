@@ -97,23 +97,35 @@ pub fn to_v8_error<'a>(
   get_class: GetErrorClassFn,
   error: &Error,
 ) -> v8::Local<'a, v8::Value> {
-  let cb = JsRuntime::state(scope)
+  let tc_scope = &mut v8::TryCatch::new(scope);
+  let cb = JsRuntime::state(tc_scope)
     .borrow()
     .js_build_custom_error_cb
     .clone()
     .expect("Custom error builder must be set");
-  let cb = cb.open(scope);
-  let this = v8::undefined(scope).into();
-  let class = v8::String::new(scope, get_class(error)).unwrap();
-  let message = v8::String::new(scope, &format!("{:#}", error)).unwrap();
+  let cb = cb.open(tc_scope);
+  let this = v8::undefined(tc_scope).into();
+  let class = v8::String::new(tc_scope, get_class(error)).unwrap();
+  let message = v8::String::new(tc_scope, &format!("{:#}", error)).unwrap();
   let mut args = vec![class.into(), message.into()];
   if let Some(code) = crate::error_codes::get_error_code(error) {
-    args.push(v8::String::new(scope, code).unwrap().into());
+    args.push(v8::String::new(tc_scope, code).unwrap().into());
   }
-  let exception = cb
-    .call(scope, this, &args)
-    .expect("Custom error class must have a builder registered");
-  exception
+  let maybe_exception = cb.call(tc_scope, this, &args);
+
+  match maybe_exception {
+    Some(exception) => exception,
+    None => {
+      let mut msg =
+        "Custom error class must have a builder registered".to_string();
+      if tc_scope.has_caught() {
+        let e = tc_scope.exception().unwrap();
+        let js_error = JsError::from_v8_exception(tc_scope, e);
+        msg = format!("{}: {}", msg, js_error.exception_message);
+      }
+      panic!("{}", msg);
+    }
+  }
 }
 
 /// A `JsError` represents an exception coming from V8, with stack frames and
@@ -205,6 +217,84 @@ impl JsError {
     exception: v8::Local<v8::Value>,
   ) -> Self {
     Self::inner_from_v8_exception(scope, exception, Default::default())
+  }
+
+  pub fn from_v8_message<'a>(
+    scope: &'a mut v8::HandleScope,
+    msg: v8::Local<'a, v8::Message>,
+  ) -> Self {
+    // Create a new HandleScope because we're creating a lot of new local
+    // handles below.
+    let scope = &mut v8::HandleScope::new(scope);
+
+    let exception_message = msg.get(scope).to_rust_string_lossy(scope);
+    let state_rc = JsRuntime::state(scope);
+
+    // Convert them into Vec<JsStackFrame>
+    let mut frames: Vec<JsStackFrame> = vec![];
+
+    let mut source_line = None;
+    let mut source_line_frame_index = None;
+    {
+      let state = &mut *state_rc.borrow_mut();
+
+      let script_resource_name = msg
+        .get_script_resource_name(scope)
+        .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
+        .map(|v| v.to_rust_string_lossy(scope));
+      let line_number: Option<i64> =
+        msg.get_line_number(scope).and_then(|v| v.try_into().ok());
+      let column_number: Option<i64> = msg.get_start_column().try_into().ok();
+      if let (Some(f), Some(l), Some(c)) =
+        (script_resource_name, line_number, column_number)
+      {
+        // V8's column numbers are 0-based, we want 1-based.
+        let c = c + 1;
+        if let Some(source_map_getter) = &state.source_map_getter {
+          let (f, l, c) = apply_source_map(
+            f,
+            l,
+            c,
+            &mut state.source_map_cache,
+            source_map_getter.as_ref(),
+          );
+          frames = vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
+        } else {
+          frames = vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
+        }
+      }
+
+      if let Some(source_map_getter) = &state.source_map_getter {
+        for (i, frame) in frames.iter().enumerate() {
+          if let (Some(file_name), Some(line_number)) =
+            (&frame.file_name, frame.line_number)
+          {
+            if !file_name.trim_start_matches('[').starts_with("deno:") {
+              source_line = get_source_line(
+                file_name,
+                line_number,
+                &mut state.source_map_cache,
+                source_map_getter.as_ref(),
+              );
+              source_line_frame_index = Some(i);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    Self {
+      name: None,
+      message: None,
+      exception_message,
+      cause: None,
+      source_line,
+      source_line_frame_index,
+      frames,
+      stack: None,
+      aggregated: None,
+    }
   }
 
   fn inner_from_v8_exception<'a>(
@@ -330,7 +420,6 @@ impl JsError {
               (&frame.file_name, frame.line_number)
             {
               if !file_name.trim_start_matches('[').starts_with("deno:") {
-                // Source lookup expects a 0-based line number, ours are 1-based.
                 source_line = get_source_line(
                   file_name,
                   line_number,

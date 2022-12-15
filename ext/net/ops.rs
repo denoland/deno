@@ -67,8 +67,8 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
     #[cfg(unix)]
     crate::ops_unix::op_net_send_unixpacket::decl::<P>(),
     op_dns_resolve::decl::<P>(),
-    op_set_nodelay::decl::<P>(),
-    op_set_keepalive::decl::<P>(),
+    op_set_nodelay::decl(),
+    op_set_keepalive::decl(),
   ]
 }
 
@@ -509,24 +509,22 @@ where
 }
 
 #[op]
-pub fn op_set_nodelay<NP>(
+pub fn op_set_nodelay(
   state: &mut OpState,
   rid: ResourceId,
   nodelay: bool,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.Conn#setNoDelay");
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_nodelay(nodelay)
 }
 
 #[op]
-pub fn op_set_keepalive<NP>(
+pub fn op_set_keepalive(
   state: &mut OpState,
   rid: ResourceId,
   keepalive: bool,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.Conn#setKeepAlive");
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_keepalive(keepalive)
@@ -836,7 +834,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_no_delay() {
     let set_nodelay = Box::new(|state: &mut OpState, rid| {
-      op_set_nodelay::call::<TestPermission>(state, rid, true).unwrap();
+      op_set_nodelay::call(state, rid, true).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(socket.nodelay().unwrap());
@@ -848,7 +846,7 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_keepalive() {
     let set_keepalive = Box::new(|state: &mut OpState, rid| {
-      op_set_keepalive::call::<TestPermission>(state, rid, true).unwrap();
+      op_set_keepalive::call(state, rid, true).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(!socket.nodelay().unwrap());
