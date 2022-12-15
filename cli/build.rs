@@ -132,6 +132,14 @@ mod ts {
     }
     println!(
       "cargo:rerun-if-changed={}",
+      cwd.join("tsc").join("00_typescript.js").display()
+    );
+    println!(
+      "cargo:rerun-if-changed={}",
+      cwd.join("tsc").join("99_main_compiler.js").display()
+    );
+    println!(
+      "cargo:rerun-if-changed={}",
       cwd.join("js").join("40_testing.js").display()
     );
 
