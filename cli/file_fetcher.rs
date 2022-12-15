@@ -440,9 +440,9 @@ impl FileFetcher {
       .boxed();
     }
 
-    let mut _maybe_guard = None;
+    let mut maybe_progress_guard = None;
     if let Some(pb) = self.progress_bar.as_ref() {
-      _maybe_guard = Some(pb.update(specifier.as_str()));
+      maybe_progress_guard = Some(pb.update(specifier.as_str()));
     } else {
       log::log!(
         self.download_log_level,
@@ -463,7 +463,7 @@ impl FileFetcher {
     let file_fetcher = self.clone();
     // A single pass of fetch either yields code or yields a redirect.
     async move {
-      match fetch_once(
+      let result = match fetch_once(
         &client,
         FetchOnceArgs {
           url: specifier.clone(),
@@ -497,7 +497,9 @@ impl FileFetcher {
             file_fetcher.build_remote_file(&specifier, bytes, &headers)?;
           Ok(file)
         }
-      }
+      };
+      drop(maybe_progress_guard);
+      result
     }
     .boxed()
   }
