@@ -9,7 +9,7 @@ https://github.com/denoland/deno_install
 ### 1.29.1 / 2022.12.15
 
 - Revert "feat(ops): Fast zero copy string arguments (#16777)" (#17063)
-- fix: re-add Response.json static method (#17061)
+- fix: re-add types for Response.json static method (#17061)
 
 ### 1.29.0 / 2022.12.14
 
