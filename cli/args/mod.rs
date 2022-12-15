@@ -53,7 +53,11 @@ use std::sync::Arc;
 
 use crate::cache::DenoDir;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::path::specifier_to_file_path;
 use crate::version;
+
+use self::config_file::FinalBenchConfig;
+use self::config_file::FinalTestConfig;
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -395,20 +399,61 @@ impl CliOptions {
     }
   }
 
-  pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
+  pub fn to_test_config(
+    &self,
+    test_flags: &TestFlags,
+    // f: impl FnMut(T) -> Result<Option<TestConfig>, AnyError>
+  ) -> Result<FinalTestConfig, AnyError> {
+    let filters = test_flags.get_filters();
+
+    let mut include = filters.include;
+    let mut ignore = filters.ignore;
+
     if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_test_config()
-    } else {
-      Ok(None)
+      let maybe_test_config = config_file.to_test_config()?;
+
+      if let Some(config) = maybe_test_config {
+        let config_filters = self.collect_filters(&config, include, ignore)?;
+        include = config_filters.include;
+        ignore = config_filters.ignore;
+      }
     }
+
+    if include.is_empty() {
+      include.push(std::env::current_dir()?);
+    }
+
+    Ok(FinalTestConfig {
+      files: Filters { include, ignore },
+    })
   }
 
-  pub fn to_bench_config(&self) -> Result<Option<BenchConfig>, AnyError> {
+  pub fn to_bench_config(
+    &self,
+    bench_flags: &BenchFlags,
+  ) -> Result<FinalBenchConfig, AnyError> {
+    let filters = bench_flags.get_filters();
+
+    let mut include = filters.include;
+    let mut ignore = filters.ignore;
+
     if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_bench_config()
-    } else {
-      Ok(None)
+      let maybe_bench_config = config_file.to_bench_config()?;
+
+      if let Some(config) = maybe_bench_config {
+        let config_filters = self.collect_filters(&config, include, ignore)?;
+        include = config_filters.include;
+        ignore = config_filters.ignore;
+      }
     }
+
+    if include.is_empty() {
+      include.push(std::env::current_dir()?);
+    }
+
+    Ok(FinalBenchConfig {
+      files: Filters { include, ignore },
+    })
   }
 
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
@@ -417,6 +462,39 @@ impl CliOptions {
     } else {
       Ok(None)
     }
+  }
+
+  /// Collect included and ignored files. CLI flags take precedence
+  /// over config file, i.e. if there's `files.ignore` in config file
+  /// and `--ignore` CLI flag, only the flag value is taken into account.
+  pub fn collect_filters<T>(
+    &self,
+    config: &T,
+    mut include: Vec<PathBuf>,
+    mut ignore: Vec<PathBuf>,
+  ) -> Result<Filters, AnyError>
+  where
+    T: ConfiguresFiles,
+  {
+    if include.is_empty() {
+      include = config
+        .get_files_config()
+        .include
+        .iter()
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
+    }
+
+    if ignore.is_empty() {
+      ignore = config
+        .get_files_config()
+        .exclude
+        .iter()
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
+    }
+
+    Ok(Filters { include, ignore })
   }
 
   /// Vector of user script CLI arguments.

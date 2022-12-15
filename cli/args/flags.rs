@@ -46,6 +46,7 @@ static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
     .to_string()
 });
 
+#[derive(Clone, Debug, Default)]
 pub struct Filters {
   pub ignore: Vec<PathBuf>,
   pub include: Vec<PathBuf>,
@@ -58,14 +59,14 @@ pub trait FiltersFiles {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct BenchFlags {
   pub ignore: Vec<PathBuf>,
-  pub include: Option<Vec<PathBuf>>,
+  pub include: Vec<PathBuf>,
   pub filter: Option<String>,
 }
 
 impl FiltersFiles for BenchFlags {
   fn get_filters(&self) -> Filters {
     Filters {
-      include: self.include.clone().unwrap_or_default(),
+      include: self.include.clone(),
       ignore: self.ignore.clone(),
     }
   }
@@ -2334,9 +2335,9 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
       .unwrap()
       .map(PathBuf::from)
       .collect();
-    Some(files)
+    files
   } else {
-    None
+    Vec::new()
   };
 
   watch_arg_parse(flags, matches, false);
@@ -6346,7 +6347,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: Some("- foo".to_string()),
-          include: Some(vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")]),
+          include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
           ignore: vec![],
         }),
         unstable: true,

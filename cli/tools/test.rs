@@ -60,8 +60,6 @@ use std::time::Instant;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
-use super::utils::collect_filters;
-
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TestMode {
@@ -1315,12 +1313,12 @@ pub async fn run_tests(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let filters = collect_filters(&test_flags, &ps.options.to_test_config()?)?;
+  let config = &ps.options.to_test_config(&test_flags)?;
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     &ps,
-    filters.include,
-    filters.ignore,
+    config.files.include.clone(),
+    config.files.ignore.clone(),
     test_flags.doc,
   )
   .await?;
@@ -1359,11 +1357,10 @@ pub async fn run_tests_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let filters = collect_filters(&test_flags, &ps.options.to_test_config()?)?;
+  let config = &ps.options.to_test_config(&test_flags)?;
 
-  let include = filters.include;
-  let ignore = filters.ignore;
-  let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
+  let paths_to_watch: Vec<_> =
+    config.files.include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
@@ -1371,8 +1368,8 @@ pub async fn run_tests_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = include.clone();
-    let ignore = ignore.clone();
+    let include = config.files.include.clone();
+    let ignore = config.files.ignore.clone();
     let ps = ps.clone();
 
     async move {
@@ -1454,8 +1451,8 @@ pub async fn run_tests_with_watch(
     let permissions = permissions.clone();
     let ps = ps.clone();
     let test_flags = test_flags.clone();
-    let include = include.clone();
-    let ignore = ignore.clone();
+    let include = config.files.include.clone();
+    let ignore = config.files.ignore.clone();
 
     async move {
       let specifiers_with_mode =

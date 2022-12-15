@@ -38,8 +38,6 @@ use std::path::PathBuf;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
-use super::utils::collect_filters;
-
 #[derive(Debug, Clone, Deserialize)]
 struct BenchSpecifierOptions {
   filter: Option<String>,
@@ -494,11 +492,11 @@ pub async fn run_benchmarks(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let filters = collect_filters(&bench_flags, &ps.options.to_bench_config()?)?;
+  let config = ps.options.to_bench_config(&bench_flags)?;
 
   let specifiers = collect_specifiers(
-    filters.include,
-    &filters.ignore,
+    config.files.include,
+    &config.files.ignore,
     is_supported_bench_path,
   )?;
 
@@ -530,10 +528,10 @@ pub async fn run_benchmarks_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let filters = collect_filters(&bench_flags, &ps.options.to_bench_config()?)?;
+  let config = &ps.options.to_bench_config(&bench_flags)?;
 
   let paths_to_watch: Vec<_> =
-    filters.include.iter().map(PathBuf::from).collect();
+    config.files.include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
@@ -541,8 +539,8 @@ pub async fn run_benchmarks_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = filters.include.clone();
-    let ignore = filters.ignore.clone();
+    let include = config.files.include.clone();
+    let ignore = config.files.ignore.clone();
     let ps = ps.clone();
 
     async move {
@@ -618,11 +616,11 @@ pub async fn run_benchmarks_with_watch(
   };
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let filter = bench_flags.filter.clone();
-    let include = filters.include.clone();
-    let ignore = filters.ignore.clone();
     let permissions = permissions.clone();
     let ps = ps.clone();
+    let filter = bench_flags.filter.clone();
+    let include = config.files.include.clone();
+    let ignore = config.files.ignore.clone();
 
     async move {
       let specifiers =
@@ -634,11 +632,15 @@ pub async fn run_benchmarks_with_watch(
 
       check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
-      let specifier_options = BenchSpecifierOptions {
-        filter: filter.clone(),
-      };
-      bench_specifiers(ps, permissions.clone(), specifiers, specifier_options)
-        .await?;
+      bench_specifiers(
+        ps,
+        permissions.clone(),
+        specifiers,
+        BenchSpecifierOptions {
+          filter: filter.clone(),
+        },
+      )
+      .await?;
 
       Ok(())
     }

@@ -25,6 +25,8 @@ use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 
+use super::Filters;
+
 pub type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
 
@@ -445,6 +447,10 @@ pub struct TestConfig {
   pub files: FilesConfig,
 }
 
+pub struct FinalTestConfig {
+  pub files: Filters,
+}
+
 impl ConfiguresFiles for TestConfig {
   fn get_files_config(&self) -> FilesConfig {
     self.files.clone()
@@ -471,6 +477,10 @@ impl SerializedBenchConfig {
 #[derive(Clone, Debug, Default)]
 pub struct BenchConfig {
   pub files: FilesConfig,
+}
+
+pub struct FinalBenchConfig {
+  pub files: Filters,
 }
 
 impl ConfiguresFiles for BenchConfig {
@@ -692,6 +702,16 @@ impl ConfigFile {
     self.json.import_map.clone()
   }
 
+  pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
+    if let Some(config) = self.json.fmt.clone() {
+      let fmt_config: SerializedFmtConfig = serde_json::from_value(config)
+        .context("Failed to parse \"fmt\" configuration")?;
+      Ok(Some(fmt_config.into_resolved(&self.specifier)?))
+    } else {
+      Ok(None)
+    }
+  }
+
   pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
     if let Some(config) = self.json.lint.clone() {
       let lint_config: SerializedLintConfig = serde_json::from_value(config)
@@ -794,16 +814,6 @@ impl ConfigFile {
       default_specifier: compiler_options.jsx_import_source,
       module,
     })
-  }
-
-  pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
-    if let Some(config) = self.json.fmt.clone() {
-      let fmt_config: SerializedFmtConfig = serde_json::from_value(config)
-        .context("Failed to parse \"fmt\" configuration")?;
-      Ok(Some(fmt_config.into_resolved(&self.specifier)?))
-    } else {
-      Ok(None)
-    }
   }
 
   pub fn resolve_tasks_config(
