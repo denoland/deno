@@ -527,19 +527,31 @@ pub mod tests {
         }
       });
 
+      Deno.test({
+        name: `test b`,
+        async fn(t) {
+          await t.step(`b step`, ({ step }) => {
+            await step({
+              name: `sub step`,
+              fn() {}
+            })
+          });
+        }
+      });
+
       Deno.test(async function useFnName({ step: s }) {
         await s("step c", () => {});
       });
 
-      Deno.test("test b", () => {});
+      Deno.test("test c", () => {});
 
-      Deno.test(`test c`, () => {});
+      Deno.test(`test d`, () => {});
 
       const { test } = Deno;
-      test("test d", () => {});
+      test("test e", () => {});
 
       const t = Deno.test;
-      t("test e", () => {});
+      t("test f", () => {});
     "#;
 
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
@@ -580,48 +592,72 @@ pub mod tests {
           ],
         },
         TestDefinition {
-          id: "86b4c821900e38fc89f24bceb0e45193608ab3f9d2a6019c7b6a5aceff5d7df2".to_string(),
-          level: 0,
-          name: "useFnName".to_string(),
-          range: new_range(254, 258),
-          steps: vec![
-            TestDefinition {
-              id: "67a390d0084ae5fb88f3510c470a72a553581f1d0d5ba5fa89aee7a754f3953a".to_string(),
-              level: 1,
-              name: "step c".to_string(),
-              range: new_range(313, 314),
-              steps: vec![],
-            }
-          ]
-        },
-        TestDefinition {
           id: "580eda89d7f5e619774c20e13b7d07a8e77c39cba101d60565144d48faa837cb".to_string(),
           level: 0,
           name: "test b".to_string(),
-          range: new_range(358, 362),
-          steps: vec![],
+          range: new_range(254, 258),
+          steps: vec![
+            TestDefinition {
+              id: "888e28419fc6c00cadfaad26e1e3e16e09e4322b3579fdfa9cc3fdb75976704a".to_string(),
+              level: 1,
+              name: "b step".to_string(),
+              range: new_range(325, 329),
+              steps: vec![
+                TestDefinition {
+                  id: "abf356f59139b77574089615f896a6f501c010985d95b8a93abeb0069ccb2201".to_string(),
+                  level: 2,
+                  name: "sub step".to_string(),
+                  range: new_range(374, 378),
+                  steps: vec![],
+                }
+              ]
+            }
+          ],
+        },
+        TestDefinition {
+          id: "86b4c821900e38fc89f24bceb0e45193608ab3f9d2a6019c7b6a5aceff5d7df2".to_string(),
+          level: 0,
+          name: "useFnName".to_string(),
+          range: new_range(496, 500),
+          steps: vec![
+            TestDefinition {
+              id:
+              "67a390d0084ae5fb88f3510c470a72a553581f1d0d5ba5fa89aee7a754f3953a".to_string(),
+              level: 1,
+              name: "step c".to_string(),
+              range: new_range(555, 556),
+              steps: vec![],
+            }
+          ],
         },
         TestDefinition {
           id: "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94".to_string(),
           level: 0,
           name: "test c".to_string(),
-          range: new_range(396, 400),
+          range: new_range(600, 604),
           steps: vec![],
         },
         TestDefinition {
           id: "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f".to_string(),
           level: 0,
           name: "test d".to_string(),
-          range: new_range(458, 462),
+          range: new_range(638, 642),
           steps: vec![],
         },
         TestDefinition {
           id: "b2fd155c2a5e468eddf77a5eb13f97ddeeeafab322f0fc223ec0810ab2a29d42".to_string(),
           level: 0,
           name: "test e".to_string(),
-          range: new_range(518, 519),
+          range: new_range(700, 704),
           steps: vec![],
-        }
+        },
+        TestDefinition {
+          id: "6387faad3a1f27fb3078a7d350040f4e6b516994076c855a0446943927461f58".to_string(),
+          level: 0,
+          name: "test f".to_string(),
+          range: new_range(760, 761),
+          steps: vec![],
+        },
       ]
     );
   }
