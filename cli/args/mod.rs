@@ -58,6 +58,7 @@ use crate::util::path::specifier_to_file_path;
 use crate::version;
 
 use self::config_file::FinalBenchConfig;
+use self::config_file::FinalFmtConfig;
 use self::config_file::FinalTestConfig;
 
 /// Indicates how cached source files should be handled.
@@ -493,6 +494,43 @@ impl CliOptions {
     } else {
       Ok(None)
     }
+  }
+
+  pub fn to_final_fmt_config(
+    &self,
+    fmt_flags: &FmtFlags,
+  ) -> Result<Option<FinalFmtConfig>, AnyError> {
+    let filters = fmt_flags.get_filters();
+
+    let mut include = filters.include;
+    let mut ignore = filters.ignore;
+    let mut options = FmtOptionsConfig {
+      use_tabs: None,
+      line_width: None,
+      indent_width: None,
+      single_quote: None,
+      prose_wrap: None,
+    };
+
+    if let Some(config_file) = &self.maybe_config_file {
+      let maybe_fmt_config = config_file.to_fmt_config()?;
+
+      if let Some(config) = maybe_fmt_config {
+        let config_filters = self.collect_filters(&config, include, ignore)?;
+        include = config_filters.include;
+        ignore = config_filters.ignore;
+        options = config.options;
+      }
+    }
+
+    if include.is_empty() {
+      include.push(std::env::current_dir()?);
+    }
+
+    Ok(Some(FinalFmtConfig {
+      files: Filters { include, ignore },
+      options,
+    }))
   }
 
   /// Collect included and ignored files. CLI flags take precedence

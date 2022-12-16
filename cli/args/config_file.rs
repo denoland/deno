@@ -432,6 +432,12 @@ impl ConfiguresFiles for FmtConfig {
   }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct FinalFmtConfig {
+  pub options: FmtOptionsConfig,
+  pub files: Filters,
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedTestConfig {

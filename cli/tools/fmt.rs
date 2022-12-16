@@ -41,19 +41,25 @@ use std::sync::Arc;
 
 use crate::cache::IncrementalCache;
 
-use super::utils::collect_filters;
-
 /// Format JavaScript/TypeScript files.
 pub async fn format(
   config: &CliOptions,
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
-  let maybe_fmt_config = config.to_fmt_config()?;
+  // First, prepare final configuration.
+  let maybe_fmt_config = config.to_final_fmt_config(&fmt_flags)?;
+
+  let include;
+  let ignore;
+  if let Some(fmt_config) = maybe_fmt_config.clone() {
+    include = fmt_config.files.include;
+    ignore = fmt_config.files.ignore;
+  } else {
+    return Err(generic_error("Yikes"));
+  }
+
   let deno_dir = config.resolve_deno_dir()?;
   let FmtFlags { check, .. } = fmt_flags.clone();
-
-  // First, prepare final configuration.
-  let filters = collect_filters(&fmt_flags, &maybe_fmt_config)?;
 
   // Now do the same for options
   let fmt_options = resolve_fmt_options(
@@ -64,28 +70,27 @@ pub async fn format(
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
 
-    let result =
-      collect_fmt_files(&filters.include, &filters.ignore).map(|files| {
-        let refmt_files = if let Some(paths) = changed {
-          if check {
-            files
-              .iter()
-              .any(|path| paths.contains(path))
-              .then_some(files)
-              .unwrap_or_else(|| [].to_vec())
-          } else {
-            files
-              .into_iter()
-              .filter(|path| paths.contains(path))
-              .collect::<Vec<_>>()
-          }
+    let result = collect_fmt_files(&include, &ignore).map(|files| {
+      let refmt_files = if let Some(paths) = changed {
+        if check {
+          files
+            .iter()
+            .any(|path| paths.contains(path))
+            .then_some(files)
+            .unwrap_or_else(|| [].to_vec())
         } else {
           files
-        };
-        (refmt_files, fmt_options.clone())
-      });
+            .into_iter()
+            .filter(|path| paths.contains(path))
+            .collect::<Vec<_>>()
+        }
+      } else {
+        files
+      };
+      (refmt_files, fmt_options.clone())
+    });
 
-    let paths_to_watch = filters.include.clone();
+    let paths_to_watch = include.clone();
     async move {
       if files_changed
         && matches!(result, Ok((ref files, _)) if files.is_empty())
@@ -127,15 +132,13 @@ pub async fn format(
     )
     .await?;
   } else {
-    let files = collect_fmt_files(&filters.include, &filters.ignore).and_then(
-      |files| {
-        if files.is_empty() {
-          Err(generic_error("No target files found."))
-        } else {
-          Ok(files)
-        }
-      },
-    )?;
+    let files = collect_fmt_files(&include, &ignore).and_then(|files| {
+      if files.is_empty() {
+        Err(generic_error("No target files found."))
+      } else {
+        Ok(files)
+      }
+    })?;
     operation((files, fmt_options.clone())).await?;
   }
 
