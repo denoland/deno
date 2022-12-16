@@ -1257,7 +1257,6 @@ impl deno_graph::ModuleParser for LspModuleParser {
   }
 }
 
-#[allow(clippy::box_default)]
 fn lsp_deno_graph_analyze(
   specifier: &ModuleSpecifier,
   content: Arc<str>,
@@ -1267,7 +1266,7 @@ fn lsp_deno_graph_analyze(
   use deno_graph::ModuleParser;
 
   let analyzer = deno_graph::CapturingModuleAnalyzer::new(
-    Some(Box::new(LspModuleParser::default())),
+    Some(Box::<LspModuleParser>::default()),
     None,
   );
   let parsed_source_result = analyzer.parse_module(
