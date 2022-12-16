@@ -107,7 +107,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
         Ok(eval_source) => {
           let output = repl_session
             .evaluate_line_and_get_output(&eval_source)
-            .await?;
+            .await;
           // only output errors
           if let EvaluationOutput::Error(error_text) = output {
             println!(
@@ -124,7 +124,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   }
 
   if let Some(eval) = repl_flags.eval {
-    let output = repl_session.evaluate_line_and_get_output(&eval).await?;
+    let output = repl_session.evaluate_line_and_get_output(&eval).await;
     // only output errors
     if let EvaluationOutput::Error(error_text) = output {
       println!("Error in --eval flag: {}", error_text);
@@ -156,7 +156,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
       Ok(line) => {
         should_exit_on_interrupt = false;
         editor.update_history(line.clone());
-        let output = repl_session.evaluate_line_and_get_output(&line).await?;
+        let output = repl_session.evaluate_line_and_get_output(&line).await;
 
         // We check for close and break here instead of making it a loop condition to get
         // consistent behavior in when the user evaluates a call to close().

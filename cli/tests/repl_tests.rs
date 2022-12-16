@@ -940,12 +940,28 @@ mod repl {
         true,
         vec!["repl", "--quiet", "--allow-read", "--allow-env"],
         Some(vec![r#"export {} from "npm:chalk";"#]),
-        Some(env_vars),
+        Some(env_vars.clone()),
         true,
       );
 
       assert_contains!(out, "Module {");
       assert_contains!(out, "Chalk: [Function: Chalk],");
+      assert!(err.is_empty());
+    }
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![r#"import foo from "npm:asdfawe52345asdf""#]),
+        Some(env_vars),
+        true,
+      );
+
+      assert_contains!(
+        out,
+        "error: npm package 'asdfawe52345asdf' does not exist"
+      );
       assert!(err.is_empty());
     }
   }
