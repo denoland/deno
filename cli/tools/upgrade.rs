@@ -199,11 +199,18 @@ pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
           "{} {} → {} ",
           colors::green("A new release of Deno is available:"),
           colors::cyan(version::deno()),
-          colors::cyan(upgrade_version)
+          colors::cyan(&upgrade_version)
         );
         eprintln!(
           "{}",
           colors::italic_gray("Run `deno upgrade` to install it.")
+        );
+        eprint!(
+          "{}{}",
+          colors::yellow(
+            "Release notes: https://github.com/denoland/deno/releases/tag/v"
+          ),
+          colors::yellow(upgrade_version),
         );
       }
 
@@ -290,6 +297,11 @@ pub async fn upgrade(
         && current_is_passed
       {
         log::info!("Version {} is already installed", crate::version::deno());
+        log::info!(
+          "{}{}",
+          "Release notes: https://github.com/denoland/deno/releases/tag/v",
+          crate::version::deno(),
+        );
         return Ok(());
       } else {
         passed_version
@@ -327,6 +339,13 @@ pub async fn upgrade(
             crate::version::deno()
           }
         );
+        if !upgrade_flags.canary {
+          log::info!(
+            "{}{}",
+            "Release notes: https://github.com/denoland/deno/releases/tag/v",
+            crate::version::deno(),
+          );
+        }
         return Ok(());
       } else {
         log::info!("Found latest version {}", latest_version);
@@ -364,6 +383,11 @@ pub async fn upgrade(
   if upgrade_flags.dry_run {
     fs::remove_file(&new_exe_path)?;
     log::info!("Upgraded successfully (dry run)");
+    log::info!(
+      "{}{}",
+      "Release notes: https://github.com/denoland/deno/releases/tag/v",
+      install_version,
+    );
   } else {
     let output_exe_path =
       upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
@@ -395,6 +419,11 @@ pub async fn upgrade(
       }
     }
     log::info!("Upgraded successfully");
+    log::info!(
+      "{}{}",
+      "Release notes: https://github.com/denoland/deno/releases/tag/v",
+      &install_version,
+    );
   }
 
   Ok(())
