@@ -6,6 +6,7 @@
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
+use crate::args::FinalLintConfig;
 use crate::args::Flags;
 use crate::args::LintConfig;
 use crate::args::LintFlags;
@@ -42,8 +43,6 @@ use std::sync::Mutex;
 
 use crate::cache::IncrementalCache;
 
-use super::utils::collect_filters;
-
 static STDIN_FILE_NAME: &str = "_stdin.ts";
 
 #[derive(Clone, Debug)]
@@ -63,9 +62,18 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 
 pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let maybe_lint_config = ps.options.to_lint_config()?;
+  let maybe_lint_config = ps.options.to_lint_config(&lint_flags)?;
 
-  let filters = collect_filters(&lint_flags, &maybe_lint_config)?;
+  let include;
+  let ignore;
+  if let Some(lint_config) = maybe_lint_config.clone() {
+    include = lint_config.files.include;
+    ignore = lint_config.files.ignore;
+  } else {
+    return Err(generic_error("Yikes"));
+  }
+
+  // let filters = collect_filters(&lint_flags, &maybe_lint_config)?;
 
   let mut maybe_reporter_kind = if lint_flags.json {
     Some(LintReporterKind::Json)
@@ -75,7 +83,6 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     None
   };
 
-  // TODO: this check is already being made in collect_filters
   if let Some(lint_config) = maybe_lint_config.as_ref() {
     if maybe_reporter_kind.is_none() {
       maybe_reporter_kind = match lint_config.report.as_deref() {
@@ -99,7 +106,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   // Try to get configured rules. CLI flags take precendence
   // over config file, ie. if there's `rules.include` in config file
   // and `--rules-include` CLI flag, only the flag value is taken into account.
-  let lint_rules = get_configured_rules(
+  let lint_rules = get_final_configured_rules(
     maybe_lint_config.as_ref(),
     lint_flags.maybe_rules_tags,
     lint_flags.maybe_rules_include,
@@ -108,20 +115,19 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
-    let result =
-      collect_lint_files(&filters.include, &filters.ignore).map(|files| {
-        if let Some(paths) = changed {
-          files
-            .iter()
-            .any(|path| paths.contains(path))
-            .then_some(files)
-            .unwrap_or_else(|| [].to_vec())
-        } else {
-          files
-        }
-      });
+    let result = collect_lint_files(&include, &ignore).map(|files| {
+      if let Some(paths) = changed {
+        files
+          .iter()
+          .any(|path| paths.contains(path))
+          .then_some(files)
+          .unwrap_or_else(|| [].to_vec())
+      } else {
+        files
+      }
+    });
 
-    let paths_to_watch = filters.include.clone();
+    let paths_to_watch = include.clone();
 
     async move {
       if files_changed && matches!(result, Ok(ref files) if files.is_empty()) {
@@ -216,8 +222,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       );
       reporter_lock.lock().unwrap().close(1);
     } else {
-      let target_files = collect_lint_files(&filters.include, &filters.ignore)
-        .and_then(|files| {
+      let target_files =
+        collect_lint_files(&include, &ignore).and_then(|files| {
           if files.is_empty() {
             Err(generic_error("No target files found."))
           } else {
@@ -573,6 +579,63 @@ fn sort_diagnostics(diagnostics: &mut [LintDiagnostic]) {
 
 pub fn get_configured_rules(
   maybe_lint_config: Option<&LintConfig>,
+  maybe_rules_tags: Option<Vec<String>>,
+  maybe_rules_include: Option<Vec<String>>,
+  maybe_rules_exclude: Option<Vec<String>>,
+) -> Result<Vec<Arc<dyn LintRule>>, AnyError> {
+  if maybe_lint_config.is_none()
+    && maybe_rules_tags.is_none()
+    && maybe_rules_include.is_none()
+    && maybe_rules_exclude.is_none()
+  {
+    return Ok(rules::get_recommended_rules());
+  }
+
+  let (config_file_tags, config_file_include, config_file_exclude) =
+    if let Some(lint_config) = maybe_lint_config {
+      (
+        lint_config.rules.tags.clone(),
+        lint_config.rules.include.clone(),
+        lint_config.rules.exclude.clone(),
+      )
+    } else {
+      (None, None, None)
+    };
+
+  let maybe_configured_include = if maybe_rules_include.is_some() {
+    maybe_rules_include
+  } else {
+    config_file_include
+  };
+
+  let maybe_configured_exclude = if maybe_rules_exclude.is_some() {
+    maybe_rules_exclude
+  } else {
+    config_file_exclude
+  };
+
+  let maybe_configured_tags = if maybe_rules_tags.is_some() {
+    maybe_rules_tags
+  } else {
+    config_file_tags
+  };
+
+  let configured_rules = rules::get_filtered_rules(
+    maybe_configured_tags.or_else(|| Some(vec!["recommended".to_string()])),
+    maybe_configured_exclude,
+    maybe_configured_include,
+  );
+
+  if configured_rules.is_empty() {
+    return Err(anyhow!("No rules have been configured"));
+  }
+
+  Ok(configured_rules)
+}
+
+// TODO: duplicate of get_configured_rules but accepts a FinalLintConfig instead of LintConfig
+pub fn get_final_configured_rules(
+  maybe_lint_config: Option<&FinalLintConfig>,
   maybe_rules_tags: Option<Vec<String>>,
   maybe_rules_include: Option<Vec<String>>,
   maybe_rules_exclude: Option<Vec<String>>,

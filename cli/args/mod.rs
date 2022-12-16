@@ -11,6 +11,7 @@ pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
 pub use config_file::ConfiguresFiles;
 pub use config_file::EmitConfigOptions;
+pub use config_file::FinalLintConfig;
 pub use config_file::FmtConfig;
 pub use config_file::FmtOptionsConfig;
 pub use config_file::IgnoredCompilerOptions;
@@ -391,12 +392,42 @@ impl CliOptions {
     }
   }
 
-  pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
+  pub fn to_lint_config(
+    &self,
+    lint_flags: &LintFlags,
+  ) -> Result<Option<FinalLintConfig>, AnyError> {
+    let filters = lint_flags.get_filters();
+
+    let mut include = filters.include;
+    let mut ignore = filters.ignore;
+    let mut report = Some(String::from("pretty"));
+    let mut rules = LintRulesConfig {
+      tags: None,
+      exclude: None,
+      include: None,
+    };
+
     if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_lint_config()
-    } else {
-      Ok(None)
+      let maybe_test_config = config_file.to_lint_config()?;
+
+      if let Some(config) = maybe_test_config {
+        let config_filters = self.collect_filters(&config, include, ignore)?;
+        include = config_filters.include;
+        ignore = config_filters.ignore;
+        report = config.report;
+        rules = config.rules;
+      }
     }
+
+    if include.is_empty() {
+      include.push(std::env::current_dir()?);
+    }
+
+    Ok(Some(FinalLintConfig {
+      report,
+      files: Filters { include, ignore },
+      rules,
+    }))
   }
 
   pub fn to_test_config(

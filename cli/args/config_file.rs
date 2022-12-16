@@ -376,6 +376,13 @@ impl ConfiguresFiles for LintConfig {
   }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct FinalLintConfig {
+  pub rules: LintRulesConfig,
+  pub files: Filters,
+  pub report: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum ProseWrap {
