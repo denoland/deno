@@ -398,7 +398,7 @@ pub async fn initialize_runtime(
       const moduleAll = await import(moduleAllUrl);
       Deno[Deno.internal].node.initialize(moduleAll.default, nodeGlobalThisName);
       if (usesLocalNodeModulesDir) {{
-        Deno[Deno.internal].require.setNodeModulesDir();
+        Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
       }}
     }})('{}', '{}', {});"#,
     MODULE_ALL_URL.as_str(),
