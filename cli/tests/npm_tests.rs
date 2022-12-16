@@ -279,7 +279,7 @@ mod npm {
     exit_code: 1,
   });
 
-  itest!(types {
+  itest!(types_general {
     args: "check --quiet npm/types/main.ts",
     output: "npm/types/main.out",
     envs: env_vars_for_npm_tests(),

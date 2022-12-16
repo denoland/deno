@@ -502,14 +502,6 @@ fn resolve_package_target(
       {
         let condition_target = target_obj.get(key).unwrap().to_owned();
 
-        if mode.is_types()
-          && key.as_str() != "types"
-          && condition_target.is_string()
-        {
-          // skip because this isn't a types entry
-          continue;
-        }
-
         let resolved = resolve_package_target(
           package_json_path,
           condition_target,
