@@ -533,13 +533,13 @@ pub mod tests {
 
       Deno.test("test b", () => {});
 
-      Deno.test(`test b`, () => {});
+      Deno.test(`test c`, () => {});
 
       const { test } = Deno;
-      test("test c", () => {});
+      test("test d", () => {});
 
       const t = Deno.test;
-      t("test d", () => {});
+      t("test e", () => {});
     "#;
 
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
@@ -602,23 +602,23 @@ pub mod tests {
           steps: vec![],
         },
         TestDefinition {
-          id: "580eda89d7f5e619774c20e13b7d07a8e77c39cba101d60565144d48faa837cb".to_string(),
-          level: 0,
-          name: "test b".to_string(),
-          range: new_range(396, 400),
-          steps: vec![],
-        },
-        TestDefinition {
           id: "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94".to_string(),
           level: 0,
           name: "test c".to_string(),
-          range: new_range(458, 462),
+          range: new_range(396, 400),
           steps: vec![],
         },
         TestDefinition {
           id: "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f".to_string(),
           level: 0,
           name: "test d".to_string(),
+          range: new_range(458, 462),
+          steps: vec![],
+        },
+        TestDefinition {
+          id: "b2fd155c2a5e468eddf77a5eb13f97ddeeeafab322f0fc223ec0810ab2a29d42".to_string(),
+          level: 0,
+          name: "test e".to_string(),
           range: new_range(518, 519),
           steps: vec![],
         }
