@@ -193,7 +193,8 @@ fn codegen_v8_async(
     .inputs
     .iter()
     .map_while(|a| {
-      (if is_v8 { scope_arg(a) } else { None }).or_else(|| opstate_arg(a))
+      (if is_v8 { scope_arg(a) } else { None })
+        .or_else(|| rc_refcell_opstate_arg(a))
     })
     .collect::<Vec<_>>();
   let rust_i0 = special_args.len();
@@ -287,6 +288,16 @@ fn opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
     arg if is_mut_ref_opstate(arg) => {
       Some(quote! { &mut std::cell::RefCell::borrow_mut(&ctx.state), })
     }
+    _ => None,
+  }
+}
+
+fn rc_refcell_opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
+  match arg {
+    arg if is_rc_refcell_opstate(arg) => Some(quote! { ctx.state.clone(), }),
+    arg if is_mut_ref_opstate(arg) => Some(
+      quote! { compile_error!("mutable opstate is not supported in async ops"), },
+    ),
     _ => None,
   }
 }

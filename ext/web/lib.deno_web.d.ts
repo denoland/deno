@@ -466,29 +466,35 @@ declare class File extends Blob {
 }
 
 /** @category Streams API */
-interface ReadableStreamReadDoneResult<T> {
+interface ReadableStreamDefaultReadDoneResult {
   done: true;
-  value?: T;
+  value?: undefined;
 }
 
 /** @category Streams API */
-interface ReadableStreamReadValueResult<T> {
+interface ReadableStreamDefaultReadValueResult<T> {
   done: false;
   value: T;
 }
 
 /** @category Streams API */
-type ReadableStreamReadResult<T> =
-  | ReadableStreamReadValueResult<T>
-  | ReadableStreamReadDoneResult<T>;
+type ReadableStreamDefaultReadResult<T> =
+  | ReadableStreamDefaultReadValueResult<T>
+  | ReadableStreamDefaultReadDoneResult;
 
 /** @category Streams API */
 interface ReadableStreamDefaultReader<R = any> {
   readonly closed: Promise<void>;
   cancel(reason?: any): Promise<void>;
-  read(): Promise<ReadableStreamReadResult<R>>;
+  read(): Promise<ReadableStreamDefaultReadResult<R>>;
   releaseLock(): void;
 }
+
+/** @category Streams API */
+declare var ReadableStreamDefaultReader: {
+  prototype: ReadableStreamDefaultReader;
+  new <R>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
+};
 
 /** @category Streams API */
 interface ReadableStreamBYOBReadDoneResult<V extends ArrayBufferView> {
@@ -518,30 +524,17 @@ interface ReadableStreamBYOBReader {
 }
 
 /** @category Streams API */
+declare var ReadableStreamBYOBReader: {
+  prototype: ReadableStreamBYOBReader;
+  new (stream: ReadableStream<Uint8Array>): ReadableStreamBYOBReader;
+};
+
+/** @category Streams API */
 interface ReadableStreamBYOBRequest {
   readonly view: ArrayBufferView | null;
   respond(bytesWritten: number): void;
   respondWithNewView(view: ArrayBufferView): void;
 }
-
-/** @category Streams API */
-declare var ReadableStreamDefaultReader: {
-  prototype: ReadableStreamDefaultReader;
-  new <R>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
-};
-
-/** @category Streams API */
-interface ReadableStreamReader<R = any> {
-  cancel(): Promise<void>;
-  read(): Promise<ReadableStreamReadResult<R>>;
-  releaseLock(): void;
-}
-
-/** @category Streams API */
-declare var ReadableStreamReader: {
-  prototype: ReadableStreamReader;
-  new (): ReadableStreamReader;
-};
 
 /** @category Streams API */
 interface ReadableByteStreamControllerCallback {

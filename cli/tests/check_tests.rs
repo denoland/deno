@@ -28,7 +28,7 @@ mod check {
   });
 
   itest!(check_all {
-    args: "check --quiet --remote check/check_all.ts",
+    args: "check --quiet --all check/check_all.ts",
     output: "check/check_all.out",
     http_server: true,
     exit_code: 1,
@@ -60,6 +60,11 @@ mod check {
 
   itest!(check_export_equals_declaration_file {
     args: "check --quiet check/export_equals_declaration_file/main.ts",
+    exit_code: 0,
+  });
+
+  itest!(check_static_response_json {
+    args: "check --quiet check/response_json.ts",
     exit_code: 0,
   });
 

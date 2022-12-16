@@ -5,8 +5,8 @@ use crate::emit::emit_parsed_source;
 use crate::graph_util::ModuleEntry;
 use crate::node;
 use crate::proc_state::ProcState;
-use crate::text_encoding::code_without_source_map;
-use crate::text_encoding::source_map_from_code;
+use crate::util::text_encoding::code_without_source_map;
+use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;

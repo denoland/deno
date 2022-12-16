@@ -3,10 +3,9 @@
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::TaskFlags;
-use crate::fs_util;
-use crate::fs_util::canonicalize_path;
-use crate::fs_util::specifier_parent;
-use crate::fs_util::specifier_to_file_path;
+use crate::util::fs::canonicalize_path;
+use crate::util::path::specifier_parent;
+use crate::util::path::specifier_to_file_path;
 
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -430,6 +429,35 @@ pub struct TestConfig {
   pub files: FilesConfig,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedBenchConfig {
+  pub files: SerializedFilesConfig,
+}
+
+impl SerializedBenchConfig {
+  pub fn into_resolved(
+    self,
+    config_file_specifier: &ModuleSpecifier,
+  ) -> Result<BenchConfig, AnyError> {
+    Ok(BenchConfig {
+      files: self.files.into_resolved(config_file_specifier)?,
+    })
+  }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct BenchConfig {
+  pub files: FilesConfig,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum LockConfig {
+  Bool(bool),
+  PathBuf(PathBuf),
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
@@ -439,6 +467,8 @@ pub struct ConfigFileJson {
   pub fmt: Option<Value>,
   pub tasks: Option<Value>,
   pub test: Option<Value>,
+  pub bench: Option<Value>,
+  pub lock: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -467,7 +497,7 @@ impl ConfigFile {
             ..
           }) = &flags.subcommand
           {
-            let task_cwd = fs_util::canonicalize_path(&PathBuf::from(path))?;
+            let task_cwd = canonicalize_path(&PathBuf::from(path))?;
             if let Some(path) = Self::discover_from(&task_cwd, &mut checked)? {
               return Ok(Some(path));
             }
@@ -646,9 +676,19 @@ impl ConfigFile {
 
   pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
     if let Some(config) = self.json.test.clone() {
-      let lint_config: SerializedTestConfig = serde_json::from_value(config)
+      let test_config: SerializedTestConfig = serde_json::from_value(config)
         .context("Failed to parse \"test\" configuration")?;
-      Ok(Some(lint_config.into_resolved(&self.specifier)?))
+      Ok(Some(test_config.into_resolved(&self.specifier)?))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn to_bench_config(&self) -> Result<Option<BenchConfig>, AnyError> {
+    if let Some(config) = self.json.bench.clone() {
+      let bench_config: SerializedBenchConfig = serde_json::from_value(config)
+        .context("Failed to parse \"bench\" configuration")?;
+      Ok(Some(bench_config.into_resolved(&self.specifier)?))
     } else {
       Ok(None)
     }
@@ -758,6 +798,16 @@ impl ConfigFile {
       Ok(tasks_config)
     } else {
       bail!("No tasks found in configuration file")
+    }
+  }
+
+  pub fn to_lock_config(&self) -> Result<Option<LockConfig>, AnyError> {
+    if let Some(config) = self.json.lock.clone() {
+      let lock_config: LockConfig = serde_json::from_value(config)
+        .context("Failed to parse \"lock\" configuration")?;
+      Ok(Some(lock_config))
+    } else {
+      Ok(None)
     }
   }
 }

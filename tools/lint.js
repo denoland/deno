@@ -43,12 +43,14 @@ async function dlint() {
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
-    const { success } = await Deno.spawn(execPath, {
+    const cmd = new Deno.Command(execPath, {
       args: ["run", "--config=" + configFile, ...chunk],
       stdout: "inherit",
       stderr: "inherit",
     });
-    if (!success) {
+    const { code } = await cmd.output();
+
+    if (code > 0) {
       throw new Error("dlint failed");
     }
   }
@@ -74,12 +76,14 @@ async function dlintPreferPrimordials() {
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
-    const { success } = await Deno.spawn(execPath, {
+    const cmd = new Deno.Command(execPath, {
       args: ["run", "--rule", "prefer-primordials", ...chunk],
       stdout: "inherit",
       stderr: "inherit",
     });
-    if (!success) {
+    const { code } = await cmd.output();
+
+    if (code > 0) {
       throw new Error("prefer-primordials failed");
     }
   }
@@ -111,24 +115,19 @@ async function clippy() {
     cmd.push("--release");
   }
 
-  const { success } = await Deno.spawn("cargo", {
+  const cargoCmd = new Deno.Command("cargo", {
     args: [
       ...cmd,
       "--",
       "-D",
       "warnings",
-      "-A",
-      // https://github.com/rust-lang/rust-clippy/issues/407
-      "clippy::extra_unused_lifetimes",
-      "-A",
-      // https://github.com/rust-lang/rust-clippy/issues/7271
-      // False positives in core/resources.rs for lifetime elision.
-      "clippy::needless_lifetimes",
     ],
     stdout: "inherit",
     stderr: "inherit",
   });
-  if (!success) {
+  const { code } = await cargoCmd.output();
+
+  if (code > 0) {
     throw new Error("clippy failed");
   }
 }

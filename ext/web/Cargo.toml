@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.110.0"
+version = "0.113.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,7 +19,7 @@ base64-simd = "0.7"
 deno_core.workspace = true
 encoding_rs.workspace = true
 flate2.workspace = true
-serde = "1.0.144"
+serde = "1.0.149"
 tokio.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 

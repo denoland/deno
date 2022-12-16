@@ -394,15 +394,13 @@ fn skip_whitespace_or_v(input: &str) -> ParseResult<()> {
 
 // simple ::= primitive | partial | tilde | caret
 fn simple(input: &str) -> ParseResult<VersionRange> {
-  let tilde = pair(or(tag("~>"), tag("~")), skip_whitespace_or_v);
   or4(
     map(preceded(tilde, partial), |partial| {
       partial.as_tilde_version_range()
     }),
-    map(
-      preceded(pair(ch('^'), skip_whitespace_or_v), partial),
-      |partial| partial.as_caret_version_range(),
-    ),
+    map(preceded(caret, partial), |partial| {
+      partial.as_caret_version_range()
+    }),
     map(primitive, |primitive| {
       let partial = primitive.partial;
       match primitive.kind {
@@ -422,6 +420,28 @@ fn simple(input: &str) -> ParseResult<VersionRange> {
       }
     }),
     map(partial, |partial| partial.as_equal_range()),
+  )(input)
+}
+
+fn tilde(input: &str) -> ParseResult<()> {
+  fn raw_tilde(input: &str) -> ParseResult<()> {
+    map(pair(or(tag("~>"), tag("~")), skip_whitespace_or_v), |_| ())(input)
+  }
+
+  or(
+    preceded(terminated(primitive_kind, whitespace), raw_tilde),
+    raw_tilde,
+  )(input)
+}
+
+fn caret(input: &str) -> ParseResult<()> {
+  fn raw_caret(input: &str) -> ParseResult<()> {
+    map(pair(ch('^'), skip_whitespace_or_v), |_| ())(input)
+  }
+
+  or(
+    preceded(terminated(primitive_kind, whitespace), raw_caret),
+    raw_caret,
   )(input)
 }
 
@@ -1067,6 +1087,70 @@ mod tests {
         req_text,
         version_text
       );
+    }
+  }
+
+  #[test]
+  fn range_primitive_kind_beside_caret_or_tilde_with_whitespace() {
+    // node semver should have enforced strictness, but it didn't
+    // and so we end up with a system that acts this way
+    let fixtures = &[
+      (">= ^1.2.3", "1.2.3", true),
+      (">= ^1.2.3", "1.2.4", true),
+      (">= ^1.2.3", "1.9.3", true),
+      (">= ^1.2.3", "2.0.0", false),
+      (">= ^1.2.3", "1.2.2", false),
+      // this is considered the same as the above by node semver
+      ("> ^1.2.3", "1.2.3", true),
+      ("> ^1.2.3", "1.2.4", true),
+      ("> ^1.2.3", "1.9.3", true),
+      ("> ^1.2.3", "2.0.0", false),
+      ("> ^1.2.3", "1.2.2", false),
+      // this is also considered the same
+      ("< ^1.2.3", "1.2.3", true),
+      ("< ^1.2.3", "1.2.4", true),
+      ("< ^1.2.3", "1.9.3", true),
+      ("< ^1.2.3", "2.0.0", false),
+      ("< ^1.2.3", "1.2.2", false),
+      // same with this
+      ("<= ^1.2.3", "1.2.3", true),
+      ("<= ^1.2.3", "1.2.4", true),
+      ("<= ^1.2.3", "1.9.3", true),
+      ("<= ^1.2.3", "2.0.0", false),
+      ("<= ^1.2.3", "1.2.2", false),
+      // now try a ~, which should work the same as above, but for ~
+      ("<= ~1.2.3", "1.2.3", true),
+      ("<= ~1.2.3", "1.2.4", true),
+      ("<= ~1.2.3", "1.9.3", false),
+      ("<= ~1.2.3", "2.0.0", false),
+      ("<= ~1.2.3", "1.2.2", false),
+    ];
+
+    for (req_text, version_text, satisfies) in fixtures {
+      let req = NpmVersionReq::parse(req_text).unwrap();
+      let version = NpmVersion::parse(version_text).unwrap();
+      assert_eq!(
+        req.matches(&version),
+        *satisfies,
+        "Checking {} {} satisfies {}",
+        req_text,
+        if *satisfies { "true" } else { "false" },
+        version_text
+      );
+    }
+  }
+
+  #[test]
+  fn range_primitive_kind_beside_caret_or_tilde_no_whitespace() {
+    let fixtures = &[
+      ">=^1.2.3", ">^1.2.3", "<^1.2.3", "<=^1.2.3", ">=~1.2.3", ">~1.2.3",
+      "<~1.2.3", "<=~1.2.3",
+    ];
+
+    for req_text in fixtures {
+      // when it has no space, this is considered invalid
+      // by node semver so we should error
+      assert!(NpmVersionReq::parse(req_text).is_err());
     }
   }
 }

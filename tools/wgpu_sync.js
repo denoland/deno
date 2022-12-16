@@ -9,12 +9,12 @@ const V_WGPU = "0.13";
 const TARGET_DIR = join(ROOT_PATH, "ext", "webgpu");
 
 async function bash(subcmd, opts = {}) {
-  const { success, code } = await Deno.spawn("bash", {
+  const { success, code } = await new Deno.Command("bash", {
     ...opts,
     args: ["-c", subcmd],
     stdout: "inherit",
     sdterr: "inherit",
-  });
+  }).output();
 
   // Exit process on failure
   if (!success) {

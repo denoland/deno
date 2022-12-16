@@ -1,14 +1,16 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CompileFlags;
-use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::args::RunFlags;
-use crate::args::TypeCheckMode;
 use crate::cache::DenoDir;
-use crate::fs_util;
+use crate::graph_util::create_graph_and_maybe_check;
+use crate::graph_util::error_for_any_npm_specifier;
+use crate::http_util::HttpClient;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
+use crate::util::path::path_has_trailing_slash;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 use crate::ProcState;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -18,10 +20,10 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleSpecifier;
-use deno_runtime::deno_fetch::reqwest::Client;
+use deno_runtime::colors;
 use deno_runtime::permissions::Permissions;
 use std::env;
-use std::fs::read;
+use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::io::Seek;
@@ -29,10 +31,61 @@ use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::installer::infer_name_from_url;
 
-pub async fn get_base_binary(
+pub async fn compile(
+  flags: Flags,
+  compile_flags: CompileFlags,
+) -> Result<(), AnyError> {
+  let ps = ProcState::build(flags.clone()).await?;
+  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
+  let deno_dir = &ps.dir;
+
+  let output_path = resolve_compile_executable_output_path(&compile_flags)?;
+
+  let graph = Arc::try_unwrap(
+    create_graph_and_maybe_check(module_specifier.clone(), &ps).await?,
+  )
+  .unwrap();
+
+  // at the moment, we don't support npm specifiers in deno_compile, so show an error
+  error_for_any_npm_specifier(&graph)?;
+
+  graph.valid()?;
+
+  let parser = ps.parsed_source_cache.as_capturing_parser();
+  let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
+
+  log::info!(
+    "{} {}",
+    colors::green("Compile"),
+    module_specifier.to_string()
+  );
+
+  // Select base binary based on target
+  let original_binary =
+    get_base_binary(&ps.http_client, deno_dir, compile_flags.target.clone())
+      .await?;
+
+  let final_bin = create_standalone_binary(
+    original_binary,
+    eszip,
+    module_specifier.clone(),
+    &compile_flags,
+    ps,
+  )
+  .await?;
+
+  log::info!("{} {}", colors::green("Emit"), output_path.display());
+
+  write_standalone_binary(output_path, final_bin).await?;
+  Ok(())
+}
+
+async fn get_base_binary(
+  client: &HttpClient,
   deno_dir: &DenoDir,
   target: Option<String>,
 ) -> Result<Vec<u8>, AnyError> {
@@ -54,7 +107,8 @@ pub async fn get_base_binary(
   let binary_path = download_directory.join(&binary_path_suffix);
 
   if !binary_path.exists() {
-    download_base_binary(&download_directory, &binary_path_suffix).await?;
+    download_base_binary(client, &download_directory, &binary_path_suffix)
+      .await?;
   }
 
   let archive_data = tokio::fs::read(binary_path).await?;
@@ -65,80 +119,80 @@ pub async fn get_base_binary(
 }
 
 async fn download_base_binary(
+  client: &HttpClient,
   output_directory: &Path,
   binary_path_suffix: &str,
 ) -> Result<(), AnyError> {
   let download_url = format!("https://dl.deno.land/{}", binary_path_suffix);
+  let maybe_bytes = {
+    let progress_bars = ProgressBar::new(ProgressBarStyle::DownloadBars);
+    let progress = progress_bars.update(&download_url);
 
-  let client_builder = Client::builder();
-  let client = client_builder.build()?;
-
-  println!("Checking {}", &download_url);
-
-  let res = client.get(&download_url).send().await?;
-
-  let binary_content = if res.status().is_success() {
-    println!("Download has been found");
-    res.bytes().await?.to_vec()
-  } else {
-    println!("Download could not be found, aborting");
-    std::process::exit(1)
+    client
+      .download_with_progress(download_url, &progress)
+      .await?
+  };
+  let bytes = match maybe_bytes {
+    Some(bytes) => bytes,
+    None => {
+      log::info!("Download could not be found, aborting");
+      std::process::exit(1)
+    }
   };
 
   std::fs::create_dir_all(output_directory)?;
   let output_path = output_directory.join(binary_path_suffix);
   std::fs::create_dir_all(output_path.parent().unwrap())?;
-  tokio::fs::write(output_path, binary_content).await?;
+  tokio::fs::write(output_path, bytes).await?;
   Ok(())
 }
 
 /// This functions creates a standalone deno binary by appending a bundle
 /// and magic trailer to the currently executing binary.
-pub async fn create_standalone_binary(
+async fn create_standalone_binary(
   mut original_bin: Vec<u8>,
   eszip: eszip::EszipV2,
   entrypoint: ModuleSpecifier,
-  flags: Flags,
+  compile_flags: &CompileFlags,
   ps: ProcState,
 ) -> Result<Vec<u8>, AnyError> {
   let mut eszip_archive = eszip.into_bytes();
 
-  let ca_data = match &flags.ca_file {
-    Some(ca_file) => Some(read(ca_file)?),
-    None => None,
-  };
-  let maybe_import_map: Option<(Url, String)> = match flags
-    .import_map_path
-    .as_ref()
-  {
-    None => None,
-    Some(import_map_url) => {
-      let import_map_specifier = deno_core::resolve_url_or_path(import_map_url)
-        .context(format!("Bad URL (\"{}\") for import map.", import_map_url))?;
-      let file = ps
-        .file_fetcher
-        .fetch(&import_map_specifier, &mut Permissions::allow_all())
-        .await
-        .context(format!(
-          "Unable to load '{}' import map",
-          import_map_specifier
-        ))?;
-
-      Some((import_map_specifier, file.source.to_string()))
+  let ca_data = match ps.options.ca_file() {
+    Some(ca_file) => {
+      Some(fs::read(ca_file).with_context(|| format!("Reading: {}", ca_file))?)
     }
+    None => None,
   };
+  let maybe_import_map: Option<(Url, String)> =
+    match ps.options.resolve_import_map_specifier()? {
+      None => None,
+      Some(import_map_specifier) => {
+        let file = ps
+          .file_fetcher
+          .fetch(&import_map_specifier, &mut Permissions::allow_all())
+          .await
+          .context(format!(
+            "Unable to load '{}' import map",
+            import_map_specifier
+          ))?;
+
+        Some((import_map_specifier, file.source.to_string()))
+      }
+    };
   let metadata = Metadata {
-    argv: flags.argv.clone(),
-    unstable: flags.unstable,
-    seed: flags.seed,
-    location: flags.location.clone(),
-    permissions: flags.permissions_options(),
-    v8_flags: flags.v8_flags.clone(),
-    unsafely_ignore_certificate_errors: flags
-      .unsafely_ignore_certificate_errors
+    argv: compile_flags.args.clone(),
+    unstable: ps.options.unstable(),
+    seed: ps.options.seed(),
+    location: ps.options.location_flag().clone(),
+    permissions: ps.options.permissions_options(),
+    v8_flags: ps.options.v8_flags().clone(),
+    unsafely_ignore_certificate_errors: ps
+      .options
+      .unsafely_ignore_certificate_errors()
       .clone(),
-    log_level: flags.log_level,
-    ca_stores: flags.ca_stores,
+    log_level: ps.options.log_level(),
+    ca_stores: ps.options.ca_stores().clone(),
     ca_data,
     entrypoint,
     maybe_import_map,
@@ -164,7 +218,7 @@ pub async fn create_standalone_binary(
 
 /// This function writes out a final binary to specified path. If output path
 /// is not already standalone binary it will return error instead.
-pub async fn write_standalone_binary(
+async fn write_standalone_binary(
   output_path: PathBuf,
   final_bin: Vec<u8>,
 ) -> Result<(), AnyError> {
@@ -233,73 +287,12 @@ pub async fn write_standalone_binary(
   Ok(())
 }
 
-/// Transform the flags passed to `deno compile` to flags that would be used at
-/// runtime, as if `deno run` were used.
-/// - Flags that affect module resolution, loading, type checking, etc. aren't
-///   applicable at runtime so are set to their defaults like `false`.
-/// - Other flags are inherited.
-pub fn compile_to_runtime_flags(
-  flags: &Flags,
-  baked_args: Vec<String>,
-) -> Result<Flags, AnyError> {
-  // IMPORTANT: Don't abbreviate any of this to `..flags` or
-  // `..Default::default()`. That forces us to explicitly consider how any
-  // change to `Flags` should be reflected here.
-  Ok(Flags {
-    argv: baked_args,
-    subcommand: DenoSubcommand::Run(RunFlags {
-      script: "placeholder".to_string(),
-    }),
-    allow_all: flags.allow_all,
-    allow_env: flags.allow_env.clone(),
-    allow_hrtime: flags.allow_hrtime,
-    allow_net: flags.allow_net.clone(),
-    allow_ffi: flags.allow_ffi.clone(),
-    allow_read: flags.allow_read.clone(),
-    allow_run: flags.allow_run.clone(),
-    allow_sys: flags.allow_sys.clone(),
-    allow_write: flags.allow_write.clone(),
-    ca_stores: flags.ca_stores.clone(),
-    ca_file: flags.ca_file.clone(),
-    cache_blocklist: vec![],
-    cache_path: None,
-    cached_only: false,
-    config_flag: Default::default(),
-    coverage_dir: flags.coverage_dir.clone(),
-    enable_testing_features: false,
-    ignore: vec![],
-    import_map_path: flags.import_map_path.clone(),
-    inspect_brk: None,
-    inspect: None,
-    node_modules_dir: false,
-    location: flags.location.clone(),
-    lock_write: false,
-    lock: None,
-    log_level: flags.log_level,
-    type_check_mode: TypeCheckMode::Local,
-    unsafely_ignore_certificate_errors: flags
-      .unsafely_ignore_certificate_errors
-      .clone(),
-    no_remote: false,
-    no_lock: false,
-    no_npm: false,
-    no_prompt: flags.no_prompt,
-    reload: false,
-    seed: flags.seed,
-    unstable: flags.unstable,
-    v8_flags: flags.v8_flags.clone(),
-    version: false,
-    watch: None,
-    no_clear_screen: false,
-  })
-}
-
-pub fn resolve_compile_executable_output_path(
+fn resolve_compile_executable_output_path(
   compile_flags: &CompileFlags,
 ) -> Result<PathBuf, AnyError> {
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   compile_flags.output.as_ref().and_then(|output| {
-    if fs_util::path_has_trailing_slash(output) {
+    if path_has_trailing_slash(output) {
       let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
       Some(output.join(infer_file_name))
     } else {

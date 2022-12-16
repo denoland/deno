@@ -383,7 +383,7 @@ fn op_transfer_arraybuffer<'a>(
     return Err(type_error("ArrayBuffer is not detachable"));
   }
   let bs = ab.get_backing_store();
-  ab.detach(v8::undefined(scope).into());
+  ab.detach(None);
   let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
   Ok(serde_v8::Value {
     v8_value: ab.into(),

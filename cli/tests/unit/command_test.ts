@@ -31,13 +31,13 @@ tryExit();
 
     Deno.writeFileSync(`${cwd}/${programFile}`, enc.encode(program));
 
-    const child = new Deno.Command(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       cwd,
       args: ["run", "--allow-read", programFile],
       stdout: "inherit",
       stderr: "inherit",
     });
-    child.spawn();
+    const child = command.spawn();
 
     // Write the expected exit code *after* starting deno.
     // This is how we verify that `Child` is actually asynchronous.
@@ -55,7 +55,7 @@ tryExit();
 Deno.test(
   { permissions: { run: true, read: true } },
   async function commandStdinPiped() {
-    const child = new Deno.Command(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
         "if (new TextDecoder().decode(await Deno.readAll(Deno.stdin)) !== 'hello') throw new Error('Expected \\'hello\\'')",
@@ -64,7 +64,7 @@ Deno.test(
       stdout: "null",
       stderr: "null",
     });
-    child.spawn();
+    const child = command.spawn();
 
     assertThrows(() => child.stdout, TypeError, "stdout is not piped");
     assertThrows(() => child.stderr, TypeError, "stderr is not piped");
@@ -85,14 +85,15 @@ Deno.test(
 Deno.test(
   { permissions: { run: true, read: true } },
   async function commandStdoutPiped() {
-    const child = new Deno.Command(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
         "await Deno.stdout.write(new TextEncoder().encode('hello'))",
       ],
       stderr: "null",
+      stdout: "piped",
     });
-    child.spawn();
+    const child = command.spawn();
 
     assertThrows(() => child.stdin, TypeError, "stdin is not piped");
     assertThrows(() => child.stderr, TypeError, "stderr is not piped");
@@ -118,14 +119,15 @@ Deno.test(
 Deno.test(
   { permissions: { run: true, read: true } },
   async function commandStderrPiped() {
-    const child = new Deno.Command(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
         "await Deno.stderr.write(new TextEncoder().encode('hello'))",
       ],
       stdout: "null",
+      stderr: "piped",
     });
-    child.spawn();
+    const child = command.spawn();
 
     assertThrows(() => child.stdin, TypeError, "stdin is not piped");
     assertThrows(() => child.stdout, TypeError, "stdout is not piped");
@@ -158,13 +160,15 @@ Deno.test(
       write: true,
     });
 
-    const child = new Deno.Command(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
         "Deno.stderr.write(new TextEncoder().encode('error\\n')); Deno.stdout.write(new TextEncoder().encode('output\\n'));",
       ],
+      stdout: "piped",
+      stderr: "piped",
     });
-    child.spawn();
+    const child = command.spawn();
     await child.stdout.pipeTo(file.writable, {
       preventClose: true,
     });
@@ -189,7 +193,7 @@ Deno.test(
     await Deno.writeFile(fileName, encoder.encode("hello"));
     const file = await Deno.open(fileName);
 
-    const child = new Deno.Command(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
         "if (new TextDecoder().decode(await Deno.readAll(Deno.stdin)) !== 'hello') throw new Error('Expected \\'hello\\'')",
@@ -198,7 +202,7 @@ Deno.test(
       stdout: "null",
       stderr: "null",
     });
-    child.spawn();
+    const child = command.spawn();
     await file.readable.pipeTo(child.stdin, {
       preventClose: true,
     });
@@ -212,12 +216,12 @@ Deno.test(
 Deno.test(
   { permissions: { run: true, read: true } },
   async function commandKillSuccess() {
-    const child = new Deno.Command(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       args: ["eval", "setTimeout(() => {}, 10000)"],
       stdout: "null",
       stderr: "null",
     });
-    child.spawn();
+    const child = command.spawn();
 
     child.kill("SIGKILL");
     const status = await child.status;
@@ -236,12 +240,12 @@ Deno.test(
 Deno.test(
   { permissions: { run: true, read: true } },
   async function commandKillFailed() {
-    const child = new Deno.Command(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       args: ["eval", "setTimeout(() => {}, 5000)"],
       stdout: "null",
       stderr: "null",
     });
-    child.spawn();
+    const child = command.spawn();
 
     assertThrows(() => {
       // @ts-expect-error testing runtime error of bad signal
@@ -255,12 +259,12 @@ Deno.test(
 Deno.test(
   { permissions: { run: true, read: true } },
   async function commandKillOptional() {
-    const child = new Deno.Command(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       args: ["eval", "setTimeout(() => {}, 10000)"],
       stdout: "null",
       stderr: "null",
     });
-    child.spawn();
+    const child = command.spawn();
 
     child.kill();
     const status = await child.status;
@@ -280,7 +284,7 @@ Deno.test(
   { permissions: { run: true, read: true } },
   async function commandAbort() {
     const ac = new AbortController();
-    const child = new Deno.Command(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
         "setTimeout(console.log, 1e8)",
@@ -289,7 +293,7 @@ Deno.test(
       stdout: "null",
       stderr: "null",
     });
-    child.spawn();
+    const child = command.spawn();
     queueMicrotask(() => ac.abort());
     const status = await child.status;
     assertEquals(status.success, false);
@@ -735,11 +739,12 @@ Deno.test(
 
     const programFile = "unref.ts";
     const program = `
-const child = await new Deno.Command(Deno.execPath(), {
+const command = await new Deno.Command(Deno.execPath(), {
   cwd: Deno.args[0],
   stdout: "piped",
   args: ["run", "-A", "--unstable", Deno.args[1]],
-});child.spawn();
+});
+const child = command.spawn();
 const readable = child.stdout.pipeThrough(new TextDecoderStream());
 const reader = readable.getReader();
 // set up an interval that will end after reading a few messages from stdout,

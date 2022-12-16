@@ -161,7 +161,7 @@ mod repl {
 
   #[test]
   fn pty_complete_imports() {
-    util::with_pty(&["repl"], |mut console| {
+    util::with_pty(&["repl", "-A"], |mut console| {
       // single quotes
       console.write_line("import './run/001_hel\t'");
       // double quotes
@@ -173,14 +173,15 @@ mod repl {
       assert_contains!(output, "Hello World");
       assert_contains!(
         output,
-        // on windows, could contain either (it's flaky)
+        // on windows, could any (it's flaky)
         "\ntesting output",
         "testing output\u{1b}",
+        "\r\n\u{1b}[?25htesting output",
       );
     });
 
     // ensure when the directory changes that the suggestions come from the cwd
-    util::with_pty(&["repl"], |mut console| {
+    util::with_pty(&["repl", "-A"], |mut console| {
       console.write_line("Deno.chdir('./subdir');");
       console.write_line("import '../run/001_hel\t'");
       console.write_line("close();");
@@ -459,9 +460,9 @@ mod repl {
 
   #[test]
   fn import() {
-    let (out, _) = util::run_and_collect_output(
+    let (out, _) = util::run_and_collect_output_with_args(
       true,
-      "repl",
+      vec![],
       Some(vec!["import('./subdir/auto_print_hello.ts')"]),
       Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
       false,
@@ -471,9 +472,9 @@ mod repl {
 
   #[test]
   fn import_declarations() {
-    let (out, _) = util::run_and_collect_output(
+    let (out, _) = util::run_and_collect_output_with_args(
       true,
-      "repl",
+      vec!["repl", "--allow-read"],
       Some(vec!["import './subdir/auto_print_hello.ts';"]),
       Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
       false,
@@ -732,7 +733,7 @@ mod repl {
     );
     assert_contains!(
       test_util::strip_ansi_codes(&out),
-      "error in --eval flag. parse error: Unexpected token `%`."
+      "Error in --eval flag: parse error: Unexpected token `%`."
     );
     assert_contains!(out, "2500"); // should not prevent input
     assert!(err.is_empty());
@@ -747,7 +748,7 @@ mod repl {
       None,
       false,
     );
-    assert_contains!(out, "error in --eval flag. Uncaught Error: Testing");
+    assert_contains!(out, "Error in --eval flag: Uncaught Error: Testing");
     assert_contains!(out, "2500"); // should not prevent input
     assert!(err.is_empty());
   }
@@ -795,7 +796,7 @@ mod repl {
   fn eval_file_flag_multiple_files() {
     let (out, err) = util::run_and_collect_output_with_args(
     true,
-    vec!["repl", "--eval-file=http://127.0.0.1:4545/repl/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
+    vec!["repl", "--allow-read", "--eval-file=http://127.0.0.1:4545/repl/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
     Some(vec!["b.method1=v4", "b.method1()+foo.toUpperCase()"]),
     None,
     true,
@@ -880,5 +881,72 @@ mod repl {
 
     assert_contains!(out, "AggregateError");
     assert!(err.is_empty());
+  }
+
+  #[test]
+  fn repl_with_quiet_flag() {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet"],
+      Some(vec!["await Promise.resolve('done')"]),
+      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+      false,
+    );
+    assert!(!out.contains("Deno"));
+    assert!(!out.contains("exit using ctrl+d, ctrl+c, or close()"));
+    assert_ends_with!(out, "\"done\"\n");
+    assert!(err.is_empty());
+  }
+
+  #[test]
+  fn npm_packages() {
+    let mut env_vars = util::env_vars_for_npm_tests();
+    env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![
+          r#"import chalk from "npm:chalk";"#,
+          "chalk.red('hel' + 'lo')",
+        ]),
+        Some(env_vars.clone()),
+        true,
+      );
+
+      assert_contains!(out, "hello");
+      assert!(err.is_empty());
+    }
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![
+          r#"const chalk = await import("npm:chalk");"#,
+          "chalk.default.red('hel' + 'lo')",
+        ]),
+        Some(env_vars.clone()),
+        true,
+      );
+
+      assert_contains!(out, "hello");
+      assert!(err.is_empty());
+    }
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![r#"export {} from "npm:chalk";"#]),
+        Some(env_vars),
+        true,
+      );
+
+      assert_contains!(out, "Module {");
+      assert_contains!(out, "Chalk: [Function: Chalk],");
+      assert!(err.is_empty());
+    }
   }
 }

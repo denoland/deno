@@ -571,7 +571,9 @@ impl Optimizer {
             let segment = single_segment(segments)?;
             match segment {
               // Is `T` a OpState?
-              PathSegment { ident, .. } if ident == "OpState" => {
+              PathSegment { ident, .. }
+                if ident == "OpState" && !self.is_async =>
+              {
                 self.has_ref_opstate = true;
               }
               _ => return Err(BailoutReason::FastUnsupportedParamType),

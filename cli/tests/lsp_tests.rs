@@ -12,7 +12,10 @@ mod lsp {
   use pretty_assertions::assert_eq;
   use std::collections::HashSet;
   use std::fs;
+  use std::process::Stdio;
+  use test_util::deno_cmd_with_deno_dir;
   use test_util::deno_exe_path;
+  use test_util::env_vars_for_npm_tests;
   use test_util::http_server;
   use test_util::lsp::LspClient;
   use test_util::testdata_path;
@@ -1423,7 +1426,7 @@ mod lsp {
             "language": "typescript",
             "value": "(method) DateConstructor.now(): number",
           },
-          ""
+          "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
         ],
         "range": {
           "start": {
@@ -1461,7 +1464,7 @@ mod lsp {
             "language": "typescript",
             "value": "(method) DateConstructor.now(): number",
           },
-          ""
+          "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
         ],
         "range": {
           "start": {
@@ -3321,13 +3324,13 @@ mod lsp {
   fn lsp_code_actions_deno_cache() {
     let mut session = TestSession::from_file("initialize_params.json");
     let diagnostics = session.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "import * as a from \"https://deno.land/x/a/mod.ts\";\n\nconsole.log(a);\n"
-    }
-  }));
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"https://deno.land/x/a/mod.ts\";\n\nconsole.log(a);\n"
+      }
+    }));
     assert_eq!(
       diagnostics.with_source("deno"),
       load_fixture_as("diagnostics_deno_deps.json")
@@ -3352,13 +3355,13 @@ mod lsp {
   fn lsp_code_actions_deno_cache_npm() {
     let mut session = TestSession::from_file("initialize_params.json");
     let diagnostics = session.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "import chalk from \"npm:chalk\";\n\nconsole.log(chalk.green);\n"
-    }
-  }));
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import chalk from \"npm:chalk\";\n\nconsole.log(chalk.green);\n"
+      }
+    }));
     assert_eq!(
       diagnostics.with_source("deno"),
       load_fixture_as("code_actions/cache_npm/diagnostics.json")
@@ -4240,6 +4243,110 @@ mod lsp {
     }
 
     shutdown(&mut client);
+  }
+
+  #[test]
+  fn lsp_npm_specifier_unopened_file() {
+    let _g = http_server();
+    let mut client = init("initialize_params.json");
+
+    // create other.ts, which re-exports an npm specifier
+    client.deno_dir().write(
+      "other.ts",
+      "export { default as chalk } from 'npm:chalk@5';",
+    );
+
+    // cache the other.ts file to the DENO_DIR
+    let deno = deno_cmd_with_deno_dir(client.deno_dir())
+      .current_dir(client.deno_dir().path())
+      .arg("cache")
+      .arg("--quiet")
+      .arg("other.ts")
+      .envs(env_vars_for_npm_tests())
+      .stdout(Stdio::piped())
+      .stderr(Stdio::piped())
+      .spawn()
+      .unwrap();
+    let output = deno.wait_with_output().unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.status.code(), Some(0));
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.is_empty());
+
+    // open main.ts, which imports other.ts (unopened)
+    let main_url =
+      ModuleSpecifier::from_file_path(client.deno_dir().path().join("main.ts"))
+        .unwrap();
+    did_open(
+      &mut client,
+      json!({
+        "textDocument": {
+          "uri": main_url,
+          "languageId": "typescript",
+          "version": 1,
+          "text": "import { chalk } from './other.ts';\n\n",
+        }
+      }),
+    );
+
+    client
+      .write_notification(
+        "textDocument/didChange",
+        json!({
+          "textDocument": {
+            "uri": main_url,
+            "version": 2
+          },
+          "contentChanges": [
+            {
+              "range": {
+                "start": {
+                  "line": 2,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              },
+              "text": "chalk."
+            }
+          ]
+        }),
+      )
+      .unwrap();
+    read_diagnostics(&mut client);
+
+    // now ensure completions work
+    let (maybe_res, maybe_err) = client
+      .write_request(
+        "textDocument/completion",
+        json!({
+          "textDocument": {
+            "uri": main_url
+          },
+          "position": {
+            "line": 2,
+            "character": 6
+          },
+          "context": {
+            "triggerKind": 2,
+            "triggerCharacter": "."
+          }
+        }),
+      )
+      .unwrap();
+    assert!(maybe_err.is_none());
+    if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+      assert!(!list.is_incomplete);
+      assert_eq!(list.items.len(), 63);
+      assert!(list.items.iter().any(|i| i.label == "ansi256"));
+    } else {
+      panic!("unexpected response");
+    }
   }
 
   #[test]

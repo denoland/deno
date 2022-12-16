@@ -14,11 +14,13 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 
+use crate::args::CacheSetting;
 use crate::cache::DenoDir;
-use crate::file_fetcher::CacheSetting;
-use crate::fs_util;
 use crate::http_util::HttpClient;
-use crate::progress_bar::ProgressBar;
+use crate::util::fs::canonicalize_path;
+use crate::util::fs::hard_link_dir_recursive;
+use crate::util::path::root_url_to_safe_local_dirname;
+use crate::util::progress_bar::ProgressBar;
 
 use super::registry::NpmPackageVersionDistInfo;
 use super::semver::NpmVersion;
@@ -162,7 +164,7 @@ impl ReadonlyNpmCache {
         std::fs::create_dir_all(root_dir)
           .with_context(|| format!("Error creating {}", root_dir.display()))?;
       }
-      Ok(crate::fs_util::canonicalize_path(root_dir)?)
+      Ok(canonicalize_path(root_dir)?)
     }
 
     // this may fail on readonly file systems, so just ignore if so
@@ -227,7 +229,7 @@ impl ReadonlyNpmCache {
   pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
     self
       .root_dir
-      .join(fs_util::root_url_to_safe_local_dirname(registry_url))
+      .join(root_url_to_safe_local_dirname(registry_url))
   }
 
   pub fn resolve_package_folder_id_from_specifier(
@@ -252,7 +254,7 @@ impl ReadonlyNpmCache {
       .root_dir_url
       .join(&format!(
         "{}/",
-        fs_util::root_url_to_safe_local_dirname(registry_url)
+        root_url_to_safe_local_dirname(registry_url)
           .to_string_lossy()
           .replace('\\', "/")
       ))
@@ -407,26 +409,18 @@ impl NpmCache {
       );
     }
 
-    let _guard = self.progress_bar.update(&dist.tarball);
-    let response = self.http_client.get(&dist.tarball).send().await?;
-
-    if response.status() == 404 {
-      bail!("Could not find npm package tarball at: {}", dist.tarball);
-    } else if !response.status().is_success() {
-      let status = response.status();
-      let maybe_response_text = response.text().await.ok();
-      bail!(
-        "Bad response: {:?}{}",
-        status,
-        match maybe_response_text {
-          Some(text) => format!("\n\n{}", text),
-          None => String::new(),
-        }
-      );
-    } else {
-      let bytes = response.bytes().await?;
-
-      verify_and_extract_tarball(package, &bytes, dist, &package_folder)
+    let guard = self.progress_bar.update(&dist.tarball);
+    let maybe_bytes = self
+      .http_client
+      .download_with_progress(&dist.tarball, &guard)
+      .await?;
+    match maybe_bytes {
+      Some(bytes) => {
+        verify_and_extract_tarball(package, &bytes, dist, &package_folder)
+      }
+      None => {
+        bail!("Could not find npm package tarball at: {}", dist.tarball);
+      }
     }
   }
 
@@ -457,12 +451,7 @@ impl NpmCache {
     with_folder_sync_lock(
       (id.name.as_str(), &id.version),
       &package_folder,
-      || {
-        fs_util::hard_link_dir_recursive(
-          &original_package_folder,
-          &package_folder,
-        )
-      },
+      || hard_link_dir_recursive(&original_package_folder, &package_folder),
     )?;
     Ok(())
   }
