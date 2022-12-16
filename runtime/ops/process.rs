@@ -459,7 +459,6 @@ fn rss() -> Result<usize, AnyError> {
 
 #[cfg(windows)]
 fn rss() -> Result<usize, AnyError> {
-  use deno_core::error::generic_error;
   use winapi::shared::minwindef::DWORD;
   use winapi::shared::minwindef::FALSE;
   use winapi::um::processthreadsapi::GetCurrentProcess;
@@ -480,7 +479,7 @@ fn rss() -> Result<usize, AnyError> {
     {
       Ok(pmc.WorkingSetSize)
     } else {
-      Err(generic_error("Unable to get process memory info"))
+      Err(std::io::Error::last_os_error().into())
     }
   }
 }
