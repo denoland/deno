@@ -447,8 +447,8 @@ fn resolve_shim_data(
 }
 
 fn get_hidden_file_with_ext(file_path: &Path, ext: &str) -> PathBuf {
-  // use a dot file to prevent the file from showing up for
-  // some users shell auto-complete since this directory is on the PATH
+  // use a dot file to prevent the file from showing up in some
+  // users shell auto-complete since this directory is on the PATH
   file_path
     .with_file_name(format!(
       ".{}",
