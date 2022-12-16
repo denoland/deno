@@ -23,6 +23,7 @@ use editor::EditorHelper;
 use editor::ReplEditor;
 use session::EvaluationOutput;
 use session::ReplSession;
+use std::sync::atomic::Ordering::Relaxed;
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
@@ -91,7 +92,6 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let worker = worker.into_main_worker();
   let mut repl_session = ReplSession::initialize(ps.clone(), worker).await?;
   let mut rustyline_channel = rustyline_channel();
-  let mut should_exit_on_interrupt = false;
 
   let helper = EditorHelper {
     context_id: repl_session.context_id,
@@ -154,7 +154,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     .await;
     match line {
       Ok(line) => {
-        should_exit_on_interrupt = false;
+        editor.should_exit_on_interrupt.store(false, Relaxed);
         editor.update_history(line.clone());
         let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
@@ -167,10 +167,10 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
         println!("{}", output);
       }
       Err(ReadlineError::Interrupted) => {
-        if should_exit_on_interrupt {
+        if editor.should_exit_on_interrupt.load(Relaxed) {
           break;
         }
-        should_exit_on_interrupt = true;
+        editor.should_exit_on_interrupt.store(true, Relaxed);
         println!("press ctrl+c again to exit");
         continue;
       }
