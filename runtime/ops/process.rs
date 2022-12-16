@@ -427,13 +427,13 @@ fn rss() -> usize {
   // multiples of the page size, as the first
   // two columns of output.
   // SAFETY: libc call
-  let c_page_size = unsafe { libc::getpagesize() };
+  let c_page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
   let page_size = match c_page_size.try_into() {
     Ok(n) if n >= 0 => n as usize,
     _ => return 0,
   };
-  let (_total_size_pages, idx) = scan_int(&statm_info);
-  let (total_rss_pages, _) = scan_int(&statm_info[idx..]);
+  let (_total_size_pages, idx) = scan_int(&statm_content);
+  let (total_rss_pages, _) = scan_int(&statm_content[idx..]);
 
   total_rss_pages * page_size
 }
