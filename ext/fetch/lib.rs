@@ -527,9 +527,7 @@ impl Resource for FetchRequestBodyResource {
     Box::pin(async move {
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      body.send(None).or_cancel(cancel).await?.map_err(|_| {
-        type_error("request body receiver not connected (request closed)")
-      })?;
+      body.send(None).or_cancel(cancel).await?.ok(); // we don't care if the receiver is closed, because this is the shutdown
       Ok(())
     })
   }

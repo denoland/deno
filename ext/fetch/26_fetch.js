@@ -212,7 +212,7 @@
       const reader = reqBody.getReader();
       WeakMapPrototypeSet(requestBodyReaders, req, reader);
       (async () => {
-        let done = false;
+        let done;
         while (!done) {
           let val;
           try {
@@ -226,6 +226,7 @@
             requestSendErrorSet = true;
             break;
           }
+          if (done) break;
           if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, val)) {
             const error = new TypeError(
               "Item in request body ReadableStream is not a Uint8Array",
@@ -241,10 +242,13 @@
           } catch (err) {
             if (terminator.aborted) break;
             await reader.cancel(err);
+            // TODO(lucacasonato): propagate error into response body stream
+            requestSendError = err;
+            requestSendErrorSet = true;
             break;
           }
         }
-        if (done) await core.shutdown(requestBodyRid);
+        if (done && !terminator.aborted) await core.shutdown(requestBodyRid);
         WeakMapPrototypeDelete(requestBodyReaders, req);
         core.tryClose(requestBodyRid);
       })();
