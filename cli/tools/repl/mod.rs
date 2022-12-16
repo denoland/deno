@@ -23,7 +23,6 @@ use editor::EditorHelper;
 use editor::ReplEditor;
 use session::EvaluationOutput;
 use session::ReplSession;
-use std::sync::atomic::Ordering::Relaxed;
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
@@ -154,7 +153,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     .await;
     match line {
       Ok(line) => {
-        editor.should_exit_on_interrupt.store(false, Relaxed);
+        editor.set_should_exit_on_interrupt(false);
         editor.update_history(line.clone());
         let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
@@ -167,10 +166,10 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
         println!("{}", output);
       }
       Err(ReadlineError::Interrupted) => {
-        if editor.should_exit_on_interrupt.load(Relaxed) {
+        if editor.should_exit_on_interrupt() {
           break;
         }
-        editor.should_exit_on_interrupt.store(true, Relaxed);
+        editor.set_should_exit_on_interrupt(true);
         println!("press ctrl+c again to exit");
         continue;
       }
