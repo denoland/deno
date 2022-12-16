@@ -23,10 +23,10 @@ jobs:
           - os: macos-12
             job: test
             profile: release
-          - os: ${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022' }}
             job: test
             profile: fastci
-          - os: ${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022' }}
             job: test
             profile: release
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
@@ -595,7 +595,7 @@ jobs:
 
   publish-canary:
     name: publish canary
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs: ["build"]
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     steps:
