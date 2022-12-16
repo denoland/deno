@@ -359,7 +359,7 @@ impl SerializedLintConfig {
   }
 }
 
-pub trait ConfiguresFiles {
+pub trait ContainsFilesConfig {
   fn get_files_config(&self) -> FilesConfig;
 }
 
@@ -370,7 +370,7 @@ pub struct LintConfig {
   pub report: Option<String>,
 }
 
-impl ConfiguresFiles for LintConfig {
+impl ContainsFilesConfig for LintConfig {
   fn get_files_config(&self) -> FilesConfig {
     self.files.clone()
   }
@@ -426,7 +426,7 @@ pub struct FmtConfig {
   pub files: FilesConfig,
 }
 
-impl ConfiguresFiles for FmtConfig {
+impl ContainsFilesConfig for FmtConfig {
   fn get_files_config(&self) -> FilesConfig {
     self.files.clone()
   }
@@ -464,7 +464,7 @@ pub struct FinalTestConfig {
   pub files: Filters,
 }
 
-impl ConfiguresFiles for TestConfig {
+impl ContainsFilesConfig for TestConfig {
   fn get_files_config(&self) -> FilesConfig {
     self.files.clone()
   }
@@ -496,7 +496,7 @@ pub struct FinalBenchConfig {
   pub files: Filters,
 }
 
-impl ConfiguresFiles for BenchConfig {
+impl ContainsFilesConfig for BenchConfig {
   fn get_files_config(&self) -> FilesConfig {
     self.files.clone()
   }

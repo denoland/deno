@@ -73,8 +73,6 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     return Err(generic_error("Yikes"));
   }
 
-  // let filters = collect_filters(&lint_flags, &maybe_lint_config)?;
-
   let mut maybe_reporter_kind = if lint_flags.json {
     Some(LintReporterKind::Json)
   } else if lint_flags.compact {

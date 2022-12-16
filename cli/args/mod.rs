@@ -9,7 +9,7 @@ mod flags_allow_net;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
-pub use config_file::ConfiguresFiles;
+pub use config_file::ContainsFilesConfig;
 pub use config_file::EmitConfigOptions;
 pub use config_file::FinalLintConfig;
 pub use config_file::FmtConfig;
@@ -397,10 +397,10 @@ impl CliOptions {
     &self,
     lint_flags: &LintFlags,
   ) -> Result<Option<FinalLintConfig>, AnyError> {
-    let filters = lint_flags.get_filters();
+    let cli_filters = lint_flags.get_filters();
 
-    let mut include = filters.include;
-    let mut ignore = filters.ignore;
+    let mut include = cli_filters.include;
+    let mut ignore = cli_filters.ignore;
     let mut report = Some(String::from("pretty"));
     let mut rules = LintRulesConfig {
       tags: None,
@@ -409,14 +409,15 @@ impl CliOptions {
     };
 
     if let Some(config_file) = &self.maybe_config_file {
-      let maybe_test_config = config_file.to_lint_config()?;
+      let maybe_lint_config = config_file.to_lint_config()?;
 
-      if let Some(config) = maybe_test_config {
-        let config_filters = self.collect_filters(&config, include, ignore)?;
+      if let Some(lint_config) = maybe_lint_config {
+        let config_filters =
+          self.collect_filters(&lint_config, include, ignore)?;
         include = config_filters.include;
         ignore = config_filters.ignore;
-        report = config.report;
-        rules = config.rules;
+        report = lint_config.report;
+        rules = lint_config.rules;
       }
     }
 
@@ -434,18 +435,18 @@ impl CliOptions {
   pub fn to_test_config(
     &self,
     test_flags: &TestFlags,
-    // f: impl FnMut(T) -> Result<Option<TestConfig>, AnyError>
   ) -> Result<FinalTestConfig, AnyError> {
-    let filters = test_flags.get_filters();
+    let cli_filters = test_flags.get_filters();
 
-    let mut include = filters.include;
-    let mut ignore = filters.ignore;
+    let mut include = cli_filters.include;
+    let mut ignore = cli_filters.ignore;
 
     if let Some(config_file) = &self.maybe_config_file {
       let maybe_test_config = config_file.to_test_config()?;
 
-      if let Some(config) = maybe_test_config {
-        let config_filters = self.collect_filters(&config, include, ignore)?;
+      if let Some(test_config) = maybe_test_config {
+        let config_filters =
+          self.collect_filters(&test_config, include, ignore)?;
         include = config_filters.include;
         ignore = config_filters.ignore;
       }
@@ -464,16 +465,17 @@ impl CliOptions {
     &self,
     bench_flags: &BenchFlags,
   ) -> Result<FinalBenchConfig, AnyError> {
-    let filters = bench_flags.get_filters();
+    let cli_filters = bench_flags.get_filters();
 
-    let mut include = filters.include;
-    let mut ignore = filters.ignore;
+    let mut include = cli_filters.include;
+    let mut ignore = cli_filters.ignore;
 
     if let Some(config_file) = &self.maybe_config_file {
       let maybe_bench_config = config_file.to_bench_config()?;
 
-      if let Some(config) = maybe_bench_config {
-        let config_filters = self.collect_filters(&config, include, ignore)?;
+      if let Some(bench_config) = maybe_bench_config {
+        let config_filters =
+          self.collect_filters(&bench_config, include, ignore)?;
         include = config_filters.include;
         ignore = config_filters.ignore;
       }
@@ -500,10 +502,10 @@ impl CliOptions {
     &self,
     fmt_flags: &FmtFlags,
   ) -> Result<Option<FinalFmtConfig>, AnyError> {
-    let filters = fmt_flags.get_filters();
+    let cli_filters = fmt_flags.get_filters();
 
-    let mut include = filters.include;
-    let mut ignore = filters.ignore;
+    let mut include = cli_filters.include;
+    let mut ignore = cli_filters.ignore;
     let mut options = FmtOptionsConfig {
       use_tabs: None,
       line_width: None,
@@ -515,11 +517,12 @@ impl CliOptions {
     if let Some(config_file) = &self.maybe_config_file {
       let maybe_fmt_config = config_file.to_fmt_config()?;
 
-      if let Some(config) = maybe_fmt_config {
-        let config_filters = self.collect_filters(&config, include, ignore)?;
+      if let Some(fmt_config) = maybe_fmt_config {
+        let config_filters =
+          self.collect_filters(&fmt_config, include, ignore)?;
         include = config_filters.include;
         ignore = config_filters.ignore;
-        options = config.options;
+        options = fmt_config.options;
       }
     }
 
@@ -543,7 +546,7 @@ impl CliOptions {
     mut ignore: Vec<PathBuf>,
   ) -> Result<Filters, AnyError>
   where
-    T: ConfiguresFiles,
+    T: ContainsFilesConfig,
   {
     if include.is_empty() {
       include = config
