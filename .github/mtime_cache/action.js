@@ -5,13 +5,7 @@
 const { spawn } = require("child_process");
 const { dirname, resolve } = require("path");
 const { StringDecoder } = require("string_decoder");
-const { promisify } = require("util");
-
-const fs = require("fs");
-const utimes = promisify(fs.utimes);
-const mkdir = promisify(fs.mkdir);
-const readFile = promisify(fs.readFile);
-const writeFile = promisify(fs.writeFile);
+const { utimes, mkdir, readFile, writeFile } = require("fs/promises");
 
 process.on("unhandledRejection", abort);
 main().catch(abort);
