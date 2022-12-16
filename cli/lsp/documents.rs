@@ -1257,6 +1257,7 @@ impl deno_graph::ModuleParser for LspModuleParser {
   }
 }
 
+#[allow(clippy::box_default)]
 fn lsp_deno_graph_analyze(
   specifier: &ModuleSpecifier,
   content: Arc<str>,

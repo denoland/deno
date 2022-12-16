@@ -160,7 +160,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
     cwd.join(path)
   };
 
-  Ok(normalize_path(&resolved_path))
+  Ok(normalize_path(resolved_path))
 }
 
 /// Collects file paths that satisfy the given predicate, by recursively walking `files`.
@@ -280,7 +280,7 @@ pub fn collect_specifiers(
     } else {
       root_path.join(path)
     };
-    let p = normalize_path(&p);
+    let p = normalize_path(p);
     if p.is_dir() {
       let test_files = file_collector.collect_files(&[p])?;
       let mut test_files_as_urls = test_files

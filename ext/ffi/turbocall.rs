@@ -910,6 +910,7 @@ impl Aarch64Apple {
     aarch64!(self.assmblr; str x0, [x19]);
   }
 
+  #[allow(clippy::unnecessary_cast)]
   fn save_frame_record(&mut self) {
     debug_assert!(
       self.allocated_stack >= 16,
@@ -922,6 +923,7 @@ impl Aarch64Apple {
     )
   }
 
+  #[allow(clippy::unnecessary_cast)]
   fn recover_frame_record(&mut self) {
     // The stack cannot have been deallocated before the frame record is restored
     debug_assert!(

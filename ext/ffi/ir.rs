@@ -250,7 +250,7 @@ pub fn ffi_parse_u32_arg(
 ) -> Result<NativeValue, AnyError> {
   let u32_value = v8::Local::<v8::Uint32>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI u32 type, expected unsigned integer"))?
-    .value() as u32;
+    .value();
   Ok(NativeValue { u32_value })
 }
 
@@ -260,7 +260,7 @@ pub fn ffi_parse_i32_arg(
 ) -> Result<NativeValue, AnyError> {
   let i32_value = v8::Local::<v8::Int32>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI i32 type, expected integer"))?
-    .value() as i32;
+    .value();
   Ok(NativeValue { i32_value })
 }
 
@@ -297,7 +297,7 @@ pub fn ffi_parse_i64_arg(
   {
     value.i64_value().0
   } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
-    value.integer_value(scope).unwrap() as i64
+    value.integer_value(scope).unwrap()
   } else {
     return Err(type_error("Invalid FFI i64 type, expected integer"));
   };
@@ -358,7 +358,7 @@ pub fn ffi_parse_f64_arg(
 ) -> Result<NativeValue, AnyError> {
   let f64_value = v8::Local::<v8::Number>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI f64 type, expected number"))?
-    .value() as f64;
+    .value();
   Ok(NativeValue { f64_value })
 }
 
