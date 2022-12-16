@@ -7,7 +7,7 @@ const Runners = {
     "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
   macos: "macos-12",
   windows:
-    "${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}",
+    "${{ github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022' }}",
 };
 
 const sysRootStep = {
