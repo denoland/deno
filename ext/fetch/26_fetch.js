@@ -221,7 +221,7 @@
             val = res.value;
           } catch (err) {
             if (terminator.aborted) break;
-            // TODO: propagate error into response body stream
+            // TODO(lucacasonato): propagate error into response body stream
             requestSendError = err;
             requestSendErrorSet = true;
             break;
@@ -231,7 +231,7 @@
               "Item in request body ReadableStream is not a Uint8Array",
             );
             await reader.cancel(error);
-            // TODO: propagate error into response body stream
+            // TODO(lucacasonato): propagate error into response body stream
             requestSendError = error;
             requestSendErrorSet = true;
             break;
