@@ -378,23 +378,19 @@ struct MemoryUsage {
 }
 
 #[op(v8)]
-fn op_runtime_memory_usage(
-  scope: &mut v8::HandleScope,
-) -> Result<MemoryUsage, AnyError> {
+fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
   let mut s = v8::HeapStatistics::default();
   scope.get_heap_statistics(&mut s);
-  Ok(MemoryUsage {
-    rss: rss()?,
+  MemoryUsage {
+    rss: rss(),
     heap_total: s.total_heap_size(),
     heap_used: s.used_heap_size(),
     external: s.external_memory(),
-  })
+  }
 }
 
 #[cfg(target_os = "linux")]
-fn rss() -> Result<usize, AnyError> {
-  use deno_core::error::generic_error;
-
+fn rss() -> usize {
   // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/linux.rs
 
   // Extracts a positive integer from a string that
@@ -420,7 +416,12 @@ fn rss() -> Result<usize, AnyError> {
     (out, idx)
   }
 
-  let statm_content = std::fs::read_to_string("/proc/self/statm")?;
+  let statm_content = if let Ok(c) = std::fs::read_to_string("/proc/self/statm")
+  {
+    c
+  } else {
+    return 0;
+  };
 
   // statm returns the virtual size and rss, in
   // multiples of the page size, as the first
@@ -429,36 +430,39 @@ fn rss() -> Result<usize, AnyError> {
   let c_page_size = unsafe { libc::getpagesize() };
   let page_size = match c_page_size.try_into() {
     Ok(n) if n >= 0 => n as usize,
-    _ => return Err(generic_error("Unable to get page size")),
+    _ => return 0,
   };
   let (_total_size_pages, idx) = scan_int(&statm_info);
   let (total_rss_pages, _) = scan_int(&statm_info[idx..]);
 
-  Ok(total_rss_pages * page_size)
+  total_rss_pages * page_size
 }
 
 #[cfg(target_os = "macos")]
-fn rss() -> Result<usize, AnyError> {
+fn rss() -> usize {
+  // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/darwin.rs
+
   let mut task_info =
     std::mem::MaybeUninit::<libc::mach_task_basic_info_data_t>::uninit();
+  let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
   // SAFETY: libc calls
   let r = unsafe {
     libc::task_info(
       libc::mach_task_self(),
       libc::MACH_TASK_BASIC_INFO,
       task_info.as_mut_ptr() as libc::task_info_t,
-      libc::MACH_TASK_BASIC_INFO_COUNT as *mut libc::mach_msg_type_number_t,
+      &mut count as *mut libc::mach_msg_type_number_t,
     )
   };
   // According to libuv this should never fail
   assert_eq!(r, libc::KERN_SUCCESS);
   // SAFETY: we just asserted that it was success
   let task_info = unsafe { task_info.assume_init() };
-  Ok(task_info.resident_size as usize)
+  task_info.resident_size as usize
 }
 
 #[cfg(windows)]
-fn rss() -> Result<usize, AnyError> {
+fn rss() -> usize {
   use winapi::shared::minwindef::DWORD;
   use winapi::shared::minwindef::FALSE;
   use winapi::um::processthreadsapi::GetCurrentProcess;
@@ -477,9 +481,9 @@ fn rss() -> Result<usize, AnyError> {
       std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as DWORD,
     ) != FALSE
     {
-      Ok(pmc.WorkingSetSize)
+      pmc.WorkingSetSize
     } else {
-      Err(std::io::Error::last_os_error().into())
+      0
     }
   }
 }
