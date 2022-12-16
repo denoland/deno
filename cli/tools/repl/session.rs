@@ -70,6 +70,17 @@ impl std::fmt::Display for EvaluationOutput {
   }
 }
 
+pub fn result_to_evaluation_output(
+  r: Result<EvaluationOutput, AnyError>,
+) -> EvaluationOutput {
+  match r {
+    Ok(value) => value,
+    Err(err) => {
+      EvaluationOutput::Error(format!("{} {}", colors::red("error:"), err))
+    }
+  }
+}
+
 struct TsEvaluateResponse {
   ts_code: String,
   value: cdp::EvaluateResponse,
@@ -180,7 +191,7 @@ impl ReplSession {
   pub async fn evaluate_line_and_get_output(
     &mut self,
     line: &str,
-  ) -> Result<EvaluationOutput, AnyError> {
+  ) -> EvaluationOutput {
     fn format_diagnostic(diagnostic: &deno_ast::Diagnostic) -> String {
       format!(
         "{}: {} at {}:{}",
@@ -191,56 +202,64 @@ impl ReplSession {
       )
     }
 
-    match self.evaluate_line_with_object_wrapping(line).await {
-      Ok(evaluate_response) => {
-        let cdp::EvaluateResponse {
-          result,
-          exception_details,
-        } = evaluate_response.value;
+    async fn inner(
+      session: &mut ReplSession,
+      line: &str,
+    ) -> Result<EvaluationOutput, AnyError> {
+      match session.evaluate_line_with_object_wrapping(line).await {
+        Ok(evaluate_response) => {
+          let cdp::EvaluateResponse {
+            result,
+            exception_details,
+          } = evaluate_response.value;
 
-        Ok(if let Some(exception_details) = exception_details {
-          self.set_last_thrown_error(&result).await?;
-          let description = match exception_details.exception {
-            Some(exception) => exception
-              .description
-              .unwrap_or_else(|| "Unknown exception".to_string()),
-            None => "Unknown exception".to_string(),
-          };
-          EvaluationOutput::Error(format!(
-            "{} {}",
-            exception_details.text, description
-          ))
-        } else {
-          self
-            .language_server
-            .commit_text(&evaluate_response.ts_code)
-            .await;
+          Ok(if let Some(exception_details) = exception_details {
+            session.set_last_thrown_error(&result).await?;
+            let description = match exception_details.exception {
+              Some(exception) => exception
+                .description
+                .unwrap_or_else(|| "Unknown exception".to_string()),
+              None => "Unknown exception".to_string(),
+            };
+            EvaluationOutput::Error(format!(
+              "{} {}",
+              exception_details.text, description
+            ))
+          } else {
+            session
+              .language_server
+              .commit_text(&evaluate_response.ts_code)
+              .await;
 
-          self.set_last_eval_result(&result).await?;
-          let value = self.get_eval_value(&result).await?;
-          EvaluationOutput::Value(value)
-        })
-      }
-      Err(err) => {
-        // handle a parsing diagnostic
-        match err.downcast_ref::<deno_ast::Diagnostic>() {
-          Some(diagnostic) => {
-            Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
+            session.set_last_eval_result(&result).await?;
+            let value = session.get_eval_value(&result).await?;
+            EvaluationOutput::Value(value)
+          })
+        }
+        Err(err) => {
+          // handle a parsing diagnostic
+          match err.downcast_ref::<deno_ast::Diagnostic>() {
+            Some(diagnostic) => {
+              Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
+            }
+            None => match err.downcast_ref::<DiagnosticsError>() {
+              Some(diagnostics) => Ok(EvaluationOutput::Error(
+                diagnostics
+                  .0
+                  .iter()
+                  .map(format_diagnostic)
+                  .collect::<Vec<_>>()
+                  .join("\n\n"),
+              )),
+              None => Err(err),
+            },
           }
-          None => match err.downcast_ref::<DiagnosticsError>() {
-            Some(diagnostics) => Ok(EvaluationOutput::Error(
-              diagnostics
-                .0
-                .iter()
-                .map(format_diagnostic)
-                .collect::<Vec<_>>()
-                .join("\n\n"),
-            )),
-            None => Err(err),
-          },
         }
       }
     }
+
+    let result = inner(self, line).await;
+    result_to_evaluation_output(result)
   }
 
   async fn evaluate_line_with_object_wrapping(
