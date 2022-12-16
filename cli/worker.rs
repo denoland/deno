@@ -309,7 +309,11 @@ impl CliMainWorker {
 
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
     self.ps.prepare_node_std_graph().await?;
-    node::initialize_runtime(&mut self.worker.js_runtime).await?;
+    node::initialize_runtime(
+      &mut self.worker.js_runtime,
+      self.ps.options.node_modules_dir(),
+    )
+    .await?;
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
       if let Ok(pkg_ref) = NpmPackageReference::from_str(&flags.script) {
         // if the user ran a binary command, we'll need to set process.argv[0]
@@ -621,7 +625,11 @@ fn create_web_worker_pre_execute_module_callback(
     let fut = async move {
       // this will be up to date after pre-load
       if ps.npm_resolver.has_packages() {
-        node::initialize_runtime(&mut worker.js_runtime).await?;
+        node::initialize_runtime(
+          &mut worker.js_runtime,
+          ps.options.node_modules_dir(),
+        )
+        .await?;
       }
 
       Ok(worker)
