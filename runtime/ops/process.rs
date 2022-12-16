@@ -389,9 +389,28 @@ fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
   }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 fn rss() -> usize {
   todo!()
+}
+
+#[cfg(target_os = "macos")]
+fn rss() -> usize {
+  let mut task_info = std::mem::MaybeUninit<libc::mach_task_basic_info_data_t>::uninit();
+  // SAFETY: libc calls
+  let r = unsafe {
+    libc::task_info(
+      libc::mach_task_self(),
+      libc::MACH_TASK_BASIC_INFO,
+      task_info.as_mut_ptr() as *mut libc::task_info_t,
+      libc::MATCH_TASK_BASIC_INFO_COUNT as *mut libc::mach_msg_type_number_t,
+    )
+  };
+  // According to libuv this should never fail
+  assert_eq!(r, libc::KERN_SUCCESS);
+  // SAFETY: we just asserted that it was success
+  let task_info = unsafe { task_info.assume_init() };
+  task_info.resident_size as usize
 }
 
 #[cfg(windows)]
