@@ -448,7 +448,7 @@ impl ConditionalEventHandler for ReverseSearchHistoryEventHandler {
     _: &EventContext,
   ) -> Option<Cmd> {
     self.0.store(false, Relaxed);
-    return Some(Cmd::ReverseSearchHistory);
+    Some(Cmd::ReverseSearchHistory)
   }
 }
 
