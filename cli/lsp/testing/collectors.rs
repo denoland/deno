@@ -153,9 +153,7 @@ fn check_call_expr(
                       // (e.g. `test name`)
                       ast::Expr::Tpl(tpl) => {
                         if tpl.quasis.len() == 1 {
-                          if let Some(tpl_element) = tpl.quasis.get(0) {
-                            maybe_name = Some(tpl_element.raw.to_string());
-                          }
+                          maybe_name = Some(tpl.quasis[0].raw.to_string());
                         }
                       }
                       _ => (),
@@ -204,6 +202,24 @@ fn check_call_expr(
           _ => (),
         }
         Some((name, steps))
+      }
+      ast::Expr::Tpl(tpl) => {
+        if tpl.quasis.len() == 1 {
+          let mut steps = vec![];
+          match node.args.get(1).map(|es| es.expr.as_ref()) {
+            Some(ast::Expr::Fn(fn_expr)) => {
+              steps = fn_to_steps(parent, level, &fn_expr.function);
+            }
+            Some(ast::Expr::Arrow(arrow_expr)) => {
+              steps = arrow_to_steps(parent, level, arrow_expr);
+            }
+            _ => (),
+          }
+
+          Some((tpl.quasis[0].raw.to_string(), steps))
+        } else {
+          None
+        }
       }
       _ => None,
     }
@@ -517,6 +533,8 @@ pub mod tests {
 
       Deno.test("test b", () => {});
 
+      Deno.test(`test b`, () => {});
+
       const { test } = Deno;
       test("test c", () => {});
 
@@ -584,17 +602,24 @@ pub mod tests {
           steps: vec![],
         },
         TestDefinition {
+          id: "580eda89d7f5e619774c20e13b7d07a8e77c39cba101d60565144d48faa837cb".to_string(),
+          level: 0,
+          name: "test b".to_string(),
+          range: new_range(396, 400),
+          steps: vec![],
+        },
+        TestDefinition {
           id: "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94".to_string(),
           level: 0,
           name: "test c".to_string(),
-          range: new_range(420, 424),
+          range: new_range(458, 462),
           steps: vec![],
         },
         TestDefinition {
           id: "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f".to_string(),
           level: 0,
           name: "test d".to_string(),
-          range: new_range(480, 481),
+          range: new_range(518, 519),
           steps: vec![],
         }
       ]
