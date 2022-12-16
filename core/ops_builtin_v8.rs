@@ -654,7 +654,7 @@ fn op_get_proxy_details<'a>(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MemoryUsage {
-  rss: usize,
+  physical_total: usize,
   heap_total: usize,
   heap_used: usize,
   external: usize,
@@ -668,7 +668,7 @@ fn op_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
   let mut s = v8::HeapStatistics::default();
   scope.get_heap_statistics(&mut s);
   MemoryUsage {
-    rss: s.total_physical_size(),
+    physical_total: s.total_physical_size(),
     heap_total: s.total_heap_size(),
     heap_used: s.used_heap_size(),
     external: s.external_memory(),

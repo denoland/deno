@@ -9,6 +9,7 @@ use deno_core::error::AnyError;
 use deno_core::op;
 
 use deno_core::serde_json;
+use deno_core::v8;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::Extension;
@@ -28,7 +29,12 @@ use std::os::unix::process::ExitStatusExt;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(vec![op_run::decl(), op_run_status::decl(), op_kill::decl()])
+    .ops(vec![
+      op_run::decl(),
+      op_run_status::decl(),
+      op_kill::decl(),
+      op_runtime_memory_usage::decl(),
+    ])
     .build()
 }
 
@@ -359,4 +365,58 @@ fn op_kill(
     .check_all(Some(&api_name))?;
   kill(pid, &signal)?;
   Ok(())
+}
+
+// HeapStats stores values from a isolate.get_heap_statistics() call
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MemoryUsage {
+  rss: usize,
+  heap_total: usize,
+  heap_used: usize,
+  external: usize,
+}
+
+#[op(v8)]
+fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
+  let mut s = v8::HeapStatistics::default();
+  scope.get_heap_statistics(&mut s);
+  MemoryUsage {
+    rss: rss(),
+    heap_total: s.total_heap_size(),
+    heap_used: s.used_heap_size(),
+    external: s.external_memory(),
+  }
+}
+
+#[cfg(not(windows))]
+fn rss() -> usize {
+  todo!()
+}
+
+#[cfg(windows)]
+fn rss() -> usize {
+  use winapi::shared::minwindef::DWORD;
+  use winapi::shared::minwindef::FALSE;
+  use winapi::um::processthreadsapi::GetCurrentProcess;
+  use winapi::um::psapi::GetProcessMemoryInfo;
+  use winapi::um::psapi::PROCESS_MEMORY_COUNTERS;
+
+  // SAFETY: winapi calls
+  unsafe {
+    // this handle is a constant—no need to close it
+    let current_process = GetCurrentProcess();
+    let mut pmc: PROCESS_MEMORY_COUNTERS = std::mem::zeroed();
+
+    if GetProcessMemoryInfo(
+      current_process,
+      &mut pmc,
+      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as DWORD,
+    ) != FALSE
+    {
+      pmc.WorkingSetSize
+    } else {
+      0
+    }
+  }
 }

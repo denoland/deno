@@ -29,7 +29,7 @@
     makeTempDir: __bootstrap.fs.makeTempDir,
     makeTempFileSync: __bootstrap.fs.makeTempFileSync,
     makeTempFile: __bootstrap.fs.makeTempFile,
-    memoryUsage: core.memoryUsage,
+    memoryUsage: () => core.ops.op_runtime_memory_usage(),
     mkdirSync: __bootstrap.fs.mkdirSync,
     mkdir: __bootstrap.fs.mkdir,
     chdir: __bootstrap.fs.chdir,
