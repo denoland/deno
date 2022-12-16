@@ -428,7 +428,7 @@ fn rss() -> usize {
   // two columns of output.
   // SAFETY: libc call
   let c_page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-  let page_size = match c_page_size.try_into() {
+  let page_size = match c_page_size.try_into::<i64>() {
     Ok(n) if n >= 0 => n as usize,
     _ => return 0,
   };
