@@ -378,43 +378,88 @@ struct MemoryUsage {
 }
 
 #[op(v8)]
-fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
+fn op_runtime_memory_usage(
+  scope: &mut v8::HandleScope,
+) -> Result<MemoryUsage, AnyError> {
   let mut s = v8::HeapStatistics::default();
   scope.get_heap_statistics(&mut s);
-  MemoryUsage {
-    rss: rss(),
+  Ok(MemoryUsage {
+    rss: rss()?,
     heap_total: s.total_heap_size(),
     heap_used: s.used_heap_size(),
     external: s.external_memory(),
-  }
+  })
 }
 
 #[cfg(target_os = "linux")]
-fn rss() -> usize {
-  todo!()
+fn rss() -> Result<usize, AnyError> {
+  use deno_core::error::generic_error;
+
+  // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/linux.rs
+
+  // Extracts a positive integer from a string that
+  // may contain leading spaces and trailing chars.
+  // Returns the extracted number and the index of
+  // the next character in the string.
+  fn scan_int(string: &str) -> (usize, usize) {
+    let mut out = 0;
+    let mut idx = 0;
+    let mut chars = string.chars().peekable();
+    while let Some(' ') = chars.next_if_eq(&' ') {
+      idx += 1;
+    }
+    for n in chars {
+      idx += 1;
+      if ('0'..='9').contains(&n) {
+        out *= 10;
+        out += n as usize - '0' as usize;
+      } else {
+        break;
+      }
+    }
+    (out, idx)
+  }
+
+  let statm_content = std::fs::read_to_string("/proc/self/statm")?;
+
+  // statm returns the virtual size and rss, in
+  // multiples of the page size, as the first
+  // two columns of output.
+  // SAFETY: libc call
+  let c_page_size = unsafe { libc::getpagesize() };
+  let page_size = match c_page_size.try_into() {
+    Ok(n) if n >= 0 => n as usize,
+    _ => return Err(generic_error("Unable to get page size")),
+  };
+  let (_total_size_pages, idx) = scan_int(&statm_info);
+  let (total_rss_pages, _) = scan_int(&statm_info[idx..]);
+
+  Ok(total_rss_pages * page_size)
 }
 
 #[cfg(target_os = "macos")]
-fn rss() -> usize {
-  let mut task_info = std::mem::MaybeUninit<libc::mach_task_basic_info_data_t>::uninit();
+fn rss() -> Result<usize, AnyError> {
+  let mut task_info =
+    std::mem::MaybeUninit::<libc::mach_task_basic_info_data_t>::uninit();
   // SAFETY: libc calls
   let r = unsafe {
     libc::task_info(
       libc::mach_task_self(),
       libc::MACH_TASK_BASIC_INFO,
-      task_info.as_mut_ptr() as *mut libc::task_info_t,
-      libc::MATCH_TASK_BASIC_INFO_COUNT as *mut libc::mach_msg_type_number_t,
+      task_info.as_mut_ptr() as libc::task_info_t,
+      libc::MACH_TASK_BASIC_INFO_COUNT as *mut libc::mach_msg_type_number_t,
     )
   };
   // According to libuv this should never fail
   assert_eq!(r, libc::KERN_SUCCESS);
   // SAFETY: we just asserted that it was success
   let task_info = unsafe { task_info.assume_init() };
-  task_info.resident_size as usize
+  Ok(task_info.resident_size as usize)
 }
 
 #[cfg(windows)]
-fn rss() -> usize {
+fn rss() -> Result<usize, AnyError> {
+  use deno_core::error::generic_error;
   use winapi::shared::minwindef::DWORD;
   use winapi::shared::minwindef::FALSE;
   use winapi::um::processthreadsapi::GetCurrentProcess;
@@ -433,9 +478,9 @@ fn rss() -> usize {
       std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as DWORD,
     ) != FALSE
     {
-      pmc.WorkingSetSize
+      Ok(pmc.WorkingSetSize)
     } else {
-      0
+      Err(generic_error("Unable to get process memory info"))
     }
   }
 }
