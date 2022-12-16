@@ -54,8 +54,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::Context;
+use std::task::Poll;
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 
 // Re-export reqwest and data_url
 pub use data_url;
@@ -256,7 +257,7 @@ where
         match data {
           None => {
             // If no body is passed, we return a writer for streaming the body.
-            let (tx, rx) = mpsc::channel::<std::io::Result<bytes::Bytes>>(1);
+            let (tx, rx) = mpsc::channel::<Option<bytes::Bytes>>(1);
 
             // If the size of the body is known, we include a content-length
             // header explicitly.
@@ -265,7 +266,7 @@ where
                 request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
             }
 
-            request = request.body(Body::wrap_stream(ReceiverStream::new(rx)));
+            request = request.body(Body::wrap_stream(ByteStream::new(rx)));
 
             let request_body_rid =
               state.resource_table.add(FetchRequestBodyResource {
@@ -459,8 +460,45 @@ impl Resource for FetchCancelHandle {
 }
 
 pub struct FetchRequestBodyResource {
-  body: AsyncRefCell<mpsc::Sender<std::io::Result<bytes::Bytes>>>,
+  body: AsyncRefCell<mpsc::Sender<Option<bytes::Bytes>>>,
   cancel: CancelHandle,
+}
+
+pub struct ByteStream {
+  receiver: mpsc::Receiver<Option<bytes::Bytes>>,
+  shutdown: bool,
+}
+
+impl ByteStream {
+  fn new(receiver: mpsc::Receiver<Option<bytes::Bytes>>) -> Self {
+    Self {
+      receiver,
+      shutdown: false,
+    }
+  }
+}
+
+impl Stream for ByteStream {
+  type Item = Result<bytes::Bytes, std::io::Error>;
+
+  fn poll_next(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Option<Self::Item>> {
+    let val = std::task::ready!(self.receiver.poll_recv(cx));
+    match val {
+      None if self.shutdown => Poll::Ready(None),
+      None => Poll::Ready(Some(Err(std::io::Error::new(
+        std::io::ErrorKind::UnexpectedEof,
+        "channel closed",
+      )))),
+      Some(None) => {
+        self.shutdown = true;
+        Poll::Ready(None)
+      }
+      Some(Some(val)) => Poll::Ready(Some(Ok(val))),
+    }
+  }
 }
 
 impl Resource for FetchRequestBodyResource {
@@ -474,10 +512,25 @@ impl Resource for FetchRequestBodyResource {
       let nwritten = bytes.len();
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      body.send(Ok(bytes)).or_cancel(cancel).await?.map_err(|_| {
+      body
+        .send(Some(bytes))
+        .or_cancel(cancel)
+        .await?
+        .map_err(|_| {
+          type_error("request body receiver not connected (request closed)")
+        })?;
+      Ok(WriteOutcome::Full { nwritten })
+    })
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(async move {
+      let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      body.send(None).or_cancel(cancel).await?.map_err(|_| {
         type_error("request body receiver not connected (request closed)")
       })?;
-      Ok(WriteOutcome::Full { nwritten })
+      Ok(())
     })
   }
 
