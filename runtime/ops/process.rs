@@ -9,7 +9,6 @@ use deno_core::error::AnyError;
 use deno_core::op;
 
 use deno_core::serde_json;
-use deno_core::v8;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::Extension;
@@ -29,12 +28,7 @@ use std::os::unix::process::ExitStatusExt;
 
 pub fn init() -> Extension {
   Extension::builder()
-    .ops(vec![
-      op_run::decl(),
-      op_run_status::decl(),
-      op_kill::decl(),
-      op_runtime_memory_usage::decl(),
-    ])
+    .ops(vec![op_run::decl(), op_run_status::decl(), op_kill::decl()])
     .build()
 }
 
@@ -365,125 +359,4 @@ fn op_kill(
     .check_all(Some(&api_name))?;
   kill(pid, &signal)?;
   Ok(())
-}
-
-// HeapStats stores values from a isolate.get_heap_statistics() call
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct MemoryUsage {
-  rss: usize,
-  heap_total: usize,
-  heap_used: usize,
-  external: usize,
-}
-
-#[op(v8)]
-fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
-  let mut s = v8::HeapStatistics::default();
-  scope.get_heap_statistics(&mut s);
-  MemoryUsage {
-    rss: rss(),
-    heap_total: s.total_heap_size(),
-    heap_used: s.used_heap_size(),
-    external: s.external_memory(),
-  }
-}
-
-#[cfg(target_os = "linux")]
-fn rss() -> usize {
-  // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/linux.rs
-
-  // Extracts a positive integer from a string that
-  // may contain leading spaces and trailing chars.
-  // Returns the extracted number and the index of
-  // the next character in the string.
-  fn scan_int(string: &str) -> (usize, usize) {
-    let mut out = 0;
-    let mut idx = 0;
-    let mut chars = string.chars().peekable();
-    while let Some(' ') = chars.next_if_eq(&' ') {
-      idx += 1;
-    }
-    for n in chars {
-      idx += 1;
-      if ('0'..='9').contains(&n) {
-        out *= 10;
-        out += n as usize - '0' as usize;
-      } else {
-        break;
-      }
-    }
-    (out, idx)
-  }
-
-  let statm_content = if let Ok(c) = std::fs::read_to_string("/proc/self/statm")
-  {
-    c
-  } else {
-    return 0;
-  };
-
-  // statm returns the virtual size and rss, in
-  // multiples of the page size, as the first
-  // two columns of output.
-  // SAFETY: libc call
-  let c_page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-  let page_size = match c_page_size.try_into::<i64>() {
-    Ok(n) if n >= 0 => n as usize,
-    _ => return 0,
-  };
-  let (_total_size_pages, idx) = scan_int(&statm_content);
-  let (total_rss_pages, _) = scan_int(&statm_content[idx..]);
-
-  total_rss_pages * page_size
-}
-
-#[cfg(target_os = "macos")]
-fn rss() -> usize {
-  // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/darwin.rs
-
-  let mut task_info =
-    std::mem::MaybeUninit::<libc::mach_task_basic_info_data_t>::uninit();
-  let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
-  // SAFETY: libc calls
-  let r = unsafe {
-    libc::task_info(
-      libc::mach_task_self(),
-      libc::MACH_TASK_BASIC_INFO,
-      task_info.as_mut_ptr() as libc::task_info_t,
-      &mut count as *mut libc::mach_msg_type_number_t,
-    )
-  };
-  // According to libuv this should never fail
-  assert_eq!(r, libc::KERN_SUCCESS);
-  // SAFETY: we just asserted that it was success
-  let task_info = unsafe { task_info.assume_init() };
-  task_info.resident_size as usize
-}
-
-#[cfg(windows)]
-fn rss() -> usize {
-  use winapi::shared::minwindef::DWORD;
-  use winapi::shared::minwindef::FALSE;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::psapi::GetProcessMemoryInfo;
-  use winapi::um::psapi::PROCESS_MEMORY_COUNTERS;
-
-  // SAFETY: winapi calls
-  unsafe {
-    // this handle is a constant—no need to close it
-    let current_process = GetCurrentProcess();
-    let mut pmc: PROCESS_MEMORY_COUNTERS = std::mem::zeroed();
-
-    if GetProcessMemoryInfo(
-      current_process,
-      &mut pmc,
-      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as DWORD,
-    ) != FALSE
-    {
-      pmc.WorkingSetSize
-    } else {
-      0
-    }
-  }
 }
