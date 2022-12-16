@@ -1,7 +1,7 @@
 error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
   bar: 1,
   ~~~
-    at [WILDCARD]/npm/types/main.ts:7:3
+    at [WILDCARD]/npm/types/main.ts:[WILDCARD]
 
     The expected type comes from property 'bar' which is declared here on type 'Foobar'
         bar: string;
@@ -11,7 +11,7 @@ error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
   prop: 1,
   ~~~~
-    at [WILDCARD]/npm/types/main.ts:11:3
+    at [WILDCARD]/npm/types/main.ts:[WILDCARD]
 
     The expected type comes from property 'prop' which is declared here on type 'SomeInterface'
         prop: string;
@@ -21,7 +21,7 @@ TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
   prop2: "asdf",
   ~~~~~
-    at [WILDCARD]/npm/types/main.ts:12:3
+    at [WILDCARD]/npm/types/main.ts:[WILDCARD]
 
     The expected type comes from property 'prop2' which is declared here on type 'SomeInterface'
         prop2: number;
@@ -31,7 +31,7 @@ TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
 TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
   fizz: 1,
   ~~~~
-    at [WILDCARD]/npm/types/main.ts:16:3
+    at [WILDCARD]/npm/types/main.ts:[WILDCARD]
 
     The expected type comes from property 'fizz' which is declared here on type 'Fizzbuzz'
       fizz: string;
@@ -41,11 +41,26 @@ TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
   buzz: 2,
   ~~~~
-    at [WILDCARD]/npm/types/main.ts:17:3
+    at [WILDCARD]/npm/types/main.ts:[WILDCARD]
 
     The expected type comes from property 'buzz' which is declared here on type 'Fizzbuzz'
       buzz: string;
       ~~~~
         at [WILDCARD]/@denotest/types/1.0.0/index.d.ts:3:3
 
-Found 5 errors.
+TS2322 [ERROR]: Type '5' is not assignable to type '"test1"'.
+const valueA: "test1" = getClient();
+      ~~~~~~
+    at [WILDCARD]/npm/types/main.ts:[WILDCARD]
+
+TS2322 [ERROR]: Type 'string' is not assignable to type '"test2"'.
+const valueB: "test2" = entryB();
+      ~~~~~~
+    at [WILDCARD]/types/main.ts:[WILDCARD]
+
+TS2322 [ERROR]: Type '12' is not assignable to type '"test3"'.
+const valueC: "test3" = entryC();
+      ~~~~~~
+    at [WILDCARD]/types/main.ts:[WILDCARD]
+
+Found 8 errors.

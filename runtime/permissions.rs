@@ -1211,14 +1211,20 @@ impl UnaryPermission<FfiDescriptor> {
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
-        Some(path) => self.denied_list.contains(&FfiDescriptor(path.clone())),
+        Some(path) => self
+          .denied_list
+          .iter()
+          .any(|path_| path_.0.starts_with(path)),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match path.as_ref() {
         None => false,
-        Some(path) => self.granted_list.contains(&FfiDescriptor(path.clone())),
+        Some(path) => self
+          .granted_list
+          .iter()
+          .any(|path_| path.starts_with(&path_.0)),
       }
     {
       PermissionState::Granted
@@ -1274,7 +1280,9 @@ impl UnaryPermission<FfiDescriptor> {
   pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
     if let Some(path) = path {
       let path = resolve_from_cwd(path).unwrap();
-      self.granted_list.remove(&FfiDescriptor(path));
+      self
+        .granted_list
+        .retain(|path_| !path.starts_with(&path_.0));
     } else {
       self.granted_list.clear();
     }
@@ -2489,7 +2497,8 @@ mod tests {
 
     let mut perms = Permissions::from_options(&PermissionsOptions {
       allow_read: Some(allowlist.clone()),
-      allow_write: Some(allowlist),
+      allow_write: Some(allowlist.clone()),
+      allow_ffi: Some(allowlist),
       ..Default::default()
     })
     .unwrap();
@@ -2503,6 +2512,10 @@ mod tests {
       .write
       .check(Path::new("/a/specific/dir/name"), None)
       .is_ok());
+    assert!(perms
+      .ffi
+      .check(Some(Path::new("/a/specific/dir/name")))
+      .is_ok());
 
     // Inside of /a/specific but outside of /a/specific/dir/name
     assert!(perms.read.check(Path::new("/a/specific/dir"), None).is_ok());
@@ -2510,6 +2523,7 @@ mod tests {
       .write
       .check(Path::new("/a/specific/dir"), None)
       .is_ok());
+    assert!(perms.ffi.check(Some(Path::new("/a/specific/dir"))).is_ok());
 
     // Inside of /a/specific and /a/specific/dir/name
     assert!(perms
@@ -2520,6 +2534,10 @@ mod tests {
       .write
       .check(Path::new("/a/specific/dir/name/inner"), None)
       .is_ok());
+    assert!(perms
+      .ffi
+      .check(Some(Path::new("/a/specific/dir/name/inner")))
+      .is_ok());
 
     // Inside of /a/specific but outside of /a/specific/dir/name
     assert!(perms
@@ -2530,14 +2548,20 @@ mod tests {
       .write
       .check(Path::new("/a/specific/other/dir"), None)
       .is_ok());
+    assert!(perms
+      .ffi
+      .check(Some(Path::new("/a/specific/other/dir")))
+      .is_ok());
 
     // Exact match with /b/c
     assert!(perms.read.check(Path::new("/b/c"), None).is_ok());
     assert!(perms.write.check(Path::new("/b/c"), None).is_ok());
+    assert!(perms.ffi.check(Some(Path::new("/b/c"))).is_ok());
 
     // Sub path within /b/c
     assert!(perms.read.check(Path::new("/b/c/sub/path"), None).is_ok());
     assert!(perms.write.check(Path::new("/b/c/sub/path"), None).is_ok());
+    assert!(perms.ffi.check(Some(Path::new("/b/c/sub/path"))).is_ok());
 
     // Sub path within /b/c, needs normalizing
     assert!(perms
@@ -2548,14 +2572,20 @@ mod tests {
       .write
       .check(Path::new("/b/c/sub/path/../path/."), None)
       .is_ok());
+    assert!(perms
+      .ffi
+      .check(Some(Path::new("/b/c/sub/path/../path/.")))
+      .is_ok());
 
     // Inside of /b but outside of /b/c
     assert!(perms.read.check(Path::new("/b/e"), None).is_err());
     assert!(perms.write.check(Path::new("/b/e"), None).is_err());
+    assert!(perms.ffi.check(Some(Path::new("/b/e"))).is_err());
 
     // Inside of /a but outside of /a/specific
     assert!(perms.read.check(Path::new("/a/b"), None).is_err());
     assert!(perms.write.check(Path::new("/a/b"), None).is_err());
+    assert!(perms.ffi.check(Some(Path::new("/a/b"))).is_err());
   }
 
   #[test]
@@ -2809,6 +2839,12 @@ mod tests {
         ..Permissions::new_write(&Some(vec![PathBuf::from("/foo")]), false)
           .unwrap()
       },
+      ffi: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_ffi(&Some(vec![PathBuf::from("/foo")]), false)
+          .unwrap()
+      },
+
       net: UnaryPermission {
         global_state: PermissionState::Prompt,
         ..Permissions::new_net(&Some(svec!["127.0.0.1:8000"]), false).unwrap()
@@ -2824,11 +2860,6 @@ mod tests {
       run: UnaryPermission {
         global_state: PermissionState::Prompt,
         ..Permissions::new_run(&Some(svec!["deno"]), false).unwrap()
-      },
-      ffi: UnaryPermission {
-        global_state: PermissionState::Prompt,
-        ..Permissions::new_ffi(&Some(vec![PathBuf::from("deno")]), false)
-          .unwrap()
       },
       hrtime: UnitPermission {
         state: PermissionState::Prompt,
@@ -2847,6 +2878,11 @@ mod tests {
       assert_eq!(perms2.write.query(None), PermissionState::Prompt);
       assert_eq!(perms2.write.query(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.write.query(Some(Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms1.ffi.query(None), PermissionState::Granted);
+      assert_eq!(perms1.ffi.query(Some(Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.ffi.query(None), PermissionState::Prompt);
+      assert_eq!(perms2.ffi.query(Some(Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.ffi.query(Some(Path::new("/foo/bar"))), PermissionState::Granted);
       assert_eq!(perms1.net.query::<&str>(None), PermissionState::Granted);
       assert_eq!(perms1.net.query(Some(&("127.0.0.1", None))), PermissionState::Granted);
       assert_eq!(perms2.net.query::<&str>(None), PermissionState::Prompt);
@@ -2863,10 +2899,6 @@ mod tests {
       assert_eq!(perms1.run.query(Some("deno")), PermissionState::Granted);
       assert_eq!(perms2.run.query(None), PermissionState::Prompt);
       assert_eq!(perms2.run.query(Some("deno")), PermissionState::Granted);
-      assert_eq!(perms1.ffi.query(None), PermissionState::Granted);
-      assert_eq!(perms1.ffi.query(Some(Path::new("deno"))), PermissionState::Granted);
-      assert_eq!(perms2.ffi.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.ffi.query(Some(Path::new("deno"))), PermissionState::Granted);
       assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
       assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
     };
@@ -2888,6 +2920,11 @@ mod tests {
       assert_eq!(perms.write.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
       prompt_value.set(true);
       assert_eq!(perms.write.request(None), PermissionState::Denied);
+      prompt_value.set(false);
+      assert_eq!(perms.ffi.request(Some(Path::new("/foo"))), PermissionState::Denied);
+      assert_eq!(perms.ffi.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
+      prompt_value.set(true);
+      assert_eq!(perms.ffi.request(None), PermissionState::Denied);
       prompt_value.set(true);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", None))), PermissionState::Granted);
       prompt_value.set(false);
@@ -2907,11 +2944,6 @@ mod tests {
       assert_eq!(perms.run.query(None), PermissionState::Prompt);
       prompt_value.set(false);
       assert_eq!(perms.run.request(Some("deno")), PermissionState::Granted);
-      prompt_value.set(true);
-      assert_eq!(perms.ffi.request(Some(Path::new("deno"))), PermissionState::Granted);
-      assert_eq!(perms.ffi.query(None), PermissionState::Prompt);
-      prompt_value.set(false);
-      assert_eq!(perms.ffi.request(Some(Path::new("deno"))), PermissionState::Granted);
       prompt_value.set(false);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
       prompt_value.set(true);
@@ -2938,6 +2970,14 @@ mod tests {
         )
         .unwrap()
       },
+      ffi: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_ffi(
+          &Some(vec![PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
+          false,
+        )
+        .unwrap()
+      },
       net: UnaryPermission {
         global_state: PermissionState::Prompt,
         ..Permissions::new_net(
@@ -2958,11 +2998,6 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_run(&Some(svec!["deno"]), false).unwrap()
       },
-      ffi: UnaryPermission {
-        global_state: PermissionState::Prompt,
-        ..Permissions::new_ffi(&Some(vec![PathBuf::from("deno")]), false)
-          .unwrap()
-      },
       hrtime: UnitPermission {
         state: PermissionState::Denied,
         ..Permissions::new_hrtime(false)
@@ -2976,13 +3011,15 @@ mod tests {
       assert_eq!(perms.write.revoke(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
       assert_eq!(perms.write.query(Some(Path::new("/foo"))), PermissionState::Prompt);
       assert_eq!(perms.write.query(Some(Path::new("/foo/baz"))), PermissionState::Granted);
+      assert_eq!(perms.ffi.revoke(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.ffi.query(Some(Path::new("/foo"))), PermissionState::Prompt);
+      assert_eq!(perms.ffi.query(Some(Path::new("/foo/baz"))), PermissionState::Granted);
       assert_eq!(perms.net.revoke(Some(&("127.0.0.1", Some(9000)))), PermissionState::Prompt);
       assert_eq!(perms.net.query(Some(&("127.0.0.1", None))), PermissionState::Prompt);
       assert_eq!(perms.net.query(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       assert_eq!(perms.env.revoke(Some("HOME")), PermissionState::Prompt);
       assert_eq!(perms.env.revoke(Some("hostname")), PermissionState::Prompt);
       assert_eq!(perms.run.revoke(Some("deno")), PermissionState::Prompt);
-      assert_eq!(perms.ffi.revoke(Some(Path::new("deno"))), PermissionState::Prompt);
       assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
     };
   }
@@ -3013,6 +3050,12 @@ mod tests {
     prompt_value.set(false);
     assert!(perms.write.check(Path::new("/foo"), None).is_ok());
     assert!(perms.write.check(Path::new("/bar"), None).is_err());
+
+    prompt_value.set(true);
+    assert!(perms.ffi.check(Some(Path::new("/foo"))).is_ok());
+    prompt_value.set(false);
+    assert!(perms.ffi.check(Some(Path::new("/foo"))).is_ok());
+    assert!(perms.ffi.check(Some(Path::new("/bar"))).is_err());
 
     prompt_value.set(true);
     assert!(perms.net.check(&("127.0.0.1", Some(8000)), None).is_ok());
@@ -3074,6 +3117,14 @@ mod tests {
     assert!(perms.write.check(Path::new("/bar"), None).is_ok());
     prompt_value.set(false);
     assert!(perms.write.check(Path::new("/bar"), None).is_ok());
+
+    prompt_value.set(false);
+    assert!(perms.ffi.check(Some(Path::new("/foo"))).is_err());
+    prompt_value.set(true);
+    assert!(perms.ffi.check(Some(Path::new("/foo"))).is_err());
+    assert!(perms.ffi.check(Some(Path::new("/bar"))).is_ok());
+    prompt_value.set(false);
+    assert!(perms.ffi.check(Some(Path::new("/bar"))).is_ok());
 
     prompt_value.set(false);
     assert!(perms.net.check(&("127.0.0.1", Some(8000)), None).is_err());

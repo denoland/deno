@@ -100,12 +100,12 @@
   }
 
   class TcpConn extends Conn {
-    setNoDelay(nodelay = true) {
-      return ops.op_set_nodelay(this.rid, nodelay);
+    setNoDelay(noDelay = true) {
+      return ops.op_set_nodelay(this.rid, noDelay);
     }
 
-    setKeepAlive(keepalive = true) {
-      return ops.op_set_keepalive(this.rid, keepalive);
+    setKeepAlive(keepAlive = true) {
+      return ops.op_set_keepalive(this.rid, keepAlive);
     }
   }
 
