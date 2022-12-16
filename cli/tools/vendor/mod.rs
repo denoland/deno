@@ -120,7 +120,7 @@ fn validate_options(
       format!("Failed to canonicalize: {}", output_dir.display())
     })?;
 
-    if import_map_path.starts_with(&output_dir) {
+    if import_map_path.starts_with(output_dir) {
       // canonicalize to make the test for this pass on the CI
       let cwd = canonicalize_path(&std::env::current_dir()?)?;
       // We don't allow using the output directory to help generate the

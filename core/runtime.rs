@@ -2130,7 +2130,7 @@ impl JsRuntime {
         let (promise_id, op_id, mut resp) = item;
         state.unrefed_ops.remove(&promise_id);
         state.op_state.borrow().tracker.track_async_completed(op_id);
-        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(v8::Integer::new(scope, promise_id).into());
         args.push(match resp.to_v8(scope) {
           Ok(v) => v,
           Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))

@@ -150,7 +150,7 @@ pub fn get_root_cert_store(
     } else {
       PathBuf::from(ca_file)
     };
-    let certfile = std::fs::File::open(&ca_file)?;
+    let certfile = std::fs::File::open(ca_file)?;
     let mut reader = BufReader::new(certfile);
 
     match rustls_pemfile::certs(&mut reader) {
@@ -716,7 +716,7 @@ mod test {
     let import_map_path =
       std::env::current_dir().unwrap().join("import-map.json");
     let expected_specifier =
-      ModuleSpecifier::from_file_path(&import_map_path).unwrap();
+      ModuleSpecifier::from_file_path(import_map_path).unwrap();
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, Some(expected_specifier));

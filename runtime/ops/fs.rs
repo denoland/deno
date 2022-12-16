@@ -501,6 +501,7 @@ async fn op_funlock_async(
 }
 
 #[op]
+#[allow(clippy::unnecessary_cast)]
 fn op_umask(state: &mut OpState, mask: Option<u32>) -> Result<u32, AnyError> {
   super::check_unstable(state, "Deno.umask");
   // TODO implement umask for Windows

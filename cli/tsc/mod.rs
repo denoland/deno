@@ -858,7 +858,7 @@ mod tests {
         .replace("://", "_")
         .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
-      let response = fs::read_to_string(&source_path)
+      let response = fs::read_to_string(source_path)
         .map(|c| {
           Some(deno_graph::source::LoadResponse::Module {
             specifier: specifier.clone(),

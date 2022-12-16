@@ -888,7 +888,7 @@ pub fn legacy_main_resolve(
         .path
         .parent()
         .unwrap()
-        .join(&format!("{}{}", main, ending))
+        .join(format!("{}{}", main, ending))
         .clean();
       if file_exists(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()
