@@ -230,11 +230,9 @@ fn check_call_expr(
       }
       ast::Expr::Ident(ident) => {
         let name = ident.sym.to_string();
-        if let Some(fn_expr) = fns.get(&name) {
-          Some((name, fn_to_steps(parent, level, fn_expr, fns)))
-        } else {
-          None
-        }
+        fns
+          .get(&name)
+          .map(|fn_expr| (name, fn_to_steps(parent, level, fn_expr, fns)))
       }
       _ => None,
     }
