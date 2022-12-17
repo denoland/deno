@@ -183,7 +183,7 @@ impl ProgressBarInner {
     {
       internal_state.start_time = SystemTime::now();
       internal_state.draw_thread_guard =
-        Some(DrawThread::add_entry(0, Box::new(self.clone())));
+        Some(DrawThread::add_entry(0, Arc::new(self.clone())));
     }
   }
 }
@@ -191,6 +191,9 @@ impl ProgressBarInner {
 impl DrawThreadRenderer for ProgressBarInner {
   fn render(&self, size: &ConsoleSize) -> String {
     let state = self.state.lock();
+    if state.entries.is_empty() {
+      return String::new();
+    }
     let preferred_entry = state
       .entries
       .iter()

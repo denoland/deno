@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use crate::util::console::console_size;
 
-pub trait DrawThreadRenderer: Send + std::fmt::Debug {
+pub trait DrawThreadRenderer: Send + Sync + std::fmt::Debug {
   fn render(&self, data: &ConsoleSize) -> String;
 }
 
@@ -26,11 +26,11 @@ impl Drop for DrawThreadGuard {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct InternalEntry {
   priority: u8,
   id: u16,
-  renderer: Box<dyn DrawThreadRenderer>,
+  renderer: Arc<dyn DrawThreadRenderer>,
 }
 
 #[derive(Debug)]
@@ -44,7 +44,13 @@ struct InternalState {
   static_text: ConsoleStaticText,
 }
 
-const INTERNAL_STATE: Lazy<Arc<Mutex<InternalState>>> = Lazy::new(|| {
+impl InternalState {
+  pub fn should_exit_draw_thread(&self, drawer_id: usize) -> bool {
+    self.drawer_id != drawer_id || self.entries.is_empty()
+  }
+}
+
+static INTERNAL_STATE: Lazy<Arc<Mutex<InternalState>>> = Lazy::new(|| {
   Arc::new(Mutex::new(InternalState {
     drawer_id: 0,
     hide: false,
@@ -82,7 +88,7 @@ impl DrawThread {
   /// entries appearing at the bottom of the screen.
   pub fn add_entry(
     priority: u8,
-    renderer: Box<dyn DrawThreadRenderer>,
+    renderer: Arc<dyn DrawThreadRenderer>,
   ) -> DrawThreadGuard {
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
@@ -164,16 +170,28 @@ impl DrawThread {
       loop {
         let mut delay_ms = 120;
         {
-          let internal_state = &*INTERNAL_STATE;
-          let mut internal_state = internal_state.lock();
-          // exit if not the current draw thread
-          if internal_state.drawer_id != drawer_id
-            || internal_state.entries.is_empty()
-          {
-            internal_state.has_draw_thread = false;
-            break;
-          }
+          // Get the entries to render.
+          let entries = {
+            let internal_state = &*INTERNAL_STATE;
+            let internal_state = internal_state.lock();
+            if internal_state.should_exit_draw_thread(drawer_id) {
+              break;
+            }
+            internal_state.entries.clone()
+          };
 
+          // Call into the renderers outside the lock to prevent a potential
+          // deadlock between our internal state lock and the renderers
+          // internal state lock.
+          //
+          // Example deadlock if this code didn't do this:
+          // 1. Other thread - Renderer - acquired internal lock to update state
+          // 2. This thread  - Acquired internal state
+          // 3. Other thread - Renderer - drops DrawThreadGuard
+          // 4. This thread - Calls renderer.render within internal lock,
+          //    which attempts to acquire the other thread's Render's internal
+          //    lock causing a deadlock
+          let mut text = String::new();
           let size = console_size().unwrap();
           if size != previous_size {
             // means the user is actively resizing the console...
@@ -181,9 +199,8 @@ impl DrawThread {
             previous_size = size;
             delay_ms = 200;
           } else {
-            let mut text = String::new();
             let mut should_new_line_next = false;
-            for entry in &internal_state.entries {
+            for entry in entries {
               let new_text = entry.renderer.render(&size);
               if should_new_line_next && !new_text.is_empty() {
                 text.push('\n');
@@ -191,7 +208,16 @@ impl DrawThread {
               should_new_line_next = !new_text.is_empty();
               text.push_str(&new_text);
             }
+          }
 
+          // now reacquire the lock, ensure we should still be drawing, then
+          // output the text
+          {
+            let internal_state = &*INTERNAL_STATE;
+            let mut internal_state = internal_state.lock();
+            if internal_state.should_exit_draw_thread(drawer_id) {
+              break;
+            }
             internal_state.static_text.eprint_with_size(
               &text,
               console_static_text::ConsoleSize {
