@@ -161,7 +161,7 @@ mod repl {
 
   #[test]
   fn pty_complete_imports() {
-    util::with_pty(&["repl"], |mut console| {
+    util::with_pty(&["repl", "-A"], |mut console| {
       // single quotes
       console.write_line("import './run/001_hel\t'");
       // double quotes
@@ -181,7 +181,7 @@ mod repl {
     });
 
     // ensure when the directory changes that the suggestions come from the cwd
-    util::with_pty(&["repl"], |mut console| {
+    util::with_pty(&["repl", "-A"], |mut console| {
       console.write_line("Deno.chdir('./subdir');");
       console.write_line("import '../run/001_hel\t'");
       console.write_line("close();");
@@ -896,5 +896,73 @@ mod repl {
     assert!(!out.contains("exit using ctrl+d, ctrl+c, or close()"));
     assert_ends_with!(out, "\"done\"\n");
     assert!(err.is_empty());
+  }
+
+  #[test]
+  fn npm_packages() {
+    let mut env_vars = util::env_vars_for_npm_tests();
+    env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![
+          r#"import chalk from "npm:chalk";"#,
+          "chalk.red('hel' + 'lo')",
+        ]),
+        Some(env_vars.clone()),
+        true,
+      );
+
+      assert_contains!(out, "hello");
+      assert!(err.is_empty());
+    }
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![
+          r#"const chalk = await import("npm:chalk");"#,
+          "chalk.default.red('hel' + 'lo')",
+        ]),
+        Some(env_vars.clone()),
+        true,
+      );
+
+      assert_contains!(out, "hello");
+      assert!(err.is_empty());
+    }
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![r#"export {} from "npm:chalk";"#]),
+        Some(env_vars.clone()),
+        true,
+      );
+
+      assert_contains!(out, "Module {");
+      assert_contains!(out, "Chalk: [Function: Chalk],");
+      assert!(err.is_empty());
+    }
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![r#"import foo from "npm:asdfawe52345asdf""#]),
+        Some(env_vars),
+        true,
+      );
+
+      assert_contains!(
+        out,
+        "error: npm package 'asdfawe52345asdf' does not exist"
+      );
+      assert!(err.is_empty());
+    }
   }
 }

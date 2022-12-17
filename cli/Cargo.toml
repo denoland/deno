@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.28.3"
+version = "1.29.1"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -59,10 +59,11 @@ chrono = { version = "=0.4.22", default-features = false, features = ["clock"] }
 clap = "=3.1.12"
 clap_complete = "=3.1.2"
 clap_complete_fig = "=3.1.5"
+console_static_text = "=0.3.3"
 data-url.workspace = true
 dissimilar = "=1.0.4"
 dprint-plugin-json = "=0.17.0"
-dprint-plugin-markdown = "=0.15.0"
+dprint-plugin-markdown = "=0.15.1"
 dprint-plugin-typescript = "=0.79.0"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
@@ -72,7 +73,6 @@ flate2.workspace = true
 http.workspace = true
 import_map = "=0.13.0"
 indexmap = "=1.9.2"
-indicatif = "=0.17.1"
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
