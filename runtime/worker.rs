@@ -288,16 +288,6 @@ impl MainWorker {
     &mut self,
     script_name: &str,
     source_code: &str,
-  ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(script_name, source_code)?;
-    Ok(())
-  }
-
-  /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  pub fn execute_script_with_return(
-    &mut self,
-    script_name: &str,
-    source_code: &str,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     self.js_runtime.execute_script(script_name, source_code)
   }
