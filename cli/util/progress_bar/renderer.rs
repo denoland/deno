@@ -75,9 +75,7 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
       ));
     }
     text.push_str(&elapsed_text);
-    let max_width =
-      std::cmp::max(10, std::cmp::min(75, data.terminal_width as i32 - 5))
-        as usize;
+    let max_width = (data.terminal_width as i32 - 5).clamp(10, 75) as usize;
     let same_line_text_width =
       elapsed_text.len() + total_text_max_width + bytes_text_max_width + 3; // space, open and close brace
     let total_bars = if same_line_text_width > max_width {

@@ -170,11 +170,11 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     visitor.visit_f64(
       if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
-        x.value() as f64
+        x.value()
       } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
         bigint_to_f64(x)
       } else if let Some(x) = self.input.number_value(self.scope) {
-        x as f64
+        x
       } else if let Some(x) = self.input.to_big_int(self.scope) {
         bigint_to_f64(x)
       } else {

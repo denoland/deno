@@ -1266,7 +1266,7 @@ fn lsp_deno_graph_analyze(
   use deno_graph::ModuleParser;
 
   let analyzer = deno_graph::CapturingModuleAnalyzer::new(
-    Some(Box::new(LspModuleParser::default())),
+    Some(Box::<LspModuleParser>::default()),
     None,
   );
   let parsed_source_result = analyzer.parse_module(
