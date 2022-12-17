@@ -192,7 +192,7 @@ impl VendorTestBuilder {
   }
 
   pub fn new_import_map(&self, base_path: &str) -> ImportMap {
-    let base = ModuleSpecifier::from_file_path(&make_path(base_path)).unwrap();
+    let base = ModuleSpecifier::from_file_path(make_path(base_path)).unwrap();
     ImportMap::new(base)
   }
 

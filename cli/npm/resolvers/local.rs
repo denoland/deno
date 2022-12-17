@@ -342,7 +342,7 @@ async fn sync_resolution_with_fs(
   for package in &package_partitions.copy_packages {
     let package_cache_folder_id = package.get_package_cache_folder_id();
     let destination_path = deno_local_registry_dir
-      .join(&get_package_folder_id_folder_name(&package_cache_folder_id));
+      .join(get_package_folder_id_folder_name(&package_cache_folder_id));
     let initialized_file = destination_path.join(".initialized");
     if !initialized_file.exists() {
       let sub_node_modules = destination_path.join("node_modules");
@@ -352,7 +352,7 @@ async fn sync_resolution_with_fs(
       })?;
       let source_path = join_package_name(
         &deno_local_registry_dir
-          .join(&get_package_folder_id_folder_name(
+          .join(get_package_folder_id_folder_name(
             &package_cache_folder_id.with_no_count(),
           ))
           .join("node_modules"),
@@ -372,7 +372,7 @@ async fn sync_resolution_with_fs(
   // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
   for package in &all_packages {
     let sub_node_modules = deno_local_registry_dir
-      .join(&get_package_folder_id_folder_name(
+      .join(get_package_folder_id_folder_name(
         &package.get_package_cache_folder_id(),
       ))
       .join("node_modules");
@@ -419,7 +419,7 @@ async fn sync_resolution_with_fs(
     let package = snapshot.package_from_id(&package_id).unwrap();
     let local_registry_package_path = join_package_name(
       &deno_local_registry_dir
-        .join(&get_package_folder_id_folder_name(
+        .join(get_package_folder_id_folder_name(
           &package.get_package_cache_folder_id(),
         ))
         .join("node_modules"),

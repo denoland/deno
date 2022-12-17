@@ -759,7 +759,7 @@ fn finalize_resolution(
     p_str.to_string()
   };
 
-  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(&p) {
+  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(p) {
     (stats.is_dir(), stats.is_file())
   } else {
     (false, false)
@@ -958,7 +958,7 @@ pub fn translate_cjs_to_esm(
       npm_resolver,
     )?;
     let reexport_specifier =
-      ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
+      ModuleSpecifier::from_file_path(resolved_reexport).unwrap();
     // Second, read the source code from disk
     let reexport_file = file_fetcher
       .get_source(&reexport_specifier)
