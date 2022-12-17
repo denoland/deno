@@ -9,6 +9,8 @@ use std::time::Duration;
 
 use crate::util::console::console_size;
 
+/// Renders text that will be displayed stacked in a
+/// static place on the console.
 pub trait DrawThreadRenderer: Send + Sync + std::fmt::Debug {
   fn render(&self, data: &ConsoleSize) -> String;
 }

@@ -56,7 +56,7 @@ pub enum ProgressBarStyle {
 }
 
 #[derive(Clone, Debug)]
-pub struct ProgressBarEntry {
+struct ProgressBarEntry {
   id: usize,
   pub message: String,
   pos: Arc<AtomicU64>,
