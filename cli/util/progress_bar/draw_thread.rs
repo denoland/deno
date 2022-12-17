@@ -61,6 +61,7 @@ struct InternalState {
   // this ensures only one draw thread is running
   drawer_id: usize,
   keep_alive_count: usize,
+  hide_count: usize,
   has_draw_thread: bool,
   total_entries: usize,
   entries: Vec<ProgressBarEntry>,
@@ -80,6 +81,7 @@ impl DrawThread {
         start_time: SystemTime::now(),
         drawer_id: 0,
         keep_alive_count: 0,
+        hide_count: 0,
         has_draw_thread: false,
         total_entries: 0,
         entries: Vec::new(),
@@ -109,9 +111,7 @@ impl DrawThread {
     internal_state.total_entries += 1;
     internal_state.keep_alive_count += 1;
 
-    if !internal_state.has_draw_thread {
-      self.start_draw_thread(&mut internal_state);
-    }
+    self.maybe_start_draw_thread(&mut internal_state);
 
     entry
   }
@@ -128,6 +128,19 @@ impl DrawThread {
     }
   }
 
+  pub fn increment_hide(&self) {
+    let mut internal_state = self.state.lock();
+    internal_state.hide_count += 1;
+    self.clear_and_stop_draw_thread(&mut internal_state);
+  }
+
+  pub fn decrement_hide(&self) {
+    let mut internal_state = self.state.lock();
+    internal_state.hide_count -= 1;
+
+    self.maybe_start_draw_thread(&mut internal_state);
+  }
+
   pub fn increment_clear(&self) {
     let mut internal_state = self.state.lock();
     internal_state.keep_alive_count += 1;
@@ -142,6 +155,12 @@ impl DrawThread {
     internal_state.keep_alive_count -= 1;
 
     if internal_state.keep_alive_count == 0 {
+      self.clear_and_stop_draw_thread(internal_state);
+    }
+  }
+
+  fn clear_and_stop_draw_thread(&self, internal_state: &mut InternalState) {
+    if internal_state.has_draw_thread {
       internal_state.static_text.eprint_clear();
       // bump the drawer id to exit the draw thread
       internal_state.drawer_id += 1;
@@ -149,7 +168,14 @@ impl DrawThread {
     }
   }
 
-  fn start_draw_thread(&self, internal_state: &mut InternalState) {
+  fn maybe_start_draw_thread(&self, internal_state: &mut InternalState) {
+    if internal_state.has_draw_thread
+      || internal_state.keep_alive_count == 0
+      || internal_state.hide_count > 0
+    {
+      return;
+    }
+
     internal_state.drawer_id += 1;
     internal_state.start_time = SystemTime::now();
     internal_state.has_draw_thread = true;

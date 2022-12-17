@@ -106,6 +106,19 @@ impl ProgressBar {
       draw_thread.decrement_clear();
     }
   }
+
+  fn decrement_hide(&self) {
+    if let Some(draw_thread) = &self.draw_thread {
+      draw_thread.decrement_hide();
+    }
+  }
+
+  pub fn hide_guard(&self) -> HideGuard {
+    if let Some(draw_thread) = &self.draw_thread {
+      draw_thread.increment_hide();
+    }
+    HideGuard { pb: self.clone() }
+  }
 }
 
 pub struct ClearGuard {
@@ -115,5 +128,15 @@ pub struct ClearGuard {
 impl Drop for ClearGuard {
   fn drop(&mut self) {
     self.pb.decrement_clear();
+  }
+}
+
+pub struct HideGuard {
+  pb: ProgressBar,
+}
+
+impl Drop for HideGuard {
+  fn drop(&mut self) {
+    self.pb.decrement_hide();
   }
 }
