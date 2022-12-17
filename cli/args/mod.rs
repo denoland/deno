@@ -280,6 +280,10 @@ impl CliOptions {
     self.overrides.import_map_specifier = Some(path);
   }
 
+  pub fn node_modules_dir(&self) -> bool {
+    self.flags.node_modules_dir
+  }
+
   /// Resolves the path to use for a local node_modules folder.
   pub fn resolve_local_node_modules_folder(
     &self,
