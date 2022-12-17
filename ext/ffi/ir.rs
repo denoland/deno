@@ -34,7 +34,7 @@ pub union NativeValue {
 }
 
 impl NativeValue {
-  pub unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
+  pub unsafe fn as_arg(&self, native_type: &NativeType) -> Arg {
     match native_type {
       NativeType::Void => unreachable!(),
       NativeType::Bool => Arg::new(&self.bool_value),
@@ -53,11 +53,12 @@ impl NativeValue {
       NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
         Arg::new(&self.pointer)
       }
+      NativeType::Struct(_) => Arg::new(self.pointer.as_ref().unwrap()),
     }
   }
 
   // SAFETY: native_type must correspond to the type of value represented by the union field
-  pub unsafe fn to_value(&self, native_type: NativeType) -> Value {
+  pub unsafe fn to_value(&self, native_type: &NativeType) -> Value {
     match native_type {
       NativeType::Void => Value::Null,
       NativeType::Bool => Value::from(self.bool_value),
@@ -76,6 +77,10 @@ impl NativeValue {
       NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
         Value::from(self.pointer as usize)
       }
+      NativeType::Struct(_) => {
+        // Return value is written to out buffer
+        Value::Null
+      }
     }
   }
 
@@ -84,7 +89,7 @@ impl NativeValue {
   pub unsafe fn to_v8<'scope>(
     &self,
     scope: &mut v8::HandleScope<'scope>,
-    native_type: NativeType,
+    native_type: &NativeType,
   ) -> serde_v8::Value<'scope> {
     match native_type {
       NativeType::Void => {
@@ -187,12 +192,55 @@ impl NativeValue {
           };
         local_value.into()
       }
+      NativeType::Struct(_) => {
+        let local_value: v8::Local<v8::Value> = v8::null(scope).into();
+        local_value.into()
+      }
     }
   }
 }
 
 // SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for NativeValue {}
+
+pub(crate) struct OutBuffer(pub *mut u8, pub usize);
+
+// SAFETY: OutBuffer is allocated by us in 00_ffi.js and is guaranteed to be
+// only used for the purpose of writing return value of structs.
+unsafe impl Send for OutBuffer {}
+// SAFETY: See above
+unsafe impl Sync for OutBuffer {}
+
+pub(crate) fn parse_struct_return_out_buffer_argument(
+  scope: &mut v8::HandleScope,
+  return_type: &NativeType,
+  maybe_out_buffer: v8::Local<v8::Value>,
+) -> Result<Option<OutBuffer>, AnyError> {
+  match return_type {
+    NativeType::Struct(_) => {
+      // Continue
+    }
+    _ => {
+      return Ok(None);
+    }
+  }
+  let out_buffer = v8::Local::<v8::Uint8Array>::try_from(maybe_out_buffer)
+    .map_err(|_| {
+      type_error(
+        "Invalid FFI struct return out buffer argument, expected Uint8Array",
+      )
+    })?;
+
+  let ab = out_buffer.buffer(scope).unwrap();
+  let pointer = ab.data();
+  let ptr = if let Some(non_null) = pointer {
+    non_null.as_ptr() as *mut u8
+  } else {
+    return Err(type_error("Invalid FFI struct return out buffer argument, expected data in the Uint8Array"));
+  };
+  let len = ab.byte_length();
+  Ok(Some(OutBuffer(ptr, len)))
+}
 
 #[inline]
 pub fn ffi_parse_bool_arg(
@@ -449,6 +497,44 @@ pub fn ffi_parse_function_arg(
   Ok(NativeValue { pointer })
 }
 
+#[inline]
+pub fn ffi_parse_struct_arg(
+  scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  let pointer = if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
+    if let Some(non_null) = value.data() {
+      non_null.as_ptr()
+    } else {
+      return Err(type_error(
+        "Invalid FFI struct type, expected data in the ArrayBuffer",
+      ));
+    }
+  } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg) {
+    let byte_offset = value.byte_offset();
+    let pointer = value
+      .buffer(scope)
+      .ok_or_else(|| {
+        type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
+      })?
+      .data();
+    if let Some(non_null) = pointer {
+      // SAFETY: Pointer is non-null, and V8 guarantees that the byte_offset
+      // is within the buffer backing store.
+      unsafe { non_null.as_ptr().add(byte_offset) }
+    } else {
+      return Err(type_error(
+        "Invalid FFI struct type, expected data in the ArrayBufferView",
+      ));
+    }
+  } else {
+    return Err(type_error(
+      "Invalid FFI struct type, expected ArrayBuffer, or ArrayBufferView",
+    ));
+  };
+  Ok(NativeValue { pointer })
+}
+
 pub fn ffi_parse_args<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   args: serde_v8::Value<'scope>,
@@ -516,6 +602,9 @@ where
       }
       NativeType::Function => {
         ffi_args.push(ffi_parse_function_arg(scope, value)?);
+      }
+      NativeType::Struct(_) => {
+        ffi_args.push(ffi_parse_struct_arg(scope, value)?);
       }
       NativeType::Void => {
         unreachable!();

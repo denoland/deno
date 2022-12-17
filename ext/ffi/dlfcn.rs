@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::check_unstable;
+use crate::ir::parse_struct_return_out_buffer_argument;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
 use crate::turbocall;
@@ -52,7 +53,7 @@ impl DynamicLibraryResource {
   }
 }
 
-pub fn needs_unwrap(rv: NativeType) -> bool {
+pub fn needs_unwrap(rv: &NativeType) -> bool {
   matches!(
     rv,
     NativeType::Function
@@ -65,7 +66,7 @@ pub fn needs_unwrap(rv: NativeType) -> bool {
   )
 }
 
-fn is_i64(rv: NativeType) -> bool {
+fn is_i64(rv: &NativeType) -> bool {
   matches!(rv, NativeType::I64 | NativeType::ISize)
 }
 
@@ -166,7 +167,7 @@ where
             .clone()
             .into_iter()
             .map(libffi::middle::Type::from),
-          foreign_fn.result.into(),
+          foreign_fn.result.clone().into(),
         );
 
         let func_key = v8::String::new(scope, &symbol_key).unwrap();
@@ -178,15 +179,17 @@ where
           can_callback: foreign_fn.callback,
         });
 
-        resource.symbols.insert(symbol_key, sym.clone());
         match foreign_fn.non_blocking {
           // Generate functions for synchronous calls.
           Some(false) | None => {
             let function = make_sync_fn(scope, sym);
             obj.set(scope, func_key.into(), function.into());
           }
-          // This optimization is not yet supported for non-blocking calls.
-          _ => {}
+          _ => {
+            // Non-blocking calls' symbol need to be saved in the resource
+            // so that nonblocking calls can use them through the resource table.
+            resource.symbols.insert(symbol_key, sym);
+          }
         };
       }
     }
@@ -209,18 +212,39 @@ fn make_sync_fn<'s>(
 ) -> v8::Local<'s, v8::Function> {
   let sym = Box::leak(sym);
   let builder = v8::FunctionTemplate::builder(
-    |scope: &mut v8::HandleScope,
-     args: v8::FunctionCallbackArguments,
+    |scope: &mut v8::HandleScope<'s>,
+     args: v8::FunctionCallbackArguments<'s>,
      mut rv: v8::ReturnValue| {
       let external: v8::Local<v8::External> = args.data().try_into().unwrap();
       // SAFETY: The pointer will not be deallocated until the function is
       // garbage collected.
       let symbol = unsafe { &*(external.value() as *const Symbol) };
-      let needs_unwrap = match needs_unwrap(symbol.result_type) {
+      let needs_unwrap = match needs_unwrap(&symbol.result_type) {
         true => Some(args.get(symbol.parameter_types.len() as i32)),
         false => None,
       };
-      match crate::call::ffi_call_sync(scope, args, symbol) {
+      let out_buffer = match symbol.result_type {
+        NativeType::Struct(_) => {
+          let argc = args.length();
+          let out_buffer_result = parse_struct_return_out_buffer_argument(
+            scope,
+            &symbol.result_type,
+            args.get(argc - 1),
+          );
+          match out_buffer_result {
+            Ok(result) => match result {
+              Some(out_buffer) => Some(out_buffer),
+              None => unreachable!(),
+            },
+            Err(err) => {
+              deno_core::_ops::throw_type_error(scope, err.to_string());
+              return;
+            }
+          }
+        }
+        _ => None,
+      };
+      match crate::call::ffi_call_sync(scope, args, symbol, out_buffer) {
         Ok(result) => {
           match needs_unwrap {
             Some(v) => {
@@ -228,7 +252,7 @@ fn make_sync_fn<'s>(
               let backing_store =
                 view.buffer(scope).unwrap().get_backing_store();
 
-              if is_i64(symbol.result_type) {
+              if is_i64(&symbol.result_type) {
                 // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
                 // it points to a fixed continuous slice of bytes on the heap.
                 let bs = unsafe {
@@ -252,7 +276,7 @@ fn make_sync_fn<'s>(
             }
             None => {
               // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-              let result = unsafe { result.to_v8(scope, symbol.result_type) };
+              let result = unsafe { result.to_v8(scope, &symbol.result_type) };
               rv.set(result.v8_value);
             }
           }

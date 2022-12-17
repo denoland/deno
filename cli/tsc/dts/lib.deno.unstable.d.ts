@@ -94,6 +94,8 @@ declare namespace Deno {
    */
   type NativeVoidType = "void";
 
+  type NativeStructType = { readonly struct: readonly NativeType[] };
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * All supported types for interfacing with foreign functions.
@@ -106,7 +108,8 @@ declare namespace Deno {
     | NativeBooleanType
     | NativePointerType
     | NativeBufferType
-    | NativeFunctionType;
+    | NativeFunctionType
+    | NativeStructType;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -136,7 +139,9 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  type ToNativeType<T extends NativeType = NativeType> = ToNativeTypeMap[T];
+  type ToNativeType<T extends NativeType = NativeType> = T extends
+    NativeStructType ? BufferSource
+    : ToNativeTypeMap[Exclude<T, NativeStructType>];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -153,7 +158,8 @@ declare namespace Deno {
    * @category FFI
    */
   type ToNativeResultType<T extends NativeResultType = NativeResultType> =
-    ToNativeResultTypeMap[T];
+    T extends NativeStructType ? BufferSource
+      : ToNativeResultTypeMap[Exclude<T, NativeStructType>];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -193,7 +199,9 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  type FromNativeType<T extends NativeType = NativeType> = FromNativeTypeMap[T];
+  type FromNativeType<T extends NativeType = NativeType> = T extends
+    NativeStructType ? Uint8Array
+    : FromNativeTypeMap[Exclude<T, NativeStructType>];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -212,7 +220,8 @@ declare namespace Deno {
    * @category FFI
    */
   type FromNativeResultType<T extends NativeResultType = NativeResultType> =
-    FromNativeResultTypeMap[T];
+    T extends NativeStructType ? Uint8Array
+      : FromNativeResultTypeMap[Exclude<T, NativeStructType>];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *

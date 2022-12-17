@@ -6,7 +6,6 @@ use deno_core::include_js_files;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::OpState;
-
 use std::cell::RefCell;
 use std::mem::size_of;
 use std::os::raw::c_char;
