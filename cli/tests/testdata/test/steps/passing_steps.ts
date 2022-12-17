@@ -9,6 +9,15 @@ Deno.test("description", async (t) => {
   if (!success) throw new Error("Expected the step to return true.");
 });
 
+Deno.test("description function as first arg", async (t) => {
+  const success = await t.step(async function step1(t) {
+    await t.step(function inner1() {});
+    await t.step(function inner1() {});
+  });
+
+  if (!success) throw new Error("Expected the step to return true.");
+});
+
 Deno.test("parallel steps without sanitizers", async (t) => {
   // allowed
   await Promise.all([
