@@ -7,6 +7,12 @@ use once_cell::sync::Lazy;
 
 pub const PERMISSION_EMOJI: &str = "⚠️";
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum PromptResponse {
+  Allow,
+  Deny,
+}
+
 static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
   Lazy::new(|| Mutex::new(Box::new(TtyPrompter)));
 
@@ -20,7 +26,7 @@ pub fn permission_prompt(
   message: &str,
   flag: &str,
   api_name: Option<&str>,
-) -> bool {
+) -> PromptResponse {
   if let Some(before_callback) = MAYBE_BEFORE_PROMPT_CALLBACK.lock().as_mut() {
     before_callback();
   }
@@ -47,7 +53,7 @@ pub trait PermissionPrompter: Send + Sync {
     message: &str,
     name: &str,
     api_name: Option<&str>,
-  ) -> bool;
+  ) -> PromptResponse;
 }
 
 pub struct TtyPrompter;
@@ -58,9 +64,9 @@ impl PermissionPrompter for TtyPrompter {
     message: &str,
     name: &str,
     api_name: Option<&str>,
-  ) -> bool {
+  ) -> PromptResponse {
     if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-      return false;
+      return PromptResponse::Deny;
     };
 
     #[cfg(unix)]
@@ -183,7 +189,7 @@ impl PermissionPrompter for TtyPrompter {
     // buffered data cannot effect the prompt.
     if let Err(err) = clear_stdin() {
       eprintln!("Error clearing stdin for permission prompt. {:#}", err);
-      return false; // don't grant permission if this fails
+      return PromptResponse::Deny; // don't grant permission if this fails
     }
 
     // print to stderr so that if stdout is piped this is still displayed.
@@ -207,10 +213,10 @@ impl PermissionPrompter for TtyPrompter {
       let stdin = std::io::stdin();
       let result = stdin.read_line(&mut input);
       if result.is_err() {
-        break false;
+        break PromptResponse::Deny;
       };
       let ch = match input.chars().next() {
-        None => break false,
+        None => break PromptResponse::Deny,
         Some(v) => v,
       };
       match ch.to_ascii_lowercase() {
@@ -218,13 +224,13 @@ impl PermissionPrompter for TtyPrompter {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
           let msg = format!("Granted {}.", message);
           eprintln!("✅ {}", colors::bold(&msg));
-          break true;
+          break PromptResponse::Allow;
         }
         'n' => {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
           let msg = format!("Denied {}.", message);
           eprintln!("❌ {}", colors::bold(&msg));
-          break false;
+          break PromptResponse::Deny;
         }
         _ => {
           // If we don't get a recognized option try again.
@@ -253,8 +259,12 @@ pub mod tests {
       _message: &str,
       _name: &str,
       _api_name: Option<&str>,
-    ) -> bool {
-      STUB_PROMPT_VALUE.load(Ordering::SeqCst)
+    ) -> PromptResponse {
+      if STUB_PROMPT_VALUE.load(Ordering::SeqCst) {
+        PromptResponse::Allow
+      } else {
+        PromptResponse::Deny
+      }
     }
   }
 
