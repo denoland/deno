@@ -323,6 +323,7 @@ impl HttpClient {
           current_size += bytes.len() as u64;
           progress_guard.set_position(current_size);
           data.extend(bytes.into_iter());
+          std::thread::sleep_ms(10);
         }
         return Ok(Some(data));
       }
