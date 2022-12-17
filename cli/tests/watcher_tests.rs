@@ -1187,11 +1187,11 @@ mod watcher {
       &mut stdout_lines,
     );
 
-    wait_contains("finished", &mut stderr_lines);
     wait_for(
       |m| m.contains("Watching paths") && m.contains("imported2.js"),
       &mut stderr_lines,
     );
+    wait_contains("finished", &mut stderr_lines);
 
     write(
     &file_to_watch3,
