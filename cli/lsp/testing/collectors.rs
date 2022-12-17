@@ -8,7 +8,8 @@ use deno_ast::swc::visit::VisitWith;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_core::ModuleSpecifier;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// Parse an arrow expression for any test steps and return them.
 fn arrow_to_steps(
