@@ -1,11 +1,17 @@
 [WILDCARD]
-running 5 tests from ./test/steps/passing_steps.ts
+running 6 tests from ./test/steps/passing_steps.ts
 description ...
   step 1 ...
     inner 1 ... ok ([WILDCARD]ms)
     inner 2 ... ok ([WILDCARD]ms)
   step 1 ... ok ([WILDCARD]ms)
 description ... ok ([WILDCARD]ms)
+description function as first arg ...
+  step1 ...
+    inner1 ... ok ([WILDCARD]ms)
+    inner1 ... ok ([WILDCARD]ms)
+  step1 ... ok ([WILDCARD]ms)
+description function as first arg ... ok ([WILDCARD]ms)
 parallel steps without sanitizers ...
   step 1 ... ok ([WILDCARD])
   step 2 ... ok ([WILDCARD])
@@ -35,4 +41,4 @@ steps buffered then streaming reporting ...
   step 2 ... ok ([WILDCARD])
 steps buffered then streaming reporting ... ok ([WILDCARD])
 
-ok | 5 passed (18 steps) | 0 failed [WILDCARD]
+ok | 6 passed (21 steps) | 0 failed [WILDCARD]
