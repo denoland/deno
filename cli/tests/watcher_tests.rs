@@ -1116,7 +1116,11 @@ mod watcher {
     wait_contains("finished", &mut stderr_lines);
     let first_output = stdout_lines.next().unwrap();
 
-    write(&file_to_watch, format!("{}\n", file_content)).unwrap();
+    write(&file_to_watch, file_content).unwrap();
+    // TODO(nayeemrmn): Writing again because some times the watcher doesn't
+    // notice for some reason. Only this test so might have something to do with
+    // `--reload`? Figure it out.
+    write(&file_to_watch, file_content).unwrap();
     // The remote dynamic module should not have been reloaded again.
 
     wait_contains("finished", &mut stderr_lines);
