@@ -272,3 +272,12 @@ Deno.test({ permissions: { sys: ["gid"] } }, function getGid() {
     assert(gid > 0);
   }
 });
+
+Deno.test(function memoryUsage() {
+  const mem = Deno.memoryUsage();
+  assert(typeof mem.rss === "number");
+  assert(typeof mem.heapTotal === "number");
+  assert(typeof mem.heapUsed === "number");
+  assert(typeof mem.external === "number");
+  assert(mem.rss >= mem.heapTotal);
+});
