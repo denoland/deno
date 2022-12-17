@@ -114,7 +114,7 @@ Deno.test(async function invalidStepArguments(t) {
       await (t as any).step(() => {});
     },
     TypeError,
-    "Expected a test definition or name and function.",
+    "The step function must have a name.",
   );
 });
 
