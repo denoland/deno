@@ -1286,7 +1286,9 @@
             throw new TypeError("The step function must have a name.");
           }
           if (maybeFn != undefined) {
-            throw new TypeError("Unexpected second argument to TestContext.step()");
+            throw new TypeError(
+              "Unexpected second argument to TestContext.step()",
+            );
           }
           stepDesc = {
             name: nameOrFnOrOptions.name,
