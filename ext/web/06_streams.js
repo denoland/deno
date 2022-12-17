@@ -5384,6 +5384,9 @@
      * @returns {void}
      */
     enqueue(chunk = undefined) {
+      if (chunk.byteLength === 0) {
+        return;
+      }
       webidl.assertBranded(this, ReadableStreamDefaultControllerPrototype);
       if (chunk !== undefined) {
         chunk = webidl.converters.any(chunk);
