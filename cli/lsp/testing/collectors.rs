@@ -811,15 +811,14 @@ pub mod tests {
 
     assert_eq!(
       res,
-      vec![
-        TestDefinition {
-          id: "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568".to_string(),
-          level: 0,
-          name: "someFunction".to_string(),
-          range: new_range(51, 55),
-          steps: vec![]
-        }
-      ]
+      vec![TestDefinition {
+        id: "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568"
+          .to_string(),
+        level: 0,
+        name: "someFunction".to_string(),
+        range: new_range(51, 55),
+        steps: vec![]
+      }]
     );
   }
 }
