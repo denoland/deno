@@ -430,7 +430,8 @@ impl MainWorker {
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
       "dispatchEvent(new Event('load'))",
-    )
+    )?;
+    Ok(())
   }
 
   /// Dispatches "unload" event to the JavaScript runtime.
@@ -446,7 +447,8 @@ impl MainWorker {
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
       "dispatchEvent(new Event('unload'))",
-    )
+    )?;
+    Ok(())
   }
 
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean

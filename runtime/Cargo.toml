@@ -91,6 +91,7 @@ signal-hook-registry = "1.4.0"
 termcolor = "1.1.3"
 tokio.workspace = true
 uuid.workspace = true
+v8.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 fwdansi.workspace = true
