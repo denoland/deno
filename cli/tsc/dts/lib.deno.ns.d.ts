@@ -677,7 +677,7 @@ declare namespace Deno {
      * If the test was ignored the promise returns `false`.
      *
      * ```ts
-     * Deno.test(function aParentTest(t) {
+     * Deno.test(async function aParentTest(t) {
      *   console.log("before the step");
      *   await t.step(function step1(t) {
      *     console.log("current step:", t.name);
