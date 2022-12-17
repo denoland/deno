@@ -69,6 +69,7 @@ pub struct MainWorker {
 pub struct WorkerOptions {
   pub bootstrap: BootstrapOptions,
   pub extensions: Vec<Extension>,
+  pub extensions_with_js: Vec<Extension>,
   pub startup_snapshot: Option<Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
@@ -129,6 +130,7 @@ impl Default for WorkerOptions {
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
+      extensions_with_js: Default::default(),
       startup_snapshot: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
@@ -247,6 +249,7 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      extensions_with_js: options.extensions_with_js,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       ..Default::default()
