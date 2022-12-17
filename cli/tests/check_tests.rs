@@ -63,6 +63,11 @@ mod check {
     exit_code: 0,
   });
 
+  itest!(check_static_response_json {
+    args: "check --quiet check/response_json.ts",
+    exit_code: 0,
+  });
+
   #[test]
   fn cache_switching_config_then_no_config() {
     let deno_dir = util::new_deno_dir();

@@ -12,7 +12,9 @@ use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
@@ -68,6 +70,17 @@ impl std::fmt::Display for EvaluationOutput {
   }
 }
 
+pub fn result_to_evaluation_output(
+  r: Result<EvaluationOutput, AnyError>,
+) -> EvaluationOutput {
+  match r {
+    Ok(value) => value,
+    Err(err) => {
+      EvaluationOutput::Error(format!("{} {}", colors::red("error:"), err))
+    }
+  }
+}
+
 struct TsEvaluateResponse {
   ts_code: String,
   value: cdp::EvaluateResponse,
@@ -81,6 +94,10 @@ pub struct ReplSession {
   pub language_server: ReplLanguageServer,
   has_initialized_node_runtime: bool,
   referrer: ModuleSpecifier,
+  // FIXME(bartlomieju): this field should be used to listen
+  // for "exceptionThrown" notifications
+  #[allow(dead_code)]
+  notification_rx: UnboundedReceiver<Value>,
 }
 
 impl ReplSession {
@@ -102,8 +119,11 @@ impl ReplSession {
     // Enabling the runtime domain will always send trigger one executionContextCreated for each
     // context the inspector knows about so we grab the execution context from that since
     // our inspector does not support a default context (0 is an invalid context id).
-    let mut context_id: u64 = 0;
-    for notification in session.notifications() {
+    let context_id: u64;
+    let mut notification_rx = session.take_notification_rx();
+
+    loop {
+      let notification = notification_rx.next().await.unwrap();
       let method = notification.get("method").unwrap().as_str().unwrap();
       let params = notification.get("params").unwrap();
       if method == "Runtime.executionContextCreated" {
@@ -116,6 +136,7 @@ impl ReplSession {
           .as_bool()
           .unwrap());
         context_id = context.get("id").unwrap().as_u64().unwrap();
+        break;
       }
     }
     assert_ne!(context_id, 0);
@@ -130,6 +151,7 @@ impl ReplSession {
       language_server,
       has_initialized_node_runtime: false,
       referrer,
+      notification_rx,
     };
 
     // inject prelude
@@ -169,7 +191,7 @@ impl ReplSession {
   pub async fn evaluate_line_and_get_output(
     &mut self,
     line: &str,
-  ) -> Result<EvaluationOutput, AnyError> {
+  ) -> EvaluationOutput {
     fn format_diagnostic(diagnostic: &deno_ast::Diagnostic) -> String {
       format!(
         "{}: {} at {}:{}",
@@ -180,56 +202,64 @@ impl ReplSession {
       )
     }
 
-    match self.evaluate_line_with_object_wrapping(line).await {
-      Ok(evaluate_response) => {
-        let cdp::EvaluateResponse {
-          result,
-          exception_details,
-        } = evaluate_response.value;
+    async fn inner(
+      session: &mut ReplSession,
+      line: &str,
+    ) -> Result<EvaluationOutput, AnyError> {
+      match session.evaluate_line_with_object_wrapping(line).await {
+        Ok(evaluate_response) => {
+          let cdp::EvaluateResponse {
+            result,
+            exception_details,
+          } = evaluate_response.value;
 
-        Ok(if let Some(exception_details) = exception_details {
-          self.set_last_thrown_error(&result).await?;
-          let description = match exception_details.exception {
-            Some(exception) => exception
-              .description
-              .unwrap_or_else(|| "Unknown exception".to_string()),
-            None => "Unknown exception".to_string(),
-          };
-          EvaluationOutput::Error(format!(
-            "{} {}",
-            exception_details.text, description
-          ))
-        } else {
-          self
-            .language_server
-            .commit_text(&evaluate_response.ts_code)
-            .await;
+          Ok(if let Some(exception_details) = exception_details {
+            session.set_last_thrown_error(&result).await?;
+            let description = match exception_details.exception {
+              Some(exception) => exception
+                .description
+                .unwrap_or_else(|| "Unknown exception".to_string()),
+              None => "Unknown exception".to_string(),
+            };
+            EvaluationOutput::Error(format!(
+              "{} {}",
+              exception_details.text, description
+            ))
+          } else {
+            session
+              .language_server
+              .commit_text(&evaluate_response.ts_code)
+              .await;
 
-          self.set_last_eval_result(&result).await?;
-          let value = self.get_eval_value(&result).await?;
-          EvaluationOutput::Value(value)
-        })
-      }
-      Err(err) => {
-        // handle a parsing diagnostic
-        match err.downcast_ref::<deno_ast::Diagnostic>() {
-          Some(diagnostic) => {
-            Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
+            session.set_last_eval_result(&result).await?;
+            let value = session.get_eval_value(&result).await?;
+            EvaluationOutput::Value(value)
+          })
+        }
+        Err(err) => {
+          // handle a parsing diagnostic
+          match err.downcast_ref::<deno_ast::Diagnostic>() {
+            Some(diagnostic) => {
+              Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
+            }
+            None => match err.downcast_ref::<DiagnosticsError>() {
+              Some(diagnostics) => Ok(EvaluationOutput::Error(
+                diagnostics
+                  .0
+                  .iter()
+                  .map(format_diagnostic)
+                  .collect::<Vec<_>>()
+                  .join("\n\n"),
+              )),
+              None => Err(err),
+            },
           }
-          None => match err.downcast_ref::<DiagnosticsError>() {
-            Some(diagnostics) => Ok(EvaluationOutput::Error(
-              diagnostics
-                .0
-                .iter()
-                .map(format_diagnostic)
-                .collect::<Vec<_>>()
-                .join("\n\n"),
-            )),
-            None => Err(err),
-          },
         }
       }
     }
+
+    let result = inner(self, line).await;
+    result_to_evaluation_output(result)
   }
 
   async fn evaluate_line_with_object_wrapping(
@@ -426,7 +456,11 @@ impl ReplSession {
     if !npm_imports.is_empty() {
       if !self.has_initialized_node_runtime {
         self.proc_state.prepare_node_std_graph().await?;
-        crate::node::initialize_runtime(&mut self.worker.js_runtime).await?;
+        crate::node::initialize_runtime(
+          &mut self.worker.js_runtime,
+          self.proc_state.options.node_modules_dir(),
+        )
+        .await?;
         self.has_initialized_node_runtime = true;
       }
 

@@ -372,6 +372,7 @@ pub struct ReplEditor {
   inner: Arc<Mutex<Editor<EditorHelper>>>,
   history_file_path: PathBuf,
   errored_on_history_save: Arc<AtomicBool>,
+  should_exit_on_interrupt: Arc<AtomicBool>,
 }
 
 impl ReplEditor {
@@ -395,6 +396,13 @@ impl ReplEditor {
       KeyEvent(KeyCode::Tab, Modifiers::NONE),
       EventHandler::Conditional(Box::new(TabEventHandler)),
     );
+    let should_exit_on_interrupt = Arc::new(AtomicBool::new(false));
+    editor.bind_sequence(
+      KeyEvent(KeyCode::Char('r'), Modifiers::CTRL),
+      EventHandler::Conditional(Box::new(ReverseSearchHistoryEventHandler {
+        should_exit_on_interrupt: should_exit_on_interrupt.clone(),
+      })),
+    );
 
     let history_file_dir = history_file_path.parent().unwrap();
     std::fs::create_dir_all(history_file_dir).with_context(|| {
@@ -408,6 +416,7 @@ impl ReplEditor {
       inner: Arc::new(Mutex::new(editor)),
       history_file_path,
       errored_on_history_save: Arc::new(AtomicBool::new(false)),
+      should_exit_on_interrupt,
     })
   }
 
@@ -425,6 +434,31 @@ impl ReplEditor {
       self.errored_on_history_save.store(true, Relaxed);
       eprintln!("Unable to save history file: {}", e);
     }
+  }
+
+  pub fn should_exit_on_interrupt(&self) -> bool {
+    self.should_exit_on_interrupt.load(Relaxed)
+  }
+
+  pub fn set_should_exit_on_interrupt(&self, yes: bool) {
+    self.should_exit_on_interrupt.store(yes, Relaxed);
+  }
+}
+
+/// Command to reverse search history , same as rustyline default C-R but that resets repl should_exit flag to false
+struct ReverseSearchHistoryEventHandler {
+  should_exit_on_interrupt: Arc<AtomicBool>,
+}
+impl ConditionalEventHandler for ReverseSearchHistoryEventHandler {
+  fn handle(
+    &self,
+    _: &Event,
+    _: RepeatCount,
+    _: bool,
+    _: &EventContext,
+  ) -> Option<Cmd> {
+    self.should_exit_on_interrupt.store(false, Relaxed);
+    Some(Cmd::ReverseSearchHistory)
   }
 }
 
