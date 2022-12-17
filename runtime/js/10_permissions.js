@@ -160,6 +160,21 @@
       ArrayPrototypeIncludes(permissionNames, desc.name);
   }
 
+  /**
+   * @param {Deno.PermissionDescriptor} desc
+   * @returns {desc is Deno.PermissionDescriptor}
+   */
+  function formDescriptor(desc) {
+    if (
+      desc.name === "read" || desc.name === "write" || desc.name === "ffi"
+    ) {
+      desc.path = pathFromURL(desc.path);
+    } else if (desc.name === "run") {
+      desc.command = pathFromURL(desc.command);
+    }
+    return desc;
+  }
+
   class Permissions {
     constructor(key = null) {
       if (key != illegalConstructorKey) {
@@ -176,13 +191,7 @@
         );
       }
 
-      if (
-        desc.name === "read" || desc.name === "write" || desc.name === "ffi"
-      ) {
-        desc.path = pathFromURL(desc.path);
-      } else if (desc.name === "run") {
-        desc.command = pathFromURL(desc.command);
-      }
+      desc = formDescriptor(desc);
 
       const state = opQuery(desc);
       return PromiseResolve(cache(desc, state));
@@ -197,11 +206,7 @@
         );
       }
 
-      if (desc.name === "read" || desc.name === "write") {
-        desc.path = pathFromURL(desc.path);
-      } else if (desc.name === "run") {
-        desc.command = pathFromURL(desc.command);
-      }
+      desc = formDescriptor(desc);
 
       const state = opRevoke(desc);
       return PromiseResolve(cache(desc, state));
@@ -216,11 +221,7 @@
         );
       }
 
-      if (desc.name === "read" || desc.name === "write") {
-        desc.path = pathFromURL(desc.path);
-      } else if (desc.name === "run") {
-        desc.command = pathFromURL(desc.command);
-      }
+      desc = formDescriptor(desc);
 
       const state = opRequest(desc);
       return PromiseResolve(cache(desc, state));
