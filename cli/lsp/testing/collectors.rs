@@ -574,11 +574,7 @@ pub mod tests {
       function someFunctionG() {}
       Deno.test("test g", someFunctionG);
 
-      Deno.test(async function someFunctionH(t) {
-        await t.step(function someStepH({ step }) {
-          await step(function someSubStepH() {});
-        });
-      });
+      Deno.test(async function someFunctionH() {});
 
       async function someFunctionI() {}
       Deno.test(someFunctionI);
@@ -700,29 +696,13 @@ pub mod tests {
           level: 0,
           name: "someFunctionH".to_string(),
           range: new_range(872, 876),
-          steps: vec![
-            TestDefinition {
-              id: "d0083e0c69b87124b217f183d6a7674c4a174041f7fbbfdf53a599d435dc6ed4".to_string(),
-              level: 1,
-              name: "someStepH".to_string(),
-              range: new_range(927, 931),
-              steps: vec![
-                TestDefinition {
-                  id: "8093fcd32f67dd7fe6c7a3aea8a71e80139efbf0a3831e1a443f97c68a637643".to_string(),
-                  level: 2,
-                  name: "someSubStepH".to_string(),
-                  range: new_range(979, 983),
-                  steps: vec![]
-                }
-              ]
-            }
-          ]
+          steps: vec![]
         },
         TestDefinition {
           id: "1fef1a040ad1be8b0579054c1f3d1e34690f41fbbfe3fe20dbe9f48e808527e1".to_string(),
           level: 0,
           name: "someFunctionI".to_string(),
-          range: new_range(1087, 1091),
+          range: new_range(965, 969),
           steps: vec![]
         }
       ]
