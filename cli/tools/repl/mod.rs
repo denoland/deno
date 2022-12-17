@@ -91,7 +91,6 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let worker = worker.into_main_worker();
   let mut repl_session = ReplSession::initialize(ps.clone(), worker).await?;
   let mut rustyline_channel = rustyline_channel();
-  let mut should_exit_on_interrupt = false;
 
   let helper = EditorHelper {
     context_id: repl_session.context_id,
@@ -154,7 +153,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     .await;
     match line {
       Ok(line) => {
-        should_exit_on_interrupt = false;
+        editor.set_should_exit_on_interrupt(false);
         editor.update_history(line.clone());
         let output = repl_session.evaluate_line_and_get_output(&line).await;
 
@@ -167,10 +166,10 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
         println!("{}", output);
       }
       Err(ReadlineError::Interrupted) => {
-        if should_exit_on_interrupt {
+        if editor.should_exit_on_interrupt() {
           break;
         }
-        should_exit_on_interrupt = true;
+        editor.set_should_exit_on_interrupt(true);
         println!("press ctrl+c again to exit");
         continue;
       }

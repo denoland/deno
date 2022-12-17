@@ -456,7 +456,11 @@ impl ReplSession {
     if !npm_imports.is_empty() {
       if !self.has_initialized_node_runtime {
         self.proc_state.prepare_node_std_graph().await?;
-        crate::node::initialize_runtime(&mut self.worker.js_runtime).await?;
+        crate::node::initialize_runtime(
+          &mut self.worker.js_runtime,
+          self.proc_state.options.node_modules_dir(),
+        )
+        .await?;
         self.has_initialized_node_runtime = true;
       }
 
