@@ -105,16 +105,16 @@ struct InternalState {
   keep_alive_count: usize,
   total_entries: usize,
   entries: Vec<ProgressBarEntry>,
-  renderer: Box<dyn ProgressBarRenderer>,
 }
 
 #[derive(Clone, Debug)]
 struct ProgressBarInner {
   state: Arc<Mutex<InternalState>>,
+  renderer: Arc<dyn ProgressBarRenderer>,
 }
 
 impl ProgressBarInner {
-  fn new(renderer: Box<dyn ProgressBarRenderer>) -> Self {
+  fn new(renderer: Arc<dyn ProgressBarRenderer>) -> Self {
     Self {
       state: Arc::new(Mutex::new(InternalState {
         draw_thread_guard: None,
@@ -122,8 +122,8 @@ impl ProgressBarInner {
         keep_alive_count: 0,
         total_entries: 0,
         entries: Vec::new(),
-        renderer,
       })),
+      renderer,
     }
   }
 
@@ -190,35 +190,39 @@ impl ProgressBarInner {
 
 impl DrawThreadRenderer for ProgressBarInner {
   fn render(&self, size: &ConsoleSize) -> String {
-    let state = self.state.lock();
-    if state.entries.is_empty() {
-      return String::new();
-    }
-    let preferred_entry = state
-      .entries
-      .iter()
-      .find(|e| e.percent() > 0f64)
-      .or_else(|| state.entries.iter().last())
-      .unwrap();
-    state.renderer.render(ProgressData {
-      duration: state.start_time.elapsed().unwrap(),
-      terminal_width: size.cols,
-      pending_entries: state.entries.len(),
-      total_entries: state.total_entries,
-      display_entry: ProgressDataDisplayEntry {
-        message: preferred_entry.message.clone(),
-        position: preferred_entry.position(),
-        total_size: preferred_entry.total_size(),
-      },
-      percent_done: {
-        let mut total_percent_sum = 0f64;
-        for entry in &state.entries {
-          total_percent_sum += entry.percent();
-        }
-        total_percent_sum += (state.total_entries - state.entries.len()) as f64;
-        total_percent_sum / (state.total_entries as f64)
-      },
-    })
+    let data = {
+      let state = self.state.lock();
+      if state.entries.is_empty() {
+        return String::new();
+      }
+      let preferred_entry = state
+        .entries
+        .iter()
+        .find(|e| e.percent() > 0f64)
+        .or_else(|| state.entries.iter().last())
+        .unwrap();
+      ProgressData {
+        duration: state.start_time.elapsed().unwrap(),
+        terminal_width: size.cols,
+        pending_entries: state.entries.len(),
+        total_entries: state.total_entries,
+        display_entry: ProgressDataDisplayEntry {
+          message: preferred_entry.message.clone(),
+          position: preferred_entry.position(),
+          total_size: preferred_entry.total_size(),
+        },
+        percent_done: {
+          let mut total_percent_sum = 0f64;
+          for entry in &state.entries {
+            total_percent_sum += entry.percent();
+          }
+          total_percent_sum +=
+            (state.total_entries - state.entries.len()) as f64;
+          total_percent_sum / (state.total_entries as f64)
+        },
+      }
+    };
+    self.renderer.render(data)
   }
 }
 
@@ -238,10 +242,10 @@ impl ProgressBar {
       inner: match Self::are_supported() {
         true => Some(ProgressBarInner::new(match style {
           ProgressBarStyle::DownloadBars => {
-            Box::new(renderer::BarProgressBarRenderer)
+            Arc::new(renderer::BarProgressBarRenderer)
           }
           ProgressBarStyle::TextOnly => {
-            Box::new(renderer::TextOnlyProgressBarRenderer)
+            Arc::new(renderer::TextOnlyProgressBarRenderer)
           }
         })),
         false => None,
@@ -268,15 +272,15 @@ impl ProgressBar {
   }
 
   pub fn clear_guard(&self) -> ClearGuard {
-    if let Some(draw_thread) = &self.inner {
-      draw_thread.increment_clear();
+    if let Some(inner) = &self.inner {
+      inner.increment_clear();
     }
     ClearGuard { pb: self.clone() }
   }
 
   fn decrement_clear(&self) {
-    if let Some(draw_thread) = &self.inner {
-      draw_thread.decrement_clear();
+    if let Some(inner) = &self.inner {
+      inner.decrement_clear();
     }
   }
 }
