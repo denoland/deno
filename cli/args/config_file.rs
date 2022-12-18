@@ -3,6 +3,7 @@
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::TaskFlags;
+use crate::tools::lint::LintReporterKind;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::specifier_parent;
 use crate::util::path::specifier_to_file_path;
@@ -376,11 +377,13 @@ impl ContainsFilesConfig for LintConfig {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FinalLintConfig {
   pub rules: LintRulesConfig,
   pub files: Filters,
-  pub report: Option<String>,
+  // pub report: Option<String>,
+  pub reporter_kind: LintReporterKind,
+  // pub configured_rules: Vec<Arc<dyn LintRule>>
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

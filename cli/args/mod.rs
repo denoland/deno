@@ -53,6 +53,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cache::DenoDir;
+use crate::tools::lint::LintReporterKind;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
 use crate::version;
@@ -396,16 +397,24 @@ impl CliOptions {
   pub fn to_lint_config(
     &self,
     lint_flags: &LintFlags,
-  ) -> Result<Option<FinalLintConfig>, AnyError> {
+  ) -> Result<FinalLintConfig, AnyError> {
     let cli_filters = lint_flags.get_filters();
 
     let mut include = cli_filters.include;
     let mut ignore = cli_filters.ignore;
-    let mut report = Some(String::from("pretty"));
+
     let mut rules = LintRulesConfig {
       tags: None,
       exclude: None,
       include: None,
+    };
+
+    let mut maybe_reporter_kind = if lint_flags.json {
+      Some(LintReporterKind::Json)
+    } else if lint_flags.compact {
+      Some(LintReporterKind::Compact)
+    } else {
+      None
     };
 
     if let Some(config_file) = &self.maybe_config_file {
@@ -416,8 +425,20 @@ impl CliOptions {
           self.collect_filters(&lint_config, include, ignore)?;
         include = config_filters.include;
         ignore = config_filters.ignore;
-        report = lint_config.report;
+        let report = lint_config.report;
         rules = lint_config.rules;
+
+        if maybe_reporter_kind.is_none() {
+          maybe_reporter_kind = match report.as_deref() {
+            Some("json") => Some(LintReporterKind::Json),
+            Some("compact") => Some(LintReporterKind::Compact),
+            Some("pretty") => Some(LintReporterKind::Pretty),
+            Some(_) => {
+              return Err(anyhow!("Invalid lint report type in config file"))
+            }
+            None => Some(LintReporterKind::Pretty),
+          }
+        }
       }
     }
 
@@ -425,11 +446,16 @@ impl CliOptions {
       include.push(std::env::current_dir()?);
     }
 
-    Ok(Some(FinalLintConfig {
-      report,
+    let reporter_kind = match maybe_reporter_kind {
+      Some(reporter) => reporter,
+      None => LintReporterKind::Pretty,
+    };
+
+    Ok(FinalLintConfig {
+      reporter_kind,
       files: Filters { include, ignore },
       rules,
-    }))
+    })
   }
 
   pub fn to_test_config(
@@ -498,6 +524,7 @@ impl CliOptions {
     }
   }
 
+  // TODO: combine with to_fmt_config (fmt_flags not available when called in vendor)
   pub fn to_final_fmt_config(
     &self,
     fmt_flags: &FmtFlags,

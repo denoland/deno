@@ -62,54 +62,21 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 
 pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let maybe_lint_config = ps.options.to_lint_config(&lint_flags)?;
+  let lint_config = ps.options.to_lint_config(&lint_flags)?;
 
-  let include;
-  let ignore;
-  if let Some(lint_config) = maybe_lint_config.clone() {
-    include = lint_config.files.include;
-    ignore = lint_config.files.ignore;
-  } else {
-    return Err(generic_error("Yikes"));
-  }
-
-  let mut maybe_reporter_kind = if lint_flags.json {
-    Some(LintReporterKind::Json)
-  } else if lint_flags.compact {
-    Some(LintReporterKind::Compact)
-  } else {
-    None
-  };
-
-  if let Some(lint_config) = maybe_lint_config.as_ref() {
-    if maybe_reporter_kind.is_none() {
-      maybe_reporter_kind = match lint_config.report.as_deref() {
-        Some("json") => Some(LintReporterKind::Json),
-        Some("compact") => Some(LintReporterKind::Compact),
-        Some("pretty") => Some(LintReporterKind::Pretty),
-        Some(_) => {
-          return Err(anyhow!("Invalid lint report type in config file"))
-        }
-        None => Some(LintReporterKind::Pretty),
-      }
-    }
-  }
-
-  let reporter_kind = match maybe_reporter_kind {
-    Some(report) => report,
-    None => LintReporterKind::Pretty,
-  };
-
-  let has_error = Arc::new(AtomicBool::new(false));
   // Try to get configured rules. CLI flags take precendence
   // over config file, ie. if there's `rules.include` in config file
   // and `--rules-include` CLI flag, only the flag value is taken into account.
   let lint_rules = get_final_configured_rules(
-    maybe_lint_config.as_ref(),
+    Some(&lint_config),
     lint_flags.maybe_rules_tags,
     lint_flags.maybe_rules_include,
     lint_flags.maybe_rules_exclude,
   )?;
+
+  let include = lint_config.files.include;
+  let ignore = lint_config.files.ignore;
+  let reporter_kind = lint_config.reporter_kind;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
@@ -138,6 +105,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       }
     }
   };
+
+  let has_error = Arc::new(AtomicBool::new(false));
 
   let operation = |paths: Vec<PathBuf>| async {
     let incremental_cache = Arc::new(IncrementalCache::new(
