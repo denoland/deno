@@ -45,6 +45,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -1389,6 +1390,8 @@ pub async fn run_tests_with_watch(
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
+  let ps = RefCell::new(ps);
+
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
@@ -1396,7 +1399,7 @@ pub async fn run_tests_with_watch(
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
-    let ps = ps.clone();
+    let ps = ps.borrow().clone();
 
     async move {
       let test_modules = if test_flags.doc {
@@ -1511,13 +1514,14 @@ pub async fn run_tests_with_watch(
     })
   };
 
-  let cli_options = ps.options.clone();
+  let cli_options = ps.borrow().options.clone();
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
     let filter = test_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
     let permissions = permissions.clone();
-    let ps = ps.reset_for_file_watcher();
+    ps.borrow_mut().reset_for_file_watcher();
+    let ps = ps.borrow().clone();
 
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(

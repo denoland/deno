@@ -99,11 +99,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   let flags = Arc::new(flags);
   let main_module = resolve_url_or_path(&script)?;
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-  let ps =
+  let mut ps =
     ProcState::build_for_file_watcher((*flags).clone(), sender.clone()).await?;
 
   let operation = |main_module: ModuleSpecifier| {
-    let ps = ps.reset_for_file_watcher();
+    ps.reset_for_file_watcher();
+    let ps = ps.clone();
     Ok(async move {
       let permissions =
         Permissions::from_options(&ps.options.permissions_options())?;

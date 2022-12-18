@@ -147,10 +147,10 @@ impl ProcState {
     Ok(ps)
   }
 
-  /// Return a cloned `self` with all runtime state reset to its default. This
-  /// should be used on file watcher restarts.
-  pub fn reset_for_file_watcher(&self) -> Self {
-    ProcState(Arc::new(Inner {
+  /// Reset all runtime state to its default. This should be used on file
+  /// watcher restarts.
+  pub fn reset_for_file_watcher(&mut self) {
+    self.0 = Arc::new(Inner {
       dir: self.dir.clone(),
       options: self.options.clone(),
       emit_cache: self.emit_cache.clone(),
@@ -176,7 +176,7 @@ impl ProcState {
       cjs_resolutions: Default::default(),
       progress_bar: self.progress_bar.clone(),
       node_std_graph_prepared: AtomicBool::new(false),
-    }))
+    });
   }
 
   async fn build_with_sender(
