@@ -77,7 +77,7 @@ deno {} "$@"
 "#,
     args.join(" "),
   );
-  let mut file = File::create(&shim_data.file_path.with_extension(""))?;
+  let mut file = File::create(shim_data.file_path.with_extension(""))?;
   file.write_all(template.as_bytes())?;
   Ok(())
 }
@@ -1127,11 +1127,11 @@ mod tests {
     // create extra files
     {
       let file_path = file_path.with_extension("tsconfig.json");
-      File::create(&file_path).unwrap();
+      File::create(file_path).unwrap();
     }
     {
       let file_path = file_path.with_extension("lock.json");
-      File::create(&file_path).unwrap();
+      File::create(file_path).unwrap();
     }
 
     uninstall("echo_test".to_string(), Some(temp_dir.path().to_path_buf()))

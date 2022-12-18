@@ -17,21 +17,21 @@ mod fmt {
       testdata_fmt_dir.join("badly_formatted.mjs");
     let badly_formatted_js = t.path().join("badly_formatted.js");
     let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();
-    std::fs::copy(&badly_formatted_original_js, &badly_formatted_js).unwrap();
+    std::fs::copy(badly_formatted_original_js, &badly_formatted_js).unwrap();
 
     let fixed_md = testdata_fmt_dir.join("badly_formatted_fixed.md");
     let badly_formatted_original_md =
       testdata_fmt_dir.join("badly_formatted.md");
     let badly_formatted_md = t.path().join("badly_formatted.md");
     let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
-    std::fs::copy(&badly_formatted_original_md, &badly_formatted_md).unwrap();
+    std::fs::copy(badly_formatted_original_md, &badly_formatted_md).unwrap();
 
     let fixed_json = testdata_fmt_dir.join("badly_formatted_fixed.json");
     let badly_formatted_original_json =
       testdata_fmt_dir.join("badly_formatted.json");
     let badly_formatted_json = t.path().join("badly_formatted.json");
     let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
-    std::fs::copy(&badly_formatted_original_json, &badly_formatted_json)
+    std::fs::copy(badly_formatted_original_json, &badly_formatted_json)
       .unwrap();
     // First, check formatting by ignoring the badly formatted file.
     let status = util::deno_cmd()
