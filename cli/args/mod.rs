@@ -54,6 +54,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cache::DenoDir;
+use crate::tools::fmt::resolve_fmt_options;
 use crate::tools::lint::LintReporterKind;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
@@ -548,21 +549,33 @@ impl CliOptions {
     }
   }
 
-  // TODO: combine with to_fmt_config (fmt_flags not available when called in vendor)
+  // TODO: combine with to_fmt_config (fmt_flags not available in vendor and lsp)
   pub fn to_final_fmt_config(
     &self,
     fmt_flags: &FmtFlags,
-  ) -> Result<Option<FinalFmtConfig>, AnyError> {
+  ) -> Result<FinalFmtConfig, AnyError> {
     let cli_filters = fmt_flags.get_filters();
 
     let mut include = cli_filters.include;
     let mut ignore = cli_filters.ignore;
+
+    let prose_wrap = fmt_flags.prose_wrap.as_ref().map(|p| match p.as_str() {
+      "always" => ProseWrap::Always,
+      "never" => ProseWrap::Never,
+      "preserve" => ProseWrap::Preserve,
+      // validators in `flags.rs` makes other values unreachable
+      _ => unreachable!(),
+    });
+
+    let line_width = fmt_flags.line_width.map(|w| w.get());
+    let indent_width = fmt_flags.indent_width.map(|w| w.get());
+
     let mut options = FmtOptionsConfig {
-      use_tabs: None,
-      line_width: None,
-      indent_width: None,
-      single_quote: None,
-      prose_wrap: None,
+      prose_wrap,
+      indent_width,
+      line_width,
+      single_quote: fmt_flags.single_quote,
+      use_tabs: fmt_flags.use_tabs,
     };
 
     if let Some(config_file) = &self.maybe_config_file {
@@ -572,7 +585,8 @@ impl CliOptions {
         let filters = self.collect_filters(&fmt_config, include, ignore)?;
         include = filters.include;
         ignore = filters.ignore;
-        options = fmt_config.options;
+
+        options = resolve_fmt_options(fmt_flags, fmt_config.options);
       }
     }
 
@@ -580,10 +594,10 @@ impl CliOptions {
       include.push(std::env::current_dir()?);
     }
 
-    Ok(Some(FinalFmtConfig {
+    Ok(FinalFmtConfig {
       files: Filters { include, ignore },
       options,
-    }))
+    })
   }
 
   /// Collect included and ignored files. CLI flags take precedence

@@ -49,23 +49,14 @@ pub async fn format(
   // First, prepare final configuration.
   let maybe_fmt_config = config.to_final_fmt_config(&fmt_flags)?;
 
-  let include;
-  let ignore;
-  if let Some(fmt_config) = maybe_fmt_config.clone() {
-    include = fmt_config.files.include;
-    ignore = fmt_config.files.ignore;
-  } else {
-    return Err(generic_error("Yikes"));
-  }
+  let include = maybe_fmt_config.files.include;
+  let ignore = maybe_fmt_config.files.ignore;
 
   let deno_dir = config.resolve_deno_dir()?;
   let FmtFlags { check, .. } = fmt_flags.clone();
 
   // Now do the same for options
-  let fmt_options = resolve_fmt_options(
-    &fmt_flags,
-    maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
-  );
+  let fmt_options = maybe_fmt_config.options;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
@@ -490,7 +481,7 @@ fn files_str(len: usize) -> &'static str {
   }
 }
 
-fn resolve_fmt_options(
+pub fn resolve_fmt_options(
   fmt_flags: &FmtFlags,
   options: FmtOptionsConfig,
 ) -> FmtOptionsConfig {
