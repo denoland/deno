@@ -33,7 +33,7 @@ pub async fn bundle(
     let source_file2 = bundle_flags.source_file.clone();
     async move {
       let module_specifier = resolve_url_or_path(&source_file1)?;
-      
+
       log::debug!(">>>>> bundle START");
       let ps = ProcState::from_options(cli_options).await?;
       let graph = create_graph_and_maybe_check(module_specifier, &ps).await?;
@@ -78,7 +78,7 @@ pub async fn bundle(
       log::debug!(">>>>> bundle END");
 
       if let Some(shebang) = shebang_file(source_file.clone()) {
-        bundle_output.code =  format!("{}{}", shebang, bundle_output.code);
+        bundle_output.code = format!("{}{}", shebang, bundle_output.code);
       }
 
       if let Some(out_file) = out_file.as_ref() {
