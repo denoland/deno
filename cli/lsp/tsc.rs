@@ -1969,7 +1969,7 @@ impl CompletionEntryDetails {
     let detail = if original_item.detail.is_some() {
       original_item.detail.clone()
     } else if !self.display_parts.is_empty() {
-      Some(replace_links(&display_parts_to_string(
+      Some(replace_links(display_parts_to_string(
         &self.display_parts,
         language_server,
       )))

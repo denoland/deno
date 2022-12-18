@@ -105,7 +105,7 @@ mod watcher {
       util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
     let badly_linted = t.path().join("badly_linted.js");
 
-    std::fs::copy(&badly_linted_original, &badly_linted).unwrap();
+    std::fs::copy(badly_linted_original, &badly_linted).unwrap();
 
     let mut child = util::deno_cmd()
       .current_dir(util::testdata_path())
@@ -125,7 +125,7 @@ mod watcher {
     assert_eq!(output, expected);
 
     // Change content of the file again to be badly-linted1
-    std::fs::copy(&badly_linted_fixed1, &badly_linted).unwrap();
+    std::fs::copy(badly_linted_fixed1, &badly_linted).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
 
     output = read_all_lints(&mut stderr_lines);
@@ -133,7 +133,7 @@ mod watcher {
     assert_eq!(output, expected);
 
     // Change content of the file again to be badly-linted1
-    std::fs::copy(&badly_linted_fixed2, &badly_linted).unwrap();
+    std::fs::copy(badly_linted_fixed2, &badly_linted).unwrap();
 
     output = read_all_lints(&mut stderr_lines);
     let expected = std::fs::read_to_string(badly_linted_fixed2_output).unwrap();
@@ -163,7 +163,7 @@ mod watcher {
       util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
     let badly_linted = t.path().join("badly_linted.js");
 
-    std::fs::copy(&badly_linted_original, &badly_linted).unwrap();
+    std::fs::copy(badly_linted_original, &badly_linted).unwrap();
 
     let mut child = util::deno_cmd()
       .current_dir(t.path())
@@ -183,14 +183,14 @@ mod watcher {
     assert_eq!(output, expected);
 
     // Change content of the file again to be badly-linted1
-    std::fs::copy(&badly_linted_fixed1, &badly_linted).unwrap();
+    std::fs::copy(badly_linted_fixed1, &badly_linted).unwrap();
 
     output = read_all_lints(&mut stderr_lines);
     let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
     assert_eq!(output, expected);
 
     // Change content of the file again to be badly-linted1
-    std::fs::copy(&badly_linted_fixed2, &badly_linted).unwrap();
+    std::fs::copy(badly_linted_fixed2, &badly_linted).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
 
     output = read_all_lints(&mut stderr_lines);
@@ -216,8 +216,8 @@ mod watcher {
 
     let badly_linted_1 = t.path().join("badly_linted_1.js");
     let badly_linted_2 = t.path().join("badly_linted_2.js");
-    std::fs::copy(&badly_linted_fixed0, &badly_linted_1).unwrap();
-    std::fs::copy(&badly_linted_fixed1, &badly_linted_2).unwrap();
+    std::fs::copy(badly_linted_fixed0, badly_linted_1).unwrap();
+    std::fs::copy(badly_linted_fixed1, &badly_linted_2).unwrap();
 
     let mut child = util::deno_cmd()
       .current_dir(util::testdata_path())
@@ -236,7 +236,7 @@ mod watcher {
       "Checked 2 files"
     );
 
-    std::fs::copy(&badly_linted_fixed2, &badly_linted_2).unwrap();
+    std::fs::copy(badly_linted_fixed2, badly_linted_2).unwrap();
 
     assert_contains!(
       read_line("Checked", &mut stderr_lines),
@@ -356,7 +356,7 @@ mod watcher {
     let badly_formatted_1 = t.path().join("badly_formatted_1.js");
     let badly_formatted_2 = t.path().join("badly_formatted_2.js");
     std::fs::copy(&badly_formatted_original, &badly_formatted_1).unwrap();
-    std::fs::copy(&badly_formatted_original, &badly_formatted_2).unwrap();
+    std::fs::copy(&badly_formatted_original, badly_formatted_2).unwrap();
 
     let mut child = util::deno_cmd()
       .current_dir(&fmt_testdata_path)
@@ -868,7 +868,7 @@ mod watcher {
     )
     .unwrap();
     write(
-      &bar_test,
+      bar_test,
       "import bar from './bar.js'; Deno.test('bar', bar);",
     )
     .unwrap();
@@ -1102,7 +1102,7 @@ mod watcher {
     .unwrap();
     let file_to_watch2 = t.path().join("imported.js");
     write(
-      &file_to_watch2,
+      file_to_watch2,
       r#"
     import "./imported2.js";
     console.log("I'm dynamically imported and I cause restarts!");

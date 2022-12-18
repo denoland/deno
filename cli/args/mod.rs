@@ -160,7 +160,7 @@ pub fn get_root_cert_store(
     } else {
       PathBuf::from(ca_file)
     };
-    let certfile = std::fs::File::open(&ca_file)?;
+    let certfile = std::fs::File::open(ca_file)?;
     let mut reader = BufReader::new(certfile);
 
     match rustls_pemfile::certs(&mut reader) {
@@ -290,6 +290,10 @@ impl CliOptions {
     self.overrides.import_map_specifier = Some(path);
   }
 
+  pub fn node_modules_dir(&self) -> bool {
+    self.flags.node_modules_dir
+  }
+
   /// Resolves the path to use for a local node_modules folder.
   pub fn resolve_local_node_modules_folder(
     &self,
@@ -351,7 +355,11 @@ impl CliOptions {
   }
 
   pub fn resolve_inspector_server(&self) -> Option<InspectorServer> {
-    let maybe_inspect_host = self.flags.inspect.or(self.flags.inspect_brk);
+    let maybe_inspect_host = self
+      .flags
+      .inspect
+      .or(self.flags.inspect_brk)
+      .or(self.flags.inspect_wait);
     maybe_inspect_host
       .map(|host| InspectorServer::new(host, version::get_user_agent()))
   }
@@ -681,11 +689,17 @@ impl CliOptions {
 
   /// If the --inspect or --inspect-brk flags are used.
   pub fn is_inspecting(&self) -> bool {
-    self.flags.inspect.is_some() || self.flags.inspect_brk.is_some()
+    self.flags.inspect.is_some()
+      || self.flags.inspect_brk.is_some()
+      || self.flags.inspect_wait.is_some()
   }
 
   pub fn inspect_brk(&self) -> Option<SocketAddr> {
     self.flags.inspect_brk
+  }
+
+  pub fn inspect_wait(&self) -> Option<SocketAddr> {
+    self.flags.inspect_wait
   }
 
   pub fn log_level(&self) -> Option<log::Level> {
@@ -921,7 +935,7 @@ mod test {
     let import_map_path =
       std::env::current_dir().unwrap().join("import-map.json");
     let expected_specifier =
-      ModuleSpecifier::from_file_path(&import_map_path).unwrap();
+      ModuleSpecifier::from_file_path(import_map_path).unwrap();
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, Some(expected_specifier));

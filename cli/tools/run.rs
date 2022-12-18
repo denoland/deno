@@ -45,7 +45,10 @@ To grant permissions, set them before the script argument. For example:
 
   // Run a background task that checks for available upgrades. If an earlier
   // run of this background task found a new version of Deno.
-  super::upgrade::check_for_upgrades(ps.dir.upgrade_check_file_path());
+  super::upgrade::check_for_upgrades(
+    ps.http_client.clone(),
+    ps.dir.upgrade_check_file_path(),
+  );
 
   let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
   {

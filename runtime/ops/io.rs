@@ -44,33 +44,33 @@ use {
 // alive for the duration of the application since the last handle/fd
 // being dropped will close the corresponding pipe.
 #[cfg(unix)]
-static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdin
   unsafe { StdFile::from_raw_fd(0) }
 });
 #[cfg(unix)]
-static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdout
   unsafe { StdFile::from_raw_fd(1) }
 });
 #[cfg(unix)]
-static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stderr
   unsafe { StdFile::from_raw_fd(2) }
 });
 
 #[cfg(windows)]
-static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdin
   unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE)) }
 });
 #[cfg(windows)]
-static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdout
   unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE)) }
 });
 #[cfg(windows)]
-static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stderr
   unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE)) }
 });
@@ -670,7 +670,7 @@ impl Resource for StdFileResource {
 #[op]
 pub fn op_print(
   state: &mut OpState,
-  msg: &str,
+  msg: String,
   is_err: bool,
 ) -> Result<(), AnyError> {
   let rid = if is_err { 2 } else { 1 };

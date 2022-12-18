@@ -8,6 +8,7 @@ use deno_ast::swc::visit::VisitWith;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_core::ModuleSpecifier;
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 /// Parse an arrow expression for any test steps and return them.
@@ -129,6 +130,7 @@ fn check_call_expr(
   parent: &str,
   node: &ast::CallExpr,
   level: usize,
+  fns: Option<&HashMap<String, ast::Function>>,
 ) -> Option<(String, Vec<TestDefinition>)> {
   if let Some(expr) = node.args.get(0).map(|es| es.expr.as_ref()) {
     match expr {
@@ -153,9 +155,7 @@ fn check_call_expr(
                       // (e.g. `test name`)
                       ast::Expr::Tpl(tpl) => {
                         if tpl.quasis.len() == 1 {
-                          if let Some(tpl_element) = tpl.quasis.get(0) {
-                            maybe_name = Some(tpl_element.raw.to_string());
-                          }
+                          maybe_name = Some(tpl.quasis[0].raw.to_string());
                         }
                       }
                       _ => (),
@@ -204,6 +204,32 @@ fn check_call_expr(
           _ => (),
         }
         Some((name, steps))
+      }
+      ast::Expr::Tpl(tpl) => {
+        if tpl.quasis.len() == 1 {
+          let mut steps = vec![];
+          match node.args.get(1).map(|es| es.expr.as_ref()) {
+            Some(ast::Expr::Fn(fn_expr)) => {
+              steps = fn_to_steps(parent, level, &fn_expr.function);
+            }
+            Some(ast::Expr::Arrow(arrow_expr)) => {
+              steps = arrow_to_steps(parent, level, arrow_expr);
+            }
+            _ => (),
+          }
+
+          Some((tpl.quasis[0].raw.to_string(), steps))
+        } else {
+          None
+        }
+      }
+      ast::Expr::Ident(ident) => {
+        let name = ident.sym.to_string();
+        fns.and_then(|fns| {
+          fns
+            .get(&name)
+            .map(|fn_expr| (name, fn_to_steps(parent, level, fn_expr)))
+        })
       }
       _ => None,
     }
@@ -260,7 +286,7 @@ impl TestStepCollector {
 
   fn check_call_expr(&mut self, node: &ast::CallExpr, range: SourceRange) {
     if let Some((name, steps)) =
-      check_call_expr(&self.parent, node, self.level + 1)
+      check_call_expr(&self.parent, node, self.level + 1, None)
     {
       self.add_step(name, range, steps);
     }
@@ -363,6 +389,7 @@ pub struct TestCollector {
   definitions: Vec<TestDefinition>,
   specifier: ModuleSpecifier,
   vars: HashSet<String>,
+  fns: HashMap<String, ast::Function>,
 }
 
 impl TestCollector {
@@ -371,6 +398,7 @@ impl TestCollector {
       definitions: Vec::new(),
       specifier,
       vars: HashSet::new(),
+      fns: HashMap::new(),
     }
   }
 
@@ -391,7 +419,7 @@ impl TestCollector {
 
   fn check_call_expr(&mut self, node: &ast::CallExpr, range: SourceRange) {
     if let Some((name, steps)) =
-      check_call_expr(self.specifier.as_str(), node, 1)
+      check_call_expr(self.specifier.as_str(), node, 1, Some(&self.fns))
     {
       self.add_definition(name, range, steps);
     }
@@ -480,6 +508,12 @@ impl Visit for TestCollector {
       }
     }
   }
+
+  fn visit_fn_decl(&mut self, n: &ast::FnDecl) {
+    self
+      .fns
+      .insert(n.ident.sym.to_string(), *n.function.clone());
+  }
 }
 
 #[cfg(test)]
@@ -511,17 +545,39 @@ pub mod tests {
         }
       });
 
+      Deno.test({
+        name: `test b`,
+        async fn(t) {
+          await t.step(`b step`, ({ step }) => {
+            await step({
+              name: `sub step`,
+              fn() {}
+            })
+          });
+        }
+      });
+
       Deno.test(async function useFnName({ step: s }) {
         await s("step c", () => {});
       });
 
-      Deno.test("test b", () => {});
+      Deno.test("test c", () => {});
+
+      Deno.test(`test d`, () => {});
 
       const { test } = Deno;
-      test("test c", () => {});
+      test("test e", () => {});
 
       const t = Deno.test;
-      t("test d", () => {});
+      t("test f", () => {});
+
+      function someFunctionG() {}
+      Deno.test("test g", someFunctionG);
+
+      Deno.test(async function someFunctionH() {});
+
+      async function someFunctionI() {}
+      Deno.test(someFunctionI);
     "#;
 
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
@@ -562,40 +618,92 @@ pub mod tests {
           ],
         },
         TestDefinition {
-          id: "86b4c821900e38fc89f24bceb0e45193608ab3f9d2a6019c7b6a5aceff5d7df2".to_string(),
-          level: 0,
-          name: "useFnName".to_string(),
-          range: new_range(254, 258),
-          steps: vec![
-            TestDefinition {
-              id: "67a390d0084ae5fb88f3510c470a72a553581f1d0d5ba5fa89aee7a754f3953a".to_string(),
-              level: 1,
-              name: "step c".to_string(),
-              range: new_range(313, 314),
-              steps: vec![],
-            }
-          ]
-        },
-        TestDefinition {
           id: "580eda89d7f5e619774c20e13b7d07a8e77c39cba101d60565144d48faa837cb".to_string(),
           level: 0,
           name: "test b".to_string(),
-          range: new_range(358, 362),
-          steps: vec![],
+          range: new_range(254, 258),
+          steps: vec![
+            TestDefinition {
+              id: "888e28419fc6c00cadfaad26e1e3e16e09e4322b3579fdfa9cc3fdb75976704a".to_string(),
+              level: 1,
+              name: "b step".to_string(),
+              range: new_range(325, 329),
+              steps: vec![
+                TestDefinition {
+                  id: "abf356f59139b77574089615f896a6f501c010985d95b8a93abeb0069ccb2201".to_string(),
+                  level: 2,
+                  name: "sub step".to_string(),
+                  range: new_range(374, 378),
+                  steps: vec![],
+                }
+              ]
+            }
+          ],
+        },
+        TestDefinition {
+          id: "86b4c821900e38fc89f24bceb0e45193608ab3f9d2a6019c7b6a5aceff5d7df2".to_string(),
+          level: 0,
+          name: "useFnName".to_string(),
+          range: new_range(496, 500),
+          steps: vec![
+            TestDefinition {
+              id:
+              "67a390d0084ae5fb88f3510c470a72a553581f1d0d5ba5fa89aee7a754f3953a".to_string(),
+              level: 1,
+              name: "step c".to_string(),
+              range: new_range(555, 556),
+              steps: vec![],
+            }
+          ],
         },
         TestDefinition {
           id: "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94".to_string(),
           level: 0,
           name: "test c".to_string(),
-          range: new_range(420, 424),
+          range: new_range(600, 604),
           steps: vec![],
         },
         TestDefinition {
           id: "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f".to_string(),
           level: 0,
           name: "test d".to_string(),
-          range: new_range(480, 481),
+          range: new_range(638, 642),
           steps: vec![],
+        },
+        TestDefinition {
+          id: "b2fd155c2a5e468eddf77a5eb13f97ddeeeafab322f0fc223ec0810ab2a29d42".to_string(),
+          level: 0,
+          name: "test e".to_string(),
+          range: new_range(700, 704),
+          steps: vec![],
+        },
+        TestDefinition {
+          id: "6387faad3a1f27fb3078a7d350040f4e6b516994076c855a0446943927461f58".to_string(),
+          level: 0,
+          name: "test f".to_string(),
+          range: new_range(760, 761),
+          steps: vec![],
+        },
+        TestDefinition {
+          id: "a2291bd6f521a1c8720350f76bd6b1803074100fcf6b07f532679332d30ad1e9".to_string(),
+          level: 0,
+          name: "test g".to_string(),
+          range: new_range(829, 833),
+          steps: vec![],
+        },
+        TestDefinition {
+          id: "2e1990c92e19f9e7dcd4af5787d57f9a7058fdc540ddc55dacdf4a081011d123".to_string(),
+          level: 0,
+          name: "someFunctionH".to_string(),
+          range: new_range(872, 876),
+          steps: vec![]
+        },
+        TestDefinition {
+          id: "1fef1a040ad1be8b0579054c1f3d1e34690f41fbbfe3fe20dbe9f48e808527e1".to_string(),
+          level: 0,
+          name: "someFunctionI".to_string(),
+          range: new_range(965, 969),
+          steps: vec![]
         }
       ]
     );

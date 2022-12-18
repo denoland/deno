@@ -309,7 +309,11 @@ impl CliMainWorker {
 
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
     self.ps.prepare_node_std_graph().await?;
-    node::initialize_runtime(&mut self.worker.js_runtime).await?;
+    node::initialize_runtime(
+      &mut self.worker.js_runtime,
+      self.ps.options.node_modules_dir(),
+    )
+    .await?;
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
       if let Ok(pkg_ref) = NpmPackageReference::from_str(&flags.script) {
         // if the user ran a binary command, we'll need to set process.argv[0]
@@ -472,7 +476,6 @@ async fn create_main_worker_internal(
   let module_loader = CliModuleLoader::new(ps.clone());
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
-  let should_break_on_first_statement = ps.options.inspect_brk().is_some();
 
   let create_web_worker_cb =
     create_web_worker_callback(ps.clone(), stdio.clone());
@@ -533,7 +536,8 @@ async fn create_main_worker_internal(
     web_worker_preload_module_cb,
     web_worker_pre_execute_module_cb,
     maybe_inspector_server,
-    should_break_on_first_statement,
+    should_break_on_first_statement: ps.options.inspect_brk().is_some(),
+    should_wait_for_inspector_session: ps.options.inspect_wait().is_some(),
     module_loader,
     npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
     get_error_class_fn: Some(&errors::get_error_class_name),
@@ -621,7 +625,11 @@ fn create_web_worker_pre_execute_module_callback(
     let fut = async move {
       // this will be up to date after pre-load
       if ps.npm_resolver.has_packages() {
-        node::initialize_runtime(&mut worker.js_runtime).await?;
+        node::initialize_runtime(
+          &mut worker.js_runtime,
+          ps.options.node_modules_dir(),
+        )
+        .await?;
       }
 
       Ok(worker)
@@ -755,6 +763,7 @@ mod tests {
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
+      should_wait_for_inspector_session: false,
       module_loader: Rc::new(FsModuleLoader),
       npm_resolver: None,
       get_error_class_fn: None,

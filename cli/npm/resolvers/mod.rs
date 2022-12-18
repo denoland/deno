@@ -355,7 +355,7 @@ impl RequireNpmResolver for NpmPackageResolver {
 
   fn in_npm_package(&self, path: &Path) -> bool {
     let specifier =
-      match ModuleSpecifier::from_file_path(&path.to_path_buf().clean()) {
+      match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
         Ok(p) => p,
         Err(_) => return false,
       };
@@ -370,7 +370,7 @@ impl RequireNpmResolver for NpmPackageResolver {
 }
 
 fn path_to_specifier(path: &Path) -> Result<ModuleSpecifier, AnyError> {
-  match ModuleSpecifier::from_file_path(&path.to_path_buf().clean()) {
+  match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
     Ok(specifier) => Ok(specifier),
     Err(()) => bail!("Could not convert '{}' to url.", path.display()),
   }
