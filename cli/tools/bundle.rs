@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::fs;
+use std::io::{prelude::*, BufReader};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -31,7 +33,7 @@ pub async fn bundle(
     let source_file2 = bundle_flags.source_file.clone();
     async move {
       let module_specifier = resolve_url_or_path(&source_file1)?;
-
+      
       log::debug!(">>>>> bundle START");
       let ps = ProcState::from_options(cli_options).await?;
       let graph = create_graph_and_maybe_check(module_specifier, &ps).await?;
@@ -67,12 +69,17 @@ pub async fn bundle(
 
   let operation = |(ps, graph): (ProcState, Arc<deno_graph::ModuleGraph>)| {
     let out_file = bundle_flags.out_file.clone();
+    let source_file = bundle_flags.source_file.clone();
     async move {
       // at the moment, we don't support npm specifiers in deno bundle, so show an error
       error_for_any_npm_specifier(&graph)?;
 
-      let bundle_output = bundle_module_graph(graph.as_ref(), &ps)?;
+      let mut bundle_output = bundle_module_graph(graph.as_ref(), &ps)?;
       log::debug!(">>>>> bundle END");
+
+      if let Some(shebang) = shebang_file(source_file.clone()) {
+        bundle_output.code =  format!("{}{}", shebang, bundle_output.code);
+      }
 
       if let Some(out_file) = out_file.as_ref() {
         let output_bytes = bundle_output.code.as_bytes();
@@ -155,4 +162,18 @@ fn bundle_module_graph(
       emit_ignore_directives: true,
     },
   )
+}
+
+fn shebang_file(source_file: String) -> Option<String> {
+  let file = fs::File::open(source_file).unwrap();
+  let mut buffer = BufReader::new(file);
+  let mut first_line = String::new();
+  let _ = buffer.read_line(&mut first_line);
+
+  // shebang file start with #!
+  if first_line.starts_with("#!") {
+    Some(first_line)
+  } else {
+    None
+  }
 }
