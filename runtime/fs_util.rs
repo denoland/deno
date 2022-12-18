@@ -28,7 +28,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   } else {
     let cwd =
       current_dir().context("Failed to get current working directory")?;
-    Ok(normalize_path(&cwd.join(path)))
+    Ok(normalize_path(cwd.join(path)))
   }
 }
 

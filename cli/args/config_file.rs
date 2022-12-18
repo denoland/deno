@@ -593,7 +593,7 @@ impl ConfigFile {
 
   pub fn from_specifier(specifier: &ModuleSpecifier) -> Result<Self, AnyError> {
     let config_path = specifier_to_file_path(specifier)?;
-    let config_text = match std::fs::read_to_string(&config_path) {
+    let config_text = match std::fs::read_to_string(config_path) {
       Ok(text) => text,
       Err(err) => bail!(
         "Error reading config file {}: {}",

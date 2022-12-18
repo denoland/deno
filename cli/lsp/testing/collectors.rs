@@ -8,6 +8,7 @@ use deno_ast::swc::visit::VisitWith;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_core::ModuleSpecifier;
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 /// Parse an arrow expression for any test steps and return them.
@@ -129,6 +130,7 @@ fn check_call_expr(
   parent: &str,
   node: &ast::CallExpr,
   level: usize,
+  fns: Option<&HashMap<String, ast::Function>>,
 ) -> Option<(String, Vec<TestDefinition>)> {
   if let Some(expr) = node.args.get(0).map(|es| es.expr.as_ref()) {
     match expr {
@@ -221,6 +223,14 @@ fn check_call_expr(
           None
         }
       }
+      ast::Expr::Ident(ident) => {
+        let name = ident.sym.to_string();
+        fns.and_then(|fns| {
+          fns
+            .get(&name)
+            .map(|fn_expr| (name, fn_to_steps(parent, level, fn_expr)))
+        })
+      }
       _ => None,
     }
   } else {
@@ -276,7 +286,7 @@ impl TestStepCollector {
 
   fn check_call_expr(&mut self, node: &ast::CallExpr, range: SourceRange) {
     if let Some((name, steps)) =
-      check_call_expr(&self.parent, node, self.level + 1)
+      check_call_expr(&self.parent, node, self.level + 1, None)
     {
       self.add_step(name, range, steps);
     }
@@ -379,6 +389,7 @@ pub struct TestCollector {
   definitions: Vec<TestDefinition>,
   specifier: ModuleSpecifier,
   vars: HashSet<String>,
+  fns: HashMap<String, ast::Function>,
 }
 
 impl TestCollector {
@@ -387,6 +398,7 @@ impl TestCollector {
       definitions: Vec::new(),
       specifier,
       vars: HashSet::new(),
+      fns: HashMap::new(),
     }
   }
 
@@ -407,7 +419,7 @@ impl TestCollector {
 
   fn check_call_expr(&mut self, node: &ast::CallExpr, range: SourceRange) {
     if let Some((name, steps)) =
-      check_call_expr(self.specifier.as_str(), node, 1)
+      check_call_expr(self.specifier.as_str(), node, 1, Some(&self.fns))
     {
       self.add_definition(name, range, steps);
     }
@@ -496,6 +508,12 @@ impl Visit for TestCollector {
       }
     }
   }
+
+  fn visit_fn_decl(&mut self, n: &ast::FnDecl) {
+    self
+      .fns
+      .insert(n.ident.sym.to_string(), *n.function.clone());
+  }
 }
 
 #[cfg(test)]
@@ -552,6 +570,14 @@ pub mod tests {
 
       const t = Deno.test;
       t("test f", () => {});
+
+      function someFunctionG() {}
+      Deno.test("test g", someFunctionG);
+
+      Deno.test(async function someFunctionH() {});
+
+      async function someFunctionI() {}
+      Deno.test(someFunctionI);
     "#;
 
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
@@ -658,6 +684,27 @@ pub mod tests {
           range: new_range(760, 761),
           steps: vec![],
         },
+        TestDefinition {
+          id: "a2291bd6f521a1c8720350f76bd6b1803074100fcf6b07f532679332d30ad1e9".to_string(),
+          level: 0,
+          name: "test g".to_string(),
+          range: new_range(829, 833),
+          steps: vec![],
+        },
+        TestDefinition {
+          id: "2e1990c92e19f9e7dcd4af5787d57f9a7058fdc540ddc55dacdf4a081011d123".to_string(),
+          level: 0,
+          name: "someFunctionH".to_string(),
+          range: new_range(872, 876),
+          steps: vec![]
+        },
+        TestDefinition {
+          id: "1fef1a040ad1be8b0579054c1f3d1e34690f41fbbfe3fe20dbe9f48e808527e1".to_string(),
+          level: 0,
+          name: "someFunctionI".to_string(),
+          range: new_range(965, 969),
+          steps: vec![]
+        }
       ]
     );
   }
