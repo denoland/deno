@@ -13,6 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
+use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::FsModuleLoader;
@@ -288,9 +289,8 @@ impl MainWorker {
     &mut self,
     script_name: &str,
     source_code: &str,
-  ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(script_name, source_code)?;
-    Ok(())
+  ) -> Result<v8::Global<v8::Value>, AnyError> {
+    self.js_runtime.execute_script(script_name, source_code)
   }
 
   /// Loads and instantiates specified JavaScript module as "main" module.
@@ -431,7 +431,8 @@ impl MainWorker {
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
       "dispatchEvent(new Event('load'))",
-    )
+    )?;
+    Ok(())
   }
 
   /// Dispatches "unload" event to the JavaScript runtime.
@@ -447,7 +448,8 @@ impl MainWorker {
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
       "dispatchEvent(new Event('unload'))",
-    )
+    )?;
+    Ok(())
   }
 
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
