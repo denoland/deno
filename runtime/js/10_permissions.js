@@ -172,7 +172,6 @@
     } else if (desc.name === "run") {
       desc.command = pathFromURL(desc.command);
     }
-    return desc;
   }
 
   class Permissions {
@@ -191,7 +190,7 @@
         );
       }
 
-      desc = formDescriptor(desc);
+      formDescriptor(desc);
 
       const state = opQuery(desc);
       return PromiseResolve(cache(desc, state));
@@ -206,7 +205,7 @@
         );
       }
 
-      desc = formDescriptor(desc);
+      formDescriptor(desc);
 
       const state = opRevoke(desc);
       return PromiseResolve(cache(desc, state));
@@ -221,7 +220,7 @@
         );
       }
 
-      desc = formDescriptor(desc);
+      formDescriptor(desc);
 
       const state = opRequest(desc);
       return PromiseResolve(cache(desc, state));
