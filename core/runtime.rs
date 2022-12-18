@@ -258,14 +258,10 @@ pub struct RuntimeOptions {
   pub extensions_with_js: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
-  ///
-  /// Currently can't be used with `will_snapshot`.
   pub startup_snapshot: Option<Snapshot>,
 
   /// Prepare runtime to take snapshot of loaded code.
   /// The snapshot is determinstic and uses predictable random numbers.
-  ///
-  /// Currently can't be used with `startup_snapshot`.
   pub will_snapshot: bool,
 
   /// Isolate creation parameters.
