@@ -12,6 +12,7 @@ use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::permissions::Permissions;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 mod check;
@@ -36,6 +37,7 @@ pub struct FetchCacher {
   emit_cache: EmitCache,
   dynamic_permissions: Permissions,
   file_fetcher: Arc<FileFetcher>,
+  file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   root_permissions: Permissions,
 }
 
@@ -43,6 +45,7 @@ impl FetchCacher {
   pub fn new(
     emit_cache: EmitCache,
     file_fetcher: FileFetcher,
+    file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
   ) -> Self {
@@ -52,6 +55,7 @@ impl FetchCacher {
       emit_cache,
       dynamic_permissions,
       file_fetcher,
+      file_header_overrides,
       root_permissions,
     }
   }
@@ -103,6 +107,14 @@ impl Loader for FetchCacher {
     };
     let file_fetcher = self.file_fetcher.clone();
 
+    // TOOD: This should happen in the closure down below as to not waste resources
+    let additional_headers = self
+      .file_header_overrides
+      .get(&specifier)
+      // TOOD: unnecessary clone
+      .unwrap_or(&HashMap::<String, String>::default())
+      .clone();
+
     async move {
       file_fetcher
         .fetch(&specifier, &mut permissions)
@@ -119,9 +131,14 @@ impl Loader for FetchCacher {
             Err(err)
           },
           |file| {
+            let mut headers = additional_headers;
+            if let Some(file_headers) = file.maybe_headers {
+              headers.extend(file_headers);
+            }
+
             Ok(Some(LoadResponse::Module {
               specifier: file.specifier,
-              maybe_headers: file.maybe_headers,
+              maybe_headers: Some(headers),
               content: file.source,
             }))
           },

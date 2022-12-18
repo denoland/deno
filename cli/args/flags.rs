@@ -19,6 +19,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -105,7 +106,6 @@ pub struct DocFlags {
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
-  pub ext: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -308,6 +308,7 @@ pub struct Flags {
   pub node_modules_dir: bool,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
+  pub ext: Option<String>,
   pub ignore: Vec<PathBuf>,
   pub import_map_path: Option<String>,
   pub inspect_brk: Option<SocketAddr>,
@@ -760,6 +761,8 @@ fn bundle_subcommand<'a>() -> Command<'a> {
     )
     .arg(watch_arg(false))
     .arg(no_clear_screen_arg())
+    // TOOD: This array is duplicated too often
+    .arg(ext_arg(["ts", "tsx", "js", "jsx"]))
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -844,6 +847,7 @@ fn compile_subcommand<'a>() -> Command<'a> {
           "aarch64-apple-darwin",
         ]),
     )
+    .arg(ext_arg(["ts", "tsx", "js", "jsx"]))
     .about("UNSTABLE: Compile the script into a self contained executable")
     .long_about(
       "UNSTABLE: Compiles the given script into a self contained executable.
@@ -1069,14 +1073,7 @@ This command has implicit access to all permissions (--allow-all).",
         .multiple_values(false)
         .hide(true),
     )
-    .arg(
-      Arg::new("ext")
-        .long("ext")
-        .help("Set standard input (stdin) content type")
-        .takes_value(true)
-        .default_value("js")
-        .possible_values(["ts", "tsx", "js", "jsx"]),
-    )
+    .arg(ext_arg(["ts", "tsx", "js", "jsx"]))
     .arg(
       Arg::new("print")
         .long("print")
@@ -1126,14 +1123,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .help("Check if the source files are formatted")
         .takes_value(false),
     )
-    .arg(
-      Arg::new("ext")
-        .long("ext")
-        .help("Set standard input (stdin) content type")
-        .takes_value(true)
-        .default_value("ts")
-        .possible_values(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
-    )
+    .arg(ext_arg(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]))
     .arg(
       Arg::new("ignore")
         .long("ignore")
@@ -1486,6 +1476,7 @@ fn run_subcommand<'a>() -> Command<'a> {
         .conflicts_with("inspect-brk"),
     )
     .arg(no_clear_screen_arg())
+    .arg(ext_arg(["ts", "tsx", "js", "jsx"]))
     .trailing_var_arg(true)
     .arg(script_arg().required(true))
     .about("Run a JavaScript or TypeScript program")
@@ -2038,6 +2029,24 @@ fn cached_only_arg<'a>() -> Arg<'a> {
     .help("Require that remote dependencies are already cached")
 }
 
+// TOOD: can we avoid this comment?
+/// possible_extensions must contain "ts"
+fn ext_arg<'help, I>(possible_extensions: I) -> Arg<'help>
+where
+  I: IntoIterator<Item = &'help str>,
+{
+  Arg::<'help>::new("ext")
+    .long("ext")
+    // TOOD: "file" may be misleading, because stdin is not a file, or is it?
+    .help("Set content type of the supplied file.")
+    .takes_value(true)
+    // TOOD: There should be a default value. To get this consistent. For user documentation.
+    // TOOD: Core team wants js, because there were commands defaulting to ts already
+    // clap will fail at run-time if the default value isn't listed in possible_extensions
+    // .default_value("ts")
+    .possible_values(possible_extensions)
+}
+
 fn location_arg<'a>() -> Arg<'a> {
   Arg::new("location")
     .long("location")
@@ -2319,6 +2328,8 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   watch_arg_parse(flags, matches, false);
 
+  ext_arg_parse(flags, matches, Some(source_file.as_str()));
+
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     source_file,
     out_file,
@@ -2363,6 +2374,7 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let source_file = script[0].to_string();
   let output = matches.value_of("output").map(PathBuf::from);
   let target = matches.value_of("target").map(String::from);
+  ext_arg_parse(flags, matches, Some(source_file.as_str()));
 
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,
@@ -2453,13 +2465,21 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_write = Some(vec![]);
   flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
+
+  ext_arg_parse(flags, matches, None);
+
   // TODO(@satyarohith): remove this flag in 2.0.
   let as_typescript = matches.is_present("ts");
-  let ext = if as_typescript {
-    "ts".to_string()
-  } else {
-    matches.value_of("ext").unwrap().to_string()
-  };
+
+  if as_typescript {
+    flags.ext = Some("ts".to_string());
+  }
+
+  if flags.ext.is_none() {
+    // TOOD: This is such a hack. We should use clap's default_value().
+    // Other code relies on ext being Some(), we can't leave it None.
+    flags.ext = Some("js".to_string());
+  }
 
   let print = matches.is_present("print");
   let mut code: Vec<String> = matches
@@ -2473,7 +2493,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   for v in code_args {
     flags.argv.push(v);
   }
-  flags.subcommand = DenoSubcommand::Eval(EvalFlags { print, code, ext });
+  flags.subcommand = DenoSubcommand::Eval(EvalFlags { print, code });
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -2488,7 +2508,8 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
-  let ext = matches.value_of("ext").unwrap().to_string();
+  // TOOD: use ext_arg_parse(). Difficult with(out) defaults.
+  let ext = matches.value_of("ext").unwrap_or("ts").to_string();
 
   let use_tabs = if matches.is_present("options-use-tabs") {
     Some(true)
@@ -2676,6 +2697,9 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   for v in script_args {
     flags.argv.push(v);
   }
+
+  // TOOD: add to other commands that support --ext
+  ext_arg_parse(flags, matches, Some(script.as_str()));
 
   watch_arg_parse(flags, matches, true);
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
@@ -3076,6 +3100,35 @@ fn enable_testing_features_arg_parse(
 fn cached_only_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   if matches.is_present("cached-only") {
     flags.cached_only = true;
+  }
+}
+
+fn ext_arg_parse(
+  flags: &mut Flags,
+  matches: &clap::ArgMatches,
+  script: Option<&str>,
+) {
+  if let Some(script) = script {
+    if Path::new(script).extension().is_some() {
+      // File extensions should take precedence over --ext. Ignore --ext if the
+      // script has an extension.
+      return;
+    }
+  }
+
+  flags.ext = matches.value_of("ext").map(String::from);
+
+  if flags.ext.is_none() {
+    // TOOD: This shouldn't happen, but it does, we can't do anything about it.
+    // We should default --ext in clap. But tests will fail, because they rely
+    // on Flags::default(). We can't change Flags::default(), because there are
+    // subcommands without --ext. Those should have --ext=None.
+    // TOOD: restore this code if we can set default via clap
+    // We want --ext to have a default value in clap to have a consistent
+    // default value across all subcommands and to document it for the user.
+    // panic!(
+    //   "ext_arg_parse() was called, but --ext has no value. --ext should have a default value."
+    // );
   }
 }
 
@@ -4125,7 +4178,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          ext: "js".to_string(),
         }),
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
@@ -4135,6 +4187,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
+        ext: Some("js".to_string()),
         ..Flags::default()
       }
     );
@@ -4149,7 +4202,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: true,
           code: "1+2".to_string(),
-          ext: "js".to_string(),
         }),
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
@@ -4159,6 +4211,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
+        ext: Some("js".to_string()),
         ..Flags::default()
       }
     );
@@ -4174,7 +4227,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          ext: "ts".to_string(),
         }),
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
@@ -4184,6 +4236,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -4199,11 +4252,11 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "42".to_string(),
-          ext: "js".to_string(),
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
+        ext: Some("js".to_string()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -4242,7 +4295,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "console.log(Deno.args)".to_string(),
-          ext: "js".to_string(),
         }),
         argv: svec!["arg1", "arg2"],
         allow_net: Some(vec![]),
@@ -4253,6 +4305,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
+        ext: Some("js".to_string()),
         ..Flags::default()
       }
     );

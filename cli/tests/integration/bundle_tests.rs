@@ -466,3 +466,13 @@ itest!(check_local_by_default_type_error {
   http_server: true,
   exit_code: 1,
 });
+
+itest!(ts_without_extension {
+  args: "bundle --ext ts file_extensions/ts_without_extension",
+  output: "bundle/file_extensions/ts_without_extension.out",
+});
+
+itest!(js_without_extension {
+  args: "bundle --ext js file_extensions/js_without_extension",
+  output: "bundle/file_extensions/js_without_extension.out",
+});

@@ -7,6 +7,7 @@ use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
+use crate::cache::FetchCacher;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
@@ -60,6 +61,7 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
 use log::warn;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -76,6 +78,7 @@ pub struct ProcState(Arc<Inner>);
 pub struct Inner {
   pub dir: deno_dir::DenoDir,
   pub file_fetcher: FileFetcher,
+  file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
   pub emit_options: deno_ast::EmitOptions,
@@ -112,21 +115,40 @@ impl ProcState {
     Self::from_options(Arc::new(CliOptions::from_flags(flags)?)).await
   }
 
+  pub async fn build_with_main(
+    flags: Flags,
+    main_specifier: ModuleSpecifier,
+  ) -> Result<Self, AnyError> {
+    Self::build_with_sender(
+      Arc::new(CliOptions::from_flags(flags)?),
+      Some(main_specifier),
+      None,
+    )
+    .await
+  }
+
   pub async fn from_options(
     options: Arc<CliOptions>,
   ) -> Result<Self, AnyError> {
-    Self::build_with_sender(options, None).await
+    Self::build_with_sender(options, None, None).await
   }
 
   pub async fn build_for_file_watcher(
     flags: Flags,
+    main_specifier: ModuleSpecifier,
     files_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
   ) -> Result<Self, AnyError> {
     // resolve the config each time
     let cli_options = Arc::new(CliOptions::from_flags(flags)?);
-    let ps =
-      Self::build_with_sender(cli_options, Some(files_to_watch_sender.clone()))
-        .await?;
+    // TOOD: This is used for `deno run --watch`. Where do we add a test case? I
+    // like run_tests.rs, but it doesn't contain watcher tests yet and I don't
+    // know how to cancel the watcher
+    let ps = Self::build_with_sender(
+      cli_options,
+      Some(main_specifier),
+      Some(files_to_watch_sender.clone()),
+    )
+    .await?;
 
     // Add the extra files listed in the watch flag
     if let Some(watch_paths) = ps.options.watch_paths() {
@@ -146,6 +168,7 @@ impl ProcState {
 
   async fn build_with_sender(
     cli_options: Arc<CliOptions>,
+    maybe_main_specifier: Option<ModuleSpecifier>,
     maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
   ) -> Result<Self, AnyError> {
     let blob_store = BlobStore::default();
@@ -172,6 +195,18 @@ impl ProcState {
       blob_store.clone(),
       Some(progress_bar.clone()),
     )?;
+
+    let file_header_overrides =
+      if let (Some(main_specifier), Some(content_type)) =
+        (maybe_main_specifier, cli_options.content_type())
+      {
+        HashMap::from([(
+          main_specifier,
+          HashMap::from([("content-type".to_string(), content_type)]),
+        )])
+      } else {
+        HashMap::<ModuleSpecifier, HashMap<String, String>>::default()
+      };
 
     let lockfile = cli_options.maybe_lock_file();
     let maybe_import_map_specifier =
@@ -257,6 +292,7 @@ impl ProcState {
         .finish(),
       emit_options,
       file_fetcher,
+      file_header_overrides,
       graph_data: Default::default(),
       lockfile,
       maybe_import_map,
@@ -324,12 +360,8 @@ impl ProcState {
         }
       }
     }
-    let mut cache = cache::FetchCacher::new(
-      self.emit_cache.clone(),
-      self.file_fetcher.clone(),
-      root_permissions.clone(),
-      dynamic_permissions.clone(),
-    );
+
+    let mut cache = self.new_cache(root_permissions, dynamic_permissions);
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_resolver =
@@ -362,6 +394,7 @@ impl ProcState {
         }
       }
     }
+
     let mut loader = ProcStateLoader {
       inner: &mut cache,
       graph_data: self.graph_data.clone(),
@@ -586,6 +619,20 @@ impl ProcState {
     }
   }
 
+  pub fn new_cache(
+    &self,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
+  ) -> FetchCacher {
+    cache::FetchCacher::new(
+      self.emit_cache.clone(),
+      self.file_fetcher.clone(),
+      self.file_header_overrides.clone(),
+      root_permissions.clone(),
+      dynamic_permissions.clone(),
+    )
+  }
+
   pub fn cache_module_emits(&self) -> Result<(), AnyError> {
     let graph_data = self.graph_data.read();
     for (specifier, entry) in graph_data.entries() {
@@ -622,6 +669,8 @@ impl ProcState {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
+      // TOOD: what is this function? what's it used for? Should we pass overrides here?
+      self.file_header_overrides.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
     )

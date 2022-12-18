@@ -3453,6 +3453,30 @@ itest!(error_cause {
   exit_code: 1,
 });
 
+itest!(default_file_extension_is_js {
+  args: "run --check file_extensions/js_without_extension",
+  output: "file_extensions/js_without_extension.out",
+  exit_code: 0,
+});
+
+itest!(js_without_extension {
+  args: "run --ext js --check file_extensions/js_without_extension",
+  output: "file_extensions/js_without_extension.out",
+  exit_code: 0,
+});
+
+itest!(ts_without_extension {
+  args: "run --ext ts file_extensions/ts_without_extension",
+  output: "file_extensions/ts_without_extension.out",
+  exit_code: 0,
+});
+
+itest!(extension_takes_precedence_over_ext_flag {
+  args: "run --ext ts file_extensions/ts_with_extension.ts",
+  output: "file_extensions/ts_with_extension.out",
+  exit_code: 0,
+});
+
 itest!(error_cause_recursive_aggregate {
   args: "run error_cause_recursive_aggregate.ts",
   output: "error_cause_recursive_aggregate.ts.out",

@@ -138,7 +138,7 @@ async fn compile_command(
   )?;
 
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::build_with_main(flags, module_specifier.clone()).await?;
   let deno_dir = &ps.dir;
 
   let output_path =
@@ -284,12 +284,9 @@ async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
-  // deno_graph works off of extensions for local files to determine the media
-  // type, and so our "fake" specifier needs to have the proper extension.
-  let main_module =
-    resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext))?;
+  let main_module = resolve_url_or_path("./$deno$eval")?;
   let permissions = Permissions::from_options(&flags.permissions_options())?;
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::build_with_main(flags, main_module.clone()).await?;
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions).await?;
   // Create a dummy source file.
@@ -321,12 +318,8 @@ async fn create_graph_and_maybe_check(
   ps: &ProcState,
   debug: bool,
 ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
-  let mut cache = cache::FetchCacher::new(
-    ps.emit_cache.clone(),
-    ps.file_fetcher.clone(),
-    Permissions::allow_all(),
-    Permissions::allow_all(),
-  );
+  let mut cache =
+    ps.new_cache(Permissions::allow_all(), Permissions::allow_all());
   let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_cli_resolver = CliResolver::maybe_new(
@@ -430,16 +423,17 @@ async fn bundle_command(
   bundle_flags: BundleFlags,
 ) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
-  let cli_options = Arc::new(CliOptions::from_flags(flags)?);
+
   let resolver = |_| {
-    let cli_options = cli_options.clone();
-    let source_file1 = bundle_flags.source_file.clone();
-    let source_file2 = bundle_flags.source_file.clone();
+    let flags = flags.clone();
+    let source_file_1 = bundle_flags.source_file.clone();
+    let source_file_2 = source_file_1.clone();
     async move {
-      let module_specifier = resolve_url_or_path(&source_file1)?;
+      let module_specifier = resolve_url_or_path(&source_file_1)?;
 
       debug!(">>>>> bundle START");
-      let ps = ProcState::from_options(cli_options).await?;
+      let ps =
+        ProcState::build_with_main(flags, module_specifier.clone()).await?;
       let graph =
         create_graph_and_maybe_check(module_specifier, &ps, debug).await?;
 
@@ -467,7 +461,7 @@ async fn bundle_command(
         result: Ok((ps, graph)),
       },
       Err(e) => ResolutionResult::Restart {
-        paths_to_watch: vec![PathBuf::from(source_file2)],
+        paths_to_watch: vec![PathBuf::from(source_file_2)],
         result: Err(e),
       },
     })
@@ -517,13 +511,13 @@ async fn bundle_command(
     }
   };
 
-  if cli_options.watch_paths().is_some() {
+  if flags.watch.is_some() {
     file_watcher::watch_func(
       resolver,
       operation,
       file_watcher::PrintConfig {
         job_name: "Bundle".to_string(),
-        clear_screen: !cli_options.no_clear_screen(),
+        clear_screen: !flags.no_clear_screen,
       },
     )
     .await?;
@@ -652,9 +646,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     let flags = flags.clone();
     let permissions = Permissions::from_options(&flags.permissions_options())?;
     Ok(async move {
-      let ps =
-        ProcState::build_for_file_watcher((*flags).clone(), sender.clone())
-          .await?;
+      let ps = ProcState::build_for_file_watcher(
+        (*flags).clone(),
+        main_module.clone(),
+        sender.clone(),
+      )
+      .await?;
       let worker =
         create_main_worker(&ps, main_module.clone(), permissions).await?;
       worker.run_for_watcher().await?;
@@ -701,21 +698,22 @@ To grant permissions, set them before the script argument. For example:
     return run_with_watch(flags, run_flags.script).await;
   }
 
-  // TODO(bartlomieju): actually I think it will also fail if there's an import
-  // map specified and bare specifier is used on the command line - this should
-  // probably call `ProcState::resolve` instead
-  let ps = ProcState::build(flags).await?;
-
-  // Run a background task that checks for available upgrades. If an earlier
-  // run of this background task found a new version of Deno.
-  tools::upgrade::check_for_upgrades(ps.dir.root.clone());
-
   let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
   {
     ModuleSpecifier::parse(&run_flags.script)?
   } else {
     resolve_url_or_path(&run_flags.script)?
   };
+
+  // TODO(bartlomieju): actually I think it will also fail if there's an import
+  // map specified and bare specifier is used on the command line - this should
+  // probably call `ProcState::resolve` instead
+  let ps = ProcState::build_with_main(flags, main_module.clone()).await?;
+
+  // Run a background task that checks for available upgrades. If an earlier
+  // run of this background task found a new version of Deno.
+  tools::upgrade::check_for_upgrades(ps.dir.root.clone());
+
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
   let mut worker =

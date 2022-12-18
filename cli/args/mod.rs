@@ -108,6 +108,25 @@ impl CliOptions {
     self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
   }
 
+  // TOOD: Add similar function to deno-ast's MediaType. Remove this.
+  fn media_type_from_file_extension(extension: &str) -> Option<String> {
+    match extension {
+      "ts" => Some("application/typescript"),
+      "js" => Some("application/javascript"),
+      _ => None,
+    }
+    .map(|el| el.to_string())
+  }
+
+  // TOOD: return Option<MediaType>?
+  pub fn content_type(&self) -> Option<String> {
+    self
+      .flags
+      .ext
+      .as_ref()
+      .and_then(|el| Self::media_type_from_file_extension(el.as_str()))
+  }
+
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
     if self.flags.unstable {
       TsTypeLib::UnstableDenoWindow

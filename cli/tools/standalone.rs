@@ -267,6 +267,8 @@ pub fn compile_to_runtime_flags(
     config_flag: Default::default(),
     coverage_dir: flags.coverage_dir.clone(),
     enable_testing_features: false,
+    // TOOD: This shouldn't be here (yet).  deno compile has --ext(?) and manages it differently than deno run.
+    ext: flags.ext.clone(),
     ignore: vec![],
     import_map_path: flags.import_map_path.clone(),
     inspect_brk: None,
