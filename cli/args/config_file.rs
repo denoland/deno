@@ -19,12 +19,14 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_lint::rules::LintRule;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::Filters;
 
@@ -379,11 +381,9 @@ impl ContainsFilesConfig for LintConfig {
 
 #[derive(Clone, Debug)]
 pub struct FinalLintConfig {
-  pub rules: LintRulesConfig,
   pub files: Filters,
-  // pub report: Option<String>,
   pub reporter_kind: LintReporterKind,
-  // pub configured_rules: Vec<Arc<dyn LintRule>>
+  pub configured_rules: Vec<Arc<dyn LintRule>>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

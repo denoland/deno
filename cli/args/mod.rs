@@ -25,6 +25,7 @@ pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
 pub use config_file::TsTypeLib;
+use deno_lint::rules;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls_pemfile;
@@ -403,11 +404,9 @@ impl CliOptions {
     let mut include = cli_filters.include;
     let mut ignore = cli_filters.ignore;
 
-    let mut rules = LintRulesConfig {
-      tags: None,
-      exclude: None,
-      include: None,
-    };
+    let mut maybe_rules_include = lint_flags.maybe_rules_include.clone();
+    let mut maybe_rules_exclude = lint_flags.maybe_rules_exclude.clone();
+    let mut maybe_rules_tags = lint_flags.maybe_rules_tags.clone();
 
     let mut maybe_reporter_kind = if lint_flags.json {
       Some(LintReporterKind::Json)
@@ -421,15 +420,25 @@ impl CliOptions {
       let maybe_lint_config = config_file.to_lint_config()?;
 
       if let Some(lint_config) = maybe_lint_config {
-        let config_filters =
-          self.collect_filters(&lint_config, include, ignore)?;
-        include = config_filters.include;
-        ignore = config_filters.ignore;
-        let report = lint_config.report;
-        rules = lint_config.rules;
+        let filters = self.collect_filters(&lint_config, include, ignore)?;
+        include = filters.include;
+        ignore = filters.ignore;
+
+        // Try to get configured rules. CLI flags take precendence
+        // over config file, i.e. if there's `rules.include` in config file
+        // and `--rules-include` CLI flag, only the flag value is taken into account.
+        if maybe_rules_include.is_none() {
+          maybe_rules_include = lint_config.rules.include;
+        }
+        if maybe_rules_exclude.is_none() {
+          maybe_rules_exclude = lint_config.rules.exclude;
+        }
+        if maybe_rules_tags.is_none() {
+          maybe_rules_tags = lint_config.rules.tags;
+        }
 
         if maybe_reporter_kind.is_none() {
-          maybe_reporter_kind = match report.as_deref() {
+          maybe_reporter_kind = match lint_config.report.as_deref() {
             Some("json") => Some(LintReporterKind::Json),
             Some("compact") => Some(LintReporterKind::Compact),
             Some("pretty") => Some(LintReporterKind::Pretty),
@@ -440,6 +449,23 @@ impl CliOptions {
           }
         }
       }
+    }
+
+    let configured_rules = if maybe_rules_tags.is_none()
+      && maybe_rules_include.is_none()
+      && maybe_rules_exclude.is_none()
+    {
+      rules::get_recommended_rules()
+    } else {
+      rules::get_filtered_rules(
+        maybe_rules_tags.or_else(|| Some(vec!["recommended".to_string()])),
+        maybe_rules_exclude,
+        maybe_rules_include,
+      )
+    };
+
+    if configured_rules.is_empty() {
+      return Err(anyhow!("No rules have been configured"));
     }
 
     if include.is_empty() {
@@ -454,7 +480,7 @@ impl CliOptions {
     Ok(FinalLintConfig {
       reporter_kind,
       files: Filters { include, ignore },
-      rules,
+      configured_rules,
     })
   }
 
@@ -471,10 +497,9 @@ impl CliOptions {
       let maybe_test_config = config_file.to_test_config()?;
 
       if let Some(test_config) = maybe_test_config {
-        let config_filters =
-          self.collect_filters(&test_config, include, ignore)?;
-        include = config_filters.include;
-        ignore = config_filters.ignore;
+        let filters = self.collect_filters(&test_config, include, ignore)?;
+        include = filters.include;
+        ignore = filters.ignore;
       }
     }
 
@@ -500,10 +525,9 @@ impl CliOptions {
       let maybe_bench_config = config_file.to_bench_config()?;
 
       if let Some(bench_config) = maybe_bench_config {
-        let config_filters =
-          self.collect_filters(&bench_config, include, ignore)?;
-        include = config_filters.include;
-        ignore = config_filters.ignore;
+        let filters = self.collect_filters(&bench_config, include, ignore)?;
+        include = filters.include;
+        ignore = filters.ignore;
       }
     }
 
@@ -545,10 +569,9 @@ impl CliOptions {
       let maybe_fmt_config = config_file.to_fmt_config()?;
 
       if let Some(fmt_config) = maybe_fmt_config {
-        let config_filters =
-          self.collect_filters(&fmt_config, include, ignore)?;
-        include = config_filters.include;
-        ignore = config_filters.ignore;
+        let filters = self.collect_filters(&fmt_config, include, ignore)?;
+        include = filters.include;
+        ignore = filters.ignore;
         options = fmt_config.options;
       }
     }
