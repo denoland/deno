@@ -68,6 +68,13 @@ static INTERNAL_STATE: Lazy<Arc<Mutex<InternalState>>> = Lazy::new(|| {
   }))
 });
 
+static IS_TTY_WITH_CONSOLE_SIZE: Lazy<bool> = Lazy::new(|| {
+  atty::is(atty::Stream::Stderr)
+    && console_size()
+      .map(|s| s.cols > 0 && s.rows > 0)
+      .unwrap_or(false)
+});
+
 /// The draw thread is responsible for rendering multiple active
 /// `DrawThreadRenderer`s to stderr. It is global because the
 /// concept of stderr in the process is also a global concept.
@@ -77,18 +84,13 @@ pub struct DrawThread;
 impl DrawThread {
   /// Is using a draw thread supported.
   pub fn is_supported() -> bool {
-    atty::is(atty::Stream::Stderr)
-      && log::log_enabled!(log::Level::Info)
-      && console_size()
-        .map(|s| s.cols > 0 && s.rows > 0)
-        .unwrap_or(false)
+    // don't put the log level in the lazy because the
+    // log level may change as the application runs
+    log::log_enabled!(log::Level::Info) && *IS_TTY_WITH_CONSOLE_SIZE
   }
 
   /// Adds a renderer to the draw thread.
   pub fn add_entry(renderer: Arc<dyn DrawThreadRenderer>) -> DrawThreadGuard {
-    // it's the responsibility of the caller to ensure this is supported
-    debug_assert!(DrawThread::is_supported());
-
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
     let id = internal_state.next_entry_id;
@@ -120,9 +122,7 @@ impl DrawThread {
     let mut internal_state = internal_state.lock();
     internal_state.hide = false;
 
-    if DrawThread::is_supported() {
-      Self::maybe_start_draw_thread(&mut internal_state);
-    }
+    Self::maybe_start_draw_thread(&mut internal_state);
   }
 
   fn finish_entry(entry_id: u16) {
@@ -153,6 +153,7 @@ impl DrawThread {
     if internal_state.has_draw_thread
       || internal_state.hide
       || internal_state.entries.is_empty()
+      || !DrawThread::is_supported()
     {
       return;
     }
