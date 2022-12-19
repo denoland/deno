@@ -47,6 +47,7 @@ use super::logging::lsp_log;
 use super::lsp_custom;
 use super::parent_process_checker;
 use super::performance::Performance;
+use super::performance::PerformanceMark;
 use super::refactor;
 use super::registries::ModuleRegistry;
 use super::testing;
@@ -148,12 +149,63 @@ impl LanguageServer {
     Self(Arc::new(tokio::sync::RwLock::new(Inner::new(client))))
   }
 
+  /// Similar to `deno cache` on the command line, where modules will be cached
+  /// in the Deno cache, including any of their dependencies.
   pub async fn cache_request(
     &self,
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
+    async fn create_graph_for_caching(
+      cli_options: CliOptions,
+      roots: Vec<(ModuleSpecifier, ModuleKind)>,
+      open_docs: Vec<Document>,
+    ) -> Result<(), AnyError> {
+      let open_docs = open_docs
+        .into_iter()
+        .map(|d| (d.specifier().clone(), d))
+        .collect::<HashMap<_, _>>();
+      let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+      let mut inner_loader = ps.create_graph_loader();
+      let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
+        inner_loader: &mut inner_loader,
+        open_docs: &open_docs,
+      };
+      let graph = ps.create_graph_with_loader(roots, &mut loader).await?;
+      graph_valid(&graph, true, false)?;
+      Ok(())
+    }
+
     match params.map(serde_json::from_value) {
-      Some(Ok(params)) => self.0.write().await.cache(params).await,
+      Some(Ok(params)) => {
+        // do as much as possible in a read, then do a write outside
+        let result = {
+          let inner = self.0.read().await; // ensure dropped
+          inner.prepare_cache(params)?
+        };
+        if let Some(result) = result {
+          let cli_options = result.cli_options;
+          let roots = result.roots;
+          let open_docs = result.open_docs;
+          let handle = tokio::task::spawn_local(async move {
+            create_graph_for_caching(cli_options, roots, open_docs).await
+          });
+          if let Err(err) = handle.await.unwrap() {
+            self
+              .0
+              .read()
+              .await
+              .client
+              .show_message(MessageType::WARNING, err)
+              .await;
+          }
+          // do npm resolution in a write—we should have everything
+          // cached by this point anyway
+          self.0.write().await.refresh_npm_specifiers().await;
+          // now refresh the data in a read
+          self.0.read().await.post_cache(result.mark).await;
+        }
+        Ok(Some(json!(true)))
+      }
       Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
       None => Err(LspError::invalid_params("Missing parameters")),
     }
@@ -1154,34 +1206,30 @@ impl Inner {
       Default::default()
     };
 
-    let text_edits = tokio::task::spawn_blocking(move || {
-      let format_result = match document.maybe_parsed_source() {
-        Some(Ok(parsed_source)) => {
-          format_parsed_source(&parsed_source, fmt_options)
-        }
-        Some(Err(err)) => Err(anyhow!("{}", err)),
-        None => {
-          // it's not a js/ts file, so attempt to format its contents
-          format_file(&file_path, &document.content(), &fmt_options)
-        }
-      };
-
-      match format_result {
-        Ok(Some(new_text)) => Some(text::get_edits(
-          &document.content(),
-          &new_text,
-          document.line_index().as_ref(),
-        )),
-        Ok(None) => Some(Vec::new()),
-        Err(err) => {
-          // TODO(lucacasonato): handle error properly
-          warn!("Format error: {:#}", err);
-          None
-        }
+    let format_result = match document.maybe_parsed_source() {
+      Some(Ok(parsed_source)) => {
+        format_parsed_source(&parsed_source, fmt_options)
       }
-    })
-    .await
-    .unwrap();
+      Some(Err(err)) => Err(anyhow!("{}", err)),
+      None => {
+        // it's not a js/ts file, so attempt to format its contents
+        format_file(&file_path, &document.content(), &fmt_options)
+      }
+    };
+
+    let text_edits = match format_result {
+      Ok(Some(new_text)) => Some(text::get_edits(
+        &document.content(),
+        &new_text,
+        document.line_index().as_ref(),
+      )),
+      Ok(None) => Some(Vec::new()),
+      Err(err) => {
+        // TODO(lucacasonato): handle error properly
+        warn!("Format error: {:#}", err);
+        None
+      }
+    };
 
     self.performance.measure(mark);
     if let Some(text_edits) = text_edits {
@@ -2856,34 +2904,19 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 }
 
+struct PrepareCacheResult {
+  cli_options: CliOptions,
+  roots: Vec<(ModuleSpecifier, ModuleKind)>,
+  open_docs: Vec<Document>,
+  mark: PerformanceMark,
+}
+
 // These are implementations of custom commands supported by the LSP
 impl Inner {
-  /// Similar to `deno cache` on the command line, where modules will be cached
-  /// in the Deno cache, including any of their dependencies.
-  async fn cache(
-    &mut self,
+  fn prepare_cache(
+    &self,
     params: lsp_custom::CacheParams,
-  ) -> LspResult<Option<Value>> {
-    async fn create_graph_for_caching(
-      cli_options: CliOptions,
-      roots: Vec<(ModuleSpecifier, ModuleKind)>,
-      open_docs: Vec<Document>,
-    ) -> Result<(), AnyError> {
-      let open_docs = open_docs
-        .into_iter()
-        .map(|d| (d.specifier().clone(), d))
-        .collect::<HashMap<_, _>>();
-      let ps = ProcState::from_options(Arc::new(cli_options)).await?;
-      let mut inner_loader = ps.create_graph_loader();
-      let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
-        inner_loader: &mut inner_loader,
-        open_docs: &open_docs,
-      };
-      let graph = ps.create_graph_with_loader(roots, &mut loader).await?;
-      graph_valid(&graph, true, false)?;
-      Ok(())
-    }
-
+  ) -> LspResult<Option<PrepareCacheResult>> {
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !self.is_diagnosable(&referrer) {
       return Ok(None);
@@ -2902,7 +2935,7 @@ impl Inner {
         })
         .collect()
     } else {
-      vec![(referrer.clone(), deno_graph::ModuleKind::Esm)]
+      vec![(referrer, deno_graph::ModuleKind::Esm)]
     };
 
     let mut cli_options = CliOptions::new(
@@ -2923,18 +2956,19 @@ impl Inner {
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 
     let open_docs = self.documents.documents(true, true);
-    let handle = tokio::task::spawn_local(async move {
-      create_graph_for_caching(cli_options, roots, open_docs).await
-    });
-    if let Err(err) = handle.await.unwrap() {
-      self.client.show_message(MessageType::WARNING, err).await;
-    }
+    Ok(Some(PrepareCacheResult {
+      cli_options,
+      open_docs,
+      roots,
+      mark,
+    }))
+  }
 
+  async fn post_cache(&self, mark: PerformanceMark) {
     // Now that we have dependencies loaded, we need to re-analyze all the files.
     // For that we're invalidating all the existing diagnostics and restarting
     // the language server for TypeScript (as it might hold to some stale
     // documents).
-    self.refresh_npm_specifiers().await;
     self.diagnostics_server.invalidate_all();
     let _: bool = self
       .ts_server
@@ -2945,7 +2979,6 @@ impl Inner {
     self.send_testing_update();
 
     self.performance.measure(mark);
-    Ok(Some(json!(true)))
   }
 
   fn get_performance(&self) -> Value {
