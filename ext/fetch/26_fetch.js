@@ -200,6 +200,8 @@
     }
     terminator[abortSignal.add](onAbort);
 
+    let requestSendError;
+    let requestSendErrorSet = false;
     if (requestBodyRid !== null) {
       if (
         reqBody === null ||
@@ -210,44 +212,69 @@
       const reader = reqBody.getReader();
       WeakMapPrototypeSet(requestBodyReaders, req, reader);
       (async () => {
-        while (true) {
-          const { value, done } = await PromisePrototypeCatch(
-            reader.read(),
-            (err) => {
-              if (terminator.aborted) return { done: true, value: undefined };
-              throw err;
-            },
-          );
+        let done = false;
+        while (!done) {
+          let val;
+          try {
+            const res = await reader.read();
+            done = res.done;
+            val = res.value;
+          } catch (err) {
+            if (terminator.aborted) break;
+            // TODO(lucacasonato): propagate error into response body stream
+            requestSendError = err;
+            requestSendErrorSet = true;
+            break;
+          }
           if (done) break;
-          if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
-            await reader.cancel("value not a Uint8Array");
+          if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, val)) {
+            const error = new TypeError(
+              "Item in request body ReadableStream is not a Uint8Array",
+            );
+            await reader.cancel(error);
+            // TODO(lucacasonato): propagate error into response body stream
+            requestSendError = error;
+            requestSendErrorSet = true;
             break;
           }
           try {
-            await PromisePrototypeCatch(
-              core.writeAll(requestBodyRid, value),
-              (err) => {
-                if (terminator.aborted) return;
-                throw err;
-              },
-            );
-            if (terminator.aborted) break;
+            await core.writeAll(requestBodyRid, val);
           } catch (err) {
+            if (terminator.aborted) break;
             await reader.cancel(err);
+            // TODO(lucacasonato): propagate error into response body stream
+            requestSendError = err;
+            requestSendErrorSet = true;
             break;
+          }
+        }
+        if (done && !terminator.aborted) {
+          try {
+            await core.shutdown(requestBodyRid);
+          } catch (err) {
+            if (!terminator.aborted) {
+              requestSendError = err;
+              requestSendErrorSet = true;
+            }
           }
         }
         WeakMapPrototypeDelete(requestBodyReaders, req);
         core.tryClose(requestBodyRid);
       })();
     }
-
     let resp;
     try {
-      resp = await PromisePrototypeCatch(opFetchSend(requestRid), (err) => {
-        if (terminator.aborted) return;
-        throw err;
-      });
+      resp = await opFetchSend(requestRid);
+    } catch (err) {
+      if (terminator.aborted) return;
+      if (requestSendErrorSet) {
+        // if the request body stream errored, we want to propagate that error
+        // instead of the original error from opFetchSend
+        throw new TypeError("Failed to fetch: request body stream errored", {
+          cause: requestSendError,
+        });
+      }
+      throw err;
     } finally {
       if (cancelHandleRid !== null) {
         core.tryClose(cancelHandleRid);

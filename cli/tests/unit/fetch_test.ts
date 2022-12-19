@@ -4,6 +4,7 @@ import {
   assertEquals,
   assertRejects,
   deferred,
+  delay,
   fail,
   unimplemented,
 } from "./test_util.ts";
@@ -1826,5 +1827,48 @@ Deno.test(
     req2.headers.set("x-foo", "bar"); // should not have any impact on req
     assertEquals(req.headers.get("x-foo"), null);
     assertEquals(req2.headers.get("x-foo"), "bar");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchRequestBodyErrorCatchable() {
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 4514 });
+    const server = (async () => {
+      const conn = await listener.accept();
+      listener.close();
+      const buf = new Uint8Array(160);
+      const n = await conn.read(buf);
+      assertEquals(n, 160); // this is the request headers + first body chunk
+      const n2 = await conn.read(buf);
+      assertEquals(n2, 6); // this is the second body chunk
+      const n3 = await conn.read(buf);
+      assertEquals(n3, null); // the connection now abruptly closes because the client has errored
+      conn.close();
+    })();
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        controller.enqueue(new TextEncoder().encode("a"));
+        await delay(1000);
+        controller.enqueue(new TextEncoder().encode("b"));
+        await delay(1000);
+        controller.error(new Error("foo"));
+      },
+    });
+
+    const err = await assertRejects(() =>
+      fetch("http://localhost:4514", {
+        body: stream,
+        method: "POST",
+      })
+    );
+
+    assert(err instanceof TypeError);
+    assert(err.cause);
+    assert(err.cause instanceof Error);
+    assertEquals(err.cause.message, "foo");
+
+    await server;
   },
 );
