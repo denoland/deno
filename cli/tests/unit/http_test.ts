@@ -2614,217 +2614,101 @@ Deno.test({
   },
 });
 
-Deno.test({
-  name:
-    "http server errors stream if response body errors (http/1.1)",
-  permissions: { net: true },
-  async fn() {
-    const hostname = "localhost";
-    const port = 4501;
+async function httpServerWithErrorBody(
+  listener: Deno.Listener,
+  compression: boolean,
+): Promise<Deno.HttpConn> {
+  const conn = await listener.accept();
+  listener.close();
+  const httpConn = Deno.serveHttp(conn);
+  const e = await httpConn.nextRequest();
+  assert(e);
+  const { respondWith } = e;
+  const originalErr = new Error("boom");
+  const rs = new ReadableStream({
+    async start(controller) {
+      controller.enqueue(new Uint8Array([65]));
+      await delay(1000);
+      controller.error(originalErr);
+    },
+  });
+  const init = compression ? { headers: { "content-type": "text/plain" } } : {};
+  const response = new Response(rs, init);
+  const err = await assertRejects(() => respondWith(response));
+  assert(err === originalErr);
+  return httpConn;
+}
 
-    let httpConn: Deno.HttpConn;
-    const server = (async () => {
+for (const compression of [true, false]) {
+  Deno.test({
+    name: `http server errors stream if response body errors (http/1.1${
+      compression ? " + compression" : ""
+    })`,
+    permissions: { net: true },
+    async fn() {
+      const hostname = "localhost";
+      const port = 4501;
+
       const listener = Deno.listen({ hostname, port });
-      const conn = await listener.accept();
-      listener.close();
-      httpConn = Deno.serveHttp(conn);
-      const e = await httpConn.nextRequest();
-      assert(e);
-      const { respondWith } = e;
-      const originalErr = new Error("boom");
-      const rs = new ReadableStream({
-        async start(controller) {
-          controller.enqueue(new Uint8Array([65]));
-          await delay(1000);
-          controller.error(originalErr);
-        },
-      });
-      const err = await assertRejects(() => respondWith(new Response(rs)));
-      assert(err === originalErr);
-    })();
+      const server = httpServerWithErrorBody(listener, compression);
 
-    const conn = await Deno.connect({ hostname, port });
-    const msg = new TextEncoder().encode(
-      `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`,
-    );
-    const nwritten = await await conn.write(msg);
-    assertEquals(nwritten, msg.byteLength);
+      const conn = await Deno.connect({ hostname, port });
+      const msg = new TextEncoder().encode(
+        `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`,
+      );
+      const nwritten = await conn.write(msg);
+      assertEquals(nwritten, msg.byteLength);
 
-    const buf = new Uint8Array(1024);
-    const nread = await conn.read(buf);
-    assert(nread);
-    const data = new TextDecoder().decode(buf.subarray(0, nread));
-    assert(data.endsWith("1\r\nA\r\n"));
-    const nread2 = await conn.read(buf); // connection should be closed now because the stream errored
-    assertEquals(nread2, null);
-    conn.close();
+      const buf = new Uint8Array(1024);
+      const nread = await conn.read(buf);
+      assert(nread);
+      const data = new TextDecoder().decode(buf.subarray(0, nread));
+      assert(data.endsWith("1\r\nA\r\n"));
+      const nread2 = await conn.read(buf); // connection should be closed now because the stream errored
+      assertEquals(nread2, null);
+      conn.close();
 
-    await server;
-    httpConn!.close();
-  },
-});
+      const httpConn = await server;
+      httpConn.close();
+    },
+  });
 
-Deno.test({
-  name:
-    "http server errors stream if response body errors (http/1.1 + compression)",
-  permissions: { net: true },
-  async fn() {
-    const hostname = "localhost";
-    const port = 4501;
+  Deno.test({
+    name: `http server errors stream if response body errors (http/1.1 + fetch${
+      compression ? " + compression" : ""
+    })`,
+    permissions: { net: true },
+    async fn() {
+      const hostname = "localhost";
+      const port = 4501;
 
-    let httpConn: Deno.HttpConn;
-    const server = (async () => {
       const listener = Deno.listen({ hostname, port });
-      const conn = await listener.accept();
-      listener.close();
-      httpConn = Deno.serveHttp(conn);
-      const e = await httpConn.nextRequest();
-      assert(e);
-      const { respondWith } = e;
-      const originalErr = new Error("boom");
-      const rs = new ReadableStream({
-        async start(controller) {
-          controller.enqueue(new Uint8Array([65]));
-          await delay(1000);
-          controller.error(originalErr);
-        },
-      });
-      const resp = new Response(rs, {
-        headers: { "content-type": "text/plain" },
-      });
-      const err = await assertRejects(() => respondWith(resp));
-      assert(err === originalErr);
-    })();
+      const server = httpServerWithErrorBody(listener, compression);
 
-    const conn = await Deno.connect({ hostname, port });
-    const msg = new TextEncoder().encode(
-      `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\naccept-encoding: gzip\r\n\r\n`,
-    );
-    const nwritten = await conn.write(msg);
-    assertEquals(nwritten, msg.byteLength);
+      const resp = await fetch(`http://${hostname}:${port}/`);
+      assert(resp.body);
+      const reader = resp.body.getReader();
+      const result = await reader.read();
+      assert(!result.done);
+      assertEquals(result.value, new Uint8Array([65]));
+      const err = await assertRejects(() => reader.read());
+      assert(err instanceof TypeError);
+      assert(err.message.includes("unexpected EOF"));
 
-    const buf = new Uint8Array(1024);
-    const nread = await conn.read(buf);
-    assert(nread);
-    const end = buf.subarray(nread - 23, nread);
-    assertEquals(
-      end,
-      // deno-fmt-ignore
-      new Uint8Array([
-        49, 49, 13, 10, 31, 139, 8, 0,
-        0, 0, 0, 0, 0, 255, 114, 4,
-        0, 0, 0, 255, 255, 13, 10
-      ]),
-    );
-    const nread2 = await conn.read(buf); // connection should be closed now because the stream errored
-    assertEquals(nread2, null);
-    conn.close();
+      const httpConn = await server;
+      httpConn.close();
+    },
+  });
 
-    await server;
-    httpConn!.close();
-  },
-});
+  Deno.test({
+    name: `http server errors stream if response body errors (http/2 + fetch${
+      compression ? " + compression" : ""
+    }))`,
+    permissions: { net: true, read: true },
+    async fn() {
+      const hostname = "localhost";
+      const port = 4501;
 
-Deno.test({
-  name: "http server errors stream if response body errors (http/1.1 + fetch)",
-  permissions: { net: true },
-  async fn() {
-    const hostname = "localhost";
-    const port = 4501;
-
-    let httpConn: Deno.HttpConn;
-    const server = (async () => {
-      const listener = Deno.listen({ hostname, port });
-      const conn = await listener.accept();
-      listener.close();
-      httpConn = Deno.serveHttp(conn);
-      const e = await httpConn.nextRequest();
-      assert(e);
-      const { respondWith } = e;
-      const originalErr = new Error("boom");
-      const rs = new ReadableStream({
-        async start(controller) {
-          controller.enqueue(new Uint8Array([65]));
-          await delay(1000);
-          controller.error(originalErr);
-        },
-      });
-      const resp = new Response(rs);
-      const err = await assertRejects(() => respondWith(resp));
-      assert(err === originalErr);
-    })();
-
-    const resp = await fetch(`http://${hostname}:${port}/`);
-    assert(resp.body);
-    const reader = resp.body.getReader();
-    const result = await reader.read();
-    assert(!result.done);
-    assertEquals(result.value, new Uint8Array([65]));
-    const err = await assertRejects(() => reader.read());
-    assert(err instanceof TypeError);
-    assert(err.message.includes("unexpected EOF"));
-
-    await server;
-    httpConn!.close();
-  },
-});
-
-Deno.test({
-  name:
-    "http server errors stream if response body errors (http/1.1 + fetch + compression)",
-  permissions: { net: true },
-  async fn() {
-    const hostname = "localhost";
-    const port = 4501;
-
-    let httpConn: Deno.HttpConn;
-    const server = (async () => {
-      const listener = Deno.listen({ hostname, port });
-      const conn = await listener.accept();
-      listener.close();
-      httpConn = Deno.serveHttp(conn);
-      const e = await httpConn.nextRequest();
-      assert(e);
-      const { respondWith } = e;
-      const originalErr = new Error("boom");
-      const rs = new ReadableStream({
-        async start(controller) {
-          controller.enqueue(new Uint8Array([65]));
-          await delay(1000);
-          controller.error(originalErr);
-        },
-      });
-      const resp = new Response(rs, {
-        headers: { "content-type": "text/plain" },
-      });
-      const err = await assertRejects(() => respondWith(resp));
-      assert(err === originalErr);
-    })();
-
-    const resp = await fetch(`http://${hostname}:${port}/`);
-    assert(resp.body);
-    const reader = resp.body.getReader();
-    const result = await reader.read();
-    assert(!result.done);
-    assertEquals(result.value, new Uint8Array([65]));
-    const err = await assertRejects(() => reader.read());
-    assert(err instanceof TypeError);
-    assert(err.message.includes("unexpected EOF"));
-
-    await server;
-    httpConn!.close();
-  },
-});
-
-Deno.test({
-  name: "http server errors stream if response body errors (http/2 + fetch)",
-  permissions: { net: true, read: true },
-  async fn() {
-    const hostname = "localhost";
-    const port = 4501;
-
-    let httpConn: Deno.HttpConn;
-    const server = (async () => {
       const listener = Deno.listenTls({
         hostname,
         port,
@@ -2832,98 +2716,26 @@ Deno.test({
         keyFile: "cli/tests/testdata/tls/localhost.key",
         alpnProtocols: ["h2"],
       });
-      const conn = await listener.accept();
-      listener.close();
-      httpConn = Deno.serveHttp(conn);
-      const e = await httpConn.nextRequest();
-      assert(e);
-      const { respondWith } = e;
-      const originalErr = new Error("boom");
-      const rs = new ReadableStream({
-        async start(controller) {
-          controller.enqueue(new Uint8Array([65]));
-          await delay(1000);
-          controller.error(originalErr);
-        },
-      });
-      const resp = new Response(rs);
-      const err = await assertRejects(() => respondWith(resp));
-      assert(err === originalErr);
-    })();
+      const server = httpServerWithErrorBody(listener, compression);
 
-    const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
-    const client = Deno.createHttpClient({ caCerts: [caCert] });
-    const resp = await fetch(`https://${hostname}:${port}/`, { client });
-    client.close();
-    assert(resp.body);
-    const reader = resp.body.getReader();
-    const result = await reader.read();
-    assert(!result.done);
-    assertEquals(result.value, new Uint8Array([65]));
-    const err = await assertRejects(() => reader.read());
-    assert(err instanceof TypeError);
-    assert(err.message.includes("unexpected internal error encountered"));
+      const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
+      const client = Deno.createHttpClient({ caCerts: [caCert] });
+      const resp = await fetch(`https://${hostname}:${port}/`, { client });
+      client.close();
+      assert(resp.body);
+      const reader = resp.body.getReader();
+      const result = await reader.read();
+      assert(!result.done);
+      assertEquals(result.value, new Uint8Array([65]));
+      const err = await assertRejects(() => reader.read());
+      assert(err instanceof TypeError);
+      assert(err.message.includes("unexpected internal error encountered"));
 
-    await server;
-    httpConn!.close();
-  },
-});
-
-Deno.test({
-  name:
-    "http server errors stream if response body errors (http/2 + fetch + compression)",
-  permissions: { net: true, read: true },
-  async fn() {
-    const hostname = "localhost";
-    const port = 4501;
-
-    let httpConn: Deno.HttpConn;
-    const server = (async () => {
-      const listener = Deno.listenTls({
-        hostname,
-        port,
-        certFile: "cli/tests/testdata/tls/localhost.crt",
-        keyFile: "cli/tests/testdata/tls/localhost.key",
-        alpnProtocols: ["h2"],
-      });
-      const conn = await listener.accept();
-      listener.close();
-      httpConn = Deno.serveHttp(conn);
-      const e = await httpConn.nextRequest();
-      assert(e);
-      const { respondWith } = e;
-      const originalErr = new Error("boom");
-      const rs = new ReadableStream({
-        async start(controller) {
-          controller.enqueue(new Uint8Array([65]));
-          await delay(1000);
-          controller.error(originalErr);
-        },
-      });
-      const resp = new Response(rs, {
-        headers: { "content-type": "text/plain" },
-      });
-      const err = await assertRejects(() => respondWith(resp));
-      assert(err === originalErr);
-    })();
-
-    const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
-    const client = Deno.createHttpClient({ caCerts: [caCert] });
-    const resp = await fetch(`https://${hostname}:${port}/`, { client });
-    client.close();
-    assert(resp.body);
-    const reader = resp.body.getReader();
-    const result = await reader.read();
-    assert(!result.done);
-    assertEquals(result.value, new Uint8Array([65]));
-    const err = await assertRejects(() => reader.read());
-    assert(err instanceof TypeError);
-    assert(err.message.includes("unexpected internal error encountered"));
-
-    await server;
-    httpConn!.close();
-  },
-});
+      const httpConn = await server;
+      httpConn.close();
+    },
+  });
+}
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6

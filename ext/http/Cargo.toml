@@ -30,8 +30,8 @@ fly-accept-encoding = "0.2.0"
 hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 mime = "0.3.16"
 percent-encoding.workspace = true
-pin-project.workspace = true
 phf = { version = "0.10", features = ["macros"] }
+pin-project.workspace = true
 ring.workspace = true
 serde.workspace = true
 tokio.workspace = true
