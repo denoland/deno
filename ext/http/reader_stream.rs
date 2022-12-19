@@ -54,7 +54,7 @@ impl<R: AsyncRead> Stream for ExternallyAbortableReaderStream<R> {
     let this = self.project();
     let val = std::task::ready!(this.inner.poll_next(cx));
     match val {
-      None if this.done.load(Ordering::Relaxed) => Poll::Ready(None),
+      None if this.done.load(Ordering::SeqCst) => Poll::Ready(None),
       None => Poll::Ready(Some(Err(std::io::Error::new(
         std::io::ErrorKind::UnexpectedEof,
         "stream reader has shut down",
