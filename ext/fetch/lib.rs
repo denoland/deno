@@ -491,7 +491,16 @@ impl Resource for FetchRequestBodyResource {
     Box::pin(async move {
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      body.send(None).or_cancel(cancel).await?.ok(); // we don't care if the receiver is closed, because this is the shutdown
+      // There is a case where hyper knows the size of the response body up
+      // front (through content-length header on the resp), where it will drop
+      // the body once that content length has been reached, regardless of if
+      // the stream is complete or not. This is expected behaviour, but it means
+      // that if you stream a body with an up front known size (eg a Blob),
+      // explicit shutdown can never succeed because the body (and by extension
+      // the receiver) will have dropped by the time we try to shutdown. As such
+      // we ignore if the receiver is closed, because we know that the request
+      // is complete in good health in that case.
+      body.send(None).or_cancel(cancel).await?.ok();
       Ok(())
     })
   }

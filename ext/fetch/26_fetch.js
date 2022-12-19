@@ -248,7 +248,16 @@
             break;
           }
         }
-        if (done && !terminator.aborted) await core.shutdown(requestBodyRid);
+        if (done && !terminator.aborted) {
+          try {
+            await core.shutdown(requestBodyRid);
+          } catch (err) {
+            if (!terminator.aborted) {
+              requestSendError = err;
+              requestSendErrorSet = true;
+            }
+          }
+        }
         WeakMapPrototypeDelete(requestBodyReaders, req);
         core.tryClose(requestBodyRid);
       })();
