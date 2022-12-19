@@ -107,27 +107,22 @@ impl DrawThread {
 
   /// Hides the draw thread.
   pub fn hide() {
-    if !DrawThread::is_supported() {
-      return;
-    }
-
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
     internal_state.hide = true;
+
     Self::clear_and_stop_draw_thread(&mut internal_state);
   }
 
   /// Shows the draw thread if it was previously hidden.
   pub fn show() {
-    if !DrawThread::is_supported() {
-      return;
-    }
-
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
     internal_state.hide = false;
 
-    Self::maybe_start_draw_thread(&mut internal_state);
+    if DrawThread::is_supported() {
+      Self::maybe_start_draw_thread(&mut internal_state);
+    }
   }
 
   fn finish_entry(entry_id: u16) {
