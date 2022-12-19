@@ -1095,6 +1095,7 @@ dependencies = [
  "mime",
  "percent-encoding",
  "phf",
+ "pin-project",
  "ring",
  "serde",
  "tokio",
