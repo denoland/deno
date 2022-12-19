@@ -116,7 +116,6 @@ impl DrawThread {
   }
 
   /// Hides the draw thread.
-  #[allow(dead_code)]
   pub fn hide() {
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
@@ -125,7 +124,6 @@ impl DrawThread {
   }
 
   /// Shows the draw thread if it was previously hidden.
-  #[allow(dead_code)]
   pub fn show() {
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
