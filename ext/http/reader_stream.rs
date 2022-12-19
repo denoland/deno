@@ -57,7 +57,7 @@ impl<R: AsyncRead> Stream for ExternallyAbortableReaderStream<R> {
       None if this.done.load(Ordering::Relaxed) => Poll::Ready(None),
       None => Poll::Ready(Some(Err(std::io::Error::new(
         std::io::ErrorKind::UnexpectedEof,
-        "channel closed",
+        "stream reader has shut down",
       )))),
       Some(val) => Poll::Ready(Some(val)),
     }
