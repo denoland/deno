@@ -64,16 +64,19 @@
         componentsBuf.buffer,
       );
     }
-    return getSerialization(status, href);
+    return getSerialization(status, href, maybeBase);
   }
 
-  function getSerialization(status, href) {
+  function getSerialization(status, href, maybeBase) {
     if (status === 0) {
       return href;
     } else if (status === 1) {
       return core.ops.op_url_get_serialization();
     } else {
-      throw new TypeError("Invalid URL");
+      throw new TypeError(
+        `Invalid URL: '${href}'` +
+          (maybeBase ? ` with base '${maybeBase}'` : ""),
+      );
     }
   }
 
