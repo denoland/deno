@@ -1837,9 +1837,11 @@ Deno.test(
     const server = (async () => {
       const conn = await listener.accept();
       listener.close();
-      const buf = new Uint8Array(160);
+      const buf = new Uint8Array(256);
       const n = await conn.read(buf);
-      assertEquals(n, 160); // this is the request headers + first body chunk
+      const data = new TextDecoder().decode(buf.subarray(0, n!)); // this is the request headers + first body chunk
+      assert(data.startsWith("POST / HTTP/1.1\r\n"));
+      assert(data.endsWith("1\r\na\r\n"));
       const n2 = await conn.read(buf);
       assertEquals(n2, 6); // this is the second body chunk
       const n3 = await conn.read(buf);
