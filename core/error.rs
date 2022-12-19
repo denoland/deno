@@ -325,6 +325,7 @@ impl JsError {
     }
 
     if is_instance_of_error(scope, exception) {
+      let v8_exception = exception;
       // The exception is a JS Error object.
       let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
       let cause = get_property(scope, exception, "cause");
@@ -443,24 +444,25 @@ impl JsError {
         }
       }
 
-      // Read an array of stored errors, this is only defined for `AggregateError`
-      let aggregated_errors = get_property(scope, exception, "errors");
-      let aggregated_errors: Option<v8::Local<v8::Array>> =
-        aggregated_errors.and_then(|a| a.try_into().ok());
-
       let mut aggregated: Option<Vec<JsError>> = None;
+      if is_aggregate_error(scope, v8_exception) {
+        // Read an array of stored errors, this is only defined for `AggregateError`
+        let aggregated_errors = get_property(scope, exception, "errors");
+        let aggregated_errors: Option<v8::Local<v8::Array>> =
+          aggregated_errors.and_then(|a| a.try_into().ok());
 
-      if let Some(errors) = aggregated_errors {
-        if errors.length() > 0 {
-          let mut agg = vec![];
-          for i in 0..errors.length() {
-            let error = errors.get_index(scope, i).unwrap();
-            let js_error = Self::from_v8_exception(scope, error);
-            agg.push(js_error);
+        if let Some(errors) = aggregated_errors {
+          if errors.length() > 0 {
+            let mut agg = vec![];
+            for i in 0..errors.length() {
+              let error = errors.get_index(scope, i).unwrap();
+              let js_error = Self::from_v8_exception(scope, error);
+              agg.push(js_error);
+            }
+            aggregated = Some(agg);
           }
-          aggregated = Some(agg);
         }
-      }
+      };
 
       Self {
         name: e.name,
@@ -571,6 +573,43 @@ pub(crate) fn is_instance_of_error<'s>(
       .to_object(scope)
       .and_then(|o| o.get_prototype(scope));
   }
+  false
+}
+
+/// Implements `value instanceof primordials.AggregateError` in JS,
+/// by walking the prototype chain, and comparing the `name` property..
+///
+/// NOTE: There is currently no way to detect `AggregateError` via `rusty_v8`,
+/// as v8 itself doesn't expose `v8__Exception__AggregateError`,
+/// and we cannot create bindings for it. This forces us to rely on `name` inference.
+pub(crate) fn is_aggregate_error<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  value: v8::Local<v8::Value>,
+) -> bool {
+  let mut maybe_prototype = Some(value);
+  while let Some(prototype) = maybe_prototype {
+    if !value.is_object() {
+      return false;
+    }
+
+    // We need to guard against objects like `DOMException`,
+    // which are not `instanceof Error` and can panic when
+    // accessing it's `name` property.
+    if !is_instance_of_error(scope, prototype) {
+      return false;
+    }
+
+    let prototype = prototype.to_object(scope).unwrap();
+    let prototype_name = get_property(scope, prototype, "name")
+      .map(|v| v.to_rust_string_lossy(scope));
+
+    if prototype_name == Some(String::from("AggregateError")) {
+      return true;
+    }
+
+    maybe_prototype = prototype.get_prototype(scope);
+  }
+
   false
 }
 
