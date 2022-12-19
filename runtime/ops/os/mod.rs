@@ -5,6 +5,7 @@ use crate::permissions::Permissions;
 use crate::worker::ExitCode;
 use deno_core::error::{type_error, AnyError};
 use deno_core::op;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::Extension;
@@ -14,6 +15,7 @@ use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
+use std::sync::Arc;
 
 mod sys_info;
 
@@ -66,11 +68,11 @@ fn noop_op() -> Result<(), AnyError> {
 #[op]
 fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
-  state.borrow_mut::<Permissions>().read.check_blind(
-    &current_exe,
-    "exec_path",
-    "Deno.execPath()",
-  )?;
+  state
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
+    .read
+    .check_blind(&current_exe, "exec_path", "Deno.execPath()")?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
@@ -85,7 +87,11 @@ fn op_set_env(
   key: String,
   value: String,
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<Permissions>().env.check(&key)?;
+  state
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
+    .env
+    .check(&key)?;
   if key.is_empty() {
     return Err(type_error("Key is an empty string."));
   }
@@ -107,7 +113,11 @@ fn op_set_env(
 
 #[op]
 fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
+    .env
+    .check_all()?;
   Ok(env::vars().collect())
 }
 
@@ -119,7 +129,11 @@ fn op_get_env(
   let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
 
   if !skip_permission_check {
-    state.borrow_mut::<Permissions>().env.check(&key)?;
+    state
+      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .lock()
+      .env
+      .check(&key)?;
   }
 
   if key.is_empty() {
@@ -142,7 +156,11 @@ fn op_get_env(
 
 #[op]
 fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
-  state.borrow_mut::<Permissions>().env.check(&key)?;
+  state
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
+    .env
+    .check(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }

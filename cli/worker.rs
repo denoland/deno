@@ -7,6 +7,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::serde_v8;
 use deno_core::v8;
@@ -410,7 +411,7 @@ impl CliMainWorker {
 pub async fn create_main_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
-  permissions: Permissions,
+  permissions: Arc<Mutex<Permissions>>,
 ) -> Result<CliMainWorker, AnyError> {
   create_main_worker_internal(
     ps,
@@ -426,7 +427,7 @@ pub async fn create_main_worker(
 pub async fn create_main_worker_for_test_or_bench(
   ps: &ProcState,
   main_module: ModuleSpecifier,
-  permissions: Permissions,
+  permissions: Arc<Mutex<Permissions>>,
   custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
 ) -> Result<CliMainWorker, AnyError> {
@@ -444,7 +445,7 @@ pub async fn create_main_worker_for_test_or_bench(
 async fn create_main_worker_internal(
   ps: &ProcState,
   main_module: ModuleSpecifier,
-  permissions: Permissions,
+  permissions: Arc<Mutex<Permissions>>,
   mut custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
   bench_or_test: bool,
@@ -734,7 +735,7 @@ mod tests {
 
   fn create_test_worker() -> MainWorker {
     let main_module = resolve_url_or_path("./hello.js").unwrap();
-    let permissions = Permissions::default();
+    let permissions = Arc::new(Mutex::new(Permissions::default()));
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {

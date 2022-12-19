@@ -13,6 +13,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -224,7 +225,9 @@ pub async fn run(
   let flags = metadata_to_flags(&metadata);
   let main_module = &metadata.entrypoint;
   let ps = ProcState::build(flags).await?;
-  let permissions = Permissions::from_options(&metadata.permissions)?;
+  let permissions = Arc::new(Mutex::new(Permissions::from_options(
+    &metadata.permissions,
+  )?));
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader {

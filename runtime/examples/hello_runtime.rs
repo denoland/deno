@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::FsModuleLoader;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
@@ -71,7 +72,7 @@ async fn main() -> Result<(), AnyError> {
   let js_path =
     Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/hello_runtime.js");
   let main_module = deno_core::resolve_path(&js_path.to_string_lossy())?;
-  let permissions = Permissions::allow_all();
+  let permissions = Arc::new(Mutex::new(Permissions::allow_all()));
 
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),

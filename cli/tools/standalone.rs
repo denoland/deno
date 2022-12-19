@@ -16,6 +16,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
@@ -170,7 +171,10 @@ async fn create_standalone_binary(
       Some(import_map_specifier) => {
         let file = ps
           .file_fetcher
-          .fetch(&import_map_specifier, &mut Permissions::allow_all())
+          .fetch(
+            &import_map_specifier,
+            Arc::new(Mutex::new(Permissions::allow_all())),
+          )
           .await
           .context(format!(
             "Unable to load '{}' import map",

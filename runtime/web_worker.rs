@@ -18,6 +18,7 @@ use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task::AtomicWaker;
 use deno_core::located_script_name;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
@@ -348,7 +349,7 @@ pub struct WebWorkerOptions {
 impl WebWorker {
   pub fn bootstrap_from_options(
     name: String,
-    permissions: Permissions,
+    permissions: Arc<Mutex<Permissions>>,
     main_module: ModuleSpecifier,
     worker_id: WorkerId,
     options: WebWorkerOptions,
@@ -362,7 +363,7 @@ impl WebWorker {
 
   pub fn from_options(
     name: String,
-    permissions: Permissions,
+    permissions: Arc<Mutex<Permissions>>,
     main_module: ModuleSpecifier,
     worker_id: WorkerId,
     mut options: WebWorkerOptions,
@@ -372,7 +373,7 @@ impl WebWorker {
     let enable_testing_features = options.bootstrap.enable_testing_features;
     let perm_ext = Extension::builder()
       .state(move |state| {
-        state.put::<Permissions>(permissions.clone());
+        state.put::<Arc<Mutex<Permissions>>>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
         Ok(())

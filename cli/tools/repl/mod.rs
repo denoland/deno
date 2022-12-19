@@ -6,9 +6,11 @@ use crate::colors;
 use crate::proc_state::ProcState;
 use crate::worker::create_main_worker;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
 use rustyline::error::ReadlineError;
+use std::sync::Arc;
 
 mod cdp;
 mod channel;
@@ -72,7 +74,7 @@ async fn read_eval_file(
 
   let file = ps
     .file_fetcher
-    .fetch(&specifier, &mut Permissions::allow_all())
+    .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
     .await?;
 
   Ok((*file.source).to_string())
@@ -84,7 +86,9 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let mut worker = create_main_worker(
     &ps,
     main_module.clone(),
-    Permissions::from_options(&ps.options.permissions_options())?,
+    Arc::new(Mutex::new(Permissions::from_options(
+      &ps.options.permissions_options(),
+    )?)),
   )
   .await?;
   worker.setup_repl().await?;

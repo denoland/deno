@@ -148,7 +148,7 @@ impl LspTestFilter {
 #[allow(clippy::too_many_arguments)]
 async fn test_specifier(
   ps: proc_state::ProcState,
-  permissions: Permissions,
+  permissions: Arc<Mutex<Permissions>>,
   specifier: ModuleSpecifier,
   mode: test::TestMode,
   sender: TestEventSender,
@@ -254,8 +254,9 @@ impl TestRun {
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
     let ps = proc_state::ProcState::build(flags).await?;
-    let permissions =
-      Permissions::from_options(&ps.options.permissions_options())?;
+    let permissions = Arc::new(Mutex::new(Permissions::from_options(
+      &ps.options.permissions_options(),
+    )?));
     test::check_specifiers(
       &ps,
       permissions.clone(),

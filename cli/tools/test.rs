@@ -711,7 +711,7 @@ pub fn format_test_error(js_error: &JsError) -> String {
 /// both.
 async fn test_specifier(
   ps: ProcState,
-  permissions: Permissions,
+  permissions: Arc<Mutex<Permissions>>,
   specifier: ModuleSpecifier,
   mode: TestMode,
   sender: TestEventSender,
@@ -895,11 +895,8 @@ async fn fetch_inline_files(
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
   for specifier in specifiers {
-    let mut fetch_permissions = Permissions::allow_all();
-    let file = ps
-      .file_fetcher
-      .fetch(&specifier, &mut fetch_permissions)
-      .await?;
+    let fetch_permissions = Arc::new(Mutex::new(Permissions::allow_all()));
+    let file = ps.file_fetcher.fetch(&specifier, fetch_permissions).await?;
 
     let inline_files = if file.media_type == MediaType::Unknown {
       extract_files_from_fenced_blocks(
@@ -924,7 +921,7 @@ async fn fetch_inline_files(
 /// Type check a collection of module and document specifiers.
 pub async fn check_specifiers(
   ps: &ProcState,
-  permissions: Permissions,
+  permissions: Arc<Mutex<Permissions>>,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
@@ -957,7 +954,7 @@ pub async fn check_specifiers(
       specifiers,
       false,
       lib,
-      Permissions::allow_all(),
+      Arc::new(Mutex::new(Permissions::allow_all())),
       permissions.clone(),
       false,
     )
@@ -979,7 +976,7 @@ pub async fn check_specifiers(
     module_specifiers,
     false,
     lib,
-    Permissions::allow_all(),
+    Arc::new(Mutex::new(Permissions::allow_all())),
     permissions,
     true,
   )
@@ -991,7 +988,7 @@ pub async fn check_specifiers(
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
   ps: ProcState,
-  permissions: Permissions,
+  permissions: Arc<Mutex<Permissions>>,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
@@ -1324,7 +1321,7 @@ async fn fetch_specifiers_with_test_mode(
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = ps
       .file_fetcher
-      .fetch(specifier, &mut Permissions::allow_all())
+      .fetch(specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await?;
 
     if file.media_type == MediaType::Unknown
@@ -1342,8 +1339,9 @@ pub async fn run_tests(
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let permissions =
-    Permissions::from_options(&ps.options.permissions_options())?;
+  let permissions = Arc::new(Mutex::new(Permissions::from_options(
+    &ps.options.permissions_options(),
+  )?));
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     &ps,
     test_flags.include,
@@ -1383,8 +1381,9 @@ pub async fn run_tests_with_watch(
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let permissions =
-    Permissions::from_options(&ps.options.permissions_options())?;
+  let permissions = Arc::new(Mutex::new(Permissions::from_options(
+    &ps.options.permissions_options(),
+  )?));
 
   let include = test_flags.include;
   let ignore = test_flags.ignore.clone();

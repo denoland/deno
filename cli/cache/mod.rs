@@ -6,6 +6,7 @@ use crate::npm;
 
 use deno_core::futures;
 use deno_core::futures::FutureExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
@@ -42,17 +43,17 @@ pub const CACHE_PERM: u32 = 0o644;
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
   emit_cache: EmitCache,
-  dynamic_permissions: Permissions,
+  dynamic_permissions: Arc<Mutex<Permissions>>,
   file_fetcher: Arc<FileFetcher>,
-  root_permissions: Permissions,
+  root_permissions: Arc<Mutex<Permissions>>,
 }
 
 impl FetchCacher {
   pub fn new(
     emit_cache: EmitCache,
     file_fetcher: FileFetcher,
-    root_permissions: Permissions,
-    dynamic_permissions: Permissions,
+    root_permissions: Arc<Mutex<Permissions>>,
+    dynamic_permissions: Arc<Mutex<Permissions>>,
   ) -> Self {
     let file_fetcher = Arc::new(file_fetcher);
 
@@ -104,7 +105,7 @@ impl Loader for FetchCacher {
     }
 
     let specifier = specifier.clone();
-    let mut permissions = if is_dynamic {
+    let permissions = if is_dynamic {
       self.dynamic_permissions.clone()
     } else {
       self.root_permissions.clone()
@@ -113,7 +114,7 @@ impl Loader for FetchCacher {
 
     async move {
       file_fetcher
-        .fetch(&specifier, &mut permissions)
+        .fetch(&specifier, permissions)
         .await
         .map_or_else(
           |err| {

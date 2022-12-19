@@ -6,11 +6,13 @@ use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::Extension;
 use deno_core::OpState;
 use serde::Deserialize;
 use std::path::Path;
+use std::sync::Arc;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -37,7 +39,7 @@ pub fn op_query_permission(
   state: &mut OpState,
   args: PermissionArgs,
 ) -> Result<String, AnyError> {
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow::<Arc<Mutex<Permissions>>>().lock();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.read.query(path.map(Path::new)),
@@ -71,7 +73,7 @@ pub fn op_revoke_permission(
   state: &mut OpState,
   args: PermissionArgs,
 ) -> Result<String, AnyError> {
-  let permissions = state.borrow_mut::<Permissions>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.read.revoke(path.map(Path::new)),
@@ -105,7 +107,7 @@ pub fn op_request_permission(
   state: &mut OpState,
   args: PermissionArgs,
 ) -> Result<String, AnyError> {
-  let permissions = state.borrow_mut::<Permissions>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.read.request(path.map(Path::new)),

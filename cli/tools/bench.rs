@@ -25,6 +25,7 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
@@ -36,6 +37,7 @@ use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -329,7 +331,7 @@ impl BenchReporter for ConsoleReporter {
 /// Type check a collection of module and document specifiers.
 async fn check_specifiers(
   ps: &ProcState,
-  permissions: Permissions,
+  permissions: Arc<Mutex<Permissions>>,
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
@@ -337,7 +339,7 @@ async fn check_specifiers(
     specifiers,
     false,
     lib,
-    Permissions::allow_all(),
+    Arc::new(Mutex::new(Permissions::allow_all())),
     permissions,
     true,
   )
@@ -349,7 +351,7 @@ async fn check_specifiers(
 /// Run a single specifier as an executable bench module.
 async fn bench_specifier(
   ps: ProcState,
-  permissions: Permissions,
+  permissions: Arc<Mutex<Permissions>>,
   specifier: ModuleSpecifier,
   channel: UnboundedSender<BenchEvent>,
   options: BenchSpecifierOptions,
@@ -370,7 +372,7 @@ async fn bench_specifier(
 /// Test a collection of specifiers with test modes concurrently.
 async fn bench_specifiers(
   ps: ProcState,
-  permissions: Permissions,
+  permissions: Arc<Mutex<Permissions>>,
   specifiers: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
@@ -490,8 +492,9 @@ pub async fn run_benchmarks(
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let permissions =
-    Permissions::from_options(&ps.options.permissions_options())?;
+  let permissions = Arc::new(Mutex::new(Permissions::from_options(
+    &ps.options.permissions_options(),
+  )?));
 
   let selection =
     collect_include_ignore(&bench_flags, ps.options.to_bench_config()?);
@@ -527,8 +530,9 @@ pub async fn run_benchmarks_with_watch(
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let permissions =
-    Permissions::from_options(&ps.options.permissions_options())?;
+  let permissions = Arc::new(Mutex::new(Permissions::from_options(
+    &ps.options.permissions_options(),
+  )?));
 
   let selection =
     collect_include_ignore(&bench_flags, ps.options.to_bench_config()?);

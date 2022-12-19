@@ -181,7 +181,10 @@ impl ProcState {
     let maybe_import_map =
       if let Some(import_map_specifier) = maybe_import_map_specifier {
         let file = file_fetcher
-          .fetch(&import_map_specifier, &mut Permissions::allow_all())
+          .fetch(
+            &import_map_specifier,
+            Arc::new(Mutex::new(Permissions::allow_all())),
+          )
           .await
           .context(format!(
             "Unable to load '{}' import map",
@@ -289,8 +292,8 @@ impl ProcState {
     roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
     lib: TsTypeLib,
-    root_permissions: Permissions,
-    dynamic_permissions: Permissions,
+    root_permissions: Arc<Mutex<Permissions>>,
+    dynamic_permissions: Arc<Mutex<Permissions>>,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
@@ -490,8 +493,8 @@ impl ProcState {
         specifiers,
         false,
         lib,
-        Permissions::allow_all(),
-        Permissions::allow_all(),
+        Arc::new(Mutex::new(Permissions::allow_all())),
+        Arc::new(Mutex::new(Permissions::allow_all())),
         false,
       )
       .await
@@ -668,8 +671,8 @@ impl ProcState {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
-      Permissions::allow_all(),
-      Permissions::allow_all(),
+      Arc::new(Mutex::new(Permissions::allow_all())),
+      Arc::new(Mutex::new(Permissions::allow_all())),
     )
   }
 

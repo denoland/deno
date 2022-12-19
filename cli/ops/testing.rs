@@ -12,6 +12,7 @@ use crate::tools::test::TestStepDescription;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::parking_lot::Mutex;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -23,6 +24,7 @@ use serde::Deserializer;
 use serde::Serialize;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn init(
@@ -50,7 +52,7 @@ pub fn init(
 }
 
 #[derive(Clone)]
-struct PermissionsHolder(Uuid, Permissions);
+struct PermissionsHolder(Uuid, Arc<Mutex<Permissions>>);
 
 #[op]
 pub fn op_pledge_test_permissions(
@@ -58,8 +60,12 @@ pub fn op_pledge_test_permissions(
   args: ChildPermissionsArg,
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
-  let parent_permissions = state.borrow_mut::<Permissions>();
-  let worker_permissions = create_child_permissions(parent_permissions, args)?;
+  let parent_permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>();
+  let worker_permissions = {
+    let mut parent_permissions = parent_permissions.lock();
+    let perms = create_child_permissions(&mut parent_permissions, args)?;
+    Arc::new(Mutex::new(perms))
+  };
   let parent_permissions = parent_permissions.clone();
 
   if state.try_take::<PermissionsHolder>().is_some() {
@@ -68,7 +74,7 @@ pub fn op_pledge_test_permissions(
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 
   // NOTE: This call overrides current permission set for the worker
-  state.put::<Permissions>(worker_permissions);
+  state.put::<Arc<Mutex<Permissions>>>(worker_permissions);
 
   Ok(token)
 }
@@ -84,7 +90,7 @@ pub fn op_restore_test_permissions(
     }
 
     let permissions = permissions_holder.1;
-    state.put::<Permissions>(permissions);
+    state.put::<Arc<Mutex<Permissions>>>(permissions);
     Ok(())
   } else {
     Err(generic_error("no permissions to restore"))

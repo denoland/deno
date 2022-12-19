@@ -403,7 +403,7 @@ impl FileFetcher {
   fn fetch_remote(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &mut Permissions,
+    permissions: Arc<Mutex<Permissions>>,
     redirect_limit: i64,
     maybe_accept: Option<String>,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
@@ -413,7 +413,7 @@ impl FileFetcher {
         .boxed();
     }
 
-    if let Err(err) = permissions.check_specifier(specifier) {
+    if let Err(err) = permissions.lock().check_specifier(specifier) {
       return futures::future::err(err).boxed();
     }
 
@@ -458,7 +458,6 @@ impl FileFetcher {
     };
     let maybe_auth_token = self.auth_tokens.get(specifier);
     let specifier = specifier.clone();
-    let mut permissions = permissions.clone();
     let client = self.http_client.clone();
     let file_fetcher = self.clone();
     // A single pass of fetch either yields code or yields a redirect.
@@ -483,7 +482,7 @@ impl FileFetcher {
           file_fetcher
             .fetch_remote(
               &redirect_url,
-              &mut permissions,
+              permissions,
               redirect_limit - 1,
               maybe_accept,
             )
@@ -543,7 +542,7 @@ impl FileFetcher {
   pub async fn fetch(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &mut Permissions,
+    permissions: Arc<Mutex<Permissions>>,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
     self.fetch_with_accept(specifier, permissions, None).await
@@ -552,11 +551,11 @@ impl FileFetcher {
   pub async fn fetch_with_accept(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &mut Permissions,
+    permissions: Arc<Mutex<Permissions>>,
     maybe_accept: Option<&str>,
   ) -> Result<File, AnyError> {
     let scheme = get_validated_scheme(specifier)?;
-    permissions.check_specifier(specifier)?;
+    permissions.lock().check_specifier(specifier)?;
     if let Some(file) = self.cache.get(specifier) {
       Ok(file)
     } else if scheme == "file" {
@@ -773,7 +772,7 @@ mod tests {
   async fn test_fetch(specifier: &ModuleSpecifier) -> (File, FileFetcher) {
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result = file_fetcher
-      .fetch(specifier, &mut Permissions::allow_all())
+      .fetch(specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     (result.unwrap(), file_fetcher)
@@ -785,7 +784,12 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
-      .fetch_remote(specifier, &mut Permissions::allow_all(), 1, None)
+      .fetch_remote(
+        specifier,
+        Arc::new(Mutex::new(Permissions::allow_all())),
+        1,
+        None,
+      )
       .await;
     assert!(result.is_ok());
     let (_, headers, _) = file_fetcher.http_cache.get(specifier).unwrap();
@@ -1029,7 +1033,7 @@ mod tests {
     file_fetcher.insert_cached(file.clone());
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let result_file = result.unwrap();
@@ -1045,7 +1049,7 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
 
@@ -1074,7 +1078,7 @@ mod tests {
     let specifier = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1106,7 +1110,7 @@ mod tests {
     );
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1129,7 +1133,7 @@ mod tests {
       resolve_url_or_path("http://localhost:4545/subdir/mod2.ts").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1151,7 +1155,7 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1172,7 +1176,7 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result = file_fetcher_02
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1195,7 +1199,7 @@ mod tests {
     )
     .unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1228,7 +1232,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
 
@@ -1247,7 +1251,7 @@ mod tests {
     )
     .unwrap();
     let result = file_fetcher_02
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
 
@@ -1279,7 +1283,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1332,7 +1336,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1398,7 +1402,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
 
@@ -1418,7 +1422,10 @@ mod tests {
     )
     .unwrap();
     let result = file_fetcher_02
-      .fetch(&redirected_specifier, &mut Permissions::allow_all())
+      .fetch(
+        &redirected_specifier,
+        Arc::new(Mutex::new(Permissions::allow_all())),
+      )
       .await;
     assert!(result.is_ok());
 
@@ -1440,12 +1447,22 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &mut Permissions::allow_all(), 2, None)
+      .fetch_remote(
+        &specifier,
+        Arc::new(Mutex::new(Permissions::allow_all())),
+        2,
+        None,
+      )
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &mut Permissions::allow_all(), 1, None)
+      .fetch_remote(
+        &specifier,
+        Arc::new(Mutex::new(Permissions::allow_all())),
+        1,
+        None,
+      )
       .await;
     assert!(result.is_err());
 
@@ -1477,7 +1494,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1521,7 +1538,7 @@ mod tests {
       resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1556,7 +1573,7 @@ mod tests {
       resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1564,12 +1581,12 @@ mod tests {
     assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified.");
 
     let result = file_fetcher_02
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher_01
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
   }
@@ -1582,7 +1599,7 @@ mod tests {
       resolve_url_or_path(&fixture_path.to_string_lossy()).unwrap();
     fs::write(fixture_path.clone(), r#"console.log("hello deno");"#).unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1590,7 +1607,7 @@ mod tests {
 
     fs::write(fixture_path, r#"console.log("goodbye deno");"#).unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1606,7 +1623,7 @@ mod tests {
     let specifier =
       ModuleSpecifier::parse("http://localhost:4545/dynamic").unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1615,7 +1632,7 @@ mod tests {
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1633,7 +1650,7 @@ mod tests {
     let specifier =
       ModuleSpecifier::parse("http://localhost:4545/dynamic_cache").unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1642,7 +1659,7 @@ mod tests {
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
