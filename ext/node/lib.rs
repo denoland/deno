@@ -542,6 +542,7 @@ pub fn op_require_as_file_path(file_or_url: String) -> String {
 #[op]
 fn op_require_resolve_exports(
   state: &mut OpState,
+  uses_local_node_modules_dir: bool,
   modules_path: String,
   _request: String,
   name: String,
@@ -550,7 +551,9 @@ fn op_require_resolve_exports(
 ) -> Result<Option<String>, AnyError> {
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
 
-  let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path)) {
+  let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path))
+    && !uses_local_node_modules_dir
+  {
     modules_path
   } else {
     path_resolve(vec![modules_path, name])
