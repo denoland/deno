@@ -23,7 +23,7 @@ pub struct ProgressData {
   pub duration: Duration,
 }
 
-pub trait ProgressBarRenderer: Send + std::fmt::Debug {
+pub trait ProgressBarRenderer: Send + Sync + std::fmt::Debug {
   fn render(&self, data: ProgressData) -> String;
 }
 
