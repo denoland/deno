@@ -23,6 +23,7 @@ mod renderer;
 // Inspired by Indicatif, but this custom implementation allows
 // for more control over what's going on under the hood.
 
+#[derive(Debug)]
 pub struct UpdateGuard {
   maybe_entry: Option<ProgressBarEntry>,
 }
