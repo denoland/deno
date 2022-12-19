@@ -433,30 +433,32 @@ struct BodyCompressedHolder {
   pub shutdown_handle: ShutdownHandle,
 }
 
-struct BodyUncompressedSender {
-  sender: Option<hyper::body::Sender>,
-  done: bool,
-}
+struct BodyUncompressedSender(Option<hyper::body::Sender>);
 
 impl BodyUncompressedSender {
   fn sender(&mut self) -> &mut hyper::body::Sender {
-    self.sender.as_mut().unwrap()
+    // This is safe because we only ever take the sender out of the option
+    // inside of the shutdown method.
+    self.0.as_mut().unwrap()
+  }
+
+  fn shutdown(mut self) {
+    // take the sender out of self so that when self is dropped at the end of
+    // this block, it doesn't get aborted
+    self.0.take();
   }
 }
 
 impl From<hyper::body::Sender> for BodyUncompressedSender {
   fn from(sender: hyper::body::Sender) -> Self {
-    BodyUncompressedSender {
-      sender: Some(sender),
-      done: false,
-    }
+    BodyUncompressedSender(Some(sender))
   }
 }
 
 impl Drop for BodyUncompressedSender {
   fn drop(&mut self) {
-    if !self.done {
-      self.sender.take().unwrap().abort();
+    if let Some(sender) = self.0.take() {
+      sender.abort();
     }
   }
 }
@@ -917,8 +919,8 @@ async fn op_http_shutdown(
         }
       }
     }
-    HttpResponseWriter::BodyUncompressed(mut body) => {
-      body.done = true;
+    HttpResponseWriter::BodyUncompressed(body) => {
+      body.shutdown();
     }
     _ => {}
   };
