@@ -338,7 +338,6 @@ pub async fn get_response_body_with_progress(
       let mut data = Vec::with_capacity(total_size as usize);
       let mut stream = response.bytes_stream();
       while let Some(item) = stream.next().await {
-        std::thread::sleep_ms(100);
         let bytes = item?;
         current_size += bytes.len() as u64;
         progress_guard.set_position(current_size);
@@ -347,7 +346,6 @@ pub async fn get_response_body_with_progress(
       return Ok(data);
     }
   }
-  std::thread::sleep_ms(100);
   let bytes = response.bytes().await?;
   Ok(bytes.into())
 }

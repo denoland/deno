@@ -184,7 +184,7 @@ impl ProgressBarInner {
     {
       internal_state.start_time = SystemTime::now();
       internal_state.draw_thread_guard =
-        Some(DrawThread::add_entry(0, Arc::new(self.clone())));
+        Some(DrawThread::add_entry(Arc::new(self.clone())));
     }
   }
 }

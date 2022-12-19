@@ -261,8 +261,8 @@ pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
   deno_runtime::permissions::set_prompt_callbacks(
-    Some(Box::new(|| util::draw_thread::DrawThread::hide())),
-    Some(Box::new(|| util::draw_thread::DrawThread::show())),
+    Box::new(util::draw_thread::DrawThread::hide),
+    Box::new(util::draw_thread::DrawThread::show),
   );
 
   let args: Vec<String> = env::args().collect();

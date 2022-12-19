@@ -30,7 +30,6 @@ impl Drop for DrawThreadGuard {
 
 #[derive(Debug, Clone)]
 struct InternalEntry {
-  priority: u8,
   id: u16,
   renderer: Arc<dyn DrawThreadRenderer>,
 }
@@ -85,24 +84,12 @@ impl DrawThread {
         .unwrap_or(false)
   }
 
-  /// Adds a renderer to the draw thread with a given priority.
-  /// Renderers are sorted by priority with higher priority
-  /// entries appearing at the bottom of the screen.
-  pub fn add_entry(
-    priority: u8,
-    renderer: Arc<dyn DrawThreadRenderer>,
-  ) -> DrawThreadGuard {
+  /// Adds a renderer to the draw thread.
+  pub fn add_entry(renderer: Arc<dyn DrawThreadRenderer>) -> DrawThreadGuard {
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
     let id = internal_state.next_entry_id;
-    internal_state.entries.push(InternalEntry {
-      id,
-      priority,
-      renderer,
-    });
-    internal_state
-      .entries
-      .sort_by(|a, b| a.priority.cmp(&b.priority));
+    internal_state.entries.push(InternalEntry { id, renderer });
 
     if internal_state.next_entry_id == u16::MAX {
       internal_state.next_entry_id = 0;
