@@ -7,6 +7,7 @@ use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
+use deno_ast::SourceTextInfo;
 use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -131,6 +132,7 @@ fn check_call_expr(
   node: &ast::CallExpr,
   level: usize,
   fns: Option<&HashMap<String, ast::Function>>,
+  text_info: Option<&SourceTextInfo>,
 ) -> Option<(String, Vec<TestDefinition>)> {
   if let Some(expr) = node.args.get(0).map(|es| es.expr.as_ref()) {
     match expr {
@@ -231,7 +233,18 @@ fn check_call_expr(
             .map(|fn_expr| (name, fn_to_steps(parent, level, fn_expr)))
         })
       }
-      _ => None,
+      _ => {
+        if let Some(text_info) = text_info {
+          let range = node.range();
+          let indexes = text_info.line_and_column_display(range.start);
+          Some((
+            format!("Test {}:{}", indexes.line_number, indexes.column_number),
+            vec![],
+          ))
+        } else {
+          None
+        }
+      }
     }
   } else {
     None
@@ -286,7 +299,7 @@ impl TestStepCollector {
 
   fn check_call_expr(&mut self, node: &ast::CallExpr, range: SourceRange) {
     if let Some((name, steps)) =
-      check_call_expr(&self.parent, node, self.level + 1, None)
+      check_call_expr(&self.parent, node, self.level + 1, None, None)
     {
       self.add_step(name, range, steps);
     }
@@ -390,15 +403,17 @@ pub struct TestCollector {
   specifier: ModuleSpecifier,
   vars: HashSet<String>,
   fns: HashMap<String, ast::Function>,
+  text_info: SourceTextInfo,
 }
 
 impl TestCollector {
-  pub fn new(specifier: ModuleSpecifier) -> Self {
+  pub fn new(specifier: ModuleSpecifier, text_info: SourceTextInfo) -> Self {
     Self {
       definitions: Vec::new(),
       specifier,
       vars: HashSet::new(),
       fns: HashMap::new(),
+      text_info,
     }
   }
 
@@ -418,9 +433,13 @@ impl TestCollector {
   }
 
   fn check_call_expr(&mut self, node: &ast::CallExpr, range: SourceRange) {
-    if let Some((name, steps)) =
-      check_call_expr(self.specifier.as_str(), node, 1, Some(&self.fns))
-    {
+    if let Some((name, steps)) = check_call_expr(
+      self.specifier.as_str(),
+      node,
+      1,
+      Some(&self.fns),
+      Some(&self.text_info),
+    ) {
       self.add_definition(name, range, steps);
     }
   }
@@ -541,7 +560,8 @@ pub mod tests {
       maybe_syntax: None,
     })
     .unwrap();
-    let mut collector = TestCollector::new(specifier);
+    let text_info = parsed_module.text_info().clone();
+    let mut collector = TestCollector::new(specifier, text_info);
     parsed_module.module().visit_with(&mut collector);
     collector.take()
   }
@@ -817,6 +837,28 @@ pub mod tests {
         level: 0,
         name: "someFunction".to_string(),
         range: new_range(51, 55),
+        steps: vec![]
+      }]
+    );
+  }
+
+  #[test]
+  fn test_test_collector_unknown_test() {
+    let res = collect(
+      r#"
+      const someFunction = () => ({ name: "test", fn: () => {} });
+      Deno.test(someFunction());
+    "#,
+    );
+
+    assert_eq!(
+      res,
+      vec![TestDefinition {
+        id: "6d05d6dc35548b86a1e70acaf24a5bc2dd35db686b35b685ad5931d201b4a918"
+          .to_string(),
+        level: 0,
+        name: "Test 3:7".to_string(),
+        range: new_range(79, 83),
         steps: vec![]
       }]
     );
