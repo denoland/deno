@@ -86,6 +86,9 @@ impl DrawThread {
 
   /// Adds a renderer to the draw thread.
   pub fn add_entry(renderer: Arc<dyn DrawThreadRenderer>) -> DrawThreadGuard {
+    // it's the responsibility of the caller to ensure this is supported
+    debug_assert!(DrawThread::is_supported());
+
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
     let id = internal_state.next_entry_id;
@@ -104,6 +107,10 @@ impl DrawThread {
 
   /// Hides the draw thread.
   pub fn hide() {
+    if !DrawThread::is_supported() {
+      return;
+    }
+
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
     internal_state.hide = true;
@@ -112,6 +119,10 @@ impl DrawThread {
 
   /// Shows the draw thread if it was previously hidden.
   pub fn show() {
+    if !DrawThread::is_supported() {
+      return;
+    }
+
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
     internal_state.hide = false;
@@ -153,7 +164,7 @@ impl DrawThread {
 
     let drawer_id = internal_state.drawer_id;
     tokio::task::spawn_blocking(move || {
-      let mut previous_size = console_size().unwrap();
+      let mut previous_size = console_size();
       loop {
         let mut delay_ms = 120;
         {
@@ -167,6 +178,10 @@ impl DrawThread {
             internal_state.entries.clone()
           };
 
+          // this should always be set, but have the code handle
+          // it not being for some reason
+          let size = console_size();
+
           // Call into the renderers outside the lock to prevent a potential
           // deadlock between our internal state lock and the renderers
           // internal state lock.
@@ -179,13 +194,12 @@ impl DrawThread {
           //    which attempts to acquire the other thread's Render's internal
           //    lock causing a deadlock
           let mut text = String::new();
-          let size = console_size().unwrap();
           if size != previous_size {
             // means the user is actively resizing the console...
             // wait a little bit until they stop resizing
             previous_size = size;
             delay_ms = 200;
-          } else {
+          } else if let Some(size) = size {
             let mut should_new_line_next = false;
             for entry in entries {
               let new_text = entry.renderer.render(&size);
@@ -195,23 +209,23 @@ impl DrawThread {
               should_new_line_next = !new_text.is_empty();
               text.push_str(&new_text);
             }
-          }
 
-          // now reacquire the lock, ensure we should still be drawing, then
-          // output the text
-          {
-            let internal_state = &*INTERNAL_STATE;
-            let mut internal_state = internal_state.lock();
-            if internal_state.should_exit_draw_thread(drawer_id) {
-              break;
+            // now reacquire the lock, ensure we should still be drawing, then
+            // output the text
+            {
+              let internal_state = &*INTERNAL_STATE;
+              let mut internal_state = internal_state.lock();
+              if internal_state.should_exit_draw_thread(drawer_id) {
+                break;
+              }
+              internal_state.static_text.eprint_with_size(
+                &text,
+                console_static_text::ConsoleSize {
+                  cols: Some(size.cols as u16),
+                  rows: Some(size.rows as u16),
+                },
+              );
             }
-            internal_state.static_text.eprint_with_size(
-              &text,
-              console_static_text::ConsoleSize {
-                cols: Some(size.cols as u16),
-                rows: Some(size.rows as u16),
-              },
-            );
           }
         }
 
