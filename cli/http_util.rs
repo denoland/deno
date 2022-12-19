@@ -1,5 +1,4 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-use crate::auth_tokens::AuthToken;
 use crate::util::progress_bar::UpdateGuard;
 use crate::version::get_user_agent;
 
@@ -218,21 +217,6 @@ impl CacheSemantics {
   }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum FetchOnceResult {
-  Code(Vec<u8>, HeadersMap),
-  NotModified,
-  Redirect(Url, HeadersMap),
-}
-
-#[derive(Debug)]
-pub struct FetchOnceArgs {
-  pub url: Url,
-  pub maybe_accept: Option<String>,
-  pub maybe_etag: Option<String>,
-  pub maybe_auth_token: Option<AuthToken>,
-}
-
 #[derive(Debug, Clone)]
 pub struct HttpClient(reqwest::Client);
 
@@ -312,24 +296,9 @@ impl HttpClient {
       );
     }
 
-    if let Some(progress_guard) = progress_guard {
-      if let Some(total_size) = response.content_length() {
-        progress_guard.set_total_size(total_size);
-        let mut current_size = 0;
-        let mut data = Vec::with_capacity(total_size as usize);
-        let mut stream = response.bytes_stream();
-        while let Some(item) = stream.next().await {
-          let bytes = item?;
-          current_size += bytes.len() as u64;
-          progress_guard.set_position(current_size);
-          data.extend(bytes.into_iter());
-        }
-        return Ok(Some(data));
-      }
-    }
-
-    let bytes = response.bytes().await?;
-    Ok(Some(bytes.into()))
+    get_response_body_with_progress(response, progress_guard)
+      .await
+      .map(Some)
   }
 
   async fn get_redirected_response<U: reqwest::IntoUrl>(
@@ -356,6 +325,29 @@ impl HttpClient {
       Ok(response)
     }
   }
+}
+
+pub async fn get_response_body_with_progress(
+  response: reqwest::Response,
+  progress_guard: Option<&UpdateGuard>,
+) -> Result<Vec<u8>, AnyError> {
+  if let Some(progress_guard) = progress_guard {
+    if let Some(total_size) = response.content_length() {
+      progress_guard.set_total_size(total_size);
+      let mut current_size = 0;
+      let mut data = Vec::with_capacity(total_size as usize);
+      let mut stream = response.bytes_stream();
+      while let Some(item) = stream.next().await {
+        let bytes = item?;
+        current_size += bytes.len() as u64;
+        progress_guard.set_position(current_size);
+        data.extend(bytes.into_iter());
+      }
+      return Ok(data);
+    }
+  }
+  let bytes = response.bytes().await?;
+  Ok(bytes.into())
 }
 
 #[cfg(test)]
