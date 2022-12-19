@@ -182,7 +182,8 @@ fn op_exit(state: &mut OpState) {
 #[op]
 fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
   state
-    .borrow_mut::<Permissions>()
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
     .sys
     .check("loadavg", Some("Deno.loadavg()"))?;
   Ok(sys_info::loadavg())
@@ -191,7 +192,8 @@ fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
 #[op]
 fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
   state
-    .borrow_mut::<Permissions>()
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
     .sys
     .check("hostname", Some("Deno.hostname()"))?;
   Ok(sys_info::hostname())
@@ -200,7 +202,8 @@ fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
 #[op]
 fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
   state
-    .borrow_mut::<Permissions>()
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
     .sys
     .check("osRelease", Some("Deno.osRelease()"))?;
   Ok(sys_info::os_release())
@@ -211,7 +214,8 @@ fn op_network_interfaces(
   state: &mut OpState,
 ) -> Result<Vec<NetworkInterface>, AnyError> {
   state
-    .borrow_mut::<Permissions>()
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
     .sys
     .check("networkInterfaces", Some("Deno.networkInterfaces()"))?;
   Ok(netif::up()?.map(NetworkInterface::from).collect())
@@ -266,7 +270,8 @@ fn op_system_memory_info(
   state: &mut OpState,
 ) -> Result<Option<sys_info::MemInfo>, AnyError> {
   state
-    .borrow_mut::<Permissions>()
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
     .sys
     .check("systemMemoryInfo", Some("Deno.systemMemoryInfo()"))?;
   Ok(sys_info::mem_info())
@@ -276,7 +281,8 @@ fn op_system_memory_info(
 #[op]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
-    .borrow_mut::<Permissions>()
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
     .sys
     .check("gid", Some("Deno.gid()"))?;
   // TODO(bartlomieju):
@@ -290,7 +296,8 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[op]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
-    .borrow_mut::<Permissions>()
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
     .sys
     .check("gid", Some("Deno.gid()"))?;
   Ok(None)
@@ -300,7 +307,8 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[op]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
-    .borrow_mut::<Permissions>()
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
     .sys
     .check("uid", Some("Deno.uid()"))?;
   // TODO(bartlomieju):
@@ -314,7 +322,8 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[op]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
-    .borrow_mut::<Permissions>()
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
     .sys
     .check("uid", Some("Deno.uid()"))?;
   Ok(None)

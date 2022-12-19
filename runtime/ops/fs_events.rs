@@ -27,6 +27,7 @@ use std::cell::RefCell;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 pub fn init() -> Extension {
@@ -119,7 +120,8 @@ fn op_fs_events_open(
   for path in &args.paths {
     let path = PathBuf::from(path);
     state
-      .borrow_mut::<Permissions>()
+      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .lock()
       .read
       .check(&path, Some("Deno.watchFs()"))?;
     watcher.watch(&path, recursive_mode)?;

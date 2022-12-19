@@ -8,6 +8,7 @@ use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::op;
 
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -21,6 +22,7 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 use tokio::process::Command;
 
 #[cfg(unix)]
@@ -145,7 +147,8 @@ struct RunInfo {
 fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
   state
-    .borrow_mut::<Permissions>()
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
     .run
     .check(&args[0], Some("Deno.run()"))?;
   let env = run_args.env;
@@ -354,7 +357,8 @@ fn op_kill(
   api_name: String,
 ) -> Result<(), AnyError> {
   state
-    .borrow_mut::<Permissions>()
+    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .lock()
     .run
     .check_all(Some(&api_name))?;
   kill(pid, &signal)?;
