@@ -212,7 +212,7 @@
       const reader = reqBody.getReader();
       WeakMapPrototypeSet(requestBodyReaders, req, reader);
       (async () => {
-        let done;
+        let done = false;
         while (!done) {
           let val;
           try {

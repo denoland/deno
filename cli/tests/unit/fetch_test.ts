@@ -1839,13 +1839,11 @@ Deno.test(
       listener.close();
       const buf = new Uint8Array(160);
       const n = await conn.read(buf);
-      assertEquals(n, 160);
-      const buf2 = new Uint8Array(160);
-      const n2 = await conn.read(buf2);
-      assertEquals(n2, 6);
-      const buf3 = new Uint8Array(1);
-      const n3 = await conn.read(buf3);
-      assertEquals(n3, null);
+      assertEquals(n, 160); // this is the request headers + first body chunk
+      const n2 = await conn.read(buf);
+      assertEquals(n2, 6); // this is the second body chunk
+      const n3 = await conn.read(buf);
+      assertEquals(n3, null); // the connection now abruptly closes because the client has errored
       conn.close();
     })();
 
