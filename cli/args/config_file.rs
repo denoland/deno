@@ -3,10 +3,9 @@
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::TaskFlags;
-use crate::fs_util;
-use crate::fs_util::canonicalize_path;
-use crate::fs_util::specifier_parent;
-use crate::fs_util::specifier_to_file_path;
+use crate::util::fs::canonicalize_path;
+use crate::util::path::specifier_parent;
+use crate::util::path::specifier_to_file_path;
 
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -430,6 +429,35 @@ pub struct TestConfig {
   pub files: FilesConfig,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedBenchConfig {
+  pub files: SerializedFilesConfig,
+}
+
+impl SerializedBenchConfig {
+  pub fn into_resolved(
+    self,
+    config_file_specifier: &ModuleSpecifier,
+  ) -> Result<BenchConfig, AnyError> {
+    Ok(BenchConfig {
+      files: self.files.into_resolved(config_file_specifier)?,
+    })
+  }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct BenchConfig {
+  pub files: FilesConfig,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum LockConfig {
+  Bool(bool),
+  PathBuf(PathBuf),
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
@@ -439,6 +467,8 @@ pub struct ConfigFileJson {
   pub fmt: Option<Value>,
   pub tasks: Option<Value>,
   pub test: Option<Value>,
+  pub bench: Option<Value>,
+  pub lock: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -467,7 +497,7 @@ impl ConfigFile {
             ..
           }) = &flags.subcommand
           {
-            let task_cwd = fs_util::canonicalize_path(&PathBuf::from(path))?;
+            let task_cwd = canonicalize_path(&PathBuf::from(path))?;
             if let Some(path) = Self::discover_from(&task_cwd, &mut checked)? {
               return Ok(Some(path));
             }
@@ -563,7 +593,7 @@ impl ConfigFile {
 
   pub fn from_specifier(specifier: &ModuleSpecifier) -> Result<Self, AnyError> {
     let config_path = specifier_to_file_path(specifier)?;
-    let config_text = match std::fs::read_to_string(&config_path) {
+    let config_text = match std::fs::read_to_string(config_path) {
       Ok(text) => text,
       Err(err) => bail!(
         "Error reading config file {}: {}",
@@ -646,9 +676,19 @@ impl ConfigFile {
 
   pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
     if let Some(config) = self.json.test.clone() {
-      let lint_config: SerializedTestConfig = serde_json::from_value(config)
+      let test_config: SerializedTestConfig = serde_json::from_value(config)
         .context("Failed to parse \"test\" configuration")?;
-      Ok(Some(lint_config.into_resolved(&self.specifier)?))
+      Ok(Some(test_config.into_resolved(&self.specifier)?))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn to_bench_config(&self) -> Result<Option<BenchConfig>, AnyError> {
+    if let Some(config) = self.json.bench.clone() {
+      let bench_config: SerializedBenchConfig = serde_json::from_value(config)
+        .context("Failed to parse \"bench\" configuration")?;
+      Ok(Some(bench_config.into_resolved(&self.specifier)?))
     } else {
       Ok(None)
     }
@@ -758,6 +798,167 @@ impl ConfigFile {
       Ok(tasks_config)
     } else {
       bail!("No tasks found in configuration file")
+    }
+  }
+
+  pub fn to_lock_config(&self) -> Result<Option<LockConfig>, AnyError> {
+    if let Some(config) = self.json.lock.clone() {
+      let lock_config: LockConfig = serde_json::from_value(config)
+        .context("Failed to parse \"lock\" configuration")?;
+      Ok(Some(lock_config))
+    } else {
+      Ok(None)
+    }
+  }
+}
+
+/// Represents the "default" type library that should be used when type
+/// checking the code in the module graph.  Note that a user provided config
+/// of `"lib"` would override this value.
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+pub enum TsTypeLib {
+  DenoWindow,
+  DenoWorker,
+  UnstableDenoWindow,
+  UnstableDenoWorker,
+}
+
+impl Default for TsTypeLib {
+  fn default() -> Self {
+    Self::DenoWindow
+  }
+}
+
+impl Serialize for TsTypeLib {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let value = match self {
+      Self::DenoWindow => vec!["deno.window".to_string()],
+      Self::DenoWorker => vec!["deno.worker".to_string()],
+      Self::UnstableDenoWindow => {
+        vec!["deno.window".to_string(), "deno.unstable".to_string()]
+      }
+      Self::UnstableDenoWorker => {
+        vec!["deno.worker".to_string(), "deno.unstable".to_string()]
+      }
+    };
+    Serialize::serialize(&value, serializer)
+  }
+}
+
+/// An enum that represents the base tsc configuration to return.
+pub enum TsConfigType {
+  /// Return a configuration for bundling, using swc to emit the bundle. This is
+  /// independent of type checking.
+  Bundle,
+  /// Return a configuration to use tsc to type check. This
+  /// is independent of either bundling or emitting via swc.
+  Check { lib: TsTypeLib },
+  /// Return a configuration to use swc to emit single module files.
+  Emit,
+}
+
+pub struct TsConfigForEmit {
+  pub ts_config: TsConfig,
+  pub maybe_ignored_options: Option<IgnoredCompilerOptions>,
+}
+
+/// For a given configuration type and optionally a configuration file,
+/// return a `TsConfig` struct and optionally any user configuration
+/// options that were ignored.
+pub fn get_ts_config_for_emit(
+  config_type: TsConfigType,
+  maybe_config_file: Option<&ConfigFile>,
+) -> Result<TsConfigForEmit, AnyError> {
+  let mut ts_config = match config_type {
+    TsConfigType::Bundle => TsConfig::new(json!({
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "importsNotUsedAsValues": "remove",
+      "inlineSourceMap": false,
+      "inlineSources": false,
+      "sourceMap": false,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+    })),
+    TsConfigType::Check { lib } => TsConfig::new(json!({
+      "allowJs": true,
+      "allowSyntheticDefaultImports": true,
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "experimentalDecorators": true,
+      "incremental": true,
+      "jsx": "react",
+      "importsNotUsedAsValues": "remove",
+      "inlineSourceMap": true,
+      "inlineSources": true,
+      "isolatedModules": true,
+      "lib": lib,
+      "module": "esnext",
+      "moduleDetection": "force",
+      "noEmit": true,
+      "resolveJsonModule": true,
+      "sourceMap": false,
+      "strict": true,
+      "target": "esnext",
+      "tsBuildInfoFile": "deno:///.tsbuildinfo",
+      "useDefineForClassFields": true,
+      // TODO(@kitsonk) remove for Deno 2.0
+      "useUnknownInCatchVariables": false,
+    })),
+    TsConfigType::Emit => TsConfig::new(json!({
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "importsNotUsedAsValues": "remove",
+      "inlineSourceMap": true,
+      "inlineSources": true,
+      "sourceMap": false,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+      "resolveJsonModule": true,
+    })),
+  };
+  let maybe_ignored_options =
+    ts_config.merge_tsconfig_from_config_file(maybe_config_file)?;
+  Ok(TsConfigForEmit {
+    ts_config,
+    maybe_ignored_options,
+  })
+}
+
+impl From<TsConfig> for deno_ast::EmitOptions {
+  fn from(config: TsConfig) -> Self {
+    let options: EmitConfigOptions = serde_json::from_value(config.0).unwrap();
+    let imports_not_used_as_values =
+      match options.imports_not_used_as_values.as_str() {
+        "preserve" => deno_ast::ImportsNotUsedAsValues::Preserve,
+        "error" => deno_ast::ImportsNotUsedAsValues::Error,
+        _ => deno_ast::ImportsNotUsedAsValues::Remove,
+      };
+    let (transform_jsx, jsx_automatic, jsx_development) =
+      match options.jsx.as_str() {
+        "react" => (true, false, false),
+        "react-jsx" => (true, true, false),
+        "react-jsxdev" => (true, true, true),
+        _ => (false, false, false),
+      };
+    deno_ast::EmitOptions {
+      emit_metadata: options.emit_decorator_metadata,
+      imports_not_used_as_values,
+      inline_source_map: options.inline_source_map,
+      inline_sources: options.inline_sources,
+      source_map: options.source_map,
+      jsx_automatic,
+      jsx_development,
+      jsx_factory: options.jsx_factory,
+      jsx_fragment_factory: options.jsx_fragment_factory,
+      jsx_import_source: options.jsx_import_source,
+      transform_jsx,
+      var_decl_imports: false,
     }
   }
 }

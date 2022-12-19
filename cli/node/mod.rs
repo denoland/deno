@@ -27,12 +27,12 @@ use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::path_to_declaration_path;
 use deno_runtime::deno_node::NodeModuleKind;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
-use deno_runtime::deno_node::TYPES_CONDITIONS;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -95,23 +95,13 @@ impl NodeResolution {
           },
         )
       }
-      maybe_response => {
-        let specifier = match maybe_response {
-          Some(response) => response.into_url(),
-          None => {
-            ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap()
-          }
-        };
-        (specifier, MediaType::Dts)
-      }
+      Some(resolution) => (resolution.into_url(), MediaType::Dts),
+      None => (
+        ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap(),
+        MediaType::Dts,
+      ),
     }
   }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeResolutionMode {
-  Execution,
-  Types,
 }
 
 struct NodeModulePolyfill {
@@ -401,14 +391,19 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
 
 pub async fn initialize_runtime(
   js_runtime: &mut JsRuntime,
+  uses_local_node_modules_dir: bool,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName) {{
+    r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName, usesLocalNodeModulesDir) {{
       const moduleAll = await import(moduleAllUrl);
       Deno[Deno.internal].node.initialize(moduleAll.default, nodeGlobalThisName);
-    }})('{}', '{}');"#,
+      if (usesLocalNodeModulesDir) {{
+        Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
+      }}
+    }})('{}', '{}', {});"#,
     MODULE_ALL_URL.as_str(),
     NODE_GLOBAL_THIS_NAME.as_str(),
+    uses_local_node_modules_dir,
   );
 
   let value =
@@ -480,8 +475,13 @@ pub fn node_resolve(
     }
   }
 
-  let conditions = mode_conditions(mode);
-  let url = module_resolve(specifier, referrer, conditions, npm_resolver)?;
+  let url = module_resolve(
+    specifier,
+    referrer,
+    DEFAULT_CONDITIONS,
+    mode,
+    npm_resolver,
+  )?;
   let url = match url {
     Some(url) => url,
     None => return Ok(None),
@@ -492,7 +492,10 @@ pub fn node_resolve(
       let path = url.to_file_path().unwrap();
       // todo(16370): the module kind is not correct here. I think we need
       // typescript to tell us if the referrer is esm or cjs
-      let path = path_to_declaration_path(path, NodeModuleKind::Esm);
+      let path = match path_to_declaration_path(path, NodeModuleKind::Esm) {
+        Some(path) => path,
+        None => return Ok(None),
+      };
       ModuleSpecifier::from_file_path(path).unwrap()
     }
   };
@@ -519,11 +522,12 @@ pub fn node_resolve_npm_reference(
       .unwrap_or_else(|| ".".to_string()),
     &package_folder,
     node_module_kind,
-    mode_conditions(mode),
+    DEFAULT_CONDITIONS,
+    mode,
     npm_resolver,
   )
   .with_context(|| {
-    format!("Error resolving package config for '{}'.", reference)
+    format!("Error resolving package config for '{}'", reference)
   })?;
   let resolved_path = match maybe_resolved_path {
     Some(resolved_path) => resolved_path,
@@ -532,7 +536,10 @@ pub fn node_resolve_npm_reference(
   let resolved_path = match mode {
     NodeResolutionMode::Execution => resolved_path,
     NodeResolutionMode::Types => {
-      path_to_declaration_path(resolved_path, node_module_kind)
+      match path_to_declaration_path(resolved_path, node_module_kind) {
+        Some(path) => path,
+        None => return Ok(None),
+      }
     }
   };
   let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
@@ -540,13 +547,6 @@ pub fn node_resolve_npm_reference(
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
-}
-
-fn mode_conditions(mode: NodeResolutionMode) -> &'static [&'static str] {
-  match mode {
-    NodeResolutionMode::Execution => DEFAULT_CONDITIONS,
-    NodeResolutionMode::Types => TYPES_CONDITIONS,
-  }
 }
 
 pub fn node_resolve_binary_export(
@@ -636,17 +636,22 @@ pub fn load_cjs_module_from_ext_node(
   js_runtime: &mut JsRuntime,
   module: &str,
   main: bool,
+  inspect_brk: bool,
 ) -> Result<(), AnyError> {
   fn escape_for_single_quote_string(text: &str) -> String {
     text.replace('\\', r"\\").replace('\'', r"\'")
   }
 
   let source_code = &format!(
-    r#"(function loadCjsModule(module) {{
+    r#"(function loadCjsModule(module, inspectBrk) {{
+      if (inspectBrk) {{
+        Deno[Deno.internal].require.setInspectBrk();
+      }}
       Deno[Deno.internal].require.Module._load(module, null, {main});
-    }})('{module}');"#,
+    }})('{module}', {inspect_brk});"#,
     main = main,
     module = escape_for_single_quote_string(module),
+    inspect_brk = inspect_brk,
   );
 
   js_runtime.execute_script(&located_script_name!(), source_code)?;
@@ -658,6 +663,7 @@ fn package_config_resolve(
   package_dir: &Path,
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<PathBuf>, AnyError> {
   let package_json_path = package_dir.join("package.json");
@@ -665,29 +671,34 @@ fn package_config_resolve(
   let package_config =
     PackageJson::load(npm_resolver, package_json_path.clone())?;
   if let Some(exports) = &package_config.exports {
-    let is_types = conditions == TYPES_CONDITIONS;
-    if is_types && package_subpath == "." {
-      if let Ok(Some(path)) =
-        legacy_main_resolve(&package_config, referrer_kind, conditions)
-      {
-        return Ok(Some(path));
-      } else {
-        return Ok(None);
-      }
-    }
-    return package_exports_resolve(
+    let result = package_exports_resolve(
       &package_json_path,
       package_subpath.to_string(),
       exports,
       &referrer,
       referrer_kind,
       conditions,
+      mode,
       npm_resolver,
-    )
-    .map(Some);
+    );
+    match result {
+      Ok(found) => return Ok(Some(found)),
+      Err(exports_err) => {
+        if mode.is_types() && package_subpath == "." {
+          if let Ok(Some(path)) =
+            legacy_main_resolve(&package_config, referrer_kind, mode)
+          {
+            return Ok(Some(path));
+          } else {
+            return Ok(None);
+          }
+        }
+        return Err(exports_err);
+      }
+    }
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_config, referrer_kind, conditions);
+    return legacy_main_resolve(&package_config, referrer_kind, mode);
   }
 
   Ok(Some(package_dir.join(package_subpath)))
@@ -698,20 +709,25 @@ pub fn url_to_node_resolution(
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<NodeResolution, AnyError> {
   let url_str = url.as_str().to_lowercase();
-  Ok(if url_str.starts_with("http") {
-    NodeResolution::Esm(url)
+  if url_str.starts_with("http") {
+    Ok(NodeResolution::Esm(url))
   } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
     let package_config = get_closest_package_json(&url, npm_resolver)?;
     if package_config.typ == "module" {
-      NodeResolution::Esm(url)
+      Ok(NodeResolution::Esm(url))
     } else {
-      NodeResolution::CommonJs(url)
+      Ok(NodeResolution::CommonJs(url))
     }
   } else if url_str.ends_with(".mjs") || url_str.ends_with(".d.mts") {
-    NodeResolution::Esm(url)
+    Ok(NodeResolution::Esm(url))
+  } else if url_str.ends_with(".ts") {
+    Err(generic_error(format!(
+      "TypeScript files are not supported in npm packages: {}",
+      url
+    )))
   } else {
-    NodeResolution::CommonJs(url)
-  })
+    Ok(NodeResolution::CommonJs(url))
+  }
 }
 
 fn finalize_resolution(
@@ -743,7 +759,7 @@ fn finalize_resolution(
     p_str.to_string()
   };
 
-  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(&p) {
+  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(p) {
     (stats.is_dir(), stats.is_file())
   } else {
     (false, false)
@@ -768,18 +784,21 @@ fn module_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   // note: if we're here, the referrer is an esm module
   let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
     let resolved_specifier = referrer.join(specifier)?;
-    if conditions == TYPES_CONDITIONS {
+    if mode.is_types() {
       let file_path = to_file_path(&resolved_specifier);
       // todo(dsherret): the node module kind is not correct and we
       // should use the value provided by typescript instead
       let declaration_path =
         path_to_declaration_path(file_path, NodeModuleKind::Esm);
-      Some(ModuleSpecifier::from_file_path(declaration_path).unwrap())
+      declaration_path.map(|declaration_path| {
+        ModuleSpecifier::from_file_path(declaration_path).unwrap()
+      })
     } else {
       Some(resolved_specifier)
     }
@@ -790,6 +809,7 @@ fn module_resolve(
         referrer,
         NodeModuleKind::Esm,
         conditions,
+        mode,
         npm_resolver,
       )
       .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
@@ -802,6 +822,7 @@ fn module_resolve(
       referrer,
       NodeModuleKind::Esm,
       conditions,
+      mode,
       npm_resolver,
     )?
     .map(|p| ModuleSpecifier::from_file_path(p).unwrap())
@@ -933,10 +954,11 @@ pub fn translate_cjs_to_esm(
       // FIXME(bartlomieju): check if these conditions are okay, probably
       // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
       &["deno", "require", "default"],
+      NodeResolutionMode::Execution,
       npm_resolver,
     )?;
     let reexport_specifier =
-      ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
+      ModuleSpecifier::from_file_path(resolved_reexport).unwrap();
     // Second, read the source code from disk
     let reexport_file = file_fetcher
       .get_source(&reexport_specifier)
@@ -1003,6 +1025,7 @@ fn resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   if specifier.starts_with('/') {
@@ -1027,7 +1050,7 @@ fn resolve(
   let module_dir = npm_resolver.resolve_package_folder_from_package(
     package_specifier.as_str(),
     &referrer_path,
-    conditions,
+    mode,
   )?;
 
   let package_json_path = module_dir.join("package.json");
@@ -1043,6 +1066,7 @@ fn resolve(
         referrer,
         NodeModuleKind::Esm,
         conditions,
+        mode,
         npm_resolver,
       );
     }

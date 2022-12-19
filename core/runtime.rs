@@ -84,10 +84,12 @@ pub struct JsRuntime {
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_options: SnapshotOptions,
-  built_from_snapshot: bool,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
+  extensions_with_js: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
+  // Marks if this is considered the top-level runtime. Used only be inspector.
+  is_main: bool,
 }
 
 pub(crate) struct DynImportModEvaluate {
@@ -238,19 +240,28 @@ pub struct RuntimeOptions {
   /// executed tries to load modules.
   pub module_loader: Option<Rc<dyn ModuleLoader>>,
 
-  /// JsRuntime extensions, not to be confused with ES modules
-  /// these are sets of ops and other JS code to be initialized.
+  /// JsRuntime extensions, not to be confused with ES modules.
+  /// Only ops registered by extensions will be initialized. If you need
+  /// to execute JS code from extensions, use `extensions_with_js` options
+  /// instead.
   pub extensions: Vec<Extension>,
 
-  /// V8 snapshot that should be loaded on startup.
+  /// JsRuntime extensions, not to be confused with ES modules.
+  /// Ops registered by extensions will be initialized and JS code will be
+  /// executed. If you don't need to execute JS code from extensions, use
+  /// `extensions` option instead.
   ///
-  /// Currently can't be used with `will_snapshot`.
+  /// This is useful when creating snapshots, in such case you would pass
+  /// extensions using `extensions_with_js`, later when creating a runtime
+  /// from the snapshot, you would pass these extensions using `extensions`
+  /// option.
+  pub extensions_with_js: Vec<Extension>,
+
+  /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
 
   /// Prepare runtime to take snapshot of loaded code.
   /// The snapshot is determinstic and uses predictable random numbers.
-  ///
-  /// Currently can't be used with `startup_snapshot`.
   pub will_snapshot: bool,
 
   /// Isolate creation parameters.
@@ -274,7 +285,13 @@ pub struct RuntimeOptions {
   /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
   /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+
+  /// Start inspector instance to allow debuggers to connect.
   pub inspector: bool,
+
+  /// Describe if this is the main runtime instance, used by debuggers in some
+  /// situation - like disconnecting when program finishes running.
+  pub is_main: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -328,14 +345,21 @@ impl JsRuntime {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(move || v8_init(v8_platform, options.will_snapshot));
 
-    let has_startup_snapshot = options.startup_snapshot.is_some();
-
     // Add builtins extension
-    options
-      .extensions
-      .insert(0, crate::ops_builtin::init_builtins());
+    if options.startup_snapshot.is_none() {
+      options
+        .extensions_with_js
+        .insert(0, crate::ops_builtin::init_builtins());
+    } else {
+      options
+        .extensions
+        .insert(0, crate::ops_builtin::init_builtins());
+    }
 
-    let ops = Self::collect_ops(&mut options.extensions);
+    let ops = Self::collect_ops(
+      &mut options.extensions,
+      &mut options.extensions_with_js,
+    );
     let mut op_state = OpState::new(ops.len());
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
@@ -498,6 +522,7 @@ impl JsRuntime {
       Some(JsRuntimeInspector::new(
         &mut isolate,
         global_context.clone(),
+        options.is_main,
       ))
     } else {
       None
@@ -525,24 +550,21 @@ impl JsRuntime {
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
-      built_from_snapshot: has_startup_snapshot,
       snapshot_options,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
+      extensions_with_js: options.extensions_with_js,
       state: state_rc,
       module_map: Some(module_map_rc),
+      is_main: options.is_main,
     };
 
     // Init resources and ops before extensions to make sure they are
     // available during the initialization process.
     js_runtime.init_extension_ops().unwrap();
-    // TODO(@AaronO): diff extensions inited in snapshot and those provided
-    // for now we assume that snapshot and extensions always match
-    if !has_startup_snapshot {
-      let realm = js_runtime.global_realm();
-      js_runtime.init_extension_js(&realm).unwrap();
-    }
+    let realm = js_runtime.global_realm();
+    js_runtime.init_extension_js(&realm).unwrap();
     // Init callbacks (opresolve)
     js_runtime.init_cbs();
 
@@ -593,37 +615,27 @@ impl JsRuntime {
 
   /// Creates a new realm (V8 context) in this JS execution context,
   /// pre-initialized with all of the extensions that were passed in
-  /// [`RuntimeOptions::extensions`] when the [`JsRuntime`] was constructed.
-  ///
-  /// If the [`JsRuntime`] was not built from a snapshot (see
-  /// [`RuntimeOptions::startup_snapshot`]), the JS code for the extensions will
-  /// be run in the call to this method. In contrast, if there is a snapshot,
-  /// that will be used instead, and the extensions' initialization will come
-  /// "for free".
+  /// [`RuntimeOptions::extensions_with_js`] when the [`JsRuntime`] was
+  /// constructed.
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
       // SAFETY: Having the scope tied to self's lifetime makes it impossible to
-      // reference self.ops while the scope is alive. Here we turn it into an
-      // unbound lifetime, which is sound because 1. it only lives until the end
-      // of this block, and 2. the HandleScope only has access to the isolate,
-      // and nothing else we're accessing from self does.
+      // reference JsRuntimeState::op_ctxs while the scope is alive. Here we
+      // turn it into an unbound lifetime, which is sound because 1. it only
+      // lives until the end of this block, and 2. the HandleScope only has
+      // access to the isolate, and nothing else we're accessing from self does.
       let scope = &mut v8::HandleScope::new(unsafe {
         &mut *(self.v8_isolate() as *mut v8::OwnedIsolate)
       });
       let context = bindings::initialize_context(
         scope,
         &self.state.borrow().op_ctxs,
-        SnapshotOptions::from_bools(
-          self.built_from_snapshot,
-          self.snapshot_options.will_snapshot(),
-        ),
+        self.snapshot_options,
       );
       JsRealm::new(v8::Global::new(scope, context))
     };
 
-    if !self.built_from_snapshot {
-      self.init_extension_js(&realm)?;
-    }
+    self.init_extension_js(&realm)?;
     Ok(realm)
   }
 
@@ -672,7 +684,8 @@ impl JsRuntime {
   /// Initializes JS of provided Extensions in the given realm
   fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
     // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
+    let mut extensions: Vec<Extension> =
+      std::mem::take(&mut self.extensions_with_js);
     for m in extensions.iter_mut() {
       let js_files = m.init_js();
       for (filename, source) in js_files {
@@ -681,15 +694,22 @@ impl JsRuntime {
       }
     }
     // Restore extensions
-    self.extensions = extensions;
+    self.extensions_with_js = extensions;
 
     Ok(())
   }
 
   /// Collects ops from extensions & applies middleware
-  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpDecl> {
+  fn collect_ops(
+    extensions: &mut [Extension],
+    extensions_with_js: &mut [Extension],
+  ) -> Vec<OpDecl> {
+    let mut exts = vec![];
+    exts.extend(extensions);
+    exts.extend(extensions_with_js);
+
     // Middleware
-    let middleware: Vec<Box<OpMiddlewareFn>> = extensions
+    let middleware: Vec<Box<OpMiddlewareFn>> = exts
       .iter_mut()
       .filter_map(|e| e.init_middleware())
       .collect();
@@ -698,7 +718,7 @@ impl JsRuntime {
     let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
     // Flatten ops, apply middlware & override disabled ops
-    extensions
+    exts
       .iter_mut()
       .filter_map(|e| e.init_ops())
       .flatten()
@@ -723,22 +743,41 @@ impl JsRuntime {
   fn init_extension_ops(&mut self) -> Result<(), Error> {
     let op_state = self.op_state();
     // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
+    {
+      let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
 
-    // Setup state
-    for e in extensions.iter_mut() {
-      // ops are already registered during in bindings::initialize_context();
-      e.init_state(&mut op_state.borrow_mut())?;
+      // Setup state
+      for e in extensions.iter_mut() {
+        // ops are already registered during in bindings::initialize_context();
+        e.init_state(&mut op_state.borrow_mut())?;
 
-      // Setup event-loop middleware
-      if let Some(middleware) = e.init_event_loop_middleware() {
-        self.event_loop_middlewares.push(middleware);
+        // Setup event-loop middleware
+        if let Some(middleware) = e.init_event_loop_middleware() {
+          self.event_loop_middlewares.push(middleware);
+        }
       }
+
+      // Restore extensions
+      self.extensions = extensions;
     }
+    {
+      let mut extensions: Vec<Extension> =
+        std::mem::take(&mut self.extensions_with_js);
 
-    // Restore extensions
-    self.extensions = extensions;
+      // Setup state
+      for e in extensions.iter_mut() {
+        // ops are already registered during in bindings::initialize_context();
+        e.init_state(&mut op_state.borrow_mut())?;
 
+        // Setup event-loop middleware
+        if let Some(middleware) = e.init_event_loop_middleware() {
+          self.event_loop_middlewares.push(middleware);
+        }
+      }
+
+      // Restore extensions
+      self.extensions_with_js = extensions;
+    }
     Ok(())
   }
 
@@ -949,6 +988,7 @@ impl JsRuntime {
     state.inspector = Some(JsRuntimeInspector::new(
       self.v8_isolate.as_mut().unwrap(),
       state.global_realm.clone().unwrap().0,
+      self.is_main,
     ));
   }
 
@@ -1088,9 +1128,21 @@ impl JsRuntime {
     let pending_state = self.event_loop_pending_state();
     if !pending_state.is_pending() && !maybe_scheduling {
       if has_inspector {
-        let inspector_has_active_sessions =
-          self.inspector().borrow_mut().has_active_sessions();
-        if wait_for_inspector && inspector_has_active_sessions {
+        let inspector = self.inspector();
+        let has_active_sessions = inspector.borrow().has_active_sessions();
+        let has_blocking_sessions = inspector.borrow().has_blocking_sessions();
+
+        if wait_for_inspector && has_active_sessions {
+          // If there are no blocking sessions (eg. REPL) we can now notify
+          // debugger that the program has finished running and we're ready
+          // to exit the process once debugger disconnects.
+          if !has_blocking_sessions {
+            let context = self.global_context();
+            let scope = &mut self.handle_scope();
+            inspector.borrow_mut().context_destroyed(scope, context);
+            println!("Program finished. Waiting for inspector to disconnect to exit the process...");
+          }
+
           return Poll::Pending;
         }
       }
@@ -1098,7 +1150,7 @@ impl JsRuntime {
       return Poll::Ready(Ok(()));
     }
 
-    let mut state = self.state.borrow_mut();
+    let state = self.state.borrow();
 
     // Check if more async ops have been dispatched
     // during this turn of event loop.
@@ -1115,6 +1167,8 @@ impl JsRuntime {
       state.waker.wake();
     }
 
+    drop(state);
+
     if pending_state.has_pending_module_evaluation {
       if pending_state.has_pending_refed_ops
         || pending_state.has_pending_dyn_imports
@@ -1125,8 +1179,16 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else {
-        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promises.";
-        return Poll::Ready(Err(generic_error(msg)));
+        let scope = &mut self.handle_scope();
+        let messages = find_stalled_top_level_await(scope);
+        // We are gonna print only a single message to provide a nice formatting
+        // with source line of offending promise shown. Once user fixed it, then
+        // they will get another error message for the next promise (but this
+        // situation is gonna be very rare, if ever happening).
+        assert!(!messages.is_empty());
+        let msg = v8::Local::new(scope, messages[0].clone());
+        let js_error = JsError::from_v8_message(scope, msg);
+        return Poll::Ready(Err(js_error.into()));
       }
     }
 
@@ -1137,19 +1199,19 @@ impl JsRuntime {
         || pending_state.has_tick_scheduled
       {
         // pass, will be polled again
-      } else if state.dyn_module_evaluate_idle_counter >= 1 {
-        let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promises.
-Pending dynamic modules:\n".to_string();
-        let module_map = self.module_map.as_mut().unwrap().borrow_mut();
-        for pending_evaluate in &state.pending_dyn_mod_evaluate {
-          let module_info = module_map
-            .get_info_by_id(&pending_evaluate.module_id)
-            .unwrap();
-          msg.push_str("- ");
-          msg.push_str(module_info.name.as_str());
-        }
-        return Poll::Ready(Err(generic_error(msg)));
+      } else if self.state.borrow().dyn_module_evaluate_idle_counter >= 1 {
+        let scope = &mut self.handle_scope();
+        let messages = find_stalled_top_level_await(scope);
+        // We are gonna print only a single message to provide a nice formatting
+        // with source line of offending promise shown. Once user fixed it, then
+        // they will get another error message for the next promise (but this
+        // situation is gonna be very rare, if ever happening).
+        assert!(!messages.is_empty());
+        let msg = v8::Local::new(scope, messages[0].clone());
+        let js_error = JsError::from_v8_message(scope, msg);
+        return Poll::Ready(Err(js_error.into()));
       } else {
+        let mut state = self.state.borrow_mut();
         // Delay the above error by one spin of the event loop. A dynamic import
         // evaluation may complete during this, in which case the counter will
         // reset.
@@ -1162,41 +1224,75 @@ Pending dynamic modules:\n".to_string();
   }
 
   fn event_loop_pending_state(&mut self) -> EventLoopPendingState {
-    let isolate = self.v8_isolate.as_mut().unwrap();
-    let state = self.state.borrow_mut();
-    let module_map = self.module_map.as_mut().unwrap().borrow();
-
-    EventLoopPendingState {
-      has_pending_refed_ops: state.pending_ops.len() > state.unrefed_ops.len(),
-      has_pending_dyn_imports: module_map.has_pending_dynamic_imports(),
-      has_pending_dyn_module_evaluation: !state
-        .pending_dyn_mod_evaluate
-        .is_empty(),
-      has_pending_module_evaluation: state.pending_mod_evaluate.is_some(),
-      has_pending_background_tasks: isolate.has_pending_background_tasks(),
-      has_tick_scheduled: state.has_tick_scheduled,
-    }
+    EventLoopPendingState::new(
+      self.v8_isolate.as_mut().unwrap(),
+      &mut self.state.borrow_mut(),
+      &self.module_map.as_ref().unwrap().borrow(),
+    )
   }
 
   pub(crate) fn event_loop_pending_state_from_isolate(
     isolate: &mut v8::Isolate,
   ) -> EventLoopPendingState {
-    let state_rc = Self::state(isolate);
-    let module_map_rc = Self::module_map(isolate);
-    let state = state_rc.borrow_mut();
-    let module_map = module_map_rc.borrow();
+    EventLoopPendingState::new(
+      isolate,
+      &mut Self::state(isolate).borrow_mut(),
+      &Self::module_map(isolate).borrow(),
+    )
+  }
+}
 
-    EventLoopPendingState {
-      has_pending_refed_ops: state.pending_ops.len() > state.unrefed_ops.len(),
-      has_pending_dyn_imports: module_map.has_pending_dynamic_imports(),
-      has_pending_dyn_module_evaluation: !state
-        .pending_dyn_mod_evaluate
-        .is_empty(),
-      has_pending_module_evaluation: state.pending_mod_evaluate.is_some(),
-      has_pending_background_tasks: isolate.has_pending_background_tasks(),
-      has_tick_scheduled: state.has_tick_scheduled,
+fn get_stalled_top_level_await_message_for_module(
+  scope: &mut v8::HandleScope,
+  module_id: ModuleId,
+) -> Vec<v8::Global<v8::Message>> {
+  let module_map = JsRuntime::module_map(scope);
+  let module_map = module_map.borrow();
+  let module_handle = module_map.handles_by_id.get(&module_id).unwrap();
+
+  let module = v8::Local::new(scope, module_handle);
+  let stalled = module.get_stalled_top_level_await_message(scope);
+  let mut messages = vec![];
+  for (_, message) in stalled {
+    messages.push(v8::Global::new(scope, message));
+  }
+  messages
+}
+
+fn find_stalled_top_level_await(
+  scope: &mut v8::HandleScope,
+) -> Vec<v8::Global<v8::Message>> {
+  let module_map = JsRuntime::module_map(scope);
+  let module_map = module_map.borrow();
+
+  // First check if that's root module
+  let root_module_id = module_map
+    .info
+    .values()
+    .filter(|m| m.main)
+    .map(|m| m.id)
+    .next();
+
+  if let Some(root_module_id) = root_module_id {
+    let messages =
+      get_stalled_top_level_await_message_for_module(scope, root_module_id);
+    if !messages.is_empty() {
+      return messages;
     }
   }
+
+  // It wasn't a top module, so iterate over all modules and try to find
+  // any with stalled top level await
+  let module_ids = module_map.handles_by_id.keys().copied().collect::<Vec<_>>();
+  for module_id in module_ids {
+    let messages =
+      get_stalled_top_level_await_message_for_module(scope, module_id);
+    if !messages.is_empty() {
+      return messages;
+    }
+  }
+
+  unreachable!()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1209,6 +1305,23 @@ pub(crate) struct EventLoopPendingState {
   has_tick_scheduled: bool,
 }
 impl EventLoopPendingState {
+  pub fn new(
+    isolate: &mut v8::Isolate,
+    state: &mut JsRuntimeState,
+    module_map: &ModuleMap,
+  ) -> EventLoopPendingState {
+    EventLoopPendingState {
+      has_pending_refed_ops: state.pending_ops.len() > state.unrefed_ops.len(),
+      has_pending_dyn_imports: module_map.has_pending_dynamic_imports(),
+      has_pending_dyn_module_evaluation: !state
+        .pending_dyn_mod_evaluate
+        .is_empty(),
+      has_pending_module_evaluation: state.pending_mod_evaluate.is_some(),
+      has_pending_background_tasks: isolate.has_pending_background_tasks(),
+      has_tick_scheduled: state.has_tick_scheduled,
+    }
+  }
+
   pub fn is_pending(&self) -> bool {
     self.has_pending_refed_ops
       || self.has_pending_dyn_imports
@@ -1999,7 +2112,7 @@ impl JsRuntime {
         let (promise_id, op_id, mut resp) = item;
         state.unrefed_ops.remove(&promise_id);
         state.op_state.borrow().tracker.track_async_completed(op_id);
-        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(v8::Integer::new(scope, promise_id).into());
         args.push(match resp.to_v8(scope) {
           Ok(v) => v,
           Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
@@ -2114,7 +2227,7 @@ impl JsRuntime {
 ///
 /// # Panics
 ///
-/// Every method of [`JsRealm`] will panic if you call if with a reference to a
+/// Every method of [`JsRealm`] will panic if you call it with a reference to a
 /// [`v8::Isolate`] other than the one that corresponds to the current context.
 ///
 /// # Lifetime of the realm

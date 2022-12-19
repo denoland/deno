@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.28.1"
+version = "1.29.1"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -26,7 +26,7 @@ harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
 [build-dependencies]
-deno_runtime.workspace = true
+deno_runtime = { workspace = true, features = ["snapshot_from_snapshot"] }
 deno_core.workspace = true
 regex.workspace = true
 serde.workspace = true
@@ -43,12 +43,12 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core.workspace = true
-deno_doc = "0.49.1"
-deno_emit = "0.11.0"
-deno_graph = "0.38.0"
+deno_doc = "0.51.0"
+deno_emit = "0.12.0"
+deno_graph = "0.39.0"
 deno_lint = { version = "0.35.0", features = ["docs"] }
 deno_runtime.workspace = true
-deno_task_shell = "0.7.2"
+deno_task_shell = "0.8.1"
 napi_sym.workspace = true
 
 atty.workspace = true
@@ -59,20 +59,20 @@ chrono = { version = "=0.4.22", default-features = false, features = ["clock"] }
 clap = "=3.1.12"
 clap_complete = "=3.1.2"
 clap_complete_fig = "=3.1.5"
+console_static_text = "=0.3.4"
 data-url.workspace = true
 dissimilar = "=1.0.4"
-dprint-plugin-json = "=0.15.6"
-dprint-plugin-markdown = "=0.14.1"
-dprint-plugin-typescript = "=0.78.0"
+dprint-plugin-json = "=0.17.0"
+dprint-plugin-markdown = "=0.15.1"
+dprint-plugin-typescript = "=0.79.0"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
-eszip = "=0.30.0"
+eszip = "=0.31.0"
 fancy-regex = "=0.10.0"
 flate2.workspace = true
 http.workspace = true
 import_map = "=0.13.0"
-indexmap = "=1.9.1"
-indicatif = "=0.17.1"
+indexmap = "=1.9.2"
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }

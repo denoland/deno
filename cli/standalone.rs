@@ -287,6 +287,7 @@ pub async fn run(
       inspect: ps.options.is_inspecting(),
     },
     extensions: ops::cli_exts(ps.clone()),
+    extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
@@ -299,6 +300,7 @@ pub async fn run(
     web_worker_pre_execute_module_cb: web_worker_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
+    should_wait_for_inspector_session: false,
     module_loader,
     npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),

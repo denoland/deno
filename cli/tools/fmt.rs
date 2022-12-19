@@ -12,13 +12,13 @@ use crate::args::FmtFlags;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
 use crate::colors;
-use crate::diff::diff;
-use crate::file_watcher;
-use crate::file_watcher::ResolutionResult;
-use crate::fs_util::collect_files;
-use crate::fs_util::get_extension;
-use crate::fs_util::specifier_to_file_path;
-use crate::text_encoding;
+use crate::util::diff::diff;
+use crate::util::file_watcher;
+use crate::util::file_watcher::ResolutionResult;
+use crate::util::fs::FileCollector;
+use crate::util::path::get_extension;
+use crate::util::path::specifier_to_file_path;
+use crate::util::text_encoding;
 use deno_ast::ParsedSource;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -28,6 +28,7 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use log::debug;
 use log::info;
+use log::warn;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -92,17 +93,11 @@ pub async fn format(
     maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
   );
 
-  let fmt_predicate = |path: &Path| {
-    is_supported_ext_fmt(path)
-      && !contains_git(path)
-      && !contains_node_modules(path)
-  };
-
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
 
-    let result = collect_files(&include_files, &exclude_files, fmt_predicate)
-      .map(|files| {
+    let result =
+      collect_fmt_files(&include_files, &exclude_files).map(|files| {
         let refmt_files = if let Some(paths) = changed {
           if check {
             files
@@ -164,8 +159,8 @@ pub async fn format(
     )
     .await?;
   } else {
-    let files = collect_files(&include_files, &exclude_files, fmt_predicate)
-      .and_then(|files| {
+    let files =
+      collect_fmt_files(&include_files, &exclude_files).and_then(|files| {
         if files.is_empty() {
           Err(generic_error("No target files found."))
         } else {
@@ -176,6 +171,17 @@ pub async fn format(
   }
 
   Ok(())
+}
+
+fn collect_fmt_files(
+  include_files: &[PathBuf],
+  exclude_files: &[PathBuf],
+) -> Result<Vec<PathBuf>, AnyError> {
+  FileCollector::new(is_supported_ext_fmt)
+    .ignore_git_folder()
+    .ignore_node_modules()
+    .add_ignore_paths(exclude_files)
+    .collect_files(include_files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -320,8 +326,8 @@ async fn check_source_files(
         Err(e) => {
           not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
           let _g = output_lock.lock();
-          eprintln!("Error checking: {}", file_path.to_string_lossy());
-          eprintln!("   {}", e);
+          warn!("Error checking: {}", file_path.to_string_lossy());
+          warn!("   {}", e);
         }
       }
       Ok(())
@@ -734,14 +740,6 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
   }
 }
 
-fn contains_git(path: &Path) -> bool {
-  path.components().any(|c| c.as_os_str() == ".git")
-}
-
-fn contains_node_modules(path: &Path) -> bool {
-  path.components().any(|c| c.as_os_str() == "node_modules")
-}
-
 #[cfg(test)]
 mod test {
   use super::*;
@@ -771,26 +769,6 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
-  }
-
-  #[test]
-  fn test_is_located_in_git() {
-    assert!(contains_git(Path::new("test/.git")));
-    assert!(contains_git(Path::new(".git/bad.json")));
-    assert!(contains_git(Path::new("test/.git/bad.json")));
-    assert!(!contains_git(Path::new("test/bad.git/bad.json")));
-  }
-
-  #[test]
-  fn test_is_located_in_node_modules() {
-    assert!(contains_node_modules(Path::new("test/node_modules")));
-    assert!(contains_node_modules(Path::new("node_modules/bad.json")));
-    assert!(contains_node_modules(Path::new(
-      "test/node_modules/bad.json"
-    )));
-    assert!(!contains_node_modules(Path::new(
-      "test/bad.node_modules/bad.json"
-    )));
   }
 
   #[test]

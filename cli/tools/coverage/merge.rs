@@ -73,8 +73,8 @@ pub fn merge_scripts(
   }
 
   let functions: Vec<FunctionCoverage> = range_to_funcs
-    .into_iter()
-    .map(|(_, funcs)| merge_functions(funcs).unwrap())
+    .into_values()
+    .map(|funcs| merge_functions(funcs).unwrap())
     .collect();
 
   Some(ScriptCoverage {

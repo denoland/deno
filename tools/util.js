@@ -14,10 +14,10 @@ export { delay } from "../test_util/std/async/delay.ts";
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 
 async function getFilesFromGit(baseDir, args) {
-  const { success, stdout } = await Deno.spawn("git", {
+  const { success, stdout } = await new Deno.Command("git", {
     stderr: "inherit",
     args,
-  });
+  }).output();
   const output = new TextDecoder().decode(stdout);
   if (!success) {
     throw new Error("gitLsFiles failed");

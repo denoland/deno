@@ -8,6 +8,7 @@ use deno_ast::swc::visit::VisitWith;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_core::ModuleSpecifier;
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 /// Parse an arrow expression for any test steps and return them.
@@ -129,6 +130,7 @@ fn check_call_expr(
   parent: &str,
   node: &ast::CallExpr,
   level: usize,
+  fns: Option<&HashMap<String, ast::Function>>,
 ) -> Option<(String, Vec<TestDefinition>)> {
   if let Some(expr) = node.args.get(0).map(|es| es.expr.as_ref()) {
     match expr {
@@ -153,9 +155,7 @@ fn check_call_expr(
                       // (e.g. `test name`)
                       ast::Expr::Tpl(tpl) => {
                         if tpl.quasis.len() == 1 {
-                          if let Some(tpl_element) = tpl.quasis.get(0) {
-                            maybe_name = Some(tpl_element.raw.to_string());
-                          }
+                          maybe_name = Some(tpl.quasis[0].raw.to_string());
                         }
                       }
                       _ => (),
@@ -204,6 +204,32 @@ fn check_call_expr(
           _ => (),
         }
         Some((name, steps))
+      }
+      ast::Expr::Tpl(tpl) => {
+        if tpl.quasis.len() == 1 {
+          let mut steps = vec![];
+          match node.args.get(1).map(|es| es.expr.as_ref()) {
+            Some(ast::Expr::Fn(fn_expr)) => {
+              steps = fn_to_steps(parent, level, &fn_expr.function);
+            }
+            Some(ast::Expr::Arrow(arrow_expr)) => {
+              steps = arrow_to_steps(parent, level, arrow_expr);
+            }
+            _ => (),
+          }
+
+          Some((tpl.quasis[0].raw.to_string(), steps))
+        } else {
+          None
+        }
+      }
+      ast::Expr::Ident(ident) => {
+        let name = ident.sym.to_string();
+        fns.and_then(|fns| {
+          fns
+            .get(&name)
+            .map(|fn_expr| (name, fn_to_steps(parent, level, fn_expr)))
+        })
       }
       _ => None,
     }
@@ -260,7 +286,7 @@ impl TestStepCollector {
 
   fn check_call_expr(&mut self, node: &ast::CallExpr, range: SourceRange) {
     if let Some((name, steps)) =
-      check_call_expr(&self.parent, node, self.level + 1)
+      check_call_expr(&self.parent, node, self.level + 1, None)
     {
       self.add_step(name, range, steps);
     }
@@ -363,6 +389,7 @@ pub struct TestCollector {
   definitions: Vec<TestDefinition>,
   specifier: ModuleSpecifier,
   vars: HashSet<String>,
+  fns: HashMap<String, ast::Function>,
 }
 
 impl TestCollector {
@@ -371,6 +398,7 @@ impl TestCollector {
       definitions: Vec::new(),
       specifier,
       vars: HashSet::new(),
+      fns: HashMap::new(),
     }
   }
 
@@ -391,7 +419,7 @@ impl TestCollector {
 
   fn check_call_expr(&mut self, node: &ast::CallExpr, range: SourceRange) {
     if let Some((name, steps)) =
-      check_call_expr(self.specifier.as_str(), node, 1)
+      check_call_expr(self.specifier.as_str(), node, 1, Some(&self.fns))
     {
       self.add_definition(name, range, steps);
     }
@@ -480,6 +508,12 @@ impl Visit for TestCollector {
       }
     }
   }
+
+  fn visit_fn_decl(&mut self, n: &ast::FnDecl) {
+    self
+      .fns
+      .insert(n.ident.sym.to_string(), *n.function.clone());
+  }
 }
 
 #[cfg(test)]
@@ -495,34 +529,8 @@ pub mod tests {
     )
   }
 
-  #[test]
-  fn test_test_collector() {
+  fn collect(source: &str) -> Vec<TestDefinition> {
     let specifier = resolve_url("file:///a/example.ts").unwrap();
-    let source = r#"
-      Deno.test({
-        name: "test a",
-        async fn(t) {
-          await t.step("a step", ({ step }) => {
-            await step({
-              name: "sub step",
-              fn() {}
-            })
-          });
-        }
-      });
-
-      Deno.test(async function useFnName({ step: s }) {
-        await s("step c", () => {});
-      });
-
-      Deno.test("test b", () => {});
-
-      const { test } = Deno;
-      test("test c", () => {});
-
-      const t = Deno.test;
-      t("test d", () => {});
-    "#;
 
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: specifier.to_string(),
@@ -535,69 +543,282 @@ pub mod tests {
     .unwrap();
     let mut collector = TestCollector::new(specifier);
     parsed_module.module().visit_with(&mut collector);
+    collector.take()
+  }
+
+  #[test]
+  fn test_test_collector_test() {
+    let res = collect(
+      r#"
+      Deno.test("test", () => {});
+    "#,
+    );
+
     assert_eq!(
-      collector.take(),
-      vec![
-        TestDefinition {
-          id: "cf31850c831233526df427cdfd25b6b84b2af0d6ce5f8ee1d22c465234b46348".to_string(),
-          level: 0,
-          name: "test a".to_string(),
-          range: new_range(12, 16),
-          steps: vec![
-            TestDefinition {
-              id: "4c7333a1e47721631224408c467f32751fe34b876cab5ec1f6ac71980ff15ad3".to_string(),
-              level: 1,
-              name: "a step".to_string(),
-              range: new_range(83, 87),
-              steps: vec![
-                TestDefinition {
-                  id: "abf356f59139b77574089615f896a6f501c010985d95b8a93abeb0069ccb2201".to_string(),
-                  level: 2,
-                  name: "sub step".to_string(),
-                  range: new_range(132, 136),
-                  steps: vec![],
-                }
-              ]
-            }
-          ],
-        },
-        TestDefinition {
-          id: "86b4c821900e38fc89f24bceb0e45193608ab3f9d2a6019c7b6a5aceff5d7df2".to_string(),
-          level: 0,
-          name: "useFnName".to_string(),
-          range: new_range(254, 258),
-          steps: vec![
-            TestDefinition {
-              id: "67a390d0084ae5fb88f3510c470a72a553581f1d0d5ba5fa89aee7a754f3953a".to_string(),
-              level: 1,
-              name: "step c".to_string(),
-              range: new_range(313, 314),
-              steps: vec![],
-            }
-          ]
-        },
-        TestDefinition {
-          id: "580eda89d7f5e619774c20e13b7d07a8e77c39cba101d60565144d48faa837cb".to_string(),
-          level: 0,
-          name: "test b".to_string(),
-          range: new_range(358, 362),
-          steps: vec![],
-        },
-        TestDefinition {
-          id: "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94".to_string(),
-          level: 0,
-          name: "test c".to_string(),
-          range: new_range(420, 424),
-          steps: vec![],
-        },
-        TestDefinition {
-          id: "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f".to_string(),
-          level: 0,
-          name: "test d".to_string(),
-          range: new_range(480, 481),
-          steps: vec![],
+      res,
+      vec![TestDefinition {
+        id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
+          .to_string(),
+        level: 0,
+        name: "test".to_string(),
+        range: new_range(12, 16),
+        steps: vec![],
+      },]
+    );
+  }
+
+  #[test]
+  fn test_test_collector_test_tpl() {
+    let res = collect(
+      r#"
+      Deno.test(`test`, () => {});
+    "#,
+    );
+
+    assert_eq!(
+      res,
+      vec![TestDefinition {
+        id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
+          .to_string(),
+        level: 0,
+        name: "test".to_string(),
+        range: new_range(12, 16),
+        steps: vec![],
+      },]
+    );
+  }
+
+  #[test]
+  fn test_test_collector_a() {
+    let res = collect(
+      r#"
+      Deno.test({
+        name: "test",
+        async fn(t) {
+          await t.step("step", ({ step }) => {
+            await step({
+              name: "sub step",
+              fn() {}
+            })
+          });
         }
-      ]
+      });
+    "#,
+    );
+
+    assert_eq!(
+      res,
+      vec![TestDefinition {
+        id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
+          .to_string(),
+        level: 0,
+        name: "test".to_string(),
+        range: new_range(12, 16),
+        steps: vec![TestDefinition {
+          id:
+            "b3b2daad49e5c3095fe26aba0a840131f3d8f32e105e95507f5fc5118642b059"
+              .to_string(),
+          level: 1,
+          name: "step".to_string(),
+          range: new_range(81, 85),
+          steps: vec![TestDefinition {
+            id:
+              "abf356f59139b77574089615f896a6f501c010985d95b8a93abeb0069ccb2201"
+                .to_string(),
+            level: 2,
+            name: "sub step".to_string(),
+            range: new_range(128, 132),
+            steps: vec![],
+          }]
+        }],
+      },]
+    );
+  }
+
+  #[test]
+  fn test_test_collector_a_tpl() {
+    let res = collect(
+      r#"
+      Deno.test({
+        name: `test`,
+        async fn(t) {
+          await t.step(`step`, ({ step }) => {
+            await step({
+              name: `sub step`,
+              fn() {}
+            })
+          });
+        }
+      });
+    "#,
+    );
+
+    assert_eq!(
+      res,
+      vec![TestDefinition {
+        id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
+          .to_string(),
+        level: 0,
+        name: "test".to_string(),
+        range: new_range(12, 16),
+        steps: vec![TestDefinition {
+          id:
+            "b3b2daad49e5c3095fe26aba0a840131f3d8f32e105e95507f5fc5118642b059"
+              .to_string(),
+          level: 1,
+          name: "step".to_string(),
+          range: new_range(81, 85),
+          steps: vec![TestDefinition {
+            id:
+              "abf356f59139b77574089615f896a6f501c010985d95b8a93abeb0069ccb2201"
+                .to_string(),
+            level: 2,
+            name: "sub step".to_string(),
+            range: new_range(128, 132),
+            steps: vec![],
+          }]
+        }],
+      },]
+    );
+  }
+
+  #[test]
+  fn test_test_collector_destructure() {
+    let res = collect(
+      r#"
+      const { test } = Deno;
+      test("test", () => {});
+    "#,
+    );
+
+    assert_eq!(
+      res,
+      vec![TestDefinition {
+        id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
+          .to_string(),
+        level: 0,
+        name: "test".to_string(),
+        range: new_range(36, 40),
+        steps: vec![],
+      }]
+    );
+  }
+
+  #[test]
+  fn test_test_collector_destructure_rebind_step() {
+    let res = collect(
+      r#"
+      Deno.test(async function useFnName({ step: s }) {
+        await s("step", () => {});
+      });
+    "#,
+    );
+
+    assert_eq!(
+      res,
+      vec![TestDefinition {
+        id: "86b4c821900e38fc89f24bceb0e45193608ab3f9d2a6019c7b6a5aceff5d7df2"
+          .to_string(),
+        level: 0,
+        name: "useFnName".to_string(),
+        range: new_range(12, 16),
+        steps: vec![TestDefinition {
+          id:
+            "b3b2daad49e5c3095fe26aba0a840131f3d8f32e105e95507f5fc5118642b059"
+              .to_string(),
+          level: 1,
+          name: "step".to_string(),
+          range: new_range(71, 72),
+          steps: vec![],
+        }],
+      }]
+    );
+  }
+
+  #[test]
+  fn test_test_collector_rebind() {
+    let res = collect(
+      r#"
+      const t = Deno.test;
+      t("test", () => {});
+    "#,
+    );
+
+    assert_eq!(
+      res,
+      vec![TestDefinition {
+        id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
+          .to_string(),
+        level: 0,
+        name: "test".to_string(),
+        range: new_range(34, 35),
+        steps: vec![],
+      }]
+    );
+  }
+
+  #[test]
+  fn test_test_collector_separate_test_function_with_string_name() {
+    let res = collect(
+      r#"
+      function someFunction() {}
+      Deno.test("test", someFunction);
+    "#,
+    );
+
+    assert_eq!(
+      res,
+      vec![TestDefinition {
+        id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
+          .to_string(),
+        level: 0,
+        name: "test".to_string(),
+        range: new_range(45, 49),
+        steps: vec![],
+      }]
+    );
+  }
+
+  #[test]
+  fn test_test_collector_function_only() {
+    let res = collect(
+      r#"
+      Deno.test(async function someFunction() {});
+    "#,
+    );
+
+    assert_eq!(
+      res,
+      vec![TestDefinition {
+        id: "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568"
+          .to_string(),
+        level: 0,
+        name: "someFunction".to_string(),
+        range: new_range(12, 16),
+        steps: vec![]
+      }]
+    );
+  }
+
+  #[test]
+  fn test_test_collector_separate_test_function() {
+    let res = collect(
+      r#"
+      async function someFunction() {}
+      Deno.test(someFunction);
+    "#,
+    );
+
+    assert_eq!(
+      res,
+      vec![TestDefinition {
+        id: "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568"
+          .to_string(),
+        level: 0,
+        name: "someFunction".to_string(),
+        range: new_range(51, 55),
+        steps: vec![]
+      }]
     );
   }
 }

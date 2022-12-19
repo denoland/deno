@@ -24,7 +24,6 @@ use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 
 use crate::args::DenoSubcommand;
-use crate::checksum;
 use crate::errors;
 use crate::module_loader::CliModuleLoader;
 use crate::node;
@@ -34,6 +33,7 @@ use crate::proc_state::ProcState;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
 use crate::tools::test::TestMode;
+use crate::util::checksum;
 use crate::version;
 
 pub struct CliMainWorker {
@@ -70,6 +70,7 @@ impl CliMainWorker {
         &mut self.worker.js_runtime,
         &self.main_module.to_file_path().unwrap().to_string_lossy(),
         true,
+        self.ps.options.inspect_brk().is_some(),
       )?;
     } else {
       self.execute_main_module_possibly_with_npm().await?;
@@ -308,7 +309,11 @@ impl CliMainWorker {
 
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
     self.ps.prepare_node_std_graph().await?;
-    node::initialize_runtime(&mut self.worker.js_runtime).await?;
+    node::initialize_runtime(
+      &mut self.worker.js_runtime,
+      self.ps.options.node_modules_dir(),
+    )
+    .await?;
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
       if let Ok(pkg_ref) = NpmPackageReference::from_str(&flags.script) {
         // if the user ran a binary command, we'll need to set process.argv[0]
@@ -471,7 +476,6 @@ async fn create_main_worker_internal(
   let module_loader = CliModuleLoader::new(ps.clone());
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
-  let should_break_on_first_statement = ps.options.inspect_brk().is_some();
 
   let create_web_worker_cb =
     create_web_worker_callback(ps.clone(), stdio.clone());
@@ -483,9 +487,7 @@ async fn create_main_worker_internal(
   let maybe_storage_key = ps.options.resolve_storage_key(&main_module);
   let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
     ps.dir
-      .root
-      // TODO(@crowlKats): change to origin_data for 2.0
-      .join("location_data")
+      .origin_data_folder_path()
       .join(checksum::gen(&[key.as_bytes()]))
   });
   let cache_storage_dir = maybe_storage_key.map(|key| {
@@ -511,7 +513,7 @@ async fn create_main_worker_internal(
         .map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: ps.options.enable_testing_features(),
       locale: deno_core::v8::icu::get_language_tag(),
-      location: ps.options.location_flag().map(ToOwned::to_owned),
+      location: ps.options.location_flag().clone(),
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
       runtime_version: version::deno(),
@@ -521,11 +523,12 @@ async fn create_main_worker_internal(
       inspect: ps.options.is_inspecting(),
     },
     extensions,
+    extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: ps
       .options
       .unsafely_ignore_certificate_errors()
-      .map(ToOwned::to_owned),
+      .clone(),
     root_cert_store: Some(ps.root_cert_store.clone()),
     seed: ps.options.seed(),
     source_map_getter: Some(Box::new(module_loader.clone())),
@@ -534,7 +537,8 @@ async fn create_main_worker_internal(
     web_worker_preload_module_cb,
     web_worker_pre_execute_module_cb,
     maybe_inspector_server,
-    should_break_on_first_statement,
+    should_break_on_first_statement: ps.options.inspect_brk().is_some(),
+    should_wait_for_inspector_session: ps.options.inspect_wait().is_some(),
     module_loader,
     npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
     get_error_class_fn: Some(&errors::get_error_class_name),
@@ -622,7 +626,11 @@ fn create_web_worker_pre_execute_module_callback(
     let fut = async move {
       // this will be up to date after pre-load
       if ps.npm_resolver.has_packages() {
-        node::initialize_runtime(&mut worker.js_runtime).await?;
+        node::initialize_runtime(
+          &mut worker.js_runtime,
+          ps.options.node_modules_dir(),
+        )
+        .await?;
       }
 
       Ok(worker)
@@ -686,7 +694,7 @@ fn create_web_worker_callback(
       unsafely_ignore_certificate_errors: ps
         .options
         .unsafely_ignore_certificate_errors()
-        .map(ToOwned::to_owned),
+        .clone(),
       root_cert_store: Some(ps.root_cert_store.clone()),
       seed: ps.options.seed(),
       create_web_worker_cb,
@@ -745,6 +753,7 @@ mod tests {
         inspect: false,
       },
       extensions: vec![],
+      extensions_with_js: vec![],
       startup_snapshot: Some(crate::js::deno_isolate_init()),
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
@@ -756,6 +765,7 @@ mod tests {
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
+      should_wait_for_inspector_session: false,
       module_loader: Rc::new(FsModuleLoader),
       npm_resolver: None,
       get_error_class_fn: None,

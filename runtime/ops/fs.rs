@@ -222,14 +222,18 @@ async fn op_open_async(
 }
 
 #[inline]
-fn write_open_options(create: bool, append: bool) -> OpenOptions {
+fn write_open_options(
+  create: bool,
+  append: bool,
+  create_new: bool,
+) -> OpenOptions {
   OpenOptions {
     read: false,
     write: true,
     create,
     truncate: !append,
     append,
-    create_new: false,
+    create_new,
   }
 }
 
@@ -240,13 +244,14 @@ fn op_write_file_sync(
   mode: Option<u32>,
   append: bool,
   create: bool,
+  create_new: bool,
   data: ZeroCopyBuf,
 ) -> Result<(), AnyError> {
   let (path, open_options) = open_helper(
     state,
     &path,
     mode,
-    Some(&write_open_options(create, append)),
+    Some(&write_open_options(create, append, create_new)),
     "Deno.writeFileSync()",
   )?;
   write_file(&path, open_options, mode, data)
@@ -259,6 +264,7 @@ async fn op_write_file_async(
   mode: Option<u32>,
   append: bool,
   create: bool,
+  create_new: bool,
   data: ZeroCopyBuf,
   cancel_rid: Option<ResourceId>,
 ) -> Result<(), AnyError> {
@@ -274,7 +280,7 @@ async fn op_write_file_async(
     &mut state.borrow_mut(),
     &path,
     mode,
-    Some(&write_open_options(create, append)),
+    Some(&write_open_options(create, append, create_new)),
     "Deno.writeFile()",
   )?;
   let write_future = tokio::task::spawn_blocking(move || {
@@ -519,7 +525,14 @@ fn op_umask(state: &mut OpState, mask: Option<u32>) -> Result<u32, AnyError> {
       let _ = umask(prev);
       prev
     };
-    Ok(r.bits() as u32)
+    #[cfg(target_os = "linux")]
+    {
+      Ok(r.bits())
+    }
+    #[cfg(target_os = "macos")]
+    {
+      Ok(r.bits() as u32)
+    }
   }
 }
 

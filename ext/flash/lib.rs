@@ -1290,10 +1290,11 @@ where
 
 #[op]
 fn op_flash_wait_for_listening(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   server_id: u32,
 ) -> Result<impl Future<Output = Result<u16, AnyError>> + 'static, AnyError> {
   let mut listening_rx = {
+    let mut state = state.borrow_mut();
     let flash_ctx = state.borrow_mut::<FlashContext>();
     let server_ctx = flash_ctx
       .servers
@@ -1312,10 +1313,11 @@ fn op_flash_wait_for_listening(
 
 #[op]
 fn op_flash_drive_server(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   server_id: u32,
 ) -> Result<impl Future<Output = Result<(), AnyError>> + 'static, AnyError> {
   let join_handle = {
+    let mut state = state.borrow_mut();
     let flash_ctx = state.borrow_mut::<FlashContext>();
     flash_ctx
       .join_handles
