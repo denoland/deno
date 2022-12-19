@@ -236,9 +236,9 @@ fn check_call_expr(
       _ => {
         if let Some(text_info) = text_info {
           let range = node.range();
-          let indexes = text_info.line_and_column_index(range.start);
+          let indexes = text_info.line_and_column_display(range.start);
           Some((
-            format!("Test {}:{}", indexes.line_index, indexes.column_index),
+            format!("Test {}:{}", indexes.line_number, indexes.column_number),
             vec![],
           ))
         } else {
@@ -854,10 +854,10 @@ pub mod tests {
     assert_eq!(
       res,
       vec![TestDefinition {
-        id: "bdfd784354c1357bc556071616e5e50edbf196703cb84f9e7c86ce922d78eeda"
+        id: "6d05d6dc35548b86a1e70acaf24a5bc2dd35db686b35b685ad5931d201b4a918"
           .to_string(),
         level: 0,
-        name: "Test 2:6".to_string(),
+        name: "Test 3:7".to_string(),
         range: new_range(79, 83),
         steps: vec![]
       }]
