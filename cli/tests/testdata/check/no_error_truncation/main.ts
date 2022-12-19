@@ -1,4 +1,4 @@
-var x: {
+let x: {
   propertyWithAnExceedinglyLongName1: string;
   propertyWithAnExceedinglyLongName2: string;
   propertyWithAnExceedinglyLongName3: string;
@@ -9,4 +9,4 @@ var x: {
   propertyWithAnExceedinglyLongName8: string;
 };
 
-var s: string = x;
+const _s: string = x;
