@@ -155,7 +155,10 @@ impl DrawThread {
   }
 
   fn maybe_start_draw_thread(internal_state: &mut InternalState) {
-    if internal_state.has_draw_thread || internal_state.hide {
+    if internal_state.has_draw_thread
+      || internal_state.hide
+      || internal_state.entries.is_empty()
+    {
       return;
     }
 
