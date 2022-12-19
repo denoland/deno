@@ -404,6 +404,10 @@ impl CliOptions {
     }
   }
 
+  pub fn get_maybe_config_file(&self) -> &Option<ConfigFile> {
+    &self.maybe_config_file
+  }
+
   pub fn to_lint_config(
     &self,
     lint_flags: &LintFlags,
@@ -433,7 +437,7 @@ impl CliOptions {
         include = filters.include;
         ignore = filters.ignore;
 
-        // Try to get configured rules. CLI flags take precendence
+        // Try to get configured rules. CLI flags take precedence
         // over config file, i.e. if there's `rules.include` in config file
         // and `--rules-include` CLI flag, only the flag value is taken into account.
         if maybe_rules_include.is_none() {
@@ -549,16 +553,7 @@ impl CliOptions {
     })
   }
 
-  pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
-    if let Some(config) = &self.maybe_config_file {
-      config.to_fmt_config()
-    } else {
-      Ok(None)
-    }
-  }
-
-  // TODO: combine with to_fmt_config (fmt_flags not available in vendor and lsp)
-  pub fn to_final_fmt_config(
+  pub fn to_fmt_config(
     &self,
     fmt_flags: &FmtFlags,
   ) -> Result<FinalFmtConfig, AnyError> {

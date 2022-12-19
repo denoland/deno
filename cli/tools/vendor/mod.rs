@@ -153,11 +153,15 @@ fn maybe_update_config_file(output_dir: &Path, ps: &ProcState) -> bool {
     Some(f) => f,
     None => return false,
   };
-  let fmt_config = ps
-    .options
-    .to_fmt_config()
-    .unwrap_or_default()
-    .unwrap_or_default();
+
+  let maybe_config_file = ps.options.get_maybe_config_file();
+  let fmt_config = if let Some(config) = maybe_config_file {
+    config.to_fmt_config()
+  } else {
+    Ok(None)
+  }
+  .unwrap_or_default()
+  .unwrap_or_default();
   let result = update_config_file(
     &config_file_specifier,
     &ModuleSpecifier::from_file_path(output_dir.join("import_map.json"))

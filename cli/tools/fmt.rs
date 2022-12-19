@@ -47,7 +47,7 @@ pub async fn format(
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
   // First, prepare final configuration.
-  let maybe_fmt_config = config.to_final_fmt_config(&fmt_flags)?;
+  let maybe_fmt_config = config.to_fmt_config(&fmt_flags)?;
 
   let include = maybe_fmt_config.files.include;
   let ignore = maybe_fmt_config.files.ignore;

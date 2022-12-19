@@ -114,11 +114,8 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if fmt_flags.include.len() == 1
         && fmt_flags.include[0].to_string_lossy() == "-"
       {
-        let maybe_fmt_config = config.to_fmt_config()?;
-        tools::fmt::format_stdin(
-          fmt_flags,
-          maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
-        )?;
+        let fmt_config = config.to_fmt_config(&fmt_flags)?;
+        tools::fmt::format_stdin(fmt_flags, fmt_config.options)?;
       } else {
         tools::fmt::format(&config, fmt_flags).await?;
       }
