@@ -492,11 +492,11 @@ pub async fn run_benchmarks(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let config = ps.options.to_bench_config(&bench_flags)?;
+  let bench_config = ps.options.to_bench_config(&bench_flags)?;
 
   let specifiers = collect_specifiers(
-    config.files.include,
-    &config.files.ignore,
+    bench_config.files.include,
+    &bench_config.files.ignore,
     is_supported_bench_path,
   )?;
 

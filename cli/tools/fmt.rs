@@ -47,23 +47,22 @@ pub async fn format(
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
   // First, prepare final configuration.
-  let maybe_fmt_config = config.to_fmt_config(&fmt_flags)?;
+  let fmt_config = config.to_fmt_config(&fmt_flags)?;
 
-  let include = maybe_fmt_config.files.include;
-  let ignore = maybe_fmt_config.files.ignore;
+  let include = fmt_config.files.include;
+  let ignore = fmt_config.files.ignore;
 
   let deno_dir = config.resolve_deno_dir()?;
-  let FmtFlags { check, .. } = fmt_flags.clone();
 
   // Now do the same for options
-  let fmt_options = maybe_fmt_config.options;
+  let fmt_options = fmt_config.options;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
 
     let result = collect_fmt_files(&include, &ignore).map(|files| {
       let refmt_files = if let Some(paths) = changed {
-        if check {
+        if fmt_flags.check {
           files
             .iter()
             .any(|path| paths.contains(path))
@@ -102,7 +101,7 @@ pub async fn format(
       &fmt_options,
       &paths,
     ));
-    if check {
+    if fmt_flags.check {
       check_source_files(paths, fmt_options, incremental_cache.clone()).await?;
     } else {
       format_source_files(paths, fmt_options, incremental_cache.clone())

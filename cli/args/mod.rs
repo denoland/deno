@@ -413,7 +413,6 @@ impl CliOptions {
     lint_flags: &LintFlags,
   ) -> Result<FinalLintConfig, AnyError> {
     let cli_filters = lint_flags.get_filters();
-
     let mut include = cli_filters.include;
     let mut ignore = cli_filters.ignore;
 
@@ -502,7 +501,6 @@ impl CliOptions {
     test_flags: &TestFlags,
   ) -> Result<FinalTestConfig, AnyError> {
     let cli_filters = test_flags.get_filters();
-
     let mut include = cli_filters.include;
     let mut ignore = cli_filters.ignore;
 
@@ -530,7 +528,6 @@ impl CliOptions {
     bench_flags: &BenchFlags,
   ) -> Result<FinalBenchConfig, AnyError> {
     let cli_filters = bench_flags.get_filters();
-
     let mut include = cli_filters.include;
     let mut ignore = cli_filters.ignore;
 
@@ -558,7 +555,6 @@ impl CliOptions {
     fmt_flags: &FmtFlags,
   ) -> Result<FinalFmtConfig, AnyError> {
     let cli_filters = fmt_flags.get_filters();
-
     let mut include = cli_filters.include;
     let mut ignore = cli_filters.ignore;
 
@@ -570,8 +566,8 @@ impl CliOptions {
       _ => unreachable!(),
     });
 
-    let line_width = fmt_flags.line_width.map(|w| w.get());
-    let indent_width = fmt_flags.indent_width.map(|w| w.get());
+    let indent_width = fmt_flags.indent_width.map(|i| i.get());
+    let line_width = fmt_flags.line_width.map(|l| l.get());
 
     let mut options = FmtOptionsConfig {
       prose_wrap,
@@ -588,7 +584,6 @@ impl CliOptions {
         let filters = self.collect_filters(&fmt_config, include, ignore)?;
         include = filters.include;
         ignore = filters.ignore;
-
         options = resolve_fmt_options(fmt_flags, fmt_config.options);
       }
     }

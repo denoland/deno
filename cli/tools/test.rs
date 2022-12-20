@@ -1313,12 +1313,12 @@ pub async fn run_tests(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let config = &ps.options.to_test_config(&test_flags)?;
+  let test_config = &ps.options.to_test_config(&test_flags)?;
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     &ps,
-    config.files.include.clone(),
-    config.files.ignore.clone(),
+    test_config.files.include.clone(),
+    test_config.files.ignore.clone(),
     test_flags.doc,
   )
   .await?;
@@ -1357,10 +1357,14 @@ pub async fn run_tests_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let config = &ps.options.to_test_config(&test_flags)?;
+  let test_config = &ps.options.to_test_config(&test_flags)?;
 
-  let paths_to_watch: Vec<_> =
-    config.files.include.iter().map(PathBuf::from).collect();
+  let paths_to_watch: Vec<_> = test_config
+    .files
+    .include
+    .iter()
+    .map(PathBuf::from)
+    .collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
@@ -1368,8 +1372,8 @@ pub async fn run_tests_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = config.files.include.clone();
-    let ignore = config.files.ignore.clone();
+    let include = test_config.files.include.clone();
+    let ignore = test_config.files.ignore.clone();
     let ps = ps.clone();
 
     async move {
@@ -1451,8 +1455,8 @@ pub async fn run_tests_with_watch(
     let permissions = permissions.clone();
     let ps = ps.clone();
     let test_flags = test_flags.clone();
-    let include = config.files.include.clone();
-    let ignore = config.files.ignore.clone();
+    let include = test_config.files.include.clone();
+    let ignore = test_config.files.ignore.clone();
 
     async move {
       let specifiers_with_mode =

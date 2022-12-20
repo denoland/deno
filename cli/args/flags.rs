@@ -5733,6 +5733,31 @@ mod tests {
       }
     );
   }
+  #[test]
+  fn test_watch_explicit_cwd() {
+    let r = flags_from_vec(svec!["deno", "test", "--watch", "./"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          shuffle: None,
+          include: vec![PathBuf::from("./")],
+          ignore: vec![],
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          trace_ops: false,
+        }),
+        no_prompt: true,
+        type_check_mode: TypeCheckMode::Local,
+        watch: Some(vec![]),
+        ..Flags::default()
+      }
+    );
+  }
 
   #[test]
   fn test_watch_with_no_clear_screen() {
@@ -6408,6 +6433,25 @@ mod tests {
         allow_net: Some(vec![]),
         no_prompt: true,
         argv: svec!["arg1", "arg2"],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bench_watch() {
+    let r = flags_from_vec(svec!["deno", "bench", "--watch"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Bench(BenchFlags {
+          filter: None,
+          include: vec![],
+          ignore: vec![],
+        }),
+        no_prompt: true,
+        type_check_mode: TypeCheckMode::Local,
+        watch: Some(vec![]),
         ..Flags::default()
       }
     );
