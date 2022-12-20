@@ -68,6 +68,13 @@ mod check {
     exit_code: 0,
   });
 
+  itest!(check_no_error_truncation {
+    args: "check --quiet check/no_error_truncation/main.ts --config check/no_error_truncation/deno.json",
+    output: "check/no_error_truncation/main.out",
+    envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+    exit_code: 1,
+  });
+
   #[test]
   fn cache_switching_config_then_no_config() {
     let deno_dir = util::new_deno_dir();

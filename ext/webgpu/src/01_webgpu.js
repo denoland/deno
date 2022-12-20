@@ -316,7 +316,7 @@
         context: "Argument 1",
       });
       const requiredFeatures = descriptor.requiredFeatures ?? [];
-      for (const feature of requiredFeatures) {
+      for (const feature of new SafeArrayIterator(requiredFeatures)) {
         if (!SetPrototypeHas(this[_adapter].features[_features], feature)) {
           throw new TypeError(
             `${prefix}: nonGuaranteedFeatures must be a subset of the adapter features.`,
@@ -1046,7 +1046,7 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      for (const entry of descriptor.entries) {
+      for (const entry of new SafeArrayIterator(descriptor.entries)) {
         let i = 0;
         if (entry.buffer) i++;
         if (entry.sampler) i++;
@@ -1591,7 +1591,7 @@
         device.rid,
         commandBufferRids,
       );
-      for (const commandBuffer of commandBuffers) {
+      for (const commandBuffer of new SafeArrayIterator(commandBuffers)) {
         commandBuffer[_rid] = undefined;
       }
       device.pushError(err);
@@ -1934,7 +1934,7 @@
       if (!mappedRanges) {
         throw new DOMException(`${prefix}: invalid state.`, "OperationError");
       }
-      for (const [buffer, _rid, start] of mappedRanges) {
+      for (const [buffer, _rid, start] of new SafeArrayIterator(mappedRanges)) {
         // TODO(lucacasonato): is this logic correct?
         const end = start + buffer.byteLength;
         if (
@@ -2002,7 +2002,7 @@
         if (!mappedRanges) {
           throw new DOMException(`${prefix}: invalid state.`, "OperationError");
         }
-        for (const [buffer, mappedRid] of mappedRanges) {
+        for (const [buffer, mappedRid] of new SafeArrayIterator(mappedRanges)) {
           const { err } = ops.op_webgpu_buffer_unmap(
             bufferRid,
             mappedRid,

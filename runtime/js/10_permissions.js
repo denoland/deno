@@ -20,6 +20,7 @@
     PromiseResolve,
     PromiseReject,
     ReflectHas,
+    SafeArrayIterator,
     SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -233,7 +234,9 @@
   function serializePermissions(permissions) {
     if (typeof permissions == "object" && permissions != null) {
       const serializedPermissions = {};
-      for (const key of ["read", "write", "run", "ffi"]) {
+      for (
+        const key of new SafeArrayIterator(["read", "write", "run", "ffi"])
+      ) {
         if (ArrayIsArray(permissions[key])) {
           serializedPermissions[key] = ArrayPrototypeMap(
             permissions[key],
@@ -243,7 +246,9 @@
           serializedPermissions[key] = permissions[key];
         }
       }
-      for (const key of ["env", "hrtime", "net", "sys"]) {
+      for (
+        const key of new SafeArrayIterator(["env", "hrtime", "net", "sys"])
+      ) {
         if (ArrayIsArray(permissions[key])) {
           serializedPermissions[key] = ArrayPrototypeSlice(permissions[key]);
         } else {
