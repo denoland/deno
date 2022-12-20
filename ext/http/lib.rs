@@ -417,7 +417,10 @@ impl Default for HttpRequestReader {
 /// The write half of an HTTP stream.
 enum HttpResponseWriter {
   Headers(oneshot::Sender<Response<Body>>),
-  Body(BodyCompressedHolder),
+  Body {
+    writer: Pin<Box<dyn tokio::io::AsyncWrite>>,
+    shutdown_handle: ShutdownHandle,
+  },
   BodyUncompressed(BodyUncompressedSender),
   Closed,
 }
@@ -426,11 +429,6 @@ impl Default for HttpResponseWriter {
   fn default() -> Self {
     Self::Closed
   }
-}
-
-struct BodyCompressedHolder {
-  pub writer: Pin<Box<dyn tokio::io::AsyncWrite>>,
-  pub shutdown_handle: ShutdownHandle,
 }
 
 struct BodyUncompressedSender(Option<hyper::body::Sender>);
@@ -708,11 +706,13 @@ fn http_response(
       };
       let (stream, shutdown_handle) =
         ExternallyAbortableReaderStream::new(reader);
-      let holder = BodyCompressedHolder {
-        writer,
-        shutdown_handle,
-      };
-      Ok((HttpResponseWriter::Body(holder), Body::wrap_stream(stream)))
+      Ok((
+        HttpResponseWriter::Body {
+          writer,
+          shutdown_handle,
+        },
+        Body::wrap_stream(stream),
+      ))
     }
     None => {
       let (body_tx, body_rx) = Body::channel();
@@ -812,10 +812,10 @@ async fn op_http_write_resource(
     }
 
     match &mut *wr {
-      HttpResponseWriter::Body(holder) => {
-        let mut result = holder.writer.write_all(&view).await;
+      HttpResponseWriter::Body { writer, .. } => {
+        let mut result = writer.write_all(&view).await;
         if result.is_ok() {
-          result = holder.writer.flush().await;
+          result = writer.flush().await;
         }
         if let Err(err) = result {
           assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
@@ -857,10 +857,10 @@ async fn op_http_write(
   match &mut *wr {
     HttpResponseWriter::Headers(_) => Err(http_error("no response headers")),
     HttpResponseWriter::Closed => Err(http_error("response already completed")),
-    HttpResponseWriter::Body(holder) => {
-      let mut result = holder.writer.write_all(&buf).await;
+    HttpResponseWriter::Body { writer, .. } => {
+      let mut result = writer.write_all(&buf).await;
       if result.is_ok() {
-        result = holder.writer.flush().await;
+        result = writer.flush().await;
       }
       match result {
         Ok(_) => Ok(()),
@@ -907,9 +907,12 @@ async fn op_http_shutdown(
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
   let wr = take(&mut *wr);
   match wr {
-    HttpResponseWriter::Body(mut holder) => {
-      holder.shutdown_handle.shutdown();
-      match holder.writer.shutdown().await {
+    HttpResponseWriter::Body {
+      mut writer,
+      shutdown_handle,
+    } => {
+      shutdown_handle.shutdown();
+      match writer.shutdown().await {
         Ok(_) => {}
         Err(err) => {
           assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
