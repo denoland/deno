@@ -52,6 +52,8 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     packages: HashSet<NpmPackageReq>,
   ) -> BoxFuture<'static, Result<(), AnyError>>;
 
+  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>>;
+
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
 
   fn snapshot(&self) -> NpmResolutionSnapshot;

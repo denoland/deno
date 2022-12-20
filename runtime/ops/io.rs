@@ -670,7 +670,7 @@ impl Resource for StdFileResource {
 #[op]
 pub fn op_print(
   state: &mut OpState,
-  msg: &str,
+  msg: String,
   is_err: bool,
 ) -> Result<(), AnyError> {
   let rid = if is_err { 2 } else { 1 };

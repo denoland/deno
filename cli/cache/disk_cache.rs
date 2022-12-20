@@ -136,7 +136,7 @@ impl DiskCache {
 
   pub fn get(&self, filename: &Path) -> std::io::Result<Vec<u8>> {
     let path = self.location.join(filename);
-    fs::read(&path)
+    fs::read(path)
   }
 
   pub fn set(&self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
