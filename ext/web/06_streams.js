@@ -42,6 +42,7 @@
     queueMicrotask,
     RangeError,
     ReflectHas,
+    SafeArrayIterator,
     SafePromiseAll,
     SharedArrayBuffer,
     Symbol,
@@ -769,7 +770,7 @@
   }
 
   function readableStreamIsUnrefable(stream) {
-    return _isUnref in stream;
+    return ReflectHas(stream, _isUnref);
   }
 
   function readableStreamForRidUnrefableRef(stream) {
@@ -858,7 +859,7 @@
 
     const finalBuffer = new Uint8Array(totalLength);
     let i = 0;
-    for (const chunk of chunks) {
+    for (const chunk of new SafeArrayIterator(chunks)) {
       TypedArrayPrototypeSet(finalBuffer, chunk, i);
       i += chunk.byteLength;
     }
@@ -1345,7 +1346,7 @@
     if (reader !== undefined && isReadableStreamBYOBReader(reader)) {
       const readIntoRequests = reader[_readIntoRequests];
       reader[_readIntoRequests] = [];
-      for (const readIntoRequest of readIntoRequests) {
+      for (const readIntoRequest of new SafeArrayIterator(readIntoRequests)) {
         readIntoRequest.closeSteps(undefined);
       }
     }
@@ -1371,7 +1372,7 @@
       /** @type {Array<ReadRequest<R>>} */
       const readRequests = reader[_readRequests];
       reader[_readRequests] = [];
-      for (const readRequest of readRequests) {
+      for (const readRequest of new SafeArrayIterator(readRequests)) {
         readRequest.closeSteps();
       }
     }
@@ -1593,7 +1594,7 @@
   function readableStreamDefaultReaderErrorReadRequests(reader, e) {
     const readRequests = reader[_readRequests];
     reader[_readRequests] = [];
-    for (const readRequest of readRequests) {
+    for (const readRequest of new SafeArrayIterator(readRequests)) {
       readRequest.errorSteps(e);
     }
   }
@@ -2613,7 +2614,7 @@
   function readableStreamBYOBReaderErrorReadIntoRequests(reader, e) {
     const readIntoRequests = reader[_readIntoRequests];
     reader[_readIntoRequests] = [];
-    for (const readIntoRequest of readIntoRequests) {
+    for (const readIntoRequest of new SafeArrayIterator(readIntoRequests)) {
       readIntoRequest.errorSteps(e);
     }
   }
@@ -4237,7 +4238,7 @@
     stream[_state] = "errored";
     stream[_controller][_errorSteps]();
     const storedError = stream[_storedError];
-    for (const writeRequest of stream[_writeRequests]) {
+    for (const writeRequest of new SafeArrayIterator(stream[_writeRequests])) {
       writeRequest.reject(storedError);
     }
     stream[_writeRequests] = [];
