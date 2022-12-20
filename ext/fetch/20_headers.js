@@ -405,7 +405,6 @@
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       const headers = {};
-      // deno-lint-ignore prefer-primordials
       for (const header of this) {
         headers[header[0]] = header[1];
       }
