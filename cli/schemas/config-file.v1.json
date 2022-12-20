@@ -87,6 +87,12 @@
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
         },
+        "noErrorTruncation": {
+          "description": "Do not truncate error messages.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Do not truncate error messages.\n\nSee more: https://www.typescriptlang.org/tsconfig#noErrorTruncation"
+        },
         "noFallthroughCasesInSwitch": {
           "description": "Enable error reporting for fallthrough cases in switch statements.",
           "type": "boolean",
