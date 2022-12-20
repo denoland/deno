@@ -9,6 +9,7 @@
     DatePrototype,
     MathTrunc,
     ObjectPrototypeIsPrototypeOf,
+    SafeArrayIterator,
     SymbolAsyncIterator,
     SymbolIterator,
     Function,
@@ -211,7 +212,7 @@
     let offset = 0;
     let str =
       'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux"; return {';
-    for (let [name, type] of ObjectEntries(types)) {
+    for (let [name, type] of new SafeArrayIterator(ObjectEntries(types))) {
       const optional = type.startsWith("?");
       if (optional) type = type.slice(1);
 

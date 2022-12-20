@@ -56,24 +56,27 @@
   function opUrlParse(href, maybeBase) {
     let status;
     if (maybeBase === undefined) {
-      status = ops.op_url_parse(href, componentsBuf);
+      status = ops.op_url_parse(href, componentsBuf.buffer);
     } else {
-      status = ops.op_url_parse_with_base(
+      status = core.ops.op_url_parse_with_base(
         href,
         maybeBase,
-        componentsBuf,
+        componentsBuf.buffer,
       );
     }
-    return getSerialization(status, href);
+    return getSerialization(status, href, maybeBase);
   }
 
-  function getSerialization(status, href) {
+  function getSerialization(status, href, maybeBase) {
     if (status === 0) {
       return href;
     } else if (status === 1) {
-      return ops.op_url_get_serialization();
+      return core.ops.op_url_get_serialization();
     } else {
-      throw new TypeError("Invalid URL");
+      throw new TypeError(
+        `Invalid URL: '${href}'` +
+          (maybeBase ? ` with base '${maybeBase}'` : ""),
+      );
     }
   }
 
@@ -191,7 +194,7 @@
         context: "Argument 1",
       });
       const values = [];
-      for (const entry of this[_list]) {
+      for (const entry of new SafeArrayIterator(this[_list])) {
         if (entry[0] === name) {
           ArrayPrototypePush(values, entry[1]);
         }
@@ -211,7 +214,7 @@
         prefix,
         context: "Argument 1",
       });
-      for (const entry of this[_list]) {
+      for (const entry of new SafeArrayIterator(this[_list])) {
         if (entry[0] === name) {
           return entry[1];
         }

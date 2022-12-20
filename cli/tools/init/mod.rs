@@ -53,19 +53,19 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
     info!("  cd {}", dir);
     info!("");
   }
-  info!("  {}", colors::gray("// Run the program"));
+  info!("  {}", colors::gray("# Run the program"));
   info!("  deno run main.ts");
   info!("");
   info!(
     "  {}",
-    colors::gray("// Run the program and watch for file changes")
+    colors::gray("# Run the program and watch for file changes")
   );
   info!("  deno task dev");
   info!("");
-  info!("  {}", colors::gray("// Run the tests"));
+  info!("  {}", colors::gray("# Run the tests"));
   info!("  deno test");
   info!("");
-  info!("  {}", colors::gray("// Run the benchmarks"));
+  info!("  {}", colors::gray("# Run the benchmarks"));
   info!("  deno bench");
   Ok(())
 }

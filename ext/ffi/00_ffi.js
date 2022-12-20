@@ -6,18 +6,20 @@
   const ops = core.ops;
   const __bootstrap = window.__bootstrap;
   const {
-    ObjectDefineProperty,
     ArrayPrototypeMap,
+    ArrayPrototypeJoin,
+    ObjectDefineProperty,
+    ObjectPrototypeHasOwnProperty,
+    ObjectPrototypeIsPrototypeOf,
     Number,
     NumberIsSafeInteger,
-    ArrayPrototypeJoin,
-    ObjectPrototypeIsPrototypeOf,
     TypeError,
     Int32Array,
     Uint32Array,
     BigInt64Array,
     BigUint64Array,
     Function,
+    ReflectHas,
   } = window.__bootstrap.primordials;
 
   const U32_BUFFER = new Uint32Array(2);
@@ -273,7 +275,11 @@
     constructor(path, symbols) {
       [this.#rid, this.symbols] = ops.op_ffi_load({ path, symbols });
       for (const symbol in symbols) {
-        if ("type" in symbols[symbol]) {
+        if (!ObjectPrototypeHasOwnProperty(symbols, symbol)) {
+          continue;
+        }
+
+        if (ReflectHas(symbols[symbol], "type")) {
           const type = symbols[symbol].type;
           if (type === "void") {
             throw new TypeError(

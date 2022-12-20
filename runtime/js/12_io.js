@@ -12,6 +12,7 @@
     Uint8Array,
     ArrayPrototypePush,
     MathMin,
+    SafeArrayIterator,
     TypedArrayPrototypeSubarray,
     TypedArrayPrototypeSet,
   } = window.__bootstrap.primordials;
@@ -156,14 +157,14 @@
 
   function concatBuffers(buffers) {
     let totalLen = 0;
-    for (const buf of buffers) {
+    for (const buf of new SafeArrayIterator(buffers)) {
       totalLen += buf.byteLength;
     }
 
     const contents = new Uint8Array(totalLen);
 
     let n = 0;
-    for (const buf of buffers) {
+    for (const buf of new SafeArrayIterator(buffers)) {
       TypedArrayPrototypeSet(contents, buf, n);
       n += buf.byteLength;
     }

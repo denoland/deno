@@ -8,6 +8,8 @@ use test_util::assert_contains;
 use test_util::TempDir;
 
 mod watcher {
+  use util::assert_not_contains;
+
   use super::*;
 
   const CLEAR_SCREEN: &str = r#"[2J"#;
@@ -82,7 +84,7 @@ mod watcher {
       .lines()
       .map(|r| {
         let line = r.unwrap();
-        eprintln!("STERR: {}", line);
+        eprintln!("STDERR: {}", line);
         line
       });
     (stdout_lines, stderr_lines)
@@ -105,7 +107,7 @@ mod watcher {
       util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
     let badly_linted = t.path().join("badly_linted.js");
 
-    std::fs::copy(&badly_linted_original, &badly_linted).unwrap();
+    std::fs::copy(badly_linted_original, &badly_linted).unwrap();
 
     let mut child = util::deno_cmd()
       .current_dir(util::testdata_path())
@@ -124,16 +126,16 @@ mod watcher {
     let expected = std::fs::read_to_string(badly_linted_output).unwrap();
     assert_eq!(output, expected);
 
-    // Change content of the file again to be badly-linted1
-    std::fs::copy(&badly_linted_fixed1, &badly_linted).unwrap();
+    // Change content of the file again to be badly-linted
+    std::fs::copy(badly_linted_fixed1, &badly_linted).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
 
     output = read_all_lints(&mut stderr_lines);
     let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
     assert_eq!(output, expected);
 
-    // Change content of the file again to be badly-linted1
-    std::fs::copy(&badly_linted_fixed2, &badly_linted).unwrap();
+    // Change content of the file again to be badly-linted
+    std::fs::copy(badly_linted_fixed2, &badly_linted).unwrap();
 
     output = read_all_lints(&mut stderr_lines);
     let expected = std::fs::read_to_string(badly_linted_fixed2_output).unwrap();
@@ -163,7 +165,7 @@ mod watcher {
       util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
     let badly_linted = t.path().join("badly_linted.js");
 
-    std::fs::copy(&badly_linted_original, &badly_linted).unwrap();
+    std::fs::copy(badly_linted_original, &badly_linted).unwrap();
 
     let mut child = util::deno_cmd()
       .current_dir(t.path())
@@ -182,15 +184,15 @@ mod watcher {
     let expected = std::fs::read_to_string(badly_linted_output).unwrap();
     assert_eq!(output, expected);
 
-    // Change content of the file again to be badly-linted1
-    std::fs::copy(&badly_linted_fixed1, &badly_linted).unwrap();
+    // Change content of the file again to be badly-linted
+    std::fs::copy(badly_linted_fixed1, &badly_linted).unwrap();
 
     output = read_all_lints(&mut stderr_lines);
     let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
     assert_eq!(output, expected);
 
-    // Change content of the file again to be badly-linted1
-    std::fs::copy(&badly_linted_fixed2, &badly_linted).unwrap();
+    // Change content of the file again to be badly-linted
+    std::fs::copy(badly_linted_fixed2, &badly_linted).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
 
     output = read_all_lints(&mut stderr_lines);
@@ -216,8 +218,8 @@ mod watcher {
 
     let badly_linted_1 = t.path().join("badly_linted_1.js");
     let badly_linted_2 = t.path().join("badly_linted_2.js");
-    std::fs::copy(&badly_linted_fixed0, &badly_linted_1).unwrap();
-    std::fs::copy(&badly_linted_fixed1, &badly_linted_2).unwrap();
+    std::fs::copy(badly_linted_fixed0, badly_linted_1).unwrap();
+    std::fs::copy(badly_linted_fixed1, &badly_linted_2).unwrap();
 
     let mut child = util::deno_cmd()
       .current_dir(util::testdata_path())
@@ -236,7 +238,7 @@ mod watcher {
       "Checked 2 files"
     );
 
-    std::fs::copy(&badly_linted_fixed2, &badly_linted_2).unwrap();
+    std::fs::copy(badly_linted_fixed2, badly_linted_2).unwrap();
 
     assert_contains!(
       read_line("Checked", &mut stderr_lines),
@@ -356,7 +358,7 @@ mod watcher {
     let badly_formatted_1 = t.path().join("badly_formatted_1.js");
     let badly_formatted_2 = t.path().join("badly_formatted_2.js");
     std::fs::copy(&badly_formatted_original, &badly_formatted_1).unwrap();
-    std::fs::copy(&badly_formatted_original, &badly_formatted_2).unwrap();
+    std::fs::copy(&badly_formatted_original, badly_formatted_2).unwrap();
 
     let mut child = util::deno_cmd()
       .current_dir(&fmt_testdata_path)
@@ -425,7 +427,8 @@ mod watcher {
 
     assert_contains!(stderr_lines.next().unwrap(), "Check");
     let next_line = stderr_lines.next().unwrap();
-    assert_contains!(&next_line, CLEAR_SCREEN);
+    // Should not clear screen, as we are in non-TTY environment
+    assert_not_contains!(&next_line, CLEAR_SCREEN);
     assert_contains!(&next_line, "File change detected!");
     assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.ts");
     assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
@@ -476,7 +479,8 @@ mod watcher {
 
     assert_contains!(stderr_lines.next().unwrap(), "Check");
     let next_line = stderr_lines.next().unwrap();
-    assert_contains!(&next_line, CLEAR_SCREEN);
+    // Should not clear screen, as we are in non-TTY environment
+    assert_not_contains!(&next_line, CLEAR_SCREEN);
     assert_contains!(&next_line, "File change detected!");
     assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.ts");
     assert_contains!(stderr_lines.next().unwrap(), "target.js");
@@ -868,7 +872,7 @@ mod watcher {
     )
     .unwrap();
     write(
-      &bar_test,
+      bar_test,
       "import bar from './bar.js'; Deno.test('bar', bar);",
     )
     .unwrap();
@@ -1102,7 +1106,7 @@ mod watcher {
     .unwrap();
     let file_to_watch2 = t.path().join("imported.js");
     write(
-      &file_to_watch2,
+      file_to_watch2,
       r#"
     import "./imported2.js";
     console.log("I'm dynamically imported and I cause restarts!");

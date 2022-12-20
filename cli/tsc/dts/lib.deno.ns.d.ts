@@ -465,7 +465,7 @@ declare namespace Deno {
      * If set to `true`, the global `env` permission will be requested.
      * If set to `false`, the global `env` permission will be revoked.
      *
-     * Defaults to `false`.
+     * @default {false}
      */
     env?: "inherit" | boolean | string[];
 
@@ -474,7 +474,7 @@ declare namespace Deno {
      * If set to `true`, the global `sys` permission will be requested.
      * If set to `false`, the global `sys` permission will be revoked.
      *
-     * Defaults to `false`.
+     * @default {false}
      */
     sys?: "inherit" | boolean | string[];
 
@@ -483,7 +483,7 @@ declare namespace Deno {
      * If set to `true`, the global `hrtime` permission will be requested.
      * If set to `false`, the global `hrtime` permission will be revoked.
      *
-     * Defaults to `false`.
+     * @default {false}
      */
     hrtime?: "inherit" | boolean;
 
@@ -494,7 +494,7 @@ declare namespace Deno {
      * if set to `string[]`, the `net` permission will be requested with the
      * specified host strings with the format `"<host>[:<port>]`.
      *
-     * Defaults to `false`.
+     * @default {false}
      *
      * Examples:
      *
@@ -565,7 +565,7 @@ declare namespace Deno {
      * If set to `true`, the global `ffi` permission will be requested.
      * If set to `false`, the global `ffi` permission will be revoked.
      *
-     * Defaults to `false`.
+     * @default {false}
      */
     ffi?: "inherit" | boolean | Array<string | URL>;
 
@@ -576,7 +576,7 @@ declare namespace Deno {
      * If set to `Array<string | URL>`, the `read` permission will be requested with the
      * specified file paths.
      *
-     * Defaults to `false`.
+     * @default {false}
      */
     read?: "inherit" | boolean | Array<string | URL>;
 
@@ -585,7 +585,7 @@ declare namespace Deno {
      * If set to `true`, the global `run` permission will be requested.
      * If set to `false`, the global `run` permission will be revoked.
      *
-     * Defaults to `false`.
+     * @default {false}
      */
     run?: "inherit" | boolean | Array<string | URL>;
 
@@ -596,7 +596,7 @@ declare namespace Deno {
      * If set to `Array<string | URL>`, the `write` permission will be requested with the
      * specified file paths.
      *
-     * Defaults to `false`.
+     * @default {false}
      */
     write?: "inherit" | boolean | Array<string | URL>;
   }
@@ -725,18 +725,18 @@ declare namespace Deno {
      * not await. This helps in preventing logic errors and memory leaks
      * in the application code.
      *
-     * Defaults to `true`. */
+     * @default {true} */
     sanitizeOps?: boolean;
     /** Ensure the test step does not "leak" resources - like open files or
      * network connections - by ensuring the open resources at the start of the
      * test match the open resources at the end of the test.
      *
-     * Defaults to `true`. */
+     * @default {true} */
     sanitizeResources?: boolean;
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to {@linkcode Deno.exit}.
      *
-     * Defaults to `true`. */
+     * @default {true} */
     sanitizeExit?: boolean;
     /** Specifies the permissions that should be used to run the test.
      *
@@ -744,7 +744,7 @@ declare namespace Deno {
      * to "none" to revoke all permissions, or set a more specific set of
      * permissions using a {@linkcode PermissionOptionsObject}.
      *
-     * Defaults to `"inherit"`. */
+     * @default {"inherit"} */
     permissions?: PermissionOptions;
   }
 
@@ -957,7 +957,9 @@ declare namespace Deno {
      * `only` set to `true` and fail the bench suite. */
     only?: boolean;
     /** Ensure the bench case does not prematurely cause the process to exit,
-     * for example via a call to {@linkcode Deno.exit}. Defaults to `true`. */
+     * for example via a call to {@linkcode Deno.exit}.
+     *
+     * @default {true} */
     sanitizeExit?: boolean;
     /** Specifies the permissions that should be used to run the bench.
      *
@@ -965,7 +967,7 @@ declare namespace Deno {
      *
      * Set this to `"none"` to revoke all permissions.
      *
-     * Defaults to "inherit".
+     * @default {"inherit"}
      */
     permissions?: PermissionOptions;
   }
@@ -2336,34 +2338,45 @@ declare namespace Deno {
    *
    * @category File System */
   export interface OpenOptions {
-    /** Defaults to `true`. Sets the option for read access. This option, when `true`, means that
-     * the file should be read-able if opened. */
+    /** Sets the option for read access. This option, when `true`, means that
+     * the file should be read-able if opened.
+     *
+     * @default {true} */
     read?: boolean;
-    /** Defaults to `false`. Sets the option for write access. This option, when `true`, means that
+    /** Sets the option for write access. This option, when `true`, means that
      * the file should be write-able if opened. If the file already exists,
      * any write calls on it will overwrite its contents, by default without
-     * truncating it. */
+     * truncating it.
+     *
+     * @default {false} */
     write?: boolean;
-    /** Defaults to `false`. Sets the option for the append mode. This option, when `true`, means
+    /** Sets the option for the append mode. This option, when `true`, means
      * that writes will append to a file instead of overwriting previous
      * contents.
      *
      * Note that setting `{ write: true, append: true }` has the same effect as
-     * setting only `{ append: true }`. */
+     * setting only `{ append: true }`.
+     *
+     * @default {false} */
     append?: boolean;
-    /** Defaults to `false`. Sets the option for truncating a previous file. If a file is
+    /** Sets the option for truncating a previous file. If a file is
      * successfully opened with this option set it will truncate the file to `0`
      * size if it already exists. The file must be opened with write access
-     * for truncate to work. */
+     * for truncate to work.
+     *
+     * @default {false} */
     truncate?: boolean;
-    /** Defaults to `false`. Sets the option to allow creating a new file, if one doesn't already
+    /** Sets the option to allow creating a new file, if one doesn't already
      * exist at the specified path. Requires write or append access to be
-     * used. */
+     * used.
+     *
+     * @default {false} */
     create?: boolean;
-    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
-     * allowed to exist at the target location. Requires write or append
-     * access to be used. When createNew is set to `true`, create and truncate
-     * are ignored. */
+    /** If set to `true`, no file, directory, or symlink is allowed to exist at
+     * the target location. Requires write or append access to be used. When
+     * createNew is set to `true`, create and truncate are ignored.
+     *
+     * @default {false} */
     createNew?: boolean;
     /** Permissions to use if creating the file (defaults to `0o666`, before
      * the process's umask).
@@ -2537,14 +2550,16 @@ declare namespace Deno {
    *
    * @category File System */
   export interface MkdirOptions {
-    /** Defaults to `false`. If set to `true`, means that any intermediate
-     * directories will also be created (as with the shell command `mkdir -p`).
+    /** If set to `true`, means that any intermediate directories will also be
+     * created (as with the shell command `mkdir -p`).
      *
      * Intermediate directories are created with the same permissions.
      *
      * When recursive is set to `true`, succeeds silently (without changing any
      * permissions) if a directory already exists at the path, or if the path
-     * is a symlink to an existing directory. */
+     * is a symlink to an existing directory.
+     *
+     * @default {false} */
     recursive?: boolean;
     /** Permissions to use when creating the directory (defaults to `0o777`,
      * before the process's umask).
@@ -2816,8 +2831,9 @@ declare namespace Deno {
    *
    * @category File System */
   export interface RemoveOptions {
-    /** Defaults to `false`. If set to `true`, path will be removed even if
-     * it's a non-empty directory. */
+    /** If set to `true`, path will be removed even if it's a non-empty directory.
+     *
+     * @default {false} */
     recursive?: boolean;
   }
 
@@ -3290,15 +3306,20 @@ declare namespace Deno {
    * @category File System
    */
   export interface WriteFileOptions {
-    /** Defaults to `false`. If set to `true`, will append to a file instead of
-     * overwriting previous contents. */
+    /** If set to `true`, will append to a file instead of overwriting previous
+     * contents.
+     *
+     * @∂efault {false} */
     append?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
-     * exist at the specified path (defaults to `true`). */
+     * exist at the specified path.
+     *
+     * @default {true} */
     create?: boolean;
-    /** Defaults to `false`. If set to `true`, no file, directory, or symlink is
-     * allowed to exist at the target location. When createNew is set to `true`,
-     * `create` is ignored. */
+    /** If set to `true`, no file, directory, or symlink is allowed to exist at
+     * the target location. When createNew is set to `true`, `create` is ignored.
+     *
+     * @∂efault {false} */
     createNew?: boolean;
     /** Permissions always applied to file. */
     mode?: number;
@@ -3903,24 +3924,41 @@ declare namespace Deno {
    *
    * @category Console and Debugging */
   export interface InspectOptions {
-    /** Stylize output with ANSI colors. Defaults to `false`. */
+    /** Stylize output with ANSI colors.
+     *
+     * @default {false} */
     colors?: boolean;
     /** Try to fit more than one entry of a collection on the same line.
-     * Defaults to `true`. */
+     *
+     * @default {true} */
     compact?: boolean;
-    /** Traversal depth for nested objects. Defaults to `4`. */
+    /** Traversal depth for nested objects.
+     *
+     * @default {4} */
     depth?: number;
-    /** The maximum number of iterable entries to print. Defaults to `100`. */
+    /** The maximum number of iterable entries to print.
+     *
+     * @default {100} */
     iterableLimit?: number;
-    /** Show a Proxy's target and handler. Defaults to `false`. */
+    /** Show a Proxy's target and handler.
+     *
+     * @default {false} */
     showProxy?: boolean;
-    /** Sort Object, Set and Map entries by key. Defaults to `false`. */
+    /** Sort Object, Set and Map entries by key.
+     *
+     * @default {false} */
     sorted?: boolean;
-    /** Add a trailing comma for multiline collections. Defaults to `false`. */
+    /** Add a trailing comma for multiline collections.
+     *
+     * @default {false} */
     trailingComma?: boolean;
-    /*** Evaluate the result of calling getters. Defaults to `false`. */
+    /** Evaluate the result of calling getters.
+     *
+     * @default {false} */
     getters?: boolean;
-    /** Show an object's non-enumerable properties. Defaults to `false`. */
+    /** Show an object's non-enumerable properties.
+     *
+     * @default {false} */
     showHidden?: boolean;
     /** The maximum length of a string before it is truncated with an
      * ellipsis. */
@@ -4852,7 +4890,7 @@ declare namespace Deno {
       ipAddr: string;
       /** The port number the query will be sent to.
        *
-       * If not specified, defaults to `53`. */
+       * @default {53} */
       port?: number;
     };
   }

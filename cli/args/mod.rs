@@ -150,7 +150,7 @@ pub fn get_root_cert_store(
     } else {
       PathBuf::from(ca_file)
     };
-    let certfile = std::fs::File::open(&ca_file)?;
+    let certfile = std::fs::File::open(ca_file)?;
     let mut reader = BufReader::new(certfile);
 
     match rustls_pemfile::certs(&mut reader) {
@@ -278,6 +278,10 @@ impl CliOptions {
   /// Overrides the import map specifier to use.
   pub fn set_import_map_specifier(&mut self, path: Option<ModuleSpecifier>) {
     self.overrides.import_map_specifier = Some(path);
+  }
+
+  pub fn node_modules_dir(&self) -> bool {
+    self.flags.node_modules_dir
   }
 
   /// Resolves the path to use for a local node_modules folder.
@@ -716,7 +720,7 @@ mod test {
     let import_map_path =
       std::env::current_dir().unwrap().join("import-map.json");
     let expected_specifier =
-      ModuleSpecifier::from_file_path(&import_map_path).unwrap();
+      ModuleSpecifier::from_file_path(import_map_path).unwrap();
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, Some(expected_specifier));

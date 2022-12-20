@@ -77,7 +77,7 @@ deno {} "$@"
 "#,
     args.join(" "),
   );
-  let mut file = File::create(&shim_data.file_path.with_extension(""))?;
+  let mut file = File::create(shim_data.file_path.with_extension(""))?;
   file.write_all(template.as_bytes())?;
   Ok(())
 }
@@ -401,8 +401,7 @@ fn resolve_shim_data(
   }
 
   if let ConfigFlag::Path(config_path) = &flags.config_flag {
-    let mut copy_path = file_path.clone();
-    copy_path.set_extension("tsconfig.json");
+    let copy_path = get_hidden_file_with_ext(&file_path, "tsconfig.json");
     executable_args.push("--config".to_string());
     executable_args.push(copy_path.to_str().unwrap().to_string());
     extra_files.push((
@@ -418,8 +417,7 @@ fn resolve_shim_data(
     // always use a lockfile for an npm entrypoint unless --no-lock
     || NpmPackageReference::from_specifier(&module_url).is_ok()
   {
-    let mut copy_path = file_path.clone();
-    copy_path.set_extension("lock.json");
+    let copy_path = get_hidden_file_with_ext(&file_path, "lock.json");
     executable_args.push("--lock".to_string());
     executable_args.push(copy_path.to_str().unwrap().to_string());
 
@@ -446,6 +444,17 @@ fn resolve_shim_data(
     args: executable_args,
     extra_files,
   })
+}
+
+fn get_hidden_file_with_ext(file_path: &Path, ext: &str) -> PathBuf {
+  // use a dot file to prevent the file from showing up in some
+  // users shell auto-complete since this directory is on the PATH
+  file_path
+    .with_file_name(format!(
+      ".{}",
+      file_path.file_name().unwrap().to_string_lossy()
+    ))
+    .with_extension(ext)
 }
 
 fn is_in_path(dir: &Path) -> bool {
@@ -776,7 +785,7 @@ mod tests {
     )
     .unwrap();
 
-    let lock_path = temp_dir.join("bin").join("cowsay.lock.json");
+    let lock_path = temp_dir.join("bin").join(".cowsay.lock.json");
     assert_eq!(
       shim_data.args,
       vec![
@@ -934,7 +943,7 @@ mod tests {
     );
     assert!(result.is_ok());
 
-    let config_file_name = "echo_test.tsconfig.json";
+    let config_file_name = ".echo_test.tsconfig.json";
 
     let file_path = bin_dir.join(config_file_name);
     assert!(file_path.exists());
@@ -1118,11 +1127,11 @@ mod tests {
     // create extra files
     {
       let file_path = file_path.with_extension("tsconfig.json");
-      File::create(&file_path).unwrap();
+      File::create(file_path).unwrap();
     }
     {
       let file_path = file_path.with_extension("lock.json");
-      File::create(&file_path).unwrap();
+      File::create(file_path).unwrap();
     }
 
     uninstall("echo_test".to_string(), Some(temp_dir.path().to_path_buf()))
