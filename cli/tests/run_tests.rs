@@ -2780,6 +2780,7 @@ mod run {
     exit_code: 1,
   });
 
+  // Regression test for https://github.com/denoland/deno/issues/16340.
   itest!(error_with_errors_prop {
     args: "run --quiet run/error_with_errors_prop.js",
     output: "run/error_with_errors_prop.js.out",
