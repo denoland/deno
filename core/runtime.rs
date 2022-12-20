@@ -148,16 +148,21 @@ pub type SharedArrayBufferStore =
 
 pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
+#[derive(Default)]
+pub(crate) struct ContextState {
+  pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
+}
+
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub struct JsRuntimeState {
   global_realm: Option<JsRealm>,
+  known_realms: Vec<v8::Weak<v8::Context>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -388,7 +393,6 @@ impl JsRuntime {
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
       js_format_exception_cb: None,
-      js_build_custom_error_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,
@@ -405,6 +409,7 @@ impl JsRuntime {
       inspector: None,
       op_ctxs: vec![].into_boxed_slice(),
       global_realm: None,
+      known_realms: Vec::with_capacity(1),
     }));
 
     let weak = Rc::downgrade(&state_rc);
@@ -517,6 +522,10 @@ impl JsRuntime {
       (isolate, snapshot_options)
     };
 
+    global_context
+      .open(&mut isolate)
+      .set_slot(&mut isolate, Rc::<RefCell<ContextState>>::default());
+
     op_state.borrow_mut().put(isolate_ptr);
     let inspector = if options.inspector {
       Some(JsRuntimeInspector::new(
@@ -533,9 +542,12 @@ impl JsRuntime {
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
     {
       let mut state = state_rc.borrow_mut();
-      state.global_realm = Some(JsRealm(global_context));
+      state.global_realm = Some(JsRealm(global_context.clone()));
       state.op_ctxs = op_ctxs;
       state.inspector = inspector;
+      state
+        .known_realms
+        .push(v8::Weak::new(&mut isolate, global_context));
     }
     isolate.set_data(
       Self::STATE_DATA_OFFSET,
@@ -632,10 +644,19 @@ impl JsRuntime {
         &self.state.borrow().op_ctxs,
         self.snapshot_options,
       );
+      context.set_slot(scope, Rc::<RefCell<ContextState>>::default());
+
+      self
+        .state
+        .borrow_mut()
+        .known_realms
+        .push(v8::Weak::new(scope, context));
+
       JsRealm::new(v8::Global::new(scope, context))
     };
 
     self.init_extension_js(&realm)?;
+    self.init_realm_cbs(&realm);
     Ok(realm)
   }
 
@@ -797,19 +818,36 @@ impl JsRuntime {
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
-    let scope = &mut self.handle_scope();
-    let recv_cb =
-      Self::eval::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
-    let recv_cb = v8::Global::new(scope, recv_cb);
-    let build_custom_error_cb =
-      Self::eval::<v8::Function>(scope, "Deno.core.buildCustomError")
-        .expect("Deno.core.buildCustomError is undefined in the realm");
-    let build_custom_error_cb = v8::Global::new(scope, build_custom_error_cb);
-    // Put global handles in state
-    let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
-    state.js_recv_cb.replace(recv_cb);
+    {
+      let scope = &mut self.handle_scope();
+      let recv_cb =
+        Self::eval::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
+      let recv_cb = v8::Global::new(scope, recv_cb);
+      // Put global handle in state
+      let state_rc = JsRuntime::state(scope);
+      let mut state = state_rc.borrow_mut();
+      state.js_recv_cb.replace(recv_cb);
+    }
+
+    // Also run init_realm_cbs for the main realm.
+    // TODO(@andreubotella): Merge this method back with `init_realm_cbs` when
+    // `js_recv_cb` is moved to ContextState.
+    let global_realm = self.global_realm();
+    self.init_realm_cbs(&global_realm);
+  }
+
+  fn init_realm_cbs(&mut self, realm: &JsRealm) {
+    let build_custom_error_cb = {
+      let scope = &mut realm.handle_scope(self.v8_isolate());
+      let build_custom_error_cb =
+        Self::eval::<v8::Function>(scope, "Deno.core.buildCustomError")
+          .expect("Deno.core.buildCustomError is undefined in the realm");
+      v8::Global::new(scope, build_custom_error_cb)
+    };
+    // Put global handle in the realm's ContextState
+    let state = realm.state(self.v8_isolate());
     state
+      .borrow_mut()
       .js_build_custom_error_cb
       .replace(build_custom_error_cb);
   }
@@ -873,14 +911,26 @@ impl JsRuntime {
     }
     // Drop other v8::Global handles before snapshotting
     {
+      for weak_context in &self.state.clone().borrow().known_realms {
+        let v8_isolate = self.v8_isolate();
+        if let Some(context) = weak_context.to_global(v8_isolate) {
+          let realm = JsRealm::new(context.clone());
+          let realm_state = realm.state(v8_isolate);
+          std::mem::take(
+            &mut realm_state.borrow_mut().js_build_custom_error_cb,
+          );
+          context.open(v8_isolate).clear_all_slots(v8_isolate);
+        }
+      }
+
       let mut state = self.state.borrow_mut();
       std::mem::take(&mut state.js_recv_cb);
       std::mem::take(&mut state.js_promise_reject_cb);
       std::mem::take(&mut state.js_format_exception_cb);
       std::mem::take(&mut state.js_wasm_streaming_cb);
-      std::mem::take(&mut state.js_build_custom_error_cb);
       state.js_macrotask_cbs.clear();
       state.js_nexttick_cbs.clear();
+      state.known_realms.clear();
     }
 
     let snapshot_creator = self.v8_isolate.take().unwrap();
@@ -2244,6 +2294,25 @@ impl JsRealm {
 
   pub fn context(&self) -> &v8::Global<v8::Context> {
     &self.0
+  }
+
+  fn state(&self, isolate: &mut v8::Isolate) -> Rc<RefCell<ContextState>> {
+    self
+      .context()
+      .open(isolate)
+      .get_slot::<Rc<RefCell<ContextState>>>(isolate)
+      .unwrap()
+      .clone()
+  }
+
+  pub(crate) fn state_from_scope(
+    scope: &mut v8::HandleScope,
+  ) -> Rc<RefCell<ContextState>> {
+    let context = scope.get_current_context();
+    context
+      .get_slot::<Rc<RefCell<ContextState>>>(scope)
+      .unwrap()
+      .clone()
   }
 
   pub fn handle_scope<'s>(
@@ -4185,6 +4254,53 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
 
     let scope = &mut realm.handle_scope(runtime.v8_isolate());
     assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
+  }
+
+  #[test]
+  fn js_realm_sync_ops() {
+    // Test that returning a ZeroCopyBuf and throwing an exception from a sync
+    // op result in objects with prototypes from the right realm. Note that we
+    // don't test the result of returning structs, because they will be
+    // serialized to objects with null prototype.
+
+    #[op]
+    fn op_test(fail: bool) -> Result<ZeroCopyBuf, Error> {
+      if !fail {
+        Ok(ZeroCopyBuf::empty())
+      } else {
+        Err(crate::error::type_error("Test"))
+      }
+    }
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      get_error_class_fn: Some(&|error| {
+        crate::error::get_custom_error_class(error).unwrap()
+      }),
+      ..Default::default()
+    });
+    let new_realm = runtime.create_realm().unwrap();
+
+    // Test in both realms
+    for realm in [runtime.global_realm(), new_realm].into_iter() {
+      let ret = realm
+        .execute_script(
+          runtime.v8_isolate(),
+          "",
+          r#"
+            const buf = Deno.core.ops.op_test(false);
+            try {
+              Deno.core.ops.op_test(true);
+            } catch(e) {
+              err = e;
+            }
+            buf instanceof Uint8Array && buf.byteLength === 0 &&
+            err instanceof TypeError && err.message === "Test"
+          "#,
+        )
+        .unwrap();
+      assert!(ret.open(runtime.v8_isolate()).is_true());
+    }
   }
 
   #[test]
