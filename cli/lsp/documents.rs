@@ -491,13 +491,15 @@ impl Document {
     self.0.maybe_navigation_tree.lock().clone()
   }
 
-  pub fn try_set_navigation_tree(
+  pub fn update_navigation_tree_if_version(
     &self,
     tree: Arc<tsc::NavigationTree>,
     script_version: &str,
   ) {
-    // ensure we are updating the same document
-    // that the navigation tree was created for
+    // Ensure we are updating the same document that the navigation tree was
+    // created for. Note: this should not be racy between the version check
+    // and setting the navigation tree, because the document is immutable
+    // and this is enforced by it being wrapped in an Arc.
     if self.script_version() == script_version {
       *self.0.maybe_navigation_tree.lock() = Some(tree);
     }
@@ -1030,11 +1032,11 @@ impl Documents {
     navigation_tree: Arc<tsc::NavigationTree>,
   ) -> Result<(), AnyError> {
     if let Some(doc) = self.open_docs.get(specifier) {
-      doc.try_set_navigation_tree(navigation_tree, script_version)
+      doc.update_navigation_tree_if_version(navigation_tree, script_version)
     } else {
       let mut file_system_docs = self.file_system_docs.lock();
       if let Some(doc) = file_system_docs.docs.get_mut(specifier) {
-        doc.try_set_navigation_tree(navigation_tree, script_version);
+        doc.update_navigation_tree_if_version(navigation_tree, script_version);
       } else {
         return Err(custom_error(
           "NotFound",
