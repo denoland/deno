@@ -130,4 +130,28 @@ mod tests {
       std::io::ErrorKind::UnexpectedEof
     );
   }
+
+  #[tokio::test]
+  async fn write_after_shutdown() {
+    let (a, b) = tokio::io::duplex(64 * 1024);
+    let (reader, _) = tokio::io::split(a);
+    let (_, mut writer) = tokio::io::split(b);
+
+    let (mut stream, shutdown_handle) =
+      ExternallyAbortableReaderStream::new(reader);
+
+    writer.write_all(b"hello").await.unwrap();
+    assert_eq!(stream.next().await.unwrap().unwrap(), Bytes::from("hello"));
+
+    writer.write_all(b"world").await.unwrap();
+    assert_eq!(stream.next().await.unwrap().unwrap(), Bytes::from("world"));
+
+    shutdown_handle.shutdown();
+    writer.shutdown().await.unwrap();
+
+    assert!(writer.write_all(b"!").await.is_err());
+
+    drop(writer);
+    assert!(stream.next().await.is_none());
+  }
 }
