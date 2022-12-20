@@ -429,9 +429,7 @@ impl CliOptions {
     };
 
     if let Some(config_file) = &self.maybe_config_file {
-      let maybe_lint_config = config_file.to_lint_config()?;
-
-      if let Some(lint_config) = maybe_lint_config {
+      if let Some(lint_config) = config_file.to_lint_config()? {
         let filters = self.collect_filters(&lint_config, include, ignore)?;
         include = filters.include;
         ignore = filters.ignore;
@@ -448,7 +446,7 @@ impl CliOptions {
         if maybe_rules_tags.is_none() {
           maybe_rules_tags = lint_config.rules.tags;
         }
-
+        // Try to get lint reporter.
         if maybe_reporter_kind.is_none() {
           maybe_reporter_kind = match lint_config.report.as_deref() {
             Some("json") => Some(LintReporterKind::Json),
@@ -463,6 +461,7 @@ impl CliOptions {
       }
     }
 
+    // Try to get lint rules. If none were set as flags or config file fields use recommended rules.
     let configured_rules = if maybe_rules_tags.is_none()
       && maybe_rules_include.is_none()
       && maybe_rules_exclude.is_none()
@@ -505,9 +504,7 @@ impl CliOptions {
     let mut ignore = cli_filters.ignore;
 
     if let Some(config_file) = &self.maybe_config_file {
-      let maybe_test_config = config_file.to_test_config()?;
-
-      if let Some(test_config) = maybe_test_config {
+      if let Some(test_config) = config_file.to_test_config()? {
         let filters = self.collect_filters(&test_config, include, ignore)?;
         include = filters.include;
         ignore = filters.ignore;
@@ -532,9 +529,7 @@ impl CliOptions {
     let mut ignore = cli_filters.ignore;
 
     if let Some(config_file) = &self.maybe_config_file {
-      let maybe_bench_config = config_file.to_bench_config()?;
-
-      if let Some(bench_config) = maybe_bench_config {
+      if let Some(bench_config) = config_file.to_bench_config()? {
         let filters = self.collect_filters(&bench_config, include, ignore)?;
         include = filters.include;
         ignore = filters.ignore;
@@ -578,9 +573,7 @@ impl CliOptions {
     };
 
     if let Some(config_file) = &self.maybe_config_file {
-      let maybe_fmt_config = config_file.to_fmt_config()?;
-
-      if let Some(fmt_config) = maybe_fmt_config {
+      if let Some(fmt_config) = config_file.to_fmt_config()? {
         let filters = self.collect_filters(&fmt_config, include, ignore)?;
         include = filters.include;
         ignore = filters.ignore;
