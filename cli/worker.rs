@@ -187,7 +187,7 @@ impl CliMainWorker {
         .js_runtime
         .execute_script(
           &located_script_name!(),
-          "Deno.core.enableOpCallTracing();",
+          "Deno[Deno.internal].core.enableOpCallTracing();",
         )
         .unwrap();
     }
@@ -235,7 +235,7 @@ impl CliMainWorker {
       .worker
       .execute_script(
         &located_script_name!(),
-        "Deno.core.enableOpCallTracing();",
+        "Deno[Deno.internal].core.enableOpCallTracing();",
       )
       .unwrap();
 
