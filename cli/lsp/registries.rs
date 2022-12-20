@@ -955,7 +955,7 @@ impl ModuleRegistry {
             None
           } else {
             Some(lsp::CompletionList {
-              items: completions.into_iter().map(|(_, i)| i).collect(),
+              items: completions.into_values().collect(),
               is_incomplete,
             })
           };

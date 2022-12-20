@@ -907,7 +907,7 @@ pub struct NavigateToItem {
 impl NavigateToItem {
   pub fn to_symbol_information(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
     let specifier = normalize_specifier(&self.file_name).ok()?;
     let asset_or_doc =
@@ -1969,7 +1969,7 @@ impl CompletionEntryDetails {
     let detail = if original_item.detail.is_some() {
       original_item.detail.clone()
     } else if !self.display_parts.is_empty() {
-      Some(replace_links(&display_parts_to_string(
+      Some(replace_links(display_parts_to_string(
         &self.display_parts,
         language_server,
       )))

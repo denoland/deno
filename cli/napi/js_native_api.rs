@@ -549,7 +549,7 @@ fn napi_create_string_latin1(
       .unwrap()
       .as_bytes()
   } else {
-    std::slice::from_raw_parts(string, length as usize)
+    std::slice::from_raw_parts(string, length)
   };
   match v8::String::new_from_one_byte(
     &mut env.scope(),
@@ -626,7 +626,7 @@ fn napi_create_string_utf8(
       .to_str()
       .unwrap()
   } else {
-    let string = std::slice::from_raw_parts(string, length as usize);
+    let string = std::slice::from_raw_parts(string, length);
     std::str::from_utf8(string).unwrap()
   };
   let v8str = v8::String::new(&mut env.scope(), string).unwrap();
@@ -1070,7 +1070,7 @@ fn napi_call_function(
     .map_err(|_| Error::FunctionExpected)?;
 
   let argv: &[v8::Local<v8::Value>] =
-    transmute(std::slice::from_raw_parts(argv, argc as usize));
+    transmute(std::slice::from_raw_parts(argv, argc));
   let ret = func.call(&mut env.scope(), recv, argv);
   if !result.is_null() {
     *result = transmute::<Option<v8::Local<v8::Value>>, napi_value>(ret);

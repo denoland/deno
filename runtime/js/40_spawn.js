@@ -10,6 +10,7 @@
   const {
     ArrayPrototypeMap,
     ObjectEntries,
+    ObjectPrototypeIsPrototypeOf,
     String,
     TypeError,
     PromisePrototypeThen,
@@ -21,6 +22,7 @@
     readableStreamForRidUnrefable,
     readableStreamForRidUnrefableRef,
     readableStreamForRidUnrefableUnref,
+    ReadableStreamPrototype,
     writableStreamForRid,
   } = window.__bootstrap.streams;
 
@@ -65,7 +67,9 @@
   }
 
   function collectOutput(readableStream) {
-    if (!(readableStream instanceof ReadableStream)) {
+    if (
+      !(ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, readableStream))
+    ) {
       return null;
     }
 

@@ -171,7 +171,7 @@ unsafe fn do_ffi_callback(
   let func = callback.open(scope);
   let result = result as *mut c_void;
   let vals: &[*const c_void] =
-    std::slice::from_raw_parts(args, info.parameters.len() as usize);
+    std::slice::from_raw_parts(args, info.parameters.len());
 
   let mut params: Vec<v8::Local<v8::Value>> = vec![];
   for (native_type, val) in info.parameters.iter().zip(vals) {
@@ -307,7 +307,7 @@ unsafe fn do_ffi_callback(
         // Fallthrough, probably UB.
         value
           .int32_value(scope)
-          .expect("Unable to deserialize result parameter.") as i32
+          .expect("Unable to deserialize result parameter.")
       };
       *(result as *mut i32) = value;
     }
@@ -425,8 +425,7 @@ unsafe fn do_ffi_callback(
       } else {
         *(result as *mut i64) = value
           .integer_value(scope)
-          .expect("Unable to deserialize result parameter.")
-          as i64;
+          .expect("Unable to deserialize result parameter.");
       }
     }
     NativeType::U64 => {

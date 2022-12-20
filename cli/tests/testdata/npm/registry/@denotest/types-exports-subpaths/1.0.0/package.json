@@ -1,0 +1,19 @@
+{
+  "name": "@denotest/types-exports-subpaths",
+  "version": "1.0.0",
+  "exports": {
+    "./client": {
+      "types": {
+        "default": "./client.d.ts"
+      },
+      "import": "./dist/client.mjs"
+    },
+    "./entry-b": {
+      "import": "./entry-b.d.ts",
+      "types": "./dist/entry-b-wrong.d.ts"
+    },
+    "./entry-c": {
+      "import": "./dist/entry-c.js"
+    }
+  }
+}

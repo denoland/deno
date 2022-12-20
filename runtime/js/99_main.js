@@ -19,6 +19,7 @@ delete Intl.v8BreakIterator;
     ArrayPrototypeMap,
     DateNow,
     Error,
+    ErrorPrototype,
     FunctionPrototypeCall,
     FunctionPrototypeBind,
     ObjectAssign,
@@ -32,6 +33,7 @@ delete Intl.v8BreakIterator;
     SymbolFor,
     SymbolIterator,
     PromisePrototypeThen,
+    SafeArrayIterator,
     SafeWeakMap,
     TypeError,
     WeakMapPrototypeDelete,
@@ -204,7 +206,7 @@ delete Intl.v8BreakIterator;
     );
     loadedMainWorkerScript = true;
 
-    for (const { url, script } of scripts) {
+    for (const { url, script } of new SafeArrayIterator(scripts)) {
       const err = core.evalContext(script, url)[1];
       if (err !== null) {
         throw err.thrown;
@@ -217,7 +219,7 @@ delete Intl.v8BreakIterator;
   }
 
   function formatException(error) {
-    if (error instanceof Error) {
+    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)) {
       return null;
     } else if (typeof error == "string") {
       return `Uncaught ${

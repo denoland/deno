@@ -40,7 +40,7 @@ tokio-tungstenite.workspace = true
 url.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-pty = "0.2.2"
+pty2 = "0.1.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }
