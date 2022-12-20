@@ -873,7 +873,7 @@ mod tests {
     });
     let my_ext = Extension::builder()
       .state(move |state| {
-        state.put(TestPermission {});
+        state.put(Arc::new(Mutex::new(TestPermission {})));
         state.put(UnstableChecker { unstable: true });
         Ok(())
       })
