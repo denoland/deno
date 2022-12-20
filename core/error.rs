@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::runtime::GetErrorClassFn;
+use crate::runtime::JsRealm;
 use crate::runtime::JsRuntime;
 use crate::source_map::apply_source_map;
 use crate::source_map::get_source_line;
@@ -98,7 +99,7 @@ pub fn to_v8_error<'a>(
   error: &Error,
 ) -> v8::Local<'a, v8::Value> {
   let tc_scope = &mut v8::TryCatch::new(scope);
-  let cb = JsRuntime::state(tc_scope)
+  let cb = JsRealm::state_from_scope(tc_scope)
     .borrow()
     .js_build_custom_error_cb
     .clone()
