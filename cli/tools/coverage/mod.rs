@@ -22,6 +22,8 @@ use deno_core::LocalInspectorSession;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::io::BufWriter;
 use std::io::{self, Error, Write};
 use std::path::PathBuf;
@@ -601,6 +603,14 @@ fn filter_coverages(
       let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));
 
       (include.is_empty() || is_included) && !is_excluded && !is_internal
+    })
+    .filter(|e| {
+      let file =
+        File::open(e.url.clone().trim_start_matches("file://")).unwrap();
+      let mut reader = BufReader::new(file);
+      let mut first_line = String::new();
+      let _ = reader.read_line(&mut first_line);
+      return !first_line.contains("deno-coverage-ignore-file");
     })
     .collect::<Vec<ScriptCoverage>>()
 }
