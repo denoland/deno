@@ -419,7 +419,7 @@ impl Document {
     Ok(Document(Arc::new(DocumentInner {
       specifier: self.0.specifier.clone(),
       fs_version: self.0.fs_version.clone(),
-      maybe_language_id: self.0.maybe_language_id.clone(),
+      maybe_language_id: self.0.maybe_language_id,
       dependencies,
       text_info,
       line_index,
