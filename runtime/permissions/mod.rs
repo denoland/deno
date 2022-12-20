@@ -856,19 +856,29 @@ impl UnaryPermission<EnvDescriptor> {
     if let Some(env) = env {
       let state = self.query(Some(env));
       if state == PermissionState::Prompt {
-        if PromptResponse::Allow
-          == permission_prompt(
-            &format!("env access to \"{}\"", env),
-            self.name,
-            Some("Deno.permissions.query()"),
-          )
-        {
-          self.granted_list.insert(EnvDescriptor::new(env));
-          PermissionState::Granted
-        } else {
-          self.denied_list.insert(EnvDescriptor::new(env));
-          self.global_state = PermissionState::Denied;
-          PermissionState::Denied
+        match permission_prompt(
+          &format!("env access to \"{}\"", env),
+          self.name,
+          Some("Deno.permissions.query()"),
+        ) {
+          PromptResponse::Allow => {
+            self.granted_list.insert(EnvDescriptor::new(env));
+            PermissionState::Granted
+          }
+          PromptResponse::Deny => {
+            self.denied_list.insert(EnvDescriptor::new(env));
+            self.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
+          PromptResponse::AllowAll => {
+            self.granted_list.clear();
+            self.global_state = PermissionState::Granted;
+            PermissionState::Granted
+          }
+          PromptResponse::DenyAll => {
+            self.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
         }
       } else if state == PermissionState::Granted {
         self.granted_list.insert(EnvDescriptor::new(env));

@@ -11,6 +11,8 @@ pub const PERMISSION_EMOJI: &str = "⚠️";
 pub enum PromptResponse {
   Allow,
   Deny,
+  AllowAll,
+  DenyAll,
 }
 
 static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
@@ -185,6 +187,16 @@ impl PermissionPrompter for TtyPrompter {
       eprint!("\x1B[{}A\x1B[0J", n);
     }
 
+    fn is_unary_permission(name: &str) -> bool {
+      name == "env"
+        || name == "sys"
+        || name == "net"
+        || name == "ffi"
+        || name == "read"
+        || name == "run"
+        || name == "write"
+    }
+
     // For security reasons we must consume everything in stdin so that previously
     // buffered data cannot effect the prompt.
     if let Err(err) = clear_stdin() {
@@ -193,7 +205,11 @@ impl PermissionPrompter for TtyPrompter {
     }
 
     // print to stderr so that if stdout is piped this is still displayed.
-    const OPTS: &str = "[y/n] (y = yes, allow; n = no, deny)";
+    let opts = if is_unary_permission(name) {
+      "[y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all)"
+    } else {
+      "[y/n] (y = yes, allow; n = no, deny)"
+    };
     eprint!("{}  ┌ ", PERMISSION_EMOJI);
     eprint!("{}", colors::bold("Deno requests "));
     eprint!("{}", colors::bold(message));
@@ -207,7 +223,7 @@ impl PermissionPrompter for TtyPrompter {
     );
     eprintln!("{}", colors::italic(&msg));
     eprint!("   └ {}", colors::bold("Allow?"));
-    eprint!(" {} > ", OPTS);
+    eprint!(" {} > ", opts);
     let value = loop {
       let mut input = String::new();
       let stdin = std::io::stdin();
@@ -232,11 +248,29 @@ impl PermissionPrompter for TtyPrompter {
           eprintln!("❌ {}", colors::bold(&msg));
           break PromptResponse::Deny;
         }
+        'Y' => {
+          // Passthrough if 'Y' is used on the wrong permission
+          if is_unary_permission(name) {
+            clear_n_lines(if api_name.is_some() { 4 } else { 3 });
+            let msg = format!("Granted all {}.", message);
+            eprintln!("✅ {}", colors::bold(&msg));
+            break PromptResponse::AllowAll;
+          }
+        }
+        'N' => {
+          // Passthrough if 'N' is used on the wrong permission
+          if is_unary_permission(name) {
+            clear_n_lines(if api_name.is_some() { 4 } else { 3 });
+            let msg = format!("Denied all {}.", message);
+            eprintln!("❌ {}", colors::bold(&msg));
+            break PromptResponse::DenyAll;
+          }
+        }
         _ => {
           // If we don't get a recognized option try again.
           clear_n_lines(1);
           eprint!("   └ {}", colors::bold("Unrecognized option. Allow?"));
-          eprint!(" {} > ", OPTS);
+          eprint!(" {} > ", opts);
         }
       };
     };
