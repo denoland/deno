@@ -22,6 +22,7 @@
     ArrayPrototypePush,
     ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     SymbolIterator,
@@ -204,7 +205,9 @@
     const arrayBufferIdsInTransferables = [];
     const transferredArrayBuffers = [];
 
-    for (const transferable of messageData.transferables) {
+    for (
+      const transferable of new SafeArrayIterator(messageData.transferables)
+    ) {
       switch (transferable.kind) {
         case "messagePort": {
           const port = createMessagePort(transferable.data);
@@ -271,7 +274,7 @@
     const serializedTransferables = [];
 
     let arrayBufferI = 0;
-    for (const transferable of transferables) {
+    for (const transferable of new SafeArrayIterator(transferables)) {
       if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, transferable)) {
         webidl.assertBranded(transferable, MessagePortPrototype);
         const id = transferable[_id];
