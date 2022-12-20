@@ -87,6 +87,31 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   },
 );
 
+pub fn get_types_declaration_file_text(unstable: bool) -> String {
+  let mut types = vec![
+    DENO_NS_LIB,
+    DENO_CONSOLE_LIB,
+    DENO_URL_LIB,
+    DENO_WEB_LIB,
+    DENO_FETCH_LIB,
+    DENO_WEBGPU_LIB,
+    DENO_WEBSOCKET_LIB,
+    DENO_WEBSTORAGE_LIB,
+    DENO_CRYPTO_LIB,
+    DENO_BROADCAST_CHANNEL_LIB,
+    DENO_NET_LIB,
+    SHARED_GLOBALS_LIB,
+    DENO_CACHE_LIB,
+    WINDOW_LIB,
+  ];
+
+  if unstable {
+    types.push(UNSTABLE_NS_LIB);
+  }
+
+  types.join("\n")
+}
+
 pub fn compiler_snapshot() -> Snapshot {
   Snapshot::Static(&COMPILER_SNAPSHOT)
 }
@@ -542,7 +567,8 @@ fn op_resolve(
   args: ResolveArgs,
 ) -> Result<Vec<(String, String)>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mut resolved: Vec<(String, String)> = Vec::new();
+  let mut resolved: Vec<(String, String)> =
+    Vec::with_capacity(args.specifiers.len());
   let referrer = if let Some(remapped_specifier) =
     state.remapped_specifiers.get(&args.base)
   {
@@ -661,6 +687,7 @@ fn op_resolve(
           ".d.ts".to_string(),
         ),
       };
+      log::debug!("Resolved {} to {:?}", specifier, result);
       resolved.push(result);
     }
   }
@@ -683,9 +710,9 @@ pub fn resolve_npm_package_reference_types(
 }
 
 #[op]
-fn op_is_node_file(state: &mut OpState, path: &str) -> bool {
+fn op_is_node_file(state: &mut OpState, path: String) -> bool {
   let state = state.borrow::<State>();
-  match ModuleSpecifier::parse(path) {
+  match ModuleSpecifier::parse(&path) {
     Ok(specifier) => state
       .maybe_npm_resolver
       .as_ref()
@@ -831,7 +858,7 @@ mod tests {
         .replace("://", "_")
         .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
-      let response = fs::read_to_string(&source_path)
+      let response = fs::read_to_string(source_path)
         .map(|c| {
           Some(deno_graph::source::LoadResponse::Module {
             specifier: specifier.clone(),
@@ -861,7 +888,6 @@ mod tests {
         is_dynamic: false,
         imports: None,
         resolver: None,
-        locker: None,
         module_analyzer: None,
         reporter: None,
       },
@@ -894,7 +920,6 @@ mod tests {
         is_dynamic: false,
         imports: None,
         resolver: None,
-        locker: None,
         module_analyzer: None,
         reporter: None,
       },
@@ -1197,7 +1222,6 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
@@ -1209,7 +1233,6 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
@@ -1221,7 +1244,6 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
   }
 }

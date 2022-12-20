@@ -907,7 +907,7 @@ pub struct NavigateToItem {
 impl NavigateToItem {
   pub fn to_symbol_information(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
     let specifier = normalize_specifier(&self.file_name).ok()?;
     let asset_or_doc =
@@ -1969,7 +1969,7 @@ impl CompletionEntryDetails {
     let detail = if original_item.detail.is_some() {
       original_item.detail.clone()
     } else if !self.display_parts.is_empty() {
-      Some(replace_links(&display_parts_to_string(
+      Some(replace_links(display_parts_to_string(
         &self.display_parts,
         language_server,
       )))
@@ -2726,7 +2726,7 @@ fn op_resolve(
   let referrer = state.normalize_specifier(&args.base)?;
 
   let result = if let Some(resolved) = state.state_snapshot.documents.resolve(
-    args.specifiers,
+    &args.specifiers,
     &referrer,
     state.state_snapshot.maybe_npm_resolver.as_ref(),
   ) {
@@ -3913,7 +3913,7 @@ mod tests {
 
     // You might have found this assertion starts failing after upgrading TypeScript.
     // Just update the new number of assets (declaration files) for this number.
-    assert_eq!(assets.len(), 71);
+    assert_eq!(assets.len(), 72);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;

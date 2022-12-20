@@ -26,8 +26,7 @@ fn get_diagnostic_class(_: &Diagnostic) -> &'static str {
 fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
   match err {
     ModuleGraphError::LoadingErr(_, err) => get_error_class_name(err.as_ref()),
-    ModuleGraphError::InvalidSource(_, _)
-    | ModuleGraphError::InvalidTypeAssertion { .. } => "SyntaxError",
+    ModuleGraphError::InvalidTypeAssertion { .. } => "SyntaxError",
     ModuleGraphError::ParseErr(_, diagnostic) => {
       get_diagnostic_class(diagnostic)
     }

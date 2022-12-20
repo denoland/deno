@@ -192,7 +192,7 @@ impl VendorTestBuilder {
   }
 
   pub fn new_import_map(&self, base_path: &str) -> ImportMap {
-    let base = ModuleSpecifier::from_file_path(&make_path(base_path)).unwrap();
+    let base = ModuleSpecifier::from_file_path(make_path(base_path)).unwrap();
     ImportMap::new(base)
   }
 
@@ -234,6 +234,7 @@ impl VendorTestBuilder {
       &parsed_source_cache,
       &output_dir,
       self.original_import_map.as_ref(),
+      None,
       &self.environment,
     )?;
 
@@ -273,7 +274,6 @@ async fn build_test_graph(
       is_dynamic: false,
       imports: None,
       resolver: resolver.as_ref().map(|r| r.as_graph_resolver()),
-      locker: None,
       module_analyzer: Some(analyzer),
       reporter: None,
     },

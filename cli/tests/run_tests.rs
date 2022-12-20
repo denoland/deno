@@ -656,6 +656,19 @@ mod run {
     http_server: true,
   });
 
+  itest!(config_file_lock_path {
+    args: "run --config=run/config_file_lock_path.json run/019_media_types.ts",
+    output: "run/config_file_lock_path.out",
+    exit_code: 10,
+    http_server: true,
+  });
+
+  itest!(lock_flag_overrides_config_file_lock_path {
+     args: "run --lock=run/lock_check_ok2.json --config=run/config_file_lock_path.json run/019_media_types.ts",
+    output: "run/019_media_types.ts.out",
+    http_server: true,
+  });
+
   itest!(lock_v2_check_ok {
   args:
     "run --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
@@ -2492,7 +2505,7 @@ mod run {
       .unwrap();
     assert!(status.success());
     std::fs::write(&mod1_path, "export { foo } from \"./mod2.ts\";").unwrap();
-    std::fs::write(&mod2_path, "(").unwrap();
+    std::fs::write(mod2_path, "(").unwrap();
     let status = deno_cmd
       .current_dir(util::testdata_path())
       .arg("run")
@@ -2515,7 +2528,7 @@ mod run {
     let mut deno_cmd = util::deno_cmd();
     // With a fresh `DENO_DIR`, run a module with a dependency and a type error.
     std::fs::write(&mod1_path, "import './mod2.ts'; Deno.exit('0');").unwrap();
-    std::fs::write(&mod2_path, "console.log('Hello, world!');").unwrap();
+    std::fs::write(mod2_path, "console.log('Hello, world!');").unwrap();
     let status = deno_cmd
       .current_dir(util::testdata_path())
       .arg("run")
@@ -2956,7 +2969,7 @@ mod run {
     assert!(output.status.success());
 
     let prg = util::deno_exe_path();
-    let output = Command::new(&prg)
+    let output = Command::new(prg)
       .env("DENO_DIR", deno_dir.path())
       .env("HTTP_PROXY", "http://nil")
       .env("NO_COLOR", "1")
@@ -3661,6 +3674,20 @@ console.log("finish");
     http_server: true,
     exit_code: 0,
   });
+
+  itest!(config_file_lock_false {
+  args: "run --config=run/config_file_lock_boolean/false.json run/config_file_lock_boolean/main.ts",
+  output: "run/config_file_lock_boolean/false.main.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+  itest!(config_file_lock_true {
+  args: "run --config=run/config_file_lock_boolean/true.json run/config_file_lock_boolean/main.ts",
+  output: "run/config_file_lock_boolean/true.main.out",
+  http_server: true,
+  exit_code: 10,
+});
 
   // Check https://github.com/denoland/deno_std/issues/2882
   itest!(flash_shutdown {

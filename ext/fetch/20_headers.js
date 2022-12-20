@@ -68,7 +68,7 @@
    */
   function fillHeaders(headers, object) {
     if (ArrayIsArray(object)) {
-      for (const header of object) {
+      for (const header of new SafeArrayIterator(object)) {
         if (header.length !== 2) {
           throw new TypeError(
             `Invalid header. Length must be 2, but is ${header.length}`,
@@ -205,7 +205,7 @@
       // spec but produce the same result.
       const headers = {};
       const cookies = [];
-      for (const entry of list) {
+      for (const entry of new SafeArrayIterator(list)) {
         const name = byteLowerCase(entry[0]);
         const value = entry[1];
         if (value === null) throw new TypeError("Unreachable");
@@ -405,6 +405,7 @@
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       const headers = {};
+      // deno-lint-ignore prefer-primordials
       for (const header of this) {
         headers[header[0]] = header[1];
       }

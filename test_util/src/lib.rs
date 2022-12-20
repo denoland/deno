@@ -97,7 +97,7 @@ lazy_static! {
 pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
   vec![
     ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
-    ("DENO_NPM_REGISTRY".to_string(), npm_registry_url()),
+    ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
@@ -1930,7 +1930,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       testdata_dir.as_path()
     };
     println!("deno_exe args {}", args.join(" "));
-    println!("deno_exe cwd {:?}", &testdata_dir);
+    println!("deno_exe cwd {:?}", &cwd);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();

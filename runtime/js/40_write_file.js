@@ -17,6 +17,7 @@
       options.mode,
       options.append ?? false,
       options.create ?? true,
+      options.createNew ?? false,
       data,
     );
   }
@@ -41,6 +42,7 @@
         options.mode,
         options.append ?? false,
         options.create ?? true,
+        options.createNew ?? false,
         data,
         cancelRid,
       );

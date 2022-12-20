@@ -45,10 +45,10 @@
     ArrayPrototypeSome,
     Error,
     ObjectPrototypeIsPrototypeOf,
+    SafeSetIterator,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
-    SetPrototypeValues,
     StringPrototypeIncludes,
     StringPrototypeToLowerCase,
     StringPrototypeSplit,
@@ -153,7 +153,7 @@
       if (!this.#closed) {
         this.#closed = true;
         core.close(this.#rid);
-        for (const rid of SetPrototypeValues(this.managedResources)) {
+        for (const rid of new SafeSetIterator(this.managedResources)) {
           SetPrototypeDelete(this.managedResources, rid);
           core.close(rid);
         }
@@ -263,6 +263,7 @@
         }
 
         if (isStreamingResponseBody) {
+          let success = false;
           if (
             respBody === null ||
             !ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, respBody)
@@ -284,6 +285,7 @@
               );
               if (resourceBacking.autoClose) core.tryClose(resourceBacking.rid);
               readableStreamClose(respBody); // Release JS lock.
+              success = true;
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
@@ -320,13 +322,16 @@
                 throw error;
               }
             }
+            success = true;
           }
 
-          try {
-            await core.opAsync("op_http_shutdown", streamRid);
-          } catch (error) {
-            await reader.cancel(error);
-            throw error;
+          if (success) {
+            try {
+              await core.opAsync("op_http_shutdown", streamRid);
+            } catch (error) {
+              await reader.cancel(error);
+              throw error;
+            }
           }
         }
 

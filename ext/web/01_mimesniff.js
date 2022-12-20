@@ -16,6 +16,8 @@
     MapPrototypeHas,
     MapPrototypeSet,
     RegExpPrototypeTest,
+    SafeArrayIterator,
+    SafeMapIterator,
     StringPrototypeReplaceAll,
     StringPrototypeToLowerCase,
   } = window.__bootstrap.primordials;
@@ -195,7 +197,7 @@
    */
   function serializeMimeType(mimeType) {
     let serialization = essence(mimeType);
-    for (const param of mimeType.parameters) {
+    for (const param of new SafeMapIterator(mimeType.parameters)) {
       serialization += `;${param[0]}=`;
       let value = param[1];
       if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, value)) {
@@ -221,7 +223,7 @@
     let charset = null;
     let essence_ = null;
     let mimeType = null;
-    for (const value of headerValues) {
+    for (const value of new SafeArrayIterator(headerValues)) {
       const temporaryMimeType = parseMimeType(value);
       if (
         temporaryMimeType === null ||

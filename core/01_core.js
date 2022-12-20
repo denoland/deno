@@ -129,7 +129,14 @@
   }
 
   function buildCustomError(className, message, code) {
-    const error = errorMap[className]?.(message);
+    let error;
+    try {
+      error = errorMap[className]?.(message);
+    } catch (e) {
+      throw new Error(
+        `Unsable to build custom error for "${className}"\n  ${e.message}`,
+      );
+    }
     // Strip buildCustomError() calls from stack trace
     if (typeof error == "object") {
       ErrorCaptureStackTrace(error, buildCustomError);
@@ -187,8 +194,8 @@
             // Rethrow the error
             throw err;
           }
-          handleOpCallTracing("${name}", id, promise);
-          promise[promiseIdSymbol] = id;          
+          promise = handleOpCallTracing("${name}", id, promise);
+          promise[promiseIdSymbol] = id;
           return promise;
         }
       `,
@@ -218,10 +225,12 @@
     if (opCallTracingEnabled) {
       const stack = StringPrototypeSlice(new Error().stack, 6);
       MapPrototypeSet(opCallTraces, promiseId, { opName, stack });
-      p = PromisePrototypeFinally(
+      return PromisePrototypeFinally(
         p,
         () => MapPrototypeDelete(opCallTraces, promiseId),
       );
+    } else {
+      return p;
     }
   }
 

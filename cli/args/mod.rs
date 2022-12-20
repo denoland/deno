@@ -6,6 +6,7 @@ mod lockfile;
 
 mod flags_allow_net;
 
+pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
 pub use config_file::EmitConfigOptions;
@@ -149,7 +150,7 @@ pub fn get_root_cert_store(
     } else {
       PathBuf::from(ca_file)
     };
-    let certfile = std::fs::File::open(&ca_file)?;
+    let certfile = std::fs::File::open(ca_file)?;
     let mut reader = BufReader::new(certfile);
 
     match rustls_pemfile::certs(&mut reader) {
@@ -176,7 +177,7 @@ struct CliOptionOverrides {
   import_map_specifier: Option<Option<ModuleSpecifier>>,
 }
 
-/// Holds the common options used by many sub commands
+/// Holds the resolved options of many sources used by sub commands
 /// and provides some helper function for creating common objects.
 pub struct CliOptions {
   // the source of the options is a detail the rest of the
@@ -279,6 +280,10 @@ impl CliOptions {
     self.overrides.import_map_specifier = Some(path);
   }
 
+  pub fn node_modules_dir(&self) -> bool {
+    self.flags.node_modules_dir
+  }
+
   /// Resolves the path to use for a local node_modules folder.
   pub fn resolve_local_node_modules_folder(
     &self,
@@ -340,7 +345,11 @@ impl CliOptions {
   }
 
   pub fn resolve_inspector_server(&self) -> Option<InspectorServer> {
-    let maybe_inspect_host = self.flags.inspect.or(self.flags.inspect_brk);
+    let maybe_inspect_host = self
+      .flags
+      .inspect
+      .or(self.flags.inspect_brk)
+      .or(self.flags.inspect_wait);
     maybe_inspect_host
       .map(|host| InspectorServer::new(host, version::get_user_agent()))
   }
@@ -401,6 +410,14 @@ impl CliOptions {
     }
   }
 
+  pub fn to_bench_config(&self) -> Result<Option<BenchConfig>, AnyError> {
+    if let Some(config_file) = &self.maybe_config_file {
+      config_file.to_bench_config()
+    } else {
+      Ok(None)
+    }
+  }
+
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
     if let Some(config) = &self.maybe_config_file {
       config.to_fmt_config()
@@ -412,6 +429,14 @@ impl CliOptions {
   /// Vector of user script CLI arguments.
   pub fn argv(&self) -> &Vec<String> {
     &self.flags.argv
+  }
+
+  pub fn ca_file(&self) -> &Option<String> {
+    &self.flags.ca_file
+  }
+
+  pub fn ca_stores(&self) -> &Option<Vec<String>> {
+    &self.flags.ca_stores
   }
 
   pub fn check_js(&self) -> bool {
@@ -449,11 +474,17 @@ impl CliOptions {
 
   /// If the --inspect or --inspect-brk flags are used.
   pub fn is_inspecting(&self) -> bool {
-    self.flags.inspect.is_some() || self.flags.inspect_brk.is_some()
+    self.flags.inspect.is_some()
+      || self.flags.inspect_brk.is_some()
+      || self.flags.inspect_wait.is_some()
   }
 
   pub fn inspect_brk(&self) -> Option<SocketAddr> {
     self.flags.inspect_brk
+  }
+
+  pub fn inspect_wait(&self) -> Option<SocketAddr> {
+    self.flags.inspect_wait
   }
 
   pub fn log_level(&self) -> Option<log::Level> {
@@ -467,8 +498,8 @@ impl CliOptions {
       .unwrap_or(false)
   }
 
-  pub fn location_flag(&self) -> Option<&Url> {
-    self.flags.location.as_ref()
+  pub fn location_flag(&self) -> &Option<Url> {
+    &self.flags.location
   }
 
   pub fn maybe_custom_root(&self) -> Option<PathBuf> {
@@ -483,6 +514,10 @@ impl CliOptions {
     self.flags.no_clear_screen
   }
 
+  pub fn no_prompt(&self) -> bool {
+    resolve_no_prompt(&self.flags)
+  }
+
   pub fn no_remote(&self) -> bool {
     self.flags.no_remote
   }
@@ -492,7 +527,17 @@ impl CliOptions {
   }
 
   pub fn permissions_options(&self) -> PermissionsOptions {
-    self.flags.permissions_options()
+    PermissionsOptions {
+      allow_env: self.flags.allow_env.clone(),
+      allow_hrtime: self.flags.allow_hrtime,
+      allow_net: self.flags.allow_net.clone(),
+      allow_ffi: self.flags.allow_ffi.clone(),
+      allow_read: self.flags.allow_read.clone(),
+      allow_run: self.flags.allow_run.clone(),
+      allow_sys: self.flags.allow_sys.clone(),
+      allow_write: self.flags.allow_write.clone(),
+      prompt: !self.no_prompt(),
+    }
   }
 
   pub fn reload_flag(&self) -> bool {
@@ -525,16 +570,20 @@ impl CliOptions {
     self.flags.type_check_mode
   }
 
-  pub fn unsafely_ignore_certificate_errors(&self) -> Option<&Vec<String>> {
-    self.flags.unsafely_ignore_certificate_errors.as_ref()
+  pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
+    &self.flags.unsafely_ignore_certificate_errors
   }
 
   pub fn unstable(&self) -> bool {
     self.flags.unstable
   }
 
-  pub fn watch_paths(&self) -> Option<&Vec<PathBuf>> {
-    self.flags.watch.as_ref()
+  pub fn v8_flags(&self) -> &Vec<String> {
+    &self.flags.v8_flags
+  }
+
+  pub fn watch_paths(&self) -> &Option<Vec<PathBuf>> {
+    &self.flags.watch
   }
 }
 
@@ -588,6 +637,14 @@ fn resolve_import_map_specifier(
     }
   }
   Ok(None)
+}
+
+/// Resolves the no_prompt value based on the cli flags and environment.
+pub fn resolve_no_prompt(flags: &Flags) -> bool {
+  flags.no_prompt || {
+    let value = env::var("DENO_NO_PROMPT");
+    matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
+  }
 }
 
 #[cfg(test)]
@@ -663,7 +720,7 @@ mod test {
     let import_map_path =
       std::env::current_dir().unwrap().join("import-map.json");
     let expected_specifier =
-      ModuleSpecifier::from_file_path(&import_map_path).unwrap();
+      ModuleSpecifier::from_file_path(import_map_path).unwrap();
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, Some(expected_specifier));
