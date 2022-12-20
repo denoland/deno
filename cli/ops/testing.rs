@@ -18,7 +18,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -52,7 +52,7 @@ pub fn init(
 }
 
 #[derive(Clone)]
-struct PermissionsHolder(Uuid, Arc<Mutex<Permissions>>);
+struct PermissionsHolder(Uuid, PermissionsContainer);
 
 #[op]
 pub fn op_pledge_test_permissions(
@@ -60,7 +60,7 @@ pub fn op_pledge_test_permissions(
   args: ChildPermissionsArg,
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
-  let parent_permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>();
+  let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = {
     let mut parent_permissions = parent_permissions.lock();
     let perms = create_child_permissions(&mut parent_permissions, args)?;
@@ -74,7 +74,7 @@ pub fn op_pledge_test_permissions(
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 
   // NOTE: This call overrides current permission set for the worker
-  state.put::<Arc<Mutex<Permissions>>>(worker_permissions);
+  state.put::<PermissionsContainer>(worker_permissions);
 
   Ok(token)
 }
@@ -90,7 +90,7 @@ pub fn op_restore_test_permissions(
     }
 
     let permissions = permissions_holder.1;
-    state.put::<Arc<Mutex<Permissions>>>(permissions);
+    state.put::<PermissionsContainer>(permissions);
     Ok(())
   } else {
     Err(generic_error("no permissions to restore"))

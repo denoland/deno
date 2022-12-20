@@ -5,6 +5,7 @@ use crate::js;
 use crate::ops;
 use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
@@ -13,7 +14,6 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
-use deno_core::parking_lot::Mutex;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
@@ -184,7 +184,7 @@ impl Default for WorkerOptions {
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
-    permissions: Arc<Mutex<Permissions>>,
+    permissions: PermissionsContainer,
     options: WorkerOptions,
   ) -> Self {
     let bootstrap_options = options.bootstrap.clone();
@@ -195,7 +195,7 @@ impl MainWorker {
 
   pub fn from_options(
     main_module: ModuleSpecifier,
-    permissions: Arc<Mutex<Permissions>>,
+    permissions: PermissionsContainer,
     mut options: WorkerOptions,
   ) -> Self {
     // Permissions: many ops depend on this
@@ -203,7 +203,7 @@ impl MainWorker {
     let enable_testing_features = options.bootstrap.enable_testing_features;
     let perm_ext = Extension::builder()
       .state(move |state| {
-        state.put::<Arc<Mutex<Permissions>>>(permissions.clone());
+        state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
         Ok(())

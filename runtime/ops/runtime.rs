@@ -1,14 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use std::sync::Arc;
 
 pub fn init(main_module: ModuleSpecifier) -> Extension {
   Extension::builder()
@@ -29,7 +27,7 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
       .context("Failed to get current working directory")?
       .join(main_url.to_string());
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .read
       .check_blind(&main_path, "main_module", "Deno.mainModule")?;

@@ -3,12 +3,11 @@
 use super::io::StdFileResource;
 use super::utils::into_string;
 use crate::fs_util::canonicalize_path;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::Extension;
@@ -34,7 +33,6 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -145,7 +143,7 @@ fn open_helper(
     let _ = mode; // avoid unused warning
   }
 
-  let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
+  let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
 
   match options {
     None => {
@@ -541,7 +539,7 @@ fn op_umask(state: &mut OpState, mask: Option<u32>) -> Result<u32, AnyError> {
 fn op_chdir(state: &mut OpState, directory: String) -> Result<(), AnyError> {
   let d = PathBuf::from(&directory);
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .read
     .check(&d, Some("Deno.chdir()"))?;
@@ -564,7 +562,7 @@ fn op_mkdir_sync(state: &mut OpState, args: MkdirArgs) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .write
     .check(&path, Some("Deno.mkdirSync()"))?;
@@ -593,7 +591,7 @@ async fn op_mkdir_async(
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .write
       .check(&path, Some("Deno.mkdir()"))?;
@@ -627,7 +625,7 @@ fn op_chmod_sync(
   let mode = mode & 0o777;
 
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .write
     .check(path, Some("Deno.chmodSync()"))?;
@@ -646,7 +644,7 @@ async fn op_chmod_async(
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .write
       .check(&path, Some("Deno.chmod()"))?;
@@ -686,7 +684,7 @@ fn op_chown_sync(
 ) -> Result<(), AnyError> {
   let path = Path::new(&path).to_path_buf();
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .write
     .check(&path, Some("Deno.chownSync()"))?;
@@ -723,7 +721,7 @@ async fn op_chown_async(
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .write
       .check(&path, Some("Deno.chown()"))?;
@@ -761,7 +759,7 @@ fn op_remove_sync(
   let path = PathBuf::from(&path);
 
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .write
     .check(&path, Some("Deno.removeSync()"))?;
@@ -811,7 +809,7 @@ async fn op_remove_async(
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .write
       .check(&path, Some("Deno.remove()"))?;
@@ -864,7 +862,7 @@ fn op_copy_file_sync(
   let from_path = PathBuf::from(&from);
   let to_path = PathBuf::from(&to);
 
-  let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
+  let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
   permissions
     .read
     .check(&from_path, Some("Deno.copyFileSync()"))?;
@@ -965,7 +963,7 @@ async fn op_copy_file_async(
 
   {
     let mut state = state.borrow_mut();
-    let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
+    let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
     permissions.read.check(&from, Some("Deno.copyFile()"))?;
     permissions.write.check(&to, Some("Deno.copyFile()"))?;
   }
@@ -1126,7 +1124,7 @@ fn op_stat_sync(
 ) -> Result<(), AnyError> {
   let path = PathBuf::from(&path);
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .read
     .check(&path, Some("Deno.statSync()"))?;
@@ -1156,7 +1154,7 @@ async fn op_stat_async(
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .read
       .check(&path, Some("Deno.stat()"))?;
@@ -1185,7 +1183,7 @@ fn op_realpath_sync(
 ) -> Result<String, AnyError> {
   let path = PathBuf::from(&path);
 
-  let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
+  let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
   permissions.read.check(&path, Some("Deno.realPathSync()"))?;
   if path.is_relative() {
     permissions.read.check_blind(
@@ -1212,7 +1210,7 @@ async fn op_realpath_async(
 
   {
     let mut state = state.borrow_mut();
-    let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
+    let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
     permissions.read.check(&path, Some("Deno.realPath()"))?;
     if path.is_relative() {
       permissions.read.check_blind(
@@ -1252,7 +1250,7 @@ fn op_read_dir_sync(
   let path = PathBuf::from(&path);
 
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .read
     .check(&path, Some("Deno.readDirSync()"))?;
@@ -1297,7 +1295,7 @@ async fn op_read_dir_async(
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .read
       .check(&path, Some("Deno.readDir()"))?;
@@ -1346,7 +1344,7 @@ fn op_rename_sync(
   let oldpath = PathBuf::from(&oldpath);
   let newpath = PathBuf::from(&newpath);
 
-  let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
+  let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
   permissions
     .read
     .check(&oldpath, Some("Deno.renameSync()"))?;
@@ -1382,7 +1380,7 @@ async fn op_rename_async(
   let newpath = PathBuf::from(&newpath);
   {
     let mut state = state.borrow_mut();
-    let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
+    let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
     permissions.read.check(&oldpath, Some("Deno.rename()"))?;
     permissions.write.check(&oldpath, Some("Deno.rename()"))?;
     permissions.write.check(&newpath, Some("Deno.rename()"))?;
@@ -1415,7 +1413,7 @@ fn op_link_sync(
   let oldpath = PathBuf::from(&oldpath);
   let newpath = PathBuf::from(&newpath);
 
-  let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
+  let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
   permissions.read.check(&oldpath, Some("Deno.linkSync()"))?;
   permissions.write.check(&oldpath, Some("Deno.linkSync()"))?;
   permissions.read.check(&newpath, Some("Deno.linkSync()"))?;
@@ -1447,7 +1445,7 @@ async fn op_link_async(
 
   {
     let mut state = state.borrow_mut();
-    let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
+    let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
     permissions.read.check(&oldpath, Some("Deno.link()"))?;
     permissions.write.check(&oldpath, Some("Deno.link()"))?;
     permissions.read.check(&newpath, Some("Deno.link()"))?;
@@ -1484,12 +1482,12 @@ fn op_symlink_sync(
   let newpath = PathBuf::from(&newpath);
 
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .write
     .check_all(Some("Deno.symlinkSync()"))?;
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .read
     .check_all(Some("Deno.symlinkSync()"))?;
@@ -1552,12 +1550,12 @@ async fn op_symlink_async(
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .write
       .check_all(Some("Deno.symlink()"))?;
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .read
       .check_all(Some("Deno.symlink()"))?;
@@ -1620,7 +1618,7 @@ fn op_read_link_sync(
   let path = PathBuf::from(&path);
 
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .read
     .check(&path, Some("Deno.readLink()"))?;
@@ -1648,7 +1646,7 @@ async fn op_read_link_async(
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .read
       .check(&path, Some("Deno.readLink()"))?;
@@ -1708,7 +1706,7 @@ fn op_truncate_sync(
   let path = PathBuf::from(&path);
 
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .write
     .check(&path, Some("Deno.truncateSync()"))?;
@@ -1739,7 +1737,7 @@ async fn op_truncate_async(
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .write
       .check(&path, Some("Deno.truncate()"))?;
@@ -1826,7 +1824,7 @@ fn op_make_temp_dir_sync(
   let suffix = args.suffix.map(String::from);
 
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .write
     .check(
@@ -1860,7 +1858,7 @@ async fn op_make_temp_dir_async(
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .write
       .check(
@@ -1897,7 +1895,7 @@ fn op_make_temp_file_sync(
   let suffix = args.suffix.map(String::from);
 
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .write
     .check(
@@ -1931,7 +1929,7 @@ async fn op_make_temp_file_async(
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .write
       .check(
@@ -2011,7 +2009,7 @@ fn op_utime_sync(
   let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
 
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .write
     .check(&path, Some("Deno.utime()"))?;
@@ -2036,7 +2034,7 @@ async fn op_utime_async(
 
   state
     .borrow_mut()
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .write
     .check(&path, Some("Deno.utime()"))?;
@@ -2055,7 +2053,7 @@ async fn op_utime_async(
 fn op_cwd(state: &mut OpState) -> Result<String, AnyError> {
   let path = current_dir()?;
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .read
     .check_blind(&path, "CWD", "Deno.cwd()")?;
@@ -2068,7 +2066,7 @@ fn op_readfile_sync(
   state: &mut OpState,
   path: String,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
+  let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
   let path = Path::new(&path);
   permissions.read.check(path, Some("Deno.readFileSync()"))?;
   Ok(std::fs::read(path)?.into())
@@ -2079,7 +2077,7 @@ fn op_readfile_text_sync(
   state: &mut OpState,
   path: String,
 ) -> Result<String, AnyError> {
-  let mut permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>().lock();
+  let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
   let path = Path::new(&path);
   permissions
     .read
@@ -2097,7 +2095,7 @@ async fn op_readfile_async(
     let path = Path::new(&path);
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .read
       .check(path, Some("Deno.readFile()"))?;
@@ -2128,7 +2126,7 @@ async fn op_readfile_text_async(
     let path = Path::new(&path);
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .read
       .check(path, Some("Deno.readTextFile()"))?;

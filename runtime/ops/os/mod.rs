@@ -1,11 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::utils::into_string;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use crate::worker::ExitCode;
 use deno_core::error::{type_error, AnyError};
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::Extension;
@@ -15,7 +14,6 @@ use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
-use std::sync::Arc;
 
 mod sys_info;
 
@@ -69,7 +67,7 @@ fn noop_op() -> Result<(), AnyError> {
 fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .read
     .check_blind(&current_exe, "exec_path", "Deno.execPath()")?;
@@ -88,7 +86,7 @@ fn op_set_env(
   value: String,
 ) -> Result<(), AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .env
     .check(&key)?;
@@ -114,7 +112,7 @@ fn op_set_env(
 #[op]
 fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .env
     .check_all()?;
@@ -130,7 +128,7 @@ fn op_get_env(
 
   if !skip_permission_check {
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .env
       .check(&key)?;
@@ -157,7 +155,7 @@ fn op_get_env(
 #[op]
 fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .env
     .check(&key)?;
@@ -182,7 +180,7 @@ fn op_exit(state: &mut OpState) {
 #[op]
 fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .sys
     .check("loadavg", Some("Deno.loadavg()"))?;
@@ -192,7 +190,7 @@ fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
 #[op]
 fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .sys
     .check("hostname", Some("Deno.hostname()"))?;
@@ -202,7 +200,7 @@ fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
 #[op]
 fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .sys
     .check("osRelease", Some("Deno.osRelease()"))?;
@@ -214,7 +212,7 @@ fn op_network_interfaces(
   state: &mut OpState,
 ) -> Result<Vec<NetworkInterface>, AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .sys
     .check("networkInterfaces", Some("Deno.networkInterfaces()"))?;
@@ -270,7 +268,7 @@ fn op_system_memory_info(
   state: &mut OpState,
 ) -> Result<Option<sys_info::MemInfo>, AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .sys
     .check("systemMemoryInfo", Some("Deno.systemMemoryInfo()"))?;
@@ -281,7 +279,7 @@ fn op_system_memory_info(
 #[op]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .sys
     .check("gid", Some("Deno.gid()"))?;
@@ -296,7 +294,7 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[op]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .sys
     .check("gid", Some("Deno.gid()"))?;
@@ -307,7 +305,7 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[op]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .sys
     .check("uid", Some("Deno.uid()"))?;
@@ -322,7 +320,7 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[op]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .sys
     .check("uid", Some("Deno.uid()"))?;

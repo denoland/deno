@@ -28,7 +28,7 @@ use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
 use deno_runtime::deno_fetch::reqwest::header::IF_NONE_MATCH;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use log::debug;
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -403,7 +403,7 @@ impl FileFetcher {
   fn fetch_remote(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: Arc<Mutex<Permissions>>,
+    permissions: PermissionsContainer,
     redirect_limit: i64,
     maybe_accept: Option<String>,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
@@ -542,7 +542,7 @@ impl FileFetcher {
   pub async fn fetch(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: Arc<Mutex<Permissions>>,
+    permissions: PermissionsContainer,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
     self.fetch_with_accept(specifier, permissions, None).await
@@ -551,7 +551,7 @@ impl FileFetcher {
   pub async fn fetch_with_accept(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: Arc<Mutex<Permissions>>,
+    permissions: PermissionsContainer,
     maybe_accept: Option<&str>,
   ) -> Result<File, AnyError> {
     let scheme = get_validated_scheme(specifier)?;
@@ -728,6 +728,7 @@ mod tests {
   use deno_runtime::deno_fetch::create_http_client;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
+  use deno_runtime::permissions::Permissions;
   use std::fs::read;
   use test_util::TempDir;
 

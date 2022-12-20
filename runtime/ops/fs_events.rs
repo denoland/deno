@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
@@ -27,7 +27,6 @@ use std::cell::RefCell;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 
 pub fn init() -> Extension {
@@ -120,7 +119,7 @@ fn op_fs_events_open(
   for path in &args.paths {
     let path = PathBuf::from(path);
     state
-      .borrow_mut::<Arc<Mutex<Permissions>>>()
+      .borrow_mut::<PermissionsContainer>()
       .lock()
       .read
       .check(&path, Some("Deno.watchFs()"))?;

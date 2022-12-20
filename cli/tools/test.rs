@@ -37,6 +37,7 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::io::Stdio;
 use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use log::Level;
@@ -711,7 +712,7 @@ pub fn format_test_error(js_error: &JsError) -> String {
 /// both.
 async fn test_specifier(
   ps: ProcState,
-  permissions: Arc<Mutex<Permissions>>,
+  permissions: PermissionsContainer,
   specifier: ModuleSpecifier,
   mode: TestMode,
   sender: TestEventSender,
@@ -921,7 +922,7 @@ async fn fetch_inline_files(
 /// Type check a collection of module and document specifiers.
 pub async fn check_specifiers(
   ps: &ProcState,
-  permissions: Arc<Mutex<Permissions>>,
+  permissions: PermissionsContainer,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
@@ -988,7 +989,7 @@ pub async fn check_specifiers(
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
   ps: ProcState,
-  permissions: Arc<Mutex<Permissions>>,
+  permissions: PermissionsContainer,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {

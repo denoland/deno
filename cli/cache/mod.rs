@@ -6,13 +6,12 @@ use crate::npm;
 
 use deno_core::futures;
 use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::sync::Arc;
 
 mod check;
@@ -43,17 +42,17 @@ pub const CACHE_PERM: u32 = 0o644;
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
   emit_cache: EmitCache,
-  dynamic_permissions: Arc<Mutex<Permissions>>,
+  dynamic_permissions: PermissionsContainer,
   file_fetcher: Arc<FileFetcher>,
-  root_permissions: Arc<Mutex<Permissions>>,
+  root_permissions: PermissionsContainer,
 }
 
 impl FetchCacher {
   pub fn new(
     emit_cache: EmitCache,
     file_fetcher: FileFetcher,
-    root_permissions: Arc<Mutex<Permissions>>,
-    dynamic_permissions: Arc<Mutex<Permissions>>,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
   ) -> Self {
     let file_fetcher = Arc::new(file_fetcher);
 

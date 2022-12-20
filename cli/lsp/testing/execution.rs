@@ -30,6 +30,7 @@ use deno_core::ModuleSpecifier;
 use deno_runtime::ops::io::Stdio;
 use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -148,7 +149,7 @@ impl LspTestFilter {
 #[allow(clippy::too_many_arguments)]
 async fn test_specifier(
   ps: proc_state::ProcState,
-  permissions: Arc<Mutex<Permissions>>,
+  permissions: PermissionsContainer,
   specifier: ModuleSpecifier,
   mode: test::TestMode,
   sender: TestEventSender,

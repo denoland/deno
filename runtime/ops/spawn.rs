@@ -5,10 +5,9 @@ use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use super::process::Stdio;
 use super::process::StdioOrRid;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -22,7 +21,6 @@ use std::cell::RefCell;
 use std::os::windows::process::CommandExt;
 use std::process::ExitStatus;
 use std::rc::Rc;
-use std::sync::Arc;
 
 #[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
@@ -133,7 +131,7 @@ fn node_unstable_create_command(
   api_name: &str,
 ) -> Result<std::process::Command, AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .run
     .check(&args.cmd, Some(api_name))?;
@@ -199,7 +197,7 @@ fn create_command(
 ) -> Result<std::process::Command, AnyError> {
   super::check_unstable(state, "Deno.spawn");
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .run
     .check(&args.cmd, Some(api_name))?;

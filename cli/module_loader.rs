@@ -23,6 +23,7 @@ use deno_core::ModuleType;
 use deno_core::OpState;
 use deno_core::SourceMapGetter;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -40,7 +41,7 @@ pub struct CliModuleLoader {
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. They are decoupled from the worker (dynamic) permissions since
   /// read access errors must be raised based on the parent thread permissions.
-  pub root_permissions: Arc<Mutex<Permissions>>,
+  pub root_permissions: PermissionsContainer,
   pub ps: ProcState,
 }
 
@@ -55,7 +56,7 @@ impl CliModuleLoader {
 
   pub fn new_for_worker(
     ps: ProcState,
-    permissions: Arc<Mutex<Permissions>>,
+    permissions: PermissionsContainer,
   ) -> Rc<Self> {
     Rc::new(CliModuleLoader {
       lib: ps.options.ts_type_lib_worker(),
@@ -240,7 +241,7 @@ impl ModuleLoader for CliModuleLoader {
     let ps = self.ps.clone();
     let state = op_state.borrow();
 
-    let dynamic_permissions = state.borrow::<Arc<Mutex<Permissions>>>().clone();
+    let dynamic_permissions = state.borrow::<PermissionsContainer>().clone();
     let root_permissions = if is_dynamic {
       dynamic_permissions.clone()
     } else {

@@ -4,11 +4,10 @@ use super::io::ChildStderrResource;
 use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use super::io::StdFileResource;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::op;
 
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -22,7 +21,6 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
 use tokio::process::Command;
 
 #[cfg(unix)]
@@ -147,7 +145,7 @@ struct RunInfo {
 fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .run
     .check(&args[0], Some("Deno.run()"))?;
@@ -357,7 +355,7 @@ fn op_kill(
   api_name: String,
 ) -> Result<(), AnyError> {
   state
-    .borrow_mut::<Arc<Mutex<Permissions>>>()
+    .borrow_mut::<PermissionsContainer>()
     .lock()
     .run
     .check_all(Some(&api_name))?;

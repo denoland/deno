@@ -3,7 +3,7 @@
 use crate::ops::TestingFeaturesEnabled;
 use crate::permissions::create_child_permissions;
 use crate::permissions::ChildPermissionsArg;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
@@ -32,8 +32,8 @@ use std::sync::Arc;
 pub struct CreateWebWorkerArgs {
   pub name: String,
   pub worker_id: WorkerId,
-  pub parent_permissions: Arc<Mutex<Permissions>>,
-  pub permissions: Arc<Mutex<Permissions>>,
+  pub parent_permissions: PermissionsContainer,
+  pub permissions: PermissionsContainer,
   pub main_module: ModuleSpecifier,
   pub worker_type: WebWorkerType,
 }
@@ -164,7 +164,7 @@ fn op_create_worker(
   if args.permissions.is_some() {
     super::check_unstable(state, "Worker.deno.permissions");
   }
-  let parent_permissions = state.borrow_mut::<Arc<Mutex<Permissions>>>();
+  let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
     let mut parent_permissions = parent_permissions.lock();

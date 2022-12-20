@@ -29,6 +29,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use log::Level;
@@ -331,7 +332,7 @@ impl BenchReporter for ConsoleReporter {
 /// Type check a collection of module and document specifiers.
 async fn check_specifiers(
   ps: &ProcState,
-  permissions: Arc<Mutex<Permissions>>,
+  permissions: PermissionsContainer,
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
@@ -351,7 +352,7 @@ async fn check_specifiers(
 /// Run a single specifier as an executable bench module.
 async fn bench_specifier(
   ps: ProcState,
-  permissions: Arc<Mutex<Permissions>>,
+  permissions: PermissionsContainer,
   specifier: ModuleSpecifier,
   channel: UnboundedSender<BenchEvent>,
   options: BenchSpecifierOptions,
@@ -372,7 +373,7 @@ async fn bench_specifier(
 /// Test a collection of specifiers with test modes concurrently.
 async fn bench_specifiers(
   ps: ProcState,
-  permissions: Arc<Mutex<Permissions>>,
+  permissions: PermissionsContainer,
   specifiers: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {

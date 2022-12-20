@@ -6,6 +6,7 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
@@ -22,6 +23,7 @@ use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::string::ToString;
+use std::sync::Arc;
 
 mod prompter;
 use prompter::permission_prompt;
@@ -33,6 +35,8 @@ pub use prompter::PromptCallback;
 
 static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
+
+pub type PermissionsContainer = Arc<Mutex<Permissions>>;
 
 /// Tri-state value for storing permission state
 #[derive(Eq, PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]

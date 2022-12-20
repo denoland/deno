@@ -60,6 +60,7 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
@@ -292,8 +293,8 @@ impl ProcState {
     roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
     lib: TsTypeLib,
-    root_permissions: Arc<Mutex<Permissions>>,
-    dynamic_permissions: Arc<Mutex<Permissions>>,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
