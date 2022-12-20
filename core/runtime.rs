@@ -263,14 +263,10 @@ pub struct RuntimeOptions {
   pub extensions_with_js: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
-  ///
-  /// Currently can't be used with `will_snapshot`.
   pub startup_snapshot: Option<Snapshot>,
 
   /// Prepare runtime to take snapshot of loaded code.
   /// The snapshot is determinstic and uses predictable random numbers.
-  ///
-  /// Currently can't be used with `startup_snapshot`.
   pub will_snapshot: bool,
 
   /// Isolate creation parameters.
@@ -2166,7 +2162,7 @@ impl JsRuntime {
         let (promise_id, op_id, mut resp) = item;
         state.unrefed_ops.remove(&promise_id);
         state.op_state.borrow().tracker.track_async_completed(op_id);
-        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(v8::Integer::new(scope, promise_id).into());
         args.push(match resp.to_v8(scope) {
           Ok(v) => v,
           Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
