@@ -248,31 +248,6 @@
     copyPrototype(original.prototype, primordials, `${name}Prototype`);
   });
 
-  // Create copies of abstract intrinsic objects that are not directly exposed
-  // on the global object.
-  // Refs: https://tc39.es/ecma262/#sec-%typedarray%-intrinsic-object
-  [
-    { name: "TypedArray", original: Reflect.getPrototypeOf(Uint8Array) },
-    {
-      name: "ArrayIterator",
-      original: {
-        prototype: Reflect.getPrototypeOf(Array.prototype[Symbol.iterator]()),
-      },
-    },
-    {
-      name: "StringIterator",
-      original: {
-        prototype: Reflect.getPrototypeOf(String.prototype[Symbol.iterator]()),
-      },
-    },
-  ].forEach(({ name, original }) => {
-    primordials[name] = original;
-    // The static %TypedArray% methods require a valid `this`, but can't be bound,
-    // as they need a subclass constructor as the receiver:
-    copyPrototype(original, primordials, name);
-    copyPrototype(original.prototype, primordials, `${name}Prototype`);
-  });
-
   const {
     ArrayPrototypeForEach,
     ArrayPrototypeMap,
@@ -290,6 +265,43 @@
     WeakMap,
     WeakSet,
   } = primordials;
+
+  // Create copies of abstract intrinsic objects that are not directly exposed
+  // on the global object.
+  // Refs: https://tc39.es/ecma262/#sec-%typedarray%-intrinsic-object
+  [
+    { name: "TypedArray", original: Reflect.getPrototypeOf(Uint8Array) },
+    {
+      name: "ArrayIterator",
+      original: {
+        prototype: Reflect.getPrototypeOf(Array.prototype[Symbol.iterator]()),
+      },
+    },
+    {
+      name: "SetIterator",
+      original: {
+        prototype: Reflect.getPrototypeOf(new Set()[Symbol.iterator]()),
+      },
+    },
+    {
+      name: "MapIterator",
+      original: {
+        prototype: Reflect.getPrototypeOf(new Map()[Symbol.iterator]()),
+      },
+    },
+    {
+      name: "StringIterator",
+      original: {
+        prototype: Reflect.getPrototypeOf(String.prototype[Symbol.iterator]()),
+      },
+    },
+  ].forEach(({ name, original }) => {
+    primordials[name] = original;
+    // The static %TypedArray% methods require a valid `this`, but can't be bound,
+    // as they need a subclass constructor as the receiver:
+    copyPrototype(original, primordials, name);
+    copyPrototype(original.prototype, primordials, `${name}Prototype`);
+  });
 
   // Because these functions are used by `makeSafe`, which is exposed
   // on the `primordials` object, it's important to use const references
@@ -315,6 +327,14 @@
   primordials.SafeArrayIterator = createSafeIterator(
     primordials.ArrayPrototypeSymbolIterator,
     primordials.ArrayIteratorPrototypeNext,
+  );
+  primordials.SafeSetIterator = createSafeIterator(
+    primordials.SetPrototypeSymbolIterator,
+    primordials.SetIteratorPrototypeNext,
+  );
+  primordials.SafeMapIterator = createSafeIterator(
+    primordials.MapPrototypeSymbolIterator,
+    primordials.MapIteratorPrototypeNext,
   );
   primordials.SafeStringIterator = createSafeIterator(
     primordials.StringPrototypeSymbolIterator,

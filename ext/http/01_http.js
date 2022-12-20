@@ -45,10 +45,10 @@
     ArrayPrototypeSome,
     Error,
     ObjectPrototypeIsPrototypeOf,
+    SafeSetIterator,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
-    SetPrototypeValues,
     StringPrototypeIncludes,
     StringPrototypeToLowerCase,
     StringPrototypeSplit,
@@ -153,7 +153,7 @@
       if (!this.#closed) {
         this.#closed = true;
         core.close(this.#rid);
-        for (const rid of SetPrototypeValues(this.managedResources)) {
+        for (const rid of new SafeSetIterator(this.managedResources)) {
           SetPrototypeDelete(this.managedResources, rid);
           core.close(rid);
         }

@@ -194,7 +194,7 @@
         context: "Argument 1",
       });
       const values = [];
-      for (const entry of this[_list]) {
+      for (const entry of new SafeArrayIterator(this[_list])) {
         if (entry[0] === name) {
           ArrayPrototypePush(values, entry[1]);
         }
@@ -214,7 +214,7 @@
         prefix,
         context: "Argument 1",
       });
-      for (const entry of this[_list]) {
+      for (const entry of new SafeArrayIterator(this[_list])) {
         if (entry[0] === name) {
           return entry[1];
         }

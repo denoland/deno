@@ -13,7 +13,10 @@
   const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
-  const { TypeError } = window.__bootstrap.primordials;
+  const {
+    ObjectPrototypeIsPrototypeOf,
+    TypeErrorPrototype,
+  } = window.__bootstrap.primordials;
 
   /**
    * @param {string} data
@@ -29,7 +32,7 @@
     try {
       return ops.op_base64_atob(data);
     } catch (e) {
-      if (e instanceof TypeError) {
+      if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
         throw new DOMException(
           "Failed to decode base64: invalid character",
           "InvalidCharacterError",
@@ -53,7 +56,7 @@
     try {
       return ops.op_base64_btoa(data);
     } catch (e) {
-      if (e instanceof TypeError) {
+      if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
         throw new DOMException(
           "The string to be encoded contains characters outside of the Latin1 range.",
           "InvalidCharacterError",
