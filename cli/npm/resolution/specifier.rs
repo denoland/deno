@@ -285,7 +285,7 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
   let mut seen = HashSet::new();
   let mut specifier_graph = SpecifierTree::default();
   for root in &root_specifiers {
-    if let Some(module) = graph.get(&root) {
+    if let Some(module) = graph.get(root) {
       analyze_module(module, graph, &mut specifier_graph, &mut seen);
     }
   }
