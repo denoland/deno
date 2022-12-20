@@ -577,7 +577,7 @@ pub(crate) fn is_instance_of_error<'s>(
 }
 
 /// Implements `value instanceof primordials.AggregateError` in JS,
-/// by walking the prototype chain, and comparing the `name` property..
+/// by walking the prototype chain, and comparing each links constructor `name` property.
 ///
 /// NOTE: There is currently no way to detect `AggregateError` via `rusty_v8`,
 /// as v8 itself doesn't expose `v8__Exception__AggregateError`,
@@ -588,20 +588,18 @@ pub(crate) fn is_aggregate_error<'s>(
 ) -> bool {
   let mut maybe_prototype = Some(value);
   while let Some(prototype) = maybe_prototype {
-    if !value.is_object() {
-      return false;
-    }
-
-    // We need to guard against objects like `DOMException`,
-    // which are not `instanceof Error` and can panic when
-    // accessing it's `name` property.
-    if !is_instance_of_error(scope, prototype) {
+    if !prototype.is_object() {
       return false;
     }
 
     let prototype = prototype.to_object(scope).unwrap();
-    let prototype_name = get_property(scope, prototype, "name")
-      .map(|v| v.to_rust_string_lossy(scope));
+    let prototype_name = match get_property(scope, prototype, "constructor") {
+      Some(constructor) => {
+        let ctor = constructor.to_object(scope).unwrap();
+        get_property(scope, ctor, "name").map(|v| v.to_rust_string_lossy(scope))
+      }
+      None => return false,
+    };
 
     if prototype_name == Some(String::from("AggregateError")) {
       return true;
