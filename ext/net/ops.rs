@@ -10,6 +10,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 
+use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
@@ -30,6 +31,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
@@ -163,7 +165,7 @@ where
 {
   {
     let mut s = state.borrow_mut();
-    s.borrow_mut::<NP>().check_net(
+    s.borrow_mut::<Arc<Mutex<NP>>>().lock().check_net(
       &(&addr.hostname, Some(addr.port)),
       "Deno.DatagramConn.send()",
     )?;
@@ -195,7 +197,8 @@ where
   {
     let mut state_ = state.borrow_mut();
     state_
-      .borrow_mut::<NP>()
+      .borrow_mut::<Arc<Mutex<NP>>>()
+      .lock()
       .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
   }
 
@@ -258,7 +261,8 @@ where
     super::check_unstable(state, "Deno.listen({ reusePort: true })");
   }
   state
-    .borrow_mut::<NP>()
+    .borrow_mut::<Arc<Mutex<NP>>>()
+    .lock()
     .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
@@ -300,7 +304,8 @@ where
   NP: NetPermissions + 'static,
 {
   state
-    .borrow_mut::<NP>()
+    .borrow_mut::<Arc<Mutex<NP>>>()
+    .lock()
     .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
@@ -472,7 +477,7 @@ where
 
   {
     let mut s = state.borrow_mut();
-    let perm = s.borrow_mut::<NP>();
+    let mut perm = s.borrow_mut::<Arc<Mutex<NP>>>().lock();
 
     // Checks permission against the name servers which will be actually queried.
     for ns in config.name_servers() {

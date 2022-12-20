@@ -6,12 +6,14 @@ use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
 use deno_core::v8;
 use std::ffi::c_char;
 use std::ffi::c_void;
 use std::ffi::CStr;
 use std::ptr;
+use std::sync::Arc;
 
 #[op(fast)]
 pub fn op_ffi_ptr_of<FP>(
@@ -23,7 +25,7 @@ where
   FP: FfiPermissions + 'static,
 {
   check_unstable(state, "Deno.UnsafePointer#of");
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let outptr = out.as_ptr() as *mut usize;
@@ -60,7 +62,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#arrayBuffer");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let ptr = ptr as *mut c_void;
@@ -100,7 +102,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#copyInto");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   if dst.len() < len {
@@ -132,7 +134,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#getCString");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let ptr = ptr as *const c_void;
@@ -167,7 +169,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#getBool");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let ptr = ptr as *const c_void;
@@ -191,7 +193,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#getUint8");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let ptr = ptr as *const c_void;
@@ -215,7 +217,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#getInt8");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let ptr = ptr as *const c_void;
@@ -239,7 +241,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#getUint16");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let ptr = ptr as *const c_void;
@@ -265,7 +267,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#getInt16");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let ptr = ptr as *const c_void;
@@ -291,7 +293,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#getUint32");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let ptr = ptr as *const c_void;
@@ -315,7 +317,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#getInt32");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let ptr = ptr as *const c_void;
@@ -340,7 +342,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let outptr = out.as_mut_ptr() as *mut u64;
@@ -377,7 +379,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let outptr = out.as_mut_ptr() as *mut i64;
@@ -412,7 +414,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#getFloat32");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let ptr = ptr as *const c_void;
@@ -436,7 +438,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointerView#getFloat64");
 
-  let permissions = state.borrow_mut::<FP>();
+  let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
   permissions.check(None)?;
 
   let ptr = ptr as *const c_void;

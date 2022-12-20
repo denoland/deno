@@ -8,6 +8,7 @@ use crate::FfiPermissions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::Resource;
@@ -19,6 +20,7 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub struct DynamicLibraryResource {
   lib: Library,
@@ -122,8 +124,10 @@ where
   let path = args.path;
 
   check_unstable(state, "Deno.dlopen");
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(Some(&PathBuf::from(&path)))?;
+  {
+    let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
+    permissions.check(Some(&PathBuf::from(&path)))?;
+  }
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen::Error::OpeningLibraryError(std::io::Error::new(

@@ -9,7 +9,7 @@ use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
 use deno_core::op;
-
+use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -267,9 +267,10 @@ pub fn op_ws_check_permission_and_cancel_handle<WP>(
 where
   WP: WebSocketPermissions + 'static,
 {
-  state
-    .borrow_mut::<WP>()
-    .check_net_url(&url::Url::parse(&url)?, &api_name)?;
+  {
+    let mut permissions = state.borrow_mut::<Arc<Mutex<WP>>>().lock();
+    permissions.check_net_url(&url::Url::parse(&url)?, &api_name)?;
+  }
 
   if cancel_handle {
     let rid = state
@@ -303,7 +304,8 @@ where
 {
   {
     let mut s = state.borrow_mut();
-    s.borrow_mut::<WP>()
+    let mut permissions = s.borrow_mut::<Arc<Mutex<WP>>>().lock();
+    permissions
       .check_net_url(&url::Url::parse(&url)?, &api_name)
       .expect(
         "Permission check should have been done in op_ws_check_permission",

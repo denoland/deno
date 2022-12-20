@@ -5,6 +5,7 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::normalize_path;
 use deno_core::op;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::JsRuntimeInspector;
@@ -33,6 +34,7 @@ pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolutionMode;
 pub use resolution::DEFAULT_CONDITIONS;
 use std::cell::RefCell;
+use std::sync::Arc;
 
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
@@ -134,7 +136,10 @@ where
     return Ok(());
   }
 
-  state.borrow_mut::<P>().check_read(file_path)
+  state
+    .borrow_mut::<Arc<Mutex<P>>>()
+    .lock()
+    .check_read(file_path)
 }
 
 #[op]

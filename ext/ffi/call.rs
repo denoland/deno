@@ -12,6 +12,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::v8;
@@ -21,6 +22,7 @@ use std::cell::RefCell;
 use std::ffi::c_void;
 use std::future::Future;
 use std::rc::Rc;
+use std::sync::Arc;
 
 // A one-off synchronous FFI call.
 pub(crate) fn ffi_call_sync<'scope>(
@@ -238,7 +240,7 @@ where
   check_unstable2(&state, "Deno.UnsafeFnPointer#call");
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<FP>();
+    let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
     permissions.check(None)?;
   };
 
@@ -315,7 +317,7 @@ where
   check_unstable2(&state, "Deno.UnsafeFnPointer#call");
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<FP>();
+    let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
     permissions.check(None)?;
   };
 
