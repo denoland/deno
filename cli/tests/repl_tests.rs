@@ -965,4 +965,20 @@ mod repl {
       assert!(err.is_empty());
     }
   }
+
+  #[test]
+  fn no_cutom_panic_header_for_broken_pipe() {
+    let mut process_that_already_closed = std::process::Command::new("echo")
+      .stdin(std::process::Stdio::piped())
+      .spawn()
+      .unwrap();
+    let output = util::deno_cmd()
+      .stdout(process_that_already_closed.stdin.take().unwrap())
+      .output()
+      .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("failed printing to stdout: Broken pipe"));
+    assert!(!stderr.contains("Deno has panicked"));
+  }
 }
