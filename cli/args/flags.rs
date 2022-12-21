@@ -52,10 +52,6 @@ pub struct FileFlags {
   pub include: Vec<PathBuf>,
 }
 
-pub trait FiltersFiles {
-  fn get_filters(&self) -> FileFlags;
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct BenchFlags {
   pub files: FileFlags,
