@@ -16,7 +16,7 @@ fn main() -> Result<(), Error> {
   let main_url = args[1].clone();
   println!("Run {}", main_url);
 
-  let mut js_runtime = JsRuntime::new(RuntimeOptions {
+  let js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(Rc::new(FsModuleLoader)),
     ..Default::default()
   });
