@@ -303,7 +303,12 @@
   // 1. name/.*
   // 2. @scope/name/.*
   const EXPORTS_PATTERN = /^((?:@[^/\\%]+\/)?[^./\\%][^/\\%]*)(\/.*)?$/;
-  function resolveExports(modulesPath, request, parentPath) {
+  function resolveExports(
+    modulesPath,
+    request,
+    parentPath,
+    usesLocalNodeModulesDir,
+  ) {
     // The implementation's behavior is meant to mirror resolution in ESM.
     const [, name, expansion = ""] =
       StringPrototypeMatch(request, EXPORTS_PATTERN) || [];
@@ -312,6 +317,7 @@
     }
 
     return core.ops.op_require_resolve_exports(
+      usesLocalNodeModulesDir,
       modulesPath,
       request,
       name,
@@ -349,7 +355,12 @@
       if (curPath && stat(curPath) < 1) continue;
 
       if (!absoluteRequest) {
-        const exportsResolved = resolveExports(curPath, request, parentPath);
+        const exportsResolved = resolveExports(
+          curPath,
+          request,
+          parentPath,
+          usesLocalNodeModulesDir,
+        );
         if (exportsResolved) {
           return exportsResolved;
         }

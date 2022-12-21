@@ -25,6 +25,7 @@
     MathRandom,
     ObjectPrototypeIsPrototypeOf,
     Symbol,
+    SafeArrayIterator,
     StringFromCharCode,
     StringPrototypeTrim,
     StringPrototypeSlice,
@@ -162,7 +163,7 @@
         context: "Argument 1",
       });
 
-      for (const entry of this[entryList]) {
+      for (const entry of new SafeArrayIterator(this[entryList])) {
         if (entry.name === name) return entry.value;
       }
       return null;
@@ -183,7 +184,7 @@
       });
 
       const returnList = [];
-      for (const entry of this[entryList]) {
+      for (const entry of new SafeArrayIterator(this[entryList])) {
         if (entry.name === name) ArrayPrototypePush(returnList, entry.value);
       }
       return returnList;
@@ -203,7 +204,7 @@
         context: "Argument 1",
       });
 
-      for (const entry of this[entryList]) {
+      for (const entry of new SafeArrayIterator(this[entryList])) {
         if (entry.name === name) return true;
       }
       return false;
@@ -298,6 +299,7 @@
     const chunks = [];
     const prefix = `--${boundary}\r\nContent-Disposition: form-data; name="`;
 
+    // deno-lint-ignore prefer-primordials
     for (const [name, value] of formData) {
       if (typeof value === "string") {
         ArrayPrototypePush(
@@ -372,7 +374,7 @@
     #parseHeaders(headersText) {
       const headers = new Headers();
       const rawHeaders = StringPrototypeSplit(headersText, "\r\n");
-      for (const rawHeader of rawHeaders) {
+      for (const rawHeader of new SafeArrayIterator(rawHeaders)) {
         const sepIndex = StringPrototypeIndexOf(rawHeader, ":");
         if (sepIndex < 0) {
           continue; // Skip this header

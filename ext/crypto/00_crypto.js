@@ -34,6 +34,7 @@
     StringPrototypeToUpperCase,
     StringPrototypeCharCodeAt,
     StringFromCharCode,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     SyntaxError,
@@ -4052,7 +4053,7 @@
         }
 
         const pkcs8Der = ops.op_export_pkcs8_ed25519(
-          new Uint8Array([0x04, 0x22, ...innerKey]),
+          new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
         );
         pkcs8Der[15] = 0x20;
         return pkcs8Der.buffer;
@@ -4115,7 +4116,7 @@
         }
 
         const pkcs8Der = ops.op_export_pkcs8_x25519(
-          new Uint8Array([0x04, 0x22, ...innerKey]),
+          new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
         );
         pkcs8Der[15] = 0x20;
         return pkcs8Der.buffer;

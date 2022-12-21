@@ -5339,7 +5339,9 @@ mod lsp {
         "textDocument/didOpen",
         json!({
           "textDocument": {
-            "uri": "file:///a/file.json",
+            // Also test out using a non-json file extension here.
+            // What should matter is the language identifier.
+            "uri": "file:///a/file.lock",
             "languageId": "json",
             "version": 1,
             "text": "{\"key\":\"value\"}"
@@ -5353,7 +5355,7 @@ mod lsp {
         "textDocument/formatting",
         json!({
             "textDocument": {
-              "uri": "file:///a/file.json"
+              "uri": "file:///a/file.lock"
             },
             "options": {
               "tabSize": 2,

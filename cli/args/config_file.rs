@@ -130,7 +130,6 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "noEmit",
   "noEmitHelpers",
   "noEmitOnError",
-  "noErrorTruncation",
   "noLib",
   "noResolve",
   "out",

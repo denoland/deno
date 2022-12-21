@@ -38,11 +38,11 @@ pub fn permission_prompt(
 }
 
 pub fn set_prompt_callbacks(
-  before_callback: Option<PromptCallback>,
-  after_callback: Option<PromptCallback>,
+  before_callback: PromptCallback,
+  after_callback: PromptCallback,
 ) {
-  *MAYBE_BEFORE_PROMPT_CALLBACK.lock() = before_callback;
-  *MAYBE_AFTER_PROMPT_CALLBACK.lock() = after_callback;
+  *MAYBE_BEFORE_PROMPT_CALLBACK.lock() = Some(before_callback);
+  *MAYBE_AFTER_PROMPT_CALLBACK.lock() = Some(after_callback);
 }
 
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;

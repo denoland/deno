@@ -219,7 +219,6 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let resolver = self.clone();
     async move {
       resolver.resolution.add_package_reqs(packages).await?;
-      sync_resolver_with_fs(&resolver).await?;
       Ok(())
     }
     .boxed()
@@ -232,6 +231,14 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let resolver = self.clone();
     async move {
       resolver.resolution.set_package_reqs(packages).await?;
+      Ok(())
+    }
+    .boxed()
+  }
+
+  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>> {
+    let resolver = self.clone();
+    async move {
       sync_resolver_with_fs(&resolver).await?;
       Ok(())
     }

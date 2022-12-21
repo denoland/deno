@@ -102,6 +102,15 @@ mod npm {
     http_server: true,
   });
 
+  itest!(conditional_exports_node_modules_dir {
+    args:
+      "run --allow-read --node-modules-dir $TESTDATA/npm/conditional_exports/main.js",
+    output: "npm/conditional_exports/main.out",
+    envs: env_vars_for_npm_tests(),
+    http_server: true,
+    temp_cwd: true,
+  });
+
   itest!(dual_cjs_esm {
     args: "run -A --quiet npm/dual_cjs_esm/main.ts",
     output: "npm/dual_cjs_esm/main.out",

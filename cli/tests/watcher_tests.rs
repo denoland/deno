@@ -8,6 +8,8 @@ use test_util::assert_contains;
 use test_util::TempDir;
 
 mod watcher {
+  use util::assert_not_contains;
+
   use super::*;
 
   const CLEAR_SCREEN: &str = r#"[2J"#;
@@ -82,7 +84,7 @@ mod watcher {
       .lines()
       .map(|r| {
         let line = r.unwrap();
-        eprintln!("STERR: {}", line);
+        eprintln!("STDERR: {}", line);
         line
       });
     (stdout_lines, stderr_lines)
@@ -124,7 +126,7 @@ mod watcher {
     let expected = std::fs::read_to_string(badly_linted_output).unwrap();
     assert_eq!(output, expected);
 
-    // Change content of the file again to be badly-linted1
+    // Change content of the file again to be badly-linted
     std::fs::copy(badly_linted_fixed1, &badly_linted).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
 
@@ -132,7 +134,7 @@ mod watcher {
     let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
     assert_eq!(output, expected);
 
-    // Change content of the file again to be badly-linted1
+    // Change content of the file again to be badly-linted
     std::fs::copy(badly_linted_fixed2, &badly_linted).unwrap();
 
     output = read_all_lints(&mut stderr_lines);
@@ -182,14 +184,14 @@ mod watcher {
     let expected = std::fs::read_to_string(badly_linted_output).unwrap();
     assert_eq!(output, expected);
 
-    // Change content of the file again to be badly-linted1
+    // Change content of the file again to be badly-linted
     std::fs::copy(badly_linted_fixed1, &badly_linted).unwrap();
 
     output = read_all_lints(&mut stderr_lines);
     let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
     assert_eq!(output, expected);
 
-    // Change content of the file again to be badly-linted1
+    // Change content of the file again to be badly-linted
     std::fs::copy(badly_linted_fixed2, &badly_linted).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
 
@@ -425,7 +427,8 @@ mod watcher {
 
     assert_contains!(stderr_lines.next().unwrap(), "Check");
     let next_line = stderr_lines.next().unwrap();
-    assert_contains!(&next_line, CLEAR_SCREEN);
+    // Should not clear screen, as we are in non-TTY environment
+    assert_not_contains!(&next_line, CLEAR_SCREEN);
     assert_contains!(&next_line, "File change detected!");
     assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.ts");
     assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
@@ -476,7 +479,8 @@ mod watcher {
 
     assert_contains!(stderr_lines.next().unwrap(), "Check");
     let next_line = stderr_lines.next().unwrap();
-    assert_contains!(&next_line, CLEAR_SCREEN);
+    // Should not clear screen, as we are in non-TTY environment
+    assert_not_contains!(&next_line, CLEAR_SCREEN);
     assert_contains!(&next_line, "File change detected!");
     assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.ts");
     assert_contains!(stderr_lines.next().unwrap(), "target.js");
