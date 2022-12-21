@@ -56,10 +56,10 @@ deno_broadcast_channel = { version = "0.76.0", path = "./ext/broadcast_channel" 
 deno_cache = { version = "0.14.0", path = "./ext/cache" }
 deno_console = { version = "0.82.0", path = "./ext/console" }
 deno_crypto = { version = "0.96.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.105.0", path = "./ext/fetch" }
+deno_fetch = { version = "0.106.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.69.0", path = "./ext/ffi" }
 deno_flash = { version = "0.18.0", path = "./ext/flash" }
-deno_http = { version = "0.76.0", path = "./ext/http" }
+deno_http = { version = "0.77.0", path = "./ext/http" }
 deno_net = { version = "0.74.0", path = "./ext/net" }
 deno_node = { version = "0.19.0", path = "./ext/node" }
 deno_tls = { version = "0.69.0", path = "./ext/tls" }
