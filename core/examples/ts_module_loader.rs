@@ -4,6 +4,7 @@
 //!
 //! It will only transpile, not typecheck (like Deno's `--no-check` flag).
 
+mod util;
 use std::pin::Pin;
 use std::rc::Rc;
 
@@ -107,12 +108,7 @@ fn main() -> Result<(), Error> {
 
   let main_module = resolve_path(&main_url)?;
 
-  let future = async move {
-    let mod_id = js_runtime.load_main_module(&main_module, None).await?;
-    let result = js_runtime.mod_evaluate(mod_id);
-    js_runtime.run_event_loop(false).await?;
-    result.await?
-  };
+  let future = util::run_event_loop(js_runtime, main_module);
 
   tokio::runtime::Builder::new_current_thread()
     .enable_all()
