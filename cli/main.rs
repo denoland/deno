@@ -213,6 +213,19 @@ fn setup_panic_hook() {
   //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
+    // Check if the panic is caused by stdio
+    // Most likely its `Broken pipe` by failing to print to stdout
+    // Example: `deno test | echo`
+    // In this case this is not a bug in deno so we should not print our panic header
+    // And we should not advise users to report it
+    if matches!(
+      panic_info.location().map(std::panic::Location::file),
+      Some("library/std/src/io/stdio.rs")
+    ) {
+      orig_hook(panic_info);
+      std::process::exit(1);
+    }
+
     eprintln!("\n============================================================");
     eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
     eprintln!("at https://github.com/denoland/deno/issues/new.");
