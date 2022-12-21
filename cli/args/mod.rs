@@ -424,9 +424,8 @@ impl CliOptions {
       None
     };
 
-    let cli_filters = lint_flags.get_filters();
-    let mut include = cli_filters.include;
-    let mut ignore = cli_filters.ignore;
+    let mut include = lint_flags.files.include.clone();
+    let mut ignore = lint_flags.files.ignore.clone();
 
     if let Some(config_file) = &self.maybe_config_file {
       if let Some(lint_config) = config_file.to_lint_config()? {
@@ -490,7 +489,7 @@ impl CliOptions {
 
     Ok(FinalLintConfig {
       reporter_kind,
-      files: Filters { include, ignore },
+      files: FileFlags { include, ignore },
       configured_rules,
     })
   }
@@ -499,9 +498,8 @@ impl CliOptions {
     &self,
     test_flags: &TestFlags,
   ) -> Result<FinalTestConfig, AnyError> {
-    let cli_filters = test_flags.get_filters();
-    let mut include = cli_filters.include;
-    let mut ignore = cli_filters.ignore;
+    let mut include = test_flags.files.include.clone();
+    let mut ignore = test_flags.files.ignore.clone();
 
     if let Some(config_file) = &self.maybe_config_file {
       if let Some(test_config) = config_file.to_test_config()? {
@@ -516,7 +514,7 @@ impl CliOptions {
     }
 
     Ok(FinalTestConfig {
-      files: Filters { include, ignore },
+      files: FileFlags { include, ignore },
     })
   }
 
@@ -524,9 +522,8 @@ impl CliOptions {
     &self,
     bench_flags: &BenchFlags,
   ) -> Result<FinalBenchConfig, AnyError> {
-    let cli_filters = bench_flags.get_filters();
-    let mut include = cli_filters.include;
-    let mut ignore = cli_filters.ignore;
+    let mut include = bench_flags.files.include.clone();
+    let mut ignore = bench_flags.files.ignore.clone();
 
     if let Some(config_file) = &self.maybe_config_file {
       if let Some(bench_config) = config_file.to_bench_config()? {
@@ -541,7 +538,7 @@ impl CliOptions {
     }
 
     Ok(FinalBenchConfig {
-      files: Filters { include, ignore },
+      files: FileFlags { include, ignore },
     })
   }
 
@@ -568,9 +565,8 @@ impl CliOptions {
       use_tabs: fmt_flags.use_tabs,
     };
 
-    let cli_filters = fmt_flags.get_filters();
-    let mut include = cli_filters.include;
-    let mut ignore = cli_filters.ignore;
+    let mut include = fmt_flags.files.include.clone();
+    let mut ignore = fmt_flags.files.ignore.clone();
 
     if let Some(config_file) = &self.maybe_config_file {
       if let Some(fmt_config) = config_file.to_fmt_config()? {
@@ -586,7 +582,7 @@ impl CliOptions {
     }
 
     Ok(FinalFmtConfig {
-      files: Filters { include, ignore },
+      files: FileFlags { include, ignore },
       options,
     })
   }
@@ -599,7 +595,7 @@ impl CliOptions {
     config: &T,
     mut include: Vec<PathBuf>,
     mut ignore: Vec<PathBuf>,
-  ) -> Result<Filters, AnyError>
+  ) -> Result<FileFlags, AnyError>
   where
     T: ContainsFilesConfig,
   {
@@ -621,7 +617,7 @@ impl CliOptions {
         .collect::<Vec<_>>();
     }
 
-    Ok(Filters { include, ignore })
+    Ok(FileFlags { include, ignore })
   }
 
   /// Vector of user script CLI arguments.

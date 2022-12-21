@@ -46,30 +46,20 @@ static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
     .to_string()
 });
 
-#[derive(Clone, Debug, Default)]
-pub struct Filters {
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub struct FileFlags {
   pub ignore: Vec<PathBuf>,
   pub include: Vec<PathBuf>,
 }
 
 pub trait FiltersFiles {
-  fn get_filters(&self) -> Filters;
+  fn get_filters(&self) -> FileFlags;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct BenchFlags {
-  pub ignore: Vec<PathBuf>,
-  pub include: Vec<PathBuf>,
+  pub files: FileFlags,
   pub filter: Option<String>,
-}
-
-impl FiltersFiles for BenchFlags {
-  fn get_filters(&self) -> Filters {
-    Filters {
-      include: self.include.clone(),
-      ignore: self.ignore.clone(),
-    }
-  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -129,23 +119,13 @@ pub struct EvalFlags {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct FmtFlags {
   pub check: bool,
-  pub include: Vec<PathBuf>,
-  pub ignore: Vec<PathBuf>,
   pub ext: String,
+  pub files: FileFlags,
   pub use_tabs: Option<bool>,
   pub line_width: Option<NonZeroU32>,
   pub indent_width: Option<NonZeroU8>,
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
-}
-
-impl FiltersFiles for FmtFlags {
-  fn get_filters(&self) -> Filters {
-    Filters {
-      include: self.include.clone(),
-      ignore: self.ignore.clone(),
-    }
-  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -176,23 +156,13 @@ pub struct UninstallFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct LintFlags {
-  pub include: Vec<PathBuf>,
-  pub ignore: Vec<PathBuf>,
+  pub files: FileFlags,
   pub rules: bool,
   pub maybe_rules_tags: Option<Vec<String>>,
   pub maybe_rules_include: Option<Vec<String>>,
   pub maybe_rules_exclude: Option<Vec<String>>,
   pub json: bool,
   pub compact: bool,
-}
-
-impl FiltersFiles for LintFlags {
-  fn get_filters(&self) -> Filters {
-    Filters {
-      include: self.include.clone(),
-      ignore: self.ignore.clone(),
-    }
-  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -221,25 +191,15 @@ pub struct TaskFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct TestFlags {
-  pub ignore: Vec<PathBuf>,
   pub doc: bool,
   pub no_run: bool,
   pub fail_fast: Option<NonZeroUsize>,
+  pub files: FileFlags,
   pub allow_none: bool,
-  pub include: Vec<PathBuf>,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_ops: bool,
-}
-
-impl FiltersFiles for TestFlags {
-  fn get_filters(&self) -> Filters {
-    Filters {
-      include: self.include.clone(),
-      ignore: self.ignore.clone(),
-    }
-  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -500,10 +460,10 @@ impl Flags {
   /// If it returns None, the config file shouldn't be discovered at all.
   pub fn config_path_args(&self) -> Option<Vec<PathBuf>> {
     use DenoSubcommand::*;
-    if let Fmt(FmtFlags { include: files, .. }) = &self.subcommand {
-      Some(files.clone())
-    } else if let Lint(LintFlags { include: files, .. }) = &self.subcommand {
-      Some(files.clone())
+    if let Fmt(FmtFlags { files, .. }) = &self.subcommand {
+      Some(files.include.clone())
+    } else if let Lint(LintFlags { files, .. }) = &self.subcommand {
+      Some(files.include.clone())
     } else if let Run(RunFlags { script }) = &self.subcommand {
       if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
         if module_specifier.scheme() == "file"
@@ -2357,8 +2317,7 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   watch_arg_parse(flags, matches, false);
   flags.subcommand = DenoSubcommand::Bench(BenchFlags {
-    include,
-    ignore,
+    files: FileFlags { include, ignore },
     filter,
   });
 }
@@ -2540,7 +2499,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_args_parse(flags, matches);
   watch_arg_parse(flags, matches, false);
 
-  let files = match matches.values_of("files") {
+  let include = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
@@ -2591,8 +2550,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.is_present("check"),
     ext,
-    include: files,
-    ignore,
+    files: FileFlags { include, ignore },
     use_tabs,
     line_width,
     indent_width,
@@ -2694,12 +2652,15 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let json = matches.is_present("json");
   let compact = matches.is_present("compact");
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
-    include: files,
+    files: FileFlags {
+      include: files,
+      ignore,
+    },
     rules,
     maybe_rules_tags,
     maybe_rules_include,
     maybe_rules_exclude,
-    ignore,
+
     json,
     compact,
   });
@@ -2900,8 +2861,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     no_run,
     doc,
     fail_fast,
-    include,
-    ignore,
+    files: FileFlags { include, ignore },
     filter,
     shuffle,
     allow_none,
@@ -3610,13 +3570,15 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
-          ignore: vec![],
           check: false,
-          include: vec![
-            PathBuf::from("script_1.ts"),
-            PathBuf::from("script_2.ts")
-          ],
           ext: "ts".to_string(),
+          files: FileFlags {
+            include: vec![
+              PathBuf::from("script_1.ts"),
+              PathBuf::from("script_2.ts")
+            ],
+            ignore: vec![],
+          },
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3632,10 +3594,12 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
-          ignore: vec![],
           check: true,
-          include: vec![],
           ext: "ts".to_string(),
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3651,10 +3615,12 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
-          ignore: vec![],
           check: false,
-          include: vec![],
           ext: "ts".to_string(),
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3670,10 +3636,12 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
-          ignore: vec![],
           check: false,
-          include: vec![],
           ext: "ts".to_string(),
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3691,10 +3659,12 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
-          ignore: vec![],
           check: false,
-          include: vec![],
           ext: "ts".to_string(),
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3719,10 +3689,12 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
-          ignore: vec![PathBuf::from("bar.js")],
           check: true,
-          include: vec![PathBuf::from("foo.ts")],
           ext: "ts".to_string(),
+          files: FileFlags {
+            include: vec![PathBuf::from("foo.ts")],
+            ignore: vec![PathBuf::from("bar.js")],
+          },
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3739,10 +3711,12 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
-          ignore: vec![],
           check: false,
-          include: vec![],
           ext: "ts".to_string(),
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3766,10 +3740,12 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
-          ignore: vec![],
           check: false,
-          include: vec![PathBuf::from("foo.ts")],
           ext: "ts".to_string(),
+          files: FileFlags {
+            include: vec![PathBuf::from("foo.ts")],
+            ignore: vec![],
+          },
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3798,10 +3774,12 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
-          ignore: vec![],
           check: false,
-          include: vec![],
           ext: "ts".to_string(),
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           use_tabs: Some(true),
           line_width: Some(NonZeroU32::new(60).unwrap()),
           indent_width: Some(NonZeroU8::new(4).unwrap()),
@@ -3820,17 +3798,19 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          include: vec![
-            PathBuf::from("script_1.ts"),
-            PathBuf::from("script_2.ts")
-          ],
+          files: FileFlags {
+            include: vec![
+              PathBuf::from("script_1.ts"),
+              PathBuf::from("script_2.ts")
+            ],
+            ignore: vec![],
+          },
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
           compact: false,
-          ignore: vec![],
         }),
         ..Flags::default()
       }
@@ -3847,17 +3827,19 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          include: vec![
-            PathBuf::from("script_1.ts"),
-            PathBuf::from("script_2.ts")
-          ],
+          files: FileFlags {
+            include: vec![
+              PathBuf::from("script_1.ts"),
+              PathBuf::from("script_2.ts")
+            ],
+            ignore: vec![],
+          },
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
           compact: false,
-          ignore: vec![],
         }),
         watch: Some(vec![]),
         ..Flags::default()
@@ -3876,17 +3858,19 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          include: vec![
-            PathBuf::from("script_1.ts"),
-            PathBuf::from("script_2.ts")
-          ],
+          files: FileFlags {
+            include: vec![
+              PathBuf::from("script_1.ts"),
+              PathBuf::from("script_2.ts")
+            ],
+            ignore: vec![],
+          },
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
           compact: false,
-          ignore: vec![],
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
@@ -3900,17 +3884,19 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          include: vec![],
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![
+              PathBuf::from("script_1.ts"),
+              PathBuf::from("script_2.ts")
+            ],
+          },
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
           compact: false,
-          ignore: vec![
-            PathBuf::from("script_1.ts"),
-            PathBuf::from("script_2.ts")
-          ],
         }),
         ..Flags::default()
       }
@@ -3921,14 +3907,16 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          include: vec![],
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           rules: true,
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
           compact: false,
-          ignore: vec![],
         }),
         ..Flags::default()
       }
@@ -3945,14 +3933,16 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          include: vec![],
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           rules: false,
           maybe_rules_tags: Some(svec![""]),
           maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
           maybe_rules_exclude: Some(svec!["no-const-assign"]),
           json: false,
           compact: false,
-          ignore: vec![],
         }),
         ..Flags::default()
       }
@@ -3963,14 +3953,16 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          include: vec![PathBuf::from("script_1.ts")],
+          files: FileFlags {
+            include: vec![PathBuf::from("script_1.ts")],
+            ignore: vec![],
+          },
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: true,
           compact: false,
-          ignore: vec![],
         }),
         ..Flags::default()
       }
@@ -3988,14 +3980,16 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          include: vec![PathBuf::from("script_1.ts")],
+          files: FileFlags {
+            include: vec![PathBuf::from("script_1.ts")],
+            ignore: vec![],
+          },
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: true,
           compact: false,
-          ignore: vec![],
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -4014,14 +4008,16 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          include: vec![PathBuf::from("script_1.ts")],
+          files: FileFlags {
+            include: vec![PathBuf::from("script_1.ts")],
+            ignore: vec![],
+          },
           rules: false,
           maybe_rules_tags: None,
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
           compact: true,
-          ignore: vec![],
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -5537,8 +5533,10 @@ mod tests {
           fail_fast: None,
           filter: Some("- foo".to_string()),
           allow_none: true,
-          include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
+            ignore: vec![],
+          },
           shuffle: None,
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: true,
@@ -5609,8 +5607,10 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: vec![],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           concurrent_jobs: NonZeroUsize::new(4).unwrap(),
           trace_ops: false,
         }),
@@ -5637,8 +5637,10 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: vec![],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
@@ -5669,8 +5671,10 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: vec![],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
@@ -5695,8 +5699,10 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: Some(1),
-          include: vec![],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
@@ -5721,8 +5727,10 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: vec![],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
@@ -5746,8 +5754,10 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: vec![PathBuf::from("./")],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![PathBuf::from("./")],
+            ignore: vec![],
+          },
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
@@ -5773,8 +5783,10 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: vec![],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
@@ -6424,8 +6436,10 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: Some("- foo".to_string()),
-          include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
+            ignore: vec![],
+          },
         }),
         unstable: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6446,8 +6460,10 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: None,
-          include: vec![],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,

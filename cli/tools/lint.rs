@@ -151,7 +151,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
 
     Ok(())
   };
-  let args = lint_flags.include;
+  let args = lint_flags.files.include;
   if ps.options.watch_paths().is_some() {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
       return Err(generic_error(

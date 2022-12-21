@@ -28,7 +28,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::Filters;
+use super::FileFlags;
 
 pub type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
@@ -381,7 +381,7 @@ impl ContainsFilesConfig for LintConfig {
 
 #[derive(Clone, Debug)]
 pub struct FinalLintConfig {
-  pub files: Filters,
+  pub files: FileFlags,
   pub reporter_kind: LintReporterKind,
   pub configured_rules: Vec<Arc<dyn LintRule>>,
 }
@@ -438,7 +438,7 @@ impl ContainsFilesConfig for FmtConfig {
 #[derive(Clone, Debug, Default)]
 pub struct FinalFmtConfig {
   pub options: FmtOptionsConfig,
-  pub files: Filters,
+  pub files: FileFlags,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -464,7 +464,7 @@ pub struct TestConfig {
 }
 
 pub struct FinalTestConfig {
-  pub files: Filters,
+  pub files: FileFlags,
 }
 
 impl ContainsFilesConfig for TestConfig {
@@ -496,7 +496,7 @@ pub struct BenchConfig {
 }
 
 pub struct FinalBenchConfig {
-  pub files: Filters,
+  pub files: FileFlags,
 }
 
 impl ContainsFilesConfig for BenchConfig {
