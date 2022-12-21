@@ -1,7 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::fs;
-use std::io::{prelude::*, BufReader};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -69,7 +67,6 @@ pub async fn bundle(
 
   let operation = |(ps, graph): (ProcState, Arc<deno_graph::ModuleGraph>)| {
     let out_file = bundle_flags.out_file.clone();
-    let source_file = bundle_flags.source_file.clone();
     async move {
       // at the moment, we don't support npm specifiers in deno bundle, so show an error
       error_for_any_npm_specifier(&graph)?;
@@ -77,7 +74,7 @@ pub async fn bundle(
       let mut bundle_output = bundle_module_graph(graph.as_ref(), &ps)?;
       log::debug!(">>>>> bundle END");
 
-      if let Some(shebang) = shebang_file(source_file.clone()) {
+      if let Some(shebang) = shebang_file(&graph) {
         bundle_output.code = format!("{}{}", shebang, bundle_output.code);
       }
 
@@ -164,15 +161,10 @@ fn bundle_module_graph(
   )
 }
 
-fn shebang_file(source_file: String) -> Option<String> {
-  let file = fs::File::open(source_file).unwrap();
-  let mut buffer = BufReader::new(file);
-  let mut first_line = String::new();
-  let _ = buffer.read_line(&mut first_line);
-
-  // shebang file start with #!
-  if first_line.starts_with("#!") {
-    Some(first_line)
+fn shebang_file(graph: &deno_graph::ModuleGraph) -> Option<String> {
+  let source = graph.get(&graph.roots[0].0).unwrap().maybe_source.clone();
+  if let Some(code) = source {
+    Some(code.lines().next().unwrap().to_string())
   } else {
     None
   }
