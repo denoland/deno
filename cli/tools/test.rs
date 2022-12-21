@@ -7,7 +7,6 @@ use crate::colors;
 use crate::display;
 use crate::file_fetcher::File;
 use crate::graph_util::contains_specifier;
-use crate::graph_util::get_dependencies;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
@@ -1244,10 +1243,10 @@ fn collect_specifiers_with_test_mode(
   include_inline: bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let module_specifiers =
-    collect_specifiers(include.clone(), &ignore, is_supported_test_path)?;
+    collect_specifiers(&include, &ignore, is_supported_test_path)?;
 
   if include_inline {
-    return collect_specifiers(include, &ignore, is_supported_test_ext).map(
+    return collect_specifiers(&include, &ignore, is_supported_test_ext).map(
       |specifiers| {
         specifiers
           .into_iter()
@@ -1378,9 +1377,9 @@ pub async fn run_tests_with_watch(
 
     async move {
       let test_modules = if test_flags.doc {
-        collect_specifiers(include.clone(), &ignore, is_supported_test_ext)
+        collect_specifiers(&include, &ignore, is_supported_test_ext)
       } else {
-        collect_specifiers(include.clone(), &ignore, is_supported_test_path)
+        collect_specifiers(&include, &ignore, is_supported_test_path)
       }?;
 
       let mut paths_to_watch = paths_to_watch_clone;
@@ -1404,6 +1403,43 @@ pub async fn run_tests_with_watch(
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
+        fn get_dependencies<'a>(
+          graph: &'a deno_graph::ModuleGraph,
+          maybe_module: Option<&'a deno_graph::Module>,
+          // This needs to be accessible to skip getting dependencies if they're already there,
+          // otherwise this will cause a stack overflow with circular dependencies
+          output: &mut HashSet<&'a ModuleSpecifier>,
+          no_check: bool,
+        ) {
+          if let Some(module) = maybe_module {
+            for dep in module.dependencies.values() {
+              if let Some(specifier) = &dep.get_code() {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
+                  get_dependencies(
+                    graph,
+                    graph.get(specifier),
+                    output,
+                    no_check,
+                  );
+                }
+              }
+              if !no_check {
+                if let Some(specifier) = &dep.get_type() {
+                  if !output.contains(specifier) {
+                    output.insert(specifier);
+                    get_dependencies(
+                      graph,
+                      graph.get(specifier),
+                      output,
+                      no_check,
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
         // This test module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);

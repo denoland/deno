@@ -5,7 +5,6 @@ use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::graph_util::contains_specifier;
-use crate::graph_util::get_dependencies;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
@@ -495,7 +494,7 @@ pub async fn run_benchmarks(
   let bench_config = ps.options.to_bench_config(&bench_flags)?;
 
   let specifiers = collect_specifiers(
-    bench_config.files.include,
+    &bench_config.files.include,
     &bench_config.files.ignore,
     is_supported_bench_path,
   )?;
@@ -545,7 +544,7 @@ pub async fn run_benchmarks_with_watch(
 
     async move {
       let bench_modules =
-        collect_specifiers(include.clone(), &ignore, is_supported_bench_path)?;
+        collect_specifiers(&include, &ignore, is_supported_bench_path)?;
 
       let mut paths_to_watch = paths_to_watch_clone;
       let mut modules_to_reload = if files_changed {
@@ -568,6 +567,43 @@ pub async fn run_benchmarks_with_watch(
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in bench_modules {
+        fn get_dependencies<'a>(
+          graph: &'a deno_graph::ModuleGraph,
+          maybe_module: Option<&'a deno_graph::Module>,
+          // This needs to be accessible to skip getting dependencies if they're already there,
+          // otherwise this will cause a stack overflow with circular dependencies
+          output: &mut HashSet<&'a ModuleSpecifier>,
+          no_check: bool,
+        ) {
+          if let Some(module) = maybe_module {
+            for dep in module.dependencies.values() {
+              if let Some(specifier) = &dep.get_code() {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
+                  get_dependencies(
+                    graph,
+                    graph.get(specifier),
+                    output,
+                    no_check,
+                  );
+                }
+              }
+              if !no_check {
+                if let Some(specifier) = &dep.get_type() {
+                  if !output.contains(specifier) {
+                    output.insert(specifier);
+                    get_dependencies(
+                      graph,
+                      graph.get(specifier),
+                      output,
+                      no_check,
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
         // This bench module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
@@ -624,7 +660,7 @@ pub async fn run_benchmarks_with_watch(
 
     async move {
       let specifiers =
-        collect_specifiers(include.clone(), &ignore, is_supported_bench_path)?
+        collect_specifiers(&include, &ignore, is_supported_bench_path)?
           .iter()
           .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
           .cloned()
@@ -636,9 +672,7 @@ pub async fn run_benchmarks_with_watch(
         ps,
         permissions.clone(),
         specifiers,
-        BenchSpecifierOptions {
-          filter: filter.clone(),
-        },
+        BenchSpecifierOptions { filter },
       )
       .await?;
 

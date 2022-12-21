@@ -608,31 +608,3 @@ pub fn error_for_any_npm_specifier(
     Ok(())
   }
 }
-
-pub fn get_dependencies<'a>(
-  graph: &'a deno_graph::ModuleGraph,
-  maybe_module: Option<&'a deno_graph::Module>,
-  // This needs to be accessible to skip getting dependencies if they're already there,
-  // otherwise this will cause a stack overflow with circular dependencies
-  output: &mut HashSet<&'a ModuleSpecifier>,
-  no_check: bool,
-) {
-  if let Some(module) = maybe_module {
-    for dep in module.dependencies.values() {
-      if let Some(specifier) = &dep.get_code() {
-        if !output.contains(specifier) {
-          output.insert(specifier);
-          get_dependencies(graph, graph.get(specifier), output, no_check);
-        }
-      }
-      if !no_check {
-        if let Some(specifier) = &dep.get_type() {
-          if !output.contains(specifier) {
-            output.insert(specifier);
-            get_dependencies(graph, graph.get(specifier), output, no_check);
-          }
-        }
-      }
-    }
-  }
-}

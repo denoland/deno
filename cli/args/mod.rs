@@ -412,10 +412,6 @@ impl CliOptions {
     &self,
     lint_flags: &LintFlags,
   ) -> Result<FinalLintConfig, AnyError> {
-    let cli_filters = lint_flags.get_filters();
-    let mut include = cli_filters.include;
-    let mut ignore = cli_filters.ignore;
-
     let mut maybe_rules_include = lint_flags.maybe_rules_include.clone();
     let mut maybe_rules_exclude = lint_flags.maybe_rules_exclude.clone();
     let mut maybe_rules_tags = lint_flags.maybe_rules_tags.clone();
@@ -427,6 +423,10 @@ impl CliOptions {
     } else {
       None
     };
+
+    let cli_filters = lint_flags.get_filters();
+    let mut include = cli_filters.include;
+    let mut ignore = cli_filters.ignore;
 
     if let Some(config_file) = &self.maybe_config_file {
       if let Some(lint_config) = config_file.to_lint_config()? {
@@ -549,10 +549,6 @@ impl CliOptions {
     &self,
     fmt_flags: &FmtFlags,
   ) -> Result<FinalFmtConfig, AnyError> {
-    let cli_filters = fmt_flags.get_filters();
-    let mut include = cli_filters.include;
-    let mut ignore = cli_filters.ignore;
-
     let prose_wrap = fmt_flags.prose_wrap.as_ref().map(|p| match p.as_str() {
       "always" => ProseWrap::Always,
       "never" => ProseWrap::Never,
@@ -571,6 +567,10 @@ impl CliOptions {
       single_quote: fmt_flags.single_quote,
       use_tabs: fmt_flags.use_tabs,
     };
+
+    let cli_filters = fmt_flags.get_filters();
+    let mut include = cli_filters.include;
+    let mut ignore = cli_filters.ignore;
 
     if let Some(config_file) = &self.maybe_config_file {
       if let Some(fmt_config) = config_file.to_fmt_config()? {

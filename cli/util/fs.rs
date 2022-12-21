@@ -254,7 +254,7 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
 /// Specifiers that start with http and https are left intact.
 /// Note: This ignores all .git and node_modules folders.
 pub fn collect_specifiers(
-  include: Vec<PathBuf>,
+  include: &[PathBuf],
   ignore: &[PathBuf],
   predicate: impl Fn(&Path) -> bool,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
@@ -266,7 +266,7 @@ pub fn collect_specifiers(
 
   let root_path = current_dir()?;
   for pathbuf in include {
-    let path = pathbuf.into_os_string().into_string().unwrap();
+    let path = pathbuf.clone().into_os_string().into_string().unwrap();
     let lowercase_path = path.to_lowercase();
     if lowercase_path.starts_with("http://")
       || lowercase_path.starts_with("https://")
@@ -676,7 +676,7 @@ mod tests {
     };
 
     let result = collect_specifiers(
-      vec![
+      &[
         PathBuf::from("http://localhost:8080"),
         root_dir_path.clone(),
         PathBuf::from("https://localhost:8080".to_string()),
@@ -714,7 +714,7 @@ mod tests {
       "file://"
     };
     let result = collect_specifiers(
-      vec![PathBuf::from(format!(
+      &[PathBuf::from(format!(
         "{}{}",
         scheme,
         root_dir_path
