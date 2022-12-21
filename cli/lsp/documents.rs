@@ -80,7 +80,7 @@ static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     .collect()
 });
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LanguageId {
   JavaScript,
   Jsx,
@@ -93,6 +93,31 @@ pub enum LanguageId {
 }
 
 impl LanguageId {
+  pub fn as_media_type(&self) -> MediaType {
+    match self {
+      LanguageId::JavaScript => MediaType::JavaScript,
+      LanguageId::Jsx => MediaType::Jsx,
+      LanguageId::TypeScript => MediaType::TypeScript,
+      LanguageId::Tsx => MediaType::Tsx,
+      LanguageId::Json => MediaType::Json,
+      LanguageId::JsonC => MediaType::Json,
+      LanguageId::Markdown | LanguageId::Unknown => MediaType::Unknown,
+    }
+  }
+
+  pub fn as_extension(&self) -> Option<&'static str> {
+    match self {
+      LanguageId::JavaScript => Some("js"),
+      LanguageId::Jsx => Some("jsx"),
+      LanguageId::TypeScript => Some("ts"),
+      LanguageId::Tsx => Some("tsx"),
+      LanguageId::Json => Some("json"),
+      LanguageId::JsonC => Some("jsonc"),
+      LanguageId::Markdown => Some("md"),
+      LanguageId::Unknown => None,
+    }
+  }
+
   fn as_headers(&self) -> Option<&HashMap<String, String>> {
     match self {
       Self::JavaScript => Some(&JS_HEADERS),
@@ -394,7 +419,7 @@ impl Document {
     Ok(Document(Arc::new(DocumentInner {
       specifier: self.0.specifier.clone(),
       fs_version: self.0.fs_version.clone(),
-      maybe_language_id: self.0.maybe_language_id.clone(),
+      maybe_language_id: self.0.maybe_language_id,
       dependencies,
       text_info,
       line_index,
@@ -464,10 +489,22 @@ impl Document {
 
   pub fn media_type(&self) -> MediaType {
     if let Some(Ok(module)) = &self.0.maybe_module {
-      module.media_type
-    } else {
-      MediaType::from(&self.0.specifier)
+      return module.media_type;
     }
+    let specifier_media_type = MediaType::from(&self.0.specifier);
+    if specifier_media_type != MediaType::Unknown {
+      return specifier_media_type;
+    }
+
+    self
+      .0
+      .maybe_language_id
+      .map(|id| id.as_media_type())
+      .unwrap_or(MediaType::Unknown)
+  }
+
+  pub fn maybe_language_id(&self) -> Option<LanguageId> {
+    self.0.maybe_language_id
   }
 
   /// Returns the current language server client version if any.
