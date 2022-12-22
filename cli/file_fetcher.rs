@@ -1,15 +1,17 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CacheSetting;
+use crate::auth_tokens::AuthToken;
 use crate::auth_tokens::AuthTokens;
 use crate::cache::HttpCache;
 use crate::colors;
+use crate::http_util;
 use crate::http_util::resolve_redirect_from_response;
 use crate::http_util::CacheSemantics;
-use crate::http_util::FetchOnceArgs;
-use crate::http_util::FetchOnceResult;
+use crate::http_util::HeadersMap;
 use crate::http_util::HttpClient;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::UpdateGuard;
 use crate::util::text_encoding;
 
 use data_url::DataUrl;
@@ -21,6 +23,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
 use deno_runtime::deno_fetch::reqwest::header::ACCEPT;
@@ -469,6 +472,7 @@ impl FileFetcher {
           maybe_accept: maybe_accept.clone(),
           maybe_etag,
           maybe_auth_token,
+          maybe_progress_guard: maybe_progress_guard.as_ref(),
         },
       )
       .await?
@@ -636,14 +640,30 @@ impl FileFetcher {
   }
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum FetchOnceResult {
+  Code(Vec<u8>, HeadersMap),
+  NotModified,
+  Redirect(Url, HeadersMap),
+}
+
+#[derive(Debug)]
+struct FetchOnceArgs<'a> {
+  pub url: Url,
+  pub maybe_accept: Option<String>,
+  pub maybe_etag: Option<String>,
+  pub maybe_auth_token: Option<AuthToken>,
+  pub maybe_progress_guard: Option<&'a UpdateGuard>,
+}
+
 /// Asynchronously fetches the given HTTP URL one pass only.
 /// If no redirect is present and no error occurs,
 /// yields Code(ResultPayload).
 /// If redirect occurs, does not follow and
 /// yields Redirect(url).
-async fn fetch_once(
+async fn fetch_once<'a>(
   http_client: &HttpClient,
-  args: FetchOnceArgs,
+  args: FetchOnceArgs<'a>,
 ) -> Result<FetchOnceResult, AnyError> {
   let mut request = http_client.get_no_redirect(args.url.clone());
 
@@ -709,7 +729,11 @@ async fn fetch_once(
     return Err(err);
   }
 
-  let body = response.bytes().await?.to_vec();
+  let body = http_util::get_response_body_with_progress(
+    response,
+    args.maybe_progress_guard,
+  )
+  .await?;
 
   Ok(FetchOnceResult::Code(body, result_headers))
 }
@@ -1778,6 +1802,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -1805,6 +1830,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -1833,6 +1859,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -1855,6 +1882,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: Some("33a64df551425fcc55e".to_string()),
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -1875,6 +1903,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -1905,6 +1934,7 @@ mod tests {
         maybe_accept: Some("application/json".to_string()),
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -1931,6 +1961,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -1971,6 +2002,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -2008,6 +2040,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -2043,6 +2076,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -2084,6 +2118,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -2128,6 +2163,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -2151,6 +2187,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: Some("33a64df551425fcc55e".to_string()),
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -2188,6 +2225,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;
@@ -2218,6 +2256,7 @@ mod tests {
         maybe_accept: None,
         maybe_etag: None,
         maybe_auth_token: None,
+        maybe_progress_guard: None,
       },
     )
     .await;

@@ -119,13 +119,13 @@ where
 pub struct PrintConfig {
   /// printing watcher status to terminal.
   pub job_name: String,
-  /// determine whether to clear the terminal screen
+  /// determine whether to clear the terminal screen; applicable to TTY environments only.
   pub clear_screen: bool,
 }
 
 fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
-    if clear_screen {
+    if clear_screen && atty::is(atty::Stream::Stderr) {
       eprint!("{}", CLEAR_SCREEN);
     }
     info!(
