@@ -75,7 +75,7 @@ pub async fn bundle(
       log::debug!(">>>>> bundle END");
 
       if let Some(shebang) = shebang_file(&graph) {
-        bundle_output.code = format!("{}{}", shebang, bundle_output.code);
+        bundle_output.code = format!("{}\n{}", shebang, bundle_output.code);
       }
 
       if let Some(out_file) = out_file.as_ref() {
