@@ -537,7 +537,8 @@ pub(crate) fn to_v8_type_error(
   scope: &mut v8::HandleScope,
   err: Error,
 ) -> v8::Global<v8::Value> {
-  let message = err.to_string();
+  // Note: using format string here, so that context of the error is included.
+  let message = format!("{:?}", err);
   let message = v8::String::new(scope, &message).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   v8::Global::new(scope, exception)
