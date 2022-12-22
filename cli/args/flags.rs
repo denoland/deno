@@ -48,6 +48,8 @@ static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
     .to_string()
 });
 
+static EXT_DEFAULT: &str = "js";
+
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct BenchFlags {
   pub ignore: Vec<PathBuf>,
@@ -761,8 +763,7 @@ fn bundle_subcommand<'a>() -> Command<'a> {
     )
     .arg(watch_arg(false))
     .arg(no_clear_screen_arg())
-    // TOOD: This array is duplicated too often
-    .arg(ext_arg(["ts", "tsx", "js", "jsx"]))
+    .arg(executable_ext_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -847,7 +848,7 @@ fn compile_subcommand<'a>() -> Command<'a> {
           "aarch64-apple-darwin",
         ]),
     )
-    .arg(ext_arg(["ts", "tsx", "js", "jsx"]))
+    .arg(executable_ext_arg())
     .about("UNSTABLE: Compile the script into a self contained executable")
     .long_about(
       "UNSTABLE: Compiles the given script into a self contained executable.
@@ -1067,13 +1068,13 @@ This command has implicit access to all permissions (--allow-all).",
       Arg::new("ts")
         .long("ts")
         .short('T')
-        .help("Treat eval input as TypeScript")
+        .help("deprecated: Treat eval input as TypeScript")
         .takes_value(false)
         .multiple_occurrences(false)
         .multiple_values(false)
         .hide(true),
     )
-    .arg(ext_arg(["ts", "tsx", "js", "jsx"]))
+    .arg(executable_ext_arg())
     .arg(
       Arg::new("print")
         .long("print")
@@ -1123,7 +1124,14 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .help("Check if the source files are formatted")
         .takes_value(false),
     )
-    .arg(ext_arg(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]))
+    .arg(
+      Arg::new("ext")
+        .long("ext")
+        .help("Set content type of the supplied file")
+        .takes_value(true)
+        .default_value(EXT_DEFAULT)
+        .possible_values(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
+    )
     .arg(
       Arg::new("ignore")
         .long("ignore")
@@ -1476,7 +1484,7 @@ fn run_subcommand<'a>() -> Command<'a> {
         .conflicts_with("inspect-brk"),
     )
     .arg(no_clear_screen_arg())
-    .arg(ext_arg(["ts", "tsx", "js", "jsx"]))
+    .arg(executable_ext_arg())
     .trailing_var_arg(true)
     .arg(script_arg().required(true))
     .about("Run a JavaScript or TypeScript program")
@@ -2029,22 +2037,16 @@ fn cached_only_arg<'a>() -> Arg<'a> {
     .help("Require that remote dependencies are already cached")
 }
 
-// TOOD: can we avoid this comment?
-/// possible_extensions must contain "ts"
-fn ext_arg<'help, I>(possible_extensions: I) -> Arg<'help>
-where
-  I: IntoIterator<Item = &'help str>,
-{
-  Arg::<'help>::new("ext")
+/// Used for subcommands that operate on executable scripts only.
+/// `deno fmt` has its own `--ext` arg because its possible values and default
+/// value differ.
+fn executable_ext_arg<'a>() -> Arg<'a> {
+  Arg::new("ext")
     .long("ext")
-    // TOOD: "file" may be misleading, because stdin is not a file, or is it?
-    .help("Set content type of the supplied file.")
+    .help("Set content type of the supplied file")
     .takes_value(true)
-    // TOOD: There should be a default value. To get this consistent. For user documentation.
-    // TOOD: Core team wants js, because there were commands defaulting to ts already
-    // clap will fail at run-time if the default value isn't listed in possible_extensions
-    // .default_value("ts")
-    .possible_values(possible_extensions)
+    .possible_values(["ts", "tsx", "js", "jsx"])
+    .default_value(EXT_DEFAULT)
 }
 
 fn location_arg<'a>() -> Arg<'a> {
@@ -2472,13 +2474,25 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let as_typescript = matches.is_present("ts");
 
   if as_typescript {
-    flags.ext = Some("ts".to_string());
-  }
+    println!(
+      "{}",
+      crate::colors::yellow(
+        "Warning: --ts/-T flag is deprecated. Use --ext=ts instead."
+      ),
+    );
 
-  if flags.ext.is_none() {
-    // TOOD: This is such a hack. We should use clap's default_value().
-    // Other code relies on ext being Some(), we can't leave it None.
-    flags.ext = Some("js".to_string());
+    if let Some(ext) = &flags.ext {
+      if ext != EXT_DEFAULT {
+        println!(
+          "{}",
+          crate::colors::yellow(
+            "--ts/-T is in conflict with --ext. Setting --ext=ts."
+          )
+        );
+      }
+    }
+
+    flags.ext = Some("ts".to_string());
   }
 
   let print = matches.is_present("print");
@@ -2508,8 +2522,8 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
-  // TOOD: use ext_arg_parse(). Difficult with(out) defaults.
-  let ext = matches.value_of("ext").unwrap_or("ts").to_string();
+
+  ext_arg_parse(flags, matches, None);
 
   let use_tabs = if matches.is_present("options-use-tabs") {
     Some(true)
@@ -2551,7 +2565,8 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.is_present("check"),
-    ext,
+    // unwrap() is safe because --ext has a default value
+    ext: flags.ext.clone().unwrap(),
     files,
     ignore,
     use_tabs,
@@ -2698,7 +2713,6 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.argv.push(v);
   }
 
-  // TOOD: add to other commands that support --ext
   ext_arg_parse(flags, matches, Some(script.as_str()));
 
   watch_arg_parse(flags, matches, true);
@@ -3110,8 +3124,8 @@ fn ext_arg_parse(
 ) {
   if let Some(script) = script {
     if Path::new(script).extension().is_some() {
-      // File extensions should take precedence over --ext. Ignore --ext if the
-      // script has an extension.
+      // File extensions should take precedence over --ext. Leave flags.ext=None
+      // if the script has an extension.
       return;
     }
   }
@@ -3119,16 +3133,9 @@ fn ext_arg_parse(
   flags.ext = matches.value_of("ext").map(String::from);
 
   if flags.ext.is_none() {
-    // TOOD: This shouldn't happen, but it does, we can't do anything about it.
-    // We should default --ext in clap. But tests will fail, because they rely
-    // on Flags::default(). We can't change Flags::default(), because there are
-    // subcommands without --ext. Those should have --ext=None.
-    // TOOD: restore this code if we can set default via clap
-    // We want --ext to have a default value in clap to have a consistent
-    // default value across all subcommands and to document it for the user.
-    // panic!(
-    //   "ext_arg_parse() was called, but --ext has no value. --ext should have a default value."
-    // );
+    panic!(
+      "ext_arg_parse() was called, but --ext has no value. Was --ext registered during subcommand creation?"
+    );
   }
 }
 
@@ -3445,6 +3452,7 @@ mod tests {
           script: "_".to_string(),
         }),
         v8_flags: svec!["--help"],
+        ext: Some(EXT_DEFAULT.to_string()),
         ..Flags::default()
       }
     );
@@ -3601,7 +3609,7 @@ mod tests {
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
           ],
-          ext: "ts".to_string(),
+          ext: EXT_DEFAULT.to_string(),
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3620,7 +3628,7 @@ mod tests {
           ignore: vec![],
           check: true,
           files: vec![],
-          ext: "ts".to_string(),
+          ext: EXT_DEFAULT.to_string(),
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3639,7 +3647,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
-          ext: "ts".to_string(),
+          ext: EXT_DEFAULT.to_string(),
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3658,7 +3666,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
-          ext: "ts".to_string(),
+          ext: EXT_DEFAULT.to_string(),
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3679,7 +3687,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
-          ext: "ts".to_string(),
+          ext: EXT_DEFAULT.to_string(),
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3707,7 +3715,7 @@ mod tests {
           ignore: vec![PathBuf::from("bar.js")],
           check: true,
           files: vec![PathBuf::from("foo.ts")],
-          ext: "ts".to_string(),
+          ext: EXT_DEFAULT.to_string(),
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3727,7 +3735,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
-          ext: "ts".to_string(),
+          ext: EXT_DEFAULT.to_string(),
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3754,7 +3762,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![PathBuf::from("foo.ts")],
-          ext: "ts".to_string(),
+          ext: EXT_DEFAULT.to_string(),
           use_tabs: None,
           line_width: None,
           indent_width: None,
@@ -3786,7 +3794,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
-          ext: "ts".to_string(),
+          ext: EXT_DEFAULT.to_string(),
           use_tabs: Some(true),
           line_width: Some(NonZeroU32::new(60).unwrap()),
           indent_width: Some(NonZeroU8::new(4).unwrap()),
@@ -4187,7 +4195,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
-        ext: Some("js".to_string()),
+        ext: Some(EXT_DEFAULT.to_string()),
         ..Flags::default()
       }
     );
@@ -4211,7 +4219,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
-        ext: Some("js".to_string()),
+        ext: Some(EXT_DEFAULT.to_string()),
         ..Flags::default()
       }
     );
@@ -4256,7 +4264,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
-        ext: Some("js".to_string()),
+        ext: Some(EXT_DEFAULT.to_string()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -4305,7 +4313,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
-        ext: Some("js".to_string()),
+        ext: Some(EXT_DEFAULT.to_string()),
         ..Flags::default()
       }
     );

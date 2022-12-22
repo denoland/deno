@@ -140,9 +140,6 @@ impl ProcState {
   ) -> Result<Self, AnyError> {
     // resolve the config each time
     let cli_options = Arc::new(CliOptions::from_flags(flags)?);
-    // TOOD: This is used for `deno run --watch`. Where do we add a test case? I
-    // like run_tests.rs, but it doesn't contain watcher tests yet and I don't
-    // know how to cancel the watcher
     let ps = Self::build_with_sender(
       cli_options,
       Some(main_specifier),
@@ -669,8 +666,9 @@ impl ProcState {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
-      // TOOD: what is this function? what's it used for? Should we pass overrides here?
-      self.file_header_overrides.clone(),
+      // TOOD(MR): Ask in MR what this function is used for. Perhaps we need to pass
+      // self.file_header_overrides here.
+      HashMap::default(),
       Permissions::allow_all(),
       Permissions::allow_all(),
     )

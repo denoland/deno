@@ -61,6 +61,24 @@ impl FetchCacher {
   }
 }
 
+fn maybe_extend_optional_map(
+  maybe_map: Option<&HashMap<String, String>>,
+  maybe_extend: Option<&HashMap<String, String>>,
+) -> Option<HashMap<String, String>> {
+  if maybe_map.is_none() && maybe_extend.is_none() {
+    None
+  } else {
+    let mut headers = HashMap::<String, String>::new();
+    if let Some(map) = maybe_map {
+      headers.extend(map.clone());
+    }
+    if let Some(extend) = maybe_extend {
+      headers.extend(extend.clone());
+    }
+    Some(headers)
+  }
+}
+
 impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
     if specifier.scheme() == "npm" {
@@ -106,14 +124,7 @@ impl Loader for FetchCacher {
       self.root_permissions.clone()
     };
     let file_fetcher = self.file_fetcher.clone();
-
-    // TOOD: This should happen in the closure down below as to not waste resources
-    let additional_headers = self
-      .file_header_overrides
-      .get(&specifier)
-      // TOOD: unnecessary clone
-      .unwrap_or(&HashMap::<String, String>::default())
-      .clone();
+    let file_header_overrides = self.file_header_overrides.clone();
 
     async move {
       file_fetcher
@@ -131,14 +142,17 @@ impl Loader for FetchCacher {
             Err(err)
           },
           |file| {
-            let mut headers = additional_headers;
-            if let Some(file_headers) = file.maybe_headers {
-              headers.extend(file_headers);
-            }
+            let maybe_overridden_headers =
+              file_header_overrides.get(&specifier);
+
+            let maybe_headers = maybe_extend_optional_map(
+              file.maybe_headers.as_ref(),
+              maybe_overridden_headers,
+            );
 
             Ok(Some(LoadResponse::Module {
               specifier: file.specifier,
-              maybe_headers: Some(headers),
+              maybe_headers: maybe_headers,
               content: file.source,
             }))
           },

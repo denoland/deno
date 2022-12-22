@@ -108,17 +108,19 @@ impl CliOptions {
     self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
   }
 
-  // TOOD: Add similar function to deno-ast's MediaType. Remove this.
+  // TOOD(MR): In MR ask: To deno_ast, add MediaType::map_js_like_extension()
+  // (Duplicate), MediaType::to_content_type()
   fn media_type_from_file_extension(extension: &str) -> Option<String> {
     match extension {
       "ts" => Some("application/typescript"),
+      "tsx" => Some("text/tsx"),
       "js" => Some("application/javascript"),
+      "jsx" => Some("text/jsx"),
       _ => None,
     }
     .map(|el| el.to_string())
   }
 
-  // TOOD: return Option<MediaType>?
   pub fn content_type(&self) -> Option<String> {
     self
       .flags
