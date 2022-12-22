@@ -231,7 +231,7 @@
       transferredArrayBuffers,
     });
 
-    for (const i in arrayBufferIdsInTransferables) {
+    for (let i = 0; i < arrayBufferIdsInTransferables.length; ++i) {
       const id = arrayBufferIdsInTransferables[i];
       transferables[id] = transferredArrayBuffers[i];
     }
