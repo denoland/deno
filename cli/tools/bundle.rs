@@ -163,9 +163,5 @@ fn bundle_module_graph(
 
 fn shebang_file(graph: &deno_graph::ModuleGraph) -> Option<String> {
   let source = graph.get(&graph.roots[0].0).unwrap().maybe_source.clone();
-  if let Some(code) = source {
-    Some(code.lines().next().unwrap().to_string())
-  } else {
-    None
-  }
+  source.map(|code| code.lines().next().unwrap().to_string())
 }
