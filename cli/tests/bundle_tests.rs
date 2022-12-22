@@ -472,7 +472,7 @@ mod bundle {
   });
 
   itest!(bundle_shebang_file {
-    args: "bundle bundle/shebang_file.js",
+    args: "bundle subdir/shebang_file.js",
     output: "bundle/shebang_file.bundle.out",
   });
 }
