@@ -4,8 +4,13 @@
 ((window) => {
   const core = window.Deno.core;
   const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-  const { readableStreamForRid, writableStreamForRid } =
-    window.__bootstrap.streams;
+  const {
+    readableStreamForRid,
+    readableStreamForRidUnrefable,
+    readableStreamForRidUnrefableRef,
+    readableStreamForRidUnrefableUnref,
+    writableStreamForRid,
+  } = window.__bootstrap.streams;
   const {
     Error,
     ObjectPrototypeIsPrototypeOf,
@@ -73,6 +78,7 @@
     }
 
     read(p) {
+      // TODO(bartlomieju): handle unrefing of connection
       return read(this.rid, p);
     }
 
@@ -86,7 +92,7 @@
 
     get readable() {
       if (this.#readable === undefined) {
-        this.#readable = readableStreamForRid(this.rid);
+        this.#readable = readableStreamForRidUnrefable(this.rid);
       }
       return this.#readable;
     }
@@ -96,6 +102,18 @@
         this.#writable = writableStreamForRid(this.rid);
       }
       return this.#writable;
+    }
+
+    ref() {
+      if (this.#readable) {
+        readableStreamForRidUnrefableRef(this.#readable);
+      }
+    }
+
+    unref() {
+      if (this.#readable) {
+        readableStreamForRidUnrefableUnref(this.#readable);
+      }
     }
   }
 
