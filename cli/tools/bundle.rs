@@ -163,5 +163,14 @@ fn bundle_module_graph(
 
 fn shebang_file(graph: &deno_graph::ModuleGraph) -> Option<String> {
   let source = graph.get(&graph.roots[0].0).unwrap().maybe_source.clone();
-  source.map(|code| code.lines().next().unwrap().to_string())
+  if let Some(code) = source {
+    let first_line = code.lines().next().unwrap().to_string();
+    if first_line.starts_with("#!") {
+      Some(first_line)
+    } else {
+      None
+    }
+  } else {
+    None
+  }
 }
