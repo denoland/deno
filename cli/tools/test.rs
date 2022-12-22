@@ -37,7 +37,6 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::io::Stdio;
 use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use log::Level;
@@ -712,7 +711,7 @@ pub fn format_test_error(js_error: &JsError) -> String {
 /// both.
 async fn test_specifier(
   ps: ProcState,
-  permissions: PermissionsContainer,
+  permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
   sender: TestEventSender,
@@ -724,7 +723,7 @@ async fn test_specifier(
   let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier.clone(),
-    permissions,
+    Arc::new(Mutex::new(permissions)),
     vec![ops::testing::init(
       sender,
       fail_fast_tracker,
@@ -922,7 +921,7 @@ async fn fetch_inline_files(
 /// Type check a collection of module and document specifiers.
 pub async fn check_specifiers(
   ps: &ProcState,
-  permissions: PermissionsContainer,
+  permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
@@ -956,7 +955,7 @@ pub async fn check_specifiers(
       false,
       lib,
       Arc::new(Mutex::new(Permissions::allow_all())),
-      permissions.clone(),
+      Arc::new(Mutex::new(permissions.clone())),
       false,
     )
     .await?;
@@ -978,7 +977,7 @@ pub async fn check_specifiers(
     false,
     lib,
     Arc::new(Mutex::new(Permissions::allow_all())),
-    permissions,
+    Arc::new(Mutex::new(permissions)),
     true,
   )
   .await?;
@@ -989,7 +988,7 @@ pub async fn check_specifiers(
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
   ps: ProcState,
-  permissions: PermissionsContainer,
+  permissions: Permissions,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
@@ -1340,9 +1339,11 @@ pub async fn run_tests(
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let permissions = Arc::new(Mutex::new(Permissions::from_options(
-    &ps.options.permissions_options(),
-  )?));
+  // Various test files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options())?;
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     &ps,
     test_flags.include,
@@ -1382,9 +1383,11 @@ pub async fn run_tests_with_watch(
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let permissions = Arc::new(Mutex::new(Permissions::from_options(
-    &ps.options.permissions_options(),
-  )?));
+  // Various test files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options())?;
 
   let include = test_flags.include;
   let ignore = test_flags.ignore.clone();

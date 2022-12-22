@@ -29,7 +29,6 @@ use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use log::Level;
@@ -332,7 +331,7 @@ impl BenchReporter for ConsoleReporter {
 /// Type check a collection of module and document specifiers.
 async fn check_specifiers(
   ps: &ProcState,
-  permissions: PermissionsContainer,
+  permissions: Permissions,
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
@@ -341,7 +340,7 @@ async fn check_specifiers(
     false,
     lib,
     Arc::new(Mutex::new(Permissions::allow_all())),
-    permissions,
+    Arc::new(Mutex::new(permissions)),
     true,
   )
   .await?;
@@ -352,7 +351,7 @@ async fn check_specifiers(
 /// Run a single specifier as an executable bench module.
 async fn bench_specifier(
   ps: ProcState,
-  permissions: PermissionsContainer,
+  permissions: Permissions,
   specifier: ModuleSpecifier,
   channel: UnboundedSender<BenchEvent>,
   options: BenchSpecifierOptions,
@@ -361,7 +360,7 @@ async fn bench_specifier(
   let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier.clone(),
-    permissions,
+    Arc::new(Mutex::new(permissions)),
     vec![ops::bench::init(channel.clone(), filter)],
     Default::default(),
   )
@@ -373,7 +372,7 @@ async fn bench_specifier(
 /// Test a collection of specifiers with test modes concurrently.
 async fn bench_specifiers(
   ps: ProcState,
-  permissions: PermissionsContainer,
+  permissions: Permissions,
   specifiers: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
@@ -493,9 +492,11 @@ pub async fn run_benchmarks(
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let permissions = Arc::new(Mutex::new(Permissions::from_options(
-    &ps.options.permissions_options(),
-  )?));
+  // Various bench files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options())?;
 
   let selection =
     collect_include_ignore(&bench_flags, ps.options.to_bench_config()?);
@@ -531,9 +532,11 @@ pub async fn run_benchmarks_with_watch(
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let permissions = Arc::new(Mutex::new(Permissions::from_options(
-    &ps.options.permissions_options(),
-  )?));
+  // Various bench files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options())?;
 
   let selection =
     collect_include_ignore(&bench_flags, ps.options.to_bench_config()?);

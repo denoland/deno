@@ -30,7 +30,6 @@ use deno_core::ModuleSpecifier;
 use deno_runtime::ops::io::Stdio;
 use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -149,7 +148,7 @@ impl LspTestFilter {
 #[allow(clippy::too_many_arguments)]
 async fn test_specifier(
   ps: proc_state::ProcState,
-  permissions: PermissionsContainer,
+  permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: test::TestMode,
   sender: TestEventSender,
@@ -163,7 +162,7 @@ async fn test_specifier(
     let mut worker = create_main_worker_for_test_or_bench(
       &ps,
       specifier.clone(),
-      permissions,
+      Arc::new(Mutex::new(permissions)),
       vec![ops::testing::init(sender, fail_fast_tracker, filter)],
       Stdio {
         stdin: StdioPipe::Inherit,
@@ -255,9 +254,11 @@ impl TestRun {
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
     let ps = proc_state::ProcState::build(flags).await?;
-    let permissions = Arc::new(Mutex::new(Permissions::from_options(
-      &ps.options.permissions_options(),
-    )?));
+    // Various test files should not share the same permissions in terms of
+    // `PermissionsContainer` - otherwise granting/revoking permissions in one
+    // file would have impact on other files, which is undesirable.
+    let permissions =
+      Permissions::from_options(&ps.options.permissions_options())?;
     test::check_specifiers(
       &ps,
       permissions.clone(),
