@@ -20,6 +20,7 @@ deno_core.workspace = true
 deno_tls.workspace = true
 dyn-clone = "1"
 http.workspace = true
+hyper.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 tokio.workspace = true

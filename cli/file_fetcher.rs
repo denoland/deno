@@ -1670,7 +1670,7 @@ mod tests {
 
   fn create_test_client() -> HttpClient {
     HttpClient::from_client(
-      create_http_client("test_client", None, vec![], None, None, None)
+      create_http_client("test_client", None, vec![], None, None, None, None)
         .unwrap(),
     )
   }
@@ -1878,6 +1878,7 @@ mod tests {
         None,
         None,
         None,
+        None,
       )
       .unwrap(),
     );
@@ -1912,6 +1913,7 @@ mod tests {
         version::get_user_agent(),
         None, // This will load mozilla certs by default
         vec![],
+        None,
         None,
         None,
         None,
@@ -1994,6 +1996,7 @@ mod tests {
         None,
         None,
         None,
+        None,
       )
       .unwrap(),
     );
@@ -2036,6 +2039,7 @@ mod tests {
             .unwrap(),
         )
         .unwrap()],
+        None,
         None,
         None,
         None,
@@ -2098,6 +2102,7 @@ mod tests {
             .unwrap(),
         )
         .unwrap()],
+        None,
         None,
         None,
         None,

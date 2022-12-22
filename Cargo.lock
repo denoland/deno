@@ -959,6 +959,7 @@ dependencies = [
  "deno_tls",
  "dyn-clone",
  "http",
+ "hyper",
  "reqwest",
  "serde",
  "tokio",

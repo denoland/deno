@@ -31,6 +31,9 @@ use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use http::header::CONTENT_LENGTH;
 use http::Uri;
+use hyper::client::connect::dns::Name;
+use reqwest::dns::Resolve;
+use reqwest::dns::Resolving;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -54,6 +57,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 // Re-export reqwest and data_url
@@ -74,6 +78,7 @@ pub struct Options {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
+  pub dns_resolver: Option<Arc<dyn Resolve>>,
 }
 
 impl Default for Options {
@@ -86,6 +91,7 @@ impl Default for Options {
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
+      dns_resolver: None,
     }
   }
 }
@@ -119,7 +125,8 @@ deno_core::extension!(deno_fetch,
         vec![],
         options.options.proxy,
         options.options.unsafely_ignore_certificate_errors,
-        options.options.client_cert_chain_and_key
+        options.options.client_cert_chain_and_key,
+        options.options.dns_resolver
       )
       .unwrap()
     });
@@ -637,6 +644,7 @@ where
     args.proxy,
     options.unsafely_ignore_certificate_errors.clone(),
     client_cert_chain_and_key,
+    options.dns_resolver.clone(),
   )?;
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
@@ -652,6 +660,7 @@ pub fn create_http_client(
   proxy: Option<Proxy>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
   client_cert_chain_and_key: Option<(String, String)>,
+  dns_resolver: Option<Arc<dyn Resolve>>,
 ) -> Result<Client, AnyError> {
   let mut tls_config = deno_tls::create_client_config(
     root_cert_store,
@@ -678,6 +687,18 @@ pub fn create_http_client(
     builder = builder.proxy(reqwest_proxy);
   }
 
+  if let Some(dns_resolver) = dns_resolver {
+    builder = builder.dns_resolver(Arc::new(ResolverWrapper(dns_resolver)));
+  }
+
   // unwrap here because it can only fail when native TLS is used.
   Ok(builder.build().unwrap())
+}
+
+struct ResolverWrapper(Arc<dyn Resolve>);
+
+impl Resolve for ResolverWrapper {
+  fn resolve(&self, name: Name) -> Resolving {
+    self.0.resolve(name)
+  }
 }
