@@ -1,7 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::fs_util;
-use crate::http_cache::url_to_filename;
+use super::http_cache::url_to_filename;
+use super::CACHE_PERM;
+use crate::util::fs::atomic_write_file;
 
 use deno_core::url::Host;
 use deno_core::url::Url;
@@ -135,7 +136,7 @@ impl DiskCache {
 
   pub fn get(&self, filename: &Path) -> std::io::Result<Vec<u8>> {
     let path = self.location.join(filename);
-    fs::read(&path)
+    fs::read(path)
   }
 
   pub fn set(&self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
@@ -144,7 +145,7 @@ impl DiskCache {
       Some(parent) => self.ensure_dir_exists(parent),
       None => Ok(()),
     }?;
-    fs_util::atomic_write_file(&path, data, crate::http_cache::CACHE_PERM)
+    atomic_write_file(&path, data, CACHE_PERM)
       .map_err(|e| with_io_context(&e, format!("{:#?}", &path)))
   }
 }

@@ -19,7 +19,6 @@ use crate::RequireNpmResolver;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
-pub static TYPES_CONDITIONS: &[&str] = &["types"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeModuleKind {
@@ -27,11 +26,23 @@ pub enum NodeModuleKind {
   Cjs,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeResolutionMode {
+  Execution,
+  Types,
+}
+
+impl NodeResolutionMode {
+  pub fn is_types(&self) -> bool {
+    matches!(self, NodeResolutionMode::Types)
+  }
+}
+
 /// Checks if the resolved file has a corresponding declaration file.
 pub fn path_to_declaration_path(
   path: PathBuf,
   referrer_kind: NodeModuleKind,
-) -> PathBuf {
+) -> Option<PathBuf> {
   fn probe_extensions(
     path: &Path,
     referrer_kind: NodeModuleKind,
@@ -56,17 +67,17 @@ pub fn path_to_declaration_path(
     || lowercase_path.ends_with(".d.cts")
     || lowercase_path.ends_with(".d.ts")
   {
-    return path;
+    return Some(path);
   }
   if let Some(path) = probe_extensions(&path, referrer_kind) {
-    return path;
+    return Some(path);
   }
   if path.is_dir() {
     if let Some(path) = probe_extensions(&path.join("index"), referrer_kind) {
-      return path;
+      return Some(path);
     }
   }
-  path
+  None
 }
 
 /// Alternate `PathBuf::with_extension` that will handle known extensions
@@ -175,6 +186,7 @@ pub fn package_imports_resolve(
   referrer: &ModuleSpecifier,
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   if name == "#" || name.starts_with("#/") || name.ends_with('/') {
@@ -202,6 +214,7 @@ pub fn package_imports_resolve(
           false,
           true,
           conditions,
+          mode,
           npm_resolver,
         )?;
         if let Some(resolved) = maybe_resolved {
@@ -243,6 +256,7 @@ pub fn package_imports_resolve(
             true,
             true,
             conditions,
+            mode,
             npm_resolver,
           )?;
           if let Some(resolved) = maybe_resolved {
@@ -306,6 +320,7 @@ fn resolve_package_target_string(
   pattern: bool,
   internal: bool,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   if !subpath.is_empty() && !pattern && !target.ends_with('/') {
@@ -338,6 +353,7 @@ fn resolve_package_target_string(
           &package_json_url,
           referrer_kind,
           conditions,
+          mode,
           npm_resolver,
         ) {
           Ok(Some(path)) => Ok(path),
@@ -412,10 +428,11 @@ fn resolve_package_target(
   pattern: bool,
   internal: bool,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<PathBuf>, AnyError> {
   if let Some(target) = target.as_str() {
-    return Ok(Some(resolve_package_target_string(
+    return resolve_package_target_string(
       target.to_string(),
       subpath,
       package_subpath,
@@ -425,8 +442,10 @@ fn resolve_package_target(
       pattern,
       internal,
       conditions,
+      mode,
       npm_resolver,
-    )?));
+    )
+    .map(Some);
   } else if let Some(target_arr) = target.as_array() {
     if target_arr.is_empty() {
       return Ok(None);
@@ -444,23 +463,25 @@ fn resolve_package_target(
         pattern,
         internal,
         conditions,
+        mode,
         npm_resolver,
       );
 
-      if let Err(e) = resolved_result {
-        let err_string = e.to_string();
-        last_error = Some(e);
-        if err_string.starts_with("[ERR_INVALID_PACKAGE_TARGET]") {
+      match resolved_result {
+        Ok(Some(resolved)) => return Ok(Some(resolved)),
+        Ok(None) => {
+          last_error = None;
           continue;
         }
-        return Err(last_error.unwrap());
+        Err(e) => {
+          let err_string = e.to_string();
+          last_error = Some(e);
+          if err_string.starts_with("[ERR_INVALID_PACKAGE_TARGET]") {
+            continue;
+          }
+          return Err(last_error.unwrap());
+        }
       }
-      let resolved = resolved_result.unwrap();
-      if resolved.is_none() {
-        last_error = None;
-        continue;
-      }
-      return Ok(resolved);
     }
     if last_error.is_none() {
       return Ok(None);
@@ -475,8 +496,12 @@ fn resolve_package_target(
       //   Some("\"exports\" cannot contain numeric property keys.".to_string()),
       // ));
 
-      if key == "default" || conditions.contains(&key.as_str()) {
+      if key == "default"
+        || conditions.contains(&key.as_str())
+        || mode.is_types() && key.as_str() == "types"
+      {
         let condition_target = target_obj.get(key).unwrap().to_owned();
+
         let resolved = resolve_package_target(
           package_json_path,
           condition_target,
@@ -487,12 +512,15 @@ fn resolve_package_target(
           pattern,
           internal,
           conditions,
+          mode,
           npm_resolver,
         )?;
-        if resolved.is_none() {
-          continue;
+        match resolved {
+          Some(resolved) => return Ok(Some(resolved)),
+          None => {
+            continue;
+          }
         }
-        return Ok(resolved);
       }
     }
   } else if target.is_null() {
@@ -520,6 +548,7 @@ fn throw_exports_not_found(
   )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn package_exports_resolve(
   package_json_path: &Path,
   package_subpath: String,
@@ -527,6 +556,7 @@ pub fn package_exports_resolve(
   referrer: &ModuleSpecifier,
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   if package_exports.contains_key(&package_subpath)
@@ -544,6 +574,7 @@ pub fn package_exports_resolve(
       false,
       false,
       conditions,
+      mode,
       npm_resolver,
     )?;
     if resolved.is_none() {
@@ -602,6 +633,7 @@ pub fn package_exports_resolve(
       true,
       false,
       conditions,
+      mode,
       npm_resolver,
     )?;
     if let Some(resolved) = maybe_resolved {
@@ -678,6 +710,7 @@ pub fn package_resolve(
   referrer: &ModuleSpecifier,
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<PathBuf>, AnyError> {
   let (package_name, package_subpath, _is_scoped) =
@@ -696,6 +729,7 @@ pub fn package_resolve(
         referrer,
         referrer_kind,
         conditions,
+        mode,
         npm_resolver,
       )
       .map(Some);
@@ -705,7 +739,7 @@ pub fn package_resolve(
   let package_dir_path = npm_resolver.resolve_package_folder_from_package(
     &package_name,
     &referrer.to_file_path().unwrap(),
-    conditions,
+    mode,
   )?;
   let package_json_path = package_dir_path.join("package.json");
 
@@ -732,19 +766,21 @@ pub fn package_resolve(
       referrer,
       referrer_kind,
       conditions,
+      mode,
       npm_resolver,
     )
     .map(Some);
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_json, referrer_kind, conditions);
+    return legacy_main_resolve(&package_json, referrer_kind, mode);
   }
 
   let file_path = package_json.path.parent().unwrap().join(&package_subpath);
 
-  if conditions == TYPES_CONDITIONS {
-    let declaration_path = path_to_declaration_path(file_path, referrer_kind);
-    Ok(Some(declaration_path))
+  if mode.is_types() {
+    let maybe_declaration_path =
+      path_to_declaration_path(file_path, referrer_kind);
+    Ok(maybe_declaration_path)
   } else {
     Ok(Some(file_path))
   }
@@ -802,10 +838,9 @@ fn file_exists(path: &Path) -> bool {
 pub fn legacy_main_resolve(
   package_json: &PackageJson,
   referrer_kind: NodeModuleKind,
-  conditions: &[&str],
+  mode: NodeResolutionMode,
 ) -> Result<Option<PathBuf>, AnyError> {
-  let is_types = conditions == TYPES_CONDITIONS;
-  let maybe_main = if is_types {
+  let maybe_main = if mode.is_types() {
     match package_json.types.as_ref() {
       Some(types) => Some(types),
       None => {
@@ -813,8 +848,7 @@ pub fn legacy_main_resolve(
         // a corresponding declaration file
         if let Some(main) = package_json.main(referrer_kind) {
           let main = package_json.path.parent().unwrap().join(main).clean();
-          let path = path_to_declaration_path(main, referrer_kind);
-          if path.exists() {
+          if let Some(path) = path_to_declaration_path(main, referrer_kind) {
             return Ok(Some(path));
           }
         }
@@ -832,7 +866,7 @@ pub fn legacy_main_resolve(
     }
 
     // todo(dsherret): investigate exactly how node and typescript handles this
-    let endings = if is_types {
+    let endings = if mode.is_types() {
       match referrer_kind {
         NodeModuleKind::Cjs => {
           vec![".d.ts", ".d.cts", "/index.d.ts", "/index.d.cts"]
@@ -854,7 +888,7 @@ pub fn legacy_main_resolve(
         .path
         .parent()
         .unwrap()
-        .join(&format!("{}{}", main, ending))
+        .join(format!("{}{}", main, ending))
         .clean();
       if file_exists(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()
@@ -863,7 +897,7 @@ pub fn legacy_main_resolve(
     }
   }
 
-  let index_file_names = if is_types {
+  let index_file_names = if mode.is_types() {
     // todo(dsherret): investigate exactly how typescript does this
     match referrer_kind {
       NodeModuleKind::Cjs => vec!["index.d.ts", "index.d.cts"],

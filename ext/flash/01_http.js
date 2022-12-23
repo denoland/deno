@@ -27,11 +27,11 @@
   } = window.__bootstrap.webSocket;
   const { _ws } = window.__bootstrap.http;
   const {
-    Function,
     ObjectPrototypeIsPrototypeOf,
-    Promise,
+    PromisePrototype,
     PromisePrototypeCatch,
     PromisePrototypeThen,
+    SafeArrayIterator,
     SafePromiseAll,
     TypedArrayPrototypeSubarray,
     TypeError,
@@ -140,7 +140,7 @@
     // status-line = HTTP-version SP status-code SP reason-phrase CRLF
     // Date header: https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.2
     let str = `HTTP/1.1 ${status} ${statusCodes[status]}\r\nDate: ${date}\r\n`;
-    for (const [name, value] of headerList) {
+    for (const [name, value] of new SafeArrayIterator(headerList)) {
       // header-field   = field-name ":" OWS field-value OWS
       str += `${name}: ${value}\r\n`;
     }
@@ -188,8 +188,8 @@
     return str;
   }
 
-  function prepareFastCalls(serverId) {
-    return core.ops.op_flash_make_request(serverId);
+  function prepareFastCalls() {
+    return core.ops.op_flash_make_request();
   }
 
   function hostnameForDisplay(hostname) {
@@ -439,10 +439,10 @@
     return async function serve(arg1, arg2) {
       let options = undefined;
       let handler = undefined;
-      if (arg1 instanceof Function) {
+      if (typeof arg1 === "function") {
         handler = arg1;
         options = arg2;
-      } else if (arg2 instanceof Function) {
+      } else if (typeof arg2 === "function") {
         handler = arg2;
         options = arg1;
       } else {
@@ -456,7 +456,7 @@
         }
         handler = options.handler;
       }
-      if (!(handler instanceof Function)) {
+      if (typeof handler !== "function") {
         throw new TypeError("A handler function must be provided.");
       }
       if (options === undefined) {
@@ -495,11 +495,15 @@
 
       const serverId = opFn(listenOpts);
       const serverPromise = core.opAsync("op_flash_drive_server", serverId);
-      const listenPromise = PromisePrototypeThen(
-        core.opAsync("op_flash_wait_for_listening", serverId),
-        (port) => {
-          onListen({ hostname: listenOpts.hostname, port });
-        },
+
+      PromisePrototypeCatch(
+        PromisePrototypeThen(
+          core.opAsync("op_flash_wait_for_listening", serverId),
+          (port) => {
+            onListen({ hostname: listenOpts.hostname, port });
+          },
+        ),
+        () => {},
       );
       const finishedPromise = PromisePrototypeCatch(serverPromise, () => {});
 
@@ -515,7 +519,7 @@
             return;
           }
           server.closed = true;
-          core.ops.op_flash_close_server(serverId);
+          await core.opAsync("op_flash_close_server", serverId);
           await server.finished;
         },
         async serve() {
@@ -566,7 +570,7 @@
               let resp;
               try {
                 resp = handler(req);
-                if (resp instanceof Promise) {
+                if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
                   PromisePrototypeCatch(
                     PromisePrototypeThen(
                       resp,
@@ -630,7 +634,7 @@
 
       signal?.addEventListener("abort", () => {
         clearInterval(dateInterval);
-        server.close();
+        PromisePrototypeThen(server.close(), () => {}, () => {});
       }, {
         once: true,
       });
@@ -664,7 +668,7 @@
         );
       }
 
-      const fastOp = prepareFastCalls(serverId);
+      const fastOp = prepareFastCalls();
       let nextRequestSync = () => fastOp.nextRequest();
       let getMethodSync = (token) => fastOp.getMethod(token);
       let respondFast = (token, response, shutdown) =>
@@ -684,8 +688,8 @@
       }
 
       await SafePromiseAll([
-        listenPromise,
         PromisePrototypeCatch(server.serve(), console.error),
+        serverPromise,
       ]);
     };
   }

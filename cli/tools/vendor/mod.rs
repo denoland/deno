@@ -15,11 +15,12 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::FmtOptionsConfig;
 use crate::args::VendorFlags;
-use crate::fs_util;
-use crate::fs_util::relative_specifier;
-use crate::fs_util::specifier_to_file_path;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
+use crate::util::fs::canonicalize_path;
+use crate::util::fs::resolve_from_cwd;
+use crate::util::path::relative_specifier;
+use crate::util::path::specifier_to_file_path;
 
 mod analyze;
 mod build;
@@ -38,7 +39,7 @@ pub async fn vendor(
     Some(output_path) => output_path.to_owned(),
     None => PathBuf::from("vendor/"),
   };
-  let output_dir = fs_util::resolve_from_cwd(&raw_output_dir)?;
+  let output_dir = resolve_from_cwd(&raw_output_dir)?;
   validate_output_dir(&output_dir, &vendor_flags)?;
   validate_options(&mut cli_options, &output_dir)?;
   let ps = ProcState::from_options(Arc::new(cli_options)).await?;
@@ -48,10 +49,11 @@ pub async fn vendor(
     &ps.parsed_source_cache,
     &output_dir,
     ps.maybe_import_map.as_deref(),
+    ps.lockfile.clone(),
     &build::RealVendorEnvironment,
   )?;
 
-  eprintln!(
+  log::info!(
     concat!("Vendored {} {} into {} directory.",),
     vendored_count,
     if vendored_count == 1 {
@@ -64,7 +66,7 @@ pub async fn vendor(
   if vendored_count > 0 {
     let import_map_path = raw_output_dir.join("import_map.json");
     if maybe_update_config_file(&output_dir, &ps) {
-      eprintln!(
+      log::info!(
         concat!(
           "\nUpdated your local Deno configuration file with a reference to the ",
           "new vendored import map at {}. Invoking Deno subcommands will now ",
@@ -75,7 +77,7 @@ pub async fn vendor(
         import_map_path.display(),
       );
     } else {
-      eprintln!(
+      log::info!(
         concat!(
           "\nTo use vendored modules, specify the `--import-map {}` flag when ",
           r#"invoking Deno subcommands or add an `"importMap": "<path_to_vendored_import_map>"` "#,
@@ -110,18 +112,17 @@ fn validate_options(
   if let Some(import_map_path) = options
     .resolve_import_map_specifier()?
     .and_then(|p| specifier_to_file_path(&p).ok())
-    .and_then(|p| fs_util::canonicalize_path(&p).ok())
+    .and_then(|p| canonicalize_path(&p).ok())
   {
     // make the output directory in order to canonicalize it for the check below
     std::fs::create_dir_all(output_dir)?;
-    let output_dir =
-      fs_util::canonicalize_path(output_dir).with_context(|| {
-        format!("Failed to canonicalize: {}", output_dir.display())
-      })?;
+    let output_dir = canonicalize_path(output_dir).with_context(|| {
+      format!("Failed to canonicalize: {}", output_dir.display())
+    })?;
 
-    if import_map_path.starts_with(&output_dir) {
+    if import_map_path.starts_with(output_dir) {
       // canonicalize to make the test for this pass on the CI
-      let cwd = fs_util::canonicalize_path(&std::env::current_dir()?)?;
+      let cwd = canonicalize_path(&std::env::current_dir()?)?;
       // We don't allow using the output directory to help generate the
       // new state because this may lead to cryptic error messages.
       log::warn!(

@@ -1,19 +1,21 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::BenchConfig;
 use crate::args::BenchFlags;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::colors;
-use crate::file_watcher;
-use crate::file_watcher::ResolutionResult;
-use crate::fs_util::collect_specifiers;
-use crate::fs_util::is_supported_bench_path;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
+use crate::util::file_watcher;
+use crate::util::file_watcher::ResolutionResult;
+use crate::util::fs::collect_specifiers;
+use crate::util::path::is_supported_ext;
+use crate::util::path::specifier_to_file_path;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
@@ -32,6 +34,7 @@ use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashSet;
+use std::path::Path;
 use std::path::PathBuf;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
@@ -469,6 +472,19 @@ async fn bench_specifiers(
   Ok(())
 }
 
+/// Checks if the path has a basename and extension Deno supports for benches.
+fn is_supported_bench_path(path: &Path) -> bool {
+  if let Some(name) = path.file_stem() {
+    let basename = name.to_string_lossy();
+    (basename.ends_with("_bench")
+      || basename.ends_with(".bench")
+      || basename == "bench")
+      && is_supported_ext(path)
+  } else {
+    false
+  }
+}
+
 pub async fn run_benchmarks(
   flags: Flags,
   bench_flags: BenchFlags,
@@ -476,9 +492,13 @@ pub async fn run_benchmarks(
   let ps = ProcState::build(flags).await?;
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
+
+  let selection =
+    collect_include_ignore(&bench_flags, ps.options.to_bench_config()?);
+
   let specifiers = collect_specifiers(
-    bench_flags.include.unwrap_or_else(|| vec![".".to_string()]),
-    &bench_flags.ignore.clone(),
+    selection.include,
+    &selection.ignore,
     is_supported_bench_path,
   )?;
 
@@ -510,9 +530,11 @@ pub async fn run_benchmarks_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let include = bench_flags.include.unwrap_or_else(|| vec![".".to_string()]);
-  let ignore = bench_flags.ignore.clone();
-  let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
+  let selection =
+    collect_include_ignore(&bench_flags, ps.options.to_bench_config()?);
+
+  let paths_to_watch: Vec<_> =
+    selection.include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
@@ -520,8 +542,8 @@ pub async fn run_benchmarks_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = include.clone();
-    let ignore = ignore.clone();
+    let include = selection.include.clone();
+    let ignore = selection.ignore.clone();
     let ps = ps.clone();
 
     async move {
@@ -636,8 +658,8 @@ pub async fn run_benchmarks_with_watch(
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
     let filter = bench_flags.filter.clone();
-    let include = include.clone();
-    let ignore = ignore.clone();
+    let include = selection.include.clone();
+    let ignore = selection.ignore.clone();
     let permissions = permissions.clone();
     let ps = ps.clone();
 
@@ -672,4 +694,43 @@ pub async fn run_benchmarks_with_watch(
   .await?;
 
   Ok(())
+}
+
+struct IncludeIgnoreCollection {
+  include: Vec<String>,
+  ignore: Vec<PathBuf>,
+}
+
+fn collect_include_ignore(
+  bench_flags: &BenchFlags,
+  maybe_bench_config: Option<BenchConfig>,
+) -> IncludeIgnoreCollection {
+  let mut include = bench_flags.include.clone().unwrap_or_default();
+  let mut ignore = bench_flags.ignore.clone();
+
+  if let Some(bench_config) = maybe_bench_config {
+    if include.is_empty() {
+      include = bench_config
+        .files
+        .include
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
+    }
+
+    if ignore.is_empty() {
+      ignore = bench_config
+        .files
+        .exclude
+        .iter()
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
+    }
+  }
+
+  if include.is_empty() {
+    include.push(".".to_string());
+  }
+
+  IncludeIgnoreCollection { include, ignore }
 }

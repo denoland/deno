@@ -277,9 +277,14 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     }
   }
 
+  let root_specifiers = graph
+    .roots
+    .iter()
+    .map(|(url, _)| graph.resolve(url))
+    .collect::<Vec<_>>();
   let mut seen = HashSet::new();
   let mut specifier_graph = SpecifierTree::default();
-  for (root, _) in graph.roots.iter() {
+  for root in &root_specifiers {
     if let Some(module) = graph.get(root) {
       analyze_module(module, graph, &mut specifier_graph, &mut seen);
     }
@@ -289,7 +294,7 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
   let mut pending_specifiers = VecDeque::new();
   let mut result = Vec::new();
 
-  for (specifier, _) in &graph.roots {
+  for specifier in &root_specifiers {
     match NpmPackageReference::from_specifier(specifier) {
       Ok(npm_ref) => result.push(npm_ref.req),
       Err(_) => {
@@ -933,21 +938,49 @@ mod tests {
             )]),
           },
         ),
+        // redirect module
+        (
+          "https://deno.land/x/module_redirect/mod.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_redirect@0.0.1/mod.ts".to_string(),
+            content: concat!(
+              "import 'npm:package-a@module_redirect';",
+              // try another redirect here
+              "import 'https://deno.land/x/module_redirect/other.ts';",
+            ).to_string(),
+            maybe_headers: None,
+          }
+        ),
+        (
+          "https://deno.land/x/module_redirect/other.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_redirect@0.0.1/other.ts".to_string(),
+            content: "import 'npm:package-b@module_redirect';".to_string(),
+            maybe_headers: None,
+          }
+        ),
       ],
       Vec::new(),
     );
     let analyzer = deno_graph::CapturingModuleAnalyzer::default();
     let graph = deno_graph::create_graph(
-      vec![(
-        ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
-        ModuleKind::Esm,
-      )],
+      vec![
+        (
+          ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
+          ModuleKind::Esm,
+        ),
+        (
+          // test redirect at root
+          ModuleSpecifier::parse("https://deno.land/x/module_redirect/mod.ts")
+            .unwrap(),
+          ModuleKind::Esm,
+        ),
+      ],
       &mut loader,
       deno_graph::GraphOptions {
         is_dynamic: false,
         imports: None,
         resolver: None,
-        locker: None,
         module_analyzer: Some(&analyzer),
         reporter: None,
       },
@@ -963,6 +996,8 @@ mod tests {
       vec![
         "package-a@local_module_a",
         "package-b@local_module_a",
+        "package-a@module_redirect",
+        "package-b@module_redirect",
         "package-b@local_module_b",
         "package-data@local_module_b",
         "package-a@module_a",

@@ -26,6 +26,7 @@
     MathMin,
     ObjectPrototypeIsPrototypeOf,
     RegExpPrototypeTest,
+    SafeArrayIterator,
     StringPrototypeCharAt,
     StringPrototypeToLowerCase,
     StringPrototypeSlice,
@@ -94,7 +95,7 @@
 
   /** @param {(BlobReference | Blob)[]} parts */
   async function* toIterator(parts) {
-    for (const part of parts) {
+    for (const part of new SafeArrayIterator(parts)) {
       yield* part.stream();
     }
   }
@@ -110,7 +111,7 @@
     /** @type {(BlobReference|Blob)[]} */
     const processedParts = [];
     let size = 0;
-    for (const element of parts) {
+    for (const element of new SafeArrayIterator(parts)) {
       if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, element)) {
         const chunk = new Uint8Array(ArrayBufferPrototypeSlice(element, 0));
         ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
@@ -158,7 +159,7 @@
    * @returns {string[]}
    */
   function getParts(blob, bag = []) {
-    for (const part of blob[_parts]) {
+    for (const part of new SafeArrayIterator(blob[_parts])) {
       if (ObjectPrototypeIsPrototypeOf(BlobPrototype, part)) {
         getParts(part, bag);
       } else {
@@ -275,7 +276,7 @@
       const blobParts = [];
       let added = 0;
 
-      for (const part of this[_parts]) {
+      for (const part of new SafeArrayIterator(this[_parts])) {
         // don't add the overflow to new blobParts
         if (added >= span) {
           // Could maybe be possible to remove variable `added`
@@ -349,6 +350,7 @@
       const bytes = new Uint8Array(size);
       const partIterator = toIterator(this[_parts]);
       let offset = 0;
+      // deno-lint-ignore prefer-primordials
       for await (const chunk of partIterator) {
         const byteLength = chunk.byteLength;
         if (byteLength > 0) {
@@ -598,7 +600,7 @@
     const parts = [];
     let totalSize = 0;
 
-    for (const { uuid, size } of blobData.parts) {
+    for (const { uuid, size } of new SafeArrayIterator(blobData.parts)) {
       ArrayPrototypePush(parts, new BlobReference(uuid, size));
       totalSize += size;
     }

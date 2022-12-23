@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_webgpu"
-version = "0.80.0"
+version = "0.83.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

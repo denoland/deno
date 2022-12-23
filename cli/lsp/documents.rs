@@ -6,21 +6,20 @@ use super::tsc;
 use super::tsc::AssetDocument;
 
 use crate::args::ConfigFile;
+use crate::cache::CachedUrlMetadata;
+use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
-use crate::fs_util::specifier_to_file_path;
-use crate::http_cache;
-use crate::http_cache::HttpCache;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
-use crate::node::NodeResolutionMode;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 use crate::resolver::CliResolver;
-use crate::text_encoding;
+use crate::util::path::specifier_to_file_path;
+use crate::util::text_encoding;
 
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
@@ -33,10 +32,12 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphImport;
 use deno_graph::Resolved;
+use deno_runtime::deno_node::NodeResolutionMode;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::fs;
 use std::ops::Range;
 use std::path::Path;
@@ -79,7 +80,7 @@ static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     .collect()
 });
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LanguageId {
   JavaScript,
   Jsx,
@@ -92,6 +93,31 @@ pub enum LanguageId {
 }
 
 impl LanguageId {
+  pub fn as_media_type(&self) -> MediaType {
+    match self {
+      LanguageId::JavaScript => MediaType::JavaScript,
+      LanguageId::Jsx => MediaType::Jsx,
+      LanguageId::TypeScript => MediaType::TypeScript,
+      LanguageId::Tsx => MediaType::Tsx,
+      LanguageId::Json => MediaType::Json,
+      LanguageId::JsonC => MediaType::Json,
+      LanguageId::Markdown | LanguageId::Unknown => MediaType::Unknown,
+    }
+  }
+
+  pub fn as_extension(&self) -> Option<&'static str> {
+    match self {
+      LanguageId::JavaScript => Some("js"),
+      LanguageId::Jsx => Some("jsx"),
+      LanguageId::TypeScript => Some("ts"),
+      LanguageId::Tsx => Some("tsx"),
+      LanguageId::Json => Some("json"),
+      LanguageId::JsonC => Some("jsonc"),
+      LanguageId::Markdown => Some("md"),
+      LanguageId::Unknown => None,
+    }
+  }
+
   fn as_headers(&self) -> Option<&HashMap<String, String>> {
     match self {
       Self::JavaScript => Some(&JS_HEADERS),
@@ -243,16 +269,18 @@ type MaybeModuleResult =
 type MaybeParsedSourceResult =
   Option<Result<ParsedSource, deno_ast::Diagnostic>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct DocumentInner {
-  /// contains the last-known-good set of dependencies from parsing the module
+  /// Contains the last-known-good set of dependencies from parsing the module.
   dependencies: Arc<DocumentDependencies>,
   fs_version: String,
   line_index: Arc<LineIndex>,
   maybe_language_id: Option<LanguageId>,
   maybe_lsp_version: Option<i32>,
   maybe_module: MaybeModuleResult,
-  maybe_navigation_tree: Option<Arc<tsc::NavigationTree>>,
+  // this is a lazily constructed value based on the state of the document,
+  // so having a mutex to hold it is ok
+  maybe_navigation_tree: Mutex<Option<Arc<tsc::NavigationTree>>>,
   maybe_parsed_source: MaybeParsedSourceResult,
   specifier: ModuleSpecifier,
   text_info: SourceTextInfo,
@@ -290,7 +318,7 @@ impl Document {
       maybe_language_id: None,
       maybe_lsp_version: None,
       maybe_module,
-      maybe_navigation_tree: None,
+      maybe_navigation_tree: Mutex::new(None),
       maybe_parsed_source,
       text_info,
       specifier,
@@ -326,7 +354,7 @@ impl Document {
       maybe_language_id: Some(language_id),
       maybe_lsp_version: Some(version),
       maybe_module,
-      maybe_navigation_tree: None,
+      maybe_navigation_tree: Mutex::new(None),
       maybe_parsed_source,
       text_info: source,
       specifier,
@@ -389,25 +417,17 @@ impl Document {
       Arc::new(LineIndex::new(text_info.text_str()))
     };
     Ok(Document(Arc::new(DocumentInner {
+      specifier: self.0.specifier.clone(),
+      fs_version: self.0.fs_version.clone(),
+      maybe_language_id: self.0.maybe_language_id,
       dependencies,
       text_info,
       line_index,
       maybe_module,
       maybe_parsed_source,
       maybe_lsp_version: Some(version),
-      maybe_navigation_tree: None,
-      ..(*self.0).clone()
+      maybe_navigation_tree: Mutex::new(None),
     })))
-  }
-
-  fn with_navigation_tree(
-    &self,
-    navigation_tree: Arc<tsc::NavigationTree>,
-  ) -> Document {
-    Document(Arc::new(DocumentInner {
-      maybe_navigation_tree: Some(navigation_tree),
-      ..(*self.0).clone()
-    }))
   }
 
   pub fn specifier(&self) -> &ModuleSpecifier {
@@ -469,10 +489,22 @@ impl Document {
 
   pub fn media_type(&self) -> MediaType {
     if let Some(Ok(module)) = &self.0.maybe_module {
-      module.media_type
-    } else {
-      MediaType::from(&self.0.specifier)
+      return module.media_type;
     }
+    let specifier_media_type = MediaType::from(&self.0.specifier);
+    if specifier_media_type != MediaType::Unknown {
+      return specifier_media_type;
+    }
+
+    self
+      .0
+      .maybe_language_id
+      .map(|id| id.as_media_type())
+      .unwrap_or(MediaType::Unknown)
+  }
+
+  pub fn maybe_language_id(&self) -> Option<LanguageId> {
+    self.0.maybe_language_id
   }
 
   /// Returns the current language server client version if any.
@@ -493,7 +525,21 @@ impl Document {
   }
 
   pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
-    self.0.maybe_navigation_tree.clone()
+    self.0.maybe_navigation_tree.lock().clone()
+  }
+
+  pub fn update_navigation_tree_if_version(
+    &self,
+    tree: Arc<tsc::NavigationTree>,
+    script_version: &str,
+  ) {
+    // Ensure we are updating the same document that the navigation tree was
+    // created for. Note: this should not be racy between the version check
+    // and setting the navigation tree, because the document is immutable
+    // and this is enforced by it being wrapped in an Arc.
+    if self.script_version() == script_version {
+      *self.0.maybe_navigation_tree.lock() = Some(tree);
+    }
   }
 
   pub fn dependencies(&self) -> &BTreeMap<String, deno_graph::Dependency> {
@@ -610,7 +656,7 @@ impl SpecifierResolver {
   ) -> Option<ModuleSpecifier> {
     let cache_filename = self.cache.get_cache_filename(specifier)?;
     if redirect_limit > 0 && cache_filename.is_file() {
-      let headers = http_cache::Metadata::read(&cache_filename)
+      let headers = CachedUrlMetadata::read(&cache_filename)
         .ok()
         .map(|m| m.headers)?;
       if let Some(location) = headers.get("location") {
@@ -633,6 +679,23 @@ struct FileSystemDocuments {
 }
 
 impl FileSystemDocuments {
+  pub fn get(
+    &mut self,
+    cache: &HttpCache,
+    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Document> {
+    let fs_version = get_document_path(cache, specifier)
+      .and_then(|path| calculate_fs_version(&path));
+    let file_system_doc = self.docs.get(specifier);
+    if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
+      // attempt to update the file on the file system
+      self.refresh_document(cache, maybe_resolver, specifier)
+    } else {
+      file_system_doc.cloned()
+    }
+  }
+
   /// Adds or updates a document by reading the document from the file system
   /// returning the document.
   fn refresh_document(
@@ -657,8 +720,7 @@ impl FileSystemDocuments {
       )
     } else {
       let cache_filename = cache.get_cache_filename(specifier)?;
-      let specifier_metadata =
-        http_cache::Metadata::read(&cache_filename).ok()?;
+      let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
       let maybe_content_type =
         specifier_metadata.headers.get("content-type").cloned();
       let maybe_headers = Some(&specifier_metadata.headers);
@@ -682,10 +744,10 @@ fn get_document_path(
   cache: &HttpCache,
   specifier: &ModuleSpecifier,
 ) -> Option<PathBuf> {
-  if specifier.scheme() == "file" {
-    specifier_to_file_path(specifier).ok()
-  } else {
-    cache.get_cache_filename(specifier)
+  match specifier.scheme() {
+    "npm" | "node" => None,
+    "file" => specifier_to_file_path(specifier).ok(),
+    _ => cache.get_cache_filename(specifier),
   }
 }
 
@@ -710,7 +772,7 @@ pub struct Documents {
   /// settings.
   maybe_resolver: Option<CliResolver>,
   /// The npm package requirements.
-  npm_reqs: HashSet<NpmPackageReq>,
+  npm_reqs: Arc<HashSet<NpmPackageReq>>,
   /// Resolves a specifier to its final redirected to specifier.
   specifier_resolver: Arc<SpecifierResolver>,
 }
@@ -725,7 +787,7 @@ impl Documents {
       file_system_docs: Default::default(),
       imports: Default::default(),
       maybe_resolver: None,
-      npm_reqs: HashSet::new(),
+      npm_reqs: Default::default(),
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
     }
   }
@@ -863,7 +925,7 @@ impl Documents {
   /// Returns a collection of npm package requirements.
   pub fn npm_package_reqs(&mut self) -> HashSet<NpmPackageReq> {
     self.calculate_dependents_if_dirty();
-    self.npm_reqs.clone()
+    (*self.npm_reqs).clone()
   }
 
   /// Return a document for the specifier.
@@ -873,19 +935,7 @@ impl Documents {
       Some(document.clone())
     } else {
       let mut file_system_docs = self.file_system_docs.lock();
-      let fs_version = get_document_path(&self.cache, &specifier)
-        .and_then(|path| calculate_fs_version(&path));
-      let file_system_doc = file_system_docs.docs.get(&specifier);
-      if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
-        // attempt to update the file on the file system
-        file_system_docs.refresh_document(
-          &self.cache,
-          self.get_maybe_resolver(),
-          &specifier,
-        )
-      } else {
-        file_system_doc.cloned()
-      }
+      file_system_docs.get(&self.cache, self.get_maybe_resolver(), &specifier)
     }
   }
 
@@ -938,7 +988,7 @@ impl Documents {
   /// tsc when type checking.
   pub fn resolve(
     &self,
-    specifiers: Vec<String>,
+    specifiers: &[String],
     referrer: &ModuleSpecifier,
     maybe_npm_resolver: Option<&NpmPackageResolver>,
   ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
@@ -950,9 +1000,9 @@ impl Documents {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
             node::node_resolve(
-              &specifier,
+              specifier,
               referrer,
-              node::NodeResolutionMode::Types,
+              NodeResolutionMode::Types,
               npm_resolver,
             )
             .ok()
@@ -963,13 +1013,13 @@ impl Documents {
       }
       // handle npm:<package> urls
       if specifier.starts_with("asset:") {
-        if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
+        if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
           let media_type = MediaType::from(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
         }
-      } else if let Some(dep) = dependencies.deps.get(&specifier) {
+      } else if let Some(dep) = dependencies.deps.get(specifier) {
         if let Resolved::Ok { specifier, .. } = &dep.maybe_type {
           results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
         } else if let Resolved::Ok { specifier, .. } = &dep.maybe_code {
@@ -978,12 +1028,12 @@ impl Documents {
           results.push(None);
         }
       } else if let Some(Resolved::Ok { specifier, .. }) =
-        self.resolve_imports_dependency(&specifier)
+        self.resolve_imports_dependency(specifier)
       {
         // clone here to avoid double borrow of self
         let specifier = specifier.clone();
         results.push(self.resolve_dependency(&specifier, maybe_npm_resolver));
-      } else if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
+      } else if let Ok(npm_ref) = NpmPackageReference::from_str(specifier) {
         results.push(maybe_npm_resolver.map(|npm_resolver| {
           NodeResolution::into_specifier_and_media_type(
             node_resolve_npm_reference(
@@ -1013,23 +1063,17 @@ impl Documents {
   /// Tries to cache a navigation tree that is associated with the provided specifier
   /// if the document stored has the same script version.
   pub fn try_cache_navigation_tree(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     script_version: &str,
     navigation_tree: Arc<tsc::NavigationTree>,
   ) -> Result<(), AnyError> {
-    if let Some(doc) = self.open_docs.get_mut(specifier) {
-      if doc.script_version() == script_version {
-        *doc = doc.with_navigation_tree(navigation_tree);
-      }
+    if let Some(doc) = self.open_docs.get(specifier) {
+      doc.update_navigation_tree_if_version(navigation_tree, script_version)
     } else {
       let mut file_system_docs = self.file_system_docs.lock();
       if let Some(doc) = file_system_docs.docs.get_mut(specifier) {
-        // ensure we are updating the same document
-        // that the navigation tree was created for
-        if doc.script_version() == script_version {
-          *doc = doc.with_navigation_tree(navigation_tree);
-        }
+        doc.update_navigation_tree_if_version(navigation_tree, script_version);
       } else {
         return Err(custom_error(
           "NotFound",
@@ -1076,46 +1120,74 @@ impl Documents {
   /// document and the value is a set of specifiers that depend on that
   /// document.
   fn calculate_dependents_if_dirty(&mut self) {
+    #[derive(Default)]
+    struct DocAnalyzer {
+      dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
+      analyzed_specifiers: HashSet<ModuleSpecifier>,
+      pending_specifiers: VecDeque<ModuleSpecifier>,
+      npm_reqs: HashSet<NpmPackageReq>,
+    }
+
+    impl DocAnalyzer {
+      fn add(&mut self, dep: &ModuleSpecifier, specifier: &ModuleSpecifier) {
+        if !self.analyzed_specifiers.contains(dep) {
+          self.analyzed_specifiers.insert(dep.clone());
+          // perf: ensure this is not added to unless this specifier has never
+          // been analyzed in order to not cause an extra file system lookup
+          self.pending_specifiers.push_back(dep.clone());
+          if let Ok(reference) = NpmPackageReference::from_specifier(dep) {
+            self.npm_reqs.insert(reference.req);
+          }
+        }
+
+        self
+          .dependents_map
+          .entry(dep.clone())
+          .or_default()
+          .insert(specifier.clone());
+      }
+
+      fn analyze_doc(&mut self, specifier: &ModuleSpecifier, doc: &Document) {
+        self.analyzed_specifiers.insert(specifier.clone());
+        for dependency in doc.dependencies().values() {
+          if let Some(dep) = dependency.get_code() {
+            self.add(dep, specifier);
+          }
+          if let Some(dep) = dependency.get_type() {
+            self.add(dep, specifier);
+          }
+        }
+        if let Resolved::Ok { specifier: dep, .. } =
+          doc.maybe_types_dependency()
+        {
+          self.add(&dep, specifier);
+        }
+      }
+    }
+
     let mut file_system_docs = self.file_system_docs.lock();
     if !file_system_docs.dirty && !self.dirty {
       return;
     }
 
-    let mut dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>> =
-      HashMap::new();
-    // favour documents that are open in case a document exists in both collections
+    let mut doc_analyzer = DocAnalyzer::default();
+    // favor documents that are open in case a document exists in both collections
     let documents = file_system_docs.docs.iter().chain(self.open_docs.iter());
     for (specifier, doc) in documents {
-      for dependency in doc.dependencies().values() {
-        if let Some(dep) = dependency.get_code() {
-          dependents_map
-            .entry(dep.clone())
-            .or_default()
-            .insert(specifier.clone());
-        }
-        if let Some(dep) = dependency.get_type() {
-          dependents_map
-            .entry(dep.clone())
-            .or_default()
-            .insert(specifier.clone());
-        }
-      }
-      if let Resolved::Ok { specifier: dep, .. } = doc.maybe_types_dependency()
+      doc_analyzer.analyze_doc(specifier, doc);
+    }
+
+    let maybe_resolver = self.get_maybe_resolver();
+    while let Some(specifier) = doc_analyzer.pending_specifiers.pop_front() {
+      if let Some(doc) =
+        file_system_docs.get(&self.cache, maybe_resolver, &specifier)
       {
-        dependents_map
-          .entry(dep.clone())
-          .or_default()
-          .insert(specifier.clone());
+        doc_analyzer.analyze_doc(&specifier, &doc);
       }
     }
-    let mut npm_reqs = HashSet::new();
-    for specifier in dependents_map.keys() {
-      if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
-        npm_reqs.insert(reference.req);
-      }
-    }
-    self.dependents_map = Arc::new(dependents_map);
-    self.npm_reqs = npm_reqs;
+
+    self.dependents_map = Arc::new(doc_analyzer.dependents_map);
+    self.npm_reqs = Arc::new(doc_analyzer.npm_reqs);
     self.dirty = false;
     file_system_docs.dirty = false;
   }
@@ -1233,7 +1305,7 @@ fn lsp_deno_graph_analyze(
   use deno_graph::ModuleParser;
 
   let analyzer = deno_graph::CapturingModuleAnalyzer::new(
-    Some(Box::new(LspModuleParser::default())),
+    Some(Box::<LspModuleParser>::default()),
     None,
   );
   let parsed_source_result = analyzer.parse_module(

@@ -75,6 +75,8 @@ pub const napi_arraybuffer_expected: napi_status = 19;
 pub const napi_detachable_arraybuffer_expected: napi_status = 20;
 pub const napi_would_deadlock: napi_status = 21;
 
+pub const NAPI_AUTO_LENGTH: usize = usize::MAX;
+
 thread_local! {
   pub static MODULE: RefCell<Option<*const NapiModule>> = RefCell::new(None);
   pub static ASYNC_WORK_SENDER: RefCell<Option<mpsc::UnboundedSender<PendingNapiAsyncWork>>> = RefCell::new(None);

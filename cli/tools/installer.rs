@@ -1,11 +1,13 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::resolve_no_prompt;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::TypeCheckMode;
-use crate::fs_util;
 use crate::npm::NpmPackageReference;
+use crate::proc_state::ProcState;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -75,7 +77,7 @@ deno {} "$@"
 "#,
     args.join(" "),
   );
-  let mut file = File::create(&shim_data.file_path.with_extension(""))?;
+  let mut file = File::create(shim_data.file_path.with_extension(""))?;
   file.write_all(template.as_bytes())?;
   Ok(())
 }
@@ -107,9 +109,7 @@ exec deno {} "$@"
 fn get_installer_root() -> Result<PathBuf, io::Error> {
   if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT") {
     if !env_dir.is_empty() {
-      return fs_util::canonicalize_path_maybe_not_exists(&PathBuf::from(
-        env_dir,
-      ));
+      return canonicalize_path_maybe_not_exists(&PathBuf::from(env_dir));
     }
   }
   // Note: on Windows, the $HOME environment variable may be set by users or by
@@ -167,7 +167,7 @@ pub fn infer_name_from_url(url: &Url) -> Option<String> {
 
 pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
   let root = if let Some(root) = root {
-    fs_util::canonicalize_path_maybe_not_exists(&root)?
+    canonicalize_path_maybe_not_exists(&root)?
   } else {
     get_installer_root()?
   };
@@ -186,7 +186,7 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
 
   if file_path.exists() {
     fs::remove_file(&file_path)?;
-    println!("deleted {}", file_path.to_string_lossy());
+    log::info!("deleted {}", file_path.to_string_lossy());
     removed = true
   };
 
@@ -194,7 +194,7 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
     let file_path = file_path.with_extension("cmd");
     if file_path.exists() {
       fs::remove_file(&file_path)?;
-      println!("deleted {}", file_path.to_string_lossy());
+      log::info!("deleted {}", file_path.to_string_lossy());
       removed = true
     }
   }
@@ -208,15 +208,29 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
     let file_path = file_path.with_extension(ext);
     if file_path.exists() {
       fs::remove_file(&file_path)?;
-      println!("deleted {}", file_path.to_string_lossy());
+      log::info!("deleted {}", file_path.to_string_lossy());
     }
   }
 
-  println!("✅ Successfully uninstalled {}", name);
+  log::info!("✅ Successfully uninstalled {}", name);
   Ok(())
 }
 
-pub fn install(
+pub async fn install_command(
+  flags: Flags,
+  install_flags: InstallFlags,
+) -> Result<(), AnyError> {
+  // ensure the module is cached
+  ProcState::build(flags.clone())
+    .await?
+    .load_and_type_check_files(&[install_flags.module_url.clone()])
+    .await?;
+
+  // create the install shim
+  create_install_shim(flags, install_flags)
+}
+
+fn create_install_shim(
   flags: Flags,
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
@@ -242,20 +256,20 @@ pub fn install(
     fs::write(path, contents)?;
   }
 
-  println!("✅ Successfully installed {}", shim_data.name);
-  println!("{}", shim_data.file_path.display());
+  log::info!("✅ Successfully installed {}", shim_data.name);
+  log::info!("{}", shim_data.file_path.display());
   if cfg!(windows) {
     let display_path = shim_data.file_path.with_extension("");
-    println!("{} (shell)", display_path.display());
+    log::info!("{} (shell)", display_path.display());
   }
   let installation_dir_str = shim_data.installation_dir.to_string_lossy();
 
   if !is_in_path(&shim_data.installation_dir) {
-    println!("ℹ️  Add {} to PATH", installation_dir_str);
+    log::info!("ℹ️  Add {} to PATH", installation_dir_str);
     if cfg!(windows) {
-      println!("    set PATH=%PATH%;{}", installation_dir_str);
+      log::info!("    set PATH=%PATH%;{}", installation_dir_str);
     } else {
-      println!("    export PATH=\"{}:$PATH\"", installation_dir_str);
+      log::info!("    export PATH=\"{}:$PATH\"", installation_dir_str);
     }
   }
 
@@ -275,7 +289,7 @@ fn resolve_shim_data(
   install_flags: &InstallFlags,
 ) -> Result<ShimData, AnyError> {
   let root = if let Some(root) = &install_flags.root {
-    fs_util::canonicalize_path_maybe_not_exists(root)?
+    canonicalize_path_maybe_not_exists(root)?
   } else {
     get_installer_root()?
   };
@@ -359,7 +373,7 @@ fn resolve_shim_data(
     executable_args.push("--cached-only".to_string());
   }
 
-  if flags.no_prompt {
+  if resolve_no_prompt(flags) {
     executable_args.push("--no-prompt".to_string());
   }
 
@@ -387,8 +401,7 @@ fn resolve_shim_data(
   }
 
   if let ConfigFlag::Path(config_path) = &flags.config_flag {
-    let mut copy_path = file_path.clone();
-    copy_path.set_extension("tsconfig.json");
+    let copy_path = get_hidden_file_with_ext(&file_path, "tsconfig.json");
     executable_args.push("--config".to_string());
     executable_args.push(copy_path.to_str().unwrap().to_string());
     extra_files.push((
@@ -404,8 +417,7 @@ fn resolve_shim_data(
     // always use a lockfile for an npm entrypoint unless --no-lock
     || NpmPackageReference::from_specifier(&module_url).is_ok()
   {
-    let mut copy_path = file_path.clone();
-    copy_path.set_extension("lock.json");
+    let copy_path = get_hidden_file_with_ext(&file_path, "lock.json");
     executable_args.push("--lock".to_string());
     executable_args.push(copy_path.to_str().unwrap().to_string());
 
@@ -434,6 +446,17 @@ fn resolve_shim_data(
   })
 }
 
+fn get_hidden_file_with_ext(file_path: &Path, ext: &str) -> PathBuf {
+  // use a dot file to prevent the file from showing up in some
+  // users shell auto-complete since this directory is on the PATH
+  file_path
+    .with_file_name(format!(
+      ".{}",
+      file_path.file_name().unwrap().to_string_lossy()
+    ))
+    .with_extension(ext)
+}
+
 fn is_in_path(dir: &Path) -> bool {
   if let Some(paths) = env::var_os("PATH") {
     for p in env::split_paths(&paths) {
@@ -450,6 +473,7 @@ mod tests {
   use super::*;
 
   use crate::args::ConfigFlag;
+  use crate::util::fs::canonicalize_path;
   use std::process::Command;
   use test_util::testdata_path;
   use test_util::TempDir;
@@ -567,7 +591,7 @@ mod tests {
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
-    install(
+    create_install_shim(
       Flags {
         unstable: true,
         ..Flags::default()
@@ -590,7 +614,6 @@ mod tests {
     assert!(file_path.exists());
 
     let content = fs::read_to_string(file_path).unwrap();
-    println!("this is the file path {:?}", content);
     if cfg!(windows) {
       assert!(content.contains(
         r#""run" "--unstable" "http://localhost:4545/echo_server.ts""#
@@ -746,7 +769,7 @@ mod tests {
 
   #[test]
   fn install_npm_lockfile_default() {
-    let temp_dir = fs_util::canonicalize_path(&env::temp_dir()).unwrap();
+    let temp_dir = canonicalize_path(&env::temp_dir()).unwrap();
     let shim_data = resolve_shim_data(
       &Flags {
         allow_all: true,
@@ -762,7 +785,7 @@ mod tests {
     )
     .unwrap();
 
-    let lock_path = temp_dir.join("bin").join("cowsay.lock.json");
+    let lock_path = temp_dir.join("bin").join(".cowsay.lock.json");
     assert_eq!(
       shim_data.args,
       vec![
@@ -810,7 +833,7 @@ mod tests {
     let local_module_url = Url::from_file_path(&local_module).unwrap();
     let local_module_str = local_module.to_string_lossy();
 
-    install(
+    create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: local_module_str.to_string(),
@@ -838,7 +861,7 @@ mod tests {
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
-    install(
+    create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
@@ -857,7 +880,7 @@ mod tests {
     assert!(file_path.exists());
 
     // No force. Install failed.
-    let no_force_result = install(
+    let no_force_result = create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
@@ -877,7 +900,7 @@ mod tests {
     assert!(file_content.contains("echo_server.ts"));
 
     // Force. Install success.
-    let force_result = install(
+    let force_result = create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
@@ -903,7 +926,7 @@ mod tests {
     let result = config_file.write_all(config.as_bytes());
     assert!(result.is_ok());
 
-    let result = install(
+    let result = create_install_shim(
       Flags {
         config_flag: ConfigFlag::Path(
           config_file_path.to_string_lossy().to_string(),
@@ -920,7 +943,7 @@ mod tests {
     );
     assert!(result.is_ok());
 
-    let config_file_name = "echo_test.tsconfig.json";
+    let config_file_name = ".echo_test.tsconfig.json";
 
     let file_path = bin_dir.join(config_file_name);
     assert!(file_path.exists());
@@ -936,7 +959,7 @@ mod tests {
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
-    install(
+    create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
@@ -955,7 +978,6 @@ mod tests {
 
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
-    println!("{}", content);
     if cfg!(windows) {
       // TODO: see comment above this test
     } else {
@@ -976,7 +998,7 @@ mod tests {
     let local_module_str = local_module.to_string_lossy();
     std::fs::write(&local_module, "// Some JavaScript I guess").unwrap();
 
-    install(
+    create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: local_module_str.to_string(),
@@ -1016,7 +1038,7 @@ mod tests {
     let result = import_map_file.write_all(import_map.as_bytes());
     assert!(result.is_ok());
 
-    let result = install(
+    let result = create_install_shim(
       Flags {
         import_map_path: Some(import_map_path.to_string_lossy().to_string()),
         ..Flags::default()
@@ -1062,7 +1084,7 @@ mod tests {
       Url::from_file_path(module_path).unwrap().to_string();
     assert!(file_module_string.starts_with("file:///"));
 
-    let result = install(
+    let result = create_install_shim(
       Flags::default(),
       InstallFlags {
         module_url: file_module_string.to_string(),
@@ -1105,11 +1127,11 @@ mod tests {
     // create extra files
     {
       let file_path = file_path.with_extension("tsconfig.json");
-      File::create(&file_path).unwrap();
+      File::create(file_path).unwrap();
     }
     {
       let file_path = file_path.with_extension("lock.json");
-      File::create(&file_path).unwrap();
+      File::create(file_path).unwrap();
     }
 
     uninstall("echo_test".to_string(), Some(temp_dir.path().to_path_buf()))

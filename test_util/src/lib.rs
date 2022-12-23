@@ -94,6 +94,24 @@ lazy_static! {
   static ref GUARD: Mutex<HttpServerCount> = Mutex::new(HttpServerCount::default());
 }
 
+pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
+  vec![
+    ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
+    ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("NO_COLOR".to_string(), "1".to_string()),
+  ]
+}
+
+pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
+  let mut env_vars = env_vars_for_npm_tests_no_sync_download();
+  env_vars.push((
+    // make downloads determinstic
+    "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
+    "1".to_string(),
+  ));
+  env_vars
+}
+
 pub fn root_path() -> PathBuf {
   PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
     .parent()
@@ -1912,7 +1930,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       testdata_dir.as_path()
     };
     println!("deno_exe args {}", args.join(" "));
-    println!("deno_exe cwd {:?}", &testdata_dir);
+    println!("deno_exe cwd {:?}", &cwd);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();

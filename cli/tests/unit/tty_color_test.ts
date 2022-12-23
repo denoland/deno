@@ -6,9 +6,9 @@ import { assertEquals } from "./test_util.ts";
 Deno.test(
   { permissions: { run: true, read: true } },
   async function noColorIfNotTty() {
-    const { stdout } = await Deno.spawn(Deno.execPath(), {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
       args: ["eval", "console.log(1)"],
-    });
+    }).output();
     const output = new TextDecoder().decode(stdout);
     assertEquals(output, "1\n");
   },

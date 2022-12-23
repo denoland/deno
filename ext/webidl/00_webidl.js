@@ -60,6 +60,7 @@
     ReflectHas,
     ReflectOwnKeys,
     RegExpPrototypeTest,
+    SafeArrayIterator,
     Set,
     // TODO(lucacasonato): add SharedArrayBuffer to primordials
     // SharedArrayBuffer,
@@ -632,8 +633,8 @@
   function createDictionaryConverter(name, ...dictionaries) {
     let hasRequiredKey = false;
     const allMembers = [];
-    for (const members of dictionaries) {
-      for (const member of members) {
+    for (const members of new SafeArrayIterator(dictionaries)) {
+      for (const member of new SafeArrayIterator(members)) {
         if (member.required) {
           hasRequiredKey = true;
         }
@@ -648,7 +649,7 @@
     });
 
     const defaultValues = {};
-    for (const member of allMembers) {
+    for (const member of new SafeArrayIterator(allMembers)) {
       if (ReflectHas(member, "defaultValue")) {
         const idlMemberValue = member.defaultValue;
         const imvType = typeof idlMemberValue;
@@ -694,7 +695,7 @@
         return idlDict;
       }
 
-      for (const member of allMembers) {
+      for (const member of new SafeArrayIterator(allMembers)) {
         const key = member.key;
 
         let esMemberValue;
@@ -820,7 +821,7 @@
       }
       // Slow path if Proxy (e.g: in WPT tests)
       const keys = ReflectOwnKeys(V);
-      for (const key of keys) {
+      for (const key of new SafeArrayIterator(keys)) {
         const desc = ObjectGetOwnPropertyDescriptor(V, key);
         if (desc !== undefined && desc.enumerable === true) {
           const typedKey = keyConverter(key, opts);
@@ -890,7 +891,7 @@
   }
 
   function define(target, source) {
-    for (const key of ReflectOwnKeys(source)) {
+    for (const key of new SafeArrayIterator(ReflectOwnKeys(source))) {
       const descriptor = ReflectGetOwnPropertyDescriptor(source, key);
       if (descriptor && !ReflectDefineProperty(target, key, descriptor)) {
         throw new TypeError(`Cannot redefine property: ${String(key)}`);
@@ -1012,6 +1013,9 @@
   function configurePrototype(prototype) {
     const descriptors = ObjectGetOwnPropertyDescriptors(prototype.prototype);
     for (const key in descriptors) {
+      if (!ObjectPrototypeHasOwnProperty(descriptors, key)) {
+        continue;
+      }
       if (key === "constructor") continue;
       const descriptor = descriptors[key];
       if (

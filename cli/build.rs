@@ -122,7 +122,7 @@ mod ts {
       "esnext.intl",
     ];
 
-    let path_dts = cwd.join("dts");
+    let path_dts = cwd.join("tsc/dts");
     // ensure we invalidate the build properly.
     for name in libs.iter() {
       println!(
@@ -130,6 +130,18 @@ mod ts {
         path_dts.join(format!("lib.{}.d.ts", name)).display()
       );
     }
+    println!(
+      "cargo:rerun-if-changed={}",
+      cwd.join("tsc").join("00_typescript.js").display()
+    );
+    println!(
+      "cargo:rerun-if-changed={}",
+      cwd.join("tsc").join("99_main_compiler.js").display()
+    );
+    println!(
+      "cargo:rerun-if-changed={}",
+      cwd.join("js").join("40_testing.js").display()
+    );
 
     // create a copy of the vector that includes any op crate libs to be passed
     // to the JavaScript compiler to build into the snapshot
@@ -243,6 +255,7 @@ mod ts {
           Ok(())
         })
         .build()],
+      extensions_with_js: vec![],
       additional_files: files,
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         vec.extend_from_slice(
@@ -254,17 +267,24 @@ mod ts {
   }
 
   pub(crate) fn version() -> String {
-    std::fs::read_to_string("tsc/00_typescript.js")
-      .unwrap()
-      .lines()
-      .find(|l| l.contains("ts.version = "))
-      .expect(
-        "Failed to find the pattern `ts.version = ` in typescript source code",
-      )
-      .chars()
-      .skip_while(|c| !char::is_numeric(*c))
-      .take_while(|c| *c != '"')
-      .collect::<String>()
+    let file_text = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
+    let mut version = String::new();
+    for line in file_text.lines() {
+      let major_minor_text = "ts.versionMajorMinor = \"";
+      let version_text = "ts.version = \"\".concat(ts.versionMajorMinor, \"";
+      if version.is_empty() {
+        if let Some(index) = line.find(major_minor_text) {
+          let remaining_line = &line[index + major_minor_text.len()..];
+          version
+            .push_str(&remaining_line[..remaining_line.find('"').unwrap()]);
+        }
+      } else if let Some(index) = line.find(version_text) {
+        let remaining_line = &line[index + version_text.len()..];
+        version.push_str(&remaining_line[..remaining_line.find('"').unwrap()]);
+        return version;
+      }
+    }
+    panic!("Could not find ts version.")
   }
 }
 
@@ -304,6 +324,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
     snapshot_path,
     startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
     extensions,
+    extensions_with_js: vec![],
     additional_files: files,
     compression_cb: Some(Box::new(|vec, snapshot_slice| {
       lzzzz::lz4_hc::compress_to_vec(
@@ -351,7 +372,7 @@ fn main() {
     panic!("Cross compiling with snapshot is not supported.");
   }
 
-  let symbols_path = std::path::Path::new(
+  let symbols_path = std::path::Path::new("napi").join(
     format!("generated_symbol_exports_list_{}.def", env::consts::OS).as_str(),
   )
   .canonicalize()
@@ -476,5 +497,8 @@ fn main() {
 
 fn deno_webgpu_get_declaration() -> PathBuf {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  manifest_dir.join("dts").join("lib.deno_webgpu.d.ts")
+  manifest_dir
+    .join("tsc")
+    .join("dts")
+    .join("lib.deno_webgpu.d.ts")
 }

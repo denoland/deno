@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.87.0"
+version = "0.90.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,6 +12,8 @@ description = "Provides the deno runtime library"
 [features]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
+# feature that modifies the snapshot to allow extending it
+snapshot_from_snapshot = []
 
 [lib]
 name = "deno_runtime"
@@ -92,7 +94,7 @@ uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 fwdansi.workspace = true
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 ntapi = "0.4.0"
 
 [target.'cfg(unix)'.dependencies]

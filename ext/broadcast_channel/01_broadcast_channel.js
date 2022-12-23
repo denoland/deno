@@ -16,6 +16,7 @@
     ArrayPrototypeIndexOf,
     ArrayPrototypeSplice,
     ArrayPrototypePush,
+    SafeArrayIterator,
     Symbol,
     Uint8Array,
   } = window.__bootstrap.primordials;
@@ -43,7 +44,7 @@
   }
 
   function dispatch(source, name, data) {
-    for (const channel of channels) {
+    for (const channel of new SafeArrayIterator(channels)) {
       if (channel === source) continue; // Don't self-send.
       if (channel[_name] !== name) continue;
       if (channel[_closed]) continue;

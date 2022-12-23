@@ -7,9 +7,9 @@ use super::lsp_custom;
 use super::registries::ModuleRegistry;
 use super::tsc;
 
-use crate::fs_util::is_supported_ext;
-use crate::fs_util::relative_specifier;
-use crate::fs_util::specifier_to_file_path;
+use crate::util::path::is_supported_ext;
+use crate::util::path::relative_specifier;
+use crate::util::path::specifier_to_file_path;
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;
@@ -505,7 +505,7 @@ fn get_workspace_completions(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::http_cache::HttpCache;
+  use crate::cache::HttpCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use deno_core::resolve_url;
@@ -526,7 +526,7 @@ mod tests {
       documents.open(
         specifier.clone(),
         *version,
-        language_id.clone(),
+        *language_id,
         (*source).into(),
       );
     }
@@ -587,11 +587,11 @@ mod tests {
     let file_c = dir_a.join("c.ts");
     std::fs::write(&file_c, b"").expect("could not create");
     let file_d = dir_b.join("d.ts");
-    std::fs::write(&file_d, b"").expect("could not create");
+    std::fs::write(file_d, b"").expect("could not create");
     let file_e = dir_a.join("e.txt");
-    std::fs::write(&file_e, b"").expect("could not create");
+    std::fs::write(file_e, b"").expect("could not create");
     let file_f = dir_a.join("f.mjs");
-    std::fs::write(&file_f, b"").expect("could not create");
+    std::fs::write(file_f, b"").expect("could not create");
     let specifier =
       ModuleSpecifier::from_file_path(file_c).expect("could not create");
     let actual = get_local_completions(

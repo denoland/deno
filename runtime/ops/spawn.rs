@@ -350,7 +350,8 @@ fn op_spawn_sync(
 ) -> Result<SpawnOutput, AnyError> {
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
-  let output = create_command(state, args, "Deno.spawnSync()")?.output()?;
+  let output =
+    create_command(state, args, "Deno.Command().outputSync()")?.output()?;
 
   Ok(SpawnOutput {
     status: output.status.try_into()?,
@@ -375,7 +376,8 @@ fn op_node_unstable_spawn_sync(
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
   let output =
-    node_unstable_create_command(state, args, "Deno.spawnSync()")?.output()?;
+    node_unstable_create_command(state, args, "Deno.Command().outputSync()")?
+      .output()?;
 
   Ok(SpawnOutput {
     status: output.status.try_into()?,
