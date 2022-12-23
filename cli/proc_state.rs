@@ -210,7 +210,7 @@ impl ProcState {
           HashMap::from([("content-type".to_string(), content_type)]),
         )])
       } else {
-        HashMap::<ModuleSpecifier, HashMap<String, String>>::default()
+        HashMap::default()
       };
 
     let lockfile = cli_options.maybe_lock_file();
