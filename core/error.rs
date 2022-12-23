@@ -537,7 +537,24 @@ pub(crate) fn to_v8_type_error(
   scope: &mut v8::HandleScope,
   err: Error,
 ) -> v8::Global<v8::Value> {
-  let message = err.to_string();
+  let err_string = err.to_string();
+  let error_chain = err
+    .chain()
+    .skip(1)
+    .filter(|e| e.to_string() != err_string)
+    .map(|e| e.to_string())
+    .collect::<Vec<_>>();
+
+  let message = if !error_chain.is_empty() {
+    format!(
+      "{}\n  Caused by:\n    {}",
+      err_string,
+      error_chain.join("\n    ")
+    )
+  } else {
+    err_string
+  };
+
   let message = v8::String::new(scope, &message).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   v8::Global::new(scope, exception)
