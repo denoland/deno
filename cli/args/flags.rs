@@ -2493,7 +2493,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     );
 
     if let Some(ext) = &flags.ext {
-      if ext != EXT_DEFAULT {
+      if ext != "ts" {
         println!(
           "{}",
           crate::colors::yellow(
