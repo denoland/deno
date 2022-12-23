@@ -217,12 +217,6 @@ where
   let method = Method::from_bytes(&method)?;
   let url = Url::parse(&url)?;
 
-  // Make sure that we have a valid URI early, as reqwest's `RequestBuilder::send`
-  // internally uses `expect_uri`, which panics instead of returning a usable `Result`.
-  if url.as_str().parse::<Uri>().is_err() {
-    return Err(type_error("Invalid URL"));
-  }
-
   // Check scheme before asking for net permission
   let scheme = url.scheme();
   let (request_rid, request_body_rid, cancel_handle_rid) = match scheme {
@@ -257,6 +251,12 @@ where
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url, "fetch()")?;
+
+      // Make sure that we have a valid URI early, as reqwest's `RequestBuilder::send`
+      // internally uses `expect_uri`, which panics instead of returning a usable `Result`.
+      if url.as_str().parse::<Uri>().is_err() {
+        return Err(type_error("Invalid URL"));
+      }
 
       let mut request = client.request(method.clone(), url);
 
