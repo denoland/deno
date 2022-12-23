@@ -486,17 +486,18 @@ fn format_ensure_stable(
 }
 
 /// Format stdin and write result to stdout.
-/// Treats input as TypeScript or as set by `--ext` flag.
+/// Treats input as set by `--ext` flag.
 /// Compatible with `--check` flag.
 pub fn format_stdin(
   fmt_flags: FmtFlags,
   fmt_options: FmtOptionsConfig,
+  ext: String,
 ) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     bail!("Failed to read from stdin");
   }
-  let file_path = PathBuf::from(format!("_stdin.{}", fmt_flags.ext));
+  let file_path = PathBuf::from(format!("_stdin.{}", ext));
   let fmt_options = resolve_fmt_options(&fmt_flags, fmt_options);
 
   let formatted_text = format_file(&file_path, &source, &fmt_options)?;

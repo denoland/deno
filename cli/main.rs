@@ -109,7 +109,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       Ok(0)
     }
     DenoSubcommand::Fmt(fmt_flags) => {
-      let config = CliOptions::from_flags(flags)?;
+      let config = CliOptions::from_flags(flags.clone())?;
 
       if fmt_flags.files.len() == 1
         && fmt_flags.files[0].to_string_lossy() == "-"
@@ -118,6 +118,8 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
         tools::fmt::format_stdin(
           fmt_flags,
           maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
+          // unwrap() is safe because --ext has a default value for `deno fmt`
+          flags.ext.unwrap(),
         )?;
       } else {
         tools::fmt::format(&config, fmt_flags).await?;
