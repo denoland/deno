@@ -495,16 +495,6 @@ pub struct BenchConfig {
   pub files: FilesConfig,
 }
 
-pub struct FinalBenchConfig {
-  pub files: FileFlags,
-}
-
-impl ContainsFilesConfig for BenchConfig {
-  fn get_files_config(&self) -> FilesConfig {
-    self.files.clone()
-  }
-}
-
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum LockConfig {

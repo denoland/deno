@@ -14,6 +14,7 @@ use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_supported_ext;
+use crate::util::path::specifier_to_file_path;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
@@ -493,11 +494,22 @@ pub async fn run_benchmarks(
 
   let bench_config = ps.options.to_bench_config(&bench_flags)?;
 
-  let specifiers = collect_specifiers(
-    &bench_config.files.include,
-    &bench_config.files.ignore,
-    is_supported_bench_path,
-  )?;
+  let include = bench_config
+    .files
+    .include
+    .iter()
+    .filter_map(|s| specifier_to_file_path(s).ok())
+    .collect::<Vec<_>>();
+
+  let exclude = bench_config
+    .files
+    .exclude
+    .iter()
+    .filter_map(|s| specifier_to_file_path(s).ok())
+    .collect::<Vec<_>>();
+
+  let specifiers =
+    collect_specifiers(&include, &exclude, is_supported_bench_path)?;
 
   if specifiers.is_empty() {
     return Err(generic_error("No bench modules found"));
@@ -529,8 +541,21 @@ pub async fn run_benchmarks_with_watch(
 
   let config = &ps.options.to_bench_config(&bench_flags)?;
 
-  let paths_to_watch: Vec<_> =
-    config.files.include.iter().map(PathBuf::from).collect();
+  let include = config
+    .files
+    .include
+    .iter()
+    .filter_map(|s| specifier_to_file_path(s).ok())
+    .collect::<Vec<_>>();
+
+  let ignore = config
+    .files
+    .exclude
+    .iter()
+    .filter_map(|s| specifier_to_file_path(s).ok())
+    .collect::<Vec<_>>();
+
+  let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
@@ -538,8 +563,8 @@ pub async fn run_benchmarks_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = config.files.include.clone();
-    let ignore = config.files.ignore.clone();
+    let include = include.clone();
+    let ignore = ignore.clone();
     let ps = ps.clone();
 
     async move {
@@ -655,8 +680,8 @@ pub async fn run_benchmarks_with_watch(
     let permissions = permissions.clone();
     let ps = ps.clone();
     let filter = bench_flags.filter.clone();
-    let include = config.files.include.clone();
-    let ignore = config.files.ignore.clone();
+    let include = include.clone();
+    let ignore = ignore.clone();
 
     async move {
       let specifiers =
