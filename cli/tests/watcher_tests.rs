@@ -67,6 +67,8 @@ mod watcher {
   /// asynchronicity. It is possible for the watched subcommand to finish before
   /// any files are being watched.
   /// deno must be running with --log-level=debug
+  /// file_name should be the file name and, optionally, extension. file_name
+  /// may not be a full path, as it is not portable.
   fn wait_for_watcher(
     file_name: &str,
     stderr_lines: &mut impl Iterator<Item = String>,
@@ -818,7 +820,7 @@ mod watcher {
     wait_contains("Process finished", &mut stderr_lines);
 
     // Make sure the watcher actually restarts and works fine with the proper language
-    wait_for_watcher(file_to_watch.to_str().unwrap(), &mut stderr_lines);
+    wait_for_watcher("file_to_watch", &mut stderr_lines);
     write(
       &file_to_watch,
       "type Bear = 'polar' | 'grizzly'; console.log(123);",
