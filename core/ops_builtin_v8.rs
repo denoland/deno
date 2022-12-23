@@ -1,3 +1,4 @@
+use crate::JsRealm;
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::bindings::script_origin;
 use crate::error::custom_error;
@@ -782,7 +783,7 @@ fn op_dispatch_exception(
 
 #[op(v8)]
 fn op_op_names(scope: &mut v8::HandleScope) -> Vec<String> {
-  let state_rc = JsRuntime::state(scope);
+  let state_rc = JsRealm::state_from_scope(scope);
   let state = state_rc.borrow();
   state
     .op_ctxs
