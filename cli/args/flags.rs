@@ -2051,8 +2051,7 @@ fn cached_only_arg<'a>() -> Arg<'a> {
 }
 
 /// Used for subcommands that operate on executable scripts only.
-/// `deno fmt` has its own `--ext` arg because its possible values and default
-/// value differ.
+/// `deno fmt` has its own `--ext` arg because its possible values differ.
 fn executable_ext_arg<'a>() -> Arg<'a> {
   Arg::new("ext")
     .long("ext")
