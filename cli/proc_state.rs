@@ -711,8 +711,8 @@ impl ProcState {
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
       self.file_header_overrides.clone(),
-      root_permissions.clone(),
-      dynamic_permissions.clone(),
+      root_permissions,
+      dynamic_permissions,
     )
   }
 

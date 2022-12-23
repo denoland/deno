@@ -160,7 +160,7 @@ impl Loader for FetchCacher {
 
             Ok(Some(LoadResponse::Module {
               specifier: file.specifier,
-              maybe_headers: maybe_headers,
+              maybe_headers,
               content: file.source,
             }))
           },
