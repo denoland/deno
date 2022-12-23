@@ -229,8 +229,9 @@ impl CliOptions {
     self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
   }
 
-  // TOOD(MR): In MR ask: To deno_ast, add MediaType::map_js_like_extension()
-  // (Duplicate), MediaType::to_content_type()
+  // TODO(Cre3per): In deno_ast
+  // - Change MediaType::map_js_like_extension() to operate on extension, not path
+  // - Add MediaType::to_content_type() (This function, but complete)
   fn media_type_from_file_extension(extension: &str) -> Option<String> {
     match extension {
       "ts" => Some("application/typescript"),
