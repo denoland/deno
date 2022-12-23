@@ -69,24 +69,6 @@ impl FetchCacher {
   }
 }
 
-fn maybe_extend_optional_map(
-  maybe_map: Option<&HashMap<String, String>>,
-  maybe_extend: Option<&HashMap<String, String>>,
-) -> Option<HashMap<String, String>> {
-  if maybe_map.is_none() && maybe_extend.is_none() {
-    None
-  } else {
-    let mut headers = HashMap::<String, String>::new();
-    if let Some(map) = maybe_map {
-      headers.extend(map.clone());
-    }
-    if let Some(extend) = maybe_extend {
-      headers.extend(extend.clone());
-    }
-    Some(headers)
-  }
-}
-
 impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
     if specifier.scheme() == "npm" {
@@ -114,6 +96,24 @@ impl Loader for FetchCacher {
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
   ) -> LoadFuture {
+    fn maybe_extend_optional_map(
+      maybe_map: Option<&HashMap<String, String>>,
+      maybe_extend: Option<&HashMap<String, String>>,
+    ) -> Option<HashMap<String, String>> {
+      if maybe_map.is_none() && maybe_extend.is_none() {
+        None
+      } else {
+        let mut headers = HashMap::<String, String>::new();
+        if let Some(map) = maybe_map {
+          headers.extend(map.clone());
+        }
+        if let Some(extend) = maybe_extend {
+          headers.extend(extend.clone());
+        }
+        Some(headers)
+      }
+    }
+
     if specifier.scheme() == "npm" {
       return Box::pin(futures::future::ready(
         match npm::NpmPackageReference::from_specifier(specifier) {
