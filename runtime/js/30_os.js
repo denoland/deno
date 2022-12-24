@@ -41,6 +41,10 @@
     return ops.op_uid();
   }
 
+  function uptime() {
+    return ops.op_uptime();
+  }
+
   // This is an internal only method used by the test harness to override the
   // behavior of exit when the exit sanitizer is enabled.
   let exitHandler = null;
@@ -109,5 +113,6 @@
     setExitHandler,
     systemMemoryInfo,
     uid,
+    uptime,
   };
 })(this);

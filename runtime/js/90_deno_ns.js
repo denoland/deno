@@ -125,6 +125,7 @@
     consoleSize: __bootstrap.tty.consoleSize,
     gid: __bootstrap.os.gid,
     uid: __bootstrap.os.uid,
+    uptime: __bootstrap.os.uptime,
   };
 
   __bootstrap.denoNsUnstable = {

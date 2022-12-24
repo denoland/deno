@@ -310,7 +310,7 @@ pub struct SysDescriptor(pub String);
 pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
   match kind {
     "hostname" | "osRelease" | "loadavg" | "networkInterfaces"
-    | "systemMemoryInfo" | "uid" | "gid" => Ok(kind),
+    | "systemMemoryInfo" | "uid" | "gid" | "uptime" => Ok(kind),
     _ => Err(type_error(format!("unknown system info kind \"{}\"", kind))),
   }
 }

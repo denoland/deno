@@ -281,3 +281,9 @@ Deno.test(function memoryUsage() {
   assert(typeof mem.external === "number");
   assert(mem.rss >= mem.heapTotal);
 });
+
+Deno.test({ permissions: { sys: ["uptime"] } }, function uptime() {
+  const uptime = Deno.uptime();
+  assert(typeof uptime === "number");
+  assert(uptime > 0);
+});

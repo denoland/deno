@@ -34,6 +34,7 @@ fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
     op_system_memory_info::decl(),
     op_uid::decl(),
     op_runtime_memory_usage::decl(),
+    op_uptime::decl(),
   ])
 }
 
@@ -422,4 +423,13 @@ fn rss() -> usize {
       0
     }
   }
+}
+
+#[op]
+fn op_uptime(state: &mut OpState) -> Result<u64, AnyError> {
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("uptime", Some("Deno.uptime()"))?;
+  Ok(sys_info::uptime())
 }
