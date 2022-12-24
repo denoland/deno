@@ -5384,7 +5384,7 @@
      * @returns {void}
      */
     enqueue(chunk = undefined) {
-      if (chunk.byteLength === 0) {
+      if (chunk?.byteLength === 0) {
         return;
       }
       webidl.assertBranded(this, ReadableStreamDefaultControllerPrototype);
