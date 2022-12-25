@@ -2434,8 +2434,8 @@ pub fn queue_async_op(
   // An op's realm (as given by `OpCtx::realm_idx`) must match the realm in
   // which it is invoked. Otherwise, we might have cross-realm object exposure.
   // deno_core doesn't currently support such exposure, even though embedders
-  // can cause them, and so we panic.
-  assert_eq!(
+  // can cause them, so we panic in debug mode (since the check is expensive).
+  debug_assert_eq!(
     runtime_state.borrow().known_realms[ctx.realm_idx].to_local(scope),
     Some(scope.get_current_context())
   );
