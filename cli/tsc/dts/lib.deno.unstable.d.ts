@@ -1691,6 +1691,21 @@ declare namespace Deno {
     /** The buffered output from the child process' `stderr`. */
     readonly stderr: Uint8Array;
   }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Returns the Operating System uptime in number of seconds.
+   *
+   * ```ts
+   * console.log(Deno.osUptime());
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Runtime Environment
+   */
+  export function osUptime(): number;
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.

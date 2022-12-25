@@ -427,6 +427,7 @@ fn rss() -> usize {
 
 #[op]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
+  super::check_unstable(state, "Deno.osUptime");
   state
     .borrow_mut::<Permissions>()
     .sys
