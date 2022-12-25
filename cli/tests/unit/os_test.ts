@@ -239,6 +239,18 @@ Deno.test({ permissions: { sys: false } }, function releasePerm() {
   }, Deno.errors.PermissionDenied);
 });
 
+Deno.test({ permissions: { sys: ["osUptime"] } }, function osUptime() {
+  const uptime = Deno.osUptime();
+  assert(typeof uptime === "number");
+  assert(uptime > 0);
+});
+
+Deno.test({ permissions: { sys: false } }, function osUptimePerm() {
+  assertThrows(() => {
+    Deno.osUptime();
+  }, Deno.errors.PermissionDenied);
+});
+
 Deno.test(
   { permissions: { sys: ["systemMemoryInfo"] } },
   function systemMemoryInfo() {
@@ -280,10 +292,4 @@ Deno.test(function memoryUsage() {
   assert(typeof mem.heapUsed === "number");
   assert(typeof mem.external === "number");
   assert(mem.rss >= mem.heapTotal);
-});
-
-Deno.test({ permissions: { sys: ["uptime"] } }, function uptime() {
-  const uptime = Deno.uptime();
-  assert(typeof uptime === "number");
-  assert(uptime > 0);
 });

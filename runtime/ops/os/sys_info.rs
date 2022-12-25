@@ -301,7 +301,7 @@ pub fn mem_info() -> Option<MemInfo> {
   Some(mem_info)
 }
 
-pub fn uptime() -> u64 {
+pub fn os_uptime() -> u64 {
   #[cfg(target_os = "linux")]
   {
     let mut info = std::mem::MaybeUninit::uninit();

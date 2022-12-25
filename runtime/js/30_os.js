@@ -25,6 +25,10 @@
     return ops.op_os_release();
   }
 
+  function osUptime() {
+    return ops.op_os_uptime();
+  }
+
   function systemMemoryInfo() {
     return ops.op_system_memory_info();
   }
@@ -39,10 +43,6 @@
 
   function uid() {
     return ops.op_uid();
-  }
-
-  function uptime() {
-    return ops.op_uptime();
   }
 
   // This is an internal only method used by the test harness to override the
@@ -110,9 +110,9 @@
     loadavg,
     networkInterfaces,
     osRelease,
+    osUptime,
     setExitHandler,
     systemMemoryInfo,
     uid,
-    uptime,
   };
 })(this);

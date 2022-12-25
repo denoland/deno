@@ -441,10 +441,10 @@ declare namespace Deno {
   export function osRelease(): string;
 
   /**
-   * Returns the system uptime in number of seconds.
+   * Returns the Operating System uptime in number of seconds.
    *
    * ```ts
-   * console.log(Deno.uptime());
+   * console.log(Deno.osUptime());
    * ```
    *
    * Requires `allow-sys` permission.
@@ -452,7 +452,7 @@ declare namespace Deno {
    * @tags allow-sys
    * @category Runtime Environment
    */
-  export function uptime(): number;
+  export function osUptime(): number;
 
   /**
    * Options which define the permissions within a test or worker context.
@@ -4134,9 +4134,9 @@ declare namespace Deno {
       | "systemMemoryInfo"
       | "networkInterfaces"
       | "osRelease"
+      | "osUptime"
       | "uid"
-      | "gid"
-      | "uptime";
+      | "gid";
   }
 
   /** The permission descriptor for the `allow-ffi` permissions, which controls

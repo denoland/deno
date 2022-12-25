@@ -119,13 +119,13 @@
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
     osRelease: __bootstrap.os.osRelease,
+    osUptime: __bootstrap.os.osUptime,
     hostname: __bootstrap.os.hostname,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,
     consoleSize: __bootstrap.tty.consoleSize,
     gid: __bootstrap.os.gid,
     uid: __bootstrap.os.uid,
-    uptime: __bootstrap.os.uptime,
   };
 
   __bootstrap.denoNsUnstable = {
