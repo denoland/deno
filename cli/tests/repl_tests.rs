@@ -973,13 +973,28 @@ mod repl {
       .stdin(std::process::Stdio::piped())
       .spawn()
       .unwrap();
-    let output = util::deno_cmd()
+
+    // NOTE: Running util::deno_cmd somehow doesn't error on windows
+    //       Use cmd /C deno instead
+    let deno_cmd = {
+      let mut p = target_dir().join("deno");
+      if cfg!(windows) {
+        p.set_extension("exe");
+      }
+      let deno_path = util::target_dir().join(p);
+      if cfg!(windows) {
+        Command::new("cmd").arg("/C").arg(deno_path)
+      } else {
+        Command::new(deno_path)
+      }
+    };
+
+    let output = deno_cmd
       .arg("repl")
       .stdout(process_that_already_closed.stdin.take().unwrap())
       .output()
       .unwrap();
-    // NOTE: seem that status.success() is true in windows
-    // assert!(!output.status.success());
+    assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("failed printing to stdout: Broken pipe"));
     assert!(!stderr.contains("Deno has panicked"));
