@@ -969,10 +969,12 @@ mod repl {
   #[test]
   fn no_cutom_panic_header_for_broken_pipe() {
     let mut process_that_already_closed = std::process::Command::new("echo")
+      .arg("1")
       .stdin(std::process::Stdio::piped())
       .spawn()
       .unwrap();
     let output = util::deno_cmd()
+      .arg("repl")
       .stdout(process_that_already_closed.stdin.take().unwrap())
       .output()
       .unwrap();
