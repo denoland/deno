@@ -93,6 +93,19 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchMalformedUriError() {
+    await assertRejects(
+      async () => {
+        const url = new URL("http://{{google/");
+        await fetch(url);
+      },
+      TypeError,
+    );
+  },
+);
+
 Deno.test({ permissions: { net: true } }, async function fetchJsonSuccess() {
   const response = await fetch("http://localhost:4545/assets/fixture.json");
   const json = await response.json();

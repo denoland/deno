@@ -1013,6 +1013,9 @@
   function configurePrototype(prototype) {
     const descriptors = ObjectGetOwnPropertyDescriptors(prototype.prototype);
     for (const key in descriptors) {
+      if (!ObjectPrototypeHasOwnProperty(descriptors, key)) {
+        continue;
+      }
       if (key === "constructor") continue;
       const descriptor = descriptors[key];
       if (
