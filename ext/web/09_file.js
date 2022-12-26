@@ -350,6 +350,7 @@
       const bytes = new Uint8Array(size);
       const partIterator = toIterator(this[_parts]);
       let offset = 0;
+      // deno-lint-ignore prefer-primordials
       for await (const chunk of partIterator) {
         const byteLength = chunk.byteLength;
         if (byteLength > 0) {
