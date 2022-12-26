@@ -31,7 +31,7 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
-use http::header::CONTENT_LENGTH;
+use http::{header::CONTENT_LENGTH, Uri};
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -251,6 +251,12 @@ where
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url, "fetch()")?;
+
+      // Make sure that we have a valid URI early, as reqwest's `RequestBuilder::send`
+      // internally uses `expect_uri`, which panics instead of returning a usable `Result`.
+      if url.as_str().parse::<Uri>().is_err() {
+        return Err(type_error("Invalid URL"));
+      }
 
       let mut request = client.request(method.clone(), url);
 
