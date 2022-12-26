@@ -153,8 +153,10 @@ pub fn to_op_result<R: Serialize + 'static>(
 pub struct OpCtx {
   pub id: OpId,
   pub state: Rc<RefCell<OpState>>,
-  pub decl: OpDecl,
+  pub decl: Rc<OpDecl>,
   pub runtime_state: Weak<RefCell<JsRuntimeState>>,
+  // Index of the current realm into `JsRuntimeState::known_realms`.
+  pub realm_idx: usize,
 }
 
 /// Maintains the resources and ops inside a JS runtime.
