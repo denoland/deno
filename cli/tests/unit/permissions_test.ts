@@ -22,6 +22,7 @@ Deno.test(async function permissionNetInvalidHost() {
 Deno.test(async function permissionSysValidKind() {
   await Deno.permissions.query({ name: "sys", kind: "loadavg" });
   await Deno.permissions.query({ name: "sys", kind: "osRelease" });
+  await Deno.permissions.query({ name: "sys", kind: "osUptime" });
   await Deno.permissions.query({ name: "sys", kind: "networkInterfaces" });
   await Deno.permissions.query({ name: "sys", kind: "systemMemoryInfo" });
   await Deno.permissions.query({ name: "sys", kind: "hostname" });
