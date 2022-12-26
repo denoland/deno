@@ -1,4 +1,3 @@
-use crate::JsRealm;
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::bindings::script_origin;
 use crate::error::custom_error;
@@ -10,6 +9,7 @@ use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url_or_path;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map as apply_source_map_;
+use crate::JsRealm;
 use crate::JsRuntime;
 use crate::OpDecl;
 use crate::ZeroCopyBuf;
