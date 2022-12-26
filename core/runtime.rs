@@ -151,6 +151,9 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 #[derive(Default)]
 pub(crate) struct ContextState {
   pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
+  // We don't explicitly re-read this prop but need the slice to live alongside
+  // the context
+  pub(crate) op_ctxs: Box<[OpCtx]>,
 }
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
@@ -178,9 +181,6 @@ pub struct JsRuntimeState {
   pub(crate) unrefed_ops: HashSet<i32>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
-  #[allow(dead_code)]
-  // We don't explicitly re-read this prop but need the slice to live alongside the isolate
-  pub(crate) op_ctxs: Box<[OpCtx]>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   /// The error that was passed to an `op_dispatch_exception` call.
@@ -407,7 +407,6 @@ impl JsRuntime {
       dispatched_exceptions: Default::default(),
       // Some fields are initialized later after isolate is created
       inspector: None,
-      op_ctxs: vec![].into_boxed_slice(),
       global_realm: None,
       known_realms: Vec::with_capacity(1),
     }));
@@ -420,7 +419,8 @@ impl JsRuntime {
         id,
         state: op_state.clone(),
         runtime_state: weak.clone(),
-        decl,
+        decl: Rc::new(decl),
+        realm_idx: 0,
       })
       .collect::<Vec<_>>()
       .into_boxed_slice();
@@ -522,9 +522,13 @@ impl JsRuntime {
       (isolate, snapshot_options)
     };
 
-    global_context
-      .open(&mut isolate)
-      .set_slot(&mut isolate, Rc::<RefCell<ContextState>>::default());
+    global_context.open(&mut isolate).set_slot(
+      &mut isolate,
+      Rc::new(RefCell::new(ContextState {
+        js_build_custom_error_cb: None,
+        op_ctxs,
+      })),
+    );
 
     op_state.borrow_mut().put(isolate_ptr);
     let inspector = if options.inspector {
@@ -543,7 +547,6 @@ impl JsRuntime {
     {
       let mut state = state_rc.borrow_mut();
       state.global_realm = Some(JsRealm(global_context.clone()));
-      state.op_ctxs = op_ctxs;
       state.inspector = inspector;
       state
         .known_realms
@@ -631,6 +634,23 @@ impl JsRuntime {
   /// constructed.
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
+      let realm_idx = self.state.borrow().known_realms.len();
+
+      let op_ctxs: Box<[OpCtx]> = self
+        .global_realm()
+        .state(self.v8_isolate())
+        .borrow()
+        .op_ctxs
+        .iter()
+        .map(|op_ctx| OpCtx {
+          id: op_ctx.id,
+          state: op_ctx.state.clone(),
+          decl: op_ctx.decl.clone(),
+          runtime_state: op_ctx.runtime_state.clone(),
+          realm_idx,
+        })
+        .collect();
+
       // SAFETY: Having the scope tied to self's lifetime makes it impossible to
       // reference JsRuntimeState::op_ctxs while the scope is alive. Here we
       // turn it into an unbound lifetime, which is sound because 1. it only
@@ -639,12 +659,15 @@ impl JsRuntime {
       let scope = &mut v8::HandleScope::new(unsafe {
         &mut *(self.v8_isolate() as *mut v8::OwnedIsolate)
       });
-      let context = bindings::initialize_context(
+      let context =
+        bindings::initialize_context(scope, &op_ctxs, self.snapshot_options);
+      context.set_slot(
         scope,
-        &self.state.borrow().op_ctxs,
-        self.snapshot_options,
+        Rc::new(RefCell::new(ContextState {
+          js_build_custom_error_cb: None,
+          op_ctxs,
+        })),
       );
-      context.set_slot(scope, Rc::<RefCell<ContextState>>::default());
 
       self
         .state
@@ -1127,12 +1150,7 @@ impl JsRuntime {
     self.pump_v8_message_loop()?;
 
     // Ops
-    {
-      self.resolve_async_ops(cx)?;
-      self.drain_nexttick()?;
-      self.drain_macrotasks()?;
-      self.check_promise_exceptions()?;
-    }
+    self.resolve_async_ops(cx)?;
     // Dynamic module loading - ie. modules loaded using "import()"
     {
       // Run in a loop so that dynamic imports that only depend on another
@@ -1157,9 +1175,13 @@ impl JsRuntime {
           break;
         }
       }
-
-      self.check_promise_exceptions()?;
     }
+    // Run all next tick callbacks and macrotasks callbacks and only then
+    // check for any promise exceptions (`unhandledrejection` handlers are
+    // run in macrotasks callbacks so we need to let them run first).
+    self.drain_nexttick()?;
+    self.drain_macrotasks()?;
+    self.check_promise_exceptions()?;
 
     // Event loop middlewares
     let mut maybe_scheduling = false;
@@ -2408,6 +2430,15 @@ pub fn queue_async_op(
     // atleast 1 Rc is held by the JsRuntime.
     None => unreachable!(),
   };
+
+  // An op's realm (as given by `OpCtx::realm_idx`) must match the realm in
+  // which it is invoked. Otherwise, we might have cross-realm object exposure.
+  // deno_core doesn't currently support such exposure, even though embedders
+  // can cause them, so we panic in debug mode (since the check is expensive).
+  debug_assert_eq!(
+    runtime_state.borrow().known_realms[ctx.realm_idx].to_local(scope),
+    Some(scope.get_current_context())
+  );
 
   match OpCall::eager(op) {
     // This calls promise.resolve() before the control goes back to userland JS. It works something

@@ -29,6 +29,7 @@ fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
     op_loadavg::decl(),
     op_network_interfaces::decl(),
     op_os_release::decl(),
+    op_os_uptime::decl(),
     op_set_env::decl(),
     op_set_exit_code::decl(),
     op_system_memory_info::decl(),
@@ -422,4 +423,14 @@ fn rss() -> usize {
       0
     }
   }
+}
+
+#[op]
+fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
+  super::check_unstable(state, "Deno.osUptime");
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("osUptime", Some("Deno.osUptime()"))?;
+  Ok(sys_info::os_uptime())
 }

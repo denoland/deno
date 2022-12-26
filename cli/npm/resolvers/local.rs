@@ -174,7 +174,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
         }
       }
 
-      // if doing type resolution, check for the existance of a @types package
+      // if doing type resolution, check for the existence of a @types package
       if mode.is_types() && !name.starts_with("@types/") {
         let sub_dir =
           join_package_name(current_folder, &types_package_name(name));
