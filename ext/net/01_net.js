@@ -5,7 +5,6 @@
   const core = window.Deno.core;
   const { BadResourcePrototype, InterruptedPrototype, ops } = core;
   const {
-    readableStreamForRid,
     readableStreamForRidUnrefable,
     readableStreamForRidUnrefableRef,
     readableStreamForRidUnrefableUnref,
@@ -51,6 +50,8 @@
     #rid = 0;
     #remoteAddr = null;
     #localAddr = null;
+    #unref = false;
+    #pendingReadPromiseIds = [];
 
     #readable;
     #writable;
@@ -78,8 +79,21 @@
     }
 
     read(p) {
-      // TODO(bartlomieju): handle unrefing of connection
-      return read(this.rid, p);
+      const promise = read(this.rid, p);
+      const promiseId = promise[promiseIdSymbol];
+      if (this.#unref) core.unrefOp(promiseId);
+      this.#pendingReadPromiseIds.push(promiseId);
+      return promise.then((nread) => {
+        this.#pendingReadPromiseIds = this.#pendingReadPromiseIds.filter((id) =>
+          id !== promiseId
+        );
+        return nread;
+      }, (error) => {
+        this.#pendingReadPromiseIds = this.#pendingReadPromiseIds.filter((id) =>
+          id !== promiseId
+        );
+        return error;
+      });
     }
 
     close() {
@@ -105,15 +119,19 @@
     }
 
     ref() {
+      this.#unref = false;
       if (this.#readable) {
         readableStreamForRidUnrefableRef(this.#readable);
       }
+      this.#pendingReadPromiseIds.forEach((id) => core.refOp(id));
     }
 
     unref() {
+      this.#unref = true;
       if (this.#readable) {
         readableStreamForRidUnrefableUnref(this.#readable);
       }
+      this.#pendingReadPromiseIds.forEach((id) => core.unrefOp(id));
     }
   }
 
