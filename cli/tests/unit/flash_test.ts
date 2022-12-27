@@ -446,6 +446,7 @@ Deno.test(
       body: stream.readable,
       method: "POST",
       headers: { "connection": "close" },
+      duplex: "half",
     });
 
     assertEquals(await resp.text(), "yo");
@@ -1756,6 +1757,7 @@ Deno.test(
     const response = await fetch(`http://localhost:4503/`, {
       method: "POST",
       body: f.readable,
+      duplex: "half",
     });
 
     await promise;

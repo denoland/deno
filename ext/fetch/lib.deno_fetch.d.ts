@@ -163,6 +163,8 @@ type RequestCache =
 /** @category Fetch API */
 type RequestCredentials = "include" | "omit" | "same-origin";
 /** @category Fetch API */
+type RequestDuplex = "half";
+/** @category Fetch API */
 type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
 /** @category Fetch API */
 type RequestRedirect = "error" | "follow" | "manual";
@@ -223,6 +225,14 @@ interface RequestInit {
    * credentials.
    */
   credentials?: RequestCredentials;
+  /**
+   * "half" is the only valid value and it is for initiating a half-duplex fetch
+   * (i.e., the user agent sends the entire request before processing the response).
+   * "full" is reserved for future use, for initiating a full-duplex fetch (i.e.,
+   * the user agent can process the response before sending the entire request).
+   * This member needs to be set when body is a ReadableStream object.
+   */
+  duplex?: RequestDuplex;
   /**
    * A Headers object, an object literal, or an array of two-item arrays to set
    * request's headers.

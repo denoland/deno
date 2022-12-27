@@ -2530,22 +2530,8 @@
       "request": {
         "request-init-002.any.html": true,
         "request-init-002.any.worker.html": true,
-        "request-init-stream.any.html": [
-          "It is error to omit .duplex when the body is a ReadableStream.",
-          "It is error to set .duplex = 'full' when the body is null.",
-          "It is error to set .duplex = 'full' when the body is a string.",
-          "It is error to set .duplex = 'full' when the body is a Uint8Array.",
-          "It is error to set .duplex = 'full' when the body is a Blob.",
-          "It is error to set .duplex = 'full' when the body is a ReadableStream."
-        ],
-        "request-init-stream.any.worker.html": [
-          "It is error to omit .duplex when the body is a ReadableStream.",
-          "It is error to set .duplex = 'full' when the body is null.",
-          "It is error to set .duplex = 'full' when the body is a string.",
-          "It is error to set .duplex = 'full' when the body is a Uint8Array.",
-          "It is error to set .duplex = 'full' when the body is a Blob.",
-          "It is error to set .duplex = 'full' when the body is a ReadableStream."
-        ],
+        "request-init-stream.any.html": true,
+        "request-init-stream.any.worker.html": true,
         "request-consume-empty.any.html": [
           "Consume empty FormData request body as text"
         ],

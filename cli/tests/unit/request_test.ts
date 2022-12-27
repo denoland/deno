@@ -44,6 +44,7 @@ Deno.test(async function cloneRequestBodyStream() {
   const r1 = new Request("http://foo/", {
     body: stream,
     method: "POST",
+    duplex: "half",
   });
 
   const r2 = r1.clone();

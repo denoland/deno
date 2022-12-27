@@ -1174,6 +1174,7 @@ Deno.test(
         ["Foo", "Bar"],
       ],
       body: stream.readable,
+      duplex: "half",
     });
     await response.arrayBuffer();
     assertEquals(response.status, 404);
@@ -1268,7 +1269,11 @@ Deno.test(
     });
     const nonExistantHostname = "http://localhost:47582";
     await assertRejects(async () => {
-      await fetch(nonExistantHostname, { body, method: "POST" });
+      await fetch(nonExistantHostname, {
+        body,
+        method: "POST",
+        duplex: "half",
+      });
     }, TypeError);
     await done;
   },
@@ -1381,6 +1386,7 @@ Deno.test(
             },
           }),
           signal: abortController.signal,
+          duplex: "half",
         },
       );
       fail("Fetch didn't reject.");
@@ -1409,6 +1415,7 @@ Deno.test(
             },
           }),
           signal: abortController.signal,
+          duplex: "half",
         },
       );
       fail("Fetch didn't reject.");
@@ -1436,6 +1443,7 @@ Deno.test(
             },
           }),
           signal: abortController.signal,
+          duplex: "half",
         },
       );
       fail("Fetch didn't reject.");
@@ -1876,6 +1884,7 @@ Deno.test(
       fetch("http://localhost:4514", {
         body: stream,
         method: "POST",
+        duplex: "half",
       })
     );
 

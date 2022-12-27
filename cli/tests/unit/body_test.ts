@@ -4,11 +4,15 @@ import { assert, assertEquals } from "./test_util.ts";
 // just a hack to get a body object
 // deno-lint-ignore no-explicit-any
 function buildBody(body: any, headers?: Headers): Body {
-  const stub = new Request("http://foo/", {
+  const init: RequestInit = {
     body: body,
     headers,
     method: "POST",
-  });
+  };
+  if (body instanceof ReadableStream) {
+    init.duplex = "half";
+  }
+  const stub = new Request("http://foo/", init);
   return stub as Body;
 }
 
