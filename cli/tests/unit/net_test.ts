@@ -833,30 +833,6 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true, read: true, run: true } },
-  async function netConnUnref() {
-    const listener = Deno.listen({ port: 3500 });
-    const intervalId = setInterval(() => {}); // This keeps event loop alive.
-
-    const program = execCode(`
-      async function main() {
-        const conn = await Deno.connect({ port: 3500 });
-        conn.unref();
-        await conn.read(new Uint8Array(10)); // The program exits here
-        throw new Error(); // The program doesn't reach here  
-      }
-      main();
-    `);
-    const conn = await listener.accept();
-    const [statusCode, _output] = await program;
-    conn.close();
-    listener.close();
-    clearInterval(intervalId);
-    assertEquals(statusCode, 0);
-  },
-);
-
-Deno.test(
   { permissions: { read: true, run: true } },
   async function netListenUnref() {
     const [statusCode, _output] = await execCode(`
@@ -929,6 +905,30 @@ Deno.test({
   );
   listener.close();
 });
+
+Deno.test(
+  { permissions: { net: true, read: true, run: true } },
+  async function netConnUnref() {
+    const listener = Deno.listen({ port: 3500 });
+    const intervalId = setInterval(() => {}); // This keeps event loop alive.
+
+    const program = execCode(`
+      async function main() {
+        const conn = await Deno.connect({ port: 3500 });
+        conn.unref();
+        await conn.read(new Uint8Array(10)); // The program exits here
+        throw new Error(); // The program doesn't reach here  
+      }
+      main();
+    `);
+    const conn = await listener.accept();
+    const [statusCode, _output] = await program;
+    conn.close();
+    listener.close();
+    clearInterval(intervalId);
+    assertEquals(statusCode, 0);
+  },
+);
 
 Deno.test({ permissions: { net: true } }, async function netTcpReuseAddr() {
   const listener1 = Deno.listen({
