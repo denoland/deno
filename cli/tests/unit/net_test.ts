@@ -833,6 +833,32 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { net: true, read: true, run: true } },
+  async function netConnUnref() {
+    const listener = Deno.listen({ port: 3500 });
+    const program = execCode(`
+      console.log("before connected");
+      const conn = await Deno.connect({ port: 3500 });
+      console.log("connected");
+      conn.unref();
+      console.log("unrefed");
+      const m = Deno.metrics();
+      console.log(m);
+      await conn.read(new Uint8Array(10)); // The program exits here
+      // console.log("after read");
+      throw new Error(); // The program doesn't reach here  
+    `);
+    const conn = await listener.accept();
+    console.log("unrefered from listener");
+    const [statusCode, output] = await program;
+    console.log("program finished");
+    conn.close();
+    console.log("output", output);
+    assertEquals(statusCode, 0);
+  },
+);
+
+Deno.test(
   { permissions: { read: true, run: true } },
   async function netListenUnref() {
     const [statusCode, _output] = await execCode(`

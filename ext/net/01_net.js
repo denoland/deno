@@ -23,17 +23,6 @@
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
-  async function read(
-    rid,
-    buffer,
-  ) {
-    if (buffer.length === 0) {
-      return 0;
-    }
-    const nread = await core.read(rid, buffer);
-    return nread === 0 ? null : nread;
-  }
-
   async function write(rid, data) {
     return await core.write(rid, data);
   }
@@ -78,22 +67,28 @@
       return write(this.rid, p);
     }
 
-    read(p) {
-      const promise = read(this.rid, p);
+    async read(buffer) {
+      if (buffer.length === 0) {
+        return 0;
+      }
+      const promise = core.read(this.rid, buffer);
       const promiseId = promise[promiseIdSymbol];
-      if (this.#unref) core.unrefOp(promiseId);
+      if (this.#unref) {
+        console.log("unrefed", promiseId);
+        core.unrefOp(promiseId);
+      }
       this.#pendingReadPromiseIds.push(promiseId);
-      return promise.then((nread) => {
+      let nread;
+      try {
+        nread = await promise;
+      } catch (e) {
+        throw e;
+      } finally {
         this.#pendingReadPromiseIds = this.#pendingReadPromiseIds.filter((id) =>
           id !== promiseId
         );
-        return nread;
-      }, (error) => {
-        this.#pendingReadPromiseIds = this.#pendingReadPromiseIds.filter((id) =>
-          id !== promiseId
-        );
-        return error;
-      });
+      }
+      return nread === 0 ? null : nread;
     }
 
     close() {
