@@ -836,24 +836,22 @@ Deno.test(
   { permissions: { net: true, read: true, run: true } },
   async function netConnUnref() {
     const listener = Deno.listen({ port: 3500 });
+    const intervalId = setInterval(() => {}); // This keeps event loop alive.
+
     const program = execCode(`
-      console.log("before connected");
-      const conn = await Deno.connect({ port: 3500 });
-      console.log("connected");
-      conn.unref();
-      console.log("unrefed");
-      const m = Deno.metrics();
-      console.log(m);
-      await conn.read(new Uint8Array(10)); // The program exits here
-      // console.log("after read");
-      throw new Error(); // The program doesn't reach here  
+      async function main() {
+        const conn = await Deno.connect({ port: 3500 });
+        conn.unref();
+        await conn.read(new Uint8Array(10)); // The program exits here
+        throw new Error(); // The program doesn't reach here  
+      }
+      main();
     `);
     const conn = await listener.accept();
-    console.log("unrefered from listener");
-    const [statusCode, output] = await program;
-    console.log("program finished");
+    const [statusCode, _output] = await program;
     conn.close();
-    console.log("output", output);
+    listener.close();
+    clearInterval(intervalId);
     assertEquals(statusCode, 0);
   },
 );
