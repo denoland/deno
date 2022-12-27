@@ -47,7 +47,7 @@
 
   function pathDirname(filepath) {
     if (filepath == null || filepath === "") {
-      throw new Error("Empty filepath.");
+      return ".";
     }
     return ops.op_require_path_dirname(filepath);
   }
@@ -888,6 +888,30 @@
   };
 
   Module.Module = Module;
+
+  Module._preloadModules = function (requests) {
+    if (!ArrayIsArray(requests)) {
+      return;
+    }
+
+    isPreloading = true;
+
+    const parent = new Module("internal/preload", null);
+    try {
+      parent.paths = Module._nodeModulePaths(core.ops.op_require_current_dir());
+    } catch (e) {
+      // FIXME(bartlomieju): this is wrong
+      if (e.code !== "ENOENT") {
+        isPreloading = false;
+        throw e;
+      }
+    }
+    for (let n = 0; n < requests.length; n++) {
+      parent.require(requests[n]);
+    }
+
+    isPreloading = false;
+  };
 
   node.nativeModuleExports.module = Module;
 

@@ -94,6 +94,7 @@ pub fn init<P: NodePermissions + 'static>(
       op_require_resolve_deno_dir::decl(),
       op_require_is_request_relative::decl(),
       op_require_resolve_lookup_paths::decl(),
+      op_require_current_dir::decl::<P>(),
       op_require_try_self_parent_path::decl::<P>(),
       op_require_try_self::decl(),
       op_require_real_path::decl::<P>(),
@@ -456,6 +457,16 @@ where
     }
   }
   Ok(None)
+}
+
+#[op]
+fn op_require_current_dir<P>(state: &mut OpState) -> Result<String, AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  let cwd = std::env::current_dir()?;
+  ensure_read_permission::<P>(state, &cwd)?;
+  Ok(cwd.to_string_lossy().to_string())
 }
 
 #[op]
