@@ -73,10 +73,7 @@
       }
       const promise = core.read(this.rid, buffer);
       const promiseId = promise[promiseIdSymbol];
-      if (this.#unref) {
-        console.log("unrefed", promiseId);
-        core.unrefOp(promiseId);
-      }
+      if (this.#unref) core.unrefOp(promiseId);
       this.#pendingReadPromiseIds.push(promiseId);
       let nread;
       try {
@@ -102,6 +99,9 @@
     get readable() {
       if (this.#readable === undefined) {
         this.#readable = readableStreamForRidUnrefable(this.rid);
+        if (this.#unref) {
+          readableStreamForRidUnrefableUnref(this.#readable);
+        }
       }
       return this.#readable;
     }
