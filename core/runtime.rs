@@ -2460,7 +2460,7 @@ pub fn queue_async_op(
   // can cause them, so we panic in debug mode (since the check is expensive).
   let realm_idx = ctx.realm_idx;
   debug_assert_eq!(
-    runtime_state.borrow().known_realms[ctx.realm_idx].to_local(scope),
+    runtime_state.borrow().known_realms[realm_idx].to_local(scope),
     Some(scope.get_current_context())
   );
 
