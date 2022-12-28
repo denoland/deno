@@ -483,7 +483,7 @@ delete Intl.v8BreakIterator;
           ops.op_node_unstable_net_listen_udp,
           ops.op_node_unstable_net_listen_unixpacket,
         ),
-        osUptime: __bootstrap.os.osUptime(ops.op_node_unstable_os_uptime),
+        osUptime: __bootstrap.os.createOsUptime(ops.op_node_unstable_os_uptime),
       },
     });
 
@@ -519,7 +519,7 @@ delete Intl.v8BreakIterator;
           ops.op_net_listen_udp,
           ops.op_net_listen_unixpacket,
         ),
-        osUptime: __bootstrap.os.osUptime(ops.op_os_uptime),
+        osUptime: __bootstrap.os.createOsUptime(ops.op_os_uptime),
       });
     }
 
@@ -624,7 +624,7 @@ delete Intl.v8BreakIterator;
           ops.op_node_unstable_net_listen_udp,
           ops.op_node_unstable_net_listen_unixpacket,
         ),
-        osUptime: __bootstrap.os.osUptime(ops.op_node_unstable_os_uptime),
+        osUptime: __bootstrap.os.createOsUptime(ops.op_node_unstable_os_uptime),
       },
     });
 
@@ -652,7 +652,7 @@ delete Intl.v8BreakIterator;
           ops.op_net_listen_udp,
           ops.op_net_listen_unixpacket,
         ),
-        osUptime: __bootstrap.os.osUptime(ops.op_os_uptime),
+        osUptime: __bootstrap.os.createOsUptime(ops.op_os_uptime),
       });
     }
     ObjectDefineProperties(finalDenoNs, {
