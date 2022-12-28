@@ -1212,6 +1212,14 @@ impl Inner {
       }
       Some(Err(err)) => Err(anyhow!("{}", err)),
       None => {
+        // the file path is only used to determine what formatter should
+        // be used to format the file, so give the filepath an extension
+        // that matches what the user selected as the language
+        let file_path = document
+          .maybe_language_id()
+          .and_then(|id| id.as_extension())
+          .map(|ext| file_path.with_extension(ext))
+          .unwrap_or(file_path);
         // it's not a js/ts file, so attempt to format its contents
         format_file(&file_path, &document.content(), &fmt_options)
       }

@@ -4120,6 +4120,7 @@ declare namespace Deno {
       | "systemMemoryInfo"
       | "networkInterfaces"
       | "osRelease"
+      | "osUptime"
       | "uid"
       | "gid";
   }

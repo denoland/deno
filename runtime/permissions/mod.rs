@@ -309,7 +309,7 @@ pub struct SysDescriptor(pub String);
 
 pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
   match kind {
-    "hostname" | "osRelease" | "loadavg" | "networkInterfaces"
+    "hostname" | "osRelease" | "osUptime" | "loadavg" | "networkInterfaces"
     | "systemMemoryInfo" | "uid" | "gid" => Ok(kind),
     _ => Err(type_error(format!("unknown system info kind \"{}\"", kind))),
   }
@@ -1611,7 +1611,7 @@ impl Permissions {
   ) -> Result<(), AnyError> {
     match specifier.scheme() {
       "file" => match specifier.to_file_path() {
-        Ok(path) => self.read.check(&path, None),
+        Ok(path) => self.read.check(&path, Some("import()")),
         Err(_) => Err(uri_error(format!(
           "Invalid file path.\n  Specifier: {}",
           specifier
@@ -1619,7 +1619,7 @@ impl Permissions {
       },
       "data" => Ok(()),
       "blob" => Ok(()),
-      _ => self.net.check_url(specifier, None),
+      _ => self.net.check_url(specifier, Some("import()")),
     }
   }
 }
