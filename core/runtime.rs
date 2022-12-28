@@ -2154,7 +2154,7 @@ impl JsRuntime {
 
     // `responses_per_realm[idx]` is a vector containing the promise ID and
     // response for all promises in realm `self.state.known_realms[idx]`.
-    let mut responses_per_realm: Vec<Vec<(i32, OpResult)>> = {
+    let mut responses_per_realm: Vec<Vec<(PromiseId, OpResult)>> = {
       let len = self.state.borrow().known_realms.len();
       (0..len).map(|_| vec![]).collect()
     };
