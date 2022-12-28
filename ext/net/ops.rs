@@ -366,7 +366,6 @@ fn op_node_unstable_net_listen_udp<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  super::check_unstable(state, "Deno.listenDatagram");
   net_listen_udp::<NP>(state, addr, reuse_address)
 }
 
