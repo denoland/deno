@@ -1,15 +1,15 @@
 {
   "textDocument": {
-    "uri": "file:///a/file01.ts"
+    "uri": "file:///a/file00.ts"
   },
   "range": {
     "start": {
-      "line": 1,
-      "character": 12
+      "line": 0,
+      "character": 0
     },
     "end": {
-      "line": 1,
-      "character": 15
+      "line": 6,
+      "character": 0
     }
   },
   "context": {
@@ -17,34 +17,34 @@
       {
         "range": {
           "start": {
-            "line": 1,
-            "character": 12
+            "line": 0,
+            "character": 50
           },
           "end": {
-            "line": 1,
-            "character": 15
+            "line": 0,
+            "character": 67
           }
         },
         "severity": 1,
         "code": 2304,
         "source": "deno-ts",
-        "message": "Cannot find name 'abc'."
+        "message": "Cannot find name 'DuckConfigOptions'."
       },
       {
         "range": {
           "start": {
-            "line": 2,
-            "character": 12
+            "line": 4,
+            "character": 39
           },
           "end": {
-            "line": 2,
-            "character": 15
+            "line": 4,
+            "character": 49
           }
         },
         "severity": 1,
         "code": 2304,
         "source": "deno-ts",
-        "message": "Cannot find name 'def'."
+        "message": "Cannot find name 'DuckConfig'."
       }
     ],
     "only": [
