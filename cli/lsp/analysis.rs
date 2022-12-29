@@ -184,28 +184,33 @@ pub fn fix_ts_import_changes(
   for change in changes {
     let mut text_changes = Vec::new();
     for text_change in &change.text_changes {
-      if let Some(captures) =
-        IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
-      {
-        let specifier = captures
-          .get(1)
-          .ok_or_else(|| anyhow!("Missing capture."))?
-          .as_str();
-        if let Some(new_specifier) =
-          check_specifier(specifier, referrer, documents)
-        {
-          let new_text =
-            text_change.new_text.replace(specifier, &new_specifier);
-          text_changes.push(tsc::TextChange {
-            span: text_change.span.clone(),
-            new_text,
-          });
+      let lines = text_change.new_text.split('\n');
+      let mut new_lines = vec![];
+
+      // This assumes that there's only one import per line.
+      for line in lines {
+        if let Some(captures) = IMPORT_SPECIFIER_RE.captures(line) {
+          let specifier = captures
+            .get(1)
+            .ok_or_else(|| anyhow!("Missing capture."))?
+            .as_str();
+          if let Some(new_specifier) =
+            check_specifier(specifier, referrer, documents)
+          {
+            let new_text = line.replace(specifier, &new_specifier);
+            new_lines.push(new_text);
+          } else {
+            new_lines.push(line.to_string());
+          }
         } else {
-          text_changes.push(text_change.clone());
+          new_lines.push(line.to_string());
         }
-      } else {
-        text_changes.push(text_change.clone());
       }
+
+      text_changes.push(tsc::TextChange {
+        span: text_change.span.clone(),
+        new_text: new_lines.join("\n"),
+      });
     }
     r.push(tsc::FileTextChanges {
       file_name: change.file_name.clone(),
