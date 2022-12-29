@@ -310,6 +310,43 @@ impl SerializedFilesConfig {
         .collect::<Result<Vec<ModuleSpecifier>, _>>()?,
     })
   }
+
+  pub fn into_resolved_paths(
+    self,
+    config_file_specifier: &ModuleSpecifier,
+  ) -> Result<FileFlags, AnyError> {
+    let config_dir = specifier_parent(config_file_specifier);
+    Ok(FileFlags {
+      include: self
+        .include
+        .into_iter()
+        .map(|p| {
+          let joined = config_dir.join(&p);
+          match joined {
+            Ok(url) => match specifier_to_file_path(&url) {
+              Ok(path) => path,
+              Err(e) => panic!("{}", e),
+            },
+            Err(e) => panic!("{}", e),
+          }
+        })
+        .collect(),
+      ignore: self
+        .exclude
+        .into_iter()
+        .map(|p| {
+          let joined = config_dir.join(&p);
+          match joined {
+            Ok(url) => match specifier_to_file_path(&url) {
+              Ok(path) => path,
+              Err(e) => panic!("{}", e),
+            },
+            Err(e) => panic!("{}", e),
+          }
+        })
+        .collect(),
+    })
+  }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -485,25 +522,21 @@ impl SerializedBenchConfig {
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<BenchConfig, AnyError> {
     Ok(BenchConfig {
-      files: self.files.into_resolved(config_file_specifier)?,
+      files: self.files.into_resolved_paths(config_file_specifier)?,
     })
   }
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct BenchConfig {
-  pub files: FilesConfig,
-}
-
-pub struct FinalBenchConfig {
   pub files: FileFlags,
 }
 
-impl ContainsFilesConfig for BenchConfig {
-  fn get_files_config(&self) -> FilesConfig {
-    self.files.clone()
-  }
-}
+// impl ContainsFilesConfig for BenchConfig {
+//   fn get_files_config(&self) -> FilesConfig {
+//     self.files.clone()
+//   }
+// }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]

@@ -60,7 +60,6 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
 use crate::version;
 
-use self::config_file::FinalBenchConfig;
 use self::config_file::FinalFmtConfig;
 use self::config_file::FinalTestConfig;
 
@@ -521,15 +520,18 @@ impl CliOptions {
   pub fn to_bench_config(
     &self,
     bench_flags: &BenchFlags,
-  ) -> Result<FinalBenchConfig, AnyError> {
+  ) -> Result<BenchConfig, AnyError> {
     let mut include = bench_flags.files.include.clone();
     let mut ignore = bench_flags.files.ignore.clone();
 
     if let Some(config_file) = &self.maybe_config_file {
       if let Some(bench_config) = config_file.to_bench_config()? {
-        let filters = self.collect_filters(&bench_config, include, ignore)?;
-        include = filters.include;
-        ignore = filters.ignore;
+        if include.is_empty() {
+          include = bench_config.files.include
+        }
+        if ignore.is_empty() {
+          ignore = bench_config.files.ignore
+        }
       }
     }
 
@@ -537,7 +539,7 @@ impl CliOptions {
       include.push(std::env::current_dir()?);
     }
 
-    Ok(FinalBenchConfig {
+    Ok(BenchConfig {
       files: FileFlags { include, ignore },
     })
   }
