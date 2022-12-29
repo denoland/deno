@@ -2205,7 +2205,7 @@ impl CompletionEntry {
           return Some(insert_text.clone());
         }
       } else {
-        return Some(self.name.replace('#', ""));
+        return None;
       }
     }
 

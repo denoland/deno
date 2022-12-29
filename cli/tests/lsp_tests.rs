@@ -3739,6 +3739,49 @@ export class DuckConfig {
   }
 
   #[test]
+  fn lsp_completions_private_fields() {
+    let mut client = init("initialize_params.json");
+    did_open(
+      &mut client,
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "languageId": "typescript",
+          "version": 1,
+          "text": r#"class Foo { #myProperty = "value"; constructor() { this.# } }"#
+        }
+      }),
+    );
+    let (maybe_res, maybe_err) = client
+      .write_request(
+        "textDocument/completion",
+        json!({
+          "textDocument": {
+            "uri": "file:///a/file.ts"
+          },
+          "position": {
+            "line": 0,
+            "character": 57
+          },
+          "context": {
+            "triggerKind": 1
+          }
+        }),
+      )
+      .unwrap();
+    assert!(maybe_err.is_none());
+    if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+      assert_eq!(list.items.len(), 1);
+      let item = &list.items[0];
+      assert_eq!(item.label, "#myProperty");
+      assert!(!list.is_incomplete);
+    } else {
+      panic!("unexpected response");
+    }
+    shutdown(&mut client);
+  }
+
+  #[test]
   fn lsp_completions_optional() {
     let mut client = init("initialize_params.json");
     did_open(
