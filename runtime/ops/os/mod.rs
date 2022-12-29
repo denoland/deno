@@ -453,7 +453,8 @@ fn rss() -> usize {
 
 fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   state
-    .borrow_mut::<Permissions>()
+    .borrow_mut::<PermissionsContainer>()
+    .lock()
     .sys
     .check("osUptime", Some("Deno.osUptime()"))?;
   Ok(sys_info::os_uptime())
