@@ -313,6 +313,8 @@ pub fn os_uptime() -> u64 {
       // SAFETY: `sysinfo` initializes the struct.
       let info = unsafe { info.assume_init() };
       uptime = info.uptime as u64;
+    } else {
+      panic!("result is not 0")
     }
   }
 
@@ -352,6 +354,8 @@ pub fn os_uptime() -> u64 {
           .as_secs()
         })
         .unwrap_or_default();
+    } else {
+      panic!("result is not 0")
     }
   }
 
