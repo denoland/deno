@@ -3390,7 +3390,16 @@ mod lsp {
         "uri": "file:///a/file00.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "export const abc = \"abc\";\nexport const def = \"def\";\n"
+        "text": r#"export interface MallardDuckConfigOptions extends DuckConfigOptions {
+  kind: "mallard";
+}
+
+export class MallardDuckConfig extends DuckConfig {
+  constructor(options: MallardDuckConfigOptions) {
+    super(options);
+  }
+}
+"#
       }
     }));
     session.did_open(json!({
@@ -3398,7 +3407,27 @@ mod lsp {
         "uri": "file:///a/file01.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "\nconsole.log(abc);\nconsole.log(def)\n"
+        "text": r#"import { DuckConfigOptions } from "./file02.ts";
+
+export class DuckConfig {
+  readonly kind;
+  constructor(options: DuckConfigOptions) {
+    this.kind = options.kind;
+  }
+}
+"#
+      }
+    }));
+    session.did_open(json!({
+      "textDocument": {
+        "uri": "file:///a/file02.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"export interface DuckConfigOptions {
+  kind: string;
+  quacks: boolean;
+}
+"#
       }
     }));
 
