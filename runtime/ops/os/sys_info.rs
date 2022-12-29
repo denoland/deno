@@ -302,7 +302,7 @@ pub fn mem_info() -> Option<MemInfo> {
 }
 
 pub fn os_uptime() -> u64 {
-  let mut uptime: u64 = 0;
+  let uptime: u64;
 
   #[cfg(target_os = "linux")]
   {
@@ -356,10 +356,11 @@ pub fn os_uptime() -> u64 {
   }
 
   #[cfg(target_family = "windows")]
+  // SAFETY: 🔥 this is fine. 🔥
   unsafe {
     // Windows is the only one that returns `uptime` in milisecond precision,
     // so we need to get the seconds out of it to be in sync with other envs.
-    uptime = winapi::um::sysinfoapi::GetTickCount64() as u64 / 1000;
+    uptime = winapi::um::sysinfoapi::GetTickCount64() / 1000;
   }
 
   uptime
