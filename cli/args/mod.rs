@@ -48,7 +48,6 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use std::collections::BTreeMap;
 use std::env;
-use std::fs;
 use std::io::BufReader;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -61,7 +60,7 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
 use crate::version;
 
-use self::config_file::FilesConfig;
+use self::config_file::FinalBenchConfig;
 use self::config_file::FinalFmtConfig;
 use self::config_file::FinalTestConfig;
 
@@ -522,37 +521,24 @@ impl CliOptions {
   pub fn to_bench_config(
     &self,
     bench_flags: &BenchFlags,
-  ) -> Result<BenchConfig, AnyError> {
-    let mut include = bench_flags
-      .files
-      .include
-      .iter()
-      .map(|i| Url::from_file_path(fs::canonicalize(i).unwrap()).unwrap())
-      .collect::<Vec<_>>();
-    let mut exclude = bench_flags
-      .files
-      .ignore
-      .iter()
-      .map(|i| Url::from_file_path(fs::canonicalize(i).unwrap()).unwrap())
-      .collect::<Vec<_>>();
+  ) -> Result<FinalBenchConfig, AnyError> {
+    let mut include = bench_flags.files.include.clone();
+    let mut ignore = bench_flags.files.ignore.clone();
 
     if let Some(config_file) = &self.maybe_config_file {
       if let Some(bench_config) = config_file.to_bench_config()? {
-        if include.is_empty() {
-          include = bench_config.files.include;
-        }
-        if exclude.is_empty() {
-          exclude = bench_config.files.exclude;
-        }
+        let filters = self.collect_filters(&bench_config, include, ignore)?;
+        include = filters.include;
+        ignore = filters.ignore;
       }
     }
 
     if include.is_empty() {
-      include.push(Url::from_file_path(std::env::current_dir()?).unwrap());
+      include.push(std::env::current_dir()?);
     }
 
-    Ok(BenchConfig {
-      files: FilesConfig { include, exclude },
+    Ok(FinalBenchConfig {
+      files: FileFlags { include, ignore },
     })
   }
 
