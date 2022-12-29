@@ -4060,7 +4060,7 @@ mod tests {
       ..Default::default()
     };
     let actual = fixture.get_filter_text();
-    assert_eq!(actual, Some("abc".to_string()));
+    assert_eq!(actual, None);
 
     let fixture = CompletionEntry {
       kind: ScriptElementKind::MemberVariableElement,
