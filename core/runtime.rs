@@ -2478,20 +2478,19 @@ pub fn queue_async_op(
     // op.op_async(promiseId, ...); // Calls `opresolve`
     // return p;
     EagerPollResult::Ready((_, promise_id, op_id, mut resp)) if !deferred => {
+      let context_state_rc = JsRealm::state_from_scope(scope);
+      let context_state = context_state_rc.borrow();
+
       let args = &[
         v8::Integer::new(scope, promise_id).into(),
         resp.to_v8(scope).unwrap(),
       ];
 
-      let js_recv_cb_handle = JsRealm::state_from_scope(scope)
-        .borrow()
-        .js_recv_cb
-        .clone()
-        .unwrap();
       ctx.state.borrow_mut().tracker.track_async_completed(op_id);
 
       let tc_scope = &mut v8::TryCatch::new(scope);
-      let js_recv_cb = js_recv_cb_handle.open(tc_scope);
+      let js_recv_cb =
+        context_state.js_recv_cb.as_ref().unwrap().open(tc_scope);
       let this = v8::undefined(tc_scope).into();
       js_recv_cb.call(tc_scope, this, args);
     }
