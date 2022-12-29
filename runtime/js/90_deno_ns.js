@@ -119,6 +119,7 @@
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
     osRelease: __bootstrap.os.osRelease,
+    osUptime: __bootstrap.os.osUptime,
     hostname: __bootstrap.os.hostname,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,

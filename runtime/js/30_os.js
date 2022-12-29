@@ -25,6 +25,12 @@
     return ops.op_os_release();
   }
 
+  function createOsUptime(opFn) {
+    return function osUptime() {
+      return opFn();
+    };
+  }
+
   function systemMemoryInfo() {
     return ops.op_system_memory_info();
   }
@@ -106,6 +112,7 @@
     loadavg,
     networkInterfaces,
     osRelease,
+    createOsUptime,
     setExitHandler,
     systemMemoryInfo,
     uid,

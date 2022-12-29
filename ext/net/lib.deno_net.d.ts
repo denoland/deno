@@ -61,6 +61,20 @@ declare namespace Deno {
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
 
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Make the connection block the event loop from finishing.
+     *
+     * Note: the connection blocks the event loop from finishing by default.
+     * This method is only meaningful after `.unref()` is called.
+     */
+    ref(): void;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Make the connection not block the event loop from finishing.
+     */
+    unref(): void;
+
     readonly readable: ReadableStream<Uint8Array>;
     readonly writable: WritableStream<Uint8Array>;
   }
