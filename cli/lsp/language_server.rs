@@ -43,7 +43,6 @@ use super::documents::AssetOrDocument;
 use super::documents::Document;
 use super::documents::Documents;
 use super::documents::LanguageId;
-use super::logging::lsp_debug;
 use super::logging::lsp_log;
 use super::lsp_custom;
 use super::parent_process_checker;
@@ -1498,7 +1497,6 @@ impl Inner {
     };
 
     self.performance.measure(mark);
-    lsp_debug!("code_action {:#?}", response);
     Ok(response)
   }
 
@@ -1595,7 +1593,6 @@ impl Inner {
     };
 
     self.performance.measure(mark);
-    lsp_debug!("code_action_resolve: {:?}", result);
     Ok(result)
   }
 
