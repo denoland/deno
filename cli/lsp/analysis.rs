@@ -185,31 +185,28 @@ pub fn fix_ts_import_changes(
     let mut text_changes = Vec::new();
     for text_change in &change.text_changes {
       let lines = text_change.new_text.split('\n');
-      let mut new_lines = vec![];
 
-      // This assumes that there's only one import per line.
-      for line in lines {
-        if let Some(captures) = IMPORT_SPECIFIER_RE.captures(line) {
-          let specifier = captures
-            .get(1)
-            .ok_or_else(|| anyhow!("Missing capture."))?
-            .as_str();
-          if let Some(new_specifier) =
-            check_specifier(specifier, referrer, documents)
-          {
-            let new_text = line.replace(specifier, &new_specifier);
-            new_lines.push(new_text);
+      let new_lines: Vec<String> = lines
+        .map(|line| {
+          // This assumes that there's only one import per line.
+          if let Some(captures) = IMPORT_SPECIFIER_RE.captures(line) {
+            let specifier = captures.get(1).unwrap().as_str();
+            if let Some(new_specifier) =
+              check_specifier(specifier, referrer, documents)
+            {
+              line.replace(specifier, &new_specifier)
+            } else {
+              line.to_string()
+            }
           } else {
-            new_lines.push(line.to_string());
+            line.to_string()
           }
-        } else {
-          new_lines.push(line.to_string());
-        }
-      }
+        })
+        .collect();
 
       text_changes.push(tsc::TextChange {
         span: text_change.span.clone(),
-        new_text: new_lines.join("\n"),
+        new_text: new_lines.join("\n").to_string(),
       });
     }
     r.push(tsc::FileTextChanges {
