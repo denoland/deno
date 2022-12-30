@@ -755,6 +755,42 @@ mod tests {
   }
 
   #[test]
+  fn test_empty_cache() {
+    let mut config = Config::new();
+    config
+      .set_workspace_settings(json!({ "cache": "" }))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings::default()
+    );
+  }
+
+  #[test]
+  fn test_empty_import_map() {
+    let mut config = Config::new();
+    config
+      .set_workspace_settings(json!({ "import_map": "" }))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings::default()
+    );
+  }
+
+  #[test]
+  fn test_empty_tls_certificate() {
+    let mut config = Config::new();
+    config
+      .set_workspace_settings(json!({ "tls_certificate": "" }))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings::default()
+    );
+  }
+
+  #[test]
   fn test_empty_config() {
     let mut config = Config::new();
     config
