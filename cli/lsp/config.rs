@@ -266,7 +266,9 @@ fn default_to_true() -> bool {
   true
 }
 
-fn empty_string_none<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+fn empty_string_none<'de, D: serde::Deserializer<'de>>(
+  d: D,
+) -> Result<Option<String>, D::Error> {
   let o: Option<String> = Option::deserialize(d)?;
   Ok(o.filter(|s| !s.is_empty()))
 }
