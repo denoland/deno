@@ -1999,15 +1999,6 @@ impl CompletionEntryDetails {
       specifier,
       language_server,
     )?;
-    // NOTE(bartlomieju): it's not clear to me why we're getting multiple `commit_characters`
-    // sent from the client for "CONSTANT" elements. We definitely send `None` for
-    // them, but when "completionItem/resolve" is called, we get the a list of commit chars.
-    let commit_characters =
-      if original_item.kind == Some(lsp::CompletionItemKind::CONSTANT) {
-        None
-      } else {
-        original_item.commit_characters.clone()
-      };
 
     // TODO(@kitsonk) add `use_code_snippet`
 
@@ -2017,7 +2008,10 @@ impl CompletionEntryDetails {
       documentation,
       command,
       additional_text_edits,
-      commit_characters,
+      // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
+      // but when `completionItem/resolve` is called, we get a list of commit chars
+      // even though we might have returned an empty list in `completion` request.
+      commit_characters: None,
       ..original_item.clone()
     })
   }
