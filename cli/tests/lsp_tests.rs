@@ -3390,7 +3390,16 @@ mod lsp {
         "uri": "file:///a/file00.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "export const abc = \"abc\";\nexport const def = \"def\";\n"
+        "text": r#"export interface MallardDuckConfigOptions extends DuckConfigOptions {
+  kind: "mallard";
+}
+
+export class MallardDuckConfig extends DuckConfig {
+  constructor(options: MallardDuckConfigOptions) {
+    super(options);
+  }
+}
+"#
       }
     }));
     session.did_open(json!({
@@ -3398,7 +3407,27 @@ mod lsp {
         "uri": "file:///a/file01.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "\nconsole.log(abc);\nconsole.log(def)\n"
+        "text": r#"import { DuckConfigOptions } from "./file02.ts";
+
+export class DuckConfig {
+  readonly kind;
+  constructor(options: DuckConfigOptions) {
+    this.kind = options.kind;
+  }
+}
+"#
+      }
+    }));
+    session.did_open(json!({
+      "textDocument": {
+        "uri": "file:///a/file02.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"export interface DuckConfigOptions {
+  kind: string;
+  quacks: boolean;
+}
+"#
       }
     }));
 
@@ -3706,6 +3735,49 @@ mod lsp {
       maybe_res,
       Some(load_fixture("completion_resolve_response.json"))
     );
+    shutdown(&mut client);
+  }
+
+  #[test]
+  fn lsp_completions_private_fields() {
+    let mut client = init("initialize_params.json");
+    did_open(
+      &mut client,
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "languageId": "typescript",
+          "version": 1,
+          "text": r#"class Foo { #myProperty = "value"; constructor() { this.# } }"#
+        }
+      }),
+    );
+    let (maybe_res, maybe_err) = client
+      .write_request(
+        "textDocument/completion",
+        json!({
+          "textDocument": {
+            "uri": "file:///a/file.ts"
+          },
+          "position": {
+            "line": 0,
+            "character": 57
+          },
+          "context": {
+            "triggerKind": 1
+          }
+        }),
+      )
+      .unwrap();
+    assert!(maybe_err.is_none());
+    if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+      assert_eq!(list.items.len(), 1);
+      let item = &list.items[0];
+      assert_eq!(item.label, "#myProperty");
+      assert!(!list.is_incomplete);
+    } else {
+      panic!("unexpected response");
+    }
     shutdown(&mut client);
   }
 
