@@ -2007,6 +2007,10 @@ impl CompletionEntryDetails {
       documentation,
       command,
       additional_text_edits,
+      // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
+      // but when `completionItem/resolve` is called, we get a list of commit chars
+      // even though we might have returned an empty list in `completion` request.
+      commit_characters: None,
       ..original_item.clone()
     })
   }
