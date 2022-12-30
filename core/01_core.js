@@ -9,22 +9,26 @@
     SyntaxError,
     TypeError,
     URIError,
-    Map,
     Array,
+    ArrayFrom,
     ArrayPrototypeFill,
     ArrayPrototypePush,
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
+    Function,
     Promise,
+    ObjectAssign,
     ObjectFromEntries,
+    ObjectPrototypeHasOwnProperty,
+    Map,
     MapPrototypeGet,
     MapPrototypeHas,
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeThen,
     PromisePrototypeFinally,
+    SafeArrayIterator,
     StringPrototypeSlice,
-    ObjectAssign,
     SymbolFor,
     setQueueMicrotask,
   } = window.__bootstrap.primordials;
@@ -212,11 +216,14 @@
     }
 
     // { <name>: <argc>, ... }
-    for (const ele of Object.entries(ops.asyncOpsInfo())) {
-      if (!ele) continue;
-      const [name, argc] = ele;
+    const info = ops.asyncOpsInfo();
+    for (const name in info) {
+      if (!ObjectPrototypeHasOwnProperty(info, name)) {
+        continue;
+      }
+      const argc = info[name];
       const op = ops[name];
-      const args = Array.from({ length: argc }, (_, i) => `arg${i}`).join(", ");
+      const args = ArrayFrom({ length: argc }, (_, i) => `arg${i}`).join(", ");
       ops[name] = genAsyncOp(op, name, args);
     }
   }
@@ -235,7 +242,7 @@
   }
 
   function opAsync(opName, ...args) {
-    return ops[opName](...args);
+    return ops[opName](...new SafeArrayIterator(args));
   }
 
   function refOp(promiseId) {

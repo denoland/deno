@@ -14,6 +14,7 @@
     ArrayPrototypePush,
     ArrayPrototypeMap,
     ArrayPrototypeJoin,
+    SafeArrayIterator,
   } = window.__bootstrap.primordials;
 
   // Keep in sync with `cli/fmt_errors.rs`.
@@ -130,7 +131,7 @@
       __callSiteEvals: { __proto__: null, value: [], configurable: true },
     });
     const formattedCallSites = [];
-    for (const cse of callSiteEvals) {
+    for (const cse of new SafeArrayIterator(callSiteEvals)) {
       ArrayPrototypePush(error.__callSiteEvals, cse);
       ArrayPrototypePush(formattedCallSites, formatCallSiteEval(cse));
     }

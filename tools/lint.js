@@ -66,7 +66,8 @@ async function dlintPreferPrimordials() {
   const sourceFiles = await getSources(ROOT_PATH, [
     "runtime/**/*.js",
     "ext/**/*.js",
-    "core/**/*.js",
+    "core/*.js",
+    ":!:core/*_test.js",
     ":!:core/examples/**",
   ]);
 
