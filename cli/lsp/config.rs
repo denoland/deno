@@ -266,8 +266,13 @@ fn default_to_true() -> bool {
   true
 }
 
+fn empty_string_none<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+  let o: Option<String> = Option::deserialize(d)?;
+  Ok(o.filter(|s| !s.is_empty()))
+}
+
 /// Deno language server specific settings that are applied to a workspace.
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
@@ -288,6 +293,7 @@ pub struct WorkspaceSettings {
 
   /// An option that points to a path string of the config file to apply to
   /// code within the workspace.
+  #[serde(deserialize_with = "empty_string_none")]
   pub config: Option<String>,
 
   /// An option that points to a path string of the import map to apply to the
@@ -329,6 +335,28 @@ pub struct WorkspaceSettings {
 
   #[serde(default)]
   pub unstable: bool,
+}
+
+impl Default for WorkspaceSettings {
+  fn default() -> Self {
+    WorkspaceSettings {
+      enable: false,
+      enable_paths: vec![],
+      cache: None,
+      certificate_stores: None,
+      config: None,
+      import_map: None,
+      code_lens: Default::default(),
+      inlay_hints: Default::default(),
+      internal_debug: false,
+      lint: true,
+      suggest: Default::default(),
+      testing: Default::default(),
+      tls_certificate: None,
+      unsafely_ignore_certificate_errors: None,
+      unstable: false,
+    }
+  }
 }
 
 impl WorkspaceSettings {
@@ -718,6 +746,18 @@ mod tests {
         unsafely_ignore_certificate_errors: None,
         unstable: false,
       }
+    );
+  }
+
+  #[test]
+  fn test_empty_config() {
+    let mut config = Config::new();
+    config
+      .set_workspace_settings(json!({ "config": "" }))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings::default()
     );
   }
 }
