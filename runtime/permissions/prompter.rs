@@ -28,11 +28,14 @@ pub fn permission_prompt(
   message: &str,
   flag: &str,
   api_name: Option<&str>,
+  is_unary: bool,
 ) -> PromptResponse {
   if let Some(before_callback) = MAYBE_BEFORE_PROMPT_CALLBACK.lock().as_mut() {
     before_callback();
   }
-  let r = PERMISSION_PROMPTER.lock().prompt(message, flag, api_name);
+  let r = PERMISSION_PROMPTER
+    .lock()
+    .prompt(message, flag, api_name, is_unary);
   if let Some(after_callback) = MAYBE_AFTER_PROMPT_CALLBACK.lock().as_mut() {
     after_callback();
   }
@@ -55,6 +58,7 @@ pub trait PermissionPrompter: Send + Sync {
     message: &str,
     name: &str,
     api_name: Option<&str>,
+    is_unary: bool,
   ) -> PromptResponse;
 }
 
@@ -66,6 +70,7 @@ impl PermissionPrompter for TtyPrompter {
     message: &str,
     name: &str,
     api_name: Option<&str>,
+    is_unary: bool,
   ) -> PromptResponse {
     if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
       return PromptResponse::Deny;
@@ -187,16 +192,6 @@ impl PermissionPrompter for TtyPrompter {
       eprint!("\x1B[{}A\x1B[0J", n);
     }
 
-    fn is_unary_permission(name: &str) -> bool {
-      name == "env"
-        || name == "sys"
-        || name == "net"
-        || name == "ffi"
-        || name == "read"
-        || name == "run"
-        || name == "write"
-    }
-
     // For security reasons we must consume everything in stdin so that previously
     // buffered data cannot effect the prompt.
     if let Err(err) = clear_stdin() {
@@ -205,7 +200,7 @@ impl PermissionPrompter for TtyPrompter {
     }
 
     // print to stderr so that if stdout is piped this is still displayed.
-    let opts = if is_unary_permission(name) {
+    let opts = if is_unary {
       "[y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all)"
     } else {
       "[y/n] (y = yes, allow; n = no, deny)"
@@ -235,7 +230,7 @@ impl PermissionPrompter for TtyPrompter {
         None => break PromptResponse::Deny,
         Some(v) => v,
       };
-      match ch.to_ascii_lowercase() {
+      match ch {
         'y' => {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
           let msg = format!("Granted {}.", message);
@@ -250,18 +245,18 @@ impl PermissionPrompter for TtyPrompter {
         }
         'Y' => {
           // Passthrough if 'Y' is used on the wrong permission
-          if is_unary_permission(name) {
+          if is_unary {
             clear_n_lines(if api_name.is_some() { 4 } else { 3 });
-            let msg = format!("Granted all {}.", message);
+            let msg = format!("Granted all {} access.", name);
             eprintln!("✅ {}", colors::bold(&msg));
             break PromptResponse::AllowAll;
           }
         }
         'N' => {
           // Passthrough if 'N' is used on the wrong permission
-          if is_unary_permission(name) {
+          if is_unary {
             clear_n_lines(if api_name.is_some() { 4 } else { 3 });
-            let msg = format!("Denied all {}.", message);
+            let msg = format!("Denied all {} access.", name);
             eprintln!("❌ {}", colors::bold(&msg));
             break PromptResponse::DenyAll;
           }
@@ -293,6 +288,7 @@ pub mod tests {
       _message: &str,
       _name: &str,
       _api_name: Option<&str>,
+      _is_unary: bool,
     ) -> PromptResponse {
       if STUB_PROMPT_VALUE.load(Ordering::SeqCst) {
         PromptResponse::Allow

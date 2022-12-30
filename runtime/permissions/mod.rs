@@ -110,7 +110,9 @@ impl PermissionState {
           name,
           info().map_or(String::new(), |info| { format!(" to {}", info) }),
         );
-        if PromptResponse::Allow == permission_prompt(&msg, name, api_name) {
+        if PromptResponse::Allow
+          == permission_prompt(&msg, name, api_name, true)
+        {
           Self::log_perm_access(name, info);
           (Ok(()), true)
         } else {
@@ -158,6 +160,7 @@ impl UnitPermission {
           &format!("access to {}", self.description),
           self.name,
           Some("Deno.permissions.query()"),
+          false,
         )
       {
         self.state = PermissionState::Granted;
@@ -359,6 +362,7 @@ impl UnaryPermission<ReadDescriptor> {
             &format!("read access to \"{}\"", display_path.display()),
             self.name,
             Some("Deno.permissions.query()"),
+            true,
           )
         {
           self.granted_list.insert(ReadDescriptor(resolved_path));
@@ -382,6 +386,7 @@ impl UnaryPermission<ReadDescriptor> {
             "read access",
             self.name,
             Some("Deno.permissions.query()"),
+            true,
           )
         {
           self.granted_list.clear();
@@ -532,6 +537,7 @@ impl UnaryPermission<WriteDescriptor> {
             &format!("write access to \"{}\"", display_path.display()),
             self.name,
             Some("Deno.permissions.query()"),
+            true,
           )
         {
           self.granted_list.insert(WriteDescriptor(resolved_path));
@@ -555,6 +561,7 @@ impl UnaryPermission<WriteDescriptor> {
             "write access",
             self.name,
             Some("Deno.permissions.query()"),
+            true,
           )
         {
           self.granted_list.clear();
@@ -687,6 +694,7 @@ impl UnaryPermission<NetDescriptor> {
             &format!("network access to \"{}\"", host),
             self.name,
             Some("Deno.permissions.query()"),
+            true,
           )
         {
           self.granted_list.insert(host);
@@ -710,6 +718,7 @@ impl UnaryPermission<NetDescriptor> {
             "network access",
             self.name,
             Some("Deno.permissions.query()"),
+            true,
           )
         {
           self.granted_list.clear();
@@ -860,6 +869,7 @@ impl UnaryPermission<EnvDescriptor> {
           &format!("env access to \"{}\"", env),
           self.name,
           Some("Deno.permissions.query()"),
+          true,
         ) {
           PromptResponse::Allow => {
             self.granted_list.insert(EnvDescriptor::new(env));
@@ -894,6 +904,7 @@ impl UnaryPermission<EnvDescriptor> {
             "env access",
             self.name,
             Some("Deno.permissions.query()"),
+            true,
           )
         {
           self.granted_list.clear();
@@ -1005,6 +1016,7 @@ impl UnaryPermission<SysDescriptor> {
           &format!("sys access to \"{}\"", kind),
           self.name,
           Some("Deno.permissions.query()"),
+          true,
         )
       {
         self.granted_list.insert(desc);
@@ -1020,6 +1032,7 @@ impl UnaryPermission<SysDescriptor> {
           "sys access",
           self.name,
           Some("Deno.permissions.query()"),
+          true,
         )
       {
         self.global_state = PermissionState::Granted;
@@ -1128,6 +1141,7 @@ impl UnaryPermission<RunDescriptor> {
             &format!("run access to \"{}\"", cmd),
             self.name,
             Some("Deno.permissions.query()"),
+            true,
           )
         {
           self
@@ -1157,6 +1171,7 @@ impl UnaryPermission<RunDescriptor> {
             "run access",
             self.name,
             Some("Deno.permissions.query()"),
+            true,
           )
         {
           self.granted_list.clear();
@@ -1279,6 +1294,7 @@ impl UnaryPermission<FfiDescriptor> {
             &format!("ffi access to \"{}\"", display_path.display()),
             self.name,
             Some("Deno.permissions.query()"),
+            true,
           )
         {
           self.granted_list.insert(FfiDescriptor(resolved_path));
@@ -1302,6 +1318,7 @@ impl UnaryPermission<FfiDescriptor> {
             "ffi access",
             self.name,
             Some("Deno.permissions.query()"),
+            true,
           )
         {
           self.granted_list.clear();
