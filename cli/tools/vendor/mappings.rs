@@ -133,7 +133,6 @@ impl Mappings {
       self
         .mappings
         .get(specifier)
-        .as_ref()
         .unwrap_or_else(|| {
           panic!("Could not find local path for {}", specifier)
         })
