@@ -3958,12 +3958,6 @@ export class DuckConfig {
             },
             "newText": "import { foo } from \"./b.ts\";\n\n"
           }
-        ],
-        "commitCharacters": [
-          ".",
-          ",",
-          ";",
-          "("
         ]
       }))
     );
@@ -4077,13 +4071,7 @@ export class DuckConfig {
         "sortText": "11",
         "filterText": "type=\"$1\"",
         "insertText": "type=\"$1\"",
-        "insertTextFormat": 2,
-        "commitCharacters": [
-          ".",
-          ",",
-          ";",
-          "("
-        ]
+        "insertTextFormat": 2
       }))
     );
   }

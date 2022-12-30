@@ -1999,7 +1999,6 @@ impl CompletionEntryDetails {
       specifier,
       language_server,
     )?;
-
     // TODO(@kitsonk) add `use_code_snippet`
 
     Ok(lsp::CompletionItem {
