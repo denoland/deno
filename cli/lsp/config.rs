@@ -287,6 +287,7 @@ pub struct WorkspaceSettings {
 
   /// An option that points to a path string of the path to utilise as the
   /// cache/DENO_DIR for the language server.
+  #[serde(default, deserialize_with = "empty_string_none")]
   pub cache: Option<String>,
 
   /// Override the default stores used to validate certificates. This overrides
@@ -295,11 +296,12 @@ pub struct WorkspaceSettings {
 
   /// An option that points to a path string of the config file to apply to
   /// code within the workspace.
-  #[serde(deserialize_with = "empty_string_none")]
+  #[serde(default, deserialize_with = "empty_string_none")]
   pub config: Option<String>,
 
   /// An option that points to a path string of the import map to apply to the
   /// code within the workspace.
+  #[serde(default, deserialize_with = "empty_string_none")]
   pub import_map: Option<String>,
 
   /// Code lens specific settings for the workspace.
@@ -328,6 +330,7 @@ pub struct WorkspaceSettings {
 
   /// An option which sets the cert file to use when attempting to fetch remote
   /// resources. This overrides `DENO_CERT` if present.
+  #[serde(default, deserialize_with = "empty_string_none")]
   pub tls_certificate: Option<String>,
 
   /// An option, if set, will unsafely ignore certificate errors when fetching
