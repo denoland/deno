@@ -12,6 +12,7 @@
     Array,
     ArrayFrom,
     ArrayPrototypeFill,
+    ArrayPrototypeJoin,
     ArrayPrototypePush,
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
@@ -223,7 +224,10 @@
       }
       const argc = info[name];
       const op = ops[name];
-      const args = ArrayFrom({ length: argc }, (_, i) => `arg${i}`).join(", ");
+      const args = ArrayPrototypeJoin(
+        ArrayFrom({ length: argc }, (_, i) => `arg${i}`),
+        ", ",
+      );
       ops[name] = genAsyncOp(op, name, args);
     }
   }
