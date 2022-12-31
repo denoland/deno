@@ -28,7 +28,7 @@
     MapPrototypeSet,
     PromisePrototypeThen,
     PromisePrototypeFinally,
-    SafeArrayIterator,
+    ReflectApply,
     StringPrototypeSlice,
     SymbolFor,
     setQueueMicrotask,
@@ -246,7 +246,7 @@
   }
 
   function opAsync(opName, ...args) {
-    return ops[opName](...new SafeArrayIterator(args));
+    return ReflectApply(ops[opName], ops, args);
   }
 
   function refOp(promiseId) {
