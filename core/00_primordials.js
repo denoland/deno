@@ -277,6 +277,18 @@
         prototype: Reflect.getPrototypeOf(String.prototype[Symbol.iterator]()),
       },
     },
+    {
+      name: "Generator",
+      original: {
+        prototype: Reflect.getPrototypeOf(function* () {}),
+      },
+    },
+    {
+      name: "AsyncGenerator",
+      original: {
+        prototype: Reflect.getPrototypeOf(async function* () {}),
+      },
+    },
   ].forEach(({ name, original }) => {
     primordials[name] = original;
     // The static %TypedArray% methods require a valid `this`, but can't be bound,
