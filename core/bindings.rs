@@ -131,6 +131,11 @@ pub fn initialize_context<'s>(
   // Bind functions to Deno.core.*
   set_func(scope, core_obj, "callConsole", call_console);
 
+  // Bind extra binding object to Deno.core.extra
+  let extra_str = v8::String::new(scope, "extra").unwrap();
+  let extra_binding_obj = context.get_extras_binding_object(scope);
+  core_obj.set(scope, extra_str.into(), extra_binding_obj.into());
+
   // Bind functions to Deno.core.ops.*
   let ops_obj = v8::Object::new(scope);
   let ops_str = v8::String::new(scope, "ops").unwrap();
