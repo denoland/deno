@@ -277,17 +277,10 @@
         prototype: Reflect.getPrototypeOf(String.prototype[Symbol.iterator]()),
       },
     },
-    {
-      name: "Generator",
-      original: {
-        prototype: Reflect.getPrototypeOf(function* () {}),
-      },
-    },
+    { name: "Generator", original: Reflect.getPrototypeOf(function* () {}) },
     {
       name: "AsyncGenerator",
-      original: {
-        prototype: Reflect.getPrototypeOf(async function* () {}),
-      },
+      original: Reflect.getPrototypeOf(async function* () {}),
     },
   ].forEach(({ name, original }) => {
     primordials[name] = original;
