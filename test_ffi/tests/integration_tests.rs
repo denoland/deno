@@ -128,6 +128,7 @@ fn basic() {
     Static ptr: true\n\
     Static ptr value: 42\n\
     Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }\n\
+    Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }\n\
     Rect { x: 20.0, y: 20.0, w: 100.0, h: 200.0 }\n\
     true\n\
     Float64Array(4) [ 20, 30, 110, 210 ]\n\
