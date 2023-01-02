@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
 // Run using cargo test or `--v8-options=--allow-natives-syntax`
@@ -521,7 +521,7 @@ testOptimized(castU32U8Fast, () => castU32U8Fast(256));
 
 // Generally the trampoline tail-calls into the FFI function, but in certain cases (e.g. when returning 8 or 16 bit integers)
 // the tail call is not possible and a new stack frame must be created. We need enough parameters to have some on the stack
-function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) { 
+function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) {
   return symbols.add_many_u16(a, b, c, d, e, f, g, h, i, j, k, l, m);
 };
 // N.B. V8 does not currently follow Aarch64 Apple's calling convention.
