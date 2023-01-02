@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -917,7 +917,7 @@ Deno.test(
         const conn = await Deno.connect({ port: 3500 });
         conn.unref();
         await conn.read(new Uint8Array(10)); // The program exits here
-        throw new Error(); // The program doesn't reach here  
+        throw new Error(); // The program doesn't reach here
       }
       main();
     `);
@@ -942,7 +942,7 @@ Deno.test(
         conn.unref();
         const reader = conn.readable.getReader();
         await reader.read(); // The program exits here
-        throw new Error(); // The program doesn't reach here  
+        throw new Error(); // The program doesn't reach here
       }
       main();
     `);
