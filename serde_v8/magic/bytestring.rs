@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use super::transl8::{FromV8, ToV8};
 use crate::magic::transl8::impl_magic;
 use crate::Error;
