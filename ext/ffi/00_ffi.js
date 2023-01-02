@@ -12,6 +12,7 @@
     BigUint64Array,
     Function,
     Int32Array,
+    Map,
     MathCeil,
     MathMax,
     Number,
@@ -25,7 +26,6 @@
     TypeError,
     Uint32Array,
     Uint8Array,
-    WeakMap,
   } = window.__bootstrap.primordials;
 
   const U32_BUFFER = new Uint32Array(2);
@@ -193,7 +193,7 @@
       this.pointer = pointer;
       this.definition = definition;
       this.#structSize = isStruct(definition.result)
-        ? getTypeSize(definition.result)
+        ? getTypeSizeAndAlignment(definition.result)[0]
         : null;
     }
 
@@ -255,7 +255,7 @@
       ReflectHas(type, "struct");
   }
 
-  function getTypeSize(type, cache = new WeakMap()) {
+  function getTypeSizeAndAlignment(type, cache = new Map()) {
     if (isStruct(type)) {
       const cached = cache.get(type);
       if (cached !== undefined) {
@@ -268,28 +268,34 @@
       let size = 0;
       let alignment = 1;
       for (const field of new SafeArrayIterator(type.struct)) {
-        const fieldSize = getTypeSize(field, cache);
-        alignment = MathMax(alignment, fieldSize);
-        size = MathCeil(size / fieldSize) * fieldSize;
+        const [fieldSize, fieldAlignment] = getTypeSizeAndAlignment(
+          field,
+          cache,
+        );
+        alignment = MathMax(alignment, fieldAlignment);
+        // Insert padding to ensure that the next field starts at natural alignment.
+        size = MathCeil(size / fieldAlignment) * fieldAlignment;
+        // Add next field to the struct
         size += fieldSize;
       }
+      // Insert padding to ensure that the struct itself ends at natural alignment.
       size = MathCeil(size / alignment) * alignment;
-      cache.set(type, size);
-      return size;
+      cache.set(type, [size, alignment]);
+      return [size, alignment];
     }
 
     switch (type) {
       case "bool":
       case "u8":
       case "i8":
-        return 1;
+        return [1, 1];
       case "u16":
       case "i16":
-        return 2;
+        return [2, 2];
       case "u32":
       case "i32":
       case "f32":
-        return 4;
+        return [4, 4];
       case "u64":
       case "i64":
       case "f64":
@@ -298,7 +304,7 @@
       case "function":
       case "usize":
       case "isize":
-        return 8;
+        return [8, 8];
       default:
         throw new TypeError(`Unsupported type: ${type}`);
     }
@@ -396,7 +402,9 @@
         }
         const resultType = symbols[symbol].result;
         const isStructResult = isStruct(resultType);
-        const structSize = isStructResult ? getTypeSize(resultType) : 0;
+        const structSize = isStructResult
+          ? getTypeSizeAndAlignment(resultType)[0]
+          : 0;
         const needsUnpacking = isReturnedAsBigInt(resultType);
 
         const isNonBlocking = symbols[symbol].nonblocking;

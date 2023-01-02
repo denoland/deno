@@ -3,7 +3,7 @@
 
 // Run using cargo test or `--v8-options=--allow-natives-syntax`
 
-import { assertEquals, assertNotEquals } from "https://deno.land/std@0.149.0/testing/asserts.ts";
+import { assertEquals, assertInstanceOf, assertNotEquals } from "https://deno.land/std@0.149.0/testing/asserts.ts";
 import {
   assertThrows,
   assert,
@@ -41,6 +41,7 @@ const Point = ["f64", "f64"];
 const Size = ["f64", "f64"];
 const Rect = ["f64", "f64", "f64", "f64"];
 const RectNested = [{ struct: Point }, { struct: Size }];
+const Mixed = ["u8", "f32", { struct: Rect }, "usize", { struct: ["u32", "u32"] }];
 
 const dylib = Deno.dlopen(libPath, {
   "printSomething": {
@@ -233,6 +234,14 @@ const dylib = Deno.dlopen(libPath, {
     name: "print_rect",
     nonblocking: true,
     parameters: [{ struct: Rect }],
+    result: "void",
+  },
+  create_mixed: {
+    parameters: ["u8", "f32", { struct: Rect }, "pointer", "buffer"],
+    result: { struct: Mixed }
+  },
+  print_mixed: {
+    parameters: [{ struct: Mixed }],
     result: "void",
   },
 });
@@ -596,23 +605,43 @@ console.log(
 const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
 console.log("Static ptr value:", view.getUint32());
 
-let rect = dylib.symbols.make_rect(10, 20, 100, 200);
-dylib.symbols.print_rect(rect);
-await dylib.symbols.print_rect_async(rect);
+// Test struct returning
+const rect_sync = dylib.symbols.make_rect(10, 20, 100, 200);
+assertInstanceOf(rect_sync, Uint8Array);
+assertEquals(rect_sync.length, 4 * 8);
+assertEquals(Array.from(new Float64Array(rect_sync.buffer)), [10, 20, 100, 200]);
+// Test struct passing
+dylib.symbols.print_rect(rect_sync);
+// Test struct passing asynchronously
+await dylib.symbols.print_rect_async(rect_sync);
 dylib.symbols.print_rect(new Float64Array([20, 20, 100, 200]));
-rect = await dylib.symbols.make_rect_async(10, 20, 100, 200);
-console.log(rect instanceof Uint8Array);
+// Test struct returning asynchronously
+const rect_async = await dylib.symbols.make_rect_async(10, 20, 100, 200);
+assertInstanceOf(rect_async, Uint8Array);
+assertEquals(rect_async.length, 4 * 8);
+assertEquals(Array.from(new Float64Array(rect_async.buffer)), [10, 20, 100, 200]);
+
+// Test complex, mixed struct returning and passing
+const mixedStruct = dylib.symbols.create_mixed(3, 12.515000343322754, rect_async, 12456789, new Uint32Array([8, 32]));
+assertEquals(mixedStruct.length, 56);
+assertEquals(Array.from(mixedStruct.subarray(0, 4)), [3, 0, 0, 0]);
+assertEquals(new Float32Array(mixedStruct.buffer, 4, 1)[0], 12.515000343322754);
+assertEquals(new Float64Array(mixedStruct.buffer, 8, 4), new Float64Array(rect_async.buffer));
+assertEquals(new BigUint64Array(mixedStruct.buffer, 40, 1)[0], 12456789n);
+assertEquals(new Uint32Array(mixedStruct.buffer, 48, 2), new Uint32Array([8, 32]));
+dylib.symbols.print_mixed(mixedStruct);
 
 const cb = new Deno.UnsafeCallback({
   parameters: [{ struct: Rect }],
   result: { struct: Rect },
-}, (rect) => {
-  rect = new Float64Array(rect.buffer);
-  return new Float64Array([rect[0] + 10, rect[1] + 10, rect[2] + 10, rect[3] + 10]);
+}, (innerRect) => {
+  innerRect = new Float64Array(innerRect.buffer);
+  return new Float64Array([innerRect[0] + 10, innerRect[1] + 10, innerRect[2] + 10, innerRect[3] + 10]);
 });
 
 const cbFfi = new Deno.UnsafeFnPointer(cb.pointer, cb.definition);
-console.log(new Float64Array(cbFfi.call(rect).buffer));
+const cbResult = new Float64Array(cbFfi.call(rect_async).buffer);
+assertEquals(Array.from(cbResult), [20, 30, 110, 210]);
 
 cb.close();
 
