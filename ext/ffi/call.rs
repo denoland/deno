@@ -67,16 +67,11 @@ where
         unreachable!();
       }
     };
-    // SAFETY: Native value is created based on the native type, they are guaranteed to match.
-    call_args.push(unsafe { native_value.as_arg(native_type) });
     ffi_args.push(native_value);
+    call_args
+      // SAFETY: Native value is created based on the native type, they are guaranteed to match.
+      .push(unsafe { ffi_args[index].as_arg(native_type) });
   }
-  let call_args: Vec<Arg> = ffi_args
-    .iter()
-    .enumerate()
-    // SAFETY: Creating a `Arg` from a `NativeValue` is pretty safe.
-    .map(|(i, v)| unsafe { v.as_arg(parameter_types.get(i).unwrap()) })
-    .collect();
   // SAFETY: types in the `Cif` match the actual calling convention and
   // types of symbol.
   unsafe {
