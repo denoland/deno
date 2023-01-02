@@ -90,8 +90,8 @@ declare namespace __bootstrap {
     ) => IterableIterator<string>;
 
     // intrinsic objects
-    export const isNaN: typeof globalThis.isNaN;
     export const indirectEval: typeof globalThis.eval;
+    export const isNaN: typeof globalThis.isNaN;
     export const decodeURI: typeof globalThis.decodeURI;
     export const decodeURIComponent: typeof globalThis.decodeURIComponent;
     export const encodeURI: typeof globalThis.encodeURI;
@@ -737,10 +737,8 @@ declare namespace __bootstrap {
     export const StringPrototypeConcat: UncurryThis<
       typeof String.prototype.concat
     >;
-    export const StringPrototypeConcatApply: StaticApply<
-      UncurryThis<
-        typeof String.prototype.concat
-      >
+    export const StringPrototypeConcatApply: UncurryThisStaticApply<
+      typeof String.prototype.concat
     >;
     export const StringPrototypeEndsWith: UncurryThis<
       typeof String.prototype.endsWith
