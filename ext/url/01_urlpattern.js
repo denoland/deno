@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -20,6 +20,7 @@
     RegExp,
     RegExpPrototypeExec,
     RegExpPrototypeTest,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     TypeError,
@@ -71,7 +72,7 @@
 
       const components = ops.op_urlpattern_parse(input, baseURL);
 
-      for (const key of ObjectKeys(components)) {
+      for (const key of new SafeArrayIterator(ObjectKeys(components))) {
         try {
           components[key].regexp = new RegExp(
             components[key].regexpString,
@@ -155,7 +156,7 @@
 
       const [values] = res;
 
-      for (const key of ObjectKeys(values)) {
+      for (const key of new SafeArrayIterator(ObjectKeys(values))) {
         if (!RegExpPrototypeTest(this[_components][key].regexp, values[key])) {
           return false;
         }
@@ -201,7 +202,7 @@
       const result = { inputs };
 
       /** @type {string} */
-      for (const key of ObjectKeys(values)) {
+      for (const key of new SafeArrayIterator(ObjectKeys(values))) {
         /** @type {Component} */
         const component = this[_components][key];
         const input = values[key];

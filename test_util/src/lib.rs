@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
@@ -1930,7 +1930,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       testdata_dir.as_path()
     };
     println!("deno_exe args {}", args.join(" "));
-    println!("deno_exe cwd {:?}", &testdata_dir);
+    println!("deno_exe cwd {:?}", &cwd);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();

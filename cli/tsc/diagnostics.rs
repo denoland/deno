@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_runtime::colors;
 
@@ -46,6 +46,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "ServeInit",
   "ServeTlsInit",
   "Handler",
+  "osUptime",
 ];
 
 static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> = Lazy::new(|| {

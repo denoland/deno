@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod integration;
 use deno_core::url;
@@ -2780,6 +2780,13 @@ mod run {
     exit_code: 1,
   });
 
+  // Regression test for https://github.com/denoland/deno/issues/16340.
+  itest!(error_with_errors_prop {
+    args: "run --quiet run/error_with_errors_prop.js",
+    output: "run/error_with_errors_prop.js.out",
+    exit_code: 1,
+  });
+
   // Regression test for https://github.com/denoland/deno/issues/12143.
   itest!(js_root_with_ts_check {
     args: "run --quiet --check run/js_root_with_ts_check.js",
@@ -2936,6 +2943,19 @@ mod run {
   itest!(unhandled_rejection_sync_error {
     args: "run --check run/unhandled_rejection_sync_error.ts",
     output: "run/unhandled_rejection_sync_error.ts.out",
+  });
+
+  // Regression test for https://github.com/denoland/deno/issues/15661
+  itest!(unhandled_rejection_dynamic_import {
+    args: "run --allow-read run/unhandled_rejection_dynamic_import/main.ts",
+    output: "run/unhandled_rejection_dynamic_import/main.ts.out",
+    exit_code: 1,
+  });
+
+  // Regression test for https://github.com/denoland/deno/issues/16909
+  itest!(unhandled_rejection_dynamic_import2 {
+    args: "run --allow-read run/unhandled_rejection_dynamic_import2/main.ts",
+    output: "run/unhandled_rejection_dynamic_import2/main.ts.out",
   });
 
   itest!(nested_error {

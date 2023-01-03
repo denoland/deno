@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::io::ErrorKind;
@@ -51,6 +51,8 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     &self,
     packages: HashSet<NpmPackageReq>,
   ) -> BoxFuture<'static, Result<(), AnyError>>;
+
+  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>>;
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
 

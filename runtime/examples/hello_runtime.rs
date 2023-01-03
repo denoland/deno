@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::FsModuleLoader;
@@ -43,6 +43,7 @@ async fn main() -> Result<(), AnyError> {
       inspect: false,
     },
     extensions: vec![],
+    extensions_with_js: vec![],
     startup_snapshot: None,
     unsafely_ignore_certificate_errors: None,
     root_cert_store: None,

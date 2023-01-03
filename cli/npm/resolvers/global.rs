@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! Code for global npm cache resolution.
 
@@ -138,11 +138,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     packages: Vec<NpmPackageReq>,
   ) -> BoxFuture<'static, Result<(), AnyError>> {
     let resolver = self.clone();
-    async move {
-      resolver.resolution.add_package_reqs(packages).await?;
-      cache_packages_in_resolver(&resolver).await
-    }
-    .boxed()
+    async move { resolver.resolution.add_package_reqs(packages).await }.boxed()
   }
 
   fn set_package_reqs(
@@ -150,11 +146,12 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     packages: HashSet<NpmPackageReq>,
   ) -> BoxFuture<'static, Result<(), AnyError>> {
     let resolver = self.clone();
-    async move {
-      resolver.resolution.set_package_reqs(packages).await?;
-      cache_packages_in_resolver(&resolver).await
-    }
-    .boxed()
+    async move { resolver.resolution.set_package_reqs(packages).await }.boxed()
+  }
+
+  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>> {
+    let resolver = self.clone();
+    async move { cache_packages_in_resolver(&resolver).await }.boxed()
   }
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {

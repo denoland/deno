@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -236,6 +236,18 @@ Deno.test(
 Deno.test({ permissions: { sys: false } }, function releasePerm() {
   assertThrows(() => {
     Deno.osRelease();
+  }, Deno.errors.PermissionDenied);
+});
+
+Deno.test({ permissions: { sys: ["osUptime"] } }, function osUptime() {
+  const uptime = Deno.osUptime();
+  assert(typeof uptime === "number");
+  assert(uptime > 0);
+});
+
+Deno.test({ permissions: { sys: false } }, function osUptimePerm() {
+  assertThrows(() => {
+    Deno.osUptime();
   }, Deno.errors.PermissionDenied);
 });
 

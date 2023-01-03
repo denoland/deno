@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -18,6 +18,8 @@ use crate::npm::NpmResolutionPackage;
 use crate::tools::fmt::format_json;
 use crate::util;
 use crate::Flags;
+
+use super::DenoSubcommand;
 
 #[derive(Debug)]
 pub struct LockfileError(String);
@@ -96,7 +98,12 @@ impl Lockfile {
     flags: &Flags,
     maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<Lockfile>, AnyError> {
-    if flags.no_lock {
+    if flags.no_lock
+      || matches!(
+        flags.subcommand,
+        DenoSubcommand::Install(_) | DenoSubcommand::Uninstall(_)
+      )
+    {
       return Ok(None);
     }
 

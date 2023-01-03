@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::ConfigFlag;
 use crate::args::Flags;
@@ -135,7 +135,6 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "noEmit",
   "noEmitHelpers",
   "noEmitOnError",
-  "noErrorTruncation",
   "noLib",
   "noResolve",
   "out",
