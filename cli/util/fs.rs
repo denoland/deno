@@ -265,8 +265,8 @@ pub fn collect_specifiers(
     .ignore_node_modules();
 
   let root_path = current_dir()?;
-  for pathbuf in include {
-    let path = pathbuf.clone().into_os_string().into_string().unwrap();
+  for path in include {
+    let path = path.to_string_lossy();
     let lowercase_path = path.to_lowercase();
     if lowercase_path.starts_with("http://")
       || lowercase_path.starts_with("https://")
@@ -279,7 +279,7 @@ pub fn collect_specifiers(
     let p = if lowercase_path.starts_with("file://") {
       specifier_to_file_path(&ModuleSpecifier::parse(&path)?)?
     } else {
-      root_path.join(path)
+      root_path.join(path.as_ref())
     };
     let p = normalize_path(p);
     if p.is_dir() {
