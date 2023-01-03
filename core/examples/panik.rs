@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 //!  This example shows that op-panics currently result in UB (likely "failed to initiate panic")
 //!  without a custom panic hook that aborts the process or -C panic=abort.
 //!

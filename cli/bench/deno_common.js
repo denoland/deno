@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // v8 builtin that's close to the upper bound non-NOPs
 Deno.bench("date_now", { n: 5e5 }, () => {
