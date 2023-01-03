@@ -1312,8 +1312,7 @@ fn uninstall_subcommand<'a>() -> Command<'a> {
     .arg(
       Arg::new("name")
         .required(true)
-        .multiple_occurrences(false)
-        .allow_hyphen_values(true))
+        .multiple_occurrences(false))
     .arg(
       Arg::new("root")
         .long("root")
