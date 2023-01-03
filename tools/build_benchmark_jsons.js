@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { buildPath, existsSync, join } from "./util.js";
 
 const currentDataFile = join(buildPath(), "bench.json");

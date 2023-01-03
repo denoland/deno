@@ -1,0 +1,10 @@
+[WILDCARD]
+#!/usr/bin/env -S deno run --allow-read
+// deno-fmt-ignore-file
+// deno-lint-ignore-file
+// This code was bundled using `deno bundle` and it's not recommended to edit it manually
+
+for (const item of Deno.readDirSync(".")){
+    console.log(item.name);
+}
+

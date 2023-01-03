@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 // Removes the `__proto__` for security reasons.
@@ -483,6 +483,7 @@ delete Intl.v8BreakIterator;
           ops.op_node_unstable_net_listen_udp,
           ops.op_node_unstable_net_listen_unixpacket,
         ),
+        osUptime: __bootstrap.os.createOsUptime(ops.op_node_unstable_os_uptime),
       },
     });
 
@@ -518,6 +519,7 @@ delete Intl.v8BreakIterator;
           ops.op_net_listen_udp,
           ops.op_net_listen_unixpacket,
         ),
+        osUptime: __bootstrap.os.createOsUptime(ops.op_os_uptime),
       });
     }
 
@@ -622,6 +624,7 @@ delete Intl.v8BreakIterator;
           ops.op_node_unstable_net_listen_udp,
           ops.op_node_unstable_net_listen_unixpacket,
         ),
+        osUptime: __bootstrap.os.createOsUptime(ops.op_node_unstable_os_uptime),
       },
     });
 
@@ -649,6 +652,7 @@ delete Intl.v8BreakIterator;
           ops.op_net_listen_udp,
           ops.op_net_listen_unixpacket,
         ),
+        osUptime: __bootstrap.os.createOsUptime(ops.op_os_uptime),
       });
     }
     ObjectDefineProperties(finalDenoNs, {

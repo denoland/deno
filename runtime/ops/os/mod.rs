@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::utils::into_string;
 use crate::permissions::Permissions;
@@ -30,6 +30,7 @@ fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
     op_network_interfaces::decl(),
     op_os_release::decl(),
     op_os_uptime::decl(),
+    op_node_unstable_os_uptime::decl(),
     op_set_env::decl(),
     op_set_exit_code::decl(),
     op_system_memory_info::decl(),
@@ -425,12 +426,21 @@ fn rss() -> usize {
   }
 }
 
-#[op]
-fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
-  super::check_unstable(state, "Deno.osUptime");
+fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   state
     .borrow_mut::<Permissions>()
     .sys
     .check("osUptime", Some("Deno.osUptime()"))?;
   Ok(sys_info::os_uptime())
+}
+
+#[op]
+fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
+  super::check_unstable(state, "Deno.osUptime");
+  os_uptime(state)
+}
+
+#[op]
+fn op_node_unstable_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
+  os_uptime(state)
 }
