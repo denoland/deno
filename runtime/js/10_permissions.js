@@ -204,13 +204,7 @@
         );
       }
 
-      if (
-        desc.name === "read" || desc.name === "write" || desc.name === "ffi"
-      ) {
-        desc.path = pathFromURL(desc.path);
-      } else if (desc.name === "run") {
-        desc.command = pathFromURL(desc.command);
-      }
+      formDescriptor(desc);
 
       const state = opQuery(desc);
       return cache(desc, state);
@@ -238,11 +232,7 @@
         );
       }
 
-      if (desc.name === "read" || desc.name === "write") {
-        desc.path = pathFromURL(desc.path);
-      } else if (desc.name === "run") {
-        desc.command = pathFromURL(desc.command);
-      }
+      formDescriptor(desc);
 
       const state = opRevoke(desc);
       return cache(desc, state);
@@ -270,11 +260,7 @@
         );
       }
 
-      if (desc.name === "read" || desc.name === "write") {
-        desc.path = pathFromURL(desc.path);
-      } else if (desc.name === "run") {
-        desc.command = pathFromURL(desc.command);
-      }
+      formDescriptor(desc);
 
       const state = opRequest(desc);
       return cache(desc, state);
