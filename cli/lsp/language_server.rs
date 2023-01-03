@@ -1959,28 +1959,31 @@ impl Inner {
       if let Some(data) = &data.tsc {
         let specifier = &data.specifier;
         let req = tsc::RequestMethod::GetCompletionDetails(data.into());
-        let maybe_completion_info: Option<tsc::CompletionEntryDetails> =
-          self.ts_server.request(self.snapshot(), req).await.map_err(
-            |err| {
-              error!("Unable to get completion info from TypeScript: {}", err);
-              LspError::internal_error()
-            },
-          )?;
-        if let Some(completion_info) = maybe_completion_info {
-          completion_info
-            .as_completion_item(&params, data, specifier, self)
-            .map_err(|err| {
+        let result: Result<Option<tsc::CompletionEntryDetails>, _> =
+          self.ts_server.request(self.snapshot(), req).await;
+        match result {
+          Ok(maybe_completion_info) => {
+            if let Some(completion_info) = maybe_completion_info {
+              completion_info
+                .as_completion_item(&params, data, specifier, self)
+                .map_err(|err| {
+                  error!(
+                    "Failed to serialize virtual_text_document response: {}",
+                    err
+                  );
+                  LspError::internal_error()
+                })?
+            } else {
               error!(
-                "Failed to serialize virtual_text_document response: {}",
-                err
+                "Received an undefined response from tsc for completion details."
               );
-              LspError::internal_error()
-            })?
-        } else {
-          error!(
-            "Received an undefined response from tsc for completion details."
-          );
-          params
+              params
+            }
+          }
+          Err(err) => {
+            error!("Unable to get completion info from TypeScript: {}", err);
+            return Ok(params);
+          }
         }
       } else if let Some(url) = data.documentation {
         CompletionItem {
