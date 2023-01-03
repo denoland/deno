@@ -71,12 +71,8 @@ pub async fn bundle(
       // at the moment, we don't support npm specifiers in deno bundle, so show an error
       error_for_any_npm_specifier(&graph)?;
 
-      let mut bundle_output = bundle_module_graph(graph.as_ref(), &ps)?;
+      let bundle_output = bundle_module_graph(graph.as_ref(), &ps)?;
       log::debug!(">>>>> bundle END");
-
-      if let Some(shebang) = shebang_file(&graph) {
-        bundle_output.code = format!("{}\n{}", shebang, bundle_output.code);
-      }
 
       if let Some(out_file) = out_file.as_ref() {
         let output_bytes = bundle_output.code.as_bytes();
@@ -151,25 +147,28 @@ fn bundle_module_graph(
     }
   }
 
-  deno_emit::bundle_graph(
+  let mut output = deno_emit::bundle_graph(
     graph,
     deno_emit::BundleOptions {
       bundle_type: deno_emit::BundleType::Module,
       emit_options: ts_config_result.ts_config.into(),
       emit_ignore_directives: true,
     },
-  )
+  )?;
+
+  // todo(https://github.com/denoland/deno_emit/issues/85): move to deno_emit
+  if let Some(shebang) = shebang_file(graph) {
+    output.code = format!("{}\n{}", shebang, output.code);
+  }
+
+  Ok(output)
 }
 
 fn shebang_file(graph: &deno_graph::ModuleGraph) -> Option<String> {
-  let source = graph.get(&graph.roots[0].0).unwrap().maybe_source.clone();
-  if let Some(code) = source {
-    let first_line = code.lines().next().unwrap().to_string();
-    if first_line.starts_with("#!") {
-      Some(first_line)
-    } else {
-      None
-    }
+  let source = graph.get(&graph.roots[0].0)?.maybe_source.as_ref()?;
+  let first_line = source.lines().next()?;
+  if first_line.starts_with("#!") {
+    Some(first_line.to_string())
   } else {
     None
   }
