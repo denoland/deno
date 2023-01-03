@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { Hono } from "https://deno.land/x/hono@v2.0.9/mod.ts";
 
 const addr = Deno.args[0] || "127.0.0.1:4500";

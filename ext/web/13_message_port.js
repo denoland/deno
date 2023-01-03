@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -231,7 +231,7 @@
       transferredArrayBuffers,
     });
 
-    for (const i in arrayBufferIdsInTransferables) {
+    for (let i = 0; i < arrayBufferIdsInTransferables.length; ++i) {
       const id = arrayBufferIdsInTransferables[i];
       transferables[id] = transferredArrayBuffers[i];
     }

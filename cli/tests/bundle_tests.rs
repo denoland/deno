@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod integration;
 
@@ -469,5 +469,10 @@ mod bundle {
     output: "bundle/check_local_by_default/type_error.out",
     http_server: true,
     exit_code: 1,
+  });
+
+  itest!(bundle_shebang_file {
+    args: "bundle subdir/shebang_file.js",
+    output: "bundle/shebang_file.bundle.out",
   });
 }

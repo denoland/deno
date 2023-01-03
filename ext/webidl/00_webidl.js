@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // Adapted from https://github.com/jsdom/webidl-conversions.
 // Copyright Domenic Denicola. Licensed under BSD-2-Clause License.
@@ -1013,6 +1013,9 @@
   function configurePrototype(prototype) {
     const descriptors = ObjectGetOwnPropertyDescriptors(prototype.prototype);
     for (const key in descriptors) {
+      if (!ObjectPrototypeHasOwnProperty(descriptors, key)) {
+        continue;
+      }
       if (key === "constructor") continue;
       const descriptor = descriptors[key];
       if (
