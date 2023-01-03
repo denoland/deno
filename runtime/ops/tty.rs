@@ -118,7 +118,7 @@ fn op_stdin_set_raw(
               let original_mode = termios::tcgetattr(raw_fd)?;
               maybe_tty_mode.replace(original_mode);
             }
-            maybe_tty_mode.clone().unwrap()
+            maybe_tty_mode.unwrap()
           };
 
           raw.input_flags &= !(termios::InputFlags::BRKINT
