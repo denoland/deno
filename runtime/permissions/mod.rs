@@ -357,20 +357,30 @@ impl UnaryPermission<ReadDescriptor> {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if PromptResponse::Allow
-          == permission_prompt(
-            &format!("read access to \"{}\"", display_path.display()),
-            self.name,
-            Some("Deno.permissions.query()"),
-            true,
-          )
-        {
-          self.granted_list.insert(ReadDescriptor(resolved_path));
-          PermissionState::Granted
-        } else {
-          self.denied_list.insert(ReadDescriptor(resolved_path));
-          self.global_state = PermissionState::Denied;
-          PermissionState::Denied
+        match permission_prompt(
+          &format!("read access to \"{}\"", display_path.display()),
+          self.name,
+          Some("Deno.permissions.query()"),
+          true,
+        ) {
+          PromptResponse::Allow => {
+            self.granted_list.insert(ReadDescriptor(resolved_path));
+            PermissionState::Granted
+          }
+          PromptResponse::Deny => {
+            self.denied_list.insert(ReadDescriptor(resolved_path));
+            self.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
+          PromptResponse::AllowAll => {
+            self.granted_list.clear();
+            self.global_state = PermissionState::Granted;
+            PermissionState::Granted
+          }
+          PromptResponse::DenyAll => {
+            self.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
         }
       } else if state == PermissionState::Granted {
         self.granted_list.insert(ReadDescriptor(resolved_path));
@@ -532,20 +542,30 @@ impl UnaryPermission<WriteDescriptor> {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if PromptResponse::Allow
-          == permission_prompt(
-            &format!("write access to \"{}\"", display_path.display()),
-            self.name,
-            Some("Deno.permissions.query()"),
-            true,
-          )
-        {
-          self.granted_list.insert(WriteDescriptor(resolved_path));
-          PermissionState::Granted
-        } else {
-          self.denied_list.insert(WriteDescriptor(resolved_path));
-          self.global_state = PermissionState::Denied;
-          PermissionState::Denied
+        match permission_prompt(
+          &format!("write access to \"{}\"", display_path.display()),
+          self.name,
+          Some("Deno.permissions.query()"),
+          true,
+        ) {
+          PromptResponse::Allow => {
+            self.granted_list.insert(WriteDescriptor(resolved_path));
+            PermissionState::Granted
+          }
+          PromptResponse::Deny => {
+            self.denied_list.insert(WriteDescriptor(resolved_path));
+            self.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
+          PromptResponse::AllowAll => {
+            self.granted_list.clear();
+            self.global_state = PermissionState::Granted;
+            PermissionState::Granted
+          }
+          PromptResponse::DenyAll => {
+            self.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
         }
       } else if state == PermissionState::Granted {
         self.granted_list.insert(WriteDescriptor(resolved_path));
@@ -689,20 +709,30 @@ impl UnaryPermission<NetDescriptor> {
       let state = self.query(Some(host));
       let host = NetDescriptor::new(&host);
       if state == PermissionState::Prompt {
-        if PromptResponse::Allow
-          == permission_prompt(
-            &format!("network access to \"{}\"", host),
-            self.name,
-            Some("Deno.permissions.query()"),
-            true,
-          )
-        {
-          self.granted_list.insert(host);
-          PermissionState::Granted
-        } else {
-          self.denied_list.insert(host);
-          self.global_state = PermissionState::Denied;
-          PermissionState::Denied
+        match permission_prompt(
+          &format!("network access to \"{}\"", host),
+          self.name,
+          Some("Deno.permissions.query()"),
+          true,
+        ) {
+          PromptResponse::Allow => {
+            self.granted_list.insert(host);
+            PermissionState::Granted
+          }
+          PromptResponse::Deny => {
+            self.denied_list.insert(host);
+            self.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
+          PromptResponse::AllowAll => {
+            self.granted_list.clear();
+            self.global_state = PermissionState::Granted;
+            PermissionState::Granted
+          }
+          PromptResponse::DenyAll => {
+            self.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
         }
       } else if state == PermissionState::Granted {
         self.granted_list.insert(host);
@@ -1011,20 +1041,30 @@ impl UnaryPermission<SysDescriptor> {
     }
     if let Some(kind) = kind {
       let desc = SysDescriptor(kind.to_string());
-      if PromptResponse::Allow
-        == permission_prompt(
-          &format!("sys access to \"{}\"", kind),
-          self.name,
-          Some("Deno.permissions.query()"),
-          true,
-        )
-      {
-        self.granted_list.insert(desc);
-        PermissionState::Granted
-      } else {
-        self.denied_list.insert(desc);
-        self.global_state = PermissionState::Denied;
-        PermissionState::Denied
+      match permission_prompt(
+        &format!("sys access to \"{}\"", kind),
+        self.name,
+        Some("Deno.permissions.query()"),
+        true,
+      ) {
+        PromptResponse::Allow => {
+          self.granted_list.insert(desc);
+          PermissionState::Granted
+        }
+        PromptResponse::Deny => {
+          self.denied_list.insert(desc);
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
+        }
+        PromptResponse::AllowAll => {
+          self.granted_list.clear();
+          self.global_state = PermissionState::Granted;
+          PermissionState::Granted
+        }
+        PromptResponse::DenyAll => {
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
+        }
       }
     } else {
       if PromptResponse::Allow
@@ -1136,24 +1176,34 @@ impl UnaryPermission<RunDescriptor> {
     if let Some(cmd) = cmd {
       let state = self.query(Some(cmd));
       if state == PermissionState::Prompt {
-        if PromptResponse::Allow
-          == permission_prompt(
-            &format!("run access to \"{}\"", cmd),
-            self.name,
-            Some("Deno.permissions.query()"),
-            true,
-          )
-        {
-          self
-            .granted_list
-            .insert(RunDescriptor::from_str(cmd).unwrap());
-          PermissionState::Granted
-        } else {
-          self
-            .denied_list
-            .insert(RunDescriptor::from_str(cmd).unwrap());
-          self.global_state = PermissionState::Denied;
-          PermissionState::Denied
+        match permission_prompt(
+          &format!("run access to \"{}\"", cmd),
+          self.name,
+          Some("Deno.permissions.query()"),
+          true,
+        ) {
+          PromptResponse::Allow => {
+            self
+              .granted_list
+              .insert(RunDescriptor::from_str(cmd).unwrap());
+            PermissionState::Granted
+          }
+          PromptResponse::Deny => {
+            self
+              .denied_list
+              .insert(RunDescriptor::from_str(cmd).unwrap());
+            self.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
+          PromptResponse::AllowAll => {
+            self.granted_list.clear();
+            self.global_state = PermissionState::Granted;
+            PermissionState::Granted
+          }
+          PromptResponse::DenyAll => {
+            self.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
         }
       } else if state == PermissionState::Granted {
         self
@@ -1289,20 +1339,30 @@ impl UnaryPermission<FfiDescriptor> {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if PromptResponse::Allow
-          == permission_prompt(
-            &format!("ffi access to \"{}\"", display_path.display()),
-            self.name,
-            Some("Deno.permissions.query()"),
-            true,
-          )
-        {
-          self.granted_list.insert(FfiDescriptor(resolved_path));
-          PermissionState::Granted
-        } else {
-          self.denied_list.insert(FfiDescriptor(resolved_path));
-          self.global_state = PermissionState::Denied;
-          PermissionState::Denied
+        match permission_prompt(
+          &format!("ffi access to \"{}\"", display_path.display()),
+          self.name,
+          Some("Deno.permissions.query()"),
+          true,
+        ) {
+          PromptResponse::Allow => {
+            self.granted_list.insert(FfiDescriptor(resolved_path));
+            PermissionState::Granted
+          }
+          PromptResponse::Deny => {
+            self.denied_list.insert(FfiDescriptor(resolved_path));
+            self.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
+          PromptResponse::AllowAll => {
+            self.granted_list.clear();
+            self.global_state = PermissionState::Granted;
+            PermissionState::Granted
+          }
+          PromptResponse::DenyAll => {
+            self.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
         }
       } else if state == PermissionState::Granted {
         self.granted_list.insert(FfiDescriptor(resolved_path));
