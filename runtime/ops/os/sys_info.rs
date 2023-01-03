@@ -360,8 +360,7 @@ pub fn os_uptime() -> u64 {
   }
 
   #[cfg(target_family = "windows")]
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  // TODO: add safety comment
+  // SAFETY: windows API usage
   unsafe {
     // Windows is the only one that returns `uptime` in milisecond precision,
     // so we need to get the seconds out of it to be in sync with other envs.
