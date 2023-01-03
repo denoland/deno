@@ -309,12 +309,12 @@ pub fn os_uptime() -> u64 {
     let mut info = std::mem::MaybeUninit::uninit();
     // SAFETY: `info` is a valid pointer to a `libc::sysinfo` struct.
     let res = unsafe { libc::sysinfo(info.as_mut_ptr()) };
-    if res == 0 {
+    uptime = if res == 0 {
       // SAFETY: `sysinfo` initializes the struct.
       let info = unsafe { info.assume_init() };
-      uptime = info.uptime as u64;
+      info.uptime as u64
     } else {
-      panic!("result is not 0")
+      0
     }
   }
 
@@ -343,8 +343,8 @@ pub fn os_uptime() -> u64 {
         0,
       )
     };
-    if res == 0 {
-      uptime = SystemTime::now()
+    uptime = if res == 0 {
+      SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| {
           (d - Duration::new(
@@ -353,9 +353,9 @@ pub fn os_uptime() -> u64 {
           ))
           .as_secs()
         })
-        .unwrap_or_default();
+        .unwrap_or_default()
     } else {
-      panic!("result is not 0")
+      0
     }
   }
 
