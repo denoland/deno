@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -578,8 +578,8 @@ impl Inner {
       .and_then(|uri| specifier_to_file_path(uri).ok());
     let root_cert_store = Some(get_root_cert_store(
       maybe_root_path,
-      workspace_settings.certificate_stores.clone(),
-      workspace_settings.tls_certificate.clone(),
+      workspace_settings.certificate_stores,
+      workspace_settings.tls_certificate,
     )?);
     let client = HttpClient::new(
       root_cert_store,
@@ -1011,7 +1011,7 @@ impl Inner {
     if self.is_diagnosable(&specifier) {
       self.refresh_npm_specifiers().await;
       let mut specifiers = self.documents.dependents(&specifier);
-      specifiers.push(specifier.clone());
+      specifiers.push(specifier);
       self.diagnostics_server.invalidate(&specifiers);
       self.send_diagnostics_update();
       self.send_testing_update();
@@ -1550,7 +1550,7 @@ impl Inner {
       } else {
         combined_code_actions.changes
       };
-      let mut code_action = params.clone();
+      let mut code_action = params;
       code_action.edit = ts_changes_to_edit(&changes, self).map_err(|err| {
         error!("Unable to convert changes to edits: {}", err);
         LspError::internal_error()
@@ -1558,7 +1558,7 @@ impl Inner {
       code_action
     } else if kind.as_str().starts_with(CodeActionKind::REFACTOR.as_str()) {
       let snapshot = self.snapshot();
-      let mut code_action = params.clone();
+      let mut code_action = params;
       let action_data: refactor::RefactorCodeActionData = from_value(data)
         .map_err(|err| {
           error!("Unable to decode code action data: {}", err);
@@ -1569,10 +1569,10 @@ impl Inner {
       let start = line_index.offset_tsc(action_data.range.start)?;
       let length = line_index.offset_tsc(action_data.range.end)? - start;
       let req = tsc::RequestMethod::GetEditsForRefactor((
-        action_data.specifier.clone(),
+        action_data.specifier,
         tsc::TextSpan { start, length },
-        action_data.refactor_name.clone(),
-        action_data.action_name.clone(),
+        action_data.refactor_name,
+        action_data.action_name,
       ));
       let refactor_edit_info: tsc::RefactorEditInfo =
         self.ts_server.request(snapshot, req).await.map_err(|err| {
@@ -1957,30 +1957,33 @@ impl Inner {
           )
         })?;
       if let Some(data) = &data.tsc {
-        let specifier = data.specifier.clone();
+        let specifier = &data.specifier;
         let req = tsc::RequestMethod::GetCompletionDetails(data.into());
-        let maybe_completion_info: Option<tsc::CompletionEntryDetails> =
-          self.ts_server.request(self.snapshot(), req).await.map_err(
-            |err| {
-              error!("Unable to get completion info from TypeScript: {}", err);
-              LspError::internal_error()
-            },
-          )?;
-        if let Some(completion_info) = maybe_completion_info {
-          completion_info
-            .as_completion_item(&params, data, &specifier, self)
-            .map_err(|err| {
+        let result: Result<Option<tsc::CompletionEntryDetails>, _> =
+          self.ts_server.request(self.snapshot(), req).await;
+        match result {
+          Ok(maybe_completion_info) => {
+            if let Some(completion_info) = maybe_completion_info {
+              completion_info
+                .as_completion_item(&params, data, specifier, self)
+                .map_err(|err| {
+                  error!(
+                    "Failed to serialize virtual_text_document response: {}",
+                    err
+                  );
+                  LspError::internal_error()
+                })?
+            } else {
               error!(
-                "Failed to serialize virtual_text_document response: {}",
-                err
+                "Received an undefined response from tsc for completion details."
               );
-              LspError::internal_error()
-            })?
-        } else {
-          error!(
-            "Received an undefined response from tsc for completion details."
-          );
-          params
+              params
+            }
+          }
+          Err(err) => {
+            error!("Unable to get completion info from TypeScript: {}", err);
+            return Ok(params);
+          }
         }
       } else if let Some(url) = data.documentation {
         CompletionItem {
@@ -2058,7 +2061,7 @@ impl Inner {
     let mark = self.performance.mark("folding_range", Some(&params));
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
 
-    let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
+    let req = tsc::RequestMethod::GetOutliningSpans(specifier);
     let outlining_spans: Vec<tsc::OutliningSpan> = self
       .ts_server
       .request(self.snapshot(), req)
@@ -2104,7 +2107,7 @@ impl Inner {
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::ProvideCallHierarchyIncomingCalls((
-      specifier.clone(),
+      specifier,
       line_index.offset_tsc(params.item.selection_range.start)?,
     ));
     let incoming_calls: Vec<tsc::CallHierarchyIncomingCall> = self
@@ -2150,7 +2153,7 @@ impl Inner {
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::ProvideCallHierarchyOutgoingCalls((
-      specifier.clone(),
+      specifier,
       line_index.offset_tsc(params.item.selection_range.start)?,
     ));
     let outgoing_calls: Vec<tsc::CallHierarchyOutgoingCall> = self
@@ -2201,7 +2204,7 @@ impl Inner {
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::PrepareCallHierarchy((
-      specifier.clone(),
+      specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
     ));
     let maybe_one_or_many: Option<tsc::OneOrMany<tsc::CallHierarchyItem>> =
@@ -2355,7 +2358,7 @@ impl Inner {
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
-      specifier.clone(),
+      specifier,
       tsc::TextSpan {
         start: 0,
         length: line_index.text_content_length_utf16().into(),
@@ -2401,7 +2404,7 @@ impl Inner {
     let start = line_index.offset_tsc(params.range.start)?;
     let length = line_index.offset_tsc(params.range.end)? - start;
     let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
-      specifier.clone(),
+      specifier,
       tsc::TextSpan { start, length },
     ));
     let semantic_classification: tsc::Classifications = self
@@ -3025,7 +3028,7 @@ impl Inner {
         LspError::internal_error()
       })?;
     let req = tsc::RequestMethod::ProvideInlayHints((
-      specifier.clone(),
+      specifier,
       range,
       (&workspace_settings).into(),
     ));
