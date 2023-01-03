@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// Pass the command line arguments to v8.
 /// Returns a vector of command line arguments that V8 did not understand.

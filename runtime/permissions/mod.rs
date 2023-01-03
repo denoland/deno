@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
@@ -309,7 +309,7 @@ pub struct SysDescriptor(pub String);
 
 pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
   match kind {
-    "hostname" | "osRelease" | "loadavg" | "networkInterfaces"
+    "hostname" | "osRelease" | "osUptime" | "loadavg" | "networkInterfaces"
     | "systemMemoryInfo" | "uid" | "gid" => Ok(kind),
     _ => Err(type_error(format!("unknown system info kind \"{}\"", kind))),
   }
