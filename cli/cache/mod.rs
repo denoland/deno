@@ -103,7 +103,17 @@ impl Loader for FetchCacher {
       ));
     }
 
-    let specifier = specifier.clone();
+    let specifier = if specifier.scheme() == "node" {
+      match crate::node::resolve_builtin_node_module(
+        specifier.as_str().strip_prefix("node:").unwrap(),
+      ) {
+        Ok(specifier) => specifier,
+        Err(err) => return Box::pin(futures::future::ready(Err(err))),
+      }
+    } else {
+      specifier.clone()
+    };
+
     let mut permissions = if is_dynamic {
       self.dynamic_permissions.clone()
     } else {
