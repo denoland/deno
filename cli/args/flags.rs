@@ -5004,6 +5004,21 @@ mod tests {
   }
 
   #[test]
+  fn uninstall() {
+    let r = flags_from_vec(svec!["deno", "uninstall", "file_server"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Uninstall(UninstallFlags {
+          name: "file_server".to_string(),
+          root: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn log_level() {
     let r =
       flags_from_vec(svec!["deno", "run", "--log-level=debug", "script.ts"]);
