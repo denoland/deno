@@ -14,6 +14,7 @@ description = "Provides the deno executable"
 [[bin]]
 name = "deno"
 path = "main.rs"
+doc = false
 
 [[bench]]
 name = "deno_bench"
