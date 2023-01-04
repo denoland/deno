@@ -107,7 +107,7 @@ pub fn op_worker_sync_fetch(
             }
             "blob" => {
               let blob =
-                blob_store.get_object_url(script_url)?.ok_or_else(|| {
+                blob_store.get_object_url(script_url).ok_or_else(|| {
                   type_error("Blob for the given URL not found.")
                 })?;
 
