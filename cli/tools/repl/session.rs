@@ -193,12 +193,13 @@ impl ReplSession {
     line: &str,
   ) -> EvaluationOutput {
     fn format_diagnostic(diagnostic: &deno_ast::Diagnostic) -> String {
+      let display_position = diagnostic.display_position();
       format!(
         "{}: {} at {}:{}",
         colors::red("parse error"),
         diagnostic.message(),
-        diagnostic.display_position.line_number,
-        diagnostic.display_position.column_number,
+        display_position.line_number,
+        display_position.column_number,
       )
     }
 
