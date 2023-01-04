@@ -1,7 +1,7 @@
 // Based on https://github.com/frewsxcv/rust-chunked-transfer/blob/5c08614458580f9e7a85124021006d83ce1ed6e9/src/decoder.rs
 // Copyright 2015 The tiny-http Contributors
 // Copyright 2015 The rust-chunked-transfer Contributors
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::error::Error;
 use std::fmt;

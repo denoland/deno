@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -87,6 +87,19 @@ Deno.test(
     await assertRejects(
       async () => {
         await fetch("http://<invalid>/");
+      },
+      TypeError,
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchMalformedUriError() {
+    await assertRejects(
+      async () => {
+        const url = new URL("http://{{google/");
+        await fetch(url);
       },
       TypeError,
     );

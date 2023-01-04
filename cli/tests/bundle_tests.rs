@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod integration;
 
@@ -479,5 +479,10 @@ mod bundle {
   itest!(js_without_extension {
     args: "bundle --ext js file_extensions/js_without_extension",
     output: "bundle/file_extensions/js_without_extension.out",
+  });
+
+  itest!(bundle_shebang_file {
+    args: "bundle subdir/shebang_file.js",
+    output: "bundle/shebang_file.bundle.out",
   });
 }
