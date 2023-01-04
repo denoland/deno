@@ -591,6 +591,13 @@ impl ProcState {
       }
     }
 
+    // Built-in Node modules
+    if specifier.starts_with("node:") {
+      return node::resolve_builtin_node_module(
+        specifier.strip_prefix("node:").unwrap(),
+      );
+    }
+
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
     // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
     // but sadly that's not the case due to missing APIs in V8.
