@@ -11,6 +11,9 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::io::AllowStdIo;
+use deno_core::futures::AsyncReadExt;
+use deno_core::futures::AsyncSeekExt;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::serde::Deserialize;
@@ -40,7 +43,6 @@ use std::iter::once;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
@@ -74,9 +76,10 @@ pub async fn extract_standalone(
 ) -> Result<Option<(Metadata, eszip::EszipV2)>, AnyError> {
   let current_exe_path = current_exe()?;
 
-  let file = tokio::fs::File::open(current_exe_path).await?;
+  let file = std::fs::File::open(current_exe_path)?;
 
-  let mut bufreader = tokio::io::BufReader::new(file);
+  let mut bufreader =
+    deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
 
   let trailer_pos = bufreader.seek(SeekFrom::End(-24)).await?;
   let mut trailer = [0; 24];
