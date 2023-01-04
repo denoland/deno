@@ -330,7 +330,7 @@ async fn check_source_files(
           warn!(
             "{}",
             format!("{}", e)
-              .split("\n")
+              .split('\n')
               .map(|l| {
                 if l.trim().is_empty() {
                   String::new()
