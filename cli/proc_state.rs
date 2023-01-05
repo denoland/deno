@@ -332,8 +332,13 @@ impl ProcState {
       dynamic_permissions.clone(),
     );
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_resolver =
+    let mut maybe_resolver =
       self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
+
+    if self.options.node() {
+      maybe_resolver =
+        Some(crate::resolver::BareSpecifierResolver.as_graph_resolver())
+    }
 
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
@@ -412,7 +417,8 @@ impl ProcState {
           self.options.type_check_mode() != TypeCheckMode::None,
           check_js,
         )
-        .unwrap()?;
+        .unwrap()
+        .context("Failed to check module graph")?;
       graph_data.npm_package_reqs().clone()
     };
 

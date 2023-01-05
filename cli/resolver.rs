@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::resolve_import;
+use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolveResponse;
 use deno_graph::source::Resolver;
@@ -76,6 +77,39 @@ impl Resolver for CliResolver {
         Ok(specifier) => ResolveResponse::Specifier(specifier),
         Err(err) => ResolveResponse::Err(err.into()),
       }
+    }
+  }
+}
+
+#[derive(Debug)]
+pub struct BareSpecifierResolver;
+
+impl BareSpecifierResolver {
+  pub fn as_graph_resolver(&self) -> &dyn Resolver {
+    self
+  }
+}
+
+impl Resolver for BareSpecifierResolver {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+  ) -> ResolveResponse {
+    match resolve_import(specifier, referrer.as_str()) {
+      Ok(specifier) => ResolveResponse::Specifier(specifier),
+      Err(err) => match err {
+        ModuleResolutionError::ImportPrefixMissing(_, _) => {
+          ResolveResponse::Specifier(
+            resolve_import(
+              format!("npm:{}", specifier).as_str(),
+              referrer.as_str(),
+            )
+            .unwrap(),
+          )
+        }
+        _ => ResolveResponse::Err(err.into()),
+      },
     }
   }
 }
