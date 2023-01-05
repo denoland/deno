@@ -112,7 +112,7 @@ impl Lockfile {
       None => match maybe_config_file {
         Some(config_file) => {
           if config_file.specifier.scheme() == "file" {
-            match config_file.clone().to_lock_config()? {
+            match config_file.to_lock_config()? {
               Some(LockConfig::Bool(lock)) if !lock => {
                 return Ok(None);
               }

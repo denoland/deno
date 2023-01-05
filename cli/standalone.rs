@@ -289,7 +289,7 @@ pub async fn run(
       user_agent: version::get_user_agent(),
       inspect: ps.options.is_inspecting(),
     },
-    extensions: ops::cli_exts(ps.clone()),
+    extensions: ops::cli_exts(ps),
     extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: metadata
