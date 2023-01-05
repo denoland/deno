@@ -597,7 +597,7 @@ pub fn error_for_any_npm_specifier(
     .specifiers()
     .filter_map(|(_, r)| match r {
       Ok((specifier, kind, _)) if kind == deno_graph::ModuleKind::External => {
-        Some(specifier.clone())
+        Some(specifier)
       }
       _ => None,
     })
