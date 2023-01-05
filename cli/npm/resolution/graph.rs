@@ -423,7 +423,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     package_info: &'info NpmPackageInfo,
   ) -> Result<VersionAndInfo<'info>, AnyError> {
     if let Some(version) =
-      self.resolve_best_package_version(&package_info, version_matcher)?
+      self.resolve_best_package_version(package_info, version_matcher)?
     {
       match package_info.versions.get(&version.to_string()) {
         Some(version_info) => Ok(VersionAndInfo {
