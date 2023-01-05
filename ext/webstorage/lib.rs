@@ -2,6 +2,9 @@
 
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
 
+use std::fmt;
+use std::path::PathBuf;
+
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
@@ -10,8 +13,6 @@ use deno_core::OpState;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
-use std::fmt;
-use std::path::PathBuf;
 
 pub use rusqlite;
 
