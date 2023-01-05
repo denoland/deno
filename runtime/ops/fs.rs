@@ -211,7 +211,7 @@ async fn op_open_async(
     "Deno.open()",
   )?;
   let std_file = tokio::task::spawn_blocking(move || {
-    open_options.open(path.clone()).map_err(|err| {
+    open_options.open(&path).map_err(|err| {
       Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
     })
   })

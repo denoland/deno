@@ -183,5 +183,5 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     }
   }
 
-  Ok(repl_session.worker.get_exit_code())
+  Ok(repl_session.worker.exit_code())
 }

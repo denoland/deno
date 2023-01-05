@@ -266,16 +266,16 @@ async fn server(
         future::ready({
           match (req.method(), req.uri().path()) {
             (&http::Method::GET, path) if path.starts_with("/ws/") => {
-              handle_ws_request(req, inspector_map.clone())
+              handle_ws_request(req, Rc::clone(&inspector_map))
             }
             (&http::Method::GET, "/json/version") => {
               handle_json_version_request(json_version_response.clone())
             }
             (&http::Method::GET, "/json") => {
-              handle_json_request(inspector_map.clone())
+              handle_json_request(Rc::clone(&inspector_map))
             }
             (&http::Method::GET, "/json/list") => {
-              handle_json_request(inspector_map.clone())
+              handle_json_request(Rc::clone(&inspector_map))
             }
             _ => http::Response::builder()
               .status(http::StatusCode::NOT_FOUND)
