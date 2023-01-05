@@ -470,4 +470,9 @@ mod bundle {
     http_server: true,
     exit_code: 1,
   });
+
+  itest!(bundle_shebang_file {
+    args: "bundle subdir/shebang_file.js",
+    output: "bundle/shebang_file.bundle.out",
+  });
 }

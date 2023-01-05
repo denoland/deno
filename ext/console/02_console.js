@@ -1005,7 +1005,7 @@
     }
     ArrayPrototypeShift(causes);
 
-    let finalMessage = (MapPrototypeGet(refMap, value) ?? "");
+    let finalMessage = MapPrototypeGet(refMap, value) ?? "";
 
     if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
       const stackLines = StringPrototypeSplit(value.stack, "\n");

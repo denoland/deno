@@ -1572,7 +1572,7 @@ declare namespace Deno {
    * ```ts
    * const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
    * // Do work with file
-   * Deno.close(file.rid);
+   * file.close();
    * ```
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on
@@ -1594,7 +1594,7 @@ declare namespace Deno {
    * ```ts
    * const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
    * // Do work with file
-   * Deno.close(file.rid);
+   * file.close();
    * ```
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on

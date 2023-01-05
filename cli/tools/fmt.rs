@@ -327,7 +327,20 @@ async fn check_source_files(
           not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
           let _g = output_lock.lock();
           warn!("Error checking: {}", file_path.to_string_lossy());
-          warn!("   {}", e);
+          warn!(
+            "{}",
+            format!("{}", e)
+              .split('\n')
+              .map(|l| {
+                if l.trim().is_empty() {
+                  String::new()
+                } else {
+                  format!("  {}", l)
+                }
+              })
+              .collect::<Vec<_>>()
+              .join("\n")
+          );
         }
       }
       Ok(())
