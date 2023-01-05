@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CacheSetting;
 use crate::auth_tokens::AuthToken;
@@ -90,7 +90,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let local = specifier.to_file_path().map_err(|_| {
     uri_error(format!("Invalid file path.\n  Specifier: {}", specifier))
   })?;
-  let bytes = fs::read(local.clone())?;
+  let bytes = fs::read(&local)?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
   let source = get_source_from_bytes(bytes, Some(charset))?;
   let media_type = MediaType::from(specifier);
@@ -359,7 +359,7 @@ impl FileFetcher {
     let blob = {
       let blob_store = self.blob_store.borrow();
       blob_store
-        .get_object_url(specifier.clone())?
+        .get_object_url(specifier.clone())
         .ok_or_else(|| {
           custom_error(
             "NotFound",
@@ -525,7 +525,7 @@ impl FileFetcher {
       CacheSetting::ReloadSome(list) => {
         let mut url = specifier.clone();
         url.set_fragment(None);
-        if list.contains(&url.as_str().to_string()) {
+        if list.iter().any(|x| x == url.as_str()) {
           return false;
         }
         url.set_query(None);

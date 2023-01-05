@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -1005,7 +1005,7 @@
     }
     ArrayPrototypeShift(causes);
 
-    let finalMessage = (MapPrototypeGet(refMap, value) ?? "");
+    let finalMessage = MapPrototypeGet(refMap, value) ?? "";
 
     if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
       const stackLines = StringPrototypeSplit(value.stack, "\n");
