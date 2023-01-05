@@ -100,7 +100,7 @@ impl CliMainWorker {
         .await?;
     }
 
-    Ok(self.worker.get_exit_code())
+    Ok(self.worker.exit_code())
   }
 
   pub async fn run_for_watcher(self) -> Result<(), AnyError> {
