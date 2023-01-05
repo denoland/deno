@@ -2275,9 +2275,12 @@ mod test {
     api.ensure_package_version("package-b", "3.0.0");
     api.ensure_package_version("package-c", "1.0.0");
     api.ensure_package_version("package-d", "1.0.0");
+    api.ensure_package_version("package-e", "1.0.0");
     api.add_dependency(("package-a", "1.0.0"), ("package-b", "some-tag"));
     api.add_dependency(("package-a", "1.0.0"), ("package-d", "1.0.0"));
     api.add_dependency(("package-a", "1.0.0"), ("package-c", "1.0.0"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-e", "1.0.0"));
+    api.add_dependency(("package-e", "1.0.0"), ("package-b", "some-tag"));
     api.add_peer_dependency(("package-c", "1.0.0"), ("package-d", "other-tag"));
     api.add_dist_tag("package-b", "some-tag", "2.0.0");
     api.add_dist_tag("package-d", "other-tag", "1.0.0");
@@ -2305,6 +2308,10 @@ mod test {
               "package-d".to_string(),
               NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
             ),
+            (
+              "package-e".to_string(),
+              NpmPackageId::from_serialized("package-e@1.0.0").unwrap(),
+            ),
           ]),
           dist: Default::default(),
         },
@@ -2328,6 +2335,15 @@ mod test {
           id: NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::new(),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-e@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-b".to_string(),
+            NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
+          )]),
           dist: Default::default(),
         },
       ]
