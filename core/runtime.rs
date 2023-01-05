@@ -2150,14 +2150,17 @@ impl JsRuntime {
 
   // Send finished responses to JS
   fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
-    // TODO(@andreubotella): Figure out the perf story here.
+    // We have a specialized implementation of this method for the common case
+    // where there is only one realm.
+    let num_realms = self.state.borrow().known_realms.len();
+    if num_realms == 1 {
+      return self.resolve_single_realm_async_ops(cx);
+    }
 
     // `responses_per_realm[idx]` is a vector containing the promise ID and
     // response for all promises in realm `self.state.known_realms[idx]`.
-    let mut responses_per_realm: Vec<Vec<(PromiseId, OpResult)>> = {
-      let len = self.state.borrow().known_realms.len();
-      (0..len).map(|_| vec![]).collect()
-    };
+    let mut responses_per_realm: Vec<Vec<(PromiseId, OpResult)>> =
+      (0..num_realms).map(|_| vec![]).collect();
 
     // Now handle actual ops.
     {
@@ -2199,7 +2202,8 @@ impl JsRuntime {
       //
       // This can handle 16 promises (32 / 2) futures in a single batch without heap
       // allocations.
-      let mut args: SmallVec<[v8::Local<v8::Value>; 32]> = SmallVec::new();
+      let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
+        SmallVec::with_capacity(responses.len() * 2);
 
       for (promise_id, mut resp) in responses {
         context_state.unrefed_ops.remove(&promise_id);
@@ -2227,6 +2231,79 @@ impl JsRuntime {
     }
 
     Ok(())
+  }
+
+  fn resolve_single_realm_async_ops(
+    &mut self,
+    cx: &mut Context,
+  ) -> Result<(), Error> {
+    let isolate = self.v8_isolate.as_mut().unwrap();
+    let scope = &mut self
+      .state
+      .borrow()
+      .global_realm
+      .as_ref()
+      .unwrap()
+      .handle_scope(isolate);
+
+    // We return async responses to JS in unbounded batches (may change),
+    // each batch is a flat vector of tuples:
+    // `[promise_id1, op_result1, promise_id2, op_result2, ...]`
+    // promise_id is a simple integer, op_result is an ops::OpResult
+    // which contains a value OR an error, encoded as a tuple.
+    // This batch is received in JS via the special `arguments` variable
+    // and then each tuple is used to resolve or reject promises
+    //
+    // This can handle 16 promises (32 / 2) futures in a single batch without heap
+    // allocations.
+    let mut args: SmallVec<[v8::Local<v8::Value>; 32]> = SmallVec::new();
+
+    // Now handle actual ops.
+    {
+      let mut state = self.state.borrow_mut();
+      state.have_unpolled_ops = false;
+
+      let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
+      let mut realm_state = realm_state_rc.borrow_mut();
+
+      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
+      {
+        let (realm_idx, promise_id, op_id, mut resp) = item;
+        debug_assert_eq!(
+          state.known_realms[realm_idx],
+          state.global_realm.as_ref().unwrap().context()
+        );
+        realm_state.unrefed_ops.remove(&promise_id);
+        state.op_state.borrow().tracker.track_async_completed(op_id);
+        args.push(v8::Integer::new(scope, promise_id).into());
+        args.push(match resp.to_v8(scope) {
+          Ok(v) => v,
+          Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
+            .to_v8(scope)
+            .unwrap(),
+        });
+      }
+    }
+
+    if args.is_empty() {
+      return Ok(());
+    }
+
+    let js_recv_cb_handle = {
+      let state = self.state.borrow_mut();
+      let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
+      let handle = realm_state_rc.borrow().js_recv_cb.clone().unwrap();
+      handle
+    };
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let js_recv_cb = js_recv_cb_handle.open(tc_scope);
+    let this = v8::undefined(tc_scope).into();
+    js_recv_cb.call(tc_scope, this, args.as_slice());
+
+    match tc_scope.exception() {
+      None => Ok(()),
+      Some(exception) => exception_to_err_result(tc_scope, exception, false),
+    }
   }
 
   fn drain_macrotasks(&mut self) -> Result<(), Error> {
