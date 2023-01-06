@@ -302,17 +302,19 @@ pub fn mem_info() -> Option<MemInfo> {
 }
 
 pub fn os_uptime() -> u64 {
-  let mut uptime: u64 = 0;
+  let uptime: u64;
 
   #[cfg(target_os = "linux")]
   {
     let mut info = std::mem::MaybeUninit::uninit();
     // SAFETY: `info` is a valid pointer to a `libc::sysinfo` struct.
     let res = unsafe { libc::sysinfo(info.as_mut_ptr()) };
-    if res == 0 {
+    uptime = if res == 0 {
       // SAFETY: `sysinfo` initializes the struct.
       let info = unsafe { info.assume_init() };
-      uptime = info.uptime as u64;
+      info.uptime as u64
+    } else {
+      0
     }
   }
 
@@ -341,8 +343,8 @@ pub fn os_uptime() -> u64 {
         0,
       )
     };
-    if res == 0 {
-      uptime = SystemTime::now()
+    uptime = if res == 0 {
+      SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| {
           (d - Duration::new(
@@ -351,15 +353,18 @@ pub fn os_uptime() -> u64 {
           ))
           .as_secs()
         })
-        .unwrap_or_default();
+        .unwrap_or_default()
+    } else {
+      0
     }
   }
 
   #[cfg(target_family = "windows")]
+  // SAFETY: windows API usage
   unsafe {
     // Windows is the only one that returns `uptime` in milisecond precision,
     // so we need to get the seconds out of it to be in sync with other envs.
-    uptime = winapi::um::sysinfoapi::GetTickCount64() as u64 / 1000;
+    uptime = winapi::um::sysinfoapi::GetTickCount64() / 1000;
   }
 
   uptime
