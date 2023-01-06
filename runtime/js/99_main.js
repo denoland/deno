@@ -399,7 +399,7 @@ delete Intl.v8BreakIterator;
     performance.setTimeOrigin(DateNow());
     net.setup(runtimeOptions.unstableFlag);
 
-    const consoleFromV8 = window.console;
+    const consoleFromV8 = window.Deno.core.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
     // Remove bootstrapping data from the global scope
@@ -544,7 +544,7 @@ delete Intl.v8BreakIterator;
     performance.setTimeOrigin(DateNow());
     net.setup(runtimeOptions.unstableFlag);
 
-    const consoleFromV8 = window.console;
+    const consoleFromV8 = window.Deno.core.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
     // Remove bootstrapping data from the global scope
