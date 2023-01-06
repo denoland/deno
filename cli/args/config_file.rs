@@ -318,30 +318,18 @@ impl SerializedFilesConfig {
         .include
         .into_iter()
         .map(|p| {
-          let joined = config_dir.join(&p);
-          match joined {
-            Ok(url) => match specifier_to_file_path(&url) {
-              Ok(path) => path,
-              Err(e) => panic!("{}", e),
-            },
-            Err(e) => panic!("{}", e),
-          }
+          let url = config_dir.join(&p)?;
+          specifier_to_file_path(&url)
         })
-        .collect(),
+        .collect::<Result<Vec<_>, _>>()?,
       ignore: self
         .exclude
         .into_iter()
         .map(|p| {
-          let joined = config_dir.join(&p);
-          match joined {
-            Ok(url) => match specifier_to_file_path(&url) {
-              Ok(path) => path,
-              Err(e) => panic!("{}", e),
-            },
-            Err(e) => panic!("{}", e),
-          }
+          let url = config_dir.join(&p)?;
+          specifier_to_file_path(&url)
         })
-        .collect(),
+        .collect::<Result<Vec<_>, _>>()?,
     })
   }
 }
