@@ -158,7 +158,8 @@
                 );
                 const bytes = new Uint8Array(size);
                 let offs = 0;
-                for (const chunk of new SafeArrayIterator(chunks)) {
+                for (let i = 0; i < chunks.length; ++i) {
+                  const chunk = chunks[i];
                   TypedArrayPrototypeSet(bytes, chunk, offs);
                   offs += chunk.byteLength;
                 }
