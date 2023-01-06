@@ -201,11 +201,8 @@ impl PermissionPrompter for TtyPrompter {
     if let Some(api_name) = api_name {
       eprintln!("   ├ Requested by `{}` API", api_name);
     }
-    let msg = format!(
-      "   ├ Run again with --allow-{} to bypass this prompt.",
-      name
-    );
-    eprintln!("{}", colors::italic(&msg));
+    let msg = format!("Run again with --allow-{} to bypass this prompt.", name);
+    eprintln!("   ├ {}", colors::italic(&msg));
     eprint!("   └ {}", colors::bold("Allow?"));
     eprint!(" {} > ", OPTS);
     let value = loop {

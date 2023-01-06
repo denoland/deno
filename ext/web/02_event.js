@@ -428,7 +428,8 @@
     Ctor,
     props,
   ) {
-    for (const prop of new SafeArrayIterator(props)) {
+    for (let i = 0; i < props.length; ++i) {
+      const prop = props[i];
       ReflectDefineProperty(Ctor.prototype, prop, { enumerable: true });
     }
   }
@@ -969,7 +970,9 @@
         listeners[type] = [];
       }
 
-      for (const listener of new SafeArrayIterator(listeners[type])) {
+      const listenerList = listeners[type];
+      for (let i = 0; i < listenerList.length; ++i) {
+        const listener = listenerList[i];
         if (
           ((typeof listener.options === "boolean" &&
             listener.options === options.capture) ||
@@ -1454,7 +1457,9 @@
       colno = jsError.frames[0].columnNumber;
     } else {
       const jsError = core.destructureError(new Error());
-      for (const frame of new SafeArrayIterator(jsError.frames)) {
+      const frames = jsError.frames;
+      for (let i = 0; i < frames.length; ++i) {
+        const frame = frames[i];
         if (
           typeof frame.fileName == "string" &&
           !StringPrototypeStartsWith(frame.fileName, "deno:")
