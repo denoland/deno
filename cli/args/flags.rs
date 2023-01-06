@@ -5019,6 +5019,12 @@ mod tests {
   }
 
   #[test]
+  fn uninstall_with_help_flag() {
+    let r = flags_from_vec(svec!["deno", "uninstall", "--help"]);
+    assert_eq!(r.err().unwrap().kind(), clap::ErrorKind::DisplayHelp);
+  }
+
+  #[test]
   fn log_level() {
     let r =
       flags_from_vec(svec!["deno", "run", "--log-level=debug", "script.ts"]);
@@ -6456,6 +6462,15 @@ mod tests {
   #[test]
   fn init() {
     let r = flags_from_vec(svec!["deno", "init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--help"]);
     assert_eq!(
       r.unwrap(),
       Flags {
