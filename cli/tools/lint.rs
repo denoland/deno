@@ -7,8 +7,8 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 use crate::args::Flags;
-use crate::args::LintConfig;
 use crate::args::LintFlags;
+use crate::args::LintRulesConfig;
 use crate::colors;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::run_parallelized;
@@ -17,7 +17,7 @@ use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::FileCollector;
 use crate::util::path::is_supported_ext;
 use deno_ast::MediaType;
-use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsStackFrame;
@@ -63,7 +63,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   let lint_config = ps.options.to_lint_config(&lint_flags)?;
 
-  let lint_rules = lint_config.configured_rules;
+  // Try to get lint rules. If none were set use recommended rules.
+  let lint_rules = get_configured_rules(lint_config.rules)?;
 
   let include = lint_config.files.include;
   let ignore = lint_config.files.ignore;
@@ -537,58 +538,24 @@ fn sort_diagnostics(diagnostics: &mut [LintDiagnostic]) {
   });
 }
 
-// TODO: This function's logic is included in CliOptions.to_lint_config but LSP uses this
 pub fn get_configured_rules(
-  maybe_lint_config: Option<&LintConfig>,
-  maybe_rules_tags: Option<Vec<String>>,
-  maybe_rules_include: Option<Vec<String>>,
-  maybe_rules_exclude: Option<Vec<String>>,
+  rules: LintRulesConfig,
 ) -> Result<Vec<Arc<dyn LintRule>>, AnyError> {
-  if maybe_lint_config.is_none()
-    && maybe_rules_tags.is_none()
-    && maybe_rules_include.is_none()
-    && maybe_rules_exclude.is_none()
+  let configured_rules = if rules.tags.is_none()
+    && rules.include.is_none()
+    && rules.exclude.is_none()
   {
-    return Ok(rules::get_recommended_rules());
-  }
-
-  let (config_file_tags, config_file_include, config_file_exclude) =
-    if let Some(lint_config) = maybe_lint_config {
-      (
-        lint_config.rules.tags.clone(),
-        lint_config.rules.include.clone(),
-        lint_config.rules.exclude.clone(),
-      )
-    } else {
-      (None, None, None)
-    };
-
-  let maybe_configured_include = if maybe_rules_include.is_some() {
-    maybe_rules_include
+    rules::get_recommended_rules()
   } else {
-    config_file_include
+    rules::get_filtered_rules(
+      rules.tags.or_else(|| Some(vec!["recommended".to_string()])),
+      rules.exclude,
+      rules.include,
+    )
   };
-
-  let maybe_configured_exclude = if maybe_rules_exclude.is_some() {
-    maybe_rules_exclude
-  } else {
-    config_file_exclude
-  };
-
-  let maybe_configured_tags = if maybe_rules_tags.is_some() {
-    maybe_rules_tags
-  } else {
-    config_file_tags
-  };
-
-  let configured_rules = rules::get_filtered_rules(
-    maybe_configured_tags.or_else(|| Some(vec!["recommended".to_string()])),
-    maybe_configured_exclude,
-    maybe_configured_include,
-  );
 
   if configured_rules.is_empty() {
-    return Err(anyhow!("No rules have been configured"));
+    bail!("No rules have been configured")
   }
 
   Ok(configured_rules)
@@ -603,15 +570,12 @@ mod test {
 
   #[test]
   fn recommended_rules_when_no_tags_in_config() {
-    let lint_config = LintConfig {
-      rules: LintRulesConfig {
-        exclude: Some(vec!["no-debugger".to_string()]),
-        ..Default::default()
-      },
-      ..Default::default()
+    let rules_config = LintRulesConfig {
+      exclude: Some(vec!["no-debugger".to_string()]),
+      include: None,
+      tags: None,
     };
-    let rules =
-      get_configured_rules(Some(&lint_config), None, None, None).unwrap();
+    let rules = get_configured_rules(rules_config).unwrap();
     let mut rule_names = rules
       .into_iter()
       .map(|r| r.code().to_string())

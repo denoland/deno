@@ -25,7 +25,6 @@ pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
 pub use config_file::TsTypeLib;
-use deno_lint::rules;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls_pemfile;
@@ -411,10 +410,6 @@ impl CliOptions {
     &self,
     lint_flags: &LintFlags,
   ) -> Result<FinalLintConfig, AnyError> {
-    let mut maybe_rules_include = lint_flags.maybe_rules_include.clone();
-    let mut maybe_rules_exclude = lint_flags.maybe_rules_exclude.clone();
-    let mut maybe_rules_tags = lint_flags.maybe_rules_tags.clone();
-
     let mut maybe_reporter_kind = if lint_flags.json {
       Some(LintReporterKind::Json)
     } else if lint_flags.compact {
@@ -425,56 +420,29 @@ impl CliOptions {
 
     let mut include = lint_flags.files.include.clone();
     let mut ignore = lint_flags.files.ignore.clone();
-
-    if let Some(config_file) = &self.maybe_config_file {
-      if let Some(lint_config) = config_file.to_lint_config()? {
-        let filters = self.collect_filters(&lint_config, include, ignore)?;
-        include = filters.include;
-        ignore = filters.ignore;
-
-        // Try to get configured rules. CLI flags take precedence
-        // over config file, i.e. if there's `rules.include` in config file
-        // and `--rules-include` CLI flag, only the flag value is taken into account.
-        if maybe_rules_include.is_none() {
-          maybe_rules_include = lint_config.rules.include;
-        }
-        if maybe_rules_exclude.is_none() {
-          maybe_rules_exclude = lint_config.rules.exclude;
-        }
-        if maybe_rules_tags.is_none() {
-          maybe_rules_tags = lint_config.rules.tags;
-        }
-        // Try to get lint reporter.
-        if maybe_reporter_kind.is_none() {
-          maybe_reporter_kind = match lint_config.report.as_deref() {
-            Some("json") => Some(LintReporterKind::Json),
-            Some("compact") => Some(LintReporterKind::Compact),
-            Some("pretty") => Some(LintReporterKind::Pretty),
-            Some(_) => {
-              return Err(anyhow!("Invalid lint report type in config file"))
-            }
-            None => Some(LintReporterKind::Pretty),
-          }
-        }
-      }
-    }
-
-    // Try to get lint rules. If none were set as flags or config file fields use recommended rules.
-    let configured_rules = if maybe_rules_tags.is_none()
-      && maybe_rules_include.is_none()
-      && maybe_rules_exclude.is_none()
-    {
-      rules::get_recommended_rules()
+    let lint_config = if let Some(config_file) = &self.maybe_config_file {
+      config_file.to_lint_config()?
     } else {
-      rules::get_filtered_rules(
-        maybe_rules_tags.or_else(|| Some(vec!["recommended".to_string()])),
-        maybe_rules_exclude,
-        maybe_rules_include,
-      )
+      None
     };
 
-    if configured_rules.is_empty() {
-      return Err(anyhow!("No rules have been configured"));
+    if let Some(lint_config) = &lint_config {
+      let filters = collect_filters(lint_config, include, ignore)?;
+      include = filters.include;
+      ignore = filters.ignore;
+
+      // Try to get lint reporter.
+      if maybe_reporter_kind.is_none() {
+        maybe_reporter_kind = match lint_config.report.as_deref() {
+          Some("json") => Some(LintReporterKind::Json),
+          Some("compact") => Some(LintReporterKind::Compact),
+          Some("pretty") => Some(LintReporterKind::Pretty),
+          Some(_) => {
+            return Err(anyhow!("Invalid lint report type in config file"))
+          }
+          None => Some(LintReporterKind::Pretty),
+        }
+      }
     }
 
     if include.is_empty() {
@@ -489,7 +457,12 @@ impl CliOptions {
     Ok(FinalLintConfig {
       reporter_kind,
       files: FileFlags { include, ignore },
-      configured_rules,
+      rules: resolve_lint_rules_options(
+        lint_config,
+        lint_flags.maybe_rules_tags.clone(),
+        lint_flags.maybe_rules_include.clone(),
+        lint_flags.maybe_rules_exclude.clone(),
+      ),
     })
   }
 
@@ -502,7 +475,7 @@ impl CliOptions {
 
     if let Some(config_file) = &self.maybe_config_file {
       if let Some(test_config) = config_file.to_test_config()? {
-        let filters = self.collect_filters(&test_config, include, ignore)?;
+        let filters = collect_filters(&test_config, include, ignore)?;
         include = filters.include;
         ignore = filters.ignore;
       }
@@ -572,7 +545,7 @@ impl CliOptions {
 
     if let Some(config_file) = &self.maybe_config_file {
       if let Some(fmt_config) = config_file.to_fmt_config()? {
-        let filters = self.collect_filters(&fmt_config, include, ignore)?;
+        let filters = collect_filters(&fmt_config, include, ignore)?;
         include = filters.include;
         ignore = filters.ignore;
         options = resolve_fmt_options(fmt_flags, fmt_config.options);
@@ -587,39 +560,6 @@ impl CliOptions {
       files: FileFlags { include, ignore },
       options,
     })
-  }
-
-  /// Collect included and ignored files. CLI flags take precedence
-  /// over config file, i.e. if there's `files.ignore` in config file
-  /// and `--ignore` CLI flag, only the flag value is taken into account.
-  pub fn collect_filters<T>(
-    &self,
-    config: &T,
-    mut include: Vec<PathBuf>,
-    mut ignore: Vec<PathBuf>,
-  ) -> Result<FileFlags, AnyError>
-  where
-    T: ContainsFilesConfig,
-  {
-    if include.is_empty() {
-      include = config
-        .get_files_config()
-        .include
-        .iter()
-        .filter_map(|s| specifier_to_file_path(s).ok())
-        .collect::<Vec<_>>();
-    }
-
-    if ignore.is_empty() {
-      ignore = config
-        .get_files_config()
-        .exclude
-        .iter()
-        .filter_map(|s| specifier_to_file_path(s).ok())
-        .collect::<Vec<_>>();
-    }
-
-    Ok(FileFlags { include, ignore })
   }
 
   /// Vector of user script CLI arguments.
@@ -833,6 +773,66 @@ fn resolve_import_map_specifier(
     }
   }
   Ok(None)
+}
+
+// TODO(THIS PR): REMOVE THIS
+/// Collect included and ignored files. CLI flags take precedence
+/// over config file, i.e. if there's `files.ignore` in config file
+/// and `--ignore` CLI flag, only the flag value is taken into account.
+pub fn collect_filters<T>(
+  config: &T,
+  mut include: Vec<PathBuf>,
+  mut ignore: Vec<PathBuf>,
+) -> Result<FileFlags, AnyError>
+where
+  T: ContainsFilesConfig,
+{
+  if include.is_empty() {
+    include = config
+      .get_files_config()
+      .include
+      .iter()
+      .filter_map(|s| specifier_to_file_path(s).ok())
+      .collect::<Vec<_>>();
+  }
+
+  if ignore.is_empty() {
+    ignore = config
+      .get_files_config()
+      .exclude
+      .iter()
+      .filter_map(|s| specifier_to_file_path(s).ok())
+      .collect::<Vec<_>>();
+  }
+
+  Ok(FileFlags { include, ignore })
+}
+
+pub fn resolve_lint_rules_options(
+  maybe_lint_config: Option<LintConfig>,
+  mut maybe_rules_tags: Option<Vec<String>>,
+  mut maybe_rules_include: Option<Vec<String>>,
+  mut maybe_rules_exclude: Option<Vec<String>>,
+) -> LintRulesConfig {
+  if let Some(lint_config) = maybe_lint_config {
+    // Try to get configured rules. CLI flags take precedence
+    // over config file, i.e. if there's `rules.include` in config file
+    // and `--rules-include` CLI flag, only the flag value is taken into account.
+    if maybe_rules_include.is_none() {
+      maybe_rules_include = lint_config.rules.include;
+    }
+    if maybe_rules_exclude.is_none() {
+      maybe_rules_exclude = lint_config.rules.exclude;
+    }
+    if maybe_rules_tags.is_none() {
+      maybe_rules_tags = lint_config.rules.tags;
+    }
+  }
+  LintRulesConfig {
+    exclude: maybe_rules_exclude,
+    include: maybe_rules_include,
+    tags: maybe_rules_tags,
+  }
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.

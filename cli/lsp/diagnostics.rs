@@ -12,8 +12,10 @@ use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
 
+use crate::args::resolve_lint_rules_options;
 use crate::args::LintConfig;
 use crate::npm::NpmPackageReference;
+use crate::tools::lint::get_configured_rules;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -24,6 +26,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_graph::Resolved;
+use deno_lint::rules::LintRule;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
 use std::collections::HashMap;
@@ -448,6 +451,12 @@ async fn generate_lint_diagnostics(
 ) -> DiagnosticVec {
   let documents = snapshot.documents.documents(true, true);
   let workspace_settings = config.settings.workspace.clone();
+  let lint_rule_options =
+    resolve_lint_rules_options(maybe_lint_config.clone(), None, None, None);
+  let lint_rules = match get_configured_rules(lint_rule_options) {
+    Ok(rules) => rules,
+    Err(_) => return Vec::new(),
+  };
 
   let mut diagnostics_vec = Vec::new();
   if workspace_settings.lint {
@@ -470,7 +479,8 @@ async fn generate_lint_diagnostics(
         version,
         generate_document_lint_diagnostics(
           config,
-          &maybe_lint_config,
+          maybe_lint_config.as_ref(),
+          lint_rules.clone(),
           &document,
         ),
       ));
@@ -481,23 +491,23 @@ async fn generate_lint_diagnostics(
 
 fn generate_document_lint_diagnostics(
   config: &ConfigSnapshot,
-  maybe_lint_config: &Option<LintConfig>,
+  maybe_lint_config: Option<&LintConfig>,
+  lint_rules: Vec<Arc<dyn LintRule>>,
   document: &Document,
 ) -> Vec<lsp::Diagnostic> {
   if !config.specifier_enabled(document.specifier()) {
     return Vec::new();
   }
-  if let Some(lint_config) = &maybe_lint_config {
+  if let Some(lint_config) = maybe_lint_config {
     if !lint_config.files.matches_specifier(document.specifier()) {
       return Vec::new();
     }
   }
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
-      if let Ok(references) = analysis::get_lint_references(
-        &parsed_source,
-        maybe_lint_config.as_ref(),
-      ) {
+      if let Ok(references) =
+        analysis::get_lint_references(&parsed_source, lint_rules)
+      {
         references
           .into_iter()
           .map(|r| r.to_diagnostic())
