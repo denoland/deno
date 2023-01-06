@@ -5498,6 +5498,23 @@ mod tests {
   }
 
   #[test]
+  fn test_no_colon_in_value_name() {
+    let app =
+      runtime_args(Command::new("test_inspect_completion_value"), true, true);
+    let inspect_args = app
+      .get_arguments()
+      .filter(|arg| arg.get_id() == "inspect")
+      .collect::<Vec<_>>();
+    // The value_name cannot have a : otherwise it breaks shell completions for zsh.
+    let value_name = "HOST_AND_PORT";
+    let arg = inspect_args
+      .iter()
+      .any(|v| v.get_value_names().unwrap() == [value_name]);
+
+    assert_eq!(arg, true);
+  }
+
+  #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
     let r = flags_from_vec(svec!["deno", "test", "--unstable", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
