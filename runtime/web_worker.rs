@@ -389,11 +389,11 @@ impl WebWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init::<Permissions>(
+      deno_web::init::<PermissionsContainer>(
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
-      deno_fetch::init::<Permissions>(deno_fetch::Options {
+      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
@@ -403,7 +403,7 @@ impl WebWorker {
         ..Default::default()
       }),
       deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<Permissions>(
+      deno_websocket::init::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
@@ -413,7 +413,7 @@ impl WebWorker {
       deno_crypto::init(options.seed),
       deno_webgpu::init(unstable),
       // ffi
-      deno_ffi::init::<Permissions>(unstable),
+      deno_ffi::init::<PermissionsContainer>(unstable),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),
@@ -429,13 +429,13 @@ impl WebWorker {
       ops::io::init(),
       ops::io::init_stdio(options.stdio),
       deno_tls::init(),
-      deno_net::init::<Permissions>(
+      deno_net::init::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init::<Permissions>(unstable),
-      deno_node::init::<Permissions>(options.npm_resolver),
+      deno_napi::init::<PermissionsContainer>(unstable),
+      deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),
       ops::process::init(),
@@ -443,7 +443,7 @@ impl WebWorker {
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
-      deno_flash::init::<Permissions>(unstable),
+      deno_flash::init::<PermissionsContainer>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,

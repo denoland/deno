@@ -36,8 +36,6 @@ pub use prompter::PromptCallback;
 static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
-pub type PermissionsContainer = Arc<Mutex<Permissions>>;
-
 /// Tri-state value for storing permission state
 #[derive(Eq, PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
 pub enum PermissionState {
@@ -1618,29 +1616,38 @@ impl Permissions {
   }
 }
 
-impl deno_flash::FlashPermissions for Permissions {
+/// Wrapper struct for `Permissions` that can be shared across threads.
+///
+/// We need a way to have internal mutability for permissions as they might get
+/// passed to a future that will prompt the user for permission (and in such
+/// case might need to be mutated). Also for the Web Worker API we need a way
+/// to send permissions to a new thread.
+#[derive(Clone, Debug)]
+pub struct PermissionsContainer(Arc<Mutex<Permissions>>);
+
+impl deno_flash::FlashPermissions for PermissionsContainer {
   fn check_net<T: AsRef<str>>(
     &mut self,
     host: &(T, Option<u16>),
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.net.check(host, Some(api_name))
+    self.0.lock().net.check(host, Some(api_name))
   }
 }
 
-impl deno_node::NodePermissions for Permissions {
+impl deno_node::NodePermissions for PermissionsContainer {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
-    self.read.check(path, None)
+    self.0.lock().read.check(path, None)
   }
 }
 
-impl deno_net::NetPermissions for Permissions {
+impl deno_net::NetPermissions for PermissionsContainer {
   fn check_net<T: AsRef<str>>(
     &mut self,
     host: &(T, Option<u16>),
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.net.check(host, Some(api_name))
+    self.0.lock().net.check(host, Some(api_name))
   }
 
   fn check_read(
@@ -1648,7 +1655,7 @@ impl deno_net::NetPermissions for Permissions {
     path: &Path,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.read.check(path, Some(api_name))
+    self.0.lock().read.check(path, Some(api_name))
   }
 
   fn check_write(
@@ -1656,17 +1663,17 @@ impl deno_net::NetPermissions for Permissions {
     path: &Path,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.write.check(path, Some(api_name))
+    self.0.lock().write.check(path, Some(api_name))
   }
 }
 
-impl deno_fetch::FetchPermissions for Permissions {
+impl deno_fetch::FetchPermissions for PermissionsContainer {
   fn check_net_url(
     &mut self,
     url: &url::Url,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.net.check_url(url, Some(api_name))
+    self.0.lock().net.check_url(url, Some(api_name))
   }
 
   fn check_read(
@@ -1674,13 +1681,13 @@ impl deno_fetch::FetchPermissions for Permissions {
     path: &Path,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.read.check(path, Some(api_name))
+    self.0.lock().read.check(path, Some(api_name))
   }
 }
 
-impl deno_web::TimersPermission for Permissions {
+impl deno_web::TimersPermission for PermissionsContainer {
   fn allow_hrtime(&mut self) -> bool {
-    self.hrtime.check().is_ok()
+    self.0.lock().hrtime.check().is_ok()
   }
 
   fn check_unstable(&self, state: &OpState, api_name: &'static str) {
@@ -1688,27 +1695,27 @@ impl deno_web::TimersPermission for Permissions {
   }
 }
 
-impl deno_websocket::WebSocketPermissions for Permissions {
+impl deno_websocket::WebSocketPermissions for PermissionsContainer {
   fn check_net_url(
     &mut self,
     url: &url::Url,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.net.check_url(url, Some(api_name))
+    self.0.lock().net.check_url(url, Some(api_name))
   }
 }
 
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
-impl deno_napi::NapiPermissions for Permissions {
+impl deno_napi::NapiPermissions for PermissionsContainer {
   fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    self.ffi.check(path)
+    self.0.lock().ffi.check(path)
   }
 }
 
-impl deno_ffi::FfiPermissions for Permissions {
+impl deno_ffi::FfiPermissions for PermissionsContainer {
   fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    self.ffi.check(path)
+    self.0.lock().ffi.check(path)
   }
 }
 
