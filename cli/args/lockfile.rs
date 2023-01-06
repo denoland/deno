@@ -289,12 +289,7 @@ impl Lockfile {
   ) -> Result<(), LockfileError> {
     let specifier = package.id.as_serialized();
     if let Some(package_info) = self.content.npm.packages.get(&specifier) {
-      let integrity = package
-        .dist
-        .integrity
-        .as_ref()
-        .unwrap_or(&package.dist.shasum);
-      if &package_info.integrity != integrity {
+      if package_info.integrity.as_str() != package.dist.integrity().as_str() {
         return Err(LockfileError(format!(
           "Integrity check failed for npm package: \"{}\". Unable to verify that the package
 is the same as when the lockfile was generated.
@@ -321,15 +316,10 @@ Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
       .map(|(name, id)| (name.to_string(), id.as_serialized()))
       .collect::<BTreeMap<String, String>>();
 
-    let integrity = package
-      .dist
-      .integrity
-      .as_ref()
-      .unwrap_or(&package.dist.shasum);
     self.content.npm.packages.insert(
       package.id.as_serialized(),
       NpmPackageInfo {
-        integrity: integrity.to_string(),
+        integrity: package.dist.integrity().to_string(),
         dependencies,
       },
     );

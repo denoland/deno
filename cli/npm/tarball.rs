@@ -21,15 +21,7 @@ pub fn verify_and_extract_tarball(
   dist_info: &NpmPackageVersionDistInfo,
   output_folder: &Path,
 ) -> Result<(), AnyError> {
-  if let Some(integrity) = &dist_info.integrity {
-    verify_tarball_integrity(package, data, integrity)?;
-  } else {
-    verify_tarball_integrity(
-      package,
-      data,
-      &format!("sha1-{}", dist_info.shasum),
-    )?;
-  }
+  verify_tarball_integrity(package, data, &dist_info.integrity())?;
 
   with_folder_sync_lock(package, output_folder, || {
     extract_tarball(data, output_folder)
