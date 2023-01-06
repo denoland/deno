@@ -5,6 +5,10 @@ mod in_memory_broadcast_channel;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
 
+use std::cell::RefCell;
+use std::path::PathBuf;
+use std::rc::Rc;
+
 use async_trait::async_trait;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
@@ -14,9 +18,6 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use std::cell::RefCell;
-use std::path::PathBuf;
-use std::rc::Rc;
 
 #[async_trait]
 pub trait BroadcastChannel: Clone {

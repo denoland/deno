@@ -142,7 +142,7 @@ pub fn resolve_path(
     .map_err(|_| ModuleResolutionError::InvalidPath(path_str.into()))?
     .join(path_str);
   let path = normalize_path(path);
-  Url::from_file_path(path.clone())
+  Url::from_file_path(&path)
     .map_err(|()| ModuleResolutionError::InvalidPath(path))
 }
 

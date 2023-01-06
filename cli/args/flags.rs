@@ -454,30 +454,30 @@ impl Flags {
   /// If it returns None, the config file shouldn't be discovered at all.
   pub fn config_path_args(&self) -> Option<Vec<PathBuf>> {
     use DenoSubcommand::*;
-    if let Fmt(FmtFlags { files, .. }) = &self.subcommand {
-      Some(files.clone())
-    } else if let Lint(LintFlags { files, .. }) = &self.subcommand {
-      Some(files.clone())
-    } else if let Run(RunFlags { script }) = &self.subcommand {
-      if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
-        if module_specifier.scheme() == "file"
-          || module_specifier.scheme() == "npm"
-        {
-          if let Ok(p) = module_specifier.to_file_path() {
-            Some(vec![p])
+
+    match &self.subcommand {
+      Fmt(FmtFlags { files, .. }) => Some(files.clone()),
+      Lint(LintFlags { files, .. }) => Some(files.clone()),
+      Run(RunFlags { script }) => {
+        if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
+          if module_specifier.scheme() == "file"
+            || module_specifier.scheme() == "npm"
+          {
+            if let Ok(p) = module_specifier.to_file_path() {
+              Some(vec![p])
+            } else {
+              Some(vec![])
+            }
           } else {
-            Some(vec![])
+            // When the entrypoint doesn't have file: scheme (it's the remote
+            // script), then we don't auto discover config file.
+            None
           }
         } else {
-          // When the entrypoint doesn't have file: scheme (it's the remote
-          // script), then we don't auto discover config file.
-          None
+          Some(vec![])
         }
-      } else {
-        Some(vec![])
       }
-    } else {
-      Some(vec![])
+      _ => Some(vec![]),
     }
   }
 
@@ -572,15 +572,14 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   if matches.is_present("unstable") {
     flags.unstable = true;
   }
-  if matches.is_present("log-level") {
-    flags.log_level = match matches.value_of("log-level").unwrap() {
-      "debug" => Some(Level::Debug),
-      "info" => Some(Level::Info),
-      _ => unreachable!(),
-    };
-  }
-  if matches.is_present("quiet") {
-    flags.log_level = Some(Level::Error);
+  match matches.value_of("log-level") {
+    Some("debug") => flags.log_level = Some(Level::Debug),
+    Some("info") => flags.log_level = Some(Level::Info),
+    _ => {
+      if matches.is_present("quiet") {
+        flags.log_level = Some(Level::Error);
+      }
+    }
   }
 
   match matches.subcommand() {
@@ -2535,11 +2534,9 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   } else {
     None
   };
-  let prose_wrap = if matches.is_present("options-prose-wrap") {
-    Some(matches.value_of("options-prose-wrap").unwrap().to_string())
-  } else {
-    None
-  };
+  let prose_wrap = matches
+    .value_of("options-prose-wrap")
+    .map(ToString::to_string);
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.is_present("check"),
@@ -2577,11 +2574,9 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
-  let root = if matches.is_present("root") {
-    let install_root = matches.value_of("root").unwrap();
-    Some(PathBuf::from(install_root))
-  } else {
-    None
+  let root = match matches.value_of("root") {
+    Some(install_root) => Some(PathBuf::from(install_root)),
+    None => None,
   };
 
   let force = matches.is_present("force");
@@ -2605,11 +2600,9 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn uninstall_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  let root = if matches.is_present("root") {
-    let install_root = matches.value_of("root").unwrap();
-    Some(PathBuf::from(install_root))
-  } else {
-    None
+  let root = match matches.value_of("root") {
+    Some(install_root) => Some(PathBuf::from(install_root)),
+    None => None,
   };
 
   let name = matches.value_of("name").unwrap().to_string();

@@ -213,7 +213,7 @@ impl TsConfig {
   }
 
   pub fn as_bytes(&self) -> Vec<u8> {
-    let map = self.0.as_object().unwrap();
+    let map = self.0.as_object().expect("invalid tsconfig");
     let ordered: BTreeMap<_, _> = map.iter().collect();
     let value = json!(ordered);
     value.to_string().as_bytes().to_owned()
