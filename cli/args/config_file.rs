@@ -374,7 +374,7 @@ pub enum ProseWrap {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum SemiColons {
-  Always,
+  Prefer,
   Asi,
 }
 

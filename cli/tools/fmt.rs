@@ -564,9 +564,9 @@ fn resolve_fmt_options(
     });
   }
 
-  if let Some(semicolons) = &fmt_flags.semicolons {
-    options.semi_colons = Some(match semicolons.as_str() {
-      "always" => SemiColons::Always,
+  if let Some(semi_colons) = &fmt_flags.semi_colons {
+    options.semi_colons = Some(match semi_colons.as_str() {
+      "prefer" => SemiColons::Prefer,
       "asi" => SemiColons::Asi,
       // validators in `flags.rs` makes other values unreachable
       _ => unreachable!(),
@@ -605,8 +605,8 @@ fn get_resolved_typescript_config(
 
   if let Some(semi_colons) = options.semi_colons {
     builder.semi_colons(match semi_colons {
-      SemiColons::Always => {
-        dprint_plugin_typescript::configuration::SemiColons::Always
+      SemiColons::Prefer => {
+        dprint_plugin_typescript::configuration::SemiColons::Prefer
       }
       SemiColons::Asi => {
         dprint_plugin_typescript::configuration::SemiColons::Asi
