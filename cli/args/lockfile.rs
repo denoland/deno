@@ -535,11 +535,11 @@ mod tests {
         peer_dependencies: Vec::new(),
       },
       copy_index: 0,
-      dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(),
-        shasum: "foo".to_string(),
-        integrity: Some("sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==".to_string())
-      },
+      dist: NpmPackageVersionDistInfo::new(
+        "foo".to_string(),
+        "shasum".to_string(),
+        Some("sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==".to_string()),
+      ),
       dependencies: HashMap::new(),
     };
     let check_ok = lockfile.check_or_insert_npm_package(&npm_package);
@@ -552,11 +552,11 @@ mod tests {
         peer_dependencies: Vec::new(),
       },
       copy_index: 0,
-      dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(),
-        shasum: "foo".to_string(),
-        integrity: Some("sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==".to_string())
-      },
+      dist: NpmPackageVersionDistInfo::new(
+        "foo".to_string(),
+        "shasum".to_string(),
+        Some("sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==".to_string()),
+      ),
       dependencies: HashMap::new(),
     };
     // Integrity is borked in the loaded lockfile
@@ -570,11 +570,11 @@ mod tests {
         peer_dependencies: Vec::new(),
       },
       copy_index: 0,
-      dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(),
-        shasum: "foo".to_string(),
-        integrity: Some("sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==".to_string())
-      },
+      dist: NpmPackageVersionDistInfo::new(
+        "foo".to_string(),
+        "foo".to_string(),
+        Some("sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==".to_string()),
+      ),
       dependencies: HashMap::new(),
     };
     // Not present in lockfile yet, should be inserted and check passed.
@@ -588,11 +588,11 @@ mod tests {
         peer_dependencies: Vec::new(),
       },
       copy_index: 0,
-      dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(),
-        shasum: "foo".to_string(),
-        integrity: Some("sha512-foobar".to_string()),
-      },
+      dist: NpmPackageVersionDistInfo::new(
+        "foo".to_string(),
+        "foo".to_string(),
+        Some("sha512-foobar".to_string()),
+      ),
       dependencies: HashMap::new(),
     };
     // Now present in lockfile, should file due to borked integrity
