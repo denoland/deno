@@ -1,5 +1,5 @@
-use crate::key::CryptoNamedCurve;
-use crate::shared::*;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::ZeroCopyBuf;
@@ -11,6 +11,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use spki::der::Decode;
 use spki::der::Encode;
+
+use crate::key::CryptoNamedCurve;
+use crate::shared::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

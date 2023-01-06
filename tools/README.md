@@ -72,3 +72,15 @@ on top, somewhat similar to `git subtree`.
 2. Run `./tools/wgpu_sync.js`
 3. Double check changes, possibly patch
 4. Commit & send a PR with the updates
+
+## copyright_checker.js
+
+`copyright_checker.js` is used to check copyright headers in the codebase.
+
+To run the *copyright checker*:
+
+```sh
+deno run --allow-read --allow-run --unstable  ./tools/copyright_checker.js
+```
+
+Then it will check all code files in the repository and report any files that are not properly licensed.

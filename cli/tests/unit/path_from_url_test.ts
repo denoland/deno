@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import { assertEquals, assertThrows } from "./test_util.ts";
 
 // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
