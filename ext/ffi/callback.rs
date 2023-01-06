@@ -485,7 +485,7 @@ unsafe fn do_ffi_callback(
       std::ptr::copy_nonoverlapping(
         pointer as *mut u8,
         result as *mut u8,
-        size,
+        std::cmp::min(size, (*cif.rtype).size),
       );
     }
     NativeType::Void => {

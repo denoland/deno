@@ -472,7 +472,7 @@ pub fn ffi_parse_struct_arg(
       non_null.as_ptr()
     } else {
       return Err(type_error(
-        "Invalid FFI struct type, expected ArrayBuffer, or ArrayBufferView",
+        "Invalid FFI ArrayBuffer, expected data in buffer",
       ));
     }
   } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg) {
@@ -488,7 +488,9 @@ pub fn ffi_parse_struct_arg(
       // is within the buffer backing store.
       unsafe { non_null.as_ptr().add(byte_offset) }
     } else {
-      ptr::null_mut()
+      return Err(type_error(
+        "Invalid FFI ArrayBufferView, expected data in buffer",
+      ));
     }
   } else {
     return Err(type_error(
