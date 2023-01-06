@@ -27,10 +27,8 @@ pub fn out_buffer_as_ptr(
   match out_buffer {
     Some(out_buffer) => {
       let ab = out_buffer.buffer(scope).unwrap();
-      let backing_store = ab.get_backing_store();
-      let ptr = &backing_store[..] as *const _ as *mut u8;
-      let len = backing_store.byte_length();
-      Some(OutBuffer(ptr, len))
+      let len = ab.byte_length();
+      ab.data().map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8, len))
     }
     None => None,
   }
@@ -472,7 +470,9 @@ pub fn ffi_parse_struct_arg(
     if let Some(non_null) = value.data() {
       non_null.as_ptr()
     } else {
-      ptr::null_mut()
+      return Err(type_error(
+        "Invalid FFI struct type, expected ArrayBuffer, or ArrayBufferView",
+      ));
     }
   } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg) {
     let byte_offset = value.byte_offset();

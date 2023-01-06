@@ -113,7 +113,7 @@ impl Future for CallbackInfo {
   }
 }
 unsafe extern "C" fn deno_ffi_callback(
-  _cif: &libffi::low::ffi_cif,
+  cif: &libffi::low::ffi_cif,
   result: &mut c_void,
   args: *const *const c_void,
   info: &CallbackInfo,
@@ -121,15 +121,16 @@ unsafe extern "C" fn deno_ffi_callback(
   LOCAL_ISOLATE_POINTER.with(|s| {
     if ptr::eq(*s.borrow(), info.isolate) {
       // Own isolate thread, okay to call directly
-      do_ffi_callback(info, result, args);
+      do_ffi_callback(cif, info, result, args);
     } else {
       let async_work_sender = &info.async_work_sender;
       // SAFETY: Safe as this function blocks until `do_ffi_callback` completes and a response message is received.
+      let cif: &'static libffi::low::ffi_cif = std::mem::transmute(cif);
       let result: &'static mut c_void = std::mem::transmute(result);
       let info: &'static CallbackInfo = std::mem::transmute(info);
       let (response_sender, response_receiver) = sync_channel::<()>(0);
       let fut = Box::new(move || {
-        do_ffi_callback(info, result, args);
+        do_ffi_callback(cif, info, result, args);
         response_sender.send(()).unwrap();
       });
       async_work_sender.unbounded_send(fut).unwrap();
@@ -143,6 +144,7 @@ unsafe extern "C" fn deno_ffi_callback(
 }
 
 unsafe fn do_ffi_callback(
+  cif: &libffi::low::ffi_cif,
   info: &CallbackInfo,
   result: &mut c_void,
   args: *const *const c_void,
@@ -172,9 +174,12 @@ unsafe fn do_ffi_callback(
   let result = result as *mut c_void;
   let vals: &[*const c_void] =
     std::slice::from_raw_parts(args, info.parameters.len());
+  let arg_types = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
 
   let mut params: Vec<v8::Local<v8::Value>> = vec![];
-  for (native_type, val) in info.parameters.iter().zip(vals) {
+  for ((index, native_type), val) in
+    info.parameters.iter().enumerate().zip(vals)
+  {
     let value: v8::Local<v8::Value> = match native_type {
       NativeType::Bool => {
         let value = *((*val) as *const bool);
@@ -238,7 +243,7 @@ unsafe fn do_ffi_callback(
         }
       }
       NativeType::Struct(_) => {
-        let size = native_type.get_size().unwrap();
+        let size = arg_types[index].as_ref().unwrap().size;
         let ptr = (*val) as *const u8;
         let slice = std::slice::from_raw_parts(ptr, size);
         let boxed = Box::from(slice);
@@ -456,19 +461,32 @@ unsafe fn do_ffi_callback(
     }
     NativeType::Struct(_) => {
       let size;
-      let pointer =
-        if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
-          let byte_offset = value.byte_offset();
-          let backing_store = value
-            .buffer(scope)
-            .expect("Unable to deserialize result parameter.")
-            .get_backing_store();
-          size = value.byte_length();
-          &backing_store[byte_offset..] as *const _ as *const u8
-        } else {
-          panic!("Unable to deserialize result parameter.");
-        };
-      std::ptr::copy_nonoverlapping(pointer, result as *mut u8, size);
+      let pointer = if let Ok(value) =
+        v8::Local::<v8::ArrayBufferView>::try_from(value)
+      {
+        let byte_offset = value.byte_offset();
+        let ab = value
+          .buffer(scope)
+          .expect("Unable to deserialize result parameter.");
+        size = value.byte_length();
+        ab.data()
+          .expect("Unable to deserialize result parameter.")
+          .as_ptr()
+          .add(byte_offset)
+      } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
+        size = value.byte_length();
+        value
+          .data()
+          .expect("Unable to deserialize result parameter.")
+          .as_ptr()
+      } else {
+        panic!("Unable to deserialize result parameter.");
+      };
+      std::ptr::copy_nonoverlapping(
+        pointer as *mut u8,
+        result as *mut u8,
+        size,
+      );
     }
     NativeType::Void => {
       // nop
