@@ -1,10 +1,7 @@
 #!/usr/bin/env -S deno run --unstable --allow-read --allow-run
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import {
-  getSources,
-  ROOT_PATH,
-} from "./util.js";
+import { getSources, ROOT_PATH } from "./util.js";
 
 async function checkCopyright() {
   const sourceFiles = await getSources(ROOT_PATH, [
@@ -20,13 +17,13 @@ async function checkCopyright() {
     ":!:test_util/wpt/**",
     ":!:tools/**", // these files are starts with `#!/usr/bin/env`
     ":!:cli/tools/init/templates/**",
-    
+
     // rust
     "*.rs",
     ":!:ops/optimizer_tests/**",
 
     // toml
-    "*Cargo.toml"
+    "*Cargo.toml",
   ]);
 
   if (!sourceFiles.length) {
@@ -37,14 +34,22 @@ async function checkCopyright() {
   for (const file of sourceFiles) {
     const fileText = await Deno.readTextFile(file);
     if (file.endsWith("Cargo.toml")) {
-      if (!fileText.startsWith("# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.")) {
+      if (
+        !fileText.startsWith(
+          "# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
+        )
+      ) {
         console.log("Copyright is not sign: " + file);
         totalCount += 1;
       }
       continue;
     }
 
-    if (!fileText.startsWith("// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.")) {
+    if (
+      !fileText.startsWith(
+        "// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
+      )
+    ) {
       console.log("Copyright is not sign: " + file);
       totalCount += 1;
     }

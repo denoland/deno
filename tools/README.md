@@ -77,10 +77,11 @@ on top, somewhat similar to `git subtree`.
 
 `copyright_checker.js` is used to check copyright headers in the codebase.
 
-To run the *copyright checker*:
+To run the _copyright checker_:
 
 ```sh
 deno run --allow-read --allow-run --unstable  ./tools/copyright_checker.js
 ```
 
-Then it will check all code files in the repository and report any files that are not properly licensed.
+Then it will check all code files in the repository and report any files that
+are not properly licensed.
