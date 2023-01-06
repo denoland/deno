@@ -419,12 +419,11 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
   fn resolve_best_package_version_and_info<'info>(
     &self,
-    name: &str,
     version_matcher: &impl NpmVersionMatcher,
     package_info: &'info NpmPackageInfo,
   ) -> Result<VersionAndInfo<'info>, AnyError> {
     if let Some(version) =
-      self.resolve_best_package_version(name, version_matcher)
+      self.resolve_best_package_version(package_info, version_matcher)?
     {
       match package_info.versions.get(&version.to_string()) {
         Some(version_info) => Ok(VersionAndInfo {
@@ -432,29 +431,29 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           info: version_info,
         }),
         None => {
-          bail!("could not find version '{}' for '{}'", version, name)
+          bail!(
+            "could not find version '{}' for '{}'",
+            version,
+            &package_info.name
+          )
         }
       }
     } else {
       // get the information
-      get_resolved_package_version_and_info(
-        name,
-        version_matcher,
-        package_info,
-        None,
-      )
+      get_resolved_package_version_and_info(version_matcher, package_info, None)
     }
   }
 
   fn resolve_best_package_version(
     &self,
-    name: &str,
+    package_info: &NpmPackageInfo,
     version_matcher: &impl NpmVersionMatcher,
-  ) -> Option<NpmVersion> {
+  ) -> Result<Option<NpmVersion>, AnyError> {
     let mut maybe_best_version: Option<&NpmVersion> = None;
-    if let Some(ids) = self.graph.packages_by_name.get(name) {
+    if let Some(ids) = self.graph.packages_by_name.get(&package_info.name) {
       for version in ids.iter().map(|id| &id.version) {
-        if version_matcher.matches(version) {
+        if version_req_satisfies(version_matcher, version, package_info, None)?
+        {
           let is_best_version = maybe_best_version
             .as_ref()
             .map(|best_version| (*best_version).cmp(version).is_lt())
@@ -465,7 +464,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         }
       }
     }
-    maybe_best_version.cloned()
+    Ok(maybe_best_version.cloned())
   }
 
   pub fn has_package_req(&self, req: &NpmPackageReq) -> bool {
@@ -552,18 +551,15 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
   fn resolve_node_from_info(
     &mut self,
-    name: &str,
+    pkg_req_name: &str,
     version_matcher: &impl NpmVersionMatcher,
     package_info: &NpmPackageInfo,
     parent_id: Option<&NpmPackageId>,
   ) -> Result<Arc<Mutex<Node>>, AnyError> {
-    let version_and_info = self.resolve_best_package_version_and_info(
-      name,
-      version_matcher,
-      package_info,
-    )?;
+    let version_and_info = self
+      .resolve_best_package_version_and_info(version_matcher, package_info)?;
     let id = NpmPackageId {
-      name: name.to_string(),
+      name: package_info.name.to_string(),
       version: version_and_info.version.clone(),
       peer_dependencies: Vec::new(),
     };
@@ -573,7 +569,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         Some(id) => id.as_serialized(),
         None => "<package-req>".to_string(),
       },
-      name,
+      pkg_req_name,
       version_matcher.version_text(),
       id.as_serialized(),
     );
@@ -701,6 +697,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             &peer_dep.version_req,
             &child_id.version,
             peer_package_info,
+            None,
           )?
         {
           return Ok(Some(child_id.clone()));
@@ -743,6 +740,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
               &peer_dep.version_req,
               &ancestor_node_id.version,
               peer_package_info,
+              None,
             )? {
             Some(ancestor_node_id.clone())
           } else {
@@ -956,29 +954,12 @@ struct VersionAndInfo<'a> {
 }
 
 fn get_resolved_package_version_and_info<'a>(
-  pkg_name: &str,
   version_matcher: &impl NpmVersionMatcher,
   info: &'a NpmPackageInfo,
   parent: Option<&NpmPackageId>,
 ) -> Result<VersionAndInfo<'a>, AnyError> {
   if let Some(tag) = version_matcher.tag() {
-    // For when someone just specifies @types/node, we want to pull in a
-    // "known good" version of @types/node that works well with Deno and
-    // not necessarily the latest version. For example, we might only be
-    // compatible with Node vX, but then Node vY is published so we wouldn't
-    // want to pull that in.
-    // Note: If the user doesn't want this behavior, then they can specify an
-    // explicit version.
-    if tag == "latest" && pkg_name == "@types/node" {
-      return get_resolved_package_version_and_info(
-        pkg_name,
-        &NpmVersionReq::parse("18.0.0 - 18.8.2").unwrap(),
-        info,
-        parent,
-      );
-    }
-
-    tag_to_version_info(info, tag)
+    tag_to_version_info(info, tag, parent)
   } else {
     let mut maybe_best_version: Option<VersionAndInfo> = None;
     for version_info in info.versions.values() {
@@ -1013,7 +994,7 @@ fn get_resolved_package_version_and_info<'a>(
           "Could not find npm package '{}' matching {}{}. ",
           "Try retrieving the latest npm package information by running with --reload",
         ),
-        pkg_name,
+        info.name,
         version_matcher.version_text(),
         match parent {
           Some(id) => format!(" as specified in {}", id.display()),
@@ -1025,23 +1006,40 @@ fn get_resolved_package_version_and_info<'a>(
 }
 
 fn version_req_satisfies(
-  version_req: &NpmVersionReq,
+  matcher: &impl NpmVersionMatcher,
   version: &NpmVersion,
   package_info: &NpmPackageInfo,
+  parent: Option<&NpmPackageId>,
 ) -> Result<bool, AnyError> {
-  match version_req.tag() {
+  match matcher.tag() {
     Some(tag) => {
-      let tag_version = tag_to_version_info(package_info, tag)?.version;
+      let tag_version = tag_to_version_info(package_info, tag, parent)?.version;
       Ok(tag_version == *version)
     }
-    None => Ok(version_req.matches(version)),
+    None => Ok(matcher.matches(version)),
   }
 }
 
 fn tag_to_version_info<'a>(
   info: &'a NpmPackageInfo,
   tag: &str,
+  parent: Option<&NpmPackageId>,
 ) -> Result<VersionAndInfo<'a>, AnyError> {
+  // For when someone just specifies @types/node, we want to pull in a
+  // "known good" version of @types/node that works well with Deno and
+  // not necessarily the latest version. For example, we might only be
+  // compatible with Node vX, but then Node vY is published so we wouldn't
+  // want to pull that in.
+  // Note: If the user doesn't want this behavior, then they can specify an
+  // explicit version.
+  if tag == "latest" && info.name == "@types/node" {
+    return get_resolved_package_version_and_info(
+      &NpmVersionReq::parse("18.0.0 - 18.8.2").unwrap(),
+      info,
+      parent,
+    );
+  }
+
   if let Some(version) = info.dist_tags.get(tag) {
     match info.versions.get(version) {
       Some(info) => Ok(VersionAndInfo {
@@ -1083,7 +1081,6 @@ mod test {
       )]),
     };
     let result = get_resolved_package_version_and_info(
-      "test",
       &package_ref.req,
       &package_info,
       None,
@@ -1113,7 +1110,6 @@ mod test {
       )]),
     };
     let result = get_resolved_package_version_and_info(
-      "test",
       &package_ref.req,
       &package_info,
       None,
@@ -2279,9 +2275,12 @@ mod test {
     api.ensure_package_version("package-b", "3.0.0");
     api.ensure_package_version("package-c", "1.0.0");
     api.ensure_package_version("package-d", "1.0.0");
+    api.ensure_package_version("package-e", "1.0.0");
     api.add_dependency(("package-a", "1.0.0"), ("package-b", "some-tag"));
     api.add_dependency(("package-a", "1.0.0"), ("package-d", "1.0.0"));
     api.add_dependency(("package-a", "1.0.0"), ("package-c", "1.0.0"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-e", "1.0.0"));
+    api.add_dependency(("package-e", "1.0.0"), ("package-b", "some-tag"));
     api.add_peer_dependency(("package-c", "1.0.0"), ("package-d", "other-tag"));
     api.add_dist_tag("package-b", "some-tag", "2.0.0");
     api.add_dist_tag("package-d", "other-tag", "1.0.0");
@@ -2309,6 +2308,10 @@ mod test {
               "package-d".to_string(),
               NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
             ),
+            (
+              "package-e".to_string(),
+              NpmPackageId::from_serialized("package-e@1.0.0").unwrap(),
+            ),
           ]),
           dist: Default::default(),
         },
@@ -2332,6 +2335,15 @@ mod test {
           id: NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::new(),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-e@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-b".to_string(),
+            NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
+          )]),
           dist: Default::default(),
         },
       ]
