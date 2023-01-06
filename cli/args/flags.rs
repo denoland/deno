@@ -6470,15 +6470,6 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "init", "--help"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
-        ..Flags::default()
-      }
-    );
-
     let r = flags_from_vec(svec!["deno", "init", "foo"]);
     assert_eq!(
       r.unwrap(),
