@@ -18,6 +18,7 @@ pub use config_file::LintConfig;
 pub use config_file::LintRulesConfig;
 pub use config_file::MaybeImportsResult;
 pub use config_file::ProseWrap;
+pub use config_file::SemiColons;
 pub use config_file::TestConfig;
 pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;

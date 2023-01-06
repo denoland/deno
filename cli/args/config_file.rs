@@ -371,6 +371,13 @@ pub enum ProseWrap {
   Preserve,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub enum SemiColons {
+  Always,
+  Asi,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
@@ -379,6 +386,7 @@ pub struct FmtOptionsConfig {
   pub indent_width: Option<u8>,
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<ProseWrap>,
+  pub semi_colons: Option<SemiColons>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
