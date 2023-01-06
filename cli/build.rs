@@ -1,11 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::Extension;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
 use deno_core::snapshot_util::*;
+use deno_core::Extension;
 use deno_runtime::deno_cache::SqliteBackedCache;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::*;

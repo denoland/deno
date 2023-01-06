@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -68,7 +68,8 @@
    */
   function fillHeaders(headers, object) {
     if (ArrayIsArray(object)) {
-      for (const header of new SafeArrayIterator(object)) {
+      for (let i = 0; i < object.length; ++i) {
+        const header = object[i];
         if (header.length !== 2) {
           throw new TypeError(
             `Invalid header. Length must be 2, but is ${header.length}`,
@@ -205,7 +206,8 @@
       // spec but produce the same result.
       const headers = {};
       const cookies = [];
-      for (const entry of new SafeArrayIterator(list)) {
+      for (let i = 0; i < list.length; ++i) {
+        const entry = list[i];
         const name = byteLowerCase(entry[0]);
         const value = entry[1];
         if (value === null) throw new TypeError("Unreachable");

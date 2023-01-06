@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -210,7 +210,7 @@ impl NpmResolutionPackage {
 pub struct NpmResolution {
   api: RealNpmRegistryApi,
   snapshot: RwLock<NpmResolutionSnapshot>,
-  update_sempahore: tokio::sync::Semaphore,
+  update_semaphore: tokio::sync::Semaphore,
 }
 
 impl std::fmt::Debug for NpmResolution {
@@ -230,7 +230,7 @@ impl NpmResolution {
     Self {
       api,
       snapshot: RwLock::new(initial_snapshot.unwrap_or_default()),
-      update_sempahore: tokio::sync::Semaphore::new(1),
+      update_semaphore: tokio::sync::Semaphore::new(1),
     }
   }
 
@@ -239,7 +239,7 @@ impl NpmResolution {
     package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
-    let _permit = self.update_sempahore.acquire().await.unwrap();
+    let _permit = self.update_semaphore.acquire().await.unwrap();
     let snapshot = self.snapshot.read().clone();
 
     let snapshot = self
@@ -255,7 +255,7 @@ impl NpmResolution {
     package_reqs: HashSet<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
-    let _permit = self.update_sempahore.acquire().await.unwrap();
+    let _permit = self.update_semaphore.acquire().await.unwrap();
     let snapshot = self.snapshot.read().clone();
 
     let has_removed_package = !snapshot

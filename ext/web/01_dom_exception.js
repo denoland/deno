@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -19,7 +19,6 @@
     ObjectEntries,
     ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
-    SafeArrayIterator,
     Symbol,
     SymbolFor,
   } = window.__bootstrap.primordials;
@@ -166,37 +165,35 @@
   webidl.configurePrototype(DOMException);
   const DOMExceptionPrototype = DOMException.prototype;
 
-  for (
-    const [key, value] of new SafeArrayIterator(
-      ObjectEntries({
-        INDEX_SIZE_ERR,
-        DOMSTRING_SIZE_ERR,
-        HIERARCHY_REQUEST_ERR,
-        WRONG_DOCUMENT_ERR,
-        INVALID_CHARACTER_ERR,
-        NO_DATA_ALLOWED_ERR,
-        NO_MODIFICATION_ALLOWED_ERR,
-        NOT_FOUND_ERR,
-        NOT_SUPPORTED_ERR,
-        INUSE_ATTRIBUTE_ERR,
-        INVALID_STATE_ERR,
-        SYNTAX_ERR,
-        INVALID_MODIFICATION_ERR,
-        NAMESPACE_ERR,
-        INVALID_ACCESS_ERR,
-        VALIDATION_ERR,
-        TYPE_MISMATCH_ERR,
-        SECURITY_ERR,
-        NETWORK_ERR,
-        ABORT_ERR,
-        URL_MISMATCH_ERR,
-        QUOTA_EXCEEDED_ERR,
-        TIMEOUT_ERR,
-        INVALID_NODE_TYPE_ERR,
-        DATA_CLONE_ERR,
-      }),
-    )
-  ) {
+  const entries = ObjectEntries({
+    INDEX_SIZE_ERR,
+    DOMSTRING_SIZE_ERR,
+    HIERARCHY_REQUEST_ERR,
+    WRONG_DOCUMENT_ERR,
+    INVALID_CHARACTER_ERR,
+    NO_DATA_ALLOWED_ERR,
+    NO_MODIFICATION_ALLOWED_ERR,
+    NOT_FOUND_ERR,
+    NOT_SUPPORTED_ERR,
+    INUSE_ATTRIBUTE_ERR,
+    INVALID_STATE_ERR,
+    SYNTAX_ERR,
+    INVALID_MODIFICATION_ERR,
+    NAMESPACE_ERR,
+    INVALID_ACCESS_ERR,
+    VALIDATION_ERR,
+    TYPE_MISMATCH_ERR,
+    SECURITY_ERR,
+    NETWORK_ERR,
+    ABORT_ERR,
+    URL_MISMATCH_ERR,
+    QUOTA_EXCEEDED_ERR,
+    TIMEOUT_ERR,
+    INVALID_NODE_TYPE_ERR,
+    DATA_CLONE_ERR,
+  });
+  for (let i = 0; i < entries.length; ++i) {
+    const [key, value] = entries[i];
     const desc = { value, enumerable: true };
     ObjectDefineProperty(DOMException, key, desc);
     ObjectDefineProperty(DOMException.prototype, key, desc);

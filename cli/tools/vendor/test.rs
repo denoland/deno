@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -242,7 +242,7 @@ impl VendorTestBuilder {
     let import_map = files.remove(&output_dir.join("import_map.json"));
     let mut files = files
       .iter()
-      .map(|(path, text)| (path_to_string(path), text.clone()))
+      .map(|(path, text)| (path_to_string(path), text.to_string()))
       .collect::<Vec<_>>();
 
     files.sort_by(|a, b| a.0.cmp(&b.0));
@@ -293,7 +293,11 @@ fn make_path(text: &str) -> PathBuf {
   }
 }
 
-fn path_to_string(path: &Path) -> String {
+fn path_to_string<P>(path: P) -> String
+where
+  P: AsRef<Path>,
+{
+  let path = path.as_ref();
   // inverse of the function above
   let path = path.to_string_lossy();
   if cfg!(windows) {

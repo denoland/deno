@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference no-default-lib="true" />
@@ -158,7 +158,8 @@
                 );
                 const bytes = new Uint8Array(size);
                 let offs = 0;
-                for (const chunk of new SafeArrayIterator(chunks)) {
+                for (let i = 0; i < chunks.length; ++i) {
+                  const chunk = chunks[i];
                   TypedArrayPrototypeSet(bytes, chunk, offs);
                   offs += chunk.byteLength;
                 }

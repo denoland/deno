@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::TsConfig;
 use crate::graph_util::GraphData;
@@ -510,28 +510,28 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     let specifier = if let Some(remapped_specifier) =
       state.remapped_specifiers.get(&v.specifier)
     {
-      remapped_specifier.clone()
+      remapped_specifier
     } else if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
-      remapped_specifier.clone()
+      remapped_specifier
     } else {
-      specifier
+      &specifier
     };
     let maybe_source = if let Some(ModuleEntry::Module {
       code,
       media_type: mt,
       ..
     }) =
-      graph_data.get(&graph_data.follow_redirect(&specifier))
+      graph_data.get(&graph_data.follow_redirect(specifier))
     {
       media_type = *mt;
       Some(Cow::Borrowed(code as &str))
     } else if state
       .maybe_npm_resolver
       .as_ref()
-      .map(|resolver| resolver.in_npm_package(&specifier))
+      .map(|resolver| resolver.in_npm_package(specifier))
       .unwrap_or(false)
     {
-      media_type = MediaType::from(&specifier);
+      media_type = MediaType::from(specifier);
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path)
         .with_context(|| format!("Unable to load {}", file_path.display()))?;

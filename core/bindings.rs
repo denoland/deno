@@ -1,4 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::option::Option;
+use std::os::raw::c_void;
+
+use log::debug;
+use v8::fast_api::FastFunction;
+use v8::MapFnTo;
 
 use crate::error::is_instance_of_error;
 use crate::modules::get_asserted_module_type_from_assertions;
@@ -9,11 +16,6 @@ use crate::modules::ModuleMap;
 use crate::ops::OpCtx;
 use crate::runtime::SnapshotOptions;
 use crate::JsRuntime;
-use log::debug;
-use std::option::Option;
-use std::os::raw::c_void;
-use v8::fast_api::FastFunction;
-use v8::MapFnTo;
 
 pub fn external_references(
   ops: &[OpCtx],

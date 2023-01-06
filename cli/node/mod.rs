@@ -1,12 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::cache::NodeAnalysisCache;
-use crate::deno_std::CURRENT_STD_URL;
 use deno_ast::CjsAnalysis;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -36,6 +34,8 @@ use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::cache::NodeAnalysisCache;
+use crate::deno_std::CURRENT_STD_URL;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
