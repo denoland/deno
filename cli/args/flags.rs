@@ -2574,10 +2574,7 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
-  let root = match matches.value_of("root") {
-    Some(install_root) => Some(PathBuf::from(install_root)),
-    None => None,
-  };
+  let root = matches.value_of("root").map(PathBuf::from);
 
   let force = matches.is_present("force");
   let name = matches.value_of("name").map(|s| s.to_string());
@@ -2600,10 +2597,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn uninstall_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  let root = match matches.value_of("root") {
-    Some(install_root) => Some(PathBuf::from(install_root)),
-    None => None,
-  };
+  let root = matches.value_of("root").map(PathBuf::from);
 
   let name = matches.value_of("name").unwrap().to_string();
   flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
