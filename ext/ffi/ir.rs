@@ -28,7 +28,8 @@ pub fn out_buffer_as_ptr(
     Some(out_buffer) => {
       let ab = out_buffer.buffer(scope).unwrap();
       let len = ab.byte_length();
-      ab.data().map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8, len))
+      ab.data()
+        .map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8, len))
     }
     None => None,
   }
