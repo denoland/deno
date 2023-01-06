@@ -9,7 +9,6 @@ mod flags_allow_net;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
-pub use config_file::ContainsFilesConfig;
 pub use config_file::EmitConfigOptions;
 pub use config_file::FinalLintConfig;
 pub use config_file::FmtConfig;
@@ -59,6 +58,7 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
 use crate::version;
 
+use self::config_file::FilesConfig;
 use self::config_file::FinalFmtConfig;
 use self::config_file::FinalTestConfig;
 
@@ -427,7 +427,7 @@ impl CliOptions {
     };
 
     if let Some(lint_config) = &lint_config {
-      let filters = collect_filters(lint_config, include, ignore)?;
+      let filters = collect_filters(&lint_config.files, include, ignore)?;
       include = filters.include;
       ignore = filters.ignore;
 
@@ -475,7 +475,7 @@ impl CliOptions {
 
     if let Some(config_file) = &self.maybe_config_file {
       if let Some(test_config) = config_file.to_test_config()? {
-        let filters = collect_filters(&test_config, include, ignore)?;
+        let filters = collect_filters(&test_config.files, include, ignore)?;
         include = filters.include;
         ignore = filters.ignore;
       }
@@ -545,7 +545,7 @@ impl CliOptions {
 
     if let Some(config_file) = &self.maybe_config_file {
       if let Some(fmt_config) = config_file.to_fmt_config()? {
-        let filters = collect_filters(&fmt_config, include, ignore)?;
+        let filters = collect_filters(&fmt_config.files, include, ignore)?;
         include = filters.include;
         ignore = filters.ignore;
         options = resolve_fmt_options(fmt_flags, fmt_config.options);
@@ -775,21 +775,16 @@ fn resolve_import_map_specifier(
   Ok(None)
 }
 
-// TODO(THIS PR): REMOVE THIS
 /// Collect included and ignored files. CLI flags take precedence
 /// over config file, i.e. if there's `files.ignore` in config file
 /// and `--ignore` CLI flag, only the flag value is taken into account.
-pub fn collect_filters<T>(
-  config: &T,
+pub fn collect_filters(
+  files_config: &FilesConfig,
   mut include: Vec<PathBuf>,
   mut ignore: Vec<PathBuf>,
-) -> Result<FileFlags, AnyError>
-where
-  T: ContainsFilesConfig,
-{
+) -> Result<FileFlags, AnyError> {
   if include.is_empty() {
-    include = config
-      .get_files_config()
+    include = files_config
       .include
       .iter()
       .filter_map(|s| specifier_to_file_path(s).ok())
@@ -797,8 +792,7 @@ where
   }
 
   if ignore.is_empty() {
-    ignore = config
-      .get_files_config()
+    ignore = files_config
       .exclude
       .iter()
       .filter_map(|s| specifier_to_file_path(s).ok())
