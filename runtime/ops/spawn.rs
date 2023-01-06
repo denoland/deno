@@ -1,11 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::io::ChildStderrResource;
-use super::io::ChildStdinResource;
-use super::io::ChildStdoutResource;
-use super::process::Stdio;
-use super::process::StdioOrRid;
-use crate::permissions::Permissions;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::process::ExitStatus;
+use std::rc::Rc;
+
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
@@ -15,17 +14,21 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-use std::process::ExitStatus;
-use std::rc::Rc;
+
+use crate::permissions::Permissions;
+
+use super::io::ChildStderrResource;
+use super::io::ChildStdinResource;
+use super::io::ChildStdoutResource;
+use super::process::Stdio;
+use super::process::StdioOrRid;
 
 #[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 pub fn init() -> Extension {
   Extension::builder()

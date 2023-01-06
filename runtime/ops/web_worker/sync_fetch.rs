@@ -1,7 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::web_worker::WebWorkerInternalHandle;
-use crate::web_worker::WebWorkerType;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -14,6 +12,9 @@ use deno_websocket::DomExceptionNetworkError;
 use hyper::body::Bytes;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
+
+use crate::web_worker::WebWorkerInternalHandle;
+use crate::web_worker::WebWorkerType;
 
 // TODO(andreubotella) Properly parse the MIME type
 fn mime_type_essence(mime_type: &str) -> String {

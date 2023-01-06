@@ -1,14 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::LinkedList;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::task::AtomicWaker;
 use deno_core::futures::Future;
 use deno_core::parking_lot::Mutex;
-use std::collections::LinkedList;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 /// A utility function to map OsStrings to Strings
 pub fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {

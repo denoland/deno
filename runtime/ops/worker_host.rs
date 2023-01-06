@@ -1,5 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use deno_core::error::AnyError;
+use deno_core::futures::future::LocalFutureObj;
+use deno_core::op;
+use deno_core::serde::Deserialize;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::Extension;
+use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_web::JsMessageData;
+use log::debug;
+
 use crate::ops::TestingFeaturesEnabled;
 use crate::permissions::create_child_permissions;
 use crate::permissions::ChildPermissionsArg;
@@ -12,22 +29,6 @@ use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use crate::worker::FormatJsErrorFn;
-use deno_core::error::AnyError;
-use deno_core::futures::future::LocalFutureObj;
-use deno_core::op;
-
-use deno_core::serde::Deserialize;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
-use deno_core::Extension;
-use deno_core::ModuleSpecifier;
-use deno_core::OpState;
-use deno_web::JsMessageData;
-use log::debug;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::sync::Arc;
 
 pub struct CreateWebWorkerArgs {
   pub name: String,

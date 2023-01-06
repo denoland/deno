@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::parse_sys_kind;
-use crate::permissions::Permissions;
+use std::path::Path;
+
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
@@ -10,7 +10,9 @@ use deno_core::url;
 use deno_core::Extension;
 use deno_core::OpState;
 use serde::Deserialize;
-use std::path::Path;
+
+use crate::permissions::parse_sys_kind;
+use crate::permissions::Permissions;
 
 pub fn init() -> Extension {
   Extension::builder()

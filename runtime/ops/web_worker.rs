@@ -1,20 +1,20 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod sync_fetch;
+use self::sync_fetch::op_worker_sync_fetch;
 
-use crate::web_worker::WebWorkerInternalHandle;
-use crate::web_worker::WebWorkerType;
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use deno_core::error::AnyError;
 use deno_core::op;
-
 use deno_core::CancelFuture;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_web::JsMessageData;
-use std::cell::RefCell;
-use std::rc::Rc;
 
-use self::sync_fetch::op_worker_sync_fetch;
+use crate::web_worker::WebWorkerInternalHandle;
+use crate::web_worker::WebWorkerType;
 
 pub fn init() -> Extension {
   Extension::builder()

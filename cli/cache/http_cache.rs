@@ -3,8 +3,14 @@
 //! as defined in RFC 7234 (<https://tools.ietf.org/html/rfc7234>).
 //! Currently it's a very simplified version to fulfill Deno needs
 //! at hand.
-use crate::http_util::HeadersMap;
-use crate::util;
+
+use std::fs;
+use std::fs::File;
+use std::io;
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::SystemTime;
+
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
@@ -12,12 +18,9 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use log::error;
-use std::fs;
-use std::fs::File;
-use std::io;
-use std::path::Path;
-use std::path::PathBuf;
-use std::time::SystemTime;
+
+use crate::http_util::HeadersMap;
+use crate::util;
 
 use super::CACHE_PERM;
 

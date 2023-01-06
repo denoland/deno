@@ -1,8 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::errors::get_error_class_name;
-use crate::file_fetcher::FileFetcher;
-use crate::npm;
+use std::sync::Arc;
 
 use deno_core::futures;
 use deno_core::futures::FutureExt;
@@ -12,7 +10,10 @@ use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::permissions::Permissions;
-use std::sync::Arc;
+
+use crate::errors::get_error_class_name;
+use crate::file_fetcher::FileFetcher;
+use crate::npm;
 
 mod check;
 mod common;

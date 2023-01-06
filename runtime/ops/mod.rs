@@ -15,9 +15,10 @@ mod utils;
 pub mod web_worker;
 pub mod worker_host;
 
-use deno_core::OpState;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+use deno_core::OpState;
 
 /// `UnstableChecker` is a struct so it can be placed inside `GothamState`;
 /// using type alias for a bool could work, but there's a high chance

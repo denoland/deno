@@ -6,6 +6,30 @@ mod lockfile;
 
 mod flags_allow_net;
 
+use std::collections::BTreeMap;
+use std::env;
+use std::io::BufReader;
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::normalize_path;
+use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
+use deno_runtime::colors;
+use deno_runtime::deno_tls::rustls;
+use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
+use deno_runtime::deno_tls::rustls_pemfile;
+use deno_runtime::deno_tls::webpki_roots;
+use deno_runtime::inspector_server::InspectorServer;
+use deno_runtime::permissions::PermissionsOptions;
+
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
@@ -23,32 +47,9 @@ pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
 pub use config_file::TsTypeLib;
-use deno_runtime::deno_tls::rustls;
-use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
-use deno_runtime::deno_tls::rustls_pemfile;
-use deno_runtime::deno_tls::webpki_roots;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
-
-use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::normalize_path;
-use deno_core::parking_lot::Mutex;
-use deno_core::url::Url;
-use deno_runtime::colors;
-use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::permissions::PermissionsOptions;
-use std::collections::BTreeMap;
-use std::env;
-use std::io::BufReader;
-use std::net::SocketAddr;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use crate::cache::DenoDir;
 use crate::util::fs::canonicalize_path_maybe_not_exists;

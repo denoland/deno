@@ -1,19 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::Permissions;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::convert::From;
+use std::path::PathBuf;
+use std::rc::Rc;
+
 use deno_core::error::AnyError;
+use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-
-use deno_core::op;
-
-use deno_core::Extension;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -22,12 +25,9 @@ use notify::RecursiveMode;
 use notify::Watcher;
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::convert::From;
-use std::path::PathBuf;
-use std::rc::Rc;
 use tokio::sync::mpsc;
+
+use crate::permissions::Permissions;
 
 pub fn init() -> Extension {
   Extension::builder()

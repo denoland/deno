@@ -1,25 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-use super::io::StdFileResource;
-use super::utils::into_string;
-use crate::fs_util::canonicalize_path;
-use crate::permissions::Permissions;
-use deno_core::error::custom_error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::op;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
-use deno_core::ZeroCopyBuf;
 
-use deno_core::Extension;
-use deno_core::OpState;
-use deno_core::ResourceId;
-use deno_crypto::rand::thread_rng;
-use deno_crypto::rand::Rng;
-use log::debug;
-use serde::Deserialize;
-use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
@@ -36,6 +17,28 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+
+use deno_core::error::custom_error;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::Extension;
+use deno_core::OpState;
+use deno_core::ResourceId;
+use deno_core::ZeroCopyBuf;
+use deno_crypto::rand::thread_rng;
+use deno_crypto::rand::Rng;
+use log::debug;
+use serde::Deserialize;
+use serde::Serialize;
+
+use super::io::StdFileResource;
+use super::utils::into_string;
+
+use crate::fs_util::canonicalize_path;
+use crate::permissions::Permissions;
 
 #[cfg(not(unix))]
 use deno_core::error::generic_error;

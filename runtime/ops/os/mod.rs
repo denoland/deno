@@ -1,8 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::utils::into_string;
-use crate::permissions::Permissions;
-use crate::worker::ExitCode;
+mod sys_info;
+
+use std::collections::HashMap;
+use std::env;
+
 use deno_core::error::{type_error, AnyError};
 use deno_core::op;
 use deno_core::url::Url;
@@ -12,10 +14,11 @@ use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use serde::Serialize;
-use std::collections::HashMap;
-use std::env;
 
-mod sys_info;
+use crate::permissions::Permissions;
+use crate::worker::ExitCode;
+
+use super::utils::into_string;
 
 fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
   builder.ops(vec![
