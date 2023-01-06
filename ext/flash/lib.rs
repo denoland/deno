@@ -1223,8 +1223,7 @@ where
   P: FlashPermissions + 'static,
 {
   state
-    .borrow_mut::<Arc<deno_core::parking_lot::Mutex<P>>>()
-    .lock()
+    .borrow_mut::<P>()
     .check_net(&(&opts.hostname, Some(opts.port)), "Deno.serve()")?;
 
   let addr = resolve_addr_sync(&opts.hostname, opts.port)?

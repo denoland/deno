@@ -12,7 +12,6 @@ use crate::MIN_SAFE_INTEGER;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::CancelFuture;
@@ -32,10 +31,8 @@ use std::ptr;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::mpsc::sync_channel;
-use std::sync::Arc;
 use std::task::Poll;
 use std::task::Waker;
-
 #[derive(Clone)]
 pub struct PtrSymbol {
   pub cif: libffi::middle::Cif,
@@ -504,10 +501,8 @@ where
   FP: FfiPermissions + 'static,
 {
   check_unstable(state, "Deno.UnsafeCallback");
-  {
-    let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
-    permissions.check(None)?;
-  }
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
 
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;

@@ -11,7 +11,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::StreamExt;
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -19,7 +18,6 @@ use std::cell::RefCell;
 use std::ffi::CString;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::task::Poll;
 use std::thread_local;
 
@@ -510,10 +508,8 @@ where
   NP: NapiPermissions + 'static,
 {
   check_unstable(op_state);
-  {
-    let mut permissions = op_state.borrow_mut::<Arc<Mutex<NP>>>().lock();
-    permissions.check(Some(&PathBuf::from(&path)))?;
-  }
+  let permissions = op_state.borrow_mut::<NP>();
+  permissions.check(Some(&PathBuf::from(&path)))?;
 
   let (async_work_sender, tsfn_sender, isolate_ptr) = {
     let napi_state = op_state.borrow::<NapiState>();

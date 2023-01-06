@@ -6,7 +6,6 @@ use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -21,7 +20,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::Arc;
 use tokio::net::UnixDatagram;
 use tokio::net::UnixListener;
 pub use tokio::net::UnixStream;
@@ -117,9 +115,12 @@ where
   super::check_unstable2(&state, "Deno.connect");
   {
     let mut state_ = state.borrow_mut();
-    let mut permissions = state_.borrow_mut::<Arc<Mutex<NP>>>().lock();
-    permissions.check_read(address_path, "Deno.connect()")?;
-    permissions.check_write(address_path, "Deno.connect()")?;
+    state_
+      .borrow_mut::<NP>()
+      .check_read(address_path, "Deno.connect()")?;
+    state_
+      .borrow_mut::<NP>()
+      .check_write(address_path, "Deno.connect()")?;
   }
   let unix_stream = UnixStream::connect(Path::new(&path)).await?;
   let local_addr = unix_stream.local_addr()?;
@@ -167,8 +168,7 @@ where
   let address_path = Path::new(&path);
   {
     let mut s = state.borrow_mut();
-    s.borrow_mut::<Arc<Mutex<NP>>>()
-      .lock()
+    s.borrow_mut::<NP>()
       .check_write(address_path, "Deno.DatagramConn.send()")?;
   }
 
@@ -195,11 +195,9 @@ where
 {
   let address_path = Path::new(&path);
   super::check_unstable(state, "Deno.listen");
-  {
-    let mut permissions = state.borrow_mut::<Arc<Mutex<NP>>>().lock();
-    permissions.check_read(address_path, "Deno.listen()")?;
-    permissions.check_write(address_path, "Deno.listen()")?;
-  }
+  let permissions = state.borrow_mut::<NP>();
+  permissions.check_read(address_path, "Deno.listen()")?;
+  permissions.check_write(address_path, "Deno.listen()")?;
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
@@ -219,11 +217,9 @@ where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  {
-    let mut permissions = state.borrow_mut::<Arc<Mutex<NP>>>().lock();
-    permissions.check_read(address_path, "Deno.listenDatagram()")?;
-    permissions.check_write(address_path, "Deno.listenDatagram()")?;
-  }
+  let permissions = state.borrow_mut::<NP>();
+  permissions.check_read(address_path, "Deno.listenDatagram()")?;
+  permissions.check_write(address_path, "Deno.listenDatagram()")?;
   let socket = UnixDatagram::bind(address_path)?;
   let local_addr = socket.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;

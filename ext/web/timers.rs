@@ -4,7 +4,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
+
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
@@ -13,7 +13,6 @@ use deno_core::ResourceId;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -41,7 +40,7 @@ where
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if !state.borrow_mut::<Arc<Mutex<TP>>>().lock().allow_hrtime() {
+  if !state.borrow_mut::<TP>().allow_hrtime() {
     let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }

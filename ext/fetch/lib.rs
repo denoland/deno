@@ -12,11 +12,12 @@ use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
+use deno_core::BufView;
+use deno_core::WriteOutcome;
+
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
-use deno_core::BufView;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -27,7 +28,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::WriteOutcome;
 use deno_core::ZeroCopyBuf;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
@@ -55,7 +55,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 
 // Re-export reqwest and data_url
@@ -225,10 +224,8 @@ where
       let path = url.to_file_path().map_err(|_| {
         type_error("NetworkError when attempting to fetch resource.")
       })?;
-      {
-        let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
-        permissions.check_read(&path, "fetch()")?;
-      }
+      let permissions = state.borrow_mut::<FP>();
+      permissions.check_read(&path, "fetch()")?;
 
       if method != Method::GET {
         return Err(type_error(format!(
@@ -252,10 +249,8 @@ where
       (request_rid, maybe_request_body_rid, maybe_cancel_handle_rid)
     }
     "http" | "https" => {
-      {
-        let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
-        permissions.check_net_url(&url, "fetch()")?;
-      }
+      let permissions = state.borrow_mut::<FP>();
+      permissions.check_net_url(&url, "fetch()")?;
 
       // Make sure that we have a valid URI early, as reqwest's `RequestBuilder::send`
       // internally uses `expect_uri`, which panics instead of returning a usable `Result`.
@@ -611,7 +606,7 @@ where
   FP: FetchPermissions + 'static,
 {
   if let Some(proxy) = args.proxy.clone() {
-    let mut permissions = state.borrow_mut::<Arc<Mutex<FP>>>().lock();
+    let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
     permissions.check_net_url(&url, "Deno.createHttpClient()")?;
   }
