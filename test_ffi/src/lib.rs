@@ -485,3 +485,22 @@ pub static static_char: [u8; 14] = [
   0xC0, 0xC1, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
   0x00,
 ];
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Rect {
+  x: f64,
+  y: f64,
+  w: f64,
+  h: f64,
+}
+
+#[no_mangle]
+pub extern "C" fn make_rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
+  Rect { x, y, w, h }
+}
+
+#[no_mangle]
+pub extern "C" fn print_rect(rect: Rect) {
+  println!("{:?}", rect);
+}

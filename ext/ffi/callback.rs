@@ -48,7 +48,7 @@ impl PtrSymbol {
         .clone()
         .into_iter()
         .map(libffi::middle::Type::from),
-      def.result.into(),
+      def.result.clone().into(),
     );
 
     Self { cif, ptr }
@@ -236,6 +236,20 @@ unsafe fn do_ffi_callback(
         } else {
           v8::Number::new(scope, result as f64).into()
         }
+      }
+      NativeType::Struct(_) => {
+        let size = native_type.get_size().unwrap();
+        let ptr = (*val) as *const u8;
+        let slice = std::slice::from_raw_parts(ptr, size);
+        let boxed = Box::from(slice);
+        let store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(boxed);
+        let ab =
+          v8::ArrayBuffer::with_backing_store(scope, &store.make_shared());
+        let local_value: v8::Local<v8::Value> =
+          v8::Uint8Array::new(scope, ab, 0, ab.byte_length())
+            .unwrap()
+            .into();
+        local_value
       }
       NativeType::Void => unreachable!(),
     };
@@ -440,6 +454,22 @@ unsafe fn do_ffi_callback(
           as u64;
       }
     }
+    NativeType::Struct(_) => {
+      let size;
+      let pointer =
+        if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
+          let byte_offset = value.byte_offset();
+          let backing_store = value
+            .buffer(scope)
+            .expect("Unable to deserialize result parameter.")
+            .get_backing_store();
+          size = value.byte_length();
+          &backing_store[byte_offset..] as *const _ as *const u8
+        } else {
+          panic!("Unable to deserialize result parameter.");
+        };
+      std::ptr::copy_nonoverlapping(pointer, result as *mut u8, size);
+    }
     NativeType::Void => {
       // nop
     }
@@ -522,7 +552,7 @@ where
 
   let info: *mut CallbackInfo = Box::leak(Box::new(CallbackInfo {
     parameters: args.parameters.clone(),
-    result: args.result,
+    result: args.result.clone(),
     async_work_sender,
     callback,
     context,
