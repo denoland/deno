@@ -572,13 +572,14 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   if matches.is_present("unstable") {
     flags.unstable = true;
   }
-  match matches.value_of("log-level") {
-    Some("debug") => flags.log_level = Some(Level::Debug),
-    Some("info") => flags.log_level = Some(Level::Info),
-    _ => {
-      if matches.is_present("quiet") {
-        flags.log_level = Some(Level::Error);
-      }
+
+  if matches.is_present("quiet") {
+    flags.log_level = Some(Level::Error);
+  } else {
+    match matches.value_of("log-level") {
+      Some("debug") => flags.log_level = Some(Level::Debug),
+      Some("info") => flags.log_level = Some(Level::Info),
+      _ => {}
     }
   }
 
