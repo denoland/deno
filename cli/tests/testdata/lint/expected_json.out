@@ -58,7 +58,7 @@
   "errors": [
     {
       "file_path": "[WILDCARD]malformed.js",
-      "message": "Expected '{', got 'B' at [WILDCARD]malformed.js:4:16"
+      "message": "Expected '{', got 'B' at [WILDCARD]malformed.js:4:16\n\n  export class A B C\n                 ~"
     }
   ]
 }

@@ -1,4 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use std::collections::BTreeMap;
+use std::io::Write;
+use std::path::PathBuf;
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -6,9 +9,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use log::debug;
-use std::collections::BTreeMap;
-use std::io::Write;
-use std::path::PathBuf;
 
 use crate::args::config_file::LockConfig;
 use crate::args::ConfigFile;
@@ -112,7 +112,7 @@ impl Lockfile {
       None => match maybe_config_file {
         Some(config_file) => {
           if config_file.specifier.scheme() == "file" {
-            match config_file.clone().to_lock_config()? {
+            match config_file.to_lock_config()? {
               Some(LockConfig::Bool(lock)) if !lock => {
                 return Ok(None);
               }
