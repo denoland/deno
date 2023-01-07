@@ -95,6 +95,8 @@ where
   FP: FetchPermissions + 'static,
 {
   Extension::builder()
+    .name("fetch")
+    .dependencies(vec!["webidl", "web", "url", "console"])
     .js(include_js_files!(
       prefix "deno:ext/fetch",
       "01_fetch_util.js",

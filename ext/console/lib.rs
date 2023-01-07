@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 pub fn init() -> Extension {
   Extension::builder()
+    .name("console")
     .js(include_js_files!(
       prefix "deno:ext/console",
       "01_colors.js",

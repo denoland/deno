@@ -74,6 +74,8 @@ use crate::shared::RawKeyData;
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
+    .name("crypto")
+    .dependencies(vec!["webidl", "web"])
     .js(include_js_files!(
       prefix "deno:ext/crypto",
       "00_crypto.js",

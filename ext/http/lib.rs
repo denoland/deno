@@ -79,6 +79,8 @@ mod reader_stream;
 
 pub fn init() -> Extension {
   Extension::builder()
+    .name("http")
+    .dependencies(vec!["web", "net", "fetch", "websocket"])
     .js(include_js_files!(
       prefix "deno:ext/http",
       "01_http.js",

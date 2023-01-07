@@ -86,6 +86,8 @@ pub fn init<P: NetPermissions + 'static>(
   let mut ops = ops::init::<P>();
   ops.extend(ops_tls::init::<P>());
   Extension::builder()
+    .name("net")
+    .dependencies(vec!["web"])
     .js(include_js_files!(
       prefix "deno:ext/net",
       "01_net.js",

@@ -19,6 +19,8 @@ use crate::urlpattern::op_urlpattern_process_match_input;
 
 pub fn init() -> Extension {
   Extension::builder()
+    .name("url")
+    .dependencies(vec!["webidl"])
     .js(include_js_files!(
       prefix "deno:ext/url",
       "00_url.js",

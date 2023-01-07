@@ -63,6 +63,8 @@ pub fn init<P: TimersPermission + 'static>(
   maybe_location: Option<Url>,
 ) -> Extension {
   Extension::builder()
+    .name("web")
+    .dependencies(vec!["webidl", "console", "url"])
     .js(include_js_files!(
       prefix "deno:ext/web",
       "00_infra.js",

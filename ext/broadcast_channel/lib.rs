@@ -110,6 +110,8 @@ pub fn init<BC: BroadcastChannel + 'static>(
   unstable: bool,
 ) -> Extension {
   Extension::builder()
+    .name("broadcast channel")
+    .dependencies(vec!["webidl", "web"])
     .js(include_js_files!(
       prefix "deno:ext/broadcast_channel",
       "01_broadcast_channel.js",

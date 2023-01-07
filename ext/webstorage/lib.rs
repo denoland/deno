@@ -23,6 +23,8 @@ const MAX_STORAGE_BYTES: u32 = 10 * 1024 * 1024;
 
 pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
   Extension::builder()
+    .name("webstorage")
+    .dependencies(vec!["webidl"])
     .js(include_js_files!(
       prefix "deno:ext/webstorage",
       "01_webstorage.js",

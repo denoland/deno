@@ -27,6 +27,8 @@ pub fn init<CA: Cache + 'static>(
   maybe_create_cache: Option<CreateCache<CA>>,
 ) -> Extension {
   Extension::builder()
+    .name("cache")
+    .dependencies(vec!["webidl", "web", "url", "fetch"])
     .js(include_js_files!(
       prefix "deno:ext/cache",
       "01_cache.js",
