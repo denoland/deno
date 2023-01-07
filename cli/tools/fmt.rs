@@ -51,7 +51,6 @@ pub async fn format(
     return format_stdin(fmt_options);
   }
 
-  let deno_dir = cli_options.resolve_deno_dir()?;
   let files = fmt_options.files;
   let check = fmt_options.check;
   let fmt_config_options = fmt_options.options;
@@ -93,6 +92,7 @@ pub async fn format(
       }
     }
   };
+  let deno_dir = cli_options.resolve_deno_dir()?;
   let deno_dir = &deno_dir;
   let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async move {
     let incremental_cache = Arc::new(IncrementalCache::new(
