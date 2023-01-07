@@ -42,6 +42,8 @@ pub struct Extension {
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   initialized: bool,
   enabled: bool,
+  name: Option<&'static str>,
+  deps: Option<Vec<&'static str>>,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -53,7 +55,27 @@ impl Extension {
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn init_js(&self) -> &[SourcePair] {
+  pub fn init_js(&self, previous_exts: &[Extension]) -> &[SourcePair] {
+    if let Some(deps) = &self.deps {
+      'dep_loop: for dep in deps {
+        for ext in previous_exts {
+          if let Some(ext_name) = ext.name {
+            if dep == &ext_name {
+              continue 'dep_loop;
+            }
+          }
+        }
+
+        panic!(
+          "Extension {}missing dependency '{dep}'",
+          self
+            .name
+            .map(|name| format!("'{name}' "))
+            .unwrap_or_default()
+        )
+      }
+    }
+
     match &self.js_files {
       Some(files) => files,
       None => &[],
@@ -121,9 +143,21 @@ pub struct ExtensionBuilder {
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
+  name: Option<&'static str>,
+  deps: Vec<&'static str>,
 }
 
 impl ExtensionBuilder {
+  pub fn name(&mut self, name: &'static str) -> &mut Self {
+    self.name = Some(name);
+    self
+  }
+
+  pub fn dependencies(&mut self, dependencies: Vec<&'static str>) -> &mut Self {
+    self.deps.extend(dependencies);
+    self
+  }
+
   pub fn js(&mut self, js_files: Vec<SourcePair>) -> &mut Self {
     self.js.extend(js_files);
     self
@@ -161,6 +195,7 @@ impl ExtensionBuilder {
   pub fn build(&mut self) -> Extension {
     let js_files = Some(std::mem::take(&mut self.js));
     let ops = Some(std::mem::take(&mut self.ops));
+    let deps = Some(std::mem::take(&mut self.deps));
     Extension {
       js_files,
       ops,
@@ -169,6 +204,8 @@ impl ExtensionBuilder {
       event_loop_middleware: self.event_loop_middleware.take(),
       initialized: false,
       enabled: true,
+      name: self.name.take(),
+      deps,
     }
   }
 }

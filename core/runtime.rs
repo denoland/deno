@@ -728,10 +728,13 @@ impl JsRuntime {
   /// Initializes JS of provided Extensions in the given realm
   fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
     // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Extension> =
-      std::mem::take(&mut self.extensions_with_js);
-    for m in extensions.iter_mut() {
-      let js_files = m.init_js();
+    let extensions = std::mem::take(&mut self.extensions_with_js);
+    for (ext, previous_exts) in extensions
+      .iter()
+      .enumerate()
+      .map(|(i, ext)| (ext, &extensions[..i]))
+    {
+      let js_files = ext.init_js(previous_exts);
       for (filename, source) in js_files {
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
         realm.execute_script(self.v8_isolate(), filename, source)?;
