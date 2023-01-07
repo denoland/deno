@@ -40,6 +40,7 @@ tokio.workspace = true
 tokio-rustls.workspace = true
 tokio-tungstenite.workspace = true
 url.workspace = true
+lazy-regex.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 pty2 = "0.1.0"

@@ -268,7 +268,7 @@ mod windows {
   impl Pty for WinPseudoConsole {
     fn write_text(&mut self, text: &str) {
       // windows pseudo console requires a \r\n to do a newline
-      let newline_re = regex::Regex::new("\r?\n").unwrap();
+      let newline_re = lazy_regex::regex!("\r?\n");
       self
         .write_all(newline_re.replace_all(text, "\r\n").as_bytes())
         .unwrap();

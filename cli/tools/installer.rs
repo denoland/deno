@@ -35,7 +35,7 @@ static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
   RegexBuilder::new(r"^[a-z][\w-]*$")
     .case_insensitive(true)
     .build()
-    .unwrap()
+    .expect("invalid regex")
 });
 
 fn validate_name(exec_name: &str) -> Result<(), AnyError> {

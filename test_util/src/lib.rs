@@ -13,7 +13,6 @@ use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
-use lazy_static::lazy_static;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
 use pretty_assertions::assert_eq;
 use regex::Regex;
@@ -90,15 +89,14 @@ pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
 pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
-lazy_static! {
-  // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
-  // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
-  static ref STRIP_ANSI_RE: Regex = Regex::new(
-          r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
-  ).unwrap();
+// STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
+// Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
+static STRIP_ANSI_RE: Lazy<Regex> = lazy_regex::lazy_regex!(
+  r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
+);
 
-  static ref GUARD: Mutex<HttpServerCount> = Mutex::new(HttpServerCount::default());
-}
+static GUARD: Lazy<Mutex<HttpServerCount>> =
+  Lazy::new(|| Mutex::new(HttpServerCount::default()));
 
 pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
   vec![
@@ -2093,14 +2091,12 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
   // This normalization function is not comprehensive
   // and may need to updated as new scenarios emerge.
   fn normalize_text(text: &str) -> String {
-    lazy_static! {
-      static ref MOVE_CURSOR_RIGHT_ONE_RE: Regex =
-        Regex::new(r"\x1b\[1C").unwrap();
-      static ref FOUND_SEQUENCES_RE: Regex =
-        Regex::new(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*").unwrap();
-      static ref CARRIAGE_RETURN_RE: Regex =
-        Regex::new(r"[^\n]*\r([^\n])").unwrap();
-    }
+    static MOVE_CURSOR_RIGHT_ONE_RE: Lazy<Regex> =
+      lazy_regex::lazy_regex!(r"\x1b\[1C");
+    static FOUND_SEQUENCES_RE: Lazy<Regex> =
+      lazy_regex::lazy_regex!(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*");
+    static CARRIAGE_RETURN_RE: Lazy<Regex> =
+      lazy_regex::lazy_regex!(r"[^\n]*\r([^\n])");
 
     // any "move cursor right" sequences should just be a space
     let text = MOVE_CURSOR_RIGHT_ONE_RE.replace_all(text, " ");
@@ -2144,12 +2140,10 @@ pub struct WrkOutput {
 }
 
 pub fn parse_wrk_output(output: &str) -> WrkOutput {
-  lazy_static! {
-    static ref REQUESTS_RX: Regex =
-      Regex::new(r"Requests/sec:\s+(\d+)").unwrap();
-    static ref LATENCY_RX: Regex =
-      Regex::new(r"\s+99%(?:\s+(\d+.\d+)([a-z]+))").unwrap();
-  }
+  static REQUESTS_RX: Lazy<Regex> =
+    lazy_regex::lazy_regex!(r"Requests/sec:\s+(\d+)");
+  static LATENCY_RX: Lazy<Regex> =
+    lazy_regex::lazy_regex!(r"\s+99%(?:\s+(\d+.\d+)([a-z]+))");
 
   let mut requests = None;
   let mut latency = None;

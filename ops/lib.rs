@@ -853,30 +853,24 @@ fn is_unit_result(ty: impl ToTokens) -> bool {
 }
 
 fn is_resource_id(arg: impl ToTokens) -> bool {
-  static RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#": (?:deno_core :: )?ResourceId$"#).unwrap());
-  RE.is_match(&tokens(arg))
+  let re = regex!(r#": (?:deno_core :: )?ResourceId$"#);
+  re.is_match(&tokens(arg))
 }
 
 fn is_mut_ref_opstate(arg: impl ToTokens) -> bool {
-  static RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#": & mut (?:deno_core :: )?OpState$"#).unwrap());
-  RE.is_match(&tokens(arg))
+  let re = regex!(r#": & mut (?:deno_core :: )?OpState$"#);
+  re.is_match(&tokens(arg))
 }
 
 fn is_rc_refcell_opstate(arg: &syn::FnArg) -> bool {
-  static RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#": Rc < RefCell < (?:deno_core :: )?OpState > >$"#).unwrap()
-  });
-  RE.is_match(&tokens(arg))
+  let re = regex!(r#": Rc < RefCell < (?:deno_core :: )?OpState > >$"#);
+  re.is_match(&tokens(arg))
 }
 
 fn is_handle_scope(arg: &syn::FnArg) -> bool {
-  static RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#": & mut (?:deno_core :: )?v8 :: HandleScope(?: < '\w+ >)?$"#)
-      .unwrap()
-  });
-  RE.is_match(&tokens(arg))
+  let re =
+    regex!(r#": & mut (?:deno_core :: )?v8 :: HandleScope(?: < '\w+ >)?$"#);
+  re.is_match(&tokens(arg))
 }
 
 fn is_future(ty: impl ToTokens) -> bool {

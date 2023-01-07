@@ -10,7 +10,7 @@ use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use regex::Regex;
+use lazy_regex::regex;
 
 use crate::errors;
 use crate::package_json::PackageJson;

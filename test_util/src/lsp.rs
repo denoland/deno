@@ -48,10 +48,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-lazy_static! {
-  static ref CONTENT_TYPE_REG: Regex =
-    Regex::new(r"(?i)^content-length:\s+(\d+)").unwrap();
-}
+static CONTENT_TYPE_REG: Lazy<Regex> =
+  lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LspResponseError {

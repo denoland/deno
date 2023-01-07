@@ -32,3 +32,4 @@ sha-1 = "0.10.0"
 sha2 = "0.10.6"
 sha3 = "0.10.5"
 typenum = "1.15.0"
+lazy-regex.workspace = true

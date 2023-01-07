@@ -16,6 +16,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
+use lazy_regex::regex;
 use deno_graph::semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -288,9 +289,9 @@ pub async fn upgrade(
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
-      if upgrade_flags.canary
-        && !regex::Regex::new("^[0-9a-f]{40}$")?.is_match(&passed_version)
-      {
+      let re_hash = regex!("^[0-9a-f]{40}$");
+
+      if upgrade_flags.canary && !re_hash.is_match(&passed_version) {
         bail!("Invalid commit hash passed");
       } else if !upgrade_flags.canary
         && Version::parse_standard(&passed_version).is_err()
