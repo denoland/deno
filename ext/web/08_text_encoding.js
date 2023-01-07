@@ -18,6 +18,8 @@
   const {
     PromiseReject,
     PromiseResolve,
+    // TODO(lucacasonato): add SharedArrayBuffer to primordials
+    // SharedArrayBufferPrototype
     StringPrototypeCharCodeAt,
     StringPrototypeSlice,
     TypedArrayPrototypeSubarray,
@@ -108,6 +110,7 @@
         // When doing so they will have to make sure that changes to input do not affect future calls to decode().
         if (
           ObjectPrototypeIsPrototypeOf(
+            // deno-lint-ignore prefer-primordials
             SharedArrayBuffer.prototype,
             input || input.buffer,
           )

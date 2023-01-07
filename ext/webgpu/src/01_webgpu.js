@@ -46,6 +46,7 @@
     Uint32Array,
     Uint32ArrayPrototype,
     Uint8Array,
+    WeakRef,
   } = window.__bootstrap.primordials;
 
   const _rid = Symbol("[[rid]]");

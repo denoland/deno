@@ -42,7 +42,8 @@
     JSONParse,
     ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
-    TypedArrayPrototypeSlice,
+    // TODO(lucacasonato): add SharedArrayBuffer to primordials
+    // SharedArrayBufferPrototype
     TypeError,
     Uint8Array,
     Uint8ArrayPrototype,
@@ -447,6 +448,7 @@
     if (typeof V === "object") {
       if (
         ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
+        // deno-lint-ignore prefer-primordials
         ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
       ) {
         return webidl.converters["ArrayBuffer"](V, opts);

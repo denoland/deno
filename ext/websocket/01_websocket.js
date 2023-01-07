@@ -32,6 +32,8 @@
     PromisePrototypeThen,
     RegExpPrototypeTest,
     Set,
+    // TODO(lucacasonato): add SharedArrayBuffer to primordials
+    // SharedArrayBufferPrototype
     StringPrototypeEndsWith,
     StringPrototypeToLowerCase,
     Symbol,
@@ -58,9 +60,9 @@
       return webidl.converters["Blob"](V, opts);
     }
     if (typeof V === "object") {
-      // TODO(littledivy): use primordial for SharedArrayBuffer
       if (
         ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
+        // deno-lint-ignore prefer-primordials
         ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
       ) {
         return webidl.converters["ArrayBuffer"](V, opts);
