@@ -370,7 +370,7 @@ impl RequireNpmResolver for NpmPackageResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: Arc<Mutex<dyn NodePermissions>>,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     self.inner.ensure_read_permission(permissions, path)

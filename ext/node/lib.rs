@@ -55,7 +55,7 @@ pub trait RequireNpmResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: Arc<Mutex<dyn NodePermissions>>,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
@@ -130,11 +130,11 @@ fn ensure_read_permission<P>(
 where
   P: NodePermissions + 'static,
 {
-  let permissions = state.borrow::<Arc<Mutex<P>>>().clone();
   let resolver = {
     let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
     resolver.clone()
   };
+  let permissions = state.borrow_mut::<P>();
   resolver.ensure_read_permission(permissions, file_path)
 }
 
@@ -472,12 +472,12 @@ where
     return Ok(None);
   }
 
-  let permissions = state.borrow::<Arc<Mutex<P>>>().clone();
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let permissions = state.borrow_mut::<P>();
   let pkg = resolution::get_package_scope_config(
     &Url::from_file_path(parent_path.unwrap()).unwrap(),
     &*resolver,
-    permissions.clone(),
+    permissions,
   )
   .ok();
   if pkg.is_none() {
@@ -559,8 +559,8 @@ fn op_require_resolve_exports<P>(
 where
   P: NodePermissions + 'static,
 {
-  let permissions = state.borrow::<Arc<Mutex<P>>>().clone();
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let permissions = state.borrow_mut::<P>();
 
   let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path))
     && !uses_local_node_modules_dir
@@ -571,7 +571,7 @@ where
   };
   let pkg = PackageJson::load(
     &*resolver,
-    permissions.clone(),
+    permissions,
     PathBuf::from(&pkg_path).join("package.json"),
   )?;
 
@@ -606,8 +606,8 @@ where
     state,
     PathBuf::from(&filename).parent().unwrap(),
   )?;
-  let permissions = state.borrow::<Arc<Mutex<P>>>().clone();
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let permissions = state.borrow_mut::<P>();
   resolution::get_closest_package_json(
     &Url::from_file_path(filename).unwrap(),
     &*resolver,
@@ -623,8 +623,8 @@ fn op_require_read_package_scope<P>(
 where
   P: NodePermissions + 'static,
 {
-  let permissions = state.borrow::<Arc<Mutex<P>>>().clone();
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let permissions = state.borrow_mut::<P>();
   let package_json_path = PathBuf::from(package_json_path);
   PackageJson::load(&*resolver, permissions, package_json_path).ok()
 }
@@ -640,11 +640,11 @@ where
 {
   let parent_path = PathBuf::from(&parent_filename);
   ensure_read_permission::<P>(state, &parent_path)?;
-  let permissions = state.borrow::<Arc<Mutex<P>>>().clone();
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let permissions = state.borrow_mut::<P>();
   let pkg = PackageJson::load(
     &*resolver,
-    permissions.clone(),
+    permissions,
     parent_path.join("package.json"),
   )?;
 

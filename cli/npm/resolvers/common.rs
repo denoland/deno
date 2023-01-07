@@ -9,11 +9,9 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
-use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
-use std::sync::Arc;
 
 use crate::args::Lockfile;
 use crate::npm::cache::should_sync_download;
@@ -59,7 +57,7 @@ pub trait InnerNpmPackageResolver: Send + Sync {
 
   fn ensure_read_permission(
     &self,
-    permissions: Arc<Mutex<dyn NodePermissions>>,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 
@@ -110,7 +108,7 @@ pub async fn cache_packages(
 }
 
 pub fn ensure_registry_read_permission(
-  permissions: Arc<Mutex<dyn NodePermissions>>,
+  permissions: &mut dyn NodePermissions,
   registry_path: &Path,
   path: &Path,
 ) -> Result<(), AnyError> {
@@ -134,7 +132,7 @@ pub fn ensure_registry_read_permission(
     }
   }
 
-  permissions.lock().check_read(path)
+  permissions.check_read(path)
 }
 
 /// Gets the corresponding @types package for the provided package name.

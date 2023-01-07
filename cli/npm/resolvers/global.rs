@@ -11,7 +11,6 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -158,7 +157,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: Arc<Mutex<dyn NodePermissions>>,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
