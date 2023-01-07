@@ -10,6 +10,7 @@ pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
 pub use config_file::EmitConfigOptions;
+pub use config_file::FilesConfig;
 pub use config_file::FmtOptionsConfig;
 pub use config_file::JsxImportSourceConfig;
 pub use config_file::LintRulesConfig;
@@ -48,10 +49,8 @@ use std::sync::Arc;
 
 use crate::cache::DenoDir;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-use crate::util::path::specifier_to_file_path;
 use crate::version;
 
-use self::config_file::FilesConfig;
 use self::config_file::FmtConfig;
 use self::config_file::LintConfig;
 use self::config_file::MaybeImportsResult;
@@ -100,7 +99,7 @@ impl CacheSetting {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BenchOptions {
-  pub files: FileFlags,
+  pub files: FilesConfig,
   pub filter: Option<String>,
 }
 
@@ -110,20 +109,11 @@ impl BenchOptions {
     maybe_bench_flags: Option<BenchFlags>,
   ) -> Result<Self, AnyError> {
     let bench_flags = maybe_bench_flags.unwrap_or_default();
-    let mut include = bench_flags.files.include;
-    let mut ignore = bench_flags.files.ignore;
-
-    if let Some(bench_config) = maybe_bench_config {
-      if include.is_empty() {
-        include = bench_config.files.include
-      }
-      if ignore.is_empty() {
-        ignore = bench_config.files.ignore
-      }
-    }
-
     Ok(Self {
-      files: FileFlags { include, ignore },
+      files: resolve_files(
+        maybe_bench_config.map(|c| c.files),
+        Some(bench_flags.files),
+      ),
       filter: bench_flags.filter,
     })
   }
@@ -135,7 +125,7 @@ pub struct FmtOptions {
   pub check: bool,
   pub ext: String,
   pub options: FmtOptionsConfig,
-  pub files: FileFlags,
+  pub files: FilesConfig,
 }
 
 impl FmtOptions {
@@ -154,16 +144,6 @@ impl FmtOptions {
     } else {
       false
     };
-    let (mut include, mut ignore) = maybe_fmt_flags
-      .as_ref()
-      .map(|f| (f.files.include.clone(), f.files.ignore.clone()))
-      .unwrap_or_default();
-
-    if let Some(fmt_config) = &maybe_fmt_config {
-      let filters = collect_filters(&fmt_config.files, include, ignore)?;
-      include = filters.include;
-      ignore = filters.ignore;
-    }
 
     Ok(Self {
       is_stdin,
@@ -172,10 +152,13 @@ impl FmtOptions {
         .as_ref()
         .map(|f| f.ext.to_string())
         .unwrap_or_else(|| "ts".to_string()),
-      files: FileFlags { include, ignore },
       options: resolve_fmt_options(
         maybe_fmt_flags.as_ref(),
-        maybe_fmt_config.map(|c| c.options),
+        maybe_fmt_config.as_ref().map(|c| c.options.clone()),
+      ),
+      files: resolve_files(
+        maybe_fmt_config.map(|c| c.files),
+        maybe_fmt_flags.map(|f| f.files),
       ),
     })
   }
@@ -220,7 +203,7 @@ fn resolve_fmt_options(
 
 #[derive(Clone)]
 pub struct TestOptions {
-  pub files: FileFlags,
+  pub files: FilesConfig,
   pub doc: bool,
   pub no_run: bool,
   pub fail_fast: Option<NonZeroUsize>,
@@ -237,17 +220,12 @@ impl TestOptions {
     maybe_test_flags: Option<TestFlags>,
   ) -> Result<Self, AnyError> {
     let test_flags = maybe_test_flags.unwrap_or_default();
-    let mut include = test_flags.files.include.clone();
-    let mut ignore = test_flags.files.ignore.clone();
-
-    if let Some(test_config) = maybe_test_config {
-      let filters = collect_filters(&test_config.files, include, ignore)?;
-      include = filters.include;
-      ignore = filters.ignore;
-    }
 
     Ok(Self {
-      files: FileFlags { include, ignore },
+      files: resolve_files(
+        maybe_test_config.map(|c| c.files),
+        Some(test_flags.files),
+      ),
       allow_none: test_flags.allow_none,
       concurrent_jobs: test_flags
         .concurrent_jobs
@@ -278,7 +256,7 @@ impl Default for LintReporterKind {
 #[derive(Clone, Debug, Default)]
 pub struct LintOptions {
   pub rules: LintRulesConfig,
-  pub files: FileFlags,
+  pub files: FilesConfig,
   pub is_stdin: bool,
   pub reporter_kind: LintReporterKind,
 }
@@ -311,16 +289,14 @@ impl LintOptions {
       });
 
     let (
-      mut include,
-      mut ignore,
+      maybe_file_flags,
       maybe_rules_tags,
       maybe_rules_include,
       maybe_rules_exclude,
     ) = maybe_lint_flags
       .map(|f| {
         (
-          f.files.include,
-          f.files.ignore,
+          f.files,
           f.maybe_rules_tags,
           f.maybe_rules_include,
           f.maybe_rules_exclude,
@@ -329,10 +305,6 @@ impl LintOptions {
       .unwrap_or_default();
 
     if let Some(lint_config) = &maybe_lint_config {
-      let filters = collect_filters(&lint_config.files, include, ignore)?;
-      include = filters.include;
-      ignore = filters.ignore;
-
       // Try to get lint reporter.
       if maybe_reporter_kind.is_none() {
         maybe_reporter_kind = match lint_config.report.as_deref() {
@@ -350,9 +322,12 @@ impl LintOptions {
     Ok(Self {
       reporter_kind: maybe_reporter_kind.unwrap_or_default(),
       is_stdin,
-      files: FileFlags { include, ignore },
+      files: resolve_files(
+        maybe_lint_config.as_ref().map(|c| c.files.clone()),
+        Some(maybe_file_flags),
+      ),
       rules: resolve_lint_rules_options(
-        maybe_lint_config,
+        maybe_lint_config.map(|c| c.rules),
         maybe_rules_tags,
         maybe_rules_include,
         maybe_rules_exclude,
@@ -362,23 +337,23 @@ impl LintOptions {
 }
 
 fn resolve_lint_rules_options(
-  maybe_lint_config: Option<LintConfig>,
+  maybe_lint_rules_config: Option<LintRulesConfig>,
   mut maybe_rules_tags: Option<Vec<String>>,
   mut maybe_rules_include: Option<Vec<String>>,
   mut maybe_rules_exclude: Option<Vec<String>>,
 ) -> LintRulesConfig {
-  if let Some(lint_config) = maybe_lint_config {
+  if let Some(config_rules) = maybe_lint_rules_config {
     // Try to get configured rules. CLI flags take precedence
     // over config file, i.e. if there's `rules.include` in config file
     // and `--rules-include` CLI flag, only the flag value is taken into account.
     if maybe_rules_include.is_none() {
-      maybe_rules_include = lint_config.rules.include;
+      maybe_rules_include = config_rules.include;
     }
     if maybe_rules_exclude.is_none() {
-      maybe_rules_exclude = lint_config.rules.exclude;
+      maybe_rules_exclude = config_rules.exclude;
     }
     if maybe_rules_tags.is_none() {
-      maybe_rules_tags = lint_config.rules.tags;
+      maybe_rules_tags = config_rules.tags;
     }
   }
   LintRulesConfig {
@@ -956,28 +931,20 @@ fn resolve_import_map_specifier(
 /// Collect included and ignored files. CLI flags take precedence
 /// over config file, i.e. if there's `files.ignore` in config file
 /// and `--ignore` CLI flag, only the flag value is taken into account.
-pub fn collect_filters(
-  files_config: &FilesConfig,
-  mut include: Vec<PathBuf>,
-  mut ignore: Vec<PathBuf>,
-) -> Result<FileFlags, AnyError> {
-  if include.is_empty() {
-    include = files_config
-      .include
-      .iter()
-      .filter_map(|s| specifier_to_file_path(s).ok())
-      .collect::<Vec<_>>();
+fn resolve_files(
+  maybe_files_config: Option<FilesConfig>,
+  maybe_file_flags: Option<FileFlags>,
+) -> FilesConfig {
+  let mut result = maybe_files_config.unwrap_or_default();
+  if let Some(file_flags) = maybe_file_flags {
+    if !file_flags.include.is_empty() {
+      result.include = file_flags.include;
+    }
+    if !file_flags.ignore.is_empty() {
+      result.exclude = file_flags.ignore;
+    }
   }
-
-  if ignore.is_empty() {
-    ignore = files_config
-      .exclude
-      .iter()
-      .filter_map(|s| specifier_to_file_path(s).ok())
-      .collect::<Vec<_>>();
-  }
-
-  Ok(FileFlags { include, ignore })
+  result
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.

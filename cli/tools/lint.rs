@@ -7,6 +7,7 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 use crate::args::CliOptions;
+use crate::args::FilesConfig;
 use crate::args::LintOptions;
 use crate::args::LintReporterKind;
 use crate::args::LintRulesConfig;
@@ -59,13 +60,12 @@ pub async fn lint(
   // Try to get lint rules. If none were set use recommended rules.
   let lint_rules = get_configured_rules(lint_options.rules)?;
 
-  let include = lint_options.files.include;
-  let ignore = lint_options.files.ignore;
+  let files = lint_options.files;
   let reporter_kind = lint_options.reporter_kind;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
-    let result = collect_lint_files(&include, &ignore).map(|files| {
+    let result = collect_lint_files(&files).map(|files| {
       if let Some(paths) = changed {
         files
           .iter()
@@ -77,7 +77,7 @@ pub async fn lint(
       }
     });
 
-    let paths_to_watch = include.clone();
+    let paths_to_watch = files.include.clone();
 
     async move {
       if files_changed && matches!(result, Ok(ref files) if files.is_empty()) {
@@ -174,14 +174,13 @@ pub async fn lint(
       );
       reporter_lock.lock().unwrap().close(1);
     } else {
-      let target_files =
-        collect_lint_files(&include, &ignore).and_then(|files| {
-          if files.is_empty() {
-            Err(generic_error("No target files found."))
-          } else {
-            Ok(files)
-          }
-        })?;
+      let target_files = collect_lint_files(&files).and_then(|files| {
+        if files.is_empty() {
+          Err(generic_error("No target files found."))
+        } else {
+          Ok(files)
+        }
+      })?;
       debug!("Found {} files", target_files.len());
       operation(target_files).await?;
     };
@@ -194,15 +193,12 @@ pub async fn lint(
   Ok(())
 }
 
-fn collect_lint_files(
-  include_files: &[PathBuf],
-  exclude_files: &[PathBuf],
-) -> Result<Vec<PathBuf>, AnyError> {
+fn collect_lint_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(is_supported_ext)
     .ignore_git_folder()
     .ignore_node_modules()
-    .add_ignore_paths(exclude_files)
-    .collect_files(include_files)
+    .add_ignore_paths(&files.exclude)
+    .collect_files(&files.include)
 }
 
 pub fn print_rules_list(json: bool) {

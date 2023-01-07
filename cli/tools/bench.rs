@@ -492,11 +492,8 @@ pub async fn run_benchmarks(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let specifiers = collect_specifiers(
-    &bench_options.files.include,
-    &bench_options.files.ignore,
-    is_supported_bench_path,
-  )?;
+  let specifiers =
+    collect_specifiers(&bench_options.files, is_supported_bench_path)?;
 
   if specifiers.is_empty() {
     return Err(generic_error("No bench modules found"));
@@ -539,13 +536,11 @@ pub async fn run_benchmarks_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = bench_options.files.include.clone();
-    let ignore = bench_options.files.ignore.clone();
+    let files = bench_options.files.clone();
     let ps = ps.clone();
 
     async move {
-      let bench_modules =
-        collect_specifiers(&include, &ignore, is_supported_bench_path)?;
+      let bench_modules = collect_specifiers(&files, is_supported_bench_path)?;
 
       let mut paths_to_watch = paths_to_watch_clone;
       let mut modules_to_reload = if files_changed {
@@ -656,16 +651,14 @@ pub async fn run_benchmarks_with_watch(
     let permissions = permissions.clone();
     let ps = ps.clone();
     let filter = bench_options.filter.clone();
-    let include = bench_options.files.include.clone();
-    let ignore = bench_options.files.ignore.clone();
+    let files = bench_options.files.clone();
 
     async move {
-      let specifiers =
-        collect_specifiers(&include, &ignore, is_supported_bench_path)?
-          .iter()
-          .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
-          .cloned()
-          .collect::<Vec<ModuleSpecifier>>();
+      let specifiers = collect_specifiers(&files, is_supported_bench_path)?
+        .iter()
+        .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
+        .cloned()
+        .collect::<Vec<ModuleSpecifier>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 

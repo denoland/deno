@@ -17,6 +17,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 use walkdir::WalkDir;
 
+use crate::args::FilesConfig;
+
 use super::path::specifier_to_file_path;
 
 pub fn atomic_write_file<T: AsRef<[u8]>>(
@@ -261,18 +263,22 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
 /// Specifiers that start with http and https are left intact.
 /// Note: This ignores all .git and node_modules folders.
 pub fn collect_specifiers(
-  include: &[PathBuf],
-  ignore: &[PathBuf],
+  files: &FilesConfig,
   predicate: impl Fn(&Path) -> bool,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
   let mut prepared = vec![];
   let file_collector = FileCollector::new(predicate)
-    .add_ignore_paths(ignore)
+    .add_ignore_paths(&files.exclude)
     .ignore_git_folder()
     .ignore_node_modules();
 
   let root_path = current_dir()?;
-  for path in include {
+  let include_files = if files.include.is_empty() {
+    Cow::Owned(vec![root_path.clone()])
+  } else {
+    Cow::Borrowed(&files.include)
+  };
+  for path in include_files.iter() {
     let path = path.to_string_lossy();
     let lowercase_path = path.to_lowercase();
     if lowercase_path.starts_with("http://")
@@ -683,12 +689,14 @@ mod tests {
     };
 
     let result = collect_specifiers(
-      &[
-        PathBuf::from("http://localhost:8080"),
-        root_dir_path.clone(),
-        PathBuf::from("https://localhost:8080".to_string()),
-      ],
-      &[ignore_dir_path],
+      &FilesConfig {
+        include: vec![
+          PathBuf::from("http://localhost:8080"),
+          root_dir_path.clone(),
+          PathBuf::from("https://localhost:8080".to_string()),
+        ],
+        exclude: vec![ignore_dir_path],
+      },
       predicate,
     )
     .unwrap();
@@ -721,16 +729,18 @@ mod tests {
       "file://"
     };
     let result = collect_specifiers(
-      &[PathBuf::from(format!(
-        "{}{}",
-        scheme,
-        root_dir_path
-          .join("child")
-          .to_str()
-          .unwrap()
-          .replace('\\', "/")
-      ))],
-      &[],
+      &FilesConfig {
+        include: vec![PathBuf::from(format!(
+          "{}{}",
+          scheme,
+          root_dir_path
+            .join("child")
+            .to_str()
+            .unwrap()
+            .replace('\\', "/")
+        ))],
+        exclude: vec![],
+      },
       predicate,
     )
     .unwrap();

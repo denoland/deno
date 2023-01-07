@@ -8,6 +8,7 @@
 //! the same functions as ops available in JS runtime.
 
 use crate::args::CliOptions;
+use crate::args::FilesConfig;
 use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
@@ -50,20 +51,15 @@ pub async fn format(
     return format_stdin(fmt_options);
   }
 
-  // First, prepare final configuration.
-  let include = fmt_options.files.include;
-  let ignore = fmt_options.files.ignore;
-
   let deno_dir = cli_options.resolve_deno_dir()?;
-
-  // Now do the same for options
+  let files = fmt_options.files;
   let check = fmt_options.check;
   let fmt_config_options = fmt_options.options;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
 
-    let result = collect_fmt_files(&include, &ignore).map(|files| {
+    let result = collect_fmt_files(&files).map(|files| {
       let refmt_files = if let Some(paths) = changed {
         if check {
           files
@@ -83,7 +79,7 @@ pub async fn format(
       (refmt_files, fmt_config_options.clone())
     });
 
-    let paths_to_watch = include.clone();
+    let paths_to_watch = files.include.clone();
     async move {
       if files_changed
         && matches!(result, Ok((ref files, _)) if files.is_empty())
@@ -125,7 +121,7 @@ pub async fn format(
     )
     .await?;
   } else {
-    let files = collect_fmt_files(&include, &ignore).and_then(|files| {
+    let files = collect_fmt_files(&files).and_then(|files| {
       if files.is_empty() {
         Err(generic_error("No target files found."))
       } else {
@@ -138,15 +134,12 @@ pub async fn format(
   Ok(())
 }
 
-fn collect_fmt_files(
-  include_files: &[PathBuf],
-  exclude_files: &[PathBuf],
-) -> Result<Vec<PathBuf>, AnyError> {
+fn collect_fmt_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(is_supported_ext_fmt)
     .ignore_git_folder()
     .ignore_node_modules()
-    .add_ignore_paths(exclude_files)
-    .collect_files(include_files)
+    .add_ignore_paths(&files.exclude)
+    .collect_files(&files.include)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks

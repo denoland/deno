@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CliOptions;
+use crate::args::FilesConfig;
 use crate::args::TestOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
@@ -1238,15 +1239,13 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
-  include: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
+  files: FilesConfig,
   include_inline: bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let module_specifiers =
-    collect_specifiers(&include, &ignore, is_supported_test_path)?;
+  let module_specifiers = collect_specifiers(&files, is_supported_test_path)?;
 
   if include_inline {
-    return collect_specifiers(&include, &ignore, is_supported_test_ext).map(
+    return collect_specifiers(&files, is_supported_test_ext).map(
       |specifiers| {
         specifiers
           .into_iter()
@@ -1282,12 +1281,10 @@ fn collect_specifiers_with_test_mode(
 /// as well.
 async fn fetch_specifiers_with_test_mode(
   ps: &ProcState,
-  include: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
+  files: FilesConfig,
   doc: bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode =
-    collect_specifiers_with_test_mode(include, ignore, doc)?;
+  let mut specifiers_with_mode = collect_specifiers_with_test_mode(files, doc)?;
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = ps
       .file_fetcher
@@ -1312,13 +1309,9 @@ pub async fn run_tests(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let specifiers_with_mode = fetch_specifiers_with_test_mode(
-    &ps,
-    test_options.files.include,
-    test_options.files.ignore,
-    test_options.doc,
-  )
-  .await?;
+  let specifiers_with_mode =
+    fetch_specifiers_with_test_mode(&ps, test_options.files, test_options.doc)
+      .await?;
 
   if !test_options.allow_none && specifiers_with_mode.is_empty() {
     return Err(generic_error("No test modules found"));
@@ -1367,15 +1360,14 @@ pub async fn run_tests_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = test_options.files.include.clone();
-    let ignore = test_options.files.ignore.clone();
+    let files = test_options.files.clone();
     let ps = ps.clone();
 
     async move {
       let test_modules = if test_options.doc {
-        collect_specifiers(&include, &ignore, is_supported_test_ext)
+        collect_specifiers(&files, is_supported_test_ext)
       } else {
-        collect_specifiers(&include, &ignore, is_supported_test_path)
+        collect_specifiers(&files, is_supported_test_path)
       }?;
 
       let mut paths_to_watch = paths_to_watch_clone;
@@ -1491,8 +1483,7 @@ pub async fn run_tests_with_watch(
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
         &ps,
-        test_options.files.include,
-        test_options.files.ignore,
+        test_options.files,
         test_options.doc,
       )
       .await?

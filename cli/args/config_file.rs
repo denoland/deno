@@ -25,8 +25,6 @@ use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 
-use super::FileFlags;
-
 pub type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
 
@@ -297,33 +295,14 @@ impl SerializedFilesConfig {
       include: self
         .include
         .into_iter()
-        .map(|p| config_dir.join(&p))
-        .collect::<Result<Vec<ModuleSpecifier>, _>>()?,
+        .map(|p| {
+          let url = config_dir.join(&p)?;
+          specifier_to_file_path(&url)
+        })
+        .collect::<Result<Vec<_>, _>>()?,
       exclude: self
         .exclude
         .into_iter()
-        .map(|p| config_dir.join(&p))
-        .collect::<Result<Vec<ModuleSpecifier>, _>>()?,
-    })
-  }
-
-  pub fn into_resolved_paths(
-    self,
-    config_file_specifier: &ModuleSpecifier,
-  ) -> Result<FileFlags, AnyError> {
-    let config_dir = specifier_parent(config_file_specifier);
-    Ok(FileFlags {
-      include: self
-        .include
-        .into_iter()
-        .map(|p| {
-          let url = config_dir.join(&p)?;
-          specifier_to_file_path(&url)
-        })
-        .collect::<Result<Vec<_>, _>>()?,
-      ignore: self
-        .exclude
-        .into_iter()
         .map(|p| {
           let url = config_dir.join(&p)?;
           specifier_to_file_path(&url)
@@ -333,33 +312,28 @@ impl SerializedFilesConfig {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FilesConfig {
-  pub include: Vec<ModuleSpecifier>,
-  pub exclude: Vec<ModuleSpecifier>,
+  pub include: Vec<PathBuf>,
+  pub exclude: Vec<PathBuf>,
 }
 
 impl FilesConfig {
-  // todo(THIS PR): remove this
   /// Gets if the provided specifier is allowed based on the includes
   /// and excludes in the configuration file.
   pub fn matches_specifier(&self, specifier: &ModuleSpecifier) -> bool {
+    let file_path = match specifier_to_file_path(specifier) {
+      Ok(file_path) => file_path,
+      Err(_) => return false,
+    };
     // Skip files which is in the exclude list.
-    let specifier_text = specifier.as_str();
-    if self
-      .exclude
-      .iter()
-      .any(|i| specifier_text.starts_with(i.as_str()))
-    {
+    if self.exclude.iter().any(|i| file_path.starts_with(i)) {
       return false;
     }
 
     // Ignore files not in the include list if it's not empty.
     self.include.is_empty()
-      || self
-        .include
-        .iter()
-        .any(|i| specifier_text.starts_with(i.as_str()))
+      || self.include.iter().any(|i| file_path.starts_with(i))
   }
 }
 
@@ -468,14 +442,14 @@ impl SerializedBenchConfig {
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<BenchConfig, AnyError> {
     Ok(BenchConfig {
-      files: self.files.into_resolved_paths(config_file_specifier)?,
+      files: self.files.into_resolved(config_file_specifier)?,
     })
   }
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct BenchConfig {
-  pub files: FileFlags,
+  pub files: FilesConfig,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1096,13 +1070,10 @@ mod tests {
       .to_lint_config()
       .expect("error parsing lint object")
       .expect("lint object should be defined");
-    assert_eq!(
-      lint_config.files.include,
-      vec![config_dir.join("src/").unwrap()]
-    );
+    assert_eq!(lint_config.files.include, vec![PathBuf::from("/deno/src/")]);
     assert_eq!(
       lint_config.files.exclude,
-      vec![config_dir.join("src/testdata/").unwrap()]
+      vec![PathBuf::from("/deno/src/testdata/")]
     );
     assert_eq!(
       lint_config.rules.include,
@@ -1118,13 +1089,10 @@ mod tests {
       .to_fmt_config()
       .expect("error parsing fmt object")
       .expect("fmt object should be defined");
-    assert_eq!(
-      fmt_config.files.include,
-      vec![config_dir.join("src/").unwrap()]
-    );
+    assert_eq!(fmt_config.files.include, vec![PathBuf::from("/deno/src/")]);
     assert_eq!(
       fmt_config.files.exclude,
-      vec![config_dir.join("src/testdata/").unwrap()]
+      vec![PathBuf::from("/deno/src/testdata/")],
     );
     assert_eq!(fmt_config.options.use_tabs, Some(true));
     assert_eq!(fmt_config.options.line_width, Some(80));
@@ -1218,6 +1186,8 @@ mod tests {
     let expected_exclude = ModuleSpecifier::from_file_path(
       testdata.join("fmt/with_config/subdir/b.ts"),
     )
+    .unwrap()
+    .to_file_path()
     .unwrap();
     assert_eq!(fmt_config.files.exclude, vec![expected_exclude]);
 
