@@ -44,6 +44,7 @@
     ObjectPrototypeIsPrototypeOf,
     // TODO(lucacasonato): add SharedArrayBuffer to primordials
     // SharedArrayBufferPrototype
+    TypedArrayPrototypeSlice,
     TypeError,
     Uint8Array,
     Uint8ArrayPrototype,
