@@ -855,8 +855,8 @@ fn extract_files_from_source_comments(
         &comment.text,
         media_type,
         parsed_source.text_info().line_index(comment.start()),
-        &blocks_regex,
-        &lines_regex,
+        blocks_regex,
+        lines_regex,
       )
     })
     .flatten()
@@ -882,8 +882,8 @@ fn extract_files_from_fenced_blocks(
     source,
     media_type,
     /* file line index */ 0,
-    &blocks_regex,
-    &lines_regex,
+    blocks_regex,
+    lines_regex,
   )
 }
 
