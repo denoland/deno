@@ -70,9 +70,7 @@ fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .read
-    .check_blind(&current_exe, "exec_path", "Deno.execPath()")?;
+    .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
@@ -87,11 +85,7 @@ fn op_set_env(
   key: String,
   value: String,
 ) -> Result<(), AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .env
-    .check(&key)?;
+  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
   if key.is_empty() {
     return Err(type_error("Key is an empty string."));
   }
@@ -113,11 +107,7 @@ fn op_set_env(
 
 #[op]
 fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .env
-    .check_all()?;
+  state.borrow_mut::<PermissionsContainer>().check_env_all()?;
   Ok(env::vars().collect())
 }
 
@@ -129,11 +119,7 @@ fn op_get_env(
   let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
 
   if !skip_permission_check {
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .lock()
-      .env
-      .check(&key)?;
+    state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
   }
 
   if key.is_empty() {
@@ -156,11 +142,7 @@ fn op_get_env(
 
 #[op]
 fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .env
-    .check(&key)?;
+  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }
@@ -183,9 +165,7 @@ fn op_exit(state: &mut OpState) {
 fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .sys
-    .check("loadavg", Some("Deno.loadavg()"))?;
+    .check_sys("loadavg", "Deno.loadavg()")?;
   Ok(sys_info::loadavg())
 }
 
@@ -193,9 +173,7 @@ fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
 fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .sys
-    .check("hostname", Some("Deno.hostname()"))?;
+    .check_sys("hostname", "Deno.hostname()")?;
   Ok(sys_info::hostname())
 }
 
@@ -203,9 +181,7 @@ fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
 fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .sys
-    .check("osRelease", Some("Deno.osRelease()"))?;
+    .check_sys("osRelease", "Deno.osRelease()")?;
   Ok(sys_info::os_release())
 }
 
@@ -215,9 +191,7 @@ fn op_network_interfaces(
 ) -> Result<Vec<NetworkInterface>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .sys
-    .check("networkInterfaces", Some("Deno.networkInterfaces()"))?;
+    .check_sys("networkInterfaces", "Deno.networkInterfaces()")?;
   Ok(netif::up()?.map(NetworkInterface::from).collect())
 }
 
@@ -271,9 +245,7 @@ fn op_system_memory_info(
 ) -> Result<Option<sys_info::MemInfo>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .sys
-    .check("systemMemoryInfo", Some("Deno.systemMemoryInfo()"))?;
+    .check_sys("systemMemoryInfo", "Deno.systemMemoryInfo()")?;
   Ok(sys_info::mem_info())
 }
 
@@ -282,9 +254,7 @@ fn op_system_memory_info(
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .sys
-    .check("gid", Some("Deno.gid()"))?;
+    .check_sys("gid", "Deno.gid()")?;
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
@@ -297,9 +267,7 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .sys
-    .check("gid", Some("Deno.gid()"))?;
+    .check_sys("gid", "Deno.gid()")?;
   Ok(None)
 }
 
@@ -308,9 +276,7 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .sys
-    .check("uid", Some("Deno.uid()"))?;
+    .check_sys("uid", "Deno.uid()")?;
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
@@ -323,9 +289,7 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .sys
-    .check("uid", Some("Deno.uid()"))?;
+    .check_sys("uid", "Deno.uid()")?;
   Ok(None)
 }
 
@@ -454,9 +418,7 @@ fn rss() -> usize {
 fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .sys
-    .check("osUptime", Some("Deno.osUptime()"))?;
+    .check_sys("osUptime", "Deno.osUptime()")?;
   Ok(sys_info::os_uptime())
 }
 

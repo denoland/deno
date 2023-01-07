@@ -37,7 +37,7 @@ pub fn op_query_permission(
   state: &mut OpState,
   args: PermissionArgs,
 ) -> Result<String, AnyError> {
-  let permissions = state.borrow::<PermissionsContainer>().lock();
+  let permissions = state.borrow::<PermissionsContainer>().0.lock();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.read.query(path.map(Path::new)),
@@ -71,7 +71,7 @@ pub fn op_revoke_permission(
   state: &mut OpState,
   args: PermissionArgs,
 ) -> Result<String, AnyError> {
-  let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
+  let mut permissions = state.borrow_mut::<PermissionsContainer>().0.lock();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.read.revoke(path.map(Path::new)),
@@ -105,7 +105,7 @@ pub fn op_request_permission(
   state: &mut OpState,
   args: PermissionArgs,
 ) -> Result<String, AnyError> {
-  let mut permissions = state.borrow_mut::<PermissionsContainer>().lock();
+  let mut permissions = state.borrow_mut::<PermissionsContainer>().0.lock();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.read.request(path.map(Path::new)),

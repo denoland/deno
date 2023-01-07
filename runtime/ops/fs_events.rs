@@ -120,9 +120,7 @@ fn op_fs_events_open(
     let path = PathBuf::from(path);
     state
       .borrow_mut::<PermissionsContainer>()
-      .lock()
-      .read
-      .check(&path, Some("Deno.watchFs()"))?;
+      .check_read(&path, "Deno.watchFs()")?;
     watcher.watch(&path, recursive_mode)?;
   }
   let resource = FsEventsResource {

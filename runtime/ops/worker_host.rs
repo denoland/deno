@@ -15,7 +15,6 @@ use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalFutureObj;
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -167,10 +166,10 @@ fn op_create_worker(
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
-    let mut parent_permissions = parent_permissions.lock();
+    let mut parent_permissions = parent_permissions.0.lock();
     let perms =
       create_child_permissions(&mut parent_permissions, child_permissions_arg)?;
-    Arc::new(Mutex::new(perms))
+    PermissionsContainer::new(perms)
   } else {
     parent_permissions.clone()
   };

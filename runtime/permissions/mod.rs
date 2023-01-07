@@ -1623,9 +1623,87 @@ impl Permissions {
 /// case might need to be mutated). Also for the Web Worker API we need a way
 /// to send permissions to a new thread.
 #[derive(Clone, Debug)]
-pub struct PermissionsContainer(Arc<Mutex<Permissions>>);
+pub struct PermissionsContainer(pub(crate) Arc<Mutex<Permissions>>);
+
+impl PermissionsContainer {
+  pub fn new(perms: Permissions) -> Self {
+    Self(Arc::new(Mutex::new(perms)))
+  }
+
+  #[inline(always)]
+  pub fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check(path, Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_read_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check_blind(path, display, api_name)
+  }
+
+  #[inline(always)]
+  pub fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().read.check_all(Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_write(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check(path, Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().write.check_all(Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_run(
+    &mut self,
+    cmd: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().run.check(cmd, Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_run_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().run.check_all(Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_sys(
+    &mut self,
+    kind: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().sys.check(kind, Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_env(&mut self, var: &str) -> Result<(), AnyError> {
+    self.0.lock().env.check(var)
+  }
+
+  #[inline(always)]
+  pub fn check_env_all(&mut self) -> Result<(), AnyError> {
+    self.0.lock().env.check_all()
+  }
+}
 
 impl deno_flash::FlashPermissions for PermissionsContainer {
+  #[inline(always)]
   fn check_net<T: AsRef<str>>(
     &mut self,
     host: &(T, Option<u16>),
@@ -1636,12 +1714,14 @@ impl deno_flash::FlashPermissions for PermissionsContainer {
 }
 
 impl deno_node::NodePermissions for PermissionsContainer {
+  #[inline(always)]
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
     self.0.lock().read.check(path, None)
   }
 }
 
 impl deno_net::NetPermissions for PermissionsContainer {
+  #[inline(always)]
   fn check_net<T: AsRef<str>>(
     &mut self,
     host: &(T, Option<u16>),
@@ -1650,6 +1730,7 @@ impl deno_net::NetPermissions for PermissionsContainer {
     self.0.lock().net.check(host, Some(api_name))
   }
 
+  #[inline(always)]
   fn check_read(
     &mut self,
     path: &Path,
@@ -1658,6 +1739,7 @@ impl deno_net::NetPermissions for PermissionsContainer {
     self.0.lock().read.check(path, Some(api_name))
   }
 
+  #[inline(always)]
   fn check_write(
     &mut self,
     path: &Path,
@@ -1668,6 +1750,7 @@ impl deno_net::NetPermissions for PermissionsContainer {
 }
 
 impl deno_fetch::FetchPermissions for PermissionsContainer {
+  #[inline(always)]
   fn check_net_url(
     &mut self,
     url: &url::Url,
@@ -1676,6 +1759,7 @@ impl deno_fetch::FetchPermissions for PermissionsContainer {
     self.0.lock().net.check_url(url, Some(api_name))
   }
 
+  #[inline(always)]
   fn check_read(
     &mut self,
     path: &Path,
@@ -1686,16 +1770,19 @@ impl deno_fetch::FetchPermissions for PermissionsContainer {
 }
 
 impl deno_web::TimersPermission for PermissionsContainer {
+  #[inline(always)]
   fn allow_hrtime(&mut self) -> bool {
     self.0.lock().hrtime.check().is_ok()
   }
 
+  #[inline(always)]
   fn check_unstable(&self, state: &OpState, api_name: &'static str) {
     crate::ops::check_unstable(state, api_name);
   }
 }
 
 impl deno_websocket::WebSocketPermissions for PermissionsContainer {
+  #[inline(always)]
   fn check_net_url(
     &mut self,
     url: &url::Url,
@@ -1708,12 +1795,14 @@ impl deno_websocket::WebSocketPermissions for PermissionsContainer {
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
 impl deno_napi::NapiPermissions for PermissionsContainer {
+  #[inline(always)]
   fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
     self.0.lock().ffi.check(path)
   }
 }
 
 impl deno_ffi::FfiPermissions for PermissionsContainer {
+  #[inline(always)]
   fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
     self.0.lock().ffi.check(path)
   }

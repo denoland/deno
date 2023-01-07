@@ -28,9 +28,7 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
       .join(main_url.to_string());
     state
       .borrow_mut::<PermissionsContainer>()
-      .lock()
-      .read
-      .check_blind(&main_path, "main_module", "Deno.mainModule")?;
+      .check_read_blind(&main_path, "main_module", "Deno.mainModule")?;
   }
   Ok(main)
 }

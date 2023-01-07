@@ -146,9 +146,7 @@ fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .run
-    .check(&args[0], Some("Deno.run()"))?;
+    .check_run(&args[0], "Deno.run()")?;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -356,9 +354,7 @@ fn op_kill(
 ) -> Result<(), AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .lock()
-    .run
-    .check_all(Some(&api_name))?;
+    .check_run_all(&api_name)?;
   kill(pid, &signal)?;
   Ok(())
 }

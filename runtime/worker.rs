@@ -12,7 +12,6 @@ use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::ops;
 use crate::ops::io::Stdio;
-use crate::permissions::Permissions;
 use crate::permissions::PermissionsContainer;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
