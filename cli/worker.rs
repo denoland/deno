@@ -18,7 +18,7 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -131,7 +131,7 @@ impl CliMainWorker {
         .await?;
     }
 
-    Ok(self.worker.get_exit_code())
+    Ok(self.worker.exit_code())
   }
 
   pub async fn run_for_watcher(self) -> Result<(), AnyError> {
@@ -441,7 +441,7 @@ impl CliMainWorker {
 pub async fn create_main_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
-  permissions: Permissions,
+  permissions: PermissionsContainer,
 ) -> Result<CliMainWorker, AnyError> {
   create_main_worker_internal(
     ps,
@@ -457,7 +457,7 @@ pub async fn create_main_worker(
 pub async fn create_main_worker_for_test_or_bench(
   ps: &ProcState,
   main_module: ModuleSpecifier,
-  permissions: Permissions,
+  permissions: PermissionsContainer,
   custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
 ) -> Result<CliMainWorker, AnyError> {
@@ -475,7 +475,7 @@ pub async fn create_main_worker_for_test_or_bench(
 async fn create_main_worker_internal(
   ps: &ProcState,
   main_module: ModuleSpecifier,
-  permissions: Permissions,
+  permissions: PermissionsContainer,
   mut custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
   bench_or_test: bool,
@@ -762,10 +762,11 @@ mod tests {
   use deno_core::{resolve_url_or_path, FsModuleLoader};
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_runtime::deno_web::BlobStore;
+  use deno_runtime::permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
     let main_module = resolve_url_or_path("./hello.js").unwrap();
-    let permissions = Permissions::default();
+    let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {

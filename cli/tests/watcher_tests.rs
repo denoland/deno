@@ -470,6 +470,9 @@ mod watcher {
     let next_line = stderr_lines.next().unwrap();
     assert_contains!(&next_line, "Bundle started");
     assert_contains!(stderr_lines.next().unwrap(), "error:");
+    assert_eq!(stderr_lines.next().unwrap(), "");
+    assert_eq!(stderr_lines.next().unwrap(), "  syntax error ^^");
+    assert_eq!(stderr_lines.next().unwrap(), "         ~~~~~");
     assert_contains!(stderr_lines.next().unwrap(), "Bundle failed");
     // the target file hasn't been created yet
     assert!(!target_file.is_file());
@@ -929,6 +932,9 @@ mod watcher {
     write(&another_test, "syntax error ^^").unwrap();
     assert_contains!(stderr_lines.next().unwrap(), "Restarting");
     assert_contains!(stderr_lines.next().unwrap(), "error:");
+    assert_eq!(stderr_lines.next().unwrap(), "");
+    assert_eq!(stderr_lines.next().unwrap(), "  syntax error ^^");
+    assert_eq!(stderr_lines.next().unwrap(), "         ~~~~~");
     assert_contains!(stderr_lines.next().unwrap(), "Test failed");
 
     // Then restore the file
