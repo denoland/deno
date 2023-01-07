@@ -67,7 +67,7 @@ impl Extension {
         }
 
         panic!(
-          "Extension {}missing dependency '{dep}'",
+          "Extension {}is missing dependency '{dep}'",
           self
             .name
             .map(|name| format!("'{name}' "))
