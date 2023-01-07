@@ -376,7 +376,7 @@
         5: this.#pathStart,
         6: this.#queryStart,
         7: this.#fragmentStart,
-     } = componentsBuf);
+      } = componentsBuf);
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {

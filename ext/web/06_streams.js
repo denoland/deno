@@ -205,8 +205,8 @@
     assert(typeof O === "object");
     assert(
       ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, O) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O),
+        // deno-lint-ignore prefer-primordials
+        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O),
     );
     if (isDetachedBuffer(O)) {
       return false;
