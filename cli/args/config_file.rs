@@ -1,11 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::BTreeMap;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::fmt;
-use std::path::Path;
-use std::path::PathBuf;
+use crate::args::ConfigFlag;
+use crate::args::Flags;
+use crate::args::TaskFlags;
+use crate::util::fs::canonicalize_path;
+use crate::util::path::specifier_parent;
+use crate::util::path::specifier_to_file_path;
 
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -18,13 +18,12 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-
-use crate::args::ConfigFlag;
-use crate::args::Flags;
-use crate::args::TaskFlags;
-use crate::util::fs::canonicalize_path;
-use crate::util::path::specifier_parent;
-use crate::util::path::specifier_to_file_path;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fmt;
+use std::path::Path;
+use std::path::PathBuf;
 
 pub type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;

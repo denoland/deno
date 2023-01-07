@@ -1,8 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_ast::CjsAnalysis;
 use deno_core::error::AnyError;
@@ -12,6 +10,8 @@ use deno_runtime::deno_webstorage::rusqlite::params;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 use serde::Deserialize;
 use serde::Serialize;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::common::run_sqlite_pragma;
 use super::FastInsecureHasher;

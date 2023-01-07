@@ -1,14 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::fs::File as StdFile;
-use std::io::ErrorKind;
-use std::io::Read;
-use std::io::Write;
-use std::rc::Rc;
-use std::sync::Arc;
-
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -26,6 +17,14 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use once_cell::sync::Lazy;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::fs::File as StdFile;
+use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Write;
+use std::rc::Rc;
+use std::sync::Arc;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;

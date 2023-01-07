@@ -1,10 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::fmt;
-
 use deno_core::ModuleSpecifier;
 use log::debug;
 use log::error;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthTokenData {

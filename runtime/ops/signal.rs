@@ -1,9 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -15,6 +10,10 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};

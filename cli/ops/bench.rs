@@ -1,9 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::time;
-
+use crate::tools::bench::BenchDescription;
+use crate::tools::bench::BenchEvent;
+use crate::tools::test::TestFilter;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -15,12 +12,11 @@ use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use serde::Serialize;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::time;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
-
-use crate::tools::bench::BenchDescription;
-use crate::tools::bench::BenchEvent;
-use crate::tools::test::TestFilter;
 
 pub fn init(
   sender: UnboundedSender<BenchEvent>,

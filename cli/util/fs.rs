@@ -1,5 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+pub use deno_core::normalize_path;
+use deno_core::ModuleSpecifier;
+use deno_runtime::deno_crypto::rand;
+use deno_runtime::deno_node::PathClean;
 use std::env::current_dir;
 use std::fs::OpenOptions;
 use std::io::Error;
@@ -8,13 +14,6 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
-
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-pub use deno_core::normalize_path;
-use deno_core::ModuleSpecifier;
-use deno_runtime::deno_crypto::rand;
-use deno_runtime::deno_node::PathClean;
 use walkdir::WalkDir;
 
 use super::path::specifier_to_file_path;

@@ -1,13 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::env;
-use std::net::SocketAddr;
-use std::num::NonZeroU32;
-use std::num::NonZeroU8;
-use std::num::NonZeroUsize;
-use std::path::PathBuf;
-use std::str::FromStr;
-
 use clap::Arg;
 use clap::ArgMatches;
 use clap::ColorChoice;
@@ -21,6 +13,13 @@ use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
 use log::Level;
 use once_cell::sync::Lazy;
+use std::env;
+use std::net::SocketAddr;
+use std::num::NonZeroU32;
+use std::num::NonZeroU8;
+use std::num::NonZeroUsize;
+use std::path::PathBuf;
+use std::str::FromStr;
 
 use super::flags_allow_net;
 

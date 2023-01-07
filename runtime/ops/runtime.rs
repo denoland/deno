@@ -1,13 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::permissions::Permissions;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-
-use crate::permissions::Permissions;
 
 pub fn init(main_module: ModuleSpecifier) -> Extension {
   Extension::builder()

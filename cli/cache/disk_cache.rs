@@ -1,5 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use super::http_cache::url_to_filename;
+use super::CACHE_PERM;
+use crate::util::fs::atomic_write_file;
+
+use deno_core::url::Host;
+use deno_core::url::Url;
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
@@ -8,14 +14,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::path::Prefix;
 use std::str;
-
-use deno_core::url::Host;
-use deno_core::url::Url;
-
-use crate::util::fs::atomic_write_file;
-
-use super::http_cache::url_to_filename;
-use super::CACHE_PERM;
 
 #[derive(Clone)]
 pub struct DiskCache {

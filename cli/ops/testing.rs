@@ -1,7 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
+use crate::tools::test::FailFastTracker;
+use crate::tools::test::TestDescription;
+use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventSender;
+use crate::tools::test::TestFilter;
+use crate::tools::test::TestLocation;
+use crate::tools::test::TestResult;
+use crate::tools::test::TestStepDescription;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -15,16 +21,9 @@ use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use uuid::Uuid;
-
-use crate::tools::test::FailFastTracker;
-use crate::tools::test::TestDescription;
-use crate::tools::test::TestEvent;
-use crate::tools::test::TestEventSender;
-use crate::tools::test::TestFilter;
-use crate::tools::test::TestLocation;
-use crate::tools::test::TestResult;
-use crate::tools::test::TestStepDescription;
 
 pub fn init(
   sender: TestEventSender,

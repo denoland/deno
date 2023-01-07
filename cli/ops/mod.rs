@@ -1,11 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
-
-use crate::proc_state::ProcState;
 
 pub mod bench;
 pub mod testing;
