@@ -3,6 +3,19 @@
 
 import { getSources, ROOT_PATH } from "./util.js";
 
+const buffer = new Uint8Array(1024);
+const textDecoder = new TextDecoder();
+
+async function readFirstPartOfFile(filePath) {
+  const file = await Deno.open(filePath, { read: true });
+  try {
+    const byteCount = await file.read(buffer);
+    return textDecoder.decode(buffer.slice(0, byteCount ?? 0));
+  } finally {
+    file.close();
+  }
+}
+
 async function checkCopyright() {
   const sourceFiles = await getSources(ROOT_PATH, [
     // js and ts
@@ -27,21 +40,9 @@ async function checkCopyright() {
   ]);
 
   let totalCount = 0;
-  let sourceFilesSet = new Set(sourceFiles);
-  const buffer = new Uint8Array(1024);
-  const textDecoder = new TextDecoder();
+  const sourceFilesSet = new Set(sourceFiles);
 
   for (const file of sourceFilesSet) {
-    async function readFirstPartOfFile(filePath) {
-      const file = await Deno.open(filePath, { read: true });
-      try {
-        const byteCount = await file.read(buffer);
-        return textDecoder.decode(buffer.slice(0, byteCount ?? 0));
-      } finally {
-        file.close();
-      }
-    }
-
     const ERROR_MSG = "Copyright header is missing: ";
 
     const fileText = await readFirstPartOfFile(file);
