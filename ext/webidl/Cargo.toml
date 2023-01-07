@@ -1,8 +1,8 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_webidl"
-version = "0.82.0"
+version = "0.83.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -9,7 +9,6 @@
     DatePrototype,
     MathTrunc,
     ObjectPrototypeIsPrototypeOf,
-    SafeArrayIterator,
     SymbolAsyncIterator,
     SymbolIterator,
     Function,
@@ -212,7 +211,10 @@
     let offset = 0;
     let str =
       'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux"; return {';
-    for (let [name, type] of new SafeArrayIterator(ObjectEntries(types))) {
+    const typeEntries = ObjectEntries(types);
+    for (let i = 0; i < typeEntries.length; ++i) {
+      let [name, type] = typeEntries[i];
+
       const optional = type.startsWith("?");
       if (optional) type = type.slice(1);
 

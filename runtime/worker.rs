@@ -1,11 +1,13 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::inspector_server::InspectorServer;
-use crate::js;
-use crate::ops;
-use crate::ops::io::Stdio;
-use crate::permissions::Permissions;
-use crate::BootstrapOptions;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering::Relaxed;
+use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
+
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
@@ -31,13 +33,13 @@ use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering::Relaxed;
-use std::sync::Arc;
-use std::task::Context;
-use std::task::Poll;
+
+use crate::inspector_server::InspectorServer;
+use crate::js;
+use crate::ops;
+use crate::ops::io::Stdio;
+use crate::permissions::Permissions;
+use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
@@ -458,7 +460,7 @@ impl MainWorker {
 
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
-  pub fn get_exit_code(&self) -> i32 {
+  pub fn exit_code(&self) -> i32 {
     self.exit_code.get()
   }
 

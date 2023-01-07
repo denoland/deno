@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::Lockfile;
 use crate::args::TsConfigType;
@@ -571,7 +571,7 @@ pub async fn create_graph_and_maybe_check(
       &graph.roots,
       Arc::new(RwLock::new(graph_data)),
       &cache,
-      ps.npm_resolver.clone(),
+      &ps.npm_resolver,
       check::CheckOptions {
         type_check_mode: ps.options.type_check_mode(),
         debug: ps.options.log_level() == Some(log::Level::Debug),
@@ -597,7 +597,7 @@ pub fn error_for_any_npm_specifier(
     .specifiers()
     .filter_map(|(_, r)| match r {
       Ok((specifier, kind, _)) if kind == deno_graph::ModuleKind::External => {
-        Some(specifier.clone())
+        Some(specifier)
       }
       _ => None,
     })

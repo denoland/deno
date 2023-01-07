@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
@@ -239,7 +239,7 @@ impl ProcState {
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
     );
-    if let Some(lockfile) = maybe_lockfile.clone() {
+    if let Some(lockfile) = maybe_lockfile {
       npm_resolver
         .add_lockfile_and_maybe_regenerate_snapshot(lockfile)
         .await?;
@@ -328,8 +328,8 @@ impl ProcState {
     let mut cache = cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
-      root_permissions.clone(),
-      dynamic_permissions.clone(),
+      root_permissions,
+      dynamic_permissions,
     );
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_resolver =
@@ -448,7 +448,7 @@ impl ProcState {
         &roots,
         graph_data,
         &check_cache,
-        self.npm_resolver.clone(),
+        &self.npm_resolver,
         options,
       )?;
       if !check_result.diagnostics.is_empty() {

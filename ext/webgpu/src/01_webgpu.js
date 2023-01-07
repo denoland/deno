@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -316,7 +316,8 @@
         context: "Argument 1",
       });
       const requiredFeatures = descriptor.requiredFeatures ?? [];
-      for (const feature of new SafeArrayIterator(requiredFeatures)) {
+      for (let i = 0; i < requiredFeatures.length; ++i) {
+        const feature = requiredFeatures[i];
         if (!SetPrototypeHas(this[_adapter].features[_features], feature)) {
           throw new TypeError(
             `${prefix}: nonGuaranteedFeatures must be a subset of the adapter features.`,
@@ -1046,14 +1047,16 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      for (const entry of new SafeArrayIterator(descriptor.entries)) {
-        let i = 0;
-        if (entry.buffer) i++;
-        if (entry.sampler) i++;
-        if (entry.texture) i++;
-        if (entry.storageTexture) i++;
+      for (let i = 0; i < descriptor.entries.length; ++i) {
+        const entry = descriptor.entries[i];
 
-        if (i !== 1) {
+        let count = 0;
+        if (entry.buffer) count++;
+        if (entry.sampler) count++;
+        if (entry.texture) count++;
+        if (entry.storageTexture) count++;
+
+        if (count !== 1) {
           throw new Error(); // TODO(@crowlKats): correct error
         }
       }
@@ -1591,8 +1594,8 @@
         device.rid,
         commandBufferRids,
       );
-      for (const commandBuffer of new SafeArrayIterator(commandBuffers)) {
-        commandBuffer[_rid] = undefined;
+      for (let i = 0; i < commandBuffers.length; ++i) {
+        commandBuffers[i][_rid] = undefined;
       }
       device.pushError(err);
     }
@@ -1934,7 +1937,8 @@
       if (!mappedRanges) {
         throw new DOMException(`${prefix}: invalid state.`, "OperationError");
       }
-      for (const [buffer, _rid, start] of new SafeArrayIterator(mappedRanges)) {
+      for (let i = 0; i < mappedRanges.length; ++i) {
+        const [buffer, _rid, start] = mappedRanges[i];
         // TODO(lucacasonato): is this logic correct?
         const end = start + buffer.byteLength;
         if (
@@ -2002,7 +2006,8 @@
         if (!mappedRanges) {
           throw new DOMException(`${prefix}: invalid state.`, "OperationError");
         }
-        for (const [buffer, mappedRid] of new SafeArrayIterator(mappedRanges)) {
+        for (let i = 0; i < mappedRanges.length; ++i) {
+          const [buffer, mappedRid] = mappedRanges[i];
           const { err } = ops.op_webgpu_buffer_unmap(
             bufferRid,
             mappedRid,

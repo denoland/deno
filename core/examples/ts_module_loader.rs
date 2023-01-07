@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 //! This example shows how to use swc to transpile TypeScript and JSX/TSX
 //! modules.
 //!
@@ -97,7 +97,7 @@ fn main() -> Result<(), Error> {
     println!("Usage: target/examples/debug/ts_module_loader <path_to_module>");
     std::process::exit(1);
   }
-  let main_url = args[1].clone();
+  let main_url = &args[1];
   println!("Run {}", main_url);
 
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
@@ -105,7 +105,7 @@ fn main() -> Result<(), Error> {
     ..Default::default()
   });
 
-  let main_module = resolve_path(&main_url)?;
+  let main_module = resolve_path(main_url)?;
 
   let future = async move {
     let mod_id = js_runtime.load_main_module(&main_module, None).await?;

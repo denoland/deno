@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::StdFileResource;
 use super::utils::into_string;
@@ -211,7 +211,7 @@ async fn op_open_async(
     "Deno.open()",
   )?;
   let std_file = tokio::task::spawn_blocking(move || {
-    open_options.open(path.clone()).map_err(|err| {
+    open_options.open(&path).map_err(|err| {
       Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
     })
   })

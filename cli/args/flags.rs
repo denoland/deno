@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use clap::Arg;
 use clap::ArgMatches;
@@ -1312,8 +1312,7 @@ fn uninstall_subcommand<'a>() -> Command<'a> {
     .arg(
       Arg::new("name")
         .required(true)
-        .multiple_occurrences(false)
-        .allow_hyphen_values(true))
+        .multiple_occurrences(false))
     .arg(
       Arg::new("root")
         .long("root")
@@ -5002,6 +5001,27 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn uninstall() {
+    let r = flags_from_vec(svec!["deno", "uninstall", "file_server"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Uninstall(UninstallFlags {
+          name: "file_server".to_string(),
+          root: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn uninstall_with_help_flag() {
+    let r = flags_from_vec(svec!["deno", "uninstall", "--help"]);
+    assert_eq!(r.err().unwrap().kind(), clap::ErrorKind::DisplayHelp);
   }
 
   #[test]

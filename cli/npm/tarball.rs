@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::fs;
@@ -21,16 +21,7 @@ pub fn verify_and_extract_tarball(
   dist_info: &NpmPackageVersionDistInfo,
   output_folder: &Path,
 ) -> Result<(), AnyError> {
-  if let Some(integrity) = &dist_info.integrity {
-    verify_tarball_integrity(package, data, integrity)?;
-  } else {
-    // todo(dsherret): check shasum here
-    bail!(
-      "Errored on '{}@{}': npm packages with no integrity are not implemented.",
-      package.0,
-      package.1,
-    );
-  }
+  verify_tarball_integrity(package, data, &dist_info.integrity())?;
 
   with_folder_sync_lock(package, output_folder, || {
     extract_tarball(data, output_folder)
@@ -43,11 +34,11 @@ fn verify_tarball_integrity(
   npm_integrity: &str,
 ) -> Result<(), AnyError> {
   use ring::digest::Context;
-  use ring::digest::SHA512;
   let (algo, expected_checksum) = match npm_integrity.split_once('-') {
     Some((hash_kind, checksum)) => {
       let algo = match hash_kind {
-        "sha512" => &SHA512,
+        "sha512" => &ring::digest::SHA512,
+        "sha1" => &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
         hash_kind => bail!(
           "Not implemented hash function for {}@{}: {}",
           package.0,
@@ -145,10 +136,19 @@ mod test {
       "Not implemented integrity kind for package@1.0.0: test",
     );
     assert_eq!(
+      verify_tarball_integrity(package, &Vec::new(), "notimplemented-test")
+        .unwrap_err()
+        .to_string(),
+      "Not implemented hash function for package@1.0.0: notimplemented",
+    );
+    assert_eq!(
       verify_tarball_integrity(package, &Vec::new(), "sha1-test")
         .unwrap_err()
         .to_string(),
-      "Not implemented hash function for package@1.0.0: sha1",
+      concat!(
+        "Tarball checksum did not match what was provided by npm ",
+        "registry for package@1.0.0.\n\nExpected: test\nActual: 2jmj7l5rsw0yvb/vlwaykk/ybwk=",
+      ),
     );
     assert_eq!(
       verify_tarball_integrity(package, &Vec::new(), "sha512-test")

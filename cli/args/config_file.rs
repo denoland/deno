@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::ConfigFlag;
 use crate::args::Flags;
@@ -71,7 +71,7 @@ pub struct IgnoredCompilerOptions {
 impl fmt::Display for IgnoredCompilerOptions {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let mut codes = self.items.clone();
-    codes.sort();
+    codes.sort_unstable();
     if let Some(specifier) = &self.maybe_specifier {
       write!(f, "Unsupported compiler options in \"{}\".\n  The following options were ignored:\n    {}", specifier, codes.join(", "))
     } else {

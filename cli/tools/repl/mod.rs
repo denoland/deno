@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::Flags;
 use crate::args::ReplFlags;
@@ -183,5 +183,5 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     }
   }
 
-  Ok(repl_session.worker.get_exit_code())
+  Ok(repl_session.worker.exit_code())
 }

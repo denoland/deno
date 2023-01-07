@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
@@ -529,7 +529,7 @@ where
   let exports = v8::Object::new(scope);
 
   let mut env_shared = EnvShared::new(napi_wrap);
-  let cstr = CString::new(path.clone()).unwrap();
+  let cstr = CString::new(&*path).unwrap();
   env_shared.filename = cstr.as_ptr();
   std::mem::forget(cstr);
 

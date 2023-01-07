@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod config_file;
 mod flags;
@@ -329,11 +329,11 @@ impl CliOptions {
       // if a location is set, then the ascii serialization of the location is
       // used, unless the origin is opaque, and then no storage origin is set, as
       // we can't expect the origin to be reproducible
-      let storage_origin = location.origin().ascii_serialization();
-      if storage_origin == "null" {
-        None
+      let storage_origin = location.origin();
+      if storage_origin.is_tuple() {
+        Some(storage_origin.ascii_serialization())
       } else {
-        Some(storage_origin)
+        None
       }
     } else if let Some(config_file) = &self.maybe_config_file {
       // otherwise we will use the path to the config file
