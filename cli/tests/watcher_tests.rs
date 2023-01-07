@@ -183,17 +183,21 @@ mod watcher {
     let mut output = read_all_lints(&mut stderr_lines);
     let expected = std::fs::read_to_string(badly_linted_output).unwrap();
     assert_eq!(output, expected);
+    eprintln!("HERE");
 
     // Change content of the file again to be badly-linted
     std::fs::copy(badly_linted_fixed1, &badly_linted).unwrap();
+    eprintln!("HERE2");
 
     output = read_all_lints(&mut stderr_lines);
     let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
     assert_eq!(output, expected);
+    eprintln!("HERE3");
 
     // Change content of the file again to be badly-linted
     std::fs::copy(badly_linted_fixed2, &badly_linted).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
+    eprintln!("HERE4");
 
     output = read_all_lints(&mut stderr_lines);
     let expected = std::fs::read_to_string(badly_linted_fixed2_output).unwrap();
@@ -204,6 +208,7 @@ mod watcher {
 
     child.kill().unwrap();
     drop(t);
+    eprintln!("HERE5");
   }
 
   #[test]

@@ -8,6 +8,7 @@
 //! the same functions as ops available in JS runtime.
 use crate::args::Flags;
 use crate::args::LintFlags;
+use crate::args::LintReporterKind;
 use crate::args::LintRulesConfig;
 use crate::colors;
 use crate::proc_state::ProcState;
@@ -44,13 +45,6 @@ use crate::cache::IncrementalCache;
 
 static STDIN_FILE_NAME: &str = "_stdin.ts";
 
-#[derive(Clone, Debug)]
-pub enum LintReporterKind {
-  Pretty,
-  Json,
-  Compact,
-}
-
 fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   match kind {
     LintReporterKind::Pretty => Box::new(PrettyLintReporter::new()),
@@ -61,7 +55,7 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 
 pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let lint_config = ps.options.to_lint_config(&lint_flags)?;
+  let lint_config = ps.options.to_lint_options(lint_flags)?;
 
   // Try to get lint rules. If none were set use recommended rules.
   let lint_rules = get_configured_rules(lint_config.rules)?;
@@ -152,9 +146,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
 
     Ok(())
   };
-  let args = lint_flags.files.include;
   if ps.options.watch_paths().is_some() {
-    if args.len() == 1 && args[0].to_string_lossy() == "-" {
+    if lint_config.is_stdin {
       return Err(generic_error(
         "Lint watch on standard input is not supported.",
       ));
@@ -169,7 +162,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     )
     .await?;
   } else {
-    if args.len() == 1 && args[0].to_string_lossy() == "-" {
+    if lint_config.is_stdin {
       let reporter_lock =
         Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
       let r = lint_stdin(lint_rules);

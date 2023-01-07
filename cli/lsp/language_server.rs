@@ -63,7 +63,7 @@ use crate::args::CliOptions;
 use crate::args::ConfigFile;
 use crate::args::Flags;
 use crate::args::FmtConfig;
-use crate::args::LintConfig;
+use crate::args::LintOptions;
 use crate::args::TsConfig;
 use crate::cache::DenoDir;
 use crate::file_fetcher::get_source_from_data_url;
@@ -129,7 +129,7 @@ pub struct Inner {
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// An optional configuration for linter which has been taken from specified config file.
-  pub maybe_lint_config: Option<LintConfig>,
+  lint_options: LintOptions,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
   /// Resolver for npm packages.
@@ -347,7 +347,7 @@ impl Inner {
       maybe_config_file: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
-      maybe_lint_config: None,
+      lint_options: Default::default(),
       maybe_fmt_config: None,
       maybe_testing_server: None,
       module_registries,
@@ -714,15 +714,17 @@ impl Inner {
   fn update_config_file(&mut self) -> Result<(), AnyError> {
     self.maybe_config_file = None;
     self.maybe_fmt_config = None;
-    self.maybe_lint_config = None;
+    self.lint_options = Default::default();
 
     if let Some(config_file) = self.get_config_file()? {
-      let lint_config = config_file
+      let lint_options = config_file
         .to_lint_config()
+        .and_then(|maybe_lint_config| {
+          LintOptions::resolve(maybe_lint_config, None)
+        })
         .map_err(|err| {
           anyhow!("Unable to update lint configuration: {:?}", err)
-        })?
-        .unwrap_or_default();
+        })?;
       let fmt_config = config_file
         .to_fmt_config()
         .map_err(|err| {
@@ -731,7 +733,7 @@ impl Inner {
         .unwrap_or_default();
 
       self.maybe_config_file = Some(config_file);
-      self.maybe_lint_config = Some(lint_config);
+      self.lint_options = lint_options;
       self.maybe_fmt_config = Some(fmt_config);
     }
 
@@ -2521,7 +2523,7 @@ impl Inner {
     let snapshot = (
       self.snapshot(),
       self.config.snapshot(),
-      self.maybe_lint_config.clone(),
+      self.lint_options.clone(),
     );
     if let Err(err) = self.diagnostics_server.update(snapshot) {
       error!("Cannot update diagnostics: {}", err);

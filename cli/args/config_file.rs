@@ -3,7 +3,6 @@
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::TaskFlags;
-use crate::tools::lint::LintReporterKind;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::specifier_parent;
 use crate::util::path::specifier_to_file_path;
@@ -341,6 +340,7 @@ pub struct FilesConfig {
 }
 
 impl FilesConfig {
+  // todo(THIS PR): remove this
   /// Gets if the provided specifier is allowed based on the includes
   /// and excludes in the configuration file.
   pub fn matches_specifier(&self, specifier: &ModuleSpecifier) -> bool {
@@ -389,13 +389,6 @@ pub struct LintConfig {
   pub rules: LintRulesConfig,
   pub files: FilesConfig,
   pub report: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-pub struct FinalLintConfig {
-  pub files: FileFlags,
-  pub reporter_kind: LintReporterKind,
-  pub rules: LintRulesConfig,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

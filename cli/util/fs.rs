@@ -6,6 +6,7 @@ pub use deno_core::normalize_path;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_node::PathClean;
+use std::borrow::Cow;
 use std::env::current_dir;
 use std::fs::OpenOptions;
 use std::io::Error;
@@ -181,6 +182,7 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
       ignore_node_modules: false,
     }
   }
+
   pub fn add_ignore_paths(mut self, paths: &[PathBuf]) -> Self {
     // retain only the paths which exist and ignore the rest
     self
@@ -204,7 +206,12 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
     files: &[PathBuf],
   ) -> Result<Vec<PathBuf>, AnyError> {
     let mut target_files = Vec::new();
-    for file in files {
+    let files = if files.is_empty() {
+      Cow::Owned(vec![PathBuf::from(".")])
+    } else {
+      Cow::Borrowed(files)
+    };
+    for file in files.iter() {
       if let Ok(file) = canonicalize_path(file) {
         // use an iterator like this in order to minimize the number of file system operations
         let mut iterator = WalkDir::new(&file).into_iter();

@@ -5,6 +5,7 @@ use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
+use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -20,6 +21,8 @@ use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
+
+use crate::util::path::specifier_to_file_path;
 
 use super::flags_allow_net;
 
@@ -50,6 +53,25 @@ static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
 pub struct FileFlags {
   pub ignore: Vec<PathBuf>,
   pub include: Vec<PathBuf>,
+}
+
+impl FileFlags {
+  /// Gets if the provided specifier is allowed based on the includes
+  /// and excludes in the configuration file.
+  pub fn matches_specifier(&self, specifier: &ModuleSpecifier) -> bool {
+    let file_path = match specifier_to_file_path(specifier) {
+      Ok(file_path) => file_path,
+      Err(_) => return false,
+    };
+    // Skip files which is in the exclude list.
+    if self.ignore.iter().any(|i| file_path.starts_with(i)) {
+      return false;
+    }
+
+    // Ignore files not in the include list if it's not empty.
+    self.include.is_empty()
+      || self.include.iter().any(|i| file_path.starts_with(i))
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

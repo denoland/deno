@@ -12,8 +12,7 @@ use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
 
-use crate::args::resolve_lint_rules_options;
-use crate::args::LintConfig;
+use crate::args::LintOptions;
 use crate::npm::NpmPackageReference;
 use crate::tools::lint::get_configured_rules;
 
@@ -39,7 +38,7 @@ use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
 pub type SnapshotForDiagnostics =
-  (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);
+  (Arc<StateSnapshot>, Arc<ConfigSnapshot>, LintOptions);
 pub type DiagnosticRecord =
   (ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>);
 pub type DiagnosticVec = Vec<DiagnosticRecord>;
@@ -201,7 +200,7 @@ impl DiagnosticsServer {
           match rx.recv().await {
             // channel has closed
             None => break,
-            Some((snapshot, config, maybe_lint_config)) => {
+            Some((snapshot, config, lint_options)) => {
               // cancel the previous run
               token.cancel();
               token = CancellationToken::new();
@@ -303,7 +302,7 @@ impl DiagnosticsServer {
                   let diagnostics = generate_lint_diagnostics(
                     &snapshot,
                     &config,
-                    maybe_lint_config,
+                    &lint_options,
                     token.clone(),
                   )
                   .await;
@@ -446,14 +445,12 @@ fn ts_json_to_diagnostics(
 async fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
   config: &ConfigSnapshot,
-  maybe_lint_config: Option<LintConfig>,
+  lint_options: &LintOptions,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let documents = snapshot.documents.documents(true, true);
   let workspace_settings = config.settings.workspace.clone();
-  let lint_rule_options =
-    resolve_lint_rules_options(maybe_lint_config.clone(), None, None, None);
-  let lint_rules = match get_configured_rules(lint_rule_options) {
+  let lint_rules = match get_configured_rules(lint_options.rules.clone()) {
     Ok(rules) => rules,
     Err(_) => return Vec::new(),
   };
@@ -479,7 +476,7 @@ async fn generate_lint_diagnostics(
         version,
         generate_document_lint_diagnostics(
           config,
-          maybe_lint_config.as_ref(),
+          lint_options,
           lint_rules.clone(),
           &document,
         ),
@@ -491,17 +488,15 @@ async fn generate_lint_diagnostics(
 
 fn generate_document_lint_diagnostics(
   config: &ConfigSnapshot,
-  maybe_lint_config: Option<&LintConfig>,
+  lint_options: &LintOptions,
   lint_rules: Vec<Arc<dyn LintRule>>,
   document: &Document,
 ) -> Vec<lsp::Diagnostic> {
   if !config.specifier_enabled(document.specifier()) {
     return Vec::new();
   }
-  if let Some(lint_config) = maybe_lint_config {
-    if !lint_config.files.matches_specifier(document.specifier()) {
-      return Vec::new();
-    }
+  if !lint_options.files.matches_specifier(document.specifier()) {
+    return Vec::new();
   }
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
@@ -1090,7 +1085,7 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &enabled_config,
-        None,
+        &Default::default(),
         Default::default(),
       )
       .await;
@@ -1131,7 +1126,7 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &disabled_config,
-        None,
+        &Default::default(),
         Default::default(),
       )
       .await;
