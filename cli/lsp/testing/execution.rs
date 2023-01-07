@@ -252,7 +252,6 @@ impl TestRun {
     client: &Client,
     maybe_root_uri: Option<&ModuleSpecifier>,
   ) -> Result<(), AnyError> {
-    // todo(dsherret): the LSP should not know about cli flags—use TestOptions here
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
