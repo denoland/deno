@@ -59,7 +59,6 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
 use log::warn;
@@ -182,10 +181,7 @@ impl ProcState {
     let maybe_import_map =
       if let Some(import_map_specifier) = maybe_import_map_specifier {
         let file = file_fetcher
-          .fetch(
-            &import_map_specifier,
-            Arc::new(Mutex::new(Permissions::allow_all())),
-          )
+          .fetch(&import_map_specifier, PermissionsContainer::allow_all())
           .await
           .context(format!(
             "Unable to load '{}' import map",
@@ -494,8 +490,8 @@ impl ProcState {
         specifiers,
         false,
         lib,
-        Arc::new(Mutex::new(Permissions::allow_all())),
-        Arc::new(Mutex::new(Permissions::allow_all())),
+        PermissionsContainer::allow_all(),
+        PermissionsContainer::allow_all(),
         false,
       )
       .await
@@ -672,8 +668,8 @@ impl ProcState {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
-      Arc::new(Mutex::new(Permissions::allow_all())),
-      Arc::new(Mutex::new(Permissions::allow_all())),
+      PermissionsContainer::allow_all(),
+      PermissionsContainer::allow_all(),
     )
   }
 

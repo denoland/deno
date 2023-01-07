@@ -1623,11 +1623,23 @@ impl Permissions {
 /// case might need to be mutated). Also for the Web Worker API we need a way
 /// to send permissions to a new thread.
 #[derive(Clone, Debug)]
-pub struct PermissionsContainer(pub(crate) Arc<Mutex<Permissions>>);
+pub struct PermissionsContainer(pub Arc<Mutex<Permissions>>);
 
 impl PermissionsContainer {
   pub fn new(perms: Permissions) -> Self {
     Self(Arc::new(Mutex::new(perms)))
+  }
+
+  pub fn allow_all() -> Self {
+    Self::new(Permissions::allow_all())
+  }
+
+  #[inline(always)]
+  pub fn check_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    self.0.lock().check_specifier(specifier)
   }
 
   #[inline(always)]

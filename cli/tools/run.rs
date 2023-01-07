@@ -7,9 +7,9 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
@@ -57,9 +57,9 @@ To grant permissions, set them before the script argument. For example:
   } else {
     resolve_url_or_path(&run_flags.script)?
   };
-  let permissions = Arc::new(Mutex::new(Permissions::from_options(
+  let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
-  )?));
+  )?);
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions).await?;
 
@@ -73,9 +73,9 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let mut worker = create_main_worker(
     &ps.clone(),
     main_module.clone(),
-    Arc::new(Mutex::new(Permissions::from_options(
+    PermissionsContainer::new(Permissions::from_options(
       &ps.options.permissions_options(),
-    )?)),
+    )?),
   )
   .await?;
 
@@ -114,9 +114,9 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       let ps =
         ProcState::build_for_file_watcher((*flags).clone(), sender.clone())
           .await?;
-      let permissions = Arc::new(Mutex::new(Permissions::from_options(
+      let permissions = PermissionsContainer::new(Permissions::from_options(
         &ps.options.permissions_options(),
-      )?));
+      )?);
       let worker =
         create_main_worker(&ps, main_module.clone(), permissions).await?;
       worker.run_for_watcher().await?;
@@ -148,9 +148,9 @@ pub async fn eval_command(
   let main_module =
     resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext))?;
   let ps = ProcState::build(flags).await?;
-  let permissions = Arc::new(Mutex::new(Permissions::from_options(
+  let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
-  )?));
+  )?);
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions).await?;
   // Create a dummy source file.

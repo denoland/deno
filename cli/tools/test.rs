@@ -37,6 +37,7 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::io::Stdio;
 use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use log::Level;
@@ -723,7 +724,7 @@ async fn test_specifier(
   let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier.clone(),
-    Arc::new(Mutex::new(permissions)),
+    PermissionsContainer::new(permissions),
     vec![ops::testing::init(
       sender,
       fail_fast_tracker,
@@ -895,7 +896,7 @@ async fn fetch_inline_files(
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
   for specifier in specifiers {
-    let fetch_permissions = Arc::new(Mutex::new(Permissions::allow_all()));
+    let fetch_permissions = PermissionsContainer::allow_all();
     let file = ps.file_fetcher.fetch(&specifier, fetch_permissions).await?;
 
     let inline_files = if file.media_type == MediaType::Unknown {
@@ -954,8 +955,8 @@ pub async fn check_specifiers(
       specifiers,
       false,
       lib,
-      Arc::new(Mutex::new(Permissions::allow_all())),
-      Arc::new(Mutex::new(permissions.clone())),
+      PermissionsContainer::new(Permissions::allow_all()),
+      PermissionsContainer::new(permissions.clone()),
       false,
     )
     .await?;
@@ -976,8 +977,8 @@ pub async fn check_specifiers(
     module_specifiers,
     false,
     lib,
-    Arc::new(Mutex::new(Permissions::allow_all())),
-    Arc::new(Mutex::new(permissions)),
+    PermissionsContainer::allow_all(),
+    PermissionsContainer::new(permissions),
     true,
   )
   .await?;
@@ -1321,7 +1322,7 @@ async fn fetch_specifiers_with_test_mode(
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = ps
       .file_fetcher
-      .fetch(specifier, Arc::new(Mutex::new(Permissions::allow_all())))
+      .fetch(specifier, PermissionsContainer::allow_all())
       .await?;
 
     if file.media_type == MediaType::Unknown

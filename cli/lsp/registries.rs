@@ -20,7 +20,6 @@ use crate::http_util::HttpClient;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -31,13 +30,12 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
@@ -521,7 +519,7 @@ impl ModuleRegistry {
       .file_fetcher
       .fetch_with_accept(
         specifier,
-        Arc::new(Mutex::new(Permissions::allow_all())),
+        PermissionsContainer::allow_all(),
         Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
       )
       .await;
@@ -619,7 +617,7 @@ impl ModuleRegistry {
         .ok()?;
         let file = self
           .file_fetcher
-          .fetch(&endpoint, Arc::new(Mutex::new(Permissions::allow_all())))
+          .fetch(&endpoint, PermissionsContainer::allow_all())
           .await
           .ok()?;
         let documentation: lsp::Documentation =
@@ -975,7 +973,7 @@ impl ModuleRegistry {
     let specifier = Url::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .ok()?;
     serde_json::from_str(&file.source).ok()
@@ -1032,7 +1030,7 @@ impl ModuleRegistry {
     let specifier = ModuleSpecifier::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(
@@ -1068,7 +1066,7 @@ impl ModuleRegistry {
         .ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, Arc::new(Mutex::new(Permissions::allow_all())))
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(

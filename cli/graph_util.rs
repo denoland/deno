@@ -18,7 +18,6 @@ use crate::tools::check;
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
@@ -29,7 +28,7 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::Range;
 use deno_graph::Resolved;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -515,8 +514,8 @@ pub async fn create_graph_and_maybe_check(
   let mut cache = cache::FetchCacher::new(
     ps.emit_cache.clone(),
     ps.file_fetcher.clone(),
-    Arc::new(Mutex::new(Permissions::allow_all())),
-    Arc::new(Mutex::new(Permissions::allow_all())),
+    PermissionsContainer::allow_all(),
+    PermissionsContainer::allow_all(),
   );
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_cli_resolver = CliResolver::maybe_new(

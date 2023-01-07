@@ -30,6 +30,7 @@ use deno_core::ModuleSpecifier;
 use deno_runtime::ops::io::Stdio;
 use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -162,7 +163,7 @@ async fn test_specifier(
     let mut worker = create_main_worker_for_test_or_bench(
       &ps,
       specifier.clone(),
-      Arc::new(Mutex::new(permissions)),
+      PermissionsContainer::new(permissions),
       vec![ops::testing::init(sender, fail_fast_tracker, filter)],
       Stdio {
         stdin: StdioPipe::Inherit,

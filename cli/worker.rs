@@ -728,7 +728,6 @@ fn create_web_worker_callback(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::parking_lot::Mutex;
   use deno_core::{resolve_url_or_path, FsModuleLoader};
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_runtime::deno_web::BlobStore;
@@ -736,7 +735,7 @@ mod tests {
 
   fn create_test_worker() -> MainWorker {
     let main_module = resolve_url_or_path("./hello.js").unwrap();
-    let permissions = Arc::new(Mutex::new(Permissions::default()));
+    let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {

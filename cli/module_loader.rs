@@ -14,7 +14,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
@@ -22,13 +21,11 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::OpState;
 use deno_core::SourceMapGetter;
-use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
-use std::sync::Arc;
 
 struct ModuleCodeSource {
   pub code: String,
@@ -49,7 +46,7 @@ impl CliModuleLoader {
   pub fn new(ps: ProcState) -> Rc<Self> {
     Rc::new(CliModuleLoader {
       lib: ps.options.ts_type_lib_window(),
-      root_permissions: Arc::new(Mutex::new(Permissions::allow_all())),
+      root_permissions: PermissionsContainer::allow_all(),
       ps,
     })
   }

@@ -4,7 +4,6 @@ use crate::tools::test::TestFilter;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -15,7 +14,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
@@ -52,9 +50,9 @@ pub fn op_pledge_test_permissions(
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = {
-    let mut parent_permissions = parent_permissions.lock();
+    let mut parent_permissions = parent_permissions.0.lock();
     let perms = create_child_permissions(&mut parent_permissions, args)?;
-    Arc::new(Mutex::new(perms))
+    PermissionsContainer::new(perms)
   };
   let parent_permissions = parent_permissions.clone();
 

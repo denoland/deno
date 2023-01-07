@@ -25,10 +25,10 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use log::Level;
@@ -37,7 +37,6 @@ use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -339,8 +338,8 @@ async fn check_specifiers(
     specifiers,
     false,
     lib,
-    Arc::new(Mutex::new(Permissions::allow_all())),
-    Arc::new(Mutex::new(permissions)),
+    PermissionsContainer::allow_all(),
+    PermissionsContainer::new(permissions),
     true,
   )
   .await?;
@@ -360,7 +359,7 @@ async fn bench_specifier(
   let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier.clone(),
-    Arc::new(Mutex::new(permissions)),
+    PermissionsContainer::new(permissions),
     vec![ops::bench::init(channel.clone(), filter)],
     Default::default(),
   )

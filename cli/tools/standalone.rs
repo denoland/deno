@@ -16,13 +16,12 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::colors;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -171,10 +170,7 @@ async fn create_standalone_binary(
       Some(import_map_specifier) => {
         let file = ps
           .file_fetcher
-          .fetch(
-            &import_map_specifier,
-            Arc::new(Mutex::new(Permissions::allow_all())),
-          )
+          .fetch(&import_map_specifier, PermissionsContainer::allow_all())
           .await
           .context(format!(
             "Unable to load '{}' import map",
