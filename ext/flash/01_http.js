@@ -327,7 +327,7 @@
       );
     }
 
-    (async () => {
+    return (async () => {
       if (!ws) {
         if (hasBody && body[_state] !== "closed") {
           // TODO(@littledivy): Optimize by draining in a single op.
@@ -590,7 +590,6 @@
                     ),
                     onError,
                   );
-                  continue;
                 } else if (typeof resp?.then === "function") {
                   resp.then((resp) =>
                     handleResponse(
@@ -606,24 +605,23 @@
                       tryRespondChunked,
                     )
                   ).catch(onError);
-                  continue;
+                } else {
+                  handleResponse(
+                    req,
+                    resp,
+                    body,
+                    hasBody,
+                    method,
+                    serverId,
+                    i,
+                    respondFast,
+                    respondChunked,
+                    tryRespondChunked,
+                  ).catch(onError);
                 }
               } catch (e) {
                 resp = await onError(e);
               }
-
-              handleResponse(
-                req,
-                resp,
-                body,
-                hasBody,
-                method,
-                serverId,
-                i,
-                respondFast,
-                respondChunked,
-                tryRespondChunked,
-              );
             }
 
             offset += tokens;
