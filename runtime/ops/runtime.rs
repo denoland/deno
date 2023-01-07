@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -26,11 +26,9 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
     let main_path = std::env::current_dir()
       .context("Failed to get current working directory")?
       .join(main_url.to_string());
-    state.borrow_mut::<Permissions>().read.check_blind(
-      &main_path,
-      "main_module",
-      "Deno.mainModule",
-    )?;
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_read_blind(&main_path, "main_module", "Deno.mainModule")?;
   }
   Ok(main)
 }
