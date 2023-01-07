@@ -8,7 +8,7 @@
 //! the same functions as ops available in JS runtime.
 
 use crate::args::CliOptions;
-use crate::args::FmtFlags;
+use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
 use crate::colors;
@@ -43,26 +43,29 @@ use crate::cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
-  config: &CliOptions,
-  fmt_flags: FmtFlags,
+  cli_options: CliOptions,
+  fmt_options: FmtOptions,
 ) -> Result<(), AnyError> {
+  if fmt_options.is_stdin {
+    return format_stdin(fmt_options);
+  }
+
   // First, prepare final configuration.
-  let fmt_config = config.to_fmt_config(&fmt_flags)?;
+  let include = fmt_options.files.include;
+  let ignore = fmt_options.files.ignore;
 
-  let include = fmt_config.files.include;
-  let ignore = fmt_config.files.ignore;
-
-  let deno_dir = config.resolve_deno_dir()?;
+  let deno_dir = cli_options.resolve_deno_dir()?;
 
   // Now do the same for options
-  let fmt_options = fmt_config.options;
+  let check = fmt_options.check;
+  let fmt_config_options = fmt_options.options;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
 
     let result = collect_fmt_files(&include, &ignore).map(|files| {
       let refmt_files = if let Some(paths) = changed {
-        if fmt_flags.check {
+        if check {
           files
             .iter()
             .any(|path| paths.contains(path))
@@ -77,7 +80,7 @@ pub async fn format(
       } else {
         files
       };
-      (refmt_files, fmt_options.clone())
+      (refmt_files, fmt_config_options.clone())
     });
 
     let paths_to_watch = include.clone();
@@ -101,7 +104,7 @@ pub async fn format(
       &fmt_options,
       &paths,
     ));
-    if fmt_flags.check {
+    if check {
       check_source_files(paths, fmt_options, incremental_cache.clone()).await?;
     } else {
       format_source_files(paths, fmt_options, incremental_cache.clone())
@@ -111,13 +114,13 @@ pub async fn format(
     Ok(())
   };
 
-  if config.watch_paths().is_some() {
+  if cli_options.watch_paths().is_some() {
     file_watcher::watch_func(
       resolver,
       operation,
       file_watcher::PrintConfig {
         job_name: "Fmt".to_string(),
-        clear_screen: !config.no_clear_screen(),
+        clear_screen: !cli_options.no_clear_screen(),
       },
     )
     .await?;
@@ -129,7 +132,7 @@ pub async fn format(
         Ok(files)
       }
     })?;
-    operation((files, fmt_options.clone())).await?;
+    operation((files, fmt_config_options.clone())).await?;
   }
 
   Ok(())
@@ -237,11 +240,11 @@ pub fn format_file(
 
 pub fn format_parsed_source(
   parsed_source: &ParsedSource,
-  fmt_options: FmtOptionsConfig,
+  fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
   dprint_plugin_typescript::format_parsed_source(
     parsed_source,
-    &get_resolved_typescript_config(&fmt_options),
+    &get_resolved_typescript_config(fmt_options),
   )
 }
 
@@ -463,19 +466,14 @@ fn format_ensure_stable(
 /// Format stdin and write result to stdout.
 /// Treats input as TypeScript or as set by `--ext` flag.
 /// Compatible with `--check` flag.
-pub fn format_stdin(
-  fmt_flags: FmtFlags,
-  fmt_options: FmtOptionsConfig,
-) -> Result<(), AnyError> {
+fn format_stdin(fmt_options: FmtOptions) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     bail!("Failed to read from stdin");
   }
-  let file_path = PathBuf::from(format!("_stdin.{}", fmt_flags.ext));
-  let fmt_options = resolve_fmt_options(&fmt_flags, fmt_options);
-
-  let formatted_text = format_file(&file_path, &source, &fmt_options)?;
-  if fmt_flags.check {
+  let file_path = PathBuf::from(format!("_stdin.{}", fmt_options.ext));
+  let formatted_text = format_file(&file_path, &source, &fmt_options.options)?;
+  if fmt_options.check {
     if formatted_text.is_some() {
       println!("Not formatted stdin");
     }
@@ -491,41 +489,6 @@ fn files_str(len: usize) -> &'static str {
   } else {
     "files"
   }
-}
-
-pub fn resolve_fmt_options(
-  fmt_flags: &FmtFlags,
-  options: FmtOptionsConfig,
-) -> FmtOptionsConfig {
-  let mut options = options;
-
-  if let Some(use_tabs) = fmt_flags.use_tabs {
-    options.use_tabs = Some(use_tabs);
-  }
-
-  if let Some(line_width) = fmt_flags.line_width {
-    options.line_width = Some(line_width.get());
-  }
-
-  if let Some(indent_width) = fmt_flags.indent_width {
-    options.indent_width = Some(indent_width.get());
-  }
-
-  if let Some(single_quote) = fmt_flags.single_quote {
-    options.single_quote = Some(single_quote);
-  }
-
-  if let Some(prose_wrap) = &fmt_flags.prose_wrap {
-    options.prose_wrap = Some(match prose_wrap.as_str() {
-      "always" => ProseWrap::Always,
-      "never" => ProseWrap::Never,
-      "preserve" => ProseWrap::Preserve,
-      // validators in `flags.rs` makes other values unreachable
-      _ => unreachable!(),
-    });
-  }
-
-  options
 }
 
 fn get_resolved_typescript_config(

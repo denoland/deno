@@ -6,12 +6,11 @@
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
-use crate::args::Flags;
-use crate::args::LintFlags;
+use crate::args::CliOptions;
+use crate::args::LintOptions;
 use crate::args::LintReporterKind;
 use crate::args::LintRulesConfig;
 use crate::colors;
-use crate::proc_state::ProcState;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
@@ -53,16 +52,16 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   }
 }
 
-pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
-  let lint_config = ps.options.to_lint_options(lint_flags)?;
-
+pub async fn lint(
+  cli_options: CliOptions,
+  lint_options: LintOptions,
+) -> Result<(), AnyError> {
   // Try to get lint rules. If none were set use recommended rules.
-  let lint_rules = get_configured_rules(lint_config.rules)?;
+  let lint_rules = get_configured_rules(lint_options.rules)?;
 
-  let include = lint_config.files.include;
-  let ignore = lint_config.files.ignore;
-  let reporter_kind = lint_config.reporter_kind;
+  let include = lint_options.files.include;
+  let ignore = lint_options.files.ignore;
+  let reporter_kind = lint_options.reporter_kind;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
@@ -93,10 +92,11 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   };
 
   let has_error = Arc::new(AtomicBool::new(false));
+  let deno_dir = cli_options.resolve_deno_dir()?;
 
   let operation = |paths: Vec<PathBuf>| async {
     let incremental_cache = Arc::new(IncrementalCache::new(
-      &ps.dir.lint_incremental_cache_db_file_path(),
+      &deno_dir.lint_incremental_cache_db_file_path(),
       // use a hash of the rule names in order to bust the cache
       &{
         // ensure this is stable by sorting it
@@ -146,8 +146,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
 
     Ok(())
   };
-  if ps.options.watch_paths().is_some() {
-    if lint_config.is_stdin {
+  if cli_options.watch_paths().is_some() {
+    if lint_options.is_stdin {
       return Err(generic_error(
         "Lint watch on standard input is not supported.",
       ));
@@ -157,12 +157,12 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       operation,
       file_watcher::PrintConfig {
         job_name: "Lint".to_string(),
-        clear_screen: !ps.options.no_clear_screen(),
+        clear_screen: !cli_options.no_clear_screen(),
       },
     )
     .await?;
   } else {
-    if lint_config.is_stdin {
+    if lint_options.is_stdin {
       let reporter_lock =
         Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
       let r = lint_stdin(lint_rules);

@@ -110,15 +110,8 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Fmt(fmt_flags) => {
       let config = CliOptions::from_flags(flags)?;
-
-      if fmt_flags.files.include.len() == 1
-        && fmt_flags.files.include[0].to_string_lossy() == "-"
-      {
-        let fmt_config = config.to_fmt_config(&fmt_flags)?;
-        tools::fmt::format_stdin(fmt_flags, fmt_config.options)?;
-      } else {
-        tools::fmt::format(&config, fmt_flags).await?;
-      }
+      let fmt_options = config.to_fmt_options(fmt_flags)?;
+      tools::fmt::format(config, fmt_options).await?;
       Ok(0)
     }
     DenoSubcommand::Init(init_flags) => {
@@ -145,7 +138,9 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if lint_flags.rules {
         tools::lint::print_rules_list(lint_flags.json);
       } else {
-        tools::lint::lint(flags, lint_flags).await?;
+        let config = CliOptions::from_flags(flags)?;
+        let lint_options = config.to_lint_options(lint_flags)?;
+        tools::lint::lint(config, lint_options).await?;
       }
       Ok(0)
     }

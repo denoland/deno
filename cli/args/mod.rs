@@ -50,13 +50,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cache::DenoDir;
-use crate::tools::fmt::resolve_fmt_options;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
 use crate::version;
 
 use self::config_file::FilesConfig;
-use self::config_file::FinalFmtConfig;
 use self::config_file::FinalTestConfig;
 use self::config_file::LintConfig;
 
@@ -99,6 +97,96 @@ impl CacheSetting {
       _ => true,
     }
   }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FmtOptions {
+  pub is_stdin: bool,
+  pub check: bool,
+  pub ext: String,
+  pub options: FmtOptionsConfig,
+  pub files: FileFlags,
+}
+
+impl FmtOptions {
+  pub fn resolve(
+    maybe_fmt_config: Option<FmtConfig>,
+    mut maybe_fmt_flags: Option<FmtFlags>,
+  ) -> Result<Self, AnyError> {
+    let is_stdin = if let Some(fmt_flags) = maybe_fmt_flags.as_mut() {
+      let args = &mut fmt_flags.files.include;
+      if args.len() == 1 && args[0].to_string_lossy() == "-" {
+        args.pop(); // remove the "-" arg
+        true
+      } else {
+        false
+      }
+    } else {
+      false
+    };
+    // todo(THIS PR): remove cloning
+    let (mut include, mut ignore) = maybe_fmt_flags
+      .as_ref()
+      .map(|f| (f.files.include.clone(), f.files.ignore.clone()))
+      .unwrap_or_default();
+
+    if let Some(fmt_config) = &maybe_fmt_config {
+      let filters = collect_filters(&fmt_config.files, include, ignore)?;
+      include = filters.include;
+      ignore = filters.ignore;
+    }
+
+    Ok(Self {
+      is_stdin,
+      check: maybe_fmt_flags.as_ref().map(|f| f.check).unwrap_or(false),
+      ext: maybe_fmt_flags
+        .as_ref()
+        .map(|f| f.ext.to_string())
+        .unwrap_or_else(|| "ts".to_string()),
+      files: FileFlags { include, ignore },
+      options: resolve_fmt_options(
+        maybe_fmt_flags.as_ref(),
+        maybe_fmt_config.map(|c| c.options),
+      ),
+    })
+  }
+}
+
+fn resolve_fmt_options(
+  fmt_flags: Option<&FmtFlags>,
+  options: Option<FmtOptionsConfig>,
+) -> FmtOptionsConfig {
+  let mut options = options.unwrap_or_default();
+
+  if let Some(fmt_flags) = fmt_flags {
+    if let Some(use_tabs) = fmt_flags.use_tabs {
+      options.use_tabs = Some(use_tabs);
+    }
+
+    if let Some(line_width) = fmt_flags.line_width {
+      options.line_width = Some(line_width.get());
+    }
+
+    if let Some(indent_width) = fmt_flags.indent_width {
+      options.indent_width = Some(indent_width.get());
+    }
+
+    if let Some(single_quote) = fmt_flags.single_quote {
+      options.single_quote = Some(single_quote);
+    }
+
+    if let Some(prose_wrap) = &fmt_flags.prose_wrap {
+      options.prose_wrap = Some(match prose_wrap.as_str() {
+        "always" => ProseWrap::Always,
+        "never" => ProseWrap::Never,
+        "preserve" => ProseWrap::Preserve,
+        // validators in `flags.rs` makes other values unreachable
+        _ => unreachable!(),
+      });
+    }
+  }
+
+  options
 }
 
 #[derive(Clone, Debug)]
@@ -186,7 +274,7 @@ impl LintOptions {
       }
     }
 
-    Ok(LintOptions {
+    Ok(Self {
       reporter_kind: maybe_reporter_kind.unwrap_or_default(),
       is_stdin,
       files: FileFlags { include, ignore },
@@ -530,6 +618,18 @@ impl CliOptions {
     &self.maybe_config_file
   }
 
+  pub fn to_fmt_options(
+    &self,
+    fmt_flags: FmtFlags,
+  ) -> Result<FmtOptions, AnyError> {
+    let maybe_fmt_config = if let Some(config_file) = &self.maybe_config_file {
+      config_file.to_fmt_config()?
+    } else {
+      None
+    };
+    FmtOptions::resolve(maybe_fmt_config, Some(fmt_flags))
+  }
+
   pub fn to_lint_options(
     &self,
     lint_flags: LintFlags,
@@ -582,47 +682,6 @@ impl CliOptions {
 
     Ok(BenchConfig {
       files: FileFlags { include, ignore },
-    })
-  }
-
-  pub fn to_fmt_config(
-    &self,
-    fmt_flags: &FmtFlags,
-  ) -> Result<FinalFmtConfig, AnyError> {
-    let prose_wrap = fmt_flags.prose_wrap.as_ref().map(|p| match p.as_str() {
-      "always" => ProseWrap::Always,
-      "never" => ProseWrap::Never,
-      "preserve" => ProseWrap::Preserve,
-      // validators in `flags.rs` makes other values unreachable
-      _ => unreachable!(),
-    });
-
-    let indent_width = fmt_flags.indent_width.map(|i| i.get());
-    let line_width = fmt_flags.line_width.map(|l| l.get());
-
-    let mut options = FmtOptionsConfig {
-      prose_wrap,
-      indent_width,
-      line_width,
-      single_quote: fmt_flags.single_quote,
-      use_tabs: fmt_flags.use_tabs,
-    };
-
-    let mut include = fmt_flags.files.include.clone();
-    let mut ignore = fmt_flags.files.ignore.clone();
-
-    if let Some(config_file) = &self.maybe_config_file {
-      if let Some(fmt_config) = config_file.to_fmt_config()? {
-        let filters = collect_filters(&fmt_config.files, include, ignore)?;
-        include = filters.include;
-        ignore = filters.ignore;
-        options = resolve_fmt_options(fmt_flags, fmt_config.options);
-      }
-    }
-
-    Ok(FinalFmtConfig {
-      files: FileFlags { include, ignore },
-      options,
     })
   }
 
