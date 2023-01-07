@@ -450,11 +450,7 @@ async fn generate_lint_diagnostics(
 ) -> DiagnosticVec {
   let documents = snapshot.documents.documents(true, true);
   let workspace_settings = config.settings.workspace.clone();
-  let lint_rules = match get_configured_rules(lint_options.rules.clone()) {
-    Ok(rules) => rules,
-    Err(_) => return Vec::new(),
-  };
-
+  let lint_rules = get_configured_rules(lint_options.rules.clone());
   let mut diagnostics_vec = Vec::new();
   if workspace_settings.lint {
     for document in documents {

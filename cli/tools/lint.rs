@@ -58,7 +58,11 @@ pub async fn lint(
   lint_options: LintOptions,
 ) -> Result<(), AnyError> {
   // Try to get lint rules. If none were set use recommended rules.
-  let lint_rules = get_configured_rules(lint_options.rules)?;
+  let lint_rules = get_configured_rules(lint_options.rules);
+
+  if lint_rules.is_empty() {
+    bail!("No rules have been configured")
+  }
 
   let files = lint_options.files;
   let reporter_kind = lint_options.reporter_kind;
@@ -527,12 +531,8 @@ fn sort_diagnostics(diagnostics: &mut [LintDiagnostic]) {
   });
 }
 
-pub fn get_configured_rules(
-  rules: LintRulesConfig,
-) -> Result<Vec<Arc<dyn LintRule>>, AnyError> {
-  let configured_rules = if rules.tags.is_none()
-    && rules.include.is_none()
-    && rules.exclude.is_none()
+pub fn get_configured_rules(rules: LintRulesConfig) -> Vec<Arc<dyn LintRule>> {
+  if rules.tags.is_none() && rules.include.is_none() && rules.exclude.is_none()
   {
     rules::get_recommended_rules()
   } else {
@@ -541,13 +541,7 @@ pub fn get_configured_rules(
       rules.exclude,
       rules.include,
     )
-  };
-
-  if configured_rules.is_empty() {
-    bail!("No rules have been configured")
   }
-
-  Ok(configured_rules)
 }
 
 #[cfg(test)]
@@ -564,7 +558,7 @@ mod test {
       include: None,
       tags: None,
     };
-    let rules = get_configured_rules(rules_config).unwrap();
+    let rules = get_configured_rules(rules_config);
     let mut rule_names = rules
       .into_iter()
       .map(|r| r.code().to_string())
