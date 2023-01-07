@@ -185,7 +185,7 @@
      * @returns {InnerBody}
      */
     clone() {
-      const [out1, out2] = this.stream.tee();
+      const { 0: out1, 1: out2 } = this.stream.tee();
       this.streamOrStatic = out1;
       const second = new InnerBody(out2);
       second.source = core.deserialize(core.serialize(this.source));

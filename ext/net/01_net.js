@@ -175,7 +175,7 @@
       }
       this.#promiseId = promise[promiseIdSymbol];
       if (this.#unref) core.unrefOp(this.#promiseId);
-      const [rid, localAddr, remoteAddr] = await promise;
+      const { 0: rid, 1: localAddr, 2: remoteAddr } = await promise;
       this.#promiseId = null;
       if (this.addr.transport == "tcp") {
         localAddr.transport = "tcp";
@@ -260,21 +260,21 @@
       let remoteAddr;
       switch (this.addr.transport) {
         case "udp": {
-          [nread, remoteAddr] = await core.opAsync(
+          ({ 0: nread, 1: remoteAddr } = await core.opAsync(
             "op_net_recv_udp",
             this.rid,
             buf,
-          );
+          ));
           remoteAddr.transport = "udp";
           break;
         }
         case "unixpacket": {
           let path;
-          [nread, path] = await core.opAsync(
+          ({ 0: nread, 1: path } = await core.opAsync(
             "op_net_recv_unixpacket",
             this.rid,
             buf,
-          );
+          ));
           remoteAddr = { transport: "unixpacket", path };
           break;
         }
@@ -330,7 +330,7 @@
   function listen(args) {
     switch (args.transport ?? "tcp") {
       case "tcp": {
-        const [rid, addr] = ops.op_net_listen_tcp({
+        const { 0: rid, 1: addr } = ops.op_net_listen_tcp({
           hostname: args.hostname ?? "0.0.0.0",
           port: args.port,
         }, args.reusePort);
@@ -338,7 +338,7 @@
         return new Listener(rid, addr);
       }
       case "unix": {
-        const [rid, path] = ops.op_net_listen_unix(args.path);
+        const { 0: rid, 1: path } = ops.op_net_listen_unix(args.path);
         const addr = {
           transport: "unix",
           path,
@@ -354,7 +354,7 @@
     return function listenDatagram(args) {
       switch (args.transport) {
         case "udp": {
-          const [rid, addr] = udpOpFn(
+          const { 0: rid, 1: addr } = udpOpFn(
             {
               hostname: args.hostname ?? "127.0.0.1",
               port: args.port,
@@ -365,7 +365,7 @@
           return new Datagram(rid, addr);
         }
         case "unixpacket": {
-          const [rid, path] = unixOpFn(args.path);
+          const { 0: rid, 1: path } = unixOpFn(args.path);
           const addr = {
             transport: "unixpacket",
             path,
@@ -381,7 +381,7 @@
   async function connect(args) {
     switch (args.transport ?? "tcp") {
       case "tcp": {
-        const [rid, localAddr, remoteAddr] = await core.opAsync(
+        const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
           "op_net_connect_tcp",
           {
             hostname: args.hostname ?? "127.0.0.1",
@@ -393,7 +393,7 @@
         return new TcpConn(rid, remoteAddr, localAddr);
       }
       case "unix": {
-        const [rid, localAddr, remoteAddr] = await core.opAsync(
+        const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
           "op_net_connect_unix",
           args.path,
         );

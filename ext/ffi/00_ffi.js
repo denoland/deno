@@ -230,7 +230,7 @@
           "Invalid UnsafeCallback, cannot be nonblocking",
         );
       }
-      const [rid, pointer] = ops.op_ffi_unsafe_callback_create(
+      const { 0: rid, 1: pointer } = ops.op_ffi_unsafe_callback_create(
         definition,
         callback,
       );
@@ -273,7 +273,7 @@
     symbols = {};
 
     constructor(path, symbols) {
-      [this.#rid, this.symbols] = ops.op_ffi_load({ path, symbols });
+      ({ 0: this.#rid, 1: this.symbols } = ops.op_ffi_load({ path, symbols }));
       for (const symbol in symbols) {
         if (!ObjectPrototypeHasOwnProperty(symbols, symbol)) {
           continue;

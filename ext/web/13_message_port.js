@@ -36,7 +36,7 @@
 
     constructor() {
       this[webidl.brand] = webidl.brand;
-      const [port1Id, port2Id] = opCreateEntangledMessagePort();
+      const { 0: port1Id, 1: port2Id } = opCreateEntangledMessagePort();
       const port1 = createMessagePort(port1Id);
       const port2 = createMessagePort(port2Id);
       this.#port1 = port1;
@@ -329,8 +329,7 @@
       context: "Argument 2",
     });
     const messageData = serializeJsMessageData(value, options.transfer);
-    const [data] = deserializeJsMessageData(messageData);
-    return data;
+    return deserializeJsMessageData(messageData)[0];
   }
 
   window.__bootstrap.messagePort = {

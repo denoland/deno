@@ -34,7 +34,7 @@
         break;
       }
 
-      const [name, data] = message;
+      const { 0: name, 1: data } = message;
       dispatch(null, name, new Uint8Array(data));
     }
 

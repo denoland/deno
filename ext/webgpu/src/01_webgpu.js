@@ -1938,7 +1938,7 @@
         throw new DOMException(`${prefix}: invalid state.`, "OperationError");
       }
       for (let i = 0; i < mappedRanges.length; ++i) {
-        const [buffer, _rid, start] = mappedRanges[i];
+        const { 0: buffer, /* 1: rid, */ 2: start } = mappedRanges[i];
         // TODO(lucacasonato): is this logic correct?
         const end = start + buffer.byteLength;
         if (
@@ -2007,7 +2007,7 @@
           throw new DOMException(`${prefix}: invalid state.`, "OperationError");
         }
         for (let i = 0; i < mappedRanges.length; ++i) {
-          const [buffer, mappedRid] = mappedRanges[i];
+          const { 0: buffer, 1: mappedRid } = mappedRanges[i];
           const { err } = ops.op_webgpu_buffer_unmap(
             bufferRid,
             mappedRid,
