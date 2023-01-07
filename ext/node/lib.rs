@@ -53,7 +53,11 @@ pub trait RequireNpmResolver {
 
   fn in_npm_package(&self, path: &Path) -> bool;
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
+  fn ensure_read_permission(
+    &self,
+    permissions: Arc<Mutex<dyn NodePermissions>>,
+    path: &Path,
+  ) -> Result<(), AnyError>;
 }
 
 pub const MODULE_ES_SHIM: &str = include_str!("./module_es_shim.js");
@@ -95,7 +99,7 @@ pub fn init<P: NodePermissions + 'static>(
       op_require_is_request_relative::decl(),
       op_require_resolve_lookup_paths::decl(),
       op_require_try_self_parent_path::decl::<P>(),
-      op_require_try_self::decl(),
+      op_require_try_self::decl::<P>(),
       op_require_real_path::decl::<P>(),
       op_require_path_is_absolute::decl(),
       op_require_path_dirname::decl(),
@@ -104,9 +108,9 @@ pub fn init<P: NodePermissions + 'static>(
       op_require_path_basename::decl(),
       op_require_read_file::decl::<P>(),
       op_require_as_file_path::decl(),
-      op_require_resolve_exports::decl(),
+      op_require_resolve_exports::decl::<P>(),
       op_require_read_closest_package_json::decl::<P>(),
-      op_require_read_package_scope::decl(),
+      op_require_read_package_scope::decl::<P>(),
       op_require_package_imports_resolve::decl::<P>(),
       op_require_break_on_next_statement::decl(),
     ])
@@ -126,15 +130,12 @@ fn ensure_read_permission<P>(
 where
   P: NodePermissions + 'static,
 {
+  let permissions = state.borrow::<Arc<Mutex<P>>>().clone();
   let resolver = {
     let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
     resolver.clone()
   };
-  if resolver.ensure_read_permission(file_path).is_ok() {
-    return Ok(());
-  }
-
-  state.borrow_mut::<P>().check_read(file_path)
+  resolver.ensure_read_permission(permissions, file_path)
 }
 
 #[op]
@@ -459,19 +460,24 @@ where
 }
 
 #[op]
-fn op_require_try_self(
+fn op_require_try_self<P>(
   state: &mut OpState,
   parent_path: Option<String>,
   request: String,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, AnyError>
+where
+  P: NodePermissions + 'static,
+{
   if parent_path.is_none() {
     return Ok(None);
   }
 
+  let permissions = state.borrow::<Arc<Mutex<P>>>().clone();
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let pkg = resolution::get_package_scope_config(
     &Url::from_file_path(parent_path.unwrap()).unwrap(),
     &*resolver,
+    permissions.clone(),
   )
   .ok();
   if pkg.is_none() {
@@ -508,6 +514,7 @@ fn op_require_try_self(
       resolution::REQUIRE_CONDITIONS,
       NodeResolutionMode::Execution,
       &*resolver,
+      permissions,
     )
     .map(|r| Some(r.to_string_lossy().to_string()))
   } else {
@@ -540,7 +547,7 @@ pub fn op_require_as_file_path(file_or_url: String) -> String {
 }
 
 #[op]
-fn op_require_resolve_exports(
+fn op_require_resolve_exports<P>(
   state: &mut OpState,
   uses_local_node_modules_dir: bool,
   modules_path: String,
@@ -548,7 +555,11 @@ fn op_require_resolve_exports(
   name: String,
   expansion: String,
   parent_path: String,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  let permissions = state.borrow::<Arc<Mutex<P>>>().clone();
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
 
   let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path))
@@ -560,6 +571,7 @@ fn op_require_resolve_exports(
   };
   let pkg = PackageJson::load(
     &*resolver,
+    permissions.clone(),
     PathBuf::from(&pkg_path).join("package.json"),
   )?;
 
@@ -574,6 +586,7 @@ fn op_require_resolve_exports(
       resolution::REQUIRE_CONDITIONS,
       NodeResolutionMode::Execution,
       &*resolver,
+      permissions,
     )
     .map(|r| Some(r.to_string_lossy().to_string()))
   } else {
@@ -593,21 +606,27 @@ where
     state,
     PathBuf::from(&filename).parent().unwrap(),
   )?;
+  let permissions = state.borrow::<Arc<Mutex<P>>>().clone();
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   resolution::get_closest_package_json(
     &Url::from_file_path(filename).unwrap(),
     &*resolver,
+    permissions,
   )
 }
 
 #[op]
-fn op_require_read_package_scope(
+fn op_require_read_package_scope<P>(
   state: &mut OpState,
   package_json_path: String,
-) -> Option<PackageJson> {
+) -> Option<PackageJson>
+where
+  P: NodePermissions + 'static,
+{
+  let permissions = state.borrow::<Arc<Mutex<P>>>().clone();
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let package_json_path = PathBuf::from(package_json_path);
-  PackageJson::load(&*resolver, package_json_path).ok()
+  PackageJson::load(&*resolver, permissions, package_json_path).ok()
 }
 
 #[op]
@@ -621,8 +640,13 @@ where
 {
   let parent_path = PathBuf::from(&parent_filename);
   ensure_read_permission::<P>(state, &parent_path)?;
+  let permissions = state.borrow::<Arc<Mutex<P>>>().clone();
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
-  let pkg = PackageJson::load(&*resolver, parent_path.join("package.json"))?;
+  let pkg = PackageJson::load(
+    &*resolver,
+    permissions.clone(),
+    parent_path.join("package.json"),
+  )?;
 
   if pkg.imports.is_some() {
     let referrer =
@@ -634,6 +658,7 @@ where
       resolution::REQUIRE_CONDITIONS,
       NodeResolutionMode::Execution,
       &*resolver,
+      permissions,
     )
     .map(|r| Some(Url::from_file_path(r).unwrap().to_string()));
     state.put(resolver);

@@ -17,8 +17,10 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_runtime::deno_core::futures;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use tokio::task::JoinHandle;
@@ -245,8 +247,16 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     .boxed()
   }
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
-    ensure_registry_read_permission(&self.root_node_modules_path, path)
+  fn ensure_read_permission(
+    &self,
+    permissions: Arc<Mutex<dyn NodePermissions>>,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    ensure_registry_read_permission(
+      permissions,
+      &self.root_node_modules_path,
+      path,
+    )
   }
 
   fn snapshot(&self) -> NpmResolutionSnapshot {

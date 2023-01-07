@@ -14,6 +14,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
@@ -31,8 +32,10 @@ use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
+use deno_runtime::permissions::Permissions;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::Arc;
 
 use crate::cache::NodeAnalysisCache;
 use crate::deno_std::CURRENT_STD_URL;
@@ -554,10 +557,12 @@ pub fn node_resolve_binary_export(
   bin_name: Option<&str>,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<NodeResolution, AnyError> {
+  let permissions = Arc::new(Mutex::new(Permissions::allow_all()));
   let package_folder =
     npm_resolver.resolve_package_folder_from_deno_module(pkg_req)?;
   let package_json_path = package_folder.join("package.json");
-  let package_json = PackageJson::load(npm_resolver, package_json_path)?;
+  let package_json =
+    PackageJson::load(npm_resolver, permissions, package_json_path)?;
   let bin = match &package_json.bin {
     Some(bin) => bin,
     None => bail!(
@@ -668,8 +673,12 @@ fn package_config_resolve(
 ) -> Result<Option<PathBuf>, AnyError> {
   let package_json_path = package_dir.join("package.json");
   let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
-  let package_config =
-    PackageJson::load(npm_resolver, package_json_path.clone())?;
+  let permissions = Arc::new(Mutex::new(Permissions::allow_all()));
+  let package_config = PackageJson::load(
+    npm_resolver,
+    permissions.clone(),
+    package_json_path.clone(),
+  )?;
   if let Some(exports) = &package_config.exports {
     let result = package_exports_resolve(
       &package_json_path,
@@ -680,6 +689,7 @@ fn package_config_resolve(
       conditions,
       mode,
       npm_resolver,
+      permissions,
     );
     match result {
       Ok(found) => return Ok(Some(found)),
@@ -712,7 +722,11 @@ pub fn url_to_node_resolution(
   if url_str.starts_with("http") {
     Ok(NodeResolution::Esm(url))
   } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
-    let package_config = get_closest_package_json(&url, npm_resolver)?;
+    let package_config = get_closest_package_json(
+      &url,
+      npm_resolver,
+      Arc::new(Mutex::new(Permissions::allow_all())),
+    )?;
     if package_config.typ == "module" {
       Ok(NodeResolution::Esm(url))
     } else {
@@ -787,6 +801,7 @@ fn module_resolve(
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
+  let permissions = Arc::new(Mutex::new(Permissions::allow_all()));
   // note: if we're here, the referrer is an esm module
   let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
     let resolved_specifier = referrer.join(specifier)?;
@@ -811,6 +826,7 @@ fn module_resolve(
         conditions,
         mode,
         npm_resolver,
+        permissions,
       )
       .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
     )
@@ -824,6 +840,7 @@ fn module_resolve(
       conditions,
       mode,
       npm_resolver,
+      permissions,
     )?
     .map(|p| ModuleSpecifier::from_file_path(p).unwrap())
   };
@@ -1053,10 +1070,14 @@ fn resolve(
     mode,
   )?;
 
+  let permissions = Arc::new(Mutex::new(Permissions::allow_all()));
   let package_json_path = module_dir.join("package.json");
   if package_json_path.exists() {
-    let package_json =
-      PackageJson::load(npm_resolver, package_json_path.clone())?;
+    let package_json = PackageJson::load(
+      npm_resolver,
+      permissions.clone(),
+      package_json_path.clone(),
+    )?;
 
     if let Some(exports) = &package_json.exports {
       return package_exports_resolve(
@@ -1068,6 +1089,7 @@ fn resolve(
         conditions,
         mode,
         npm_resolver,
+        permissions,
       );
     }
 
@@ -1080,7 +1102,7 @@ fn resolve(
           let package_json_path = d.join("package.json");
           if package_json_path.exists() {
             let package_json =
-              PackageJson::load(npm_resolver, package_json_path)?;
+              PackageJson::load(npm_resolver, permissions, package_json_path)?;
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
               return Ok(d.join(main).clean());
             }
