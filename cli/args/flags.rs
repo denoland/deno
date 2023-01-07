@@ -72,7 +72,7 @@ impl FileFlags {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BenchFlags {
   pub files: FileFlags,
   pub filter: Option<String>,
@@ -205,7 +205,7 @@ pub struct TaskFlags {
   pub task: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TestFlags {
   pub doc: bool,
   pub no_run: bool,

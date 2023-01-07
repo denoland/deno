@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::BenchFlags;
-use crate::args::Flags;
+use crate::args::BenchOptions;
+use crate::args::CliOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::graph_util::contains_specifier;
@@ -34,6 +34,7 @@ use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -484,18 +485,16 @@ fn is_supported_bench_path(path: &Path) -> bool {
 }
 
 pub async fn run_benchmarks(
-  flags: Flags,
-  bench_flags: BenchFlags,
+  cli_options: CliOptions,
+  bench_options: BenchOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let bench_config = ps.options.to_bench_config(&bench_flags)?;
-
   let specifiers = collect_specifiers(
-    &bench_config.files.include,
-    &bench_config.files.ignore,
+    &bench_options.files.include,
+    &bench_options.files.ignore,
     is_supported_bench_path,
   )?;
 
@@ -510,7 +509,7 @@ pub async fn run_benchmarks(
     permissions,
     specifiers,
     BenchSpecifierOptions {
-      filter: bench_flags.filter,
+      filter: bench_options.filter,
     },
   )
   .await?;
@@ -520,17 +519,19 @@ pub async fn run_benchmarks(
 
 // TODO(bartlomieju): heavy duplication of code with `cli/tools/test.rs`
 pub async fn run_benchmarks_with_watch(
-  flags: Flags,
-  bench_flags: BenchFlags,
+  cli_options: CliOptions,
+  bench_options: BenchOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let config = &ps.options.to_bench_config(&bench_flags)?;
-
-  let paths_to_watch: Vec<_> =
-    config.files.include.iter().map(PathBuf::from).collect();
+  let paths_to_watch: Vec<_> = bench_options
+    .files
+    .include
+    .iter()
+    .map(PathBuf::from)
+    .collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
@@ -538,8 +539,8 @@ pub async fn run_benchmarks_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = config.files.include.clone();
-    let ignore = config.files.ignore.clone();
+    let include = bench_options.files.include.clone();
+    let ignore = bench_options.files.ignore.clone();
     let ps = ps.clone();
 
     async move {
@@ -654,9 +655,9 @@ pub async fn run_benchmarks_with_watch(
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
     let permissions = permissions.clone();
     let ps = ps.clone();
-    let filter = bench_flags.filter.clone();
-    let include = config.files.include.clone();
-    let ignore = config.files.ignore.clone();
+    let filter = bench_options.filter.clone();
+    let include = bench_options.files.include.clone();
+    let ignore = bench_options.files.ignore.clone();
 
     async move {
       let specifiers =

@@ -10,22 +10,14 @@ pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
 pub use config_file::EmitConfigOptions;
-pub use config_file::FmtConfig;
 pub use config_file::FmtOptionsConfig;
-pub use config_file::IgnoredCompilerOptions;
 pub use config_file::JsxImportSourceConfig;
 pub use config_file::LintRulesConfig;
-pub use config_file::MaybeImportsResult;
 pub use config_file::ProseWrap;
-pub use config_file::TestConfig;
 pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
 pub use config_file::TsTypeLib;
-use deno_runtime::deno_tls::rustls;
-use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
-use deno_runtime::deno_tls::rustls_pemfile;
-use deno_runtime::deno_tls::webpki_roots;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
@@ -39,7 +31,11 @@ use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_runtime::colors;
+use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
+use deno_runtime::deno_tls::rustls_pemfile;
+use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use std::collections::BTreeMap;
@@ -56,7 +52,10 @@ use crate::util::path::specifier_to_file_path;
 use crate::version;
 
 use self::config_file::FilesConfig;
+use self::config_file::FmtConfig;
 use self::config_file::LintConfig;
+use self::config_file::MaybeImportsResult;
+use self::config_file::TestConfig;
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -96,6 +95,37 @@ impl CacheSetting {
       }
       _ => true,
     }
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BenchOptions {
+  pub files: FileFlags,
+  pub filter: Option<String>,
+}
+
+impl BenchOptions {
+  pub fn resolve(
+    maybe_bench_config: Option<BenchConfig>,
+    maybe_bench_flags: Option<BenchFlags>,
+  ) -> Result<Self, AnyError> {
+    let bench_flags = maybe_bench_flags.unwrap_or_default();
+    let mut include = bench_flags.files.include;
+    let mut ignore = bench_flags.files.ignore;
+
+    if let Some(bench_config) = maybe_bench_config {
+      if include.is_empty() {
+        include = bench_config.files.include
+      }
+      if ignore.is_empty() {
+        ignore = bench_config.files.ignore
+      }
+    }
+
+    Ok(Self {
+      files: FileFlags { include, ignore },
+      filter: bench_flags.filter,
+    })
   }
 }
 
@@ -697,27 +727,17 @@ impl CliOptions {
     TestOptions::resolve(maybe_test_config, Some(test_flags))
   }
 
-  pub fn to_bench_config(
+  pub fn resolve_bench_options(
     &self,
-    bench_flags: &BenchFlags,
-  ) -> Result<BenchConfig, AnyError> {
-    let mut include = bench_flags.files.include.clone();
-    let mut ignore = bench_flags.files.ignore.clone();
-
-    if let Some(config_file) = &self.maybe_config_file {
-      if let Some(bench_config) = config_file.to_bench_config()? {
-        if include.is_empty() {
-          include = bench_config.files.include
-        }
-        if ignore.is_empty() {
-          ignore = bench_config.files.ignore
-        }
-      }
-    }
-
-    Ok(BenchConfig {
-      files: FileFlags { include, ignore },
-    })
+    bench_flags: BenchFlags,
+  ) -> Result<BenchOptions, AnyError> {
+    let maybe_bench_config = if let Some(config_file) = &self.maybe_config_file
+    {
+      config_file.to_bench_config()?
+    } else {
+      None
+    };
+    BenchOptions::resolve(maybe_bench_config, Some(bench_flags))
   }
 
   /// Vector of user script CLI arguments.

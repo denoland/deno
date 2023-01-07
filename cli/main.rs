@@ -71,10 +71,13 @@ fn init_v8_flags(v8_flags: &[String]) {
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   match flags.subcommand.clone() {
     DenoSubcommand::Bench(bench_flags) => {
-      if flags.watch.is_some() {
-        tools::bench::run_benchmarks_with_watch(flags, bench_flags).await?;
+      let cli_options = CliOptions::from_flags(flags)?;
+      let bench_options = cli_options.resolve_bench_options(bench_flags)?;
+      if cli_options.watch_paths().is_some() {
+        tools::bench::run_benchmarks_with_watch(cli_options, bench_options)
+          .await?;
       } else {
-        tools::bench::run_benchmarks(flags, bench_flags).await?;
+        tools::bench::run_benchmarks(cli_options, bench_options).await?;
       }
       Ok(0)
     }
