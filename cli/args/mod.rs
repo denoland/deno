@@ -144,6 +144,8 @@ impl FmtOptions {
     } else {
       false
     };
+    let (maybe_config_options, maybe_config_files) =
+      maybe_fmt_config.map(|c| (c.options, c.files)).unzip();
 
     Ok(Self {
       is_stdin,
@@ -154,10 +156,10 @@ impl FmtOptions {
         .unwrap_or_else(|| "ts".to_string()),
       options: resolve_fmt_options(
         maybe_fmt_flags.as_ref(),
-        maybe_fmt_config.as_ref().map(|c| c.options.clone()),
+        maybe_config_options,
       ),
       files: resolve_files(
-        maybe_fmt_config.map(|c| c.files),
+        maybe_config_files,
         maybe_fmt_flags.map(|f| f.files),
       ),
     })
@@ -277,6 +279,7 @@ impl LintOptions {
     } else {
       false
     };
+
     let mut maybe_reporter_kind =
       maybe_lint_flags.as_ref().and_then(|lint_flags| {
         if lint_flags.json {
@@ -287,6 +290,21 @@ impl LintOptions {
           None
         }
       });
+
+    if maybe_reporter_kind.is_none() {
+      // Flag not set, so try to get lint reporter from the config file.
+      if let Some(lint_config) = &maybe_lint_config {
+        maybe_reporter_kind = match lint_config.report.as_deref() {
+          Some("json") => Some(LintReporterKind::Json),
+          Some("compact") => Some(LintReporterKind::Compact),
+          Some("pretty") => Some(LintReporterKind::Pretty),
+          Some(_) => {
+            bail!("Invalid lint report type in config file")
+          }
+          None => None,
+        }
+      }
+    }
 
     let (
       maybe_file_flags,
@@ -304,30 +322,14 @@ impl LintOptions {
       })
       .unwrap_or_default();
 
-    if let Some(lint_config) = &maybe_lint_config {
-      // Try to get lint reporter.
-      if maybe_reporter_kind.is_none() {
-        maybe_reporter_kind = match lint_config.report.as_deref() {
-          Some("json") => Some(LintReporterKind::Json),
-          Some("compact") => Some(LintReporterKind::Compact),
-          Some("pretty") => Some(LintReporterKind::Pretty),
-          Some(_) => {
-            bail!("Invalid lint report type in config file")
-          }
-          None => None,
-        }
-      }
-    }
-
+    let (maybe_config_files, maybe_config_rules) =
+      maybe_lint_config.map(|c| (c.files, c.rules)).unzip();
     Ok(Self {
       reporter_kind: maybe_reporter_kind.unwrap_or_default(),
       is_stdin,
-      files: resolve_files(
-        maybe_lint_config.as_ref().map(|c| c.files.clone()),
-        Some(maybe_file_flags),
-      ),
+      files: resolve_files(maybe_config_files, Some(maybe_file_flags)),
       rules: resolve_lint_rules_options(
-        maybe_lint_config.map(|c| c.rules),
+        maybe_config_rules,
         maybe_rules_tags,
         maybe_rules_include,
         maybe_rules_exclude,
