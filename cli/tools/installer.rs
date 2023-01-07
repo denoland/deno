@@ -1002,9 +1002,9 @@ mod tests {
     if cfg!(windows) {
       // TODO: see comment above this test
     } else {
-      assert!(
-        content.contains(r#"run 'http://localhost:4545/echo_server.ts' '"'"#)
-      );
+      assert!(content.contains(
+        r#"run --no-config 'http://localhost:4545/echo_server.ts' '"'"#
+      ));
     }
   }
 
