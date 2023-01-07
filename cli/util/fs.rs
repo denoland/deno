@@ -209,6 +209,7 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
   ) -> Result<Vec<PathBuf>, AnyError> {
     let mut target_files = Vec::new();
     let files = if files.is_empty() {
+      // collect files in the current directory when empty
       Cow::Owned(vec![PathBuf::from(".")])
     } else {
       Cow::Borrowed(files)
@@ -274,6 +275,7 @@ pub fn collect_specifiers(
 
   let root_path = current_dir()?;
   let include_files = if files.include.is_empty() {
+    // collect files in the current directory when empty
     Cow::Owned(vec![root_path.clone()])
   } else {
     Cow::Borrowed(&files.include)

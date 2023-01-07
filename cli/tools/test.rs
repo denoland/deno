@@ -1428,6 +1428,7 @@ pub async fn run_tests_with_watch(
             }
           }
         }
+
         // This test module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
