@@ -78,6 +78,7 @@ http.workspace = true
 import_map = "=0.15.0"
 indexmap.workspace = true
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
+lazy-regex.workspace = true
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
@@ -91,7 +92,6 @@ percent-encoding.workspace = true
 pin-project.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
-lazy-regex.workspace = true
 ring.workspace = true
 rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 rustyline-derive = "=0.7.0"
