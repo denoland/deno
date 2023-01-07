@@ -26,6 +26,7 @@ use deno_core::futures::StreamExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use log::Level;
@@ -336,8 +337,8 @@ async fn check_specifiers(
     specifiers,
     false,
     lib,
-    Permissions::allow_all(),
-    permissions,
+    PermissionsContainer::allow_all(),
+    PermissionsContainer::new(permissions),
     true,
   )
   .await?;
@@ -357,7 +358,7 @@ async fn bench_specifier(
   let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier.clone(),
-    permissions,
+    PermissionsContainer::new(permissions),
     vec![ops::bench::init(channel.clone(), filter)],
     Default::default(),
   )
@@ -489,6 +490,9 @@ pub async fn run_benchmarks(
   bench_options: BenchOptions,
 ) -> Result<(), AnyError> {
   let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  // Various bench files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
@@ -520,6 +524,9 @@ pub async fn run_benchmarks_with_watch(
   bench_options: BenchOptions,
 ) -> Result<(), AnyError> {
   let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  // Various bench files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
