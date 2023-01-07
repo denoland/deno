@@ -3,7 +3,8 @@
     "tags": ["recommended"],
     "include": [
       "ban-untagged-todo",
-      "camelcase"
+      "camelcase",
+      "guard-for-in"
     ],
     "exclude": [
       "no-invalid-triple-slash-reference"
