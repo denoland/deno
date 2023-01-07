@@ -46,6 +46,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::io::BufReader;
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -55,7 +56,6 @@ use crate::util::path::specifier_to_file_path;
 use crate::version;
 
 use self::config_file::FilesConfig;
-use self::config_file::FinalTestConfig;
 use self::config_file::LintConfig;
 
 /// Indicates how cached source files should be handled.
@@ -124,7 +124,6 @@ impl FmtOptions {
     } else {
       false
     };
-    // todo(THIS PR): remove cloning
     let (mut include, mut ignore) = maybe_fmt_flags
       .as_ref()
       .map(|f| (f.files.include.clone(), f.files.ignore.clone()))
@@ -187,6 +186,50 @@ fn resolve_fmt_options(
   }
 
   options
+}
+
+#[derive(Clone)]
+pub struct TestOptions {
+  pub files: FileFlags,
+  pub doc: bool,
+  pub no_run: bool,
+  pub fail_fast: Option<NonZeroUsize>,
+  pub allow_none: bool,
+  pub filter: Option<String>,
+  pub shuffle: Option<u64>,
+  pub concurrent_jobs: NonZeroUsize,
+  pub trace_ops: bool,
+}
+
+impl TestOptions {
+  pub fn resolve(
+    maybe_test_config: Option<TestConfig>,
+    maybe_test_flags: Option<TestFlags>,
+  ) -> Result<Self, AnyError> {
+    let test_flags = maybe_test_flags.unwrap_or_default();
+    let mut include = test_flags.files.include.clone();
+    let mut ignore = test_flags.files.ignore.clone();
+
+    if let Some(test_config) = maybe_test_config {
+      let filters = collect_filters(&test_config.files, include, ignore)?;
+      include = filters.include;
+      ignore = filters.ignore;
+    }
+
+    Ok(Self {
+      files: FileFlags { include, ignore },
+      allow_none: test_flags.allow_none,
+      concurrent_jobs: test_flags
+        .concurrent_jobs
+        .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
+      doc: test_flags.doc,
+      fail_fast: test_flags.fail_fast,
+      filter: test_flags.filter,
+      no_run: test_flags.no_run,
+      shuffle: test_flags.shuffle,
+      trace_ops: test_flags.trace_ops,
+    })
+  }
 }
 
 #[derive(Clone, Debug)]
@@ -618,7 +661,7 @@ impl CliOptions {
     &self.maybe_config_file
   }
 
-  pub fn to_fmt_options(
+  pub fn resolve_fmt_options(
     &self,
     fmt_flags: FmtFlags,
   ) -> Result<FmtOptions, AnyError> {
@@ -630,7 +673,7 @@ impl CliOptions {
     FmtOptions::resolve(maybe_fmt_config, Some(fmt_flags))
   }
 
-  pub fn to_lint_options(
+  pub fn resolve_lint_options(
     &self,
     lint_flags: LintFlags,
   ) -> Result<LintOptions, AnyError> {
@@ -642,24 +685,16 @@ impl CliOptions {
     LintOptions::resolve(maybe_lint_config, Some(lint_flags))
   }
 
-  pub fn to_test_config(
+  pub fn resolve_test_options(
     &self,
-    test_flags: &TestFlags,
-  ) -> Result<FinalTestConfig, AnyError> {
-    let mut include = test_flags.files.include.clone();
-    let mut ignore = test_flags.files.ignore.clone();
-
-    if let Some(config_file) = &self.maybe_config_file {
-      if let Some(test_config) = config_file.to_test_config()? {
-        let filters = collect_filters(&test_config.files, include, ignore)?;
-        include = filters.include;
-        ignore = filters.ignore;
-      }
-    }
-
-    Ok(FinalTestConfig {
-      files: FileFlags { include, ignore },
-    })
+    test_flags: TestFlags,
+  ) -> Result<TestOptions, AnyError> {
+    let maybe_test_config = if let Some(config_file) = &self.maybe_config_file {
+      config_file.to_test_config()?
+    } else {
+      None
+    };
+    TestOptions::resolve(maybe_test_config, Some(test_flags))
   }
 
   pub fn to_bench_config(

@@ -7,8 +7,6 @@ use clap::Command;
 use clap::ValueHint;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::url::Url;
 use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
@@ -49,7 +47,7 @@ static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
     .to_string()
 });
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {
   pub ignore: Vec<PathBuf>,
   pub include: Vec<PathBuf>,
@@ -74,29 +72,29 @@ impl FileFlags {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BenchFlags {
   pub files: FileFlags,
   pub filter: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleFlags {
   pub source_file: String,
   pub out_file: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CacheFlags {
   pub files: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CheckFlags {
   pub files: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompileFlags {
   pub source_file: String,
   pub output: Option<PathBuf>,
@@ -104,12 +102,12 @@ pub struct CompileFlags {
   pub target: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompletionsFlags {
   pub buf: Box<[u8]>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoverageFlags {
   pub files: Vec<PathBuf>,
   pub output: Option<PathBuf>,
@@ -119,7 +117,7 @@ pub struct CoverageFlags {
   pub lcov: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocFlags {
   pub private: bool,
   pub json: bool,
@@ -127,14 +125,14 @@ pub struct DocFlags {
   pub filter: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
   pub ext: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FmtFlags {
   pub check: bool,
   pub ext: String,
@@ -146,18 +144,18 @@ pub struct FmtFlags {
   pub prose_wrap: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InitFlags {
   pub dir: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InfoFlags {
   pub json: bool,
   pub file: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallFlags {
   pub module_url: String,
   pub args: Vec<String>,
@@ -166,13 +164,13 @@ pub struct InstallFlags {
   pub force: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UninstallFlags {
   pub name: String,
   pub root: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LintFlags {
   pub files: FileFlags,
   pub rules: bool,
@@ -183,14 +181,14 @@ pub struct LintFlags {
   pub compact: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
   pub eval: Option<String>,
   pub is_default_command: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RunFlags {
   pub script: String,
 }
@@ -201,13 +199,13 @@ impl RunFlags {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TaskFlags {
   pub cwd: Option<String>,
   pub task: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct TestFlags {
   pub doc: bool,
   pub no_run: bool,
@@ -216,11 +214,11 @@ pub struct TestFlags {
   pub allow_none: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
-  pub concurrent_jobs: NonZeroUsize,
+  pub concurrent_jobs: Option<NonZeroUsize>,
   pub trace_ops: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpgradeFlags {
   pub dry_run: bool,
   pub force: bool,
@@ -229,14 +227,14 @@ pub struct UpgradeFlags {
   pub output: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VendorFlags {
   pub specifiers: Vec<String>,
   pub output_path: Option<PathBuf>,
   pub force: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Bench(BenchFlags),
   Bundle(BundleFlags),
@@ -2836,12 +2834,9 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let concurrent_jobs = if matches.is_present("parallel") {
     if let Ok(value) = env::var("DENO_JOBS") {
-      value
-        .parse::<NonZeroUsize>()
-        .unwrap_or(NonZeroUsize::new(1).unwrap())
+      value.parse::<NonZeroUsize>().ok()
     } else {
-      std::thread::available_parallelism()
-        .unwrap_or(NonZeroUsize::new(1).unwrap())
+      std::thread::available_parallelism().ok()
     }
   } else if matches.is_present("jobs") {
     // We can't change this to use the log crate because its not configured
@@ -2853,13 +2848,12 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
       crate::colors::yellow("Warning: --jobs flag is deprecated. Use the --parallel flag with possibly the 'DENO_JOBS' environment variable."),
     );
     if let Some(value) = matches.value_of("jobs") {
-      value.parse().unwrap()
+      Some(value.parse().unwrap())
     } else {
-      std::thread::available_parallelism()
-        .unwrap_or(NonZeroUsize::new(1).unwrap())
+      std::thread::available_parallelism().ok()
     }
   } else {
-    NonZeroUsize::new(1).unwrap()
+    None
   };
 
   let include = if matches.is_present("files") {
@@ -5576,7 +5570,7 @@ mod tests {
             ignore: vec![],
           },
           shuffle: None,
-          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          concurrent_jobs: None,
           trace_ops: true,
         }),
         unstable: true,
@@ -5649,7 +5643,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          concurrent_jobs: NonZeroUsize::new(4).unwrap(),
+          concurrent_jobs: Some(NonZeroUsize::new(4).unwrap()),
           trace_ops: false,
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -5679,7 +5673,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          concurrent_jobs: None,
           trace_ops: false,
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -5713,7 +5707,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          concurrent_jobs: None,
           trace_ops: false,
         }),
         no_prompt: true,
@@ -5741,7 +5735,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          concurrent_jobs: None,
           trace_ops: false,
         }),
         no_prompt: true,
@@ -5769,7 +5763,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          concurrent_jobs: None,
           trace_ops: false,
         }),
         no_prompt: true,
@@ -5796,7 +5790,7 @@ mod tests {
             include: vec![PathBuf::from("./")],
             ignore: vec![],
           },
-          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          concurrent_jobs: None,
           trace_ops: false,
         }),
         no_prompt: true,
@@ -5825,7 +5819,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+          concurrent_jobs: None,
           trace_ops: false,
         }),
         watch: Some(vec![]),

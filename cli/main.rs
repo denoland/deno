@@ -109,9 +109,9 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       Ok(0)
     }
     DenoSubcommand::Fmt(fmt_flags) => {
-      let config = CliOptions::from_flags(flags)?;
-      let fmt_options = config.to_fmt_options(fmt_flags)?;
-      tools::fmt::format(config, fmt_options).await?;
+      let cli_options = CliOptions::from_flags(flags)?;
+      let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
+      tools::fmt::format(cli_options, fmt_options).await?;
       Ok(0)
     }
     DenoSubcommand::Init(init_flags) => {
@@ -138,9 +138,9 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if lint_flags.rules {
         tools::lint::print_rules_list(lint_flags.json);
       } else {
-        let config = CliOptions::from_flags(flags)?;
-        let lint_options = config.to_lint_options(lint_flags)?;
-        tools::lint::lint(config, lint_options).await?;
+        let cli_options = CliOptions::from_flags(flags)?;
+        let lint_options = cli_options.resolve_lint_options(lint_flags)?;
+        tools::lint::lint(cli_options, lint_options).await?;
       }
       Ok(0)
     }
@@ -168,11 +168,13 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
           PathBuf::from(coverage_dir).canonicalize()?,
         );
       }
+      let cli_options = CliOptions::from_flags(flags)?;
+      let test_options = cli_options.resolve_test_options(test_flags)?;
 
-      if flags.watch.is_some() {
-        tools::test::run_tests_with_watch(flags, test_flags).await?;
+      if cli_options.watch_paths().is_some() {
+        tools::test::run_tests_with_watch(cli_options, test_options).await?;
       } else {
-        tools::test::run_tests(flags, test_flags).await?;
+        tools::test::run_tests(cli_options, test_options).await?;
       }
 
       Ok(0)

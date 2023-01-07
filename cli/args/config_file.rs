@@ -456,10 +456,6 @@ pub struct TestConfig {
   pub files: FilesConfig,
 }
 
-pub struct FinalTestConfig {
-  pub files: FileFlags,
-}
-
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedBenchConfig {

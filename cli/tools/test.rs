@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::Flags;
-use crate::args::TestFlags;
+use crate::args::CliOptions;
+use crate::args::TestOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display;
@@ -1305,31 +1305,29 @@ async fn fetch_specifiers_with_test_mode(
 }
 
 pub async fn run_tests(
-  flags: Flags,
-  test_flags: TestFlags,
+  cli_options: CliOptions,
+  test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let test_config = &ps.options.to_test_config(&test_flags)?;
-
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     &ps,
-    test_config.files.include.clone(),
-    test_config.files.ignore.clone(),
-    test_flags.doc,
+    test_options.files.include,
+    test_options.files.ignore,
+    test_options.doc,
   )
   .await?;
 
-  if !test_flags.allow_none && specifiers_with_mode.is_empty() {
+  if !test_options.allow_none && specifiers_with_mode.is_empty() {
     return Err(generic_error("No test modules found"));
   }
 
   check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
     .await?;
 
-  if test_flags.no_run {
+  if test_options.no_run {
     return Ok(());
   }
 
@@ -1338,9 +1336,9 @@ pub async fn run_tests(
     permissions,
     specifiers_with_mode,
     TestSpecifierOptions {
-      concurrent_jobs: test_flags.concurrent_jobs,
-      fail_fast: test_flags.fail_fast,
-      filter: TestFilter::from_flag(&test_flags.filter),
+      concurrent_jobs: test_options.concurrent_jobs,
+      fail_fast: test_options.fail_fast,
+      filter: TestFilter::from_flag(&test_options.filter),
     },
   )
   .await?;
@@ -1349,16 +1347,14 @@ pub async fn run_tests(
 }
 
 pub async fn run_tests_with_watch(
-  flags: Flags,
-  test_flags: TestFlags,
+  cli_options: CliOptions,
+  test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let test_config = &ps.options.to_test_config(&test_flags)?;
-
-  let paths_to_watch: Vec<_> = test_config
+  let paths_to_watch: Vec<_> = test_options
     .files
     .include
     .iter()
@@ -1371,12 +1367,12 @@ pub async fn run_tests_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = test_config.files.include.clone();
-    let ignore = test_config.files.ignore.clone();
+    let include = test_options.files.include.clone();
+    let ignore = test_options.files.ignore.clone();
     let ps = ps.clone();
 
     async move {
-      let test_modules = if test_flags.doc {
+      let test_modules = if test_options.doc {
         collect_specifiers(&include, &ignore, is_supported_test_ext)
       } else {
         collect_specifiers(&include, &ignore, is_supported_test_path)
@@ -1490,25 +1486,27 @@ pub async fn run_tests_with_watch(
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
     let permissions = permissions.clone();
     let ps = ps.clone();
-    let test_flags = test_flags.clone();
-    let include = test_config.files.include.clone();
-    let ignore = test_config.files.ignore.clone();
+    let test_options = test_options.clone();
 
     async move {
-      let specifiers_with_mode =
-        fetch_specifiers_with_test_mode(&ps, include, ignore, test_flags.doc)
-          .await?
-          .iter()
-          .filter(|(specifier, _)| {
-            contains_specifier(&modules_to_reload, specifier)
-          })
-          .cloned()
-          .collect::<Vec<(ModuleSpecifier, TestMode)>>();
+      let specifiers_with_mode = fetch_specifiers_with_test_mode(
+        &ps,
+        test_options.files.include,
+        test_options.files.ignore,
+        test_options.doc,
+      )
+      .await?
+      .iter()
+      .filter(|(specifier, _)| {
+        contains_specifier(&modules_to_reload, specifier)
+      })
+      .cloned()
+      .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
         .await?;
 
-      if test_flags.no_run {
+      if test_options.no_run {
         return Ok(());
       }
 
@@ -1517,9 +1515,9 @@ pub async fn run_tests_with_watch(
         permissions.clone(),
         specifiers_with_mode,
         TestSpecifierOptions {
-          concurrent_jobs: test_flags.concurrent_jobs,
-          fail_fast: test_flags.fail_fast,
-          filter: TestFilter::from_flag(&test_flags.filter),
+          concurrent_jobs: test_options.concurrent_jobs,
+          fail_fast: test_options.fail_fast,
+          filter: TestFilter::from_flag(&test_options.filter),
         },
       )
       .await?;
