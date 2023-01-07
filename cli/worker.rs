@@ -72,6 +72,8 @@ impl CliMainWorker {
       )
       .context("Unable to load package.json from CWD")?;
 
+      self.is_main_cjs = package_json.typ != "module";
+
       if let Some(deps) = &package_json.dependencies {
         let mut reqs = vec![];
         for (key, value) in deps {
