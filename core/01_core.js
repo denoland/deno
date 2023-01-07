@@ -268,7 +268,7 @@
   }
 
   function metrics() {
-    const [aggregate, perOps] = ops.op_metrics();
+    const { 0: aggregate, 1: perOps } = ops.op_metrics();
     aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
       ops.op_op_names(),
       (opName, opId) => [opName, perOps[opId]],
