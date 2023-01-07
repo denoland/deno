@@ -8,12 +8,6 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
-use crate::inspector_server::InspectorServer;
-use crate::js;
-use crate::ops;
-use crate::ops::io::Stdio;
-use crate::permissions::PermissionsContainer;
-use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
@@ -39,6 +33,13 @@ use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
+
+use crate::inspector_server::InspectorServer;
+use crate::js;
+use crate::ops;
+use crate::ops::io::Stdio;
+use crate::permissions::PermissionsContainer;
+use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
