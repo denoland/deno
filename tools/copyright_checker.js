@@ -26,7 +26,6 @@ async function checkCopyright() {
     "*Cargo.toml",
   ]);
 
-
   let totalCount = 0;
   let sourceFilesSet = new Set(sourceFiles);
   const buffer = new Uint8Array(1024);
