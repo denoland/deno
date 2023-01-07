@@ -128,7 +128,7 @@ pub async fn format(
         Ok(files)
       }
     })?;
-    operation((files, fmt_config_options.clone())).await?;
+    operation((files, fmt_config_options)).await?;
   }
 
   Ok(())
