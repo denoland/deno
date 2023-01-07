@@ -1347,27 +1347,22 @@ pub async fn run_tests_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let paths_to_watch: Vec<_> = test_options
-    .files
-    .include
-    .iter()
-    .map(PathBuf::from)
-    .collect();
+  let paths_to_watch: Vec<_> = test_options.files.include.clone();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
+  let test_options = &test_options;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let files = test_options.files.clone();
     let ps = ps.clone();
 
     async move {
       let test_modules = if test_options.doc {
-        collect_specifiers(&files, is_supported_test_ext)
+        collect_specifiers(&test_options.files, is_supported_test_ext)
       } else {
-        collect_specifiers(&files, is_supported_test_path)
+        collect_specifiers(&test_options.files, is_supported_test_path)
       }?;
 
       let mut paths_to_watch = paths_to_watch_clone;
