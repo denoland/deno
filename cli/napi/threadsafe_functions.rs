@@ -35,6 +35,22 @@ impl TsFn {
     Ok(())
   }
 
+  pub fn ref_(&mut self) -> Result {
+    self
+      .tsfn_sender
+      .unbounded_send(ThreadSafeFunctionStatus::Alive)
+      .map_err(|_| Error::GenericFailure)?;
+    Ok(())
+  }
+
+  pub fn unref(&mut self) -> Result {
+    self
+      .tsfn_sender
+      .unbounded_send(ThreadSafeFunctionStatus::Dead)
+      .map_err(|_| Error::GenericFailure)?;
+    Ok(())
+  }
+
   pub fn call(&self, data: *mut c_void, is_blocking: bool) {
     let js_func = self.maybe_func.clone();
     let (tx, rx) = channel();
@@ -142,7 +158,8 @@ fn napi_unref_threadsafe_function(
   _env: &mut Env,
   tsfn: napi_threadsafe_function,
 ) -> Result {
-  let _tsfn: &TsFn = &*(tsfn as *const TsFn);
+  let tsfn: &mut TsFn = &mut *(tsfn as *mut TsFn);
+  tsfn.unref()?;
 
   Ok(())
 }
@@ -170,8 +187,12 @@ fn napi_call_threadsafe_function(
 }
 
 #[napi_sym::napi_sym]
-fn napi_ref_threadsafe_function() -> Result {
-  // TODO
+fn napi_ref_threadsafe_function(
+  _env: &mut Env,
+  func: napi_threadsafe_function,
+) -> Result {
+  let tsfn: &mut TsFn = &mut *(func as *mut TsFn);
+  tsfn.ref_()?;
   Ok(())
 }
 
