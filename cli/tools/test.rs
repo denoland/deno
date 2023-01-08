@@ -988,8 +988,8 @@ pub async fn check_specifiers(
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
-  ps: ProcState,
-  permissions: Permissions,
+  ps: &ProcState,
+  permissions: &Permissions,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
@@ -1237,13 +1237,13 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
-  files: FilesConfig,
-  include_inline: bool,
+  files: &FilesConfig,
+  include_inline: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let module_specifiers = collect_specifiers(&files, is_supported_test_path)?;
+  let module_specifiers = collect_specifiers(files, is_supported_test_path)?;
 
-  if include_inline {
-    return collect_specifiers(&files, is_supported_test_ext).map(
+  if *include_inline {
+    return collect_specifiers(files, is_supported_test_ext).map(
       |specifiers| {
         specifiers
           .into_iter()
@@ -1279,10 +1279,11 @@ fn collect_specifiers_with_test_mode(
 /// as well.
 async fn fetch_specifiers_with_test_mode(
   ps: &ProcState,
-  files: FilesConfig,
-  doc: bool,
+  files: &FilesConfig,
+  doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let mut specifiers_with_mode = collect_specifiers_with_test_mode(files, doc)?;
+
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = ps
       .file_fetcher
@@ -1310,9 +1311,12 @@ pub async fn run_tests(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let specifiers_with_mode =
-    fetch_specifiers_with_test_mode(&ps, test_options.files, test_options.doc)
-      .await?;
+  let specifiers_with_mode = fetch_specifiers_with_test_mode(
+    &ps,
+    &test_options.files,
+    &test_options.doc,
+  )
+  .await?;
 
   if !test_options.allow_none && specifiers_with_mode.is_empty() {
     return Err(generic_error("No test modules found"));
@@ -1326,8 +1330,8 @@ pub async fn run_tests(
   }
 
   test_specifiers(
-    ps,
-    permissions,
+    &ps,
+    &permissions,
     specifiers_with_mode,
     TestSpecifierOptions {
       concurrent_jobs: test_options.concurrent_jobs,
@@ -1350,17 +1354,14 @@ pub async fn run_tests_with_watch(
   // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
-
-  let paths_to_watch: Vec<_> = test_options.files.include.clone();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
-  let test_options = &test_options;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
-    let paths_to_watch = paths_to_watch.clone();
+    let paths_to_watch = test_options.files.include.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
-
     let files_changed = changed.is_some();
-    let ps = ps.clone();
+    let test_options = &test_options;
+    let ps = &ps;
 
     async move {
       let test_modules = if test_options.doc {
@@ -1476,15 +1477,15 @@ pub async fn run_tests_with_watch(
   };
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let permissions = permissions.clone();
-    let ps = ps.clone();
-    let test_options = test_options.clone();
+    let permissions = &permissions;
+    let ps = &ps;
+    let test_options = &test_options;
 
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
-        &ps,
-        test_options.files,
-        test_options.doc,
+        ps,
+        &test_options.files,
+        &test_options.doc,
       )
       .await?
       .iter()
@@ -1494,7 +1495,7 @@ pub async fn run_tests_with_watch(
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-      check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
+      check_specifiers(ps, permissions.clone(), specifiers_with_mode.clone())
         .await?;
 
       if test_options.no_run {
@@ -1503,7 +1504,7 @@ pub async fn run_tests_with_watch(
 
       test_specifiers(
         ps,
-        permissions.clone(),
+        permissions,
         specifiers_with_mode,
         TestSpecifierOptions {
           concurrent_jobs: test_options.concurrent_jobs,
