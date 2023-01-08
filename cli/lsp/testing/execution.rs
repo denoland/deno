@@ -35,6 +35,7 @@ use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -273,7 +274,13 @@ impl TestRun {
 
     let (concurrent_jobs, fail_fast) =
       if let DenoSubcommand::Test(test_flags) = ps.options.sub_command() {
-        (test_flags.concurrent_jobs.into(), test_flags.fail_fast)
+        (
+          test_flags
+            .concurrent_jobs
+            .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
+            .into(),
+          test_flags.fail_fast,
+        )
       } else {
         unreachable!("Should always be Test subcommand.");
       };
