@@ -29,6 +29,7 @@ use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
@@ -226,7 +227,9 @@ pub async fn run(
   let flags = metadata_to_flags(&metadata);
   let main_module = &metadata.entrypoint;
   let ps = ProcState::build(flags).await?;
-  let permissions = Permissions::from_options(&metadata.permissions)?;
+  let permissions = PermissionsContainer::new(Permissions::from_options(
+    &metadata.permissions,
+  )?);
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader {
