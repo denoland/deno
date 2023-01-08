@@ -2,9 +2,126 @@
 
 use core::ffi::c_void;
 use napi_sys::Status::napi_ok;
-use napi_sys::TypedarrayType::uint8_array;
+use napi_sys::TypedarrayType;
+use napi_sys::ValueType::napi_number;
+use napi_sys::ValueType::napi_object;
 use napi_sys::*;
 use std::ptr;
+
+extern "C" fn test_multiply(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = crate::get_callback_info!(env, info, 2);
+  assert_eq!(argc, 2);
+
+  let mut ty = -1;
+  assert!(unsafe { napi_typeof(env, args[0], &mut ty) } == napi_ok);
+  assert_eq!(ty, napi_object);
+
+  let input_array = args[0];
+  let mut is_typed_array = false;
+  assert!(
+    unsafe { napi_is_typedarray(env, input_array, &mut is_typed_array) }
+      == napi_ok
+  );
+
+  let mut ty = -1;
+  assert!(unsafe { napi_typeof(env, args[1], &mut ty) } == napi_ok);
+  assert_eq!(ty, napi_number);
+
+  let mut multiplier: f64 = 0.0;
+  assert!(
+    unsafe { napi_get_value_double(env, args[1], &mut multiplier) } == napi_ok
+  );
+
+  let mut ty = -1;
+  let mut input_buffer = ptr::null_mut();
+  let mut byte_offset = 0;
+  let mut length = 0;
+
+  assert!(
+    unsafe {
+      napi_get_typedarray_info(
+        env,
+        input_array,
+        &mut ty,
+        &mut length,
+        ptr::null_mut(),
+        &mut input_buffer,
+        &mut byte_offset,
+      )
+    } == napi_ok
+  );
+
+  let mut data = ptr::null_mut();
+  let mut byte_length = 0;
+
+  assert!(
+    unsafe {
+      napi_get_arraybuffer_info(env, input_buffer, &mut data, &mut byte_length)
+    } == napi_ok
+  );
+
+  let mut output_buffer = ptr::null_mut();
+  let mut output_ptr = ptr::null_mut();
+  assert!(
+    unsafe {
+      napi_create_arraybuffer(
+        env,
+        byte_length,
+        &mut output_ptr,
+        &mut output_buffer,
+      )
+    } == napi_ok
+  );
+
+  let mut output_array: napi_value = ptr::null_mut();
+  assert!(
+    unsafe {
+      napi_create_typedarray(
+        env,
+        ty,
+        length,
+        output_buffer,
+        byte_offset,
+        &mut output_array,
+      )
+    } == napi_ok
+  );
+
+  if ty == TypedarrayType::uint8_array {
+    let input_bytes = unsafe { (data as *mut u8).offset(byte_offset as isize) };
+    let output_bytes = output_ptr as *mut u8;
+    for i in 0..length {
+      unsafe {
+        *output_bytes.offset(i as isize) =
+          (*input_bytes.offset(i as isize) as f64 * multiplier) as u8;
+      }
+    }
+  } else if ty == TypedarrayType::float64_array {
+    let input_doubles =
+      unsafe { (data as *mut f64).offset(byte_offset as isize) };
+    let output_doubles = output_ptr as *mut f64;
+    for i in 0..length {
+      unsafe {
+        *output_doubles.offset(i as isize) =
+          *input_doubles.offset(i as isize) * multiplier;
+      }
+    }
+  } else {
+    unsafe {
+      napi_throw_error(
+        env,
+        ptr::null(),
+        "Typed array was of a type not expected by test.".as_ptr() as *const i8,
+      );
+    }
+    return ptr::null_mut();
+  }
+
+  output_array
+}
 
 extern "C" fn test_external(
   env: napi_env,
@@ -30,7 +147,7 @@ extern "C" fn test_external(
     unsafe {
       napi_create_typedarray(
         env,
-        uint8_array,
+        TypedarrayType::uint8_array,
         external.len(),
         arraybuffer,
         0,
@@ -44,8 +161,10 @@ extern "C" fn test_external(
 }
 
 pub fn init(env: napi_env, exports: napi_value) {
-  let properties =
-    &[crate::new_property!(env, "test_external\0", test_external)];
+  let properties = &[
+    crate::new_property!(env, "test_external\0", test_external),
+    crate::new_property!(env, "test_multiply\0", test_multiply),
+  ];
 
   unsafe {
     napi_define_properties(env, exports, properties.len(), properties.as_ptr())
