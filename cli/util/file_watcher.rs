@@ -107,9 +107,13 @@ where
         log::debug!("File change ignored")
       }
       ResolutionResult::Restart {
-        paths_to_watch,
+        mut paths_to_watch,
         result,
       } => {
+        // watch the current directory when empty
+        if paths_to_watch.is_empty() {
+          paths_to_watch.push(PathBuf::from("."));
+        }
         return (paths_to_watch, result);
       }
     }
@@ -190,9 +194,13 @@ where
       print_after_restart();
     }
     ResolutionResult::Restart {
-      paths_to_watch: paths,
+      paths_to_watch: mut paths,
       result,
     } => {
+      // watch the current directory when empty
+      if paths.is_empty() {
+        paths.push(PathBuf::from("."));
+      }
       paths_to_watch = paths;
       resolution_result = result;
     }

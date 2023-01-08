@@ -4,7 +4,7 @@ use super::io::ChildStderrResource;
 use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use super::io::StdFileResource;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::op;
 
@@ -145,9 +145,8 @@ struct RunInfo {
 fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
   state
-    .borrow_mut::<Permissions>()
-    .run
-    .check(&args[0], Some("Deno.run()"))?;
+    .borrow_mut::<PermissionsContainer>()
+    .check_run(&args[0], "Deno.run()")?;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -354,9 +353,8 @@ fn op_kill(
   api_name: String,
 ) -> Result<(), AnyError> {
   state
-    .borrow_mut::<Permissions>()
-    .run
-    .check_all(Some(&api_name))?;
+    .borrow_mut::<PermissionsContainer>()
+    .check_run_all(&api_name)?;
   kill(pid, &signal)?;
   Ok(())
 }
