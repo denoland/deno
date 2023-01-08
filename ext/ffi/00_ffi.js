@@ -24,7 +24,7 @@
     PromisePrototypeThen,
     MathMax,
     MathCeil,
-    Map,
+    SafeMap,
     SafeArrayIterator,
   } = window.__bootstrap.primordials;
 
@@ -255,7 +255,7 @@
       typeof type.struct === "object";
   }
 
-  function getTypeSizeAndAlignment(type, cache = new Map()) {
+  function getTypeSizeAndAlignment(type, cache = new SafeMap()) {
     if (isStruct(type)) {
       const cached = cache.get(type);
       if (cached !== undefined) {
