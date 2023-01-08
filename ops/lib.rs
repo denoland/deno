@@ -221,7 +221,7 @@ fn codegen_v8_async(
         quote! {
           let result = match result {
             Ok(fut) => fut.await,
-            Err(e) => return (promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
+            Err(e) => return (realm_idx, promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
           };
         }
       } else {
