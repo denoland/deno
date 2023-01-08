@@ -262,10 +262,12 @@ pub(crate) fn generate(
 
     let queue_future = if optimizer.returns_result {
       q!({
+        let realm_idx = __ctx.realm_idx;
         let __get_class = __state.get_error_class_fn;
         let result = _ops::queue_fast_async_op(__ctx, async move {
           let result = result.await;
           (
+            realm_idx,
             __promise_id,
             __op_id,
             _ops::to_op_result(__get_class, result),
@@ -274,9 +276,15 @@ pub(crate) fn generate(
       })
     } else {
       q!({
+        let realm_idx = __ctx.realm_idx;
         let result = _ops::queue_fast_async_op(__ctx, async move {
           let result = result.await;
-          (__promise_id, __op_id, _ops::OpResult::Ok(result.into()))
+          (
+            realm_idx,
+            __promise_id,
+            __op_id,
+            _ops::OpResult::Ok(result.into()),
+          )
         });
       })
     };

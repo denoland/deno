@@ -43,6 +43,7 @@ impl send_stdin {
                 as *const deno_core::_ops::OpCtx)
         };
         let op_id = ctx.id;
+        let realm_idx = ctx.realm_idx;
         let promise_id = args.get(0);
         let promise_id = deno_core::v8::Local::<
             deno_core::v8::Integer,
@@ -85,7 +86,12 @@ impl send_stdin {
                         arg_0,
                     )
                     .await;
-                (promise_id, op_id, deno_core::_ops::to_op_result(get_class, result))
+                (
+                    realm_idx,
+                    promise_id,
+                    op_id,
+                    deno_core::_ops::to_op_result(get_class, result),
+                )
             },
         );
     }

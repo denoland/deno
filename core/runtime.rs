@@ -2501,20 +2501,16 @@ impl JsRealm {
 #[inline]
 pub fn queue_fast_async_op(
   ctx: &OpCtx,
-  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
+  op: impl Future<Output = (RealmIdx, PromiseId, OpId, OpResult)> + 'static,
 ) {
   let runtime_state = match ctx.runtime_state.upgrade() {
     Some(rc_state) => rc_state,
     // atleast 1 Rc is held by the JsRuntime.
     None => unreachable!(),
   };
-  let realm_idx = ctx.realm_idx;
 
   let mut state = runtime_state.borrow_mut();
-  state.pending_ops.push(OpCall::lazy(async move {
-    let (promise_id, op_id, resp) = op.await;
-    (realm_idx, promise_id, op_id, resp)
-  }));
+  state.pending_ops.push(OpCall::lazy(op));
   state.have_unpolled_ops = true;
 }
 
@@ -2523,7 +2519,7 @@ pub fn queue_async_op(
   ctx: &OpCtx,
   scope: &mut v8::HandleScope,
   deferred: bool,
-  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
+  op: impl Future<Output = (RealmIdx, PromiseId, OpId, OpResult)> + 'static,
 ) {
   let runtime_state = match ctx.runtime_state.upgrade() {
     Some(rc_state) => rc_state,
@@ -2535,16 +2531,12 @@ pub fn queue_async_op(
   // which it is invoked. Otherwise, we might have cross-realm object exposure.
   // deno_core doesn't currently support such exposure, even though embedders
   // can cause them, so we panic in debug mode (since the check is expensive).
-  let realm_idx = ctx.realm_idx;
   debug_assert_eq!(
-    runtime_state.borrow().known_realms[realm_idx].to_local(scope),
+    runtime_state.borrow().known_realms[ctx.realm_idx].to_local(scope),
     Some(scope.get_current_context())
   );
 
-  match OpCall::eager(async move {
-    let (promise_id, op_id, resp) = op.await;
-    (realm_idx, promise_id, op_id, resp)
-  }) {
+  match OpCall::eager(op) {
     // This calls promise.resolve() before the control goes back to userland JS. It works something
     // along the lines of:
     //
