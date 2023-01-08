@@ -25,7 +25,7 @@ fn setup() -> Vec<Extension> {
     deno_url::init(),
     deno_console::init(),
     deno_web::init::<Permissions>(BlobStore::default(), None),
-    Extension::builder()
+    Extension::builder("bench_setup")
     .js(vec![
       ("setup", r#"
       const { setTimeout, handleTimerMacrotask } = globalThis.__bootstrap.timers;

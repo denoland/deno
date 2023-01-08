@@ -94,9 +94,8 @@ pub fn init<FP>(options: Options) -> Extension
 where
   FP: FetchPermissions + 'static,
 {
-  Extension::builder()
-    .name("fetch")
-    .dependencies(vec!["webidl", "web", "url", "console"])
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_console"])
     .js(include_js_files!(
       prefix "deno:ext/fetch",
       "01_fetch_util.js",

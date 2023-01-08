@@ -202,7 +202,7 @@ impl MainWorker {
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let perm_ext = Extension::builder()
+    let perm_ext = Extension::builder("deno_permissions_worker")
       .state(move |state| {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });

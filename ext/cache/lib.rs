@@ -26,9 +26,8 @@ pub struct CreateCache<C: Cache + 'static>(pub Arc<dyn Fn() -> C>);
 pub fn init<CA: Cache + 'static>(
   maybe_create_cache: Option<CreateCache<CA>>,
 ) -> Extension {
-  Extension::builder()
-    .name("cache")
-    .dependencies(vec!["webidl", "web", "url", "fetch"])
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_fetch"])
     .js(include_js_files!(
       prefix "deno:ext/cache",
       "01_cache.js",

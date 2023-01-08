@@ -42,40 +42,44 @@ pub struct Extension {
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   initialized: bool,
   enabled: bool,
-  name: Option<&'static str>,
+  name: &'static str,
   deps: Option<Vec<&'static str>>,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
 // for the initial iteration, it will likely become a trait in the future
 impl Extension {
-  pub fn builder() -> ExtensionBuilder {
-    Default::default()
+  pub fn builder(name: &'static str) -> ExtensionBuilder {
+    ExtensionBuilder {
+      name,
+      ..Default::default()
+    }
+  }
+
+  /// Check if dependencies have been loaded, and errors if either:
+  /// - The extension is depending on itself or an extension with the same name.
+  /// - A dependency hasn't been loaded yet.
+  pub fn check_dependencies(&self, previous_exts: &[&mut Extension]) {
+    if let Some(deps) = &self.deps {
+      'dep_loop: for dep in deps {
+        if dep == &self.name {
+          panic!("Extension '{}' is either depending on itself or there is another extension with the same name", self.name);
+        }
+
+        for ext in previous_exts {
+          if dep == &ext.name {
+            continue 'dep_loop;
+          }
+        }
+
+        panic!("Extension '{}' is missing dependency '{dep}'", self.name);
+      }
+    }
   }
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn init_js(&self, previous_exts: &[Extension]) -> &[SourcePair] {
-    if let Some(deps) = &self.deps {
-      'dep_loop: for dep in deps {
-        for ext in previous_exts {
-          if let Some(ext_name) = ext.name {
-            if dep == &ext_name {
-              continue 'dep_loop;
-            }
-          }
-        }
-
-        panic!(
-          "Extension {}is missing dependency '{dep}'",
-          self
-            .name
-            .map(|name| format!("'{name}' "))
-            .unwrap_or_default()
-        )
-      }
-    }
-
+  pub fn init_js(&self) -> &[SourcePair] {
     match &self.js_files {
       Some(files) => files,
       None => &[],
@@ -143,16 +147,11 @@ pub struct ExtensionBuilder {
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
-  name: Option<&'static str>,
+  name: &'static str,
   deps: Vec<&'static str>,
 }
 
 impl ExtensionBuilder {
-  pub fn name(&mut self, name: &'static str) -> &mut Self {
-    self.name = Some(name);
-    self
-  }
-
   pub fn dependencies(&mut self, dependencies: Vec<&'static str>) -> &mut Self {
     self.deps.extend(dependencies);
     self
@@ -204,7 +203,7 @@ impl ExtensionBuilder {
       event_loop_middleware: self.event_loop_middleware.take(),
       initialized: false,
       enabled: true,
-      name: self.name.take(),
+      name: self.name,
       deps,
     }
   }

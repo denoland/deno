@@ -602,9 +602,8 @@ pub fn init<P: WebSocketPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
-  Extension::builder()
-    .name("websocket")
-    .dependencies(vec!["url", "webidl"])
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_url", "deno_webidl"])
     .js(include_js_files!(
       prefix "deno:ext/websocket",
       "01_websocket.js",
