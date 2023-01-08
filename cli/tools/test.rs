@@ -891,7 +891,7 @@ fn extract_files_from_fenced_blocks(
 }
 
 async fn fetch_inline_files(
-  ps: ProcState,
+  ps: &ProcState,
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
@@ -908,7 +908,7 @@ async fn fetch_inline_files(
     } else {
       extract_files_from_source_comments(
         &file.specifier,
-        file.source.clone(),
+        file.source,
         file.media_type,
       )
     };
@@ -927,7 +927,7 @@ pub async fn check_specifiers(
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
   let inline_files = fetch_inline_files(
-    ps.clone(),
+    ps,
     specifiers
       .iter()
       .filter_map(|(specifier, mode)| {
