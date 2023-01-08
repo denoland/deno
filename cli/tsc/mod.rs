@@ -770,7 +770,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .collect();
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
-    extensions: vec![Extension::builder()
+    extensions: vec![Extension::builder("deno_cli_tsc")
       .ops(vec![
         op_cwd::decl(),
         op_create_hash::decl(),

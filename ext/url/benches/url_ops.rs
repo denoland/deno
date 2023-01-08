@@ -8,7 +8,7 @@ fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::init(),
     deno_url::init(),
-    Extension::builder()
+    Extension::builder("bench_setup")
       .js(vec![(
         "setup",
         "const { URL } = globalThis.__bootstrap.url;",
