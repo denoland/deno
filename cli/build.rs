@@ -238,7 +238,7 @@ mod ts {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions: vec![Extension::builder()
+      extensions: vec![Extension::builder("deno_tsc")
         .ops(vec![
           op_build_info::decl(),
           op_cwd::decl(),

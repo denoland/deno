@@ -40,7 +40,7 @@ fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
 }
 
 pub fn init(exit_code: ExitCode) -> Extension {
-  let mut builder = Extension::builder();
+  let mut builder = Extension::builder("deno_os");
   init_ops(&mut builder)
     .state(move |state| {
       state.put::<ExitCode>(exit_code.clone());
@@ -50,7 +50,7 @@ pub fn init(exit_code: ExitCode) -> Extension {
 }
 
 pub fn init_for_worker() -> Extension {
-  let mut builder = Extension::builder();
+  let mut builder = Extension::builder("deno_os_worker");
   init_ops(&mut builder)
     .middleware(|op| match op.name {
       "op_exit" => noop_op::decl(),
