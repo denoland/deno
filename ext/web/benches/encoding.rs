@@ -24,6 +24,7 @@ fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::init(),
     deno_url::init(),
+    deno_console::init(),
     deno_web::init::<Permissions>(BlobStore::default(), None),
     Extension::builder()
       .js(vec![(
