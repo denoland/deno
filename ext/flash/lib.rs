@@ -1505,7 +1505,14 @@ pub trait FlashPermissions {
 }
 
 pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec![
+      "deno_web",
+      "deno_net",
+      "deno_fetch",
+      "deno_websocket",
+      "deno_http",
+    ])
     .js(deno_core::include_js_files!(
       prefix "deno:ext/flash",
       "01_http.js",

@@ -25,6 +25,7 @@ uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
 deno_bench_util.workspace = true
+deno_console.workspace = true
 deno_url.workspace = true
 deno_webidl.workspace = true
 

@@ -5,7 +5,7 @@ use deno_core::Extension;
 use std::path::PathBuf;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
     .js(include_js_files!(
       prefix "deno:ext/console",
       "01_colors.js",

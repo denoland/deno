@@ -34,7 +34,7 @@ fn get_windows_handle(
 }
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_tty")
     .ops(vec![
       op_stdin_set_raw::decl(),
       op_isatty::decl(),
