@@ -1231,6 +1231,19 @@ declare namespace Deno {
      */
     delete(key: string): void;
 
+    /** Check whether an environment variable is present or not.
+     *
+     * ```ts
+     * Deno.env.set("SOME_VAR", "Value");
+     * Deno.env.has("SOME_VAR");  // outputs true
+     * ```
+     *
+     * Requires `allow-env` permission.
+     *
+     * @tags allow-env
+     */
+    has(key: string): boolean;
+
     /** Returns a snapshot of the environment variables at invocation as a
      * simple object of keys and values.
      *
