@@ -137,7 +137,7 @@ pub async fn lint(
         handle_lint_result(
           &file_path.to_string_lossy(),
           r,
-          reporter_lock,
+          reporter_lock.clone(),
           has_error,
         );
 
