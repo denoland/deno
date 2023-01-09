@@ -1,6 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
@@ -30,7 +30,7 @@ use std::rc::Rc;
 use tokio::sync::mpsc;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_fs_events")
     .ops(vec![op_fs_events_open::decl(), op_fs_events_poll::decl()])
     .build()
 }
@@ -119,9 +119,8 @@ fn op_fs_events_open(
   for path in &args.paths {
     let path = PathBuf::from(path);
     state
-      .borrow_mut::<Permissions>()
-      .read
-      .check(&path, Some("Deno.watchFs()"))?;
+      .borrow_mut::<PermissionsContainer>()
+      .check_read(&path, "Deno.watchFs()")?;
     watcher.watch(&path, recursive_mode)?;
   }
   let resource = FsEventsResource {

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod integration;
 
@@ -61,6 +61,18 @@ mod check {
   itest!(check_export_equals_declaration_file {
     args: "check --quiet check/export_equals_declaration_file/main.ts",
     exit_code: 0,
+  });
+
+  itest!(check_static_response_json {
+    args: "check --quiet check/response_json.ts",
+    exit_code: 0,
+  });
+
+  itest!(check_no_error_truncation {
+    args: "check --quiet check/no_error_truncation/main.ts --config check/no_error_truncation/deno.json",
+    output: "check/no_error_truncation/main.out",
+    envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+    exit_code: 1,
   });
 
   #[test]

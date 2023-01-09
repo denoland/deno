@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
 use test_util::assert_contains;
@@ -52,17 +52,15 @@ mod repl {
 
   #[test]
   fn pty_unpaired_braces() {
-    util::with_pty(&["repl"], |mut console| {
-      console.write_line(")");
-      console.write_line("]");
-      console.write_line("}");
-      console.write_line("close();");
+    for right_brace in &[")", "]", "}"] {
+      util::with_pty(&["repl"], |mut console| {
+        console.write_line(right_brace);
+        console.write_line("close();");
 
-      let output = console.read_all_output();
-      assert_contains!(output, "Unexpected token `)`");
-      assert_contains!(output, "Unexpected token `]`");
-      assert_contains!(output, "Unexpected token `}`");
-    });
+        let output = console.read_all_output();
+        assert_contains!(output, "Expression expected");
+      });
+    }
   }
 
   #[test]
@@ -518,7 +516,7 @@ mod repl {
         None,
         false,
       );
-      assert_contains!(out, "Unexpected token");
+      assert_contains!(out, "Expression expected");
       assert!(err.is_empty());
     }
   }
@@ -565,7 +563,7 @@ mod repl {
       Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
       false,
     );
-    assert_contains!(out, "Unexpected token `>`");
+    assert_contains!(out, "Expression expected");
     assert!(err.is_empty());
   }
 
@@ -896,5 +894,73 @@ mod repl {
     assert!(!out.contains("exit using ctrl+d, ctrl+c, or close()"));
     assert_ends_with!(out, "\"done\"\n");
     assert!(err.is_empty());
+  }
+
+  #[test]
+  fn npm_packages() {
+    let mut env_vars = util::env_vars_for_npm_tests();
+    env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![
+          r#"import chalk from "npm:chalk";"#,
+          "chalk.red('hel' + 'lo')",
+        ]),
+        Some(env_vars.clone()),
+        true,
+      );
+
+      assert_contains!(out, "hello");
+      assert!(err.is_empty());
+    }
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![
+          r#"const chalk = await import("npm:chalk");"#,
+          "chalk.default.red('hel' + 'lo')",
+        ]),
+        Some(env_vars.clone()),
+        true,
+      );
+
+      assert_contains!(out, "hello");
+      assert!(err.is_empty());
+    }
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![r#"export {} from "npm:chalk";"#]),
+        Some(env_vars.clone()),
+        true,
+      );
+
+      assert_contains!(out, "Module {");
+      assert_contains!(out, "Chalk: [Function: Chalk],");
+      assert!(err.is_empty());
+    }
+
+    {
+      let (out, err) = util::run_and_collect_output_with_args(
+        true,
+        vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+        Some(vec![r#"import foo from "npm:asdfawe52345asdf""#]),
+        Some(env_vars),
+        true,
+      );
+
+      assert_contains!(
+        out,
+        "error: npm package 'asdfawe52345asdf' does not exist"
+      );
+      assert!(err.is_empty());
+    }
   }
 }

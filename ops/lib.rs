@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use attrs::Attributes;
 use once_cell::sync::Lazy;
@@ -411,27 +411,10 @@ fn codegen_arg(
     return quote! { let #ident = (); };
   }
   // Fast path for `String`
-  if let Some(is_ref) = is_string(&**ty) {
-    let ref_block = if is_ref {
-      quote! { let #ident = #ident.as_ref(); }
-    } else {
-      quote! {}
-    };
+  if is_string(&**ty) {
     return quote! {
       let #ident = match #core::v8::Local::<#core::v8::String>::try_from(args.get(#idx as i32)) {
         Ok(v8_string) => #core::serde_v8::to_utf8(v8_string, scope),
-        Err(_) => {
-          return #core::_ops::throw_type_error(scope, format!("Expected string at position {}", #idx));
-        }
-      };
-      #ref_block
-    };
-  }
-  // Fast path for `Cow<'_, str>`
-  if is_cow_str(&**ty) {
-    return quote! {
-      let #ident = match #core::v8::Local::<#core::v8::String>::try_from(args.get(#idx as i32)) {
-        Ok(v8_string) => ::std::borrow::Cow::Owned(#core::serde_v8::to_utf8(v8_string, scope)),
         Err(_) => {
           return #core::_ops::throw_type_error(scope, format!("Expected string at position {}", #idx));
         }
@@ -646,23 +629,12 @@ fn is_result(ty: impl ToTokens) -> bool {
   }
 }
 
-fn is_string(ty: impl ToTokens) -> Option<bool> {
-  let toks = tokens(ty);
-  if toks == "String" {
-    return Some(false);
-  }
-  if toks == "& str" {
-    return Some(true);
-  }
-  None
+fn is_string(ty: impl ToTokens) -> bool {
+  tokens(ty) == "String"
 }
 
 fn is_option_string(ty: impl ToTokens) -> bool {
   tokens(ty) == "Option < String >"
-}
-
-fn is_cow_str(ty: impl ToTokens) -> bool {
-  tokens(&ty).starts_with("Cow <") && tokens(&ty).ends_with("str >")
 }
 
 enum SliceType {

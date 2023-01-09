@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -9,7 +9,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
-use deno_runtime::tokio_util::run_local;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
@@ -48,6 +47,7 @@ use super::logging::lsp_log;
 use super::lsp_custom;
 use super::parent_process_checker;
 use super::performance::Performance;
+use super::performance::PerformanceMark;
 use super::refactor;
 use super::registries::ModuleRegistry;
 use super::testing;
@@ -62,8 +62,8 @@ use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::ConfigFile;
 use crate::args::Flags;
-use crate::args::FmtConfig;
-use crate::args::LintConfig;
+use crate::args::FmtOptions;
+use crate::args::LintOptions;
 use crate::args::TsConfig;
 use crate::cache::DenoDir;
 use crate::file_fetcher::get_source_from_data_url;
@@ -80,9 +80,10 @@ use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::ensure_directory_specifier;
 use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 #[derive(Debug, Clone)]
-pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
+pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
 
 /// Snapshot of the state used by TSC.
 #[derive(Debug, Default)]
@@ -121,14 +122,14 @@ pub struct Inner {
   /// An optional configuration file which has been specified in the client
   /// options.
   maybe_config_file: Option<ConfigFile>,
-  /// An optional configuration for formatter which has been taken from specified config file.
-  maybe_fmt_config: Option<FmtConfig>,
   /// An optional import map which is used to resolve modules.
   pub maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
+  /// Configuration for formatter which has been taken from specified config file.
+  fmt_options: FmtOptions,
   /// An optional configuration for linter which has been taken from specified config file.
-  pub maybe_lint_config: Option<LintConfig>,
+  lint_options: LintOptions,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
   /// Resolver for npm packages.
@@ -145,39 +146,90 @@ pub struct Inner {
 
 impl LanguageServer {
   pub fn new(client: Client) -> Self {
-    Self(Arc::new(tokio::sync::Mutex::new(Inner::new(client))))
+    Self(Arc::new(tokio::sync::RwLock::new(Inner::new(client))))
   }
 
+  /// Similar to `deno cache` on the command line, where modules will be cached
+  /// in the Deno cache, including any of their dependencies.
   pub async fn cache_request(
     &self,
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
+    async fn create_graph_for_caching(
+      cli_options: CliOptions,
+      roots: Vec<(ModuleSpecifier, ModuleKind)>,
+      open_docs: Vec<Document>,
+    ) -> Result<(), AnyError> {
+      let open_docs = open_docs
+        .into_iter()
+        .map(|d| (d.specifier().clone(), d))
+        .collect::<HashMap<_, _>>();
+      let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+      let mut inner_loader = ps.create_graph_loader();
+      let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
+        inner_loader: &mut inner_loader,
+        open_docs: &open_docs,
+      };
+      let graph = ps.create_graph_with_loader(roots, &mut loader).await?;
+      graph_valid(&graph, true, false)?;
+      Ok(())
+    }
+
     match params.map(serde_json::from_value) {
-      Some(Ok(params)) => self.0.lock().await.cache(params).await,
+      Some(Ok(params)) => {
+        // do as much as possible in a read, then do a write outside
+        let result = {
+          let inner = self.0.read().await; // ensure dropped
+          inner.prepare_cache(params)?
+        };
+        if let Some(result) = result {
+          let cli_options = result.cli_options;
+          let roots = result.roots;
+          let open_docs = result.open_docs;
+          let handle = tokio::task::spawn_local(async move {
+            create_graph_for_caching(cli_options, roots, open_docs).await
+          });
+          if let Err(err) = handle.await.unwrap() {
+            self
+              .0
+              .read()
+              .await
+              .client
+              .show_message(MessageType::WARNING, err)
+              .await;
+          }
+          // do npm resolution in a write—we should have everything
+          // cached by this point anyway
+          self.0.write().await.refresh_npm_specifiers().await;
+          // now refresh the data in a read
+          self.0.read().await.post_cache(result.mark).await;
+        }
+        Ok(Some(json!(true)))
+      }
       Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
       None => Err(LspError::invalid_params("Missing parameters")),
     }
   }
 
   pub async fn performance_request(&self) -> LspResult<Option<Value>> {
-    Ok(Some(self.0.lock().await.get_performance()))
+    Ok(Some(self.0.read().await.get_performance()))
   }
 
   pub async fn reload_import_registries_request(
     &self,
   ) -> LspResult<Option<Value>> {
-    self.0.lock().await.reload_import_registries().await
+    self.0.write().await.reload_import_registries().await
   }
 
   pub async fn task_request(&self) -> LspResult<Option<Value>> {
-    self.0.lock().await.get_tasks()
+    self.0.read().await.get_tasks()
   }
 
   pub async fn test_run_request(
     &self,
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
-    let inner = self.0.lock().await;
+    let inner = self.0.read().await;
     if let Some(testing_server) = &inner.maybe_testing_server {
       match params.map(serde_json::from_value) {
         Some(Ok(params)) => testing_server
@@ -194,7 +246,7 @@ impl LanguageServer {
     &self,
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
-    if let Some(testing_server) = &self.0.lock().await.maybe_testing_server {
+    if let Some(testing_server) = &self.0.read().await.maybe_testing_server {
       match params.map(serde_json::from_value) {
         Some(Ok(params)) => testing_server.run_cancel_request(params),
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
@@ -209,7 +261,7 @@ impl LanguageServer {
     &self,
     params: InlayHintParams,
   ) -> LspResult<Option<Vec<InlayHint>>> {
-    self.0.lock().await.inlay_hint(params).await
+    self.0.read().await.inlay_hint(params).await
   }
 
   pub async fn virtual_text_document(
@@ -219,7 +271,7 @@ impl LanguageServer {
     match params.map(serde_json::from_value) {
       Some(Ok(params)) => Ok(Some(
         serde_json::to_value(
-          self.0.lock().await.virtual_text_document(params)?,
+          self.0.read().await.virtual_text_document(params)?,
         )
         .map_err(|err| {
           error!(
@@ -240,7 +292,7 @@ fn create_lsp_npm_resolver(
   http_client: HttpClient,
 ) -> NpmPackageResolver {
   let registry_url = RealNpmRegistryApi::default_url();
-  let progress_bar = ProgressBar::default();
+  let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
   let npm_cache = NpmCache::from_deno_dir(
     dir,
     // Use an "only" cache setting in order to make the
@@ -295,8 +347,8 @@ impl Inner {
       maybe_config_file: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
-      maybe_lint_config: None,
-      maybe_fmt_config: None,
+      fmt_options: Default::default(),
+      lint_options: Default::default(),
       maybe_testing_server: None,
       module_registries,
       module_registries_location,
@@ -338,7 +390,7 @@ impl Inner {
   }
 
   pub async fn get_navigation_tree(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Arc<tsc::NavigationTree>, AnyError> {
     let mark = self.performance.mark(
@@ -526,8 +578,8 @@ impl Inner {
       .and_then(|uri| specifier_to_file_path(uri).ok());
     let root_cert_store = Some(get_root_cert_store(
       maybe_root_path,
-      workspace_settings.certificate_stores.clone(),
-      workspace_settings.tls_certificate.clone(),
+      workspace_settings.certificate_stores,
+      workspace_settings.tls_certificate,
     )?);
     let client = HttpClient::new(
       root_cert_store,
@@ -661,26 +713,30 @@ impl Inner {
 
   fn update_config_file(&mut self) -> Result<(), AnyError> {
     self.maybe_config_file = None;
-    self.maybe_fmt_config = None;
-    self.maybe_lint_config = None;
+    self.fmt_options = Default::default();
+    self.lint_options = Default::default();
 
     if let Some(config_file) = self.get_config_file()? {
-      let lint_config = config_file
+      let lint_options = config_file
         .to_lint_config()
+        .and_then(|maybe_lint_config| {
+          LintOptions::resolve(maybe_lint_config, None)
+        })
         .map_err(|err| {
           anyhow!("Unable to update lint configuration: {:?}", err)
-        })?
-        .unwrap_or_default();
-      let fmt_config = config_file
+        })?;
+      let fmt_options = config_file
         .to_fmt_config()
+        .and_then(|maybe_fmt_config| {
+          FmtOptions::resolve(maybe_fmt_config, None)
+        })
         .map_err(|err| {
           anyhow!("Unable to update formatter configuration: {:?}", err)
-        })?
-        .unwrap_or_default();
+        })?;
 
       self.maybe_config_file = Some(config_file);
-      self.maybe_lint_config = Some(lint_config);
-      self.maybe_fmt_config = Some(fmt_config);
+      self.lint_options = lint_options;
+      self.fmt_options = fmt_options;
     }
 
     Ok(())
@@ -959,7 +1015,7 @@ impl Inner {
     if self.is_diagnosable(&specifier) {
       self.refresh_npm_specifiers().await;
       let mut specifiers = self.documents.dependents(&specifier);
-      specifiers.push(specifier.clone());
+      specifiers.push(specifier);
       self.diagnostics_server.invalidate(&specifiers);
       self.send_diagnostics_update();
       self.send_testing_update();
@@ -1092,7 +1148,7 @@ impl Inner {
   }
 
   async fn document_symbol(
-    &mut self,
+    &self,
     params: DocumentSymbolParams,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
@@ -1144,44 +1200,43 @@ impl Inner {
       LspError::invalid_request()
     })?;
 
-    let fmt_options = if let Some(fmt_config) = self.maybe_fmt_config.as_ref() {
-      // skip formatting any files ignored by the config file
-      if !fmt_config.files.matches_specifier(&specifier) {
-        return Ok(None);
+    // skip formatting any files ignored by the config file
+    if !self.fmt_options.files.matches_specifier(&specifier) {
+      return Ok(None);
+    }
+
+    let format_result = match document.maybe_parsed_source() {
+      Some(Ok(parsed_source)) => {
+        format_parsed_source(&parsed_source, &self.fmt_options.options)
       }
-      fmt_config.options.clone()
-    } else {
-      Default::default()
+      Some(Err(err)) => Err(anyhow!("{}", err)),
+      None => {
+        // the file path is only used to determine what formatter should
+        // be used to format the file, so give the filepath an extension
+        // that matches what the user selected as the language
+        let file_path = document
+          .maybe_language_id()
+          .and_then(|id| id.as_extension())
+          .map(|ext| file_path.with_extension(ext))
+          .unwrap_or(file_path);
+        // it's not a js/ts file, so attempt to format its contents
+        format_file(&file_path, &document.content(), &self.fmt_options.options)
+      }
     };
 
-    let text_edits = tokio::task::spawn_blocking(move || {
-      let format_result = match document.maybe_parsed_source() {
-        Some(Ok(parsed_source)) => {
-          format_parsed_source(&parsed_source, fmt_options)
-        }
-        Some(Err(err)) => Err(anyhow!("{}", err)),
-        None => {
-          // it's not a js/ts file, so attempt to format its contents
-          format_file(&file_path, &document.content(), &fmt_options)
-        }
-      };
-
-      match format_result {
-        Ok(Some(new_text)) => Some(text::get_edits(
-          &document.content(),
-          &new_text,
-          document.line_index().as_ref(),
-        )),
-        Ok(None) => Some(Vec::new()),
-        Err(err) => {
-          // TODO(lucacasonato): handle error properly
-          warn!("Format error: {:#}", err);
-          None
-        }
+    let text_edits = match format_result {
+      Ok(Some(new_text)) => Some(text::get_edits(
+        &document.content(),
+        &new_text,
+        document.line_index().as_ref(),
+      )),
+      Ok(None) => Some(Vec::new()),
+      Err(err) => {
+        // TODO(lucacasonato): handle error properly
+        warn!("Format error: {:#}", err);
+        None
       }
-    })
-    .await
-    .unwrap();
+    };
 
     self.performance.measure(mark);
     if let Some(text_edits) = text_edits {
@@ -1494,7 +1549,7 @@ impl Inner {
       } else {
         combined_code_actions.changes
       };
-      let mut code_action = params.clone();
+      let mut code_action = params;
       code_action.edit = ts_changes_to_edit(&changes, self).map_err(|err| {
         error!("Unable to convert changes to edits: {}", err);
         LspError::internal_error()
@@ -1502,7 +1557,7 @@ impl Inner {
       code_action
     } else if kind.as_str().starts_with(CodeActionKind::REFACTOR.as_str()) {
       let snapshot = self.snapshot();
-      let mut code_action = params.clone();
+      let mut code_action = params;
       let action_data: refactor::RefactorCodeActionData = from_value(data)
         .map_err(|err| {
           error!("Unable to decode code action data: {}", err);
@@ -1513,10 +1568,10 @@ impl Inner {
       let start = line_index.offset_tsc(action_data.range.start)?;
       let length = line_index.offset_tsc(action_data.range.end)? - start;
       let req = tsc::RequestMethod::GetEditsForRefactor((
-        action_data.specifier.clone(),
+        action_data.specifier,
         tsc::TextSpan { start, length },
-        action_data.refactor_name.clone(),
-        action_data.action_name.clone(),
+        action_data.refactor_name,
+        action_data.action_name,
       ));
       let refactor_edit_info: tsc::RefactorEditInfo =
         self.ts_server.request(snapshot, req).await.map_err(|err| {
@@ -1541,7 +1596,7 @@ impl Inner {
   }
 
   async fn code_lens(
-    &mut self,
+    &self,
     params: CodeLensParams,
   ) -> LspResult<Option<Vec<CodeLens>>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
@@ -1901,30 +1956,33 @@ impl Inner {
           )
         })?;
       if let Some(data) = &data.tsc {
-        let specifier = data.specifier.clone();
+        let specifier = &data.specifier;
         let req = tsc::RequestMethod::GetCompletionDetails(data.into());
-        let maybe_completion_info: Option<tsc::CompletionEntryDetails> =
-          self.ts_server.request(self.snapshot(), req).await.map_err(
-            |err| {
-              error!("Unable to get completion info from TypeScript: {}", err);
-              LspError::internal_error()
-            },
-          )?;
-        if let Some(completion_info) = maybe_completion_info {
-          completion_info
-            .as_completion_item(&params, data, &specifier, self)
-            .map_err(|err| {
+        let result: Result<Option<tsc::CompletionEntryDetails>, _> =
+          self.ts_server.request(self.snapshot(), req).await;
+        match result {
+          Ok(maybe_completion_info) => {
+            if let Some(completion_info) = maybe_completion_info {
+              completion_info
+                .as_completion_item(&params, data, specifier, self)
+                .map_err(|err| {
+                  error!(
+                    "Failed to serialize virtual_text_document response: {}",
+                    err
+                  );
+                  LspError::internal_error()
+                })?
+            } else {
               error!(
-                "Failed to serialize virtual_text_document response: {}",
-                err
+                "Received an undefined response from tsc for completion details."
               );
-              LspError::internal_error()
-            })?
-        } else {
-          error!(
-            "Received an undefined response from tsc for completion details."
-          );
-          params
+              params
+            }
+          }
+          Err(err) => {
+            error!("Unable to get completion info from TypeScript: {}", err);
+            return Ok(params);
+          }
         }
       } else if let Some(url) = data.documentation {
         CompletionItem {
@@ -2002,7 +2060,7 @@ impl Inner {
     let mark = self.performance.mark("folding_range", Some(&params));
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
 
-    let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
+    let req = tsc::RequestMethod::GetOutliningSpans(specifier);
     let outlining_spans: Vec<tsc::OutliningSpan> = self
       .ts_server
       .request(self.snapshot(), req)
@@ -2048,7 +2106,7 @@ impl Inner {
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::ProvideCallHierarchyIncomingCalls((
-      specifier.clone(),
+      specifier,
       line_index.offset_tsc(params.item.selection_range.start)?,
     ));
     let incoming_calls: Vec<tsc::CallHierarchyIncomingCall> = self
@@ -2094,7 +2152,7 @@ impl Inner {
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::ProvideCallHierarchyOutgoingCalls((
-      specifier.clone(),
+      specifier,
       line_index.offset_tsc(params.item.selection_range.start)?,
     ));
     let outgoing_calls: Vec<tsc::CallHierarchyOutgoingCall> = self
@@ -2145,7 +2203,7 @@ impl Inner {
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::PrepareCallHierarchy((
-      specifier.clone(),
+      specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
     ));
     let maybe_one_or_many: Option<tsc::OneOrMany<tsc::CallHierarchyItem>> =
@@ -2246,7 +2304,7 @@ impl Inner {
   }
 
   async fn selection_range(
-    &mut self,
+    &self,
     params: SelectionRangeParams,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
@@ -2284,7 +2342,7 @@ impl Inner {
   }
 
   async fn semantic_tokens_full(
-    &mut self,
+    &self,
     params: SemanticTokensParams,
   ) -> LspResult<Option<SemanticTokensResult>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
@@ -2299,7 +2357,7 @@ impl Inner {
     let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
-      specifier.clone(),
+      specifier,
       tsc::TextSpan {
         start: 0,
         length: line_index.text_content_length_utf16().into(),
@@ -2326,7 +2384,7 @@ impl Inner {
   }
 
   async fn semantic_tokens_range(
-    &mut self,
+    &self,
     params: SemanticTokensRangeParams,
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
@@ -2345,7 +2403,7 @@ impl Inner {
     let start = line_index.offset_tsc(params.range.start)?;
     let length = line_index.offset_tsc(params.range.end)? - start;
     let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
-      specifier.clone(),
+      specifier,
       tsc::TextSpan { start, length },
     ));
     let semantic_classification: tsc::Classifications = self
@@ -2369,7 +2427,7 @@ impl Inner {
   }
 
   async fn signature_help(
-    &mut self,
+    &self,
     params: SignatureHelpParams,
   ) -> LspResult<Option<SignatureHelp>> {
     let specifier = self
@@ -2421,7 +2479,7 @@ impl Inner {
   }
 
   async fn symbol(
-    &mut self,
+    &self,
     params: WorkspaceSymbolParams,
   ) -> LspResult<Option<Vec<SymbolInformation>>> {
     let mark = self.performance.mark("symbol", Some(&params));
@@ -2462,7 +2520,7 @@ impl Inner {
     let snapshot = (
       self.snapshot(),
       self.config.snapshot(),
-      self.maybe_lint_config.clone(),
+      self.lint_options.clone(),
     );
     if let Err(err) = self.diagnostics_server.update(snapshot) {
       error!("Cannot update diagnostics: {}", err);
@@ -2486,17 +2544,17 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
-    let mut language_server = self.0.lock().await;
+    let mut language_server = self.0.write().await;
     language_server.diagnostics_server.start();
     language_server.initialize(params).await
   }
 
   async fn initialized(&self, params: InitializedParams) {
-    self.0.lock().await.initialized(params).await
+    self.0.write().await.initialized(params).await
   }
 
   async fn shutdown(&self) -> LspResult<()> {
-    self.0.lock().await.shutdown().await
+    self.0.write().await.shutdown().await
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
@@ -2508,7 +2566,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
 
     let (client, uri, specifier, had_specifier_settings) = {
-      let mut inner = self.0.lock().await;
+      let mut inner = self.0.write().await;
       let client = inner.client.clone();
       let uri = params.text_document.uri.clone();
       let specifier = inner.url_map.normalize_url(&uri);
@@ -2534,7 +2592,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let language_server = self.clone();
       tokio::spawn(async move {
         let response = client.specifier_configuration(&uri).await;
-        let mut inner = language_server.0.lock().await;
+        let mut inner = language_server.0.write().await;
         match response {
           Ok(specifier_settings) => {
             // now update the config and send a diagnostics update
@@ -2562,7 +2620,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
-    self.0.lock().await.did_change(params).await
+    self.0.write().await.did_change(params).await
   }
 
   async fn did_save(&self, _params: DidSaveTextDocumentParams) {
@@ -2571,7 +2629,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
-    self.0.lock().await.did_close(params).await
+    self.0.write().await.did_close(params).await
   }
 
   async fn did_change_configuration(
@@ -2579,7 +2637,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: DidChangeConfigurationParams,
   ) {
     let (has_workspace_capability, client, specifiers, mark) = {
-      let inner = self.0.lock().await;
+      let inner = self.0.write().await;
       let mark = inner
         .performance
         .mark("did_change_configuration", Some(&params));
@@ -2610,7 +2668,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
           )
           .await
         {
-          let mut inner = language_server.0.lock().await;
+          let mut inner = language_server.0.write().await;
           for (i, value) in configs.into_iter().enumerate() {
             match value {
               Ok(specifier_settings) => {
@@ -2627,7 +2685,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
             }
           }
         }
-        let mut ls = language_server.0.lock().await;
+        let mut ls = language_server.0.write().await;
         if ls.config.update_enabled_paths(client).await {
           ls.diagnostics_server.invalidate_all();
           // this will be called in the inner did_change_configuration, but the
@@ -2660,7 +2718,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     };
 
     // now update the inner state
-    let mut inner = self.0.lock().await;
+    let mut inner = self.0.write().await;
     inner
       .did_change_configuration(client_workspace_config, params)
       .await;
@@ -2671,7 +2729,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWatchedFilesParams,
   ) {
-    self.0.lock().await.did_change_watched_files(params).await
+    self.0.write().await.did_change_watched_files(params).await
   }
 
   async fn did_change_workspace_folders(
@@ -2679,13 +2737,13 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: DidChangeWorkspaceFoldersParams,
   ) {
     let client = {
-      let mut inner = self.0.lock().await;
+      let mut inner = self.0.write().await;
       inner.did_change_workspace_folders(params).await;
       inner.client.clone()
     };
     let language_server = self.clone();
     tokio::spawn(async move {
-      let mut ls = language_server.0.lock().await;
+      let mut ls = language_server.0.write().await;
       if ls.config.update_enabled_paths(client).await {
         ls.diagnostics_server.invalidate_all();
         ls.send_diagnostics_update();
@@ -2697,193 +2755,178 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DocumentSymbolParams,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
-    self.0.lock().await.document_symbol(params).await
+    self.0.read().await.document_symbol(params).await
   }
 
   async fn formatting(
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    self.0.lock().await.formatting(params).await
+    self.0.read().await.formatting(params).await
   }
 
   async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
-    self.0.lock().await.hover(params).await
+    self.0.read().await.hover(params).await
   }
 
   async fn code_action(
     &self,
     params: CodeActionParams,
   ) -> LspResult<Option<CodeActionResponse>> {
-    self.0.lock().await.code_action(params).await
+    self.0.read().await.code_action(params).await
   }
 
   async fn code_action_resolve(
     &self,
     params: CodeAction,
   ) -> LspResult<CodeAction> {
-    self.0.lock().await.code_action_resolve(params).await
+    self.0.read().await.code_action_resolve(params).await
   }
 
   async fn code_lens(
     &self,
     params: CodeLensParams,
   ) -> LspResult<Option<Vec<CodeLens>>> {
-    self.0.lock().await.code_lens(params).await
+    self.0.read().await.code_lens(params).await
   }
 
   async fn code_lens_resolve(&self, params: CodeLens) -> LspResult<CodeLens> {
-    self.0.lock().await.code_lens_resolve(params).await
+    self.0.read().await.code_lens_resolve(params).await
   }
 
   async fn document_highlight(
     &self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
-    self.0.lock().await.document_highlight(params).await
+    self.0.read().await.document_highlight(params).await
   }
 
   async fn references(
     &self,
     params: ReferenceParams,
   ) -> LspResult<Option<Vec<Location>>> {
-    self.0.lock().await.references(params).await
+    self.0.read().await.references(params).await
   }
 
   async fn goto_definition(
     &self,
     params: GotoDefinitionParams,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
-    self.0.lock().await.goto_definition(params).await
+    self.0.read().await.goto_definition(params).await
   }
 
   async fn goto_type_definition(
     &self,
     params: GotoTypeDefinitionParams,
   ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
-    self.0.lock().await.goto_type_definition(params).await
+    self.0.read().await.goto_type_definition(params).await
   }
 
   async fn completion(
     &self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
-    self.0.lock().await.completion(params).await
+    self.0.read().await.completion(params).await
   }
 
   async fn completion_resolve(
     &self,
     params: CompletionItem,
   ) -> LspResult<CompletionItem> {
-    self.0.lock().await.completion_resolve(params).await
+    self.0.read().await.completion_resolve(params).await
   }
 
   async fn goto_implementation(
     &self,
     params: GotoImplementationParams,
   ) -> LspResult<Option<GotoImplementationResponse>> {
-    self.0.lock().await.goto_implementation(params).await
+    self.0.read().await.goto_implementation(params).await
   }
 
   async fn folding_range(
     &self,
     params: FoldingRangeParams,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
-    self.0.lock().await.folding_range(params).await
+    self.0.read().await.folding_range(params).await
   }
 
   async fn incoming_calls(
     &self,
     params: CallHierarchyIncomingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
-    self.0.lock().await.incoming_calls(params).await
+    self.0.read().await.incoming_calls(params).await
   }
 
   async fn outgoing_calls(
     &self,
     params: CallHierarchyOutgoingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
-    self.0.lock().await.outgoing_calls(params).await
+    self.0.read().await.outgoing_calls(params).await
   }
 
   async fn prepare_call_hierarchy(
     &self,
     params: CallHierarchyPrepareParams,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
-    self.0.lock().await.prepare_call_hierarchy(params).await
+    self.0.read().await.prepare_call_hierarchy(params).await
   }
 
   async fn rename(
     &self,
     params: RenameParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
-    self.0.lock().await.rename(params).await
+    self.0.read().await.rename(params).await
   }
 
   async fn selection_range(
     &self,
     params: SelectionRangeParams,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
-    self.0.lock().await.selection_range(params).await
+    self.0.read().await.selection_range(params).await
   }
 
   async fn semantic_tokens_full(
     &self,
     params: SemanticTokensParams,
   ) -> LspResult<Option<SemanticTokensResult>> {
-    self.0.lock().await.semantic_tokens_full(params).await
+    self.0.read().await.semantic_tokens_full(params).await
   }
 
   async fn semantic_tokens_range(
     &self,
     params: SemanticTokensRangeParams,
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
-    self.0.lock().await.semantic_tokens_range(params).await
+    self.0.read().await.semantic_tokens_range(params).await
   }
 
   async fn signature_help(
     &self,
     params: SignatureHelpParams,
   ) -> LspResult<Option<SignatureHelp>> {
-    self.0.lock().await.signature_help(params).await
+    self.0.read().await.signature_help(params).await
   }
 
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
   ) -> LspResult<Option<Vec<SymbolInformation>>> {
-    self.0.lock().await.symbol(params).await
+    self.0.read().await.symbol(params).await
   }
+}
+
+struct PrepareCacheResult {
+  cli_options: CliOptions,
+  roots: Vec<(ModuleSpecifier, ModuleKind)>,
+  open_docs: Vec<Document>,
+  mark: PerformanceMark,
 }
 
 // These are implementations of custom commands supported by the LSP
 impl Inner {
-  /// Similar to `deno cache` on the command line, where modules will be cached
-  /// in the Deno cache, including any of their dependencies.
-  async fn cache(
-    &mut self,
+  fn prepare_cache(
+    &self,
     params: lsp_custom::CacheParams,
-  ) -> LspResult<Option<Value>> {
-    async fn create_graph_for_caching(
-      cli_options: CliOptions,
-      roots: Vec<(ModuleSpecifier, ModuleKind)>,
-      open_docs: Vec<Document>,
-    ) -> Result<(), AnyError> {
-      let open_docs = open_docs
-        .into_iter()
-        .map(|d| (d.specifier().clone(), d))
-        .collect::<HashMap<_, _>>();
-      let ps = ProcState::from_options(Arc::new(cli_options)).await?;
-      let mut inner_loader = ps.create_graph_loader();
-      let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
-        inner_loader: &mut inner_loader,
-        open_docs: &open_docs,
-      };
-      let graph = ps.create_graph_with_loader(roots, &mut loader).await?;
-      graph_valid(&graph, true, false)?;
-      Ok(())
-    }
-
+  ) -> LspResult<Option<PrepareCacheResult>> {
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !self.is_diagnosable(&referrer) {
       return Ok(None);
@@ -2902,7 +2945,7 @@ impl Inner {
         })
         .collect()
     } else {
-      vec![(referrer.clone(), deno_graph::ModuleKind::Esm)]
+      vec![(referrer, deno_graph::ModuleKind::Esm)]
     };
 
     let mut cli_options = CliOptions::new(
@@ -2922,23 +2965,20 @@ impl Inner {
     );
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 
-    // todo(dsherret): why is running this on a new thread necessary? It does
-    // a compile error otherwise.
     let open_docs = self.documents.documents(true, true);
-    let handle = tokio::task::spawn_blocking(|| {
-      run_local(async move {
-        create_graph_for_caching(cli_options, roots, open_docs).await
-      })
-    });
-    if let Err(err) = handle.await.unwrap() {
-      self.client.show_message(MessageType::WARNING, err).await;
-    }
+    Ok(Some(PrepareCacheResult {
+      cli_options,
+      open_docs,
+      roots,
+      mark,
+    }))
+  }
 
+  async fn post_cache(&self, mark: PerformanceMark) {
     // Now that we have dependencies loaded, we need to re-analyze all the files.
     // For that we're invalidating all the existing diagnostics and restarting
     // the language server for TypeScript (as it might hold to some stale
     // documents).
-    self.refresh_npm_specifiers().await;
     self.diagnostics_server.invalidate_all();
     let _: bool = self
       .ts_server
@@ -2949,7 +2989,6 @@ impl Inner {
     self.send_testing_update();
 
     self.performance.measure(mark);
-    Ok(Some(json!(true)))
   }
 
   fn get_performance(&self) -> Value {
@@ -2988,7 +3027,7 @@ impl Inner {
         LspError::internal_error()
       })?;
     let req = tsc::RequestMethod::ProvideInlayHints((
-      specifier.clone(),
+      specifier,
       range,
       (&workspace_settings).into(),
     ));
@@ -3025,7 +3064,7 @@ impl Inner {
   }
 
   fn virtual_text_document(
-    &mut self,
+    &self,
     params: lsp_custom::VirtualTextDocumentParams,
   ) -> LspResult<Option<String>> {
     let mark = self

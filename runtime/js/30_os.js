@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -23,6 +23,12 @@
 
   function osRelease() {
     return ops.op_os_release();
+  }
+
+  function createOsUptime(opFn) {
+    return function osUptime() {
+      return opFn();
+    };
   }
 
   function systemMemoryInfo() {
@@ -106,6 +112,7 @@
     loadavg,
     networkInterfaces,
     osRelease,
+    createOsUptime,
     setExitHandler,
     systemMemoryInfo,
     uid,

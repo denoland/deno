@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! Code for local node_modules resolution.
 
@@ -174,7 +174,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
         }
       }
 
-      // if doing type resolution, check for the existance of a @types package
+      // if doing type resolution, check for the existence of a @types package
       if mode.is_types() && !name.starts_with("@types/") {
         let sub_dir =
           join_package_name(current_folder, &types_package_name(name));
@@ -219,7 +219,6 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let resolver = self.clone();
     async move {
       resolver.resolution.add_package_reqs(packages).await?;
-      sync_resolver_with_fs(&resolver).await?;
       Ok(())
     }
     .boxed()
@@ -232,6 +231,14 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let resolver = self.clone();
     async move {
       resolver.resolution.set_package_reqs(packages).await?;
+      Ok(())
+    }
+    .boxed()
+  }
+
+  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>> {
+    let resolver = self.clone();
+    async move {
       sync_resolver_with_fs(&resolver).await?;
       Ok(())
     }
@@ -342,7 +349,7 @@ async fn sync_resolution_with_fs(
   for package in &package_partitions.copy_packages {
     let package_cache_folder_id = package.get_package_cache_folder_id();
     let destination_path = deno_local_registry_dir
-      .join(&get_package_folder_id_folder_name(&package_cache_folder_id));
+      .join(get_package_folder_id_folder_name(&package_cache_folder_id));
     let initialized_file = destination_path.join(".initialized");
     if !initialized_file.exists() {
       let sub_node_modules = destination_path.join("node_modules");
@@ -352,7 +359,7 @@ async fn sync_resolution_with_fs(
       })?;
       let source_path = join_package_name(
         &deno_local_registry_dir
-          .join(&get_package_folder_id_folder_name(
+          .join(get_package_folder_id_folder_name(
             &package_cache_folder_id.with_no_count(),
           ))
           .join("node_modules"),
@@ -372,7 +379,7 @@ async fn sync_resolution_with_fs(
   // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
   for package in &all_packages {
     let sub_node_modules = deno_local_registry_dir
-      .join(&get_package_folder_id_folder_name(
+      .join(get_package_folder_id_folder_name(
         &package.get_package_cache_folder_id(),
       ))
       .join("node_modules");
@@ -419,7 +426,7 @@ async fn sync_resolution_with_fs(
     let package = snapshot.package_from_id(&package_id).unwrap();
     let local_registry_package_path = join_package_name(
       &deno_local_registry_dir
-        .join(&get_package_folder_id_folder_name(
+        .join(get_package_folder_id_folder_name(
           &package.get_package_cache_folder_id(),
         ))
         .join("node_modules"),

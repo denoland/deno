@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
@@ -6,7 +6,6 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-#[cfg(test)]
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -24,12 +23,15 @@ use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::string::ToString;
-#[cfg(test)]
-use std::sync::atomic::AtomicBool;
-#[cfg(test)]
-use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
-const PERMISSION_EMOJI: &str = "⚠️";
+mod prompter;
+use prompter::permission_prompt;
+use prompter::PromptResponse;
+use prompter::PERMISSION_EMOJI;
+
+pub use prompter::set_prompt_callbacks;
+pub use prompter::PromptCallback;
 
 static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
@@ -110,7 +112,7 @@ impl PermissionState {
           name,
           info().map_or(String::new(), |info| { format!(" to {}", info) }),
         );
-        if permission_prompt(&msg, name, api_name) {
+        if PromptResponse::Allow == permission_prompt(&msg, name, api_name) {
           Self::log_perm_access(name, info);
           (Ok(()), true)
         } else {
@@ -153,11 +155,13 @@ impl UnitPermission {
 
   pub fn request(&mut self) -> PermissionState {
     if self.state == PermissionState::Prompt {
-      if permission_prompt(
-        &format!("access to {}", self.description),
-        self.name,
-        Some("Deno.permissions.query()"),
-      ) {
+      if PromptResponse::Allow
+        == permission_prompt(
+          &format!("access to {}", self.description),
+          self.name,
+          Some("Deno.permissions.query()"),
+        )
+      {
         self.state = PermissionState::Granted;
       } else {
         self.state = PermissionState::Denied;
@@ -307,7 +311,7 @@ pub struct SysDescriptor(pub String);
 
 pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
   match kind {
-    "hostname" | "osRelease" | "loadavg" | "networkInterfaces"
+    "hostname" | "osRelease" | "osUptime" | "loadavg" | "networkInterfaces"
     | "systemMemoryInfo" | "uid" | "gid" => Ok(kind),
     _ => Err(type_error(format!("unknown system info kind \"{}\"", kind))),
   }
@@ -352,11 +356,13 @@ impl UnaryPermission<ReadDescriptor> {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if permission_prompt(
-          &format!("read access to \"{}\"", display_path.display()),
-          self.name,
-          Some("Deno.permissions.query()"),
-        ) {
+        if PromptResponse::Allow
+          == permission_prompt(
+            &format!("read access to \"{}\"", display_path.display()),
+            self.name,
+            Some("Deno.permissions.query()"),
+          )
+        {
           self.granted_list.insert(ReadDescriptor(resolved_path));
           PermissionState::Granted
         } else {
@@ -373,11 +379,13 @@ impl UnaryPermission<ReadDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt(
-          "read access",
-          self.name,
-          Some("Deno.permissions.query()"),
-        ) {
+        if PromptResponse::Allow
+          == permission_prompt(
+            "read access",
+            self.name,
+            Some("Deno.permissions.query()"),
+          )
+        {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -521,11 +529,13 @@ impl UnaryPermission<WriteDescriptor> {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if permission_prompt(
-          &format!("write access to \"{}\"", display_path.display()),
-          self.name,
-          Some("Deno.permissions.query()"),
-        ) {
+        if PromptResponse::Allow
+          == permission_prompt(
+            &format!("write access to \"{}\"", display_path.display()),
+            self.name,
+            Some("Deno.permissions.query()"),
+          )
+        {
           self.granted_list.insert(WriteDescriptor(resolved_path));
           PermissionState::Granted
         } else {
@@ -542,11 +552,13 @@ impl UnaryPermission<WriteDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt(
-          "write access",
-          self.name,
-          Some("Deno.permissions.query()"),
-        ) {
+        if PromptResponse::Allow
+          == permission_prompt(
+            "write access",
+            self.name,
+            Some("Deno.permissions.query()"),
+          )
+        {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -672,11 +684,13 @@ impl UnaryPermission<NetDescriptor> {
       let state = self.query(Some(host));
       let host = NetDescriptor::new(&host);
       if state == PermissionState::Prompt {
-        if permission_prompt(
-          &format!("network access to \"{}\"", host),
-          self.name,
-          Some("Deno.permissions.query()"),
-        ) {
+        if PromptResponse::Allow
+          == permission_prompt(
+            &format!("network access to \"{}\"", host),
+            self.name,
+            Some("Deno.permissions.query()"),
+          )
+        {
           self.granted_list.insert(host);
           PermissionState::Granted
         } else {
@@ -693,11 +707,13 @@ impl UnaryPermission<NetDescriptor> {
     } else {
       let state = self.query::<&str>(None);
       if state == PermissionState::Prompt {
-        if permission_prompt(
-          "network access",
-          self.name,
-          Some("Deno.permissions.query()"),
-        ) {
+        if PromptResponse::Allow
+          == permission_prompt(
+            "network access",
+            self.name,
+            Some("Deno.permissions.query()"),
+          )
+        {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -842,11 +858,13 @@ impl UnaryPermission<EnvDescriptor> {
     if let Some(env) = env {
       let state = self.query(Some(env));
       if state == PermissionState::Prompt {
-        if permission_prompt(
-          &format!("env access to \"{}\"", env),
-          self.name,
-          Some("Deno.permissions.query()"),
-        ) {
+        if PromptResponse::Allow
+          == permission_prompt(
+            &format!("env access to \"{}\"", env),
+            self.name,
+            Some("Deno.permissions.query()"),
+          )
+        {
           self.granted_list.insert(EnvDescriptor::new(env));
           PermissionState::Granted
         } else {
@@ -863,11 +881,13 @@ impl UnaryPermission<EnvDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt(
-          "env access",
-          self.name,
-          Some("Deno.permissions.query()"),
-        ) {
+        if PromptResponse::Allow
+          == permission_prompt(
+            "env access",
+            self.name,
+            Some("Deno.permissions.query()"),
+          )
+        {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -972,11 +992,13 @@ impl UnaryPermission<SysDescriptor> {
     }
     if let Some(kind) = kind {
       let desc = SysDescriptor(kind.to_string());
-      if permission_prompt(
-        &format!("sys access to \"{}\"", kind),
-        self.name,
-        Some("Deno.permissions.query()"),
-      ) {
+      if PromptResponse::Allow
+        == permission_prompt(
+          &format!("sys access to \"{}\"", kind),
+          self.name,
+          Some("Deno.permissions.query()"),
+        )
+      {
         self.granted_list.insert(desc);
         PermissionState::Granted
       } else {
@@ -985,11 +1007,13 @@ impl UnaryPermission<SysDescriptor> {
         PermissionState::Denied
       }
     } else {
-      if permission_prompt(
-        "sys access",
-        self.name,
-        Some("Deno.permissions.query()"),
-      ) {
+      if PromptResponse::Allow
+        == permission_prompt(
+          "sys access",
+          self.name,
+          Some("Deno.permissions.query()"),
+        )
+      {
         self.global_state = PermissionState::Granted;
       } else {
         self.granted_list.clear();
@@ -1091,11 +1115,13 @@ impl UnaryPermission<RunDescriptor> {
     if let Some(cmd) = cmd {
       let state = self.query(Some(cmd));
       if state == PermissionState::Prompt {
-        if permission_prompt(
-          &format!("run access to \"{}\"", cmd),
-          self.name,
-          Some("Deno.permissions.query()"),
-        ) {
+        if PromptResponse::Allow
+          == permission_prompt(
+            &format!("run access to \"{}\"", cmd),
+            self.name,
+            Some("Deno.permissions.query()"),
+          )
+        {
           self
             .granted_list
             .insert(RunDescriptor::from_str(cmd).unwrap());
@@ -1118,11 +1144,13 @@ impl UnaryPermission<RunDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt(
-          "run access",
-          self.name,
-          Some("Deno.permissions.query()"),
-        ) {
+        if PromptResponse::Allow
+          == permission_prompt(
+            "run access",
+            self.name,
+            Some("Deno.permissions.query()"),
+          )
+        {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -1211,14 +1239,20 @@ impl UnaryPermission<FfiDescriptor> {
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
-        Some(path) => self.denied_list.contains(&FfiDescriptor(path.clone())),
+        Some(path) => self
+          .denied_list
+          .iter()
+          .any(|path_| path_.0.starts_with(path)),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match path.as_ref() {
         None => false,
-        Some(path) => self.granted_list.contains(&FfiDescriptor(path.clone())),
+        Some(path) => self
+          .granted_list
+          .iter()
+          .any(|path_| path.starts_with(&path_.0)),
       }
     {
       PermissionState::Granted
@@ -1232,11 +1266,13 @@ impl UnaryPermission<FfiDescriptor> {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if permission_prompt(
-          &format!("ffi access to \"{}\"", display_path.display()),
-          self.name,
-          Some("Deno.permissions.query()"),
-        ) {
+        if PromptResponse::Allow
+          == permission_prompt(
+            &format!("ffi access to \"{}\"", display_path.display()),
+            self.name,
+            Some("Deno.permissions.query()"),
+          )
+        {
           self.granted_list.insert(FfiDescriptor(resolved_path));
           PermissionState::Granted
         } else {
@@ -1253,11 +1289,13 @@ impl UnaryPermission<FfiDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt(
-          "ffi access",
-          self.name,
-          Some("Deno.permissions.query()"),
-        ) {
+        if PromptResponse::Allow
+          == permission_prompt(
+            "ffi access",
+            self.name,
+            Some("Deno.permissions.query()"),
+          )
+        {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -1274,7 +1312,9 @@ impl UnaryPermission<FfiDescriptor> {
   pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
     if let Some(path) = path {
       let path = resolve_from_cwd(path).unwrap();
-      self.granted_list.remove(&FfiDescriptor(path));
+      self
+        .granted_list
+        .retain(|path_| !path.starts_with(&path_.0));
     } else {
       self.granted_list.clear();
     }
@@ -1563,7 +1603,7 @@ impl Permissions {
   ) -> Result<(), AnyError> {
     match specifier.scheme() {
       "file" => match specifier.to_file_path() {
-        Ok(path) => self.read.check(&path, None),
+        Ok(path) => self.read.check(&path, Some("import()")),
         Err(_) => Err(uri_error(format!(
           "Invalid file path.\n  Specifier: {}",
           specifier
@@ -1571,102 +1611,212 @@ impl Permissions {
       },
       "data" => Ok(()),
       "blob" => Ok(()),
-      _ => self.net.check_url(specifier, None),
+      _ => self.net.check_url(specifier, Some("import()")),
     }
   }
 }
 
-impl deno_flash::FlashPermissions for Permissions {
+/// Wrapper struct for `Permissions` that can be shared across threads.
+///
+/// We need a way to have internal mutability for permissions as they might get
+/// passed to a future that will prompt the user for permission (and in such
+/// case might need to be mutated). Also for the Web Worker API we need a way
+/// to send permissions to a new thread.
+#[derive(Clone, Debug)]
+pub struct PermissionsContainer(pub Arc<Mutex<Permissions>>);
+
+impl PermissionsContainer {
+  pub fn new(perms: Permissions) -> Self {
+    Self(Arc::new(Mutex::new(perms)))
+  }
+
+  pub fn allow_all() -> Self {
+    Self::new(Permissions::allow_all())
+  }
+
+  #[inline(always)]
+  pub fn check_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    self.0.lock().check_specifier(specifier)
+  }
+
+  #[inline(always)]
+  pub fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check(path, Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_read_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check_blind(path, display, api_name)
+  }
+
+  #[inline(always)]
+  pub fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().read.check_all(Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_write(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check(path, Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().write.check_all(Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_run(
+    &mut self,
+    cmd: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().run.check(cmd, Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_run_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().run.check_all(Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_sys(
+    &mut self,
+    kind: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().sys.check(kind, Some(api_name))
+  }
+
+  #[inline(always)]
+  pub fn check_env(&mut self, var: &str) -> Result<(), AnyError> {
+    self.0.lock().env.check(var)
+  }
+
+  #[inline(always)]
+  pub fn check_env_all(&mut self) -> Result<(), AnyError> {
+    self.0.lock().env.check_all()
+  }
+}
+
+impl deno_flash::FlashPermissions for PermissionsContainer {
+  #[inline(always)]
   fn check_net<T: AsRef<str>>(
     &mut self,
     host: &(T, Option<u16>),
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.net.check(host, Some(api_name))
+    self.0.lock().net.check(host, Some(api_name))
   }
 }
 
-impl deno_node::NodePermissions for Permissions {
+impl deno_node::NodePermissions for PermissionsContainer {
+  #[inline(always)]
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
-    self.read.check(path, None)
+    self.0.lock().read.check(path, None)
   }
 }
 
-impl deno_net::NetPermissions for Permissions {
+impl deno_net::NetPermissions for PermissionsContainer {
+  #[inline(always)]
   fn check_net<T: AsRef<str>>(
     &mut self,
     host: &(T, Option<u16>),
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.net.check(host, Some(api_name))
+    self.0.lock().net.check(host, Some(api_name))
   }
 
+  #[inline(always)]
   fn check_read(
     &mut self,
     path: &Path,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.read.check(path, Some(api_name))
+    self.0.lock().read.check(path, Some(api_name))
   }
 
+  #[inline(always)]
   fn check_write(
     &mut self,
     path: &Path,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.write.check(path, Some(api_name))
+    self.0.lock().write.check(path, Some(api_name))
   }
 }
 
-impl deno_fetch::FetchPermissions for Permissions {
+impl deno_fetch::FetchPermissions for PermissionsContainer {
+  #[inline(always)]
   fn check_net_url(
     &mut self,
     url: &url::Url,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.net.check_url(url, Some(api_name))
+    self.0.lock().net.check_url(url, Some(api_name))
   }
 
+  #[inline(always)]
   fn check_read(
     &mut self,
     path: &Path,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.read.check(path, Some(api_name))
+    self.0.lock().read.check(path, Some(api_name))
   }
 }
 
-impl deno_web::TimersPermission for Permissions {
+impl deno_web::TimersPermission for PermissionsContainer {
+  #[inline(always)]
   fn allow_hrtime(&mut self) -> bool {
-    self.hrtime.check().is_ok()
+    self.0.lock().hrtime.check().is_ok()
   }
 
+  #[inline(always)]
   fn check_unstable(&self, state: &OpState, api_name: &'static str) {
     crate::ops::check_unstable(state, api_name);
   }
 }
 
-impl deno_websocket::WebSocketPermissions for Permissions {
+impl deno_websocket::WebSocketPermissions for PermissionsContainer {
+  #[inline(always)]
   fn check_net_url(
     &mut self,
     url: &url::Url,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.net.check_url(url, Some(api_name))
+    self.0.lock().net.check_url(url, Some(api_name))
   }
 }
 
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
-impl deno_napi::NapiPermissions for Permissions {
+impl deno_napi::NapiPermissions for PermissionsContainer {
+  #[inline(always)]
   fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    self.ffi.check(path)
+    self.0.lock().ffi.check(path)
   }
 }
 
-impl deno_ffi::FfiPermissions for Permissions {
+impl deno_ffi::FfiPermissions for PermissionsContainer {
+  #[inline(always)]
   fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    self.ffi.check(path)
+    self.0.lock().ffi.check(path)
   }
 }
 
@@ -2254,225 +2404,12 @@ pub fn create_child_permissions(
   Ok(worker_perms)
 }
 
-/// Shows the permission prompt and returns the answer according to the user input.
-/// This loops until the user gives the proper input.
-#[cfg(not(test))]
-fn permission_prompt(
-  message: &str,
-  name: &str,
-  api_name: Option<&str>,
-) -> bool {
-  if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-    return false;
-  };
-
-  #[cfg(unix)]
-  fn clear_stdin() -> Result<(), AnyError> {
-    // TODO(bartlomieju):
-    #[allow(clippy::undocumented_unsafe_blocks)]
-    let r = unsafe { libc::tcflush(0, libc::TCIFLUSH) };
-    assert_eq!(r, 0);
-    Ok(())
-  }
-
-  #[cfg(not(unix))]
-  fn clear_stdin() -> Result<(), AnyError> {
-    use deno_core::anyhow::bail;
-    use winapi::shared::minwindef::TRUE;
-    use winapi::shared::minwindef::UINT;
-    use winapi::shared::minwindef::WORD;
-    use winapi::shared::ntdef::WCHAR;
-    use winapi::um::processenv::GetStdHandle;
-    use winapi::um::winbase::STD_INPUT_HANDLE;
-    use winapi::um::wincon::FlushConsoleInputBuffer;
-    use winapi::um::wincon::PeekConsoleInputW;
-    use winapi::um::wincon::WriteConsoleInputW;
-    use winapi::um::wincontypes::INPUT_RECORD;
-    use winapi::um::wincontypes::KEY_EVENT;
-    use winapi::um::winnt::HANDLE;
-    use winapi::um::winuser::MapVirtualKeyW;
-    use winapi::um::winuser::MAPVK_VK_TO_VSC;
-    use winapi::um::winuser::VK_RETURN;
-
-    // SAFETY: winapi calls
-    unsafe {
-      let stdin = GetStdHandle(STD_INPUT_HANDLE);
-      // emulate an enter key press to clear any line buffered console characters
-      emulate_enter_key_press(stdin)?;
-      // read the buffered line or enter key press
-      read_stdin_line()?;
-      // check if our emulated key press was executed
-      if is_input_buffer_empty(stdin)? {
-        // if so, move the cursor up to prevent a blank line
-        move_cursor_up()?;
-      } else {
-        // the emulated key press is still pending, so a buffered line was read
-        // and we can flush the emulated key press
-        flush_input_buffer(stdin)?;
-      }
-    }
-
-    return Ok(());
-
-    unsafe fn flush_input_buffer(stdin: HANDLE) -> Result<(), AnyError> {
-      let success = FlushConsoleInputBuffer(stdin);
-      if success != TRUE {
-        bail!(
-          "Could not flush the console input buffer: {}",
-          std::io::Error::last_os_error()
-        )
-      }
-      Ok(())
-    }
-
-    unsafe fn emulate_enter_key_press(stdin: HANDLE) -> Result<(), AnyError> {
-      // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
-      let mut input_record: INPUT_RECORD = std::mem::zeroed();
-      input_record.EventType = KEY_EVENT;
-      input_record.Event.KeyEvent_mut().bKeyDown = TRUE;
-      input_record.Event.KeyEvent_mut().wRepeatCount = 1;
-      input_record.Event.KeyEvent_mut().wVirtualKeyCode = VK_RETURN as WORD;
-      input_record.Event.KeyEvent_mut().wVirtualScanCode =
-        MapVirtualKeyW(VK_RETURN as UINT, MAPVK_VK_TO_VSC) as WORD;
-      *input_record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() =
-        '\r' as WCHAR;
-
-      let mut record_written = 0;
-      let success =
-        WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
-      if success != TRUE {
-        bail!(
-          "Could not emulate enter key press: {}",
-          std::io::Error::last_os_error()
-        );
-      }
-      Ok(())
-    }
-
-    unsafe fn is_input_buffer_empty(stdin: HANDLE) -> Result<bool, AnyError> {
-      let mut buffer = Vec::with_capacity(1);
-      let mut events_read = 0;
-      let success =
-        PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read);
-      if success != TRUE {
-        bail!(
-          "Could not peek the console input buffer: {}",
-          std::io::Error::last_os_error()
-        )
-      }
-      Ok(events_read == 0)
-    }
-
-    fn move_cursor_up() -> Result<(), AnyError> {
-      use std::io::Write;
-      write!(std::io::stderr(), "\x1B[1A")?;
-      Ok(())
-    }
-
-    fn read_stdin_line() -> Result<(), AnyError> {
-      let mut input = String::new();
-      let stdin = std::io::stdin();
-      stdin.read_line(&mut input)?;
-      Ok(())
-    }
-  }
-
-  // Clear n-lines in terminal and move cursor to the beginning of the line.
-  fn clear_n_lines(n: usize) {
-    eprint!("\x1B[{}A\x1B[0J", n);
-  }
-
-  // For security reasons we must consume everything in stdin so that previously
-  // buffered data cannot effect the prompt.
-  if let Err(err) = clear_stdin() {
-    eprintln!("Error clearing stdin for permission prompt. {:#}", err);
-    return false; // don't grant permission if this fails
-  }
-
-  // print to stderr so that if stdout is piped this is still displayed.
-  const OPTS: &str = "[y/n] (y = yes, allow; n = no, deny)";
-  eprint!("{}  ┌ ", PERMISSION_EMOJI);
-  eprint!("{}", colors::bold("Deno requests "));
-  eprint!("{}", colors::bold(message));
-  eprintln!("{}", colors::bold("."));
-  if let Some(api_name) = api_name {
-    eprintln!("   ├ Requested by `{}` API", api_name);
-  }
-  let msg = format!(
-    "   ├ Run again with --allow-{} to bypass this prompt.",
-    name
-  );
-  eprintln!("{}", colors::italic(&msg));
-  eprint!("   └ {}", colors::bold("Allow?"));
-  eprint!(" {} > ", OPTS);
-  loop {
-    let mut input = String::new();
-    let stdin = std::io::stdin();
-    let result = stdin.read_line(&mut input);
-    if result.is_err() {
-      return false;
-    };
-    let ch = match input.chars().next() {
-      None => return false,
-      Some(v) => v,
-    };
-    match ch.to_ascii_lowercase() {
-      'y' => {
-        clear_n_lines(if api_name.is_some() { 4 } else { 3 });
-        let msg = format!("Granted {}.", message);
-        eprintln!("✅ {}", colors::bold(&msg));
-        return true;
-      }
-      'n' => {
-        clear_n_lines(if api_name.is_some() { 4 } else { 3 });
-        let msg = format!("Denied {}.", message);
-        eprintln!("❌ {}", colors::bold(&msg));
-        return false;
-      }
-      _ => {
-        // If we don't get a recognized option try again.
-        clear_n_lines(1);
-        eprint!("   └ {}", colors::bold("Unrecognized option. Allow?"));
-        eprint!(" {} > ", OPTS);
-      }
-    };
-  }
-}
-
-// When testing, permission prompt returns the value of STUB_PROMPT_VALUE
-// which we set from the test functions.
-#[cfg(test)]
-fn permission_prompt(
-  _message: &str,
-  _flag: &str,
-  _api_name: Option<&str>,
-) -> bool {
-  STUB_PROMPT_VALUE.load(Ordering::SeqCst)
-}
-
-#[cfg(test)]
-static STUB_PROMPT_VALUE: AtomicBool = AtomicBool::new(true);
-
-#[cfg(test)]
-static PERMISSION_PROMPT_STUB_VALUE_SETTER: Lazy<
-  Mutex<PermissionPromptStubValueSetter>,
-> = Lazy::new(|| Mutex::new(PermissionPromptStubValueSetter));
-
-#[cfg(test)]
-struct PermissionPromptStubValueSetter;
-
-#[cfg(test)]
-impl PermissionPromptStubValueSetter {
-  pub fn set(&self, value: bool) {
-    STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
   use deno_core::resolve_url_or_path;
   use deno_core::serde_json::json;
+  use prompter::tests::*;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -2481,6 +2418,7 @@ mod tests {
 
   #[test]
   fn check_paths() {
+    set_prompter(Box::new(TestPrompter));
     let allowlist = vec![
       PathBuf::from("/a/specific/dir/name"),
       PathBuf::from("/a/specific"),
@@ -2489,7 +2427,8 @@ mod tests {
 
     let mut perms = Permissions::from_options(&PermissionsOptions {
       allow_read: Some(allowlist.clone()),
-      allow_write: Some(allowlist),
+      allow_write: Some(allowlist.clone()),
+      allow_ffi: Some(allowlist),
       ..Default::default()
     })
     .unwrap();
@@ -2503,6 +2442,10 @@ mod tests {
       .write
       .check(Path::new("/a/specific/dir/name"), None)
       .is_ok());
+    assert!(perms
+      .ffi
+      .check(Some(Path::new("/a/specific/dir/name")))
+      .is_ok());
 
     // Inside of /a/specific but outside of /a/specific/dir/name
     assert!(perms.read.check(Path::new("/a/specific/dir"), None).is_ok());
@@ -2510,6 +2453,7 @@ mod tests {
       .write
       .check(Path::new("/a/specific/dir"), None)
       .is_ok());
+    assert!(perms.ffi.check(Some(Path::new("/a/specific/dir"))).is_ok());
 
     // Inside of /a/specific and /a/specific/dir/name
     assert!(perms
@@ -2520,6 +2464,10 @@ mod tests {
       .write
       .check(Path::new("/a/specific/dir/name/inner"), None)
       .is_ok());
+    assert!(perms
+      .ffi
+      .check(Some(Path::new("/a/specific/dir/name/inner")))
+      .is_ok());
 
     // Inside of /a/specific but outside of /a/specific/dir/name
     assert!(perms
@@ -2530,14 +2478,20 @@ mod tests {
       .write
       .check(Path::new("/a/specific/other/dir"), None)
       .is_ok());
+    assert!(perms
+      .ffi
+      .check(Some(Path::new("/a/specific/other/dir")))
+      .is_ok());
 
     // Exact match with /b/c
     assert!(perms.read.check(Path::new("/b/c"), None).is_ok());
     assert!(perms.write.check(Path::new("/b/c"), None).is_ok());
+    assert!(perms.ffi.check(Some(Path::new("/b/c"))).is_ok());
 
     // Sub path within /b/c
     assert!(perms.read.check(Path::new("/b/c/sub/path"), None).is_ok());
     assert!(perms.write.check(Path::new("/b/c/sub/path"), None).is_ok());
+    assert!(perms.ffi.check(Some(Path::new("/b/c/sub/path"))).is_ok());
 
     // Sub path within /b/c, needs normalizing
     assert!(perms
@@ -2548,18 +2502,25 @@ mod tests {
       .write
       .check(Path::new("/b/c/sub/path/../path/."), None)
       .is_ok());
+    assert!(perms
+      .ffi
+      .check(Some(Path::new("/b/c/sub/path/../path/.")))
+      .is_ok());
 
     // Inside of /b but outside of /b/c
     assert!(perms.read.check(Path::new("/b/e"), None).is_err());
     assert!(perms.write.check(Path::new("/b/e"), None).is_err());
+    assert!(perms.ffi.check(Some(Path::new("/b/e"))).is_err());
 
     // Inside of /a but outside of /a/specific
     assert!(perms.read.check(Path::new("/a/b"), None).is_err());
     assert!(perms.write.check(Path::new("/a/b"), None).is_err());
+    assert!(perms.ffi.check(Some(Path::new("/a/b"))).is_err());
   }
 
   #[test]
   fn test_check_net_with_values() {
+    set_prompter(Box::new(TestPrompter));
     let mut perms = Permissions::from_options(&PermissionsOptions {
       allow_net: Some(svec![
         "localhost",
@@ -2603,6 +2564,7 @@ mod tests {
 
   #[test]
   fn test_check_net_only_flag() {
+    set_prompter(Box::new(TestPrompter));
     let mut perms = Permissions::from_options(&PermissionsOptions {
       allow_net: Some(svec![]), // this means `--allow-net` is present without values following `=` sign
       ..Default::default()
@@ -2638,6 +2600,7 @@ mod tests {
 
   #[test]
   fn test_check_net_no_flag() {
+    set_prompter(Box::new(TestPrompter));
     let mut perms = Permissions::from_options(&PermissionsOptions {
       allow_net: None,
       ..Default::default()
@@ -2733,6 +2696,7 @@ mod tests {
 
   #[test]
   fn check_specifiers() {
+    set_prompter(Box::new(TestPrompter));
     let read_allowlist = if cfg!(target_os = "windows") {
       vec![PathBuf::from("C:\\a")]
     } else {
@@ -2777,6 +2741,7 @@ mod tests {
 
   #[test]
   fn check_invalid_specifiers() {
+    set_prompter(Box::new(TestPrompter));
     let mut perms = Permissions::allow_all();
 
     let mut test_cases = vec![];
@@ -2797,6 +2762,7 @@ mod tests {
 
   #[test]
   fn test_query() {
+    set_prompter(Box::new(TestPrompter));
     let perms1 = Permissions::allow_all();
     let perms2 = Permissions {
       read: UnaryPermission {
@@ -2809,6 +2775,12 @@ mod tests {
         ..Permissions::new_write(&Some(vec![PathBuf::from("/foo")]), false)
           .unwrap()
       },
+      ffi: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_ffi(&Some(vec![PathBuf::from("/foo")]), false)
+          .unwrap()
+      },
+
       net: UnaryPermission {
         global_state: PermissionState::Prompt,
         ..Permissions::new_net(&Some(svec!["127.0.0.1:8000"]), false).unwrap()
@@ -2824,11 +2796,6 @@ mod tests {
       run: UnaryPermission {
         global_state: PermissionState::Prompt,
         ..Permissions::new_run(&Some(svec!["deno"]), false).unwrap()
-      },
-      ffi: UnaryPermission {
-        global_state: PermissionState::Prompt,
-        ..Permissions::new_ffi(&Some(vec![PathBuf::from("deno")]), false)
-          .unwrap()
       },
       hrtime: UnitPermission {
         state: PermissionState::Prompt,
@@ -2847,6 +2814,11 @@ mod tests {
       assert_eq!(perms2.write.query(None), PermissionState::Prompt);
       assert_eq!(perms2.write.query(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.write.query(Some(Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms1.ffi.query(None), PermissionState::Granted);
+      assert_eq!(perms1.ffi.query(Some(Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.ffi.query(None), PermissionState::Prompt);
+      assert_eq!(perms2.ffi.query(Some(Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.ffi.query(Some(Path::new("/foo/bar"))), PermissionState::Granted);
       assert_eq!(perms1.net.query::<&str>(None), PermissionState::Granted);
       assert_eq!(perms1.net.query(Some(&("127.0.0.1", None))), PermissionState::Granted);
       assert_eq!(perms2.net.query::<&str>(None), PermissionState::Prompt);
@@ -2863,10 +2835,6 @@ mod tests {
       assert_eq!(perms1.run.query(Some("deno")), PermissionState::Granted);
       assert_eq!(perms2.run.query(None), PermissionState::Prompt);
       assert_eq!(perms2.run.query(Some("deno")), PermissionState::Granted);
-      assert_eq!(perms1.ffi.query(None), PermissionState::Granted);
-      assert_eq!(perms1.ffi.query(Some(Path::new("deno"))), PermissionState::Granted);
-      assert_eq!(perms2.ffi.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.ffi.query(Some(Path::new("deno"))), PermissionState::Granted);
       assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
       assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
     };
@@ -2874,6 +2842,7 @@ mod tests {
 
   #[test]
   fn test_request() {
+    set_prompter(Box::new(TestPrompter));
     let mut perms: Permissions = Default::default();
     #[rustfmt::skip]
     {
@@ -2888,6 +2857,11 @@ mod tests {
       assert_eq!(perms.write.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
       prompt_value.set(true);
       assert_eq!(perms.write.request(None), PermissionState::Denied);
+      prompt_value.set(false);
+      assert_eq!(perms.ffi.request(Some(Path::new("/foo"))), PermissionState::Denied);
+      assert_eq!(perms.ffi.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
+      prompt_value.set(true);
+      assert_eq!(perms.ffi.request(None), PermissionState::Denied);
       prompt_value.set(true);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", None))), PermissionState::Granted);
       prompt_value.set(false);
@@ -2907,11 +2881,6 @@ mod tests {
       assert_eq!(perms.run.query(None), PermissionState::Prompt);
       prompt_value.set(false);
       assert_eq!(perms.run.request(Some("deno")), PermissionState::Granted);
-      prompt_value.set(true);
-      assert_eq!(perms.ffi.request(Some(Path::new("deno"))), PermissionState::Granted);
-      assert_eq!(perms.ffi.query(None), PermissionState::Prompt);
-      prompt_value.set(false);
-      assert_eq!(perms.ffi.request(Some(Path::new("deno"))), PermissionState::Granted);
       prompt_value.set(false);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
       prompt_value.set(true);
@@ -2921,6 +2890,7 @@ mod tests {
 
   #[test]
   fn test_revoke() {
+    set_prompter(Box::new(TestPrompter));
     let mut perms = Permissions {
       read: UnaryPermission {
         global_state: PermissionState::Prompt,
@@ -2933,6 +2903,14 @@ mod tests {
       write: UnaryPermission {
         global_state: PermissionState::Prompt,
         ..Permissions::new_write(
+          &Some(vec![PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
+          false,
+        )
+        .unwrap()
+      },
+      ffi: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_ffi(
           &Some(vec![PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
           false,
         )
@@ -2958,11 +2936,6 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_run(&Some(svec!["deno"]), false).unwrap()
       },
-      ffi: UnaryPermission {
-        global_state: PermissionState::Prompt,
-        ..Permissions::new_ffi(&Some(vec![PathBuf::from("deno")]), false)
-          .unwrap()
-      },
       hrtime: UnitPermission {
         state: PermissionState::Denied,
         ..Permissions::new_hrtime(false)
@@ -2976,19 +2949,22 @@ mod tests {
       assert_eq!(perms.write.revoke(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
       assert_eq!(perms.write.query(Some(Path::new("/foo"))), PermissionState::Prompt);
       assert_eq!(perms.write.query(Some(Path::new("/foo/baz"))), PermissionState::Granted);
+      assert_eq!(perms.ffi.revoke(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.ffi.query(Some(Path::new("/foo"))), PermissionState::Prompt);
+      assert_eq!(perms.ffi.query(Some(Path::new("/foo/baz"))), PermissionState::Granted);
       assert_eq!(perms.net.revoke(Some(&("127.0.0.1", Some(9000)))), PermissionState::Prompt);
       assert_eq!(perms.net.query(Some(&("127.0.0.1", None))), PermissionState::Prompt);
       assert_eq!(perms.net.query(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       assert_eq!(perms.env.revoke(Some("HOME")), PermissionState::Prompt);
       assert_eq!(perms.env.revoke(Some("hostname")), PermissionState::Prompt);
       assert_eq!(perms.run.revoke(Some("deno")), PermissionState::Prompt);
-      assert_eq!(perms.ffi.revoke(Some(Path::new("deno"))), PermissionState::Prompt);
       assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
     };
   }
 
   #[test]
   fn test_check() {
+    set_prompter(Box::new(TestPrompter));
     let mut perms = Permissions {
       read: Permissions::new_read(&None, true).unwrap(),
       write: Permissions::new_write(&None, true).unwrap(),
@@ -3013,6 +2989,12 @@ mod tests {
     prompt_value.set(false);
     assert!(perms.write.check(Path::new("/foo"), None).is_ok());
     assert!(perms.write.check(Path::new("/bar"), None).is_err());
+
+    prompt_value.set(true);
+    assert!(perms.ffi.check(Some(Path::new("/foo"))).is_ok());
+    prompt_value.set(false);
+    assert!(perms.ffi.check(Some(Path::new("/foo"))).is_ok());
+    assert!(perms.ffi.check(Some(Path::new("/bar"))).is_err());
 
     prompt_value.set(true);
     assert!(perms.net.check(&("127.0.0.1", Some(8000)), None).is_ok());
@@ -3046,6 +3028,7 @@ mod tests {
 
   #[test]
   fn test_check_fail() {
+    set_prompter(Box::new(TestPrompter));
     let mut perms = Permissions {
       read: Permissions::new_read(&None, true).unwrap(),
       write: Permissions::new_write(&None, true).unwrap(),
@@ -3074,6 +3057,14 @@ mod tests {
     assert!(perms.write.check(Path::new("/bar"), None).is_ok());
     prompt_value.set(false);
     assert!(perms.write.check(Path::new("/bar"), None).is_ok());
+
+    prompt_value.set(false);
+    assert!(perms.ffi.check(Some(Path::new("/foo"))).is_err());
+    prompt_value.set(true);
+    assert!(perms.ffi.check(Some(Path::new("/foo"))).is_err());
+    assert!(perms.ffi.check(Some(Path::new("/bar"))).is_ok());
+    prompt_value.set(false);
+    assert!(perms.ffi.check(Some(Path::new("/bar"))).is_ok());
 
     prompt_value.set(false);
     assert!(perms.net.check(&("127.0.0.1", Some(8000)), None).is_err());
@@ -3118,6 +3109,7 @@ mod tests {
   #[test]
   #[cfg(windows)]
   fn test_env_windows() {
+    set_prompter(Box::new(TestPrompter));
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
     let mut perms = Permissions::allow_all();
     perms.env = UnaryPermission {
@@ -3136,6 +3128,7 @@ mod tests {
 
   #[test]
   fn test_deserialize_child_permissions_arg() {
+    set_prompter(Box::new(TestPrompter));
     assert_eq!(
       ChildPermissionsArg::inherit(),
       ChildPermissionsArg {
@@ -3290,6 +3283,7 @@ mod tests {
 
   #[test]
   fn test_create_child_permissions() {
+    set_prompter(Box::new(TestPrompter));
     let mut main_perms = Permissions {
       env: Permissions::new_env(&Some(vec![]), false).unwrap(),
       hrtime: Permissions::new_hrtime(true),
@@ -3342,6 +3336,7 @@ mod tests {
 
   #[test]
   fn test_create_child_permissions_with_prompt() {
+    set_prompter(Box::new(TestPrompter));
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
     let mut main_perms = Permissions::from_options(&PermissionsOptions {
       prompt: true,
@@ -3363,6 +3358,7 @@ mod tests {
 
   #[test]
   fn test_create_child_permissions_with_inherited_denied_list() {
+    set_prompter(Box::new(TestPrompter));
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
     let mut main_perms = Permissions::from_options(&PermissionsOptions {
       prompt: true,
@@ -3381,6 +3377,7 @@ mod tests {
 
   #[test]
   fn test_handle_empty_value() {
+    set_prompter(Box::new(TestPrompter));
     assert!(Permissions::new_read(&Some(vec![PathBuf::new()]), false).is_err());
     assert!(Permissions::new_env(&Some(vec![String::new()]), false).is_err());
     assert!(Permissions::new_sys(&Some(vec![String::new()]), false).is_err());

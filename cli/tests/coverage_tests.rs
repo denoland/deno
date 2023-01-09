@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::fs;
 use test_util as util;
@@ -51,7 +51,7 @@ mod coverage {
     // Write the inital mod.ts file
     std::fs::copy(mod_before_path, &mod_temp_path).unwrap();
     // And the test file
-    std::fs::copy(mod_test_path, &mod_test_temp_path).unwrap();
+    std::fs::copy(mod_test_path, mod_test_temp_path).unwrap();
 
     // Generate coverage
     let status = util::deno_cmd_with_deno_dir(&deno_dir)

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -21,7 +21,7 @@ use tokio::signal::unix::{signal, Signal, SignalKind};
 use tokio::signal::windows::{ctrl_break, ctrl_c, CtrlBreak, CtrlC};
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_signal")
     .ops(vec![
       op_signal_bind::decl(),
       op_signal_unbind::decl(),
@@ -453,9 +453,9 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
 #[op]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: &str,
+  sig: String,
 ) -> Result<ResourceId, AnyError> {
-  let signo = signal_str_to_int(sig)?;
+  let signo = signal_str_to_int(&sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
     return Err(type_error(format!(
       "Binding to signal '{}' is not allowed",
@@ -474,9 +474,9 @@ fn op_signal_bind(
 #[op]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: &str,
+  sig: String,
 ) -> Result<ResourceId, AnyError> {
-  let signo = signal_str_to_int(sig)?;
+  let signo = signal_str_to_int(&sig)?;
   let resource = SignalStreamResource {
     signal: AsyncRefCell::new(match signo {
       // SIGINT

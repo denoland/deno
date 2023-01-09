@@ -237,9 +237,7 @@ jobs:
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
-        # TODO(kt3k): Change the version to the released version
-        # when https://github.com/actions/cache/pull/489 (or 571) is merged.
-        uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
+        uses: actions/cache/save@v3
         if: (matrix.profile == 'release' || matrix.profile == 'fastci') &&
             github.ref == 'refs/heads/main'
         with:
@@ -253,9 +251,7 @@ jobs:
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
-        # TODO(kt3k): Change the version to the released version
-        # when https://github.com/actions/cache/pull/489 (or 571) is merged.
-        uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
+        uses: actions/cache/restore@v3
         if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         with:
           path: |
@@ -266,12 +262,6 @@ jobs:
           key: never_saved
           restore-keys: |
             18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
-
-      # Don't save cache after building PRs or branches other than 'main'.
-      - name: Skip save cache (PR)
-        run: echo "CACHE_SKIP_SAVE=true" >> $GITHUB_ENV
-        shell: bash
-        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
 
       - name: Apply and update mtime cache
         if: matrix.profile == 'release'
@@ -575,7 +565,7 @@ jobs:
           ./tools/release/05_create_release_notes.ts
 
       - name: Upload release to GitHub
-        uses: softprops/action-gh-release@59c3b4891632ff9a897f99a91d7bc557467a3a22
+        uses: softprops/action-gh-release@v0.1.15
         if: |
           matrix.job == 'test' &&
           matrix.profile == 'release' &&

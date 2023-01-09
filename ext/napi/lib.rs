@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
@@ -74,6 +74,8 @@ pub const napi_date_expected: napi_status = 18;
 pub const napi_arraybuffer_expected: napi_status = 19;
 pub const napi_detachable_arraybuffer_expected: napi_status = 20;
 pub const napi_would_deadlock: napi_status = 21;
+
+pub const NAPI_AUTO_LENGTH: usize = usize::MAX;
 
 thread_local! {
   pub static MODULE: RefCell<Option<*const NapiModule>> = RefCell::new(None);
@@ -408,7 +410,7 @@ impl Env {
 }
 
 pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
     .ops(vec![op_napi_open::decl::<P>()])
     .event_loop_middleware(|op_state_rc, cx| {
       // `work` can call back into the runtime. It can also schedule an async task
@@ -527,7 +529,7 @@ where
   let exports = v8::Object::new(scope);
 
   let mut env_shared = EnvShared::new(napi_wrap);
-  let cstr = CString::new(path.clone()).unwrap();
+  let cstr = CString::new(&*path).unwrap();
   env_shared.filename = cstr.as_ptr();
   std::mem::forget(cstr);
 

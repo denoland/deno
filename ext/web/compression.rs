@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -41,11 +41,11 @@ impl Resource for CompressionResource {
 #[op]
 pub fn op_compression_new(
   state: &mut OpState,
-  format: &str,
+  format: String,
   is_decoder: bool,
 ) -> ResourceId {
   let w = Vec::new();
-  let inner = match (format, is_decoder) {
+  let inner = match (format.as_str(), is_decoder) {
     ("deflate", true) => Inner::DeflateDecoder(ZlibDecoder::new(w)),
     ("deflate", false) => {
       Inner::DeflateEncoder(ZlibEncoder::new(w, Compression::default()))

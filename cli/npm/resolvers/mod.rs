@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod common;
 mod global;
@@ -276,6 +276,7 @@ impl NpmPackageResolver {
     }
 
     self.inner.add_package_reqs(packages).await?;
+    self.inner.cache_packages().await?;
 
     // If there's a lock file, update it with all discovered npm packages
     if let Some(lockfile_mutex) = &self.maybe_lockfile {
@@ -287,6 +288,8 @@ impl NpmPackageResolver {
   }
 
   /// Sets package requirements to the resolver, removing old requirements and adding new ones.
+  ///
+  /// This will retrieve and resolve package information, but not cache any package files.
   pub async fn set_package_reqs(
     &self,
     packages: HashSet<NpmPackageReq>,
@@ -355,7 +358,7 @@ impl RequireNpmResolver for NpmPackageResolver {
 
   fn in_npm_package(&self, path: &Path) -> bool {
     let specifier =
-      match ModuleSpecifier::from_file_path(&path.to_path_buf().clean()) {
+      match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
         Ok(p) => p,
         Err(_) => return false,
       };
@@ -370,7 +373,7 @@ impl RequireNpmResolver for NpmPackageResolver {
 }
 
 fn path_to_specifier(path: &Path) -> Result<ModuleSpecifier, AnyError> {
-  match ModuleSpecifier::from_file_path(&path.to_path_buf().clean()) {
+  match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
     Ok(specifier) => Ok(specifier),
     Err(()) => bail!("Could not convert '{}' to url.", path.display()),
   }

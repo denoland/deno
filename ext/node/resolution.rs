@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -445,7 +445,13 @@ fn resolve_package_target(
       mode,
       npm_resolver,
     )
-    .map(Some);
+    .map(|path| {
+      if mode.is_types() {
+        path_to_declaration_path(path, referrer_kind)
+      } else {
+        Some(path)
+      }
+    });
   } else if let Some(target_arr) = target.as_array() {
     if target_arr.is_empty() {
       return Ok(None);
@@ -501,14 +507,6 @@ fn resolve_package_target(
         || mode.is_types() && key.as_str() == "types"
       {
         let condition_target = target_obj.get(key).unwrap().to_owned();
-
-        if mode.is_types()
-          && key.as_str() != "types"
-          && condition_target.is_string()
-        {
-          // skip because this isn't a types entry
-          continue;
-        }
 
         let resolved = resolve_package_target(
           package_json_path,
@@ -896,7 +894,7 @@ pub fn legacy_main_resolve(
         .path
         .parent()
         .unwrap()
-        .join(&format!("{}{}", main, ending))
+        .join(format!("{}{}", main, ending))
         .clean();
       if file_exists(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()

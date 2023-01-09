@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::resolve_no_prompt;
 use crate::args::ConfigFlag;
@@ -77,7 +77,7 @@ deno {} "$@"
 "#,
     args.join(" "),
   );
-  let mut file = File::create(&shim_data.file_path.with_extension(""))?;
+  let mut file = File::create(shim_data.file_path.with_extension(""))?;
   file.write_all(template.as_bytes())?;
   Ok(())
 }
@@ -401,8 +401,7 @@ fn resolve_shim_data(
   }
 
   if let ConfigFlag::Path(config_path) = &flags.config_flag {
-    let mut copy_path = file_path.clone();
-    copy_path.set_extension("tsconfig.json");
+    let copy_path = get_hidden_file_with_ext(&file_path, "tsconfig.json");
     executable_args.push("--config".to_string());
     executable_args.push(copy_path.to_str().unwrap().to_string());
     extra_files.push((
@@ -410,6 +409,8 @@ fn resolve_shim_data(
       fs::read_to_string(config_path)
         .with_context(|| format!("error reading {}", config_path))?,
     ));
+  } else {
+    executable_args.push("--no-config".to_string());
   }
 
   if flags.no_lock {
@@ -418,8 +419,7 @@ fn resolve_shim_data(
     // always use a lockfile for an npm entrypoint unless --no-lock
     || NpmPackageReference::from_specifier(&module_url).is_ok()
   {
-    let mut copy_path = file_path.clone();
-    copy_path.set_extension("lock.json");
+    let copy_path = get_hidden_file_with_ext(&file_path, "lock.json");
     executable_args.push("--lock".to_string());
     executable_args.push(copy_path.to_str().unwrap().to_string());
 
@@ -446,6 +446,17 @@ fn resolve_shim_data(
     args: executable_args,
     extra_files,
   })
+}
+
+fn get_hidden_file_with_ext(file_path: &Path, ext: &str) -> PathBuf {
+  // use a dot file to prevent the file from showing up in some
+  // users shell auto-complete since this directory is on the PATH
+  file_path
+    .with_file_name(format!(
+      ".{}",
+      file_path.file_name().unwrap().to_string_lossy()
+    ))
+    .with_extension(ext)
 }
 
 fn is_in_path(dir: &Path) -> bool {
@@ -607,11 +618,12 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
       assert!(content.contains(
-        r#""run" "--unstable" "http://localhost:4545/echo_server.ts""#
+        r#""run" "--unstable" "--no-config" "http://localhost:4545/echo_server.ts""#
       ));
     } else {
-      assert!(content
-        .contains(r#"run --unstable 'http://localhost:4545/echo_server.ts'"#));
+      assert!(content.contains(
+        r#"run --unstable --no-config 'http://localhost:4545/echo_server.ts'"#
+      ));
     }
   }
 
@@ -632,7 +644,7 @@ mod tests {
     assert_eq!(shim_data.name, "echo_server");
     assert_eq!(
       shim_data.args,
-      vec!["run", "http://localhost:4545/echo_server.ts",]
+      vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
     );
   }
 
@@ -653,7 +665,7 @@ mod tests {
     assert_eq!(shim_data.name, "subdir");
     assert_eq!(
       shim_data.args,
-      vec!["run", "http://localhost:4545/subdir/main.ts",]
+      vec!["run", "--no-config", "http://localhost:4545/subdir/main.ts",]
     );
   }
 
@@ -674,7 +686,7 @@ mod tests {
     assert_eq!(shim_data.name, "echo_test");
     assert_eq!(
       shim_data.args,
-      vec!["run", "http://localhost:4545/echo_server.ts",]
+      vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
     );
   }
 
@@ -706,6 +718,7 @@ mod tests {
         "--allow-read",
         "--allow-net",
         "--quiet",
+        "--no-config",
         "http://localhost:4545/echo_server.ts",
         "--foobar",
       ]
@@ -731,7 +744,12 @@ mod tests {
 
     assert_eq!(
       shim_data.args,
-      vec!["run", "--no-prompt", "http://localhost:4545/echo_server.ts",]
+      vec![
+        "run",
+        "--no-prompt",
+        "--no-config",
+        "http://localhost:4545/echo_server.ts",
+      ]
     );
   }
 
@@ -754,7 +772,12 @@ mod tests {
 
     assert_eq!(
       shim_data.args,
-      vec!["run", "--allow-all", "http://localhost:4545/echo_server.ts",]
+      vec![
+        "run",
+        "--allow-all",
+        "--no-config",
+        "http://localhost:4545/echo_server.ts",
+      ]
     );
   }
 
@@ -776,12 +799,13 @@ mod tests {
     )
     .unwrap();
 
-    let lock_path = temp_dir.join("bin").join("cowsay.lock.json");
+    let lock_path = temp_dir.join("bin").join(".cowsay.lock.json");
     assert_eq!(
       shim_data.args,
       vec![
         "run",
         "--allow-all",
+        "--no-config",
         "--lock",
         &lock_path.to_string_lossy(),
         "npm:cowsay"
@@ -810,7 +834,13 @@ mod tests {
 
     assert_eq!(
       shim_data.args,
-      vec!["run", "--allow-all", "--no-lock", "npm:cowsay"]
+      vec![
+        "run",
+        "--allow-all",
+        "--no-config",
+        "--no-lock",
+        "npm:cowsay"
+      ]
     );
     assert_eq!(shim_data.extra_files, vec![]);
   }
@@ -934,7 +964,7 @@ mod tests {
     );
     assert!(result.is_ok());
 
-    let config_file_name = "echo_test.tsconfig.json";
+    let config_file_name = ".echo_test.tsconfig.json";
 
     let file_path = bin_dir.join(config_file_name);
     assert!(file_path.exists());
@@ -972,9 +1002,9 @@ mod tests {
     if cfg!(windows) {
       // TODO: see comment above this test
     } else {
-      assert!(
-        content.contains(r#"run 'http://localhost:4545/echo_server.ts' '"'"#)
-      );
+      assert!(content.contains(
+        r#"run --no-config 'http://localhost:4545/echo_server.ts' '"'"#
+      ));
     }
   }
 
@@ -1051,12 +1081,12 @@ mod tests {
     assert!(file_path.exists());
 
     let mut expected_string = format!(
-      "--import-map '{}' 'http://localhost:4545/cat.ts'",
+      "--import-map '{}' --no-config 'http://localhost:4545/cat.ts'",
       import_map_url
     );
     if cfg!(windows) {
       expected_string = format!(
-        "\"--import-map\" \"{}\" \"http://localhost:4545/cat.ts\"",
+        "\"--import-map\" \"{}\" \"--no-config\" \"http://localhost:4545/cat.ts\"",
         import_map_url
       );
     }
@@ -1093,9 +1123,11 @@ mod tests {
     }
     assert!(file_path.exists());
 
-    let mut expected_string = format!("run '{}'", &file_module_string);
+    let mut expected_string =
+      format!("run --no-config '{}'", &file_module_string);
     if cfg!(windows) {
-      expected_string = format!("\"run\" \"{}\"", &file_module_string);
+      expected_string =
+        format!("\"run\" \"--no-config\" \"{}\"", &file_module_string);
     }
 
     let content = fs::read_to_string(file_path).unwrap();
@@ -1118,11 +1150,11 @@ mod tests {
     // create extra files
     {
       let file_path = file_path.with_extension("tsconfig.json");
-      File::create(&file_path).unwrap();
+      File::create(file_path).unwrap();
     }
     {
       let file_path = file_path.with_extension("lock.json");
-      File::create(&file_path).unwrap();
+      File::create(file_path).unwrap();
     }
 
     uninstall("echo_test".to_string(), Some(temp_dir.path().to_path_buf()))

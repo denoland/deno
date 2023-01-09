@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -80,7 +80,7 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
 pub fn init<P: NodePermissions + 'static>(
   maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
     .js(include_js_files!(
       prefix "deno:ext/node",
       "01_node.js",
@@ -262,7 +262,7 @@ fn op_require_proxy_path(filename: String) -> String {
 }
 
 #[op]
-fn op_require_is_request_relative(request: &str) -> bool {
+fn op_require_is_request_relative(request: String) -> bool {
   if request.starts_with("./") || request.starts_with("../") || request == ".."
   {
     return true;
@@ -542,6 +542,7 @@ pub fn op_require_as_file_path(file_or_url: String) -> String {
 #[op]
 fn op_require_resolve_exports(
   state: &mut OpState,
+  uses_local_node_modules_dir: bool,
   modules_path: String,
   _request: String,
   name: String,
@@ -550,7 +551,9 @@ fn op_require_resolve_exports(
 ) -> Result<Option<String>, AnyError> {
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
 
-  let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path)) {
+  let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path))
+    && !uses_local_node_modules_dir
+  {
     modules_path
   } else {
     path_resolve(vec![modules_path, name])

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
@@ -107,7 +107,7 @@ pub fn op_worker_sync_fetch(
             }
             "blob" => {
               let blob =
-                blob_store.get_object_url(script_url)?.ok_or_else(|| {
+                blob_store.get_object_url(script_url).ok_or_else(|| {
                   type_error("Blob for the given URL not found.")
                 })?;
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::io::StdFileResource;
 use deno_core::error::AnyError;
@@ -34,7 +34,7 @@ fn get_windows_handle(
 }
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_tty")
     .ops(vec![
       op_stdin_set_raw::decl(),
       op_isatty::decl(),
@@ -201,46 +201,10 @@ fn op_console_size(
     rid: u32,
   ) -> Result<(), AnyError> {
     StdFileResource::with_file(state, rid, move |std_file| {
-      #[cfg(windows)]
-      {
-        use std::os::windows::io::AsRawHandle;
-        let handle = std_file.as_raw_handle();
-
-        // SAFETY: winapi calls
-        unsafe {
-          let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
-            std::mem::zeroed();
-
-          if winapi::um::wincon::GetConsoleScreenBufferInfo(
-            handle,
-            &mut bufinfo,
-          ) == 0
-          {
-            return Err(Error::last_os_error().into());
-          }
-          result[0] = bufinfo.dwSize.X as u32;
-          result[1] = bufinfo.dwSize.Y as u32;
-          Ok(())
-        }
-      }
-
-      #[cfg(unix)]
-      {
-        use std::os::unix::io::AsRawFd;
-
-        let fd = std_file.as_raw_fd();
-        // TODO(bartlomieju):
-        #[allow(clippy::undocumented_unsafe_blocks)]
-        unsafe {
-          let mut size: libc::winsize = std::mem::zeroed();
-          if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-            return Err(Error::last_os_error().into());
-          }
-          result[0] = size.ws_col as u32;
-          result[1] = size.ws_row as u32;
-          Ok(())
-        }
-      }
+      let size = console_size(std_file)?;
+      result[0] = size.cols;
+      result[1] = size.rows;
+      Ok(())
     })
   }
 
@@ -255,4 +219,54 @@ fn op_console_size(
   }
 
   last_result
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct ConsoleSize {
+  pub cols: u32,
+  pub rows: u32,
+}
+
+pub fn console_size(
+  std_file: &std::fs::File,
+) -> Result<ConsoleSize, std::io::Error> {
+  #[cfg(windows)]
+  {
+    use std::os::windows::io::AsRawHandle;
+    let handle = std_file.as_raw_handle();
+
+    // SAFETY: winapi calls
+    unsafe {
+      let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+        std::mem::zeroed();
+
+      if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
+        == 0
+      {
+        return Err(Error::last_os_error());
+      }
+      Ok(ConsoleSize {
+        cols: bufinfo.dwSize.X as u32,
+        rows: bufinfo.dwSize.Y as u32,
+      })
+    }
+  }
+
+  #[cfg(unix)]
+  {
+    use std::os::unix::io::AsRawFd;
+
+    let fd = std_file.as_raw_fd();
+    // SAFETY: libc calls
+    unsafe {
+      let mut size: libc::winsize = std::mem::zeroed();
+      if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
+        return Err(Error::last_os_error());
+      }
+      Ok(ConsoleSize {
+        cols: size.ws_col as u32,
+        rows: size.ws_row as u32,
+      })
+    }
+  }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::TcpStreamResource;
 use crate::resolve_addr::resolve_addr;
@@ -366,7 +366,6 @@ fn op_node_unstable_net_listen_udp<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  super::check_unstable(state, "Deno.listenDatagram");
   net_listen_udp::<NP>(state, addr, reuse_address)
 }
 
@@ -514,7 +513,6 @@ pub fn op_set_nodelay(
   rid: ResourceId,
   nodelay: bool,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.Conn#setNoDelay");
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_nodelay(nodelay)
@@ -526,7 +524,6 @@ pub fn op_set_keepalive(
   rid: ResourceId,
   keepalive: bool,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.Conn#setKeepAlive");
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_keepalive(keepalive)
@@ -868,7 +865,7 @@ mod tests {
       let listener = TcpListener::bind(addr).await.unwrap();
       let _ = listener.accept().await;
     });
-    let my_ext = Extension::builder()
+    let my_ext = Extension::builder("test_ext")
       .state(move |state| {
         state.put(TestPermission {});
         state.put(UnstableChecker { unstable: true });

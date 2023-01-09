@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
 
@@ -71,6 +71,8 @@
   let mainModule = null;
   let hasBrokenOnInspectBrk = false;
   let hasInspectBrk = false;
+  // Are we running with --node-modules-dir flag?
+  let usesLocalNodeModulesDir = false;
 
   function stat(filename) {
     // TODO: required only on windows
@@ -301,7 +303,12 @@
   // 1. name/.*
   // 2. @scope/name/.*
   const EXPORTS_PATTERN = /^((?:@[^/\\%]+\/)?[^./\\%][^/\\%]*)(\/.*)?$/;
-  function resolveExports(modulesPath, request, parentPath) {
+  function resolveExports(
+    modulesPath,
+    request,
+    parentPath,
+    usesLocalNodeModulesDir,
+  ) {
     // The implementation's behavior is meant to mirror resolution in ESM.
     const [, name, expansion = ""] =
       StringPrototypeMatch(request, EXPORTS_PATTERN) || [];
@@ -310,6 +317,7 @@
     }
 
     return core.ops.op_require_resolve_exports(
+      usesLocalNodeModulesDir,
       modulesPath,
       request,
       name,
@@ -347,7 +355,12 @@
       if (curPath && stat(curPath) < 1) continue;
 
       if (!absoluteRequest) {
-        const exportsResolved = resolveExports(curPath, request, parentPath);
+        const exportsResolved = resolveExports(
+          curPath,
+          request,
+          parentPath,
+          usesLocalNodeModulesDir,
+        );
         if (exportsResolved) {
           return exportsResolved;
         }
@@ -359,10 +372,10 @@
       const isRelative = ops.op_require_is_request_relative(
         request,
       );
-      // TODO(bartlomieju): could be a single op
-      const basePath = (isDenoDirPackage && !isRelative)
-        ? pathResolve(curPath, packageSpecifierSubPath(request))
-        : pathResolve(curPath, request);
+      const basePath =
+        (isDenoDirPackage && !isRelative && !usesLocalNodeModulesDir)
+          ? pathResolve(curPath, packageSpecifierSubPath(request))
+          : pathResolve(curPath, request);
       let filename;
 
       const rc = stat(basePath);
@@ -915,6 +928,9 @@
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     require: {
+      setUsesLocalNodeModulesDir() {
+        usesLocalNodeModulesDir = true;
+      },
       setInspectBrk() {
         hasInspectBrk = true;
       },

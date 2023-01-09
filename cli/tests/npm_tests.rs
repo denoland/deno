@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod integration;
 
@@ -100,6 +100,15 @@ mod npm {
     output: "npm/conditional_exports/main.out",
     envs: env_vars_for_npm_tests(),
     http_server: true,
+  });
+
+  itest!(conditional_exports_node_modules_dir {
+    args:
+      "run --allow-read --node-modules-dir $TESTDATA/npm/conditional_exports/main.js",
+    output: "npm/conditional_exports/main.out",
+    envs: env_vars_for_npm_tests(),
+    http_server: true,
+    temp_cwd: true,
   });
 
   itest!(dual_cjs_esm {
@@ -279,7 +288,7 @@ mod npm {
     exit_code: 1,
   });
 
-  itest!(types {
+  itest!(types_general {
     args: "check --quiet npm/types/main.ts",
     output: "npm/types/main.out",
     envs: env_vars_for_npm_tests(),

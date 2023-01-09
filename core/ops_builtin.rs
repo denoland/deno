@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::error::format_file_name;
 use crate::error::type_error;
 use crate::include_js_files;
@@ -17,7 +17,7 @@ use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
 
 pub(crate) fn init_builtins() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_builtins")
     .js(include_js_files!(
       prefix "deno:core",
       "00_primordials.js",
@@ -107,7 +107,7 @@ pub fn op_metrics(state: &mut OpState) -> (OpMetrics, Vec<OpMetrics>) {
 
 /// Builtin utility to print to stdout/stderr
 #[op]
-pub fn op_print(msg: &str, is_err: bool) -> Result<(), Error> {
+pub fn op_print(msg: String, is_err: bool) -> Result<(), Error> {
   if is_err {
     stderr().write_all(msg.as_bytes())?;
     stderr().flush().unwrap();
@@ -152,12 +152,12 @@ pub fn op_wasm_streaming_feed(
 pub fn op_wasm_streaming_set_url(
   state: &mut OpState,
   rid: ResourceId,
-  url: &str,
+  url: String,
 ) -> Result<(), Error> {
   let wasm_streaming =
     state.resource_table.get::<WasmStreamingResource>(rid)?;
 
-  wasm_streaming.0.borrow_mut().set_url(url);
+  wasm_streaming.0.borrow_mut().set_url(&url);
 
   Ok(())
 }

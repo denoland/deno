@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
 use crate::error::generic_error;
@@ -1479,7 +1479,9 @@ import "/a.js";
       43
     }
 
-    let ext = Extension::builder().ops(vec![op_test::decl()]).build();
+    let ext = Extension::builder("test_ext")
+      .ops(vec![op_test::decl()])
+      .build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],

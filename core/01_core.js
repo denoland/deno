@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -129,7 +129,14 @@
   }
 
   function buildCustomError(className, message, code) {
-    const error = errorMap[className]?.(message);
+    let error;
+    try {
+      error = errorMap[className]?.(message);
+    } catch (e) {
+      throw new Error(
+        `Unsable to build custom error for "${className}"\n  ${e.message}`,
+      );
+    }
     // Strip buildCustomError() calls from stack trace
     if (typeof error == "object") {
       ErrorCaptureStackTrace(error, buildCustomError);

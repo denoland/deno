@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod urlpattern;
 
@@ -18,7 +18,8 @@ use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl"])
     .js(include_js_files!(
       prefix "deno:ext/url",
       "00_url.js",
@@ -41,11 +42,11 @@ pub fn init() -> Extension {
 #[op]
 pub fn op_url_parse_with_base(
   state: &mut OpState,
-  href: &str,
-  base_href: &str,
-  buf: &mut [u32],
+  href: String,
+  base_href: String,
+  buf: &mut [u8],
 ) -> u32 {
-  let base_url = match Url::parse(base_href) {
+  let base_url = match Url::parse(&base_href) {
     Ok(url) => url,
     Err(_) => return ParseStatus::Err as u32,
   };
@@ -67,8 +68,8 @@ pub fn op_url_get_serialization(state: &mut OpState) -> String {
 }
 
 /// Parse `href` without a `base_url`. Fills the out `buf` with URL components.
-#[op(fast)]
-pub fn op_url_parse(state: &mut OpState, href: &str, buf: &mut [u32]) -> u32 {
+#[op]
+pub fn op_url_parse(state: &mut OpState, href: String, buf: &mut [u8]) -> u32 {
   parse_url(state, href, None, buf)
 }
 
@@ -99,14 +100,15 @@ pub fn op_url_parse(state: &mut OpState, href: &str, buf: &mut [u32]) -> u32 {
 #[inline]
 fn parse_url(
   state: &mut OpState,
-  href: &str,
+  href: String,
   base_href: Option<&Url>,
-  buf: &mut [u32],
+  buf: &mut [u8],
 ) -> u32 {
-  match Url::options().base_url(base_href).parse(href) {
+  match Url::options().base_url(base_href).parse(&href) {
     Ok(url) => {
       let inner_url = quirks::internal_components(&url);
 
+      let buf: &mut [u32] = as_u32_slice(buf);
       buf[0] = inner_url.scheme_end;
       buf[1] = inner_url.username_end;
       buf[2] = inner_url.host_start;

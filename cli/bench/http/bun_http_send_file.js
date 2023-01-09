@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 const port = Bun.argv[2] || "4545";
 
 const path = new URL("../testdata/128k.bin", import.meta.url).pathname;

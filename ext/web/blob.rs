@@ -47,13 +47,10 @@ impl BlobStore {
     parts.remove(id)
   }
 
-  pub fn get_object_url(
-    &self,
-    mut url: Url,
-  ) -> Result<Option<Arc<Blob>>, AnyError> {
+  pub fn get_object_url(&self, mut url: Url) -> Option<Arc<Blob>> {
     let blob_store = self.object_urls.lock();
     url.set_fragment(None);
-    Ok(blob_store.get(&url).cloned())
+    blob_store.get(&url).cloned()
   }
 
   pub fn insert_object_url(
@@ -252,9 +249,9 @@ pub fn op_blob_create_object_url(
 #[op]
 pub fn op_blob_revoke_object_url(
   state: &mut deno_core::OpState,
-  url: &str,
+  url: String,
 ) -> Result<(), AnyError> {
-  let url = Url::parse(url)?;
+  let url = Url::parse(&url)?;
   let blob_store = state.borrow::<BlobStore>();
   blob_store.remove_object_url(&url);
   Ok(())
@@ -285,7 +282,7 @@ pub fn op_blob_from_object_url(
   let blob_store = state.try_borrow::<BlobStore>().ok_or_else(|| {
     type_error("Blob URLs are not supported in this context.")
   })?;
-  if let Some(blob) = blob_store.get_object_url(url)? {
+  if let Some(blob) = blob_store.get_object_url(url) {
     let parts = blob
       .parts
       .iter()
