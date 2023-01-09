@@ -52,24 +52,48 @@ fn napi_fatal_exception(env: *mut Env, value: napi_value) -> Result {
   );
 }
 
-// TODO: properly implement
 #[napi_sym::napi_sym]
 fn napi_add_env_cleanup_hook(
-  _env: *mut Env,
-  _hook: extern "C" fn(*const c_void),
-  _data: *const c_void,
+  env: *mut Env,
+  hook: extern "C" fn(*const c_void),
+  data: *const c_void,
 ) -> Result {
-  log::info!("napi_add_env_cleanup_hook is currently not supported");
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+
+  {
+    let mut env_cleanup_hooks = env.cleanup_hooks.borrow_mut();
+    if env_cleanup_hooks
+      .iter()
+      .find(|pair| pair.0 == hook && pair.1 == data)
+      .is_some()
+    {
+      panic!("Cleanup hook with this data already registered");
+    }
+    env_cleanup_hooks.push((hook, data));
+  }
   Ok(())
 }
 
 #[napi_sym::napi_sym]
 fn napi_remove_env_cleanup_hook(
-  _env: *mut Env,
-  _hook: extern "C" fn(*const c_void),
-  _data: *const c_void,
+  env: *mut Env,
+  hook: extern "C" fn(*const c_void),
+  data: *const c_void,
 ) -> Result {
-  log::info!("napi_remove_env_cleanup_hook is currently not supported");
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+
+  {
+    let mut env_cleanup_hooks = env.cleanup_hooks.borrow_mut();
+    let index = env_cleanup_hooks
+      .iter()
+      .rev()
+      .position(|&pair| pair.0 == hook && pair.1 == data)
+      .unwrap();
+    // We've reversed the iterator so need to fix the index
+    let index = env_cleanup_hooks.len() - index - 1;
+    env_cleanup_hooks.remove(index);
+  }
+
   Ok(())
 }
 
