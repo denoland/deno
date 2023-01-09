@@ -1209,7 +1209,7 @@ fn napi_define_class(
 
     for p in napi_properties {
       if p.attributes & napi_static != 0 {
-        static_descriptors.push(p.clone());
+        static_descriptors.push(*p);
       }
     }
 
