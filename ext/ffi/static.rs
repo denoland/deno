@@ -142,5 +142,8 @@ pub fn op_ffi_get_static<'scope>(
       };
       integer.into()
     }
+    NativeType::Struct(_) => {
+      return Err(type_error("Invalid FFI static type 'struct'"));
+    }
   })
 }
