@@ -268,7 +268,10 @@
       let size = 0;
       let alignment = 1;
       for (const field of new SafeArrayIterator(type.struct)) {
-        const [fieldSize, fieldAlign] = getTypeSizeAndAlignment(field, cache);
+        const { 0: fieldSize, 1: fieldAlign } = getTypeSizeAndAlignment(
+          field,
+          cache,
+        );
         alignment = MathMax(alignment, fieldAlign);
         size = MathCeil(size / fieldAlign) * fieldAlign;
         size += fieldSize;
