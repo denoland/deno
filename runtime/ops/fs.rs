@@ -12,6 +12,7 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::Extension;
 use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_crypto::rand::thread_rng;
@@ -78,6 +79,7 @@ pub fn init() -> Extension {
       op_realpath_async::decl(),
       op_read_dir_sync::decl(),
       op_read_dir_async::decl(),
+      op_read_dir_async_next::decl(),
       op_rename_sync::decl(),
       op_rename_async::decl(),
       op_link_sync::decl(),
@@ -1258,11 +1260,19 @@ fn op_read_dir_sync(
   Ok(entries)
 }
 
+pub struct ReadDir(RefCell<tokio::fs::ReadDir>);
+
+impl Resource for ReadDir {
+  fn name(&self) -> Cow<str> {
+    "readDir".into()
+  }
+}
+
 #[op]
 async fn op_read_dir_async(
   state: Rc<RefCell<OpState>>,
   path: String,
-) -> Result<Vec<DirEntry>, AnyError> {
+) -> Result<ResourceId, AnyError> {
   let path = PathBuf::from(&path);
   {
     let mut state = state.borrow_mut();
@@ -1270,39 +1280,55 @@ async fn op_read_dir_async(
       .borrow_mut::<PermissionsContainer>()
       .check_read(&path, "Deno.readDir()")?;
   }
-  tokio::task::spawn_blocking(move || {
-    debug!("op_read_dir_async {}", path.display());
-    let err_mapper = |err: Error| {
-      Error::new(err.kind(), format!("{}, readdir '{}'", err, path.display()))
-    };
-    let entries: Vec<_> = std::fs::read_dir(&path)
-      .map_err(err_mapper)?
-      .filter_map(|entry| {
-        let entry = entry.unwrap();
-        // Not all filenames can be encoded as UTF-8. Skip those for now.
-        if let Ok(name) = into_string(entry.file_name()) {
-          Some(DirEntry {
-            name,
-            is_file: entry
-              .file_type()
-              .map_or(false, |file_type| file_type.is_file()),
-            is_directory: entry
-              .file_type()
-              .map_or(false, |file_type| file_type.is_dir()),
-            is_symlink: entry
-              .file_type()
-              .map_or(false, |file_type| file_type.is_symlink()),
-          })
-        } else {
-          None
-        }
-      })
-      .collect();
+  debug!("op_read_dir_async {}", path.display());
+  let read_dir = tokio::fs::read_dir(&path).await.map_err(|err: Error| {
+    Error::new(err.kind(), format!("{}, readdir '{}'", err, path.display()))
+  })?;
 
-    Ok(entries)
-  })
-  .await
-  .unwrap()
+  let mut state = state.borrow_mut();
+  let rid = state.resource_table.add(ReadDir(RefCell::new(read_dir)));
+  Ok(rid)
+}
+
+#[op]
+async fn op_read_dir_async_next(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<(Option<DirEntry>, bool), AnyError> {
+  let resource = {
+    let state = state.borrow_mut();
+    let resource = state.resource_table.get::<ReadDir>(rid)?;
+    resource.clone()
+  };
+  let entry = {
+    let mut read_dir = resource.0.borrow_mut();
+    read_dir.next_entry().await?
+  };
+
+  if let Some(entry) = entry {
+    // Not all filenames can be encoded as UTF-8. Skip those for now.
+    let dir_entry = if let Ok(name) = into_string(entry.file_name()) {
+      let file_type = entry.file_type().await;
+      Some(DirEntry {
+        name,
+        is_file: file_type
+          .as_ref()
+          .map_or(false, |file_type| file_type.is_file()),
+        is_directory: file_type
+          .as_ref()
+          .map_or(false, |file_type| file_type.is_dir()),
+        is_symlink: file_type
+          .as_ref()
+          .map_or(false, |file_type| file_type.is_symlink()),
+      })
+    } else {
+      None
+    };
+
+    Ok((dir_entry, false))
+  } else {
+    Ok((None, true))
+  }
 }
 
 #[op]

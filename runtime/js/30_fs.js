@@ -123,13 +123,28 @@
   }
 
   function readDir(path) {
-    const array = core.opAsync(
-      "op_read_dir_async",
-      pathFromURL(path),
-    );
+    const ridPromise = core.opAsync("op_read_dir_async", pathFromURL(path));
+
+    let finished = false;
     return {
       async *[SymbolAsyncIterator]() {
-        yield* await array;
+        const rid = await ridPromise;
+        try {
+          while (!finished) {
+            const [entry, done] = await core.opAsync(
+              "op_read_dir_async_next",
+              rid,
+            );
+
+            if (done) {
+              finished = true;
+            } else if (entry) {
+              yield entry;
+            }
+          }
+        } finally {
+          core.close(rid);
+        }
       },
     };
   }
