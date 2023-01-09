@@ -20,6 +20,7 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::OpState;
+use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
 use deno_runtime::permissions::PermissionsContainer;
 use std::cell::RefCell;
@@ -220,10 +221,9 @@ impl ModuleLoader for CliModuleLoader {
     &self,
     specifier: &str,
     referrer: &str,
-    _is_main: bool,
-    is_dynamic: bool,
+    kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
-    let mut permissions = if is_dynamic {
+    let mut permissions = if matches!(kind, ResolutionKind::DynamicImport) {
       self.dynamic_permissions.clone()
     } else {
       self.root_permissions.clone()
