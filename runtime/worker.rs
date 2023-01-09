@@ -38,7 +38,7 @@ use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::ops;
 use crate::ops::io::Stdio;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
@@ -185,7 +185,7 @@ impl Default for WorkerOptions {
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
-    permissions: Permissions,
+    permissions: PermissionsContainer,
     options: WorkerOptions,
   ) -> Self {
     let bootstrap_options = options.bootstrap.clone();
@@ -196,15 +196,15 @@ impl MainWorker {
 
   pub fn from_options(
     main_module: ModuleSpecifier,
-    permissions: Permissions,
+    permissions: PermissionsContainer,
     mut options: WorkerOptions,
   ) -> Self {
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let perm_ext = Extension::builder()
+    let perm_ext = Extension::builder("deno_permissions_worker")
       .state(move |state| {
-        state.put::<Permissions>(permissions.clone());
+        state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
         Ok(())
@@ -222,11 +222,11 @@ impl MainWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init::<Permissions>(
+      deno_web::init::<PermissionsContainer>(
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
-      deno_fetch::init::<Permissions>(deno_fetch::Options {
+      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
@@ -236,7 +236,7 @@ impl MainWorker {
         ..Default::default()
       }),
       deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<Permissions>(
+      deno_websocket::init::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
@@ -246,7 +246,7 @@ impl MainWorker {
       deno_crypto::init(options.seed),
       deno_webgpu::init(unstable),
       // ffi
-      deno_ffi::init::<Permissions>(unstable),
+      deno_ffi::init::<PermissionsContainer>(unstable),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
@@ -261,20 +261,20 @@ impl MainWorker {
       ops::io::init(),
       ops::io::init_stdio(options.stdio),
       deno_tls::init(),
-      deno_net::init::<Permissions>(
+      deno_net::init::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init::<Permissions>(unstable),
-      deno_node::init::<Permissions>(options.npm_resolver),
+      deno_napi::init::<PermissionsContainer>(unstable),
+      deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
-      deno_flash::init::<Permissions>(unstable),
+      deno_flash::init::<PermissionsContainer>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,

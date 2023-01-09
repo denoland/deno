@@ -2805,7 +2805,7 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
 }
 
 fn init_extension(performance: Arc<Performance>) -> Extension {
-  Extension::builder()
+  Extension::builder("deno_tsc")
     .ops(vec![
       op_exists::decl(),
       op_is_cancelled::decl(),
