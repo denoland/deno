@@ -295,10 +295,6 @@ fn napi_create_error(
   let _code = transmute::<napi_value, v8::Local<v8::Value>>(code);
   let msg = transmute::<napi_value, v8::Local<v8::Value>>(msg);
 
-  eprintln!(
-    "create error {:#?}",
-    msg.to_rust_string_lossy(&mut env.scope())
-  );
   let msg = msg.to_string(&mut env.scope()).unwrap();
   let error = v8::Exception::error(&mut env.scope(), msg);
   *result = error.into();
@@ -1153,11 +1149,6 @@ fn napi_define_class(
       transmute::<napi_value, v8::Local<v8::String>>(p.name)
     };
 
-    eprintln!(
-      "napi_define_class property {}",
-      name.to_rust_string_lossy(scope)
-    );
-
     let method = p.method;
     let getter = p.getter;
     let setter = p.setter;
@@ -1214,26 +1205,19 @@ fn napi_define_class(
   *result = value.into();
 
   if static_property_count > 0 {
-    eprintln!("static count {}", static_property_count);
     let mut static_descriptors = Vec::with_capacity(static_property_count);
 
     for p in napi_properties {
       if p.attributes & napi_static != 0 {
-        eprintln!("property {:#?}", p);
-        static_descriptors.push(p);
+        static_descriptors.push(p.clone());
       }
     }
 
-    static_descriptors.shrink_to_fit();
-    let (len, ptr) = (static_descriptors.len(), static_descriptors.as_ptr());
-    // std::mem::forget(static_descriptors);
-
-    // The static_descriptors slice contains garbage when this function is called
     let res = napi_define_properties(
       env_ptr,
       *result,
-      len,
-      ptr as *const napi_property_descriptor,
+      static_descriptors.len(),
+      static_descriptors.as_ptr() as *const napi_property_descriptor,
     );
 
     // TODO(bartlomieju): error handling
@@ -1255,11 +1239,8 @@ fn napi_define_properties(
   let object = transmute::<napi_value, v8::Local<v8::Object>>(obj);
   let properties = std::slice::from_raw_parts(properties, property_count);
   for property in properties {
-    eprintln!("property now: {:#?}", property);
     let name = if !property.utf8name.is_null() {
-      eprintln!("property.utf8name: {:?}", property.utf8name);
       let name_str = CStr::from_ptr(property.utf8name);
-      eprintln!("property.string: {:?}", name_str);
       let name_str = name_str.to_str().unwrap();
       v8::String::new(scope, name_str).unwrap()
     } else {
@@ -2090,7 +2071,6 @@ fn napi_set_element(
   index: u32,
   value: napi_value,
 ) -> Result {
-  eprintln!("napi_set_element");
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   let object = transmute::<napi_value, v8::Local<v8::Value>>(object);
   let array = v8::Local::<v8::Array>::try_from(object).unwrap();
@@ -2106,7 +2086,6 @@ fn napi_set_instance_data(
   finalize_cb: napi_finalize,
   finalize_hint: *mut c_void,
 ) -> Result {
-  eprintln!("napi_set_element");
   let env = &mut *(env as *mut Env);
   let shared = env.shared_mut();
   shared.instance_data = data;
@@ -2128,7 +2107,6 @@ fn napi_set_named_property(
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   let name = CStr::from_ptr(name).to_str().unwrap();
-  eprintln!("napi set named property {}", name);
   let object = transmute::<napi_value, v8::Local<v8::Object>>(object);
   let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
   let name = v8::String::new(&mut env.scope(), name).unwrap();
@@ -2143,8 +2121,6 @@ fn napi_set_property(
   key: napi_value,
   value: napi_value,
 ) -> Result {
-  eprintln!("napi set property");
-
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   check_arg_option!(key);
   check_arg_option!(value);
