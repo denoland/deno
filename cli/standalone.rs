@@ -138,6 +138,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     specifier: &str,
     referrer: &str,
     _is_main: bool,
+    _is_dynamic: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
     // Try to follow redirects when resolving.
     let referrer = match self.eszip.get_module(referrer) {

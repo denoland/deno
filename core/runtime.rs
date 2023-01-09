@@ -2038,6 +2038,7 @@ impl JsRuntime {
           true,
           specifier.as_str(),
           code.as_bytes(),
+          false,
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -2097,6 +2098,7 @@ impl JsRuntime {
           false,
           specifier.as_str(),
           code.as_bytes(),
+          false,
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -3133,6 +3135,7 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
+        _is_dynamic: bool,
       ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
@@ -3303,6 +3306,7 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
+        _is_dynamic: bool,
       ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
@@ -3870,6 +3874,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
         specifier: &str,
         referrer: &str,
         _is_main: bool,
+        _is_dynamic: bool,
       ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
@@ -4002,6 +4007,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
         specifier: &str,
         referrer: &str,
         _is_main: bool,
+        _is_dynamic: bool,
       ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");

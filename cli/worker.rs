@@ -474,7 +474,11 @@ async fn create_main_worker_internal(
     (main_module, false)
   };
 
-  let module_loader = CliModuleLoader::new(ps.clone());
+  let module_loader = CliModuleLoader::new(
+    ps.clone(),
+    PermissionsContainer::allow_all(),
+    permissions.clone(),
+  );
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
 
@@ -650,6 +654,7 @@ fn create_web_worker_callback(
     let module_loader = CliModuleLoader::new_for_worker(
       ps.clone(),
       args.parent_permissions.clone(),
+      args.permissions.clone(),
     );
     let create_web_worker_cb =
       create_web_worker_callback(ps.clone(), stdio.clone());

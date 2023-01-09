@@ -36,28 +36,38 @@ struct ModuleCodeSource {
 pub struct CliModuleLoader {
   pub lib: TsTypeLib,
   /// The initial set of permissions used to resolve the static imports in the
-  /// worker. They are decoupled from the worker (dynamic) permissions since
-  /// read access errors must be raised based on the parent thread permissions.
+  /// worker. These are "allow all" for main worker, and parent thread
+  /// permissions for Web Worker.
   pub root_permissions: PermissionsContainer,
+  /// Permissions used to resolve dynamic imports, these get passed as
+  /// "root permissions" for Web Worker.
+  dynamic_permissions: PermissionsContainer,
   pub ps: ProcState,
 }
 
 impl CliModuleLoader {
-  pub fn new(ps: ProcState) -> Rc<Self> {
+  pub fn new(
+    ps: ProcState,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
+  ) -> Rc<Self> {
     Rc::new(CliModuleLoader {
       lib: ps.options.ts_type_lib_window(),
-      root_permissions: PermissionsContainer::allow_all(),
+      root_permissions,
+      dynamic_permissions,
       ps,
     })
   }
 
   pub fn new_for_worker(
     ps: ProcState,
-    permissions: PermissionsContainer,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
   ) -> Rc<Self> {
     Rc::new(CliModuleLoader {
       lib: ps.options.ts_type_lib_worker(),
-      root_permissions: permissions,
+      root_permissions,
+      dynamic_permissions,
       ps,
     })
   }
@@ -153,8 +163,8 @@ impl CliModuleLoader {
       })?;
 
       let code = if self.ps.cjs_resolutions.lock().contains(specifier) {
-        let permissions = if is_dynamic {
-          todo!()
+        let mut permissions = if is_dynamic {
+          self.dynamic_permissions.clone()
         } else {
           self.root_permissions.clone()
         };
@@ -211,8 +221,14 @@ impl ModuleLoader for CliModuleLoader {
     specifier: &str,
     referrer: &str,
     _is_main: bool,
+    is_dynamic: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    self.ps.resolve(specifier, referrer, permissions)
+    let mut permissions = if is_dynamic {
+      self.dynamic_permissions.clone()
+    } else {
+      self.root_permissions.clone()
+    };
+    self.ps.resolve(specifier, referrer, &mut permissions)
   }
 
   fn load(
@@ -233,7 +249,7 @@ impl ModuleLoader for CliModuleLoader {
 
   fn prepare_load(
     &self,
-    op_state: Rc<RefCell<OpState>>,
+    _op_state: Rc<RefCell<OpState>>,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
@@ -245,17 +261,14 @@ impl ModuleLoader for CliModuleLoader {
 
     let specifier = specifier.clone();
     let ps = self.ps.clone();
-    let state = op_state.borrow();
 
-    let dynamic_permissions = state.borrow::<PermissionsContainer>().clone();
+    let dynamic_permissions = self.dynamic_permissions.clone();
     let root_permissions = if is_dynamic {
-      dynamic_permissions.clone()
+      self.dynamic_permissions.clone()
     } else {
       self.root_permissions.clone()
     };
     let lib = self.lib;
-
-    drop(state);
 
     async move {
       ps.prepare_module_load(

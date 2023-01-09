@@ -378,7 +378,7 @@ fn import_meta_resolve(
     return;
   }
 
-  match loader.resolve(&specifier_str, &referrer, false) {
+  match loader.resolve(&specifier_str, &referrer, false, true) {
     Ok(resolved) => {
       let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();
       rv.set(resolved_val);
