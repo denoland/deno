@@ -37,7 +37,7 @@ use std::time::SystemTime;
 
 /// This extension has no runtime apis, it only exports some shared native functions.
 pub fn init() -> Extension {
-  Extension::builder().build()
+  Extension::builder(env!("CARGO_PKG_NAME")).build()
 }
 
 struct DefaultSignatureVerification;

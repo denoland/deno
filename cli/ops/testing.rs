@@ -30,7 +30,7 @@ pub fn init(
   fail_fast_tracker: FailFastTracker,
   filter: TestFilter,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder("deno_test")
     .ops(vec![
       op_pledge_test_permissions::decl(),
       op_restore_test_permissions::decl(),
