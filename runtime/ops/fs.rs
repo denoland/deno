@@ -1300,8 +1300,12 @@ async fn op_read_dir_async_next(
     let resource = state.resource_table.get::<ReadDir>(rid)?;
     resource.clone()
   };
+  #[allow(clippy::await_holding_refcell_ref)]
   let entry = {
-    let mut read_dir = resource.0.borrow_mut();
+    let mut read_dir = resource
+      .0
+      .try_borrow_mut()
+      .map_err(|_| custom_error("BadResource", "Resource is in use"))?;
     read_dir.next_entry().await?
   };
 
