@@ -290,7 +290,7 @@ pub fn main() {
 
     let env_v8_flags = env::var("V8_FLAGS")
       .ok()
-      .map(|flags| flags.split(",").map(String::from).collect::<Vec<String>>())
+      .map(|flags| flags.split(',').map(String::from).collect::<Vec<String>>())
       .unwrap_or_default();
     if !flags.v8_flags.is_empty() || !env_v8_flags.is_empty() {
       init_v8_flags(&flags.v8_flags, env_v8_flags);
