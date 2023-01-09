@@ -25,6 +25,7 @@ use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::path_to_declaration_path;
 use deno_runtime::deno_node::NodeModuleKind;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
@@ -441,6 +442,7 @@ pub fn node_resolve(
   referrer: &ModuleSpecifier,
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<NodeResolution>, AnyError> {
   // Note: if we are here, then the referrer is an esm module
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
@@ -482,6 +484,7 @@ pub fn node_resolve(
     DEFAULT_CONDITIONS,
     mode,
     npm_resolver,
+    permissions,
   )?;
   let url = match url {
     Some(url) => url,
@@ -511,6 +514,7 @@ pub fn node_resolve_npm_reference(
   reference: &NpmPackageReference,
   mode: NodeResolutionMode,
   npm_resolver: &NpmPackageResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<NodeResolution>, AnyError> {
   let package_folder =
     npm_resolver.resolve_package_folder_from_deno_module(&reference.req)?;
@@ -526,6 +530,7 @@ pub fn node_resolve_npm_reference(
     DEFAULT_CONDITIONS,
     mode,
     npm_resolver,
+    permissions,
   )
   .with_context(|| {
     format!("Error resolving package config for '{}'", reference)
@@ -554,8 +559,8 @@ pub fn node_resolve_binary_export(
   pkg_req: &NpmPackageReq,
   bin_name: Option<&str>,
   npm_resolver: &NpmPackageResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<NodeResolution, AnyError> {
-  let permissions = &mut PermissionsContainer::allow_all();
   let package_folder =
     npm_resolver.resolve_package_folder_from_deno_module(pkg_req)?;
   let package_json_path = package_folder.join("package.json");
@@ -668,10 +673,10 @@ fn package_config_resolve(
   conditions: &[&str],
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<PathBuf>, AnyError> {
   let package_json_path = package_dir.join("package.json");
   let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
-  let permissions = &mut PermissionsContainer::allow_all();
   let package_config =
     PackageJson::load(npm_resolver, permissions, package_json_path.clone())?;
   if let Some(exports) = &package_config.exports {
@@ -795,8 +800,8 @@ fn module_resolve(
   conditions: &[&str],
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
-  let permissions = &mut PermissionsContainer::allow_all();
   // note: if we're here, the referrer is an esm module
   let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
     let resolved_specifier = referrer.join(specifier)?;
@@ -891,6 +896,7 @@ pub fn translate_cjs_to_esm(
   media_type: MediaType,
   npm_resolver: &NpmPackageResolver,
   node_analysis_cache: &NodeAnalysisCache,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<String, AnyError> {
   fn perform_cjs_analysis(
     analysis_cache: &NodeAnalysisCache,
@@ -968,6 +974,7 @@ pub fn translate_cjs_to_esm(
       &["deno", "require", "default"],
       NodeResolutionMode::Execution,
       npm_resolver,
+      permissions,
     )?;
     let reexport_specifier =
       ModuleSpecifier::from_file_path(resolved_reexport).unwrap();
@@ -1039,6 +1046,7 @@ fn resolve(
   conditions: &[&str],
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<PathBuf, AnyError> {
   if specifier.starts_with('/') {
     todo!();
@@ -1065,7 +1073,6 @@ fn resolve(
     mode,
   )?;
 
-  let permissions = &mut PermissionsContainer::allow_all();
   let package_json_path = module_dir.join("package.json");
   if package_json_path.exists() {
     let package_json =
