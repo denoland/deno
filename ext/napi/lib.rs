@@ -552,7 +552,10 @@ where
   #[cfg(unix)]
   let library = match unsafe { Library::open(Some(&path), flags) } {
     Ok(lib) => lib,
-    Err(e) => return Err(type_error(e.to_string())),
+    Err(e) => {
+      eprintln!("here!");
+      return Err(type_error(e.to_string()));
+    }
   };
 
   // SAFETY: opening a DLL calls dlopen
@@ -562,7 +565,7 @@ where
     Err(e) => return Err(type_error(e.to_string())),
   };
 
-  MODULE.with(|cell| {
+  let r = MODULE.with(|cell| {
     let slot = *cell.borrow();
     let obj = match slot {
       Some(nm) => {
@@ -603,6 +606,19 @@ where
             ),
           )
         };
+
+        // {
+        //   let k = v8::String::new(scope, "JsSeries").unwrap();
+        //   let js_series = exports.get(scope, k.into()).unwrap();
+        //   eprintln!("jsseries: {:?}", js_series.is_undefined());
+        //   let js_series_obj: v8::Local<v8::Object> =
+        //     js_series.try_into().unwrap();
+        //   let k = v8::String::new(scope, "newOptF64").unwrap();
+        //   let new_opt_f64 = js_series_obj.get(scope, k.into()).unwrap();
+        //   eprintln!("new_opt_f64: {:?}", new_opt_f64.is_undefined());
+        // }
+
+        // eprintln!("napi_register_module_v1");
         Ok(serde_v8::Value {
           v8_value: exports.into(),
         })
@@ -612,5 +628,9 @@ where
     // object so it lives till the program exit.
     std::mem::forget(library);
     obj
-  })
+  });
+
+  eprintln!("result {:#?} {:?}", r.is_err(), path);
+
+  r
 }
