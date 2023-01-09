@@ -4466,7 +4466,9 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
     }
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      extensions: vec![Extension::builder("test_ext")
+        .ops(vec![op_test::decl()])
+        .build()],
       get_error_class_fn: Some(&|error| {
         crate::error::get_custom_error_class(error).unwrap()
       }),
@@ -4525,7 +4527,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       }
 
       let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![Extension::builder()
+        extensions: vec![Extension::builder("test_ext")
           .ops(vec![op_pending::decl()])
           .build()],
         ..Default::default()
