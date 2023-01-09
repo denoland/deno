@@ -28,7 +28,7 @@ use std::os::unix::prelude::ExitStatusExt;
 use std::os::unix::process::CommandExt;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_spawn")
     .ops(vec![
       op_spawn_child::decl(),
       op_node_unstable_spawn_child::decl(),

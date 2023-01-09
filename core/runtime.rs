@@ -729,10 +729,9 @@ impl JsRuntime {
   /// Initializes JS of provided Extensions in the given realm
   fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
     // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Extension> =
-      std::mem::take(&mut self.extensions_with_js);
-    for m in extensions.iter_mut() {
-      let js_files = m.init_js();
+    let extensions = std::mem::take(&mut self.extensions_with_js);
+    for ext in &extensions {
+      let js_files = ext.init_js();
       for (filename, source) in js_files {
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
         realm.execute_script(self.v8_isolate(), filename, source)?;
@@ -752,6 +751,12 @@ impl JsRuntime {
     let mut exts = vec![];
     exts.extend(extensions);
     exts.extend(extensions_with_js);
+
+    for (ext, previous_exts) in
+      exts.iter().enumerate().map(|(i, ext)| (ext, &exts[..i]))
+    {
+      ext.check_dependencies(previous_exts);
+    }
 
     // Middleware
     let middleware: Vec<Box<OpMiddlewareFn>> = exts
@@ -2652,7 +2657,7 @@ pub mod tests {
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count2 = dispatch_count.clone();
-    let ext = Extension::builder()
+    let ext = Extension::builder("test_ext")
       .ops(vec![op_test::decl()])
       .state(move |state| {
         state.put(TestState {
@@ -3074,7 +3079,9 @@ pub mod tests {
     }
 
     run_in_task(|cx| {
-      let ext = Extension::builder().ops(vec![op_err::decl()]).build();
+      let ext = Extension::builder("test_ext")
+        .ops(vec![op_err::decl()])
+        .build();
       let mut runtime = JsRuntime::new(RuntimeOptions {
         extensions: vec![ext],
         get_error_class_fn: Some(&get_error_class_name),
@@ -3526,7 +3533,7 @@ main();
     }
 
     run_in_task(|cx| {
-      let ext = Extension::builder()
+      let ext = Extension::builder("test_ext")
         .ops(vec![op_err_sync::decl(), op_err_async::decl()])
         .build();
       let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -3694,7 +3701,7 @@ assertEquals(1, notify_return_value);
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_async_borrow::decl()])
       .state(|state| {
         state.put(InnerState(42));
@@ -3729,7 +3736,7 @@ assertEquals(1, notify_return_value);
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_sync_serialize_object_with_numbers_as_keys::decl()])
       .build();
 
@@ -3771,7 +3778,7 @@ Deno.core.ops.op_sync_serialize_object_with_numbers_as_keys({
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_async_serialize_object_with_numbers_as_keys::decl()])
       .build();
 
@@ -3810,7 +3817,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_async_sleep::decl()])
       .build();
 
@@ -3890,7 +3897,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_macrotask::decl(), op_next_tick::decl()])
       .build();
 
@@ -4020,7 +4027,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_promise_reject::decl()])
       .build();
 
@@ -4080,7 +4087,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_promise_reject::decl()])
       .build();
 
@@ -4149,7 +4156,9 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       Ok([(1, 2), (3, 4)].into_iter().collect()) // Maps can't have non-string keys in serde_v8
     }
 
-    let ext = Extension::builder().ops(vec![op_err::decl()]).build();
+    let ext = Extension::builder("test_ext")
+      .ops(vec![op_err::decl()])
+      .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],
       ..Default::default()
@@ -4174,7 +4183,9 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       Ok(x1 + x2 + x3 + x4)
     }
 
-    let ext = Extension::builder().ops(vec![op_add_4::decl()]).build();
+    let ext = Extension::builder("test_ext")
+      .ops(vec![op_add_4::decl()])
+      .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],
       ..Default::default()
@@ -4193,7 +4204,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       Ok(42)
     }
 
-    let ext = Extension::builder()
+    let ext = Extension::builder("test_ext")
       .ops(vec![op_foo::decl().disable()])
       .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -4223,7 +4234,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       Ok(b)
     }
 
-    let ext = Extension::builder()
+    let ext = Extension::builder("test_ext")
       .ops(vec![op_sum_take::decl(), op_boomerang::decl()])
       .build();
 
@@ -4291,7 +4302,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       Ok(42)
     }
 
-    let ext = Extension::builder()
+    let ext = Extension::builder("test_ext")
       .ops(vec![op_foo::decl(), op_bar::decl()])
       .middleware(|op| if op.is_unstable { op.disable() } else { op })
       .build();
@@ -4343,7 +4354,9 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
     }
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      extensions: vec![Extension::builder("test_ext")
+        .ops(vec![op_test::decl()])
+        .build()],
       ..Default::default()
     });
     let realm = runtime.create_realm().unwrap();
@@ -4373,7 +4386,9 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(Snapshot::Boxed(snapshot)),
-      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      extensions: vec![Extension::builder("test_ext")
+        .ops(vec![op_test::decl()])
+        .build()],
       ..Default::default()
     });
     let realm = runtime.create_realm().unwrap();
@@ -4402,7 +4417,9 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
     }
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      extensions: vec![Extension::builder("test_ext")
+        .ops(vec![op_test::decl()])
+        .build()],
       get_error_class_fn: Some(&|error| {
         crate::error::get_custom_error_class(error).unwrap()
       }),
