@@ -536,7 +536,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     NO_COLOR             Set to disable color
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)
-    V8_FLAGS             Set V8 command line options"#;
+    DENO_V8_FLAGS        Set V8 command line options"#;
 
 static DENO_HELP: Lazy<String> = Lazy::new(|| {
   format!(
@@ -2089,7 +2089,7 @@ fn v8_flags_arg<'a>() -> Arg<'a> {
     .require_equals(true)
     .help("Set V8 command line options")
     .long_help("To see a list of all available flags use --v8-flags=--help.\
-    Any flags set with this flag are appended after the V8_FLAGS environmental variable")
+    Any flags set with this flag are appended after the DENO_V8_FLAGS environmental variable")
 }
 
 fn seed_arg<'a>() -> Arg<'a> {

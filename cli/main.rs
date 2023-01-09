@@ -288,7 +288,7 @@ pub fn main() {
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
     };
 
-    let env_v8_flags = env::var("V8_FLAGS")
+    let env_v8_flags = env::var("DENO_V8_FLAGS")
       .ok()
       .map(|flags| flags.split(',').map(String::from).collect::<Vec<String>>())
       .unwrap_or_default();
