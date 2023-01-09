@@ -64,8 +64,7 @@ fn napi_add_env_cleanup_hook(
     let mut env_cleanup_hooks = env.cleanup_hooks.borrow_mut();
     if env_cleanup_hooks
       .iter()
-      .find(|pair| pair.0 == hook && pair.1 == data)
-      .is_some()
+      .any(|pair| pair.0 == hook && pair.1 == data)
     {
       panic!("Cleanup hook with this data already registered");
     }
@@ -84,14 +83,18 @@ fn napi_remove_env_cleanup_hook(
 
   {
     let mut env_cleanup_hooks = env.cleanup_hooks.borrow_mut();
-    let index = env_cleanup_hooks
+    let maybe_index = env_cleanup_hooks
       .iter()
       .rev()
-      .position(|&pair| pair.0 == hook && pair.1 == data)
-      .unwrap();
-    // We've reversed the iterator so need to fix the index
-    let index = env_cleanup_hooks.len() - index - 1;
-    env_cleanup_hooks.remove(index);
+      .position(|&pair| pair.0 == hook && pair.1 == data);
+
+    if let Some(index) = maybe_index {
+      // We've reversed the iterator so need to fix the index
+      let index = env_cleanup_hooks.len() - index - 1;
+      env_cleanup_hooks.remove(index);
+    } else {
+      panic!("Cleanup hook with this data not found");
+    }
   }
 
   Ok(())
