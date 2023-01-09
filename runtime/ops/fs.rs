@@ -1290,6 +1290,7 @@ async fn op_read_dir_async(
   Ok(rid)
 }
 
+#[allow(clippy::await_holding_refcell_ref)]
 #[op]
 async fn op_read_dir_async_next(
   state: Rc<RefCell<OpState>>,
@@ -1300,7 +1301,6 @@ async fn op_read_dir_async_next(
     let resource = state.resource_table.get::<ReadDir>(rid)?;
     resource.clone()
   };
-  #[allow(clippy::await_holding_refcell_ref)]
   let entry = {
     let mut read_dir = resource
       .0
