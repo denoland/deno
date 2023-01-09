@@ -410,7 +410,7 @@ impl Env {
 }
 
 pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
     .ops(vec![op_napi_open::decl::<P>()])
     .event_loop_middleware(|op_state_rc, cx| {
       // `work` can call back into the runtime. It can also schedule an async task
@@ -529,7 +529,7 @@ where
   let exports = v8::Object::new(scope);
 
   let mut env_shared = EnvShared::new(napi_wrap);
-  let cstr = CString::new(path.clone()).unwrap();
+  let cstr = CString::new(&*path).unwrap();
   env_shared.filename = cstr.as_ptr();
   std::mem::forget(cstr);
 

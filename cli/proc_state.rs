@@ -60,7 +60,7 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::HashMap;
@@ -220,7 +220,7 @@ impl ProcState {
     let maybe_import_map =
       if let Some(import_map_specifier) = maybe_import_map_specifier {
         let file = file_fetcher
-          .fetch(&import_map_specifier, &mut Permissions::allow_all())
+          .fetch(&import_map_specifier, PermissionsContainer::allow_all())
           .await
           .context(format!(
             "Unable to load '{}' import map",
@@ -278,7 +278,7 @@ impl ProcState {
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
     );
-    if let Some(lockfile) = maybe_lockfile.clone() {
+    if let Some(lockfile) = maybe_lockfile {
       npm_resolver
         .add_lockfile_and_maybe_regenerate_snapshot(lockfile)
         .await?;
@@ -329,8 +329,8 @@ impl ProcState {
     roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
     lib: TsTypeLib,
-    root_permissions: Permissions,
-    dynamic_permissions: Permissions,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
@@ -486,7 +486,7 @@ impl ProcState {
         &roots,
         graph_data,
         &check_cache,
-        self.npm_resolver.clone(),
+        &self.npm_resolver,
         options,
       )?;
       if !check_result.diagnostics.is_empty() {
@@ -528,8 +528,8 @@ impl ProcState {
         specifiers,
         false,
         lib,
-        Permissions::allow_all(),
-        Permissions::allow_all(),
+        PermissionsContainer::allow_all(),
+        PermissionsContainer::allow_all(),
         false,
       )
       .await
@@ -704,8 +704,8 @@ impl ProcState {
   /// Creates the default loader used for creating a graph.
   pub fn create_graph_loader(
     &self,
-    root_permissions: Permissions,
-    dynamic_permissions: Permissions,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
   ) -> FetchCacher {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
@@ -720,8 +720,10 @@ impl ProcState {
     &self,
     roots: Vec<(ModuleSpecifier, ModuleKind)>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = self
-      .create_graph_loader(Permissions::allow_all(), Permissions::allow_all());
+    let mut cache = self.create_graph_loader(
+      PermissionsContainer::allow_all(),
+      PermissionsContainer::allow_all(),
+    );
     self.create_graph_with_loader(roots, &mut cache).await
   }
 

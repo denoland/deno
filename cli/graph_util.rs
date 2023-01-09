@@ -27,7 +27,7 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::Range;
 use deno_graph::Resolved;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -510,8 +510,10 @@ pub async fn create_graph_and_maybe_check(
   root: ModuleSpecifier,
   ps: &ProcState,
 ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
-  let mut cache =
-    ps.create_graph_loader(Permissions::allow_all(), Permissions::allow_all());
+  let mut cache = ps.create_graph_loader(
+    PermissionsContainer::allow_all(),
+    PermissionsContainer::allow_all(),
+  );
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_cli_resolver = CliResolver::maybe_new(
     ps.options.to_maybe_jsx_import_source_config(),
@@ -566,7 +568,7 @@ pub async fn create_graph_and_maybe_check(
       &graph.roots,
       Arc::new(RwLock::new(graph_data)),
       &cache,
-      ps.npm_resolver.clone(),
+      &ps.npm_resolver,
       check::CheckOptions {
         type_check_mode: ps.options.type_check_mode(),
         debug: ps.options.log_level() == Some(log::Level::Debug),
@@ -592,7 +594,7 @@ pub fn error_for_any_npm_specifier(
     .specifiers()
     .filter_map(|(_, r)| match r {
       Ok((specifier, kind, _)) if kind == deno_graph::ModuleKind::External => {
-        Some(specifier.clone())
+        Some(specifier)
       }
       _ => None,
     })

@@ -11,7 +11,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -43,10 +43,10 @@ pub const CACHE_PERM: u32 = 0o644;
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
   emit_cache: EmitCache,
-  dynamic_permissions: Permissions,
+  dynamic_permissions: PermissionsContainer,
   file_fetcher: Arc<FileFetcher>,
   file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
-  root_permissions: Permissions,
+  root_permissions: PermissionsContainer,
 }
 
 impl FetchCacher {
@@ -54,8 +54,8 @@ impl FetchCacher {
     emit_cache: EmitCache,
     file_fetcher: FileFetcher,
     file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
-    root_permissions: Permissions,
-    dynamic_permissions: Permissions,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
   ) -> Self {
     let file_fetcher = Arc::new(file_fetcher);
 
@@ -126,7 +126,7 @@ impl Loader for FetchCacher {
     }
 
     let specifier = specifier.clone();
-    let mut permissions = if is_dynamic {
+    let permissions = if is_dynamic {
       self.dynamic_permissions.clone()
     } else {
       self.root_permissions.clone()
@@ -136,7 +136,7 @@ impl Loader for FetchCacher {
 
     async move {
       file_fetcher
-        .fetch(&specifier, &mut permissions)
+        .fetch(&specifier, permissions)
         .await
         .map_or_else(
           |err| {
