@@ -524,6 +524,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          (alternative to passing --no-prompt on invocation)
     DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
                          available
+    DENO_V8_FLAGS        Set V8 command line options
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     DENO_JOBS            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
@@ -535,8 +536,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     NPM_CONFIG_REGISTRY  URL to use for the npm registry.
     NO_COLOR             Set to disable color
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
-                         (module downloads, fetch)
-    DENO_V8_FLAGS        Set V8 command line options"#;
+                         (module downloads, fetch)"#;
 
 static DENO_HELP: Lazy<String> = Lazy::new(|| {
   format!(
