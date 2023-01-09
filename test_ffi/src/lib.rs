@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 #![allow(clippy::undocumented_unsafe_blocks)]
 
@@ -485,3 +485,61 @@ pub static static_char: [u8; 14] = [
   0xC0, 0xC1, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
   0x00,
 ];
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Rect {
+  x: f64,
+  y: f64,
+  w: f64,
+  h: f64,
+}
+
+#[no_mangle]
+pub extern "C" fn make_rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
+  Rect { x, y, w, h }
+}
+
+#[no_mangle]
+pub extern "C" fn print_rect(rect: Rect) {
+  println!("{:?}", rect);
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Mixed {
+  u8: u8,
+  f32: f32,
+  rect: Rect,
+  usize: usize,
+  array: [u32; 2],
+}
+
+/// # Safety
+///
+/// The array pointer to the buffer must be valid and initalized, and the length must
+/// be 2.
+#[no_mangle]
+pub unsafe extern "C" fn create_mixed(
+  u8: u8,
+  f32: f32,
+  rect: Rect,
+  usize: usize,
+  array: *const [u32; 2],
+) -> Mixed {
+  let array = *array
+    .as_ref()
+    .expect("Array parameter should contain value");
+  Mixed {
+    u8,
+    f32,
+    rect,
+    usize,
+    array,
+  }
+}
+
+#[no_mangle]
+pub extern "C" fn print_mixed(mixed: Mixed) {
+  println!("{:?}", mixed);
+}

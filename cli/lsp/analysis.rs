@@ -1,13 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::diagnostics::DenoDiagnostic;
 use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
-use crate::args::LintConfig;
 use crate::tools::lint::create_linter;
-use crate::tools::lint::get_configured_rules;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
@@ -18,10 +16,12 @@ use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_lint::rules::LintRule;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
@@ -127,9 +127,8 @@ fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
 
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
-  maybe_lint_config: Option<&LintConfig>,
+  lint_rules: Vec<Arc<dyn LintRule>>,
 ) -> Result<Vec<Reference>, AnyError> {
-  let lint_rules = get_configured_rules(maybe_lint_config, None, None, None)?;
   let linter = create_linter(parsed_source.media_type(), lint_rules);
   let lint_diagnostics = linter.lint_with_ast(parsed_source);
 
@@ -184,28 +183,30 @@ pub fn fix_ts_import_changes(
   for change in changes {
     let mut text_changes = Vec::new();
     for text_change in &change.text_changes {
-      if let Some(captures) =
-        IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
-      {
-        let specifier = captures
-          .get(1)
-          .ok_or_else(|| anyhow!("Missing capture."))?
-          .as_str();
-        if let Some(new_specifier) =
-          check_specifier(specifier, referrer, documents)
-        {
-          let new_text =
-            text_change.new_text.replace(specifier, &new_specifier);
-          text_changes.push(tsc::TextChange {
-            span: text_change.span.clone(),
-            new_text,
-          });
-        } else {
-          text_changes.push(text_change.clone());
-        }
-      } else {
-        text_changes.push(text_change.clone());
-      }
+      let lines = text_change.new_text.split('\n');
+
+      let new_lines: Vec<String> = lines
+        .map(|line| {
+          // This assumes that there's only one import per line.
+          if let Some(captures) = IMPORT_SPECIFIER_RE.captures(line) {
+            let specifier = captures.get(1).unwrap().as_str();
+            if let Some(new_specifier) =
+              check_specifier(specifier, referrer, documents)
+            {
+              line.replace(specifier, &new_specifier)
+            } else {
+              line.to_string()
+            }
+          } else {
+            line.to_string()
+          }
+        })
+        .collect();
+
+      text_changes.push(tsc::TextChange {
+        span: text_change.span.clone(),
+        new_text: new_lines.join("\n").to_string(),
+      });
     }
     r.push(tsc::FileTextChanges {
       file_name: change.file_name.clone(),

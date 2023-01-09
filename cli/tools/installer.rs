@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::resolve_no_prompt;
 use crate::args::ConfigFlag;
@@ -409,6 +409,8 @@ fn resolve_shim_data(
       fs::read_to_string(config_path)
         .with_context(|| format!("error reading {}", config_path))?,
     ));
+  } else {
+    executable_args.push("--no-config".to_string());
   }
 
   if flags.no_lock {
@@ -616,11 +618,12 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
       assert!(content.contains(
-        r#""run" "--unstable" "http://localhost:4545/echo_server.ts""#
+        r#""run" "--unstable" "--no-config" "http://localhost:4545/echo_server.ts""#
       ));
     } else {
-      assert!(content
-        .contains(r#"run --unstable 'http://localhost:4545/echo_server.ts'"#));
+      assert!(content.contains(
+        r#"run --unstable --no-config 'http://localhost:4545/echo_server.ts'"#
+      ));
     }
   }
 
@@ -641,7 +644,7 @@ mod tests {
     assert_eq!(shim_data.name, "echo_server");
     assert_eq!(
       shim_data.args,
-      vec!["run", "http://localhost:4545/echo_server.ts",]
+      vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
     );
   }
 
@@ -662,7 +665,7 @@ mod tests {
     assert_eq!(shim_data.name, "subdir");
     assert_eq!(
       shim_data.args,
-      vec!["run", "http://localhost:4545/subdir/main.ts",]
+      vec!["run", "--no-config", "http://localhost:4545/subdir/main.ts",]
     );
   }
 
@@ -683,7 +686,7 @@ mod tests {
     assert_eq!(shim_data.name, "echo_test");
     assert_eq!(
       shim_data.args,
-      vec!["run", "http://localhost:4545/echo_server.ts",]
+      vec!["run", "--no-config", "http://localhost:4545/echo_server.ts",]
     );
   }
 
@@ -715,6 +718,7 @@ mod tests {
         "--allow-read",
         "--allow-net",
         "--quiet",
+        "--no-config",
         "http://localhost:4545/echo_server.ts",
         "--foobar",
       ]
@@ -740,7 +744,12 @@ mod tests {
 
     assert_eq!(
       shim_data.args,
-      vec!["run", "--no-prompt", "http://localhost:4545/echo_server.ts",]
+      vec![
+        "run",
+        "--no-prompt",
+        "--no-config",
+        "http://localhost:4545/echo_server.ts",
+      ]
     );
   }
 
@@ -763,7 +772,12 @@ mod tests {
 
     assert_eq!(
       shim_data.args,
-      vec!["run", "--allow-all", "http://localhost:4545/echo_server.ts",]
+      vec![
+        "run",
+        "--allow-all",
+        "--no-config",
+        "http://localhost:4545/echo_server.ts",
+      ]
     );
   }
 
@@ -791,6 +805,7 @@ mod tests {
       vec![
         "run",
         "--allow-all",
+        "--no-config",
         "--lock",
         &lock_path.to_string_lossy(),
         "npm:cowsay"
@@ -819,7 +834,13 @@ mod tests {
 
     assert_eq!(
       shim_data.args,
-      vec!["run", "--allow-all", "--no-lock", "npm:cowsay"]
+      vec![
+        "run",
+        "--allow-all",
+        "--no-config",
+        "--no-lock",
+        "npm:cowsay"
+      ]
     );
     assert_eq!(shim_data.extra_files, vec![]);
   }
@@ -981,9 +1002,9 @@ mod tests {
     if cfg!(windows) {
       // TODO: see comment above this test
     } else {
-      assert!(
-        content.contains(r#"run 'http://localhost:4545/echo_server.ts' '"'"#)
-      );
+      assert!(content.contains(
+        r#"run --no-config 'http://localhost:4545/echo_server.ts' '"'"#
+      ));
     }
   }
 
@@ -1060,12 +1081,12 @@ mod tests {
     assert!(file_path.exists());
 
     let mut expected_string = format!(
-      "--import-map '{}' 'http://localhost:4545/cat.ts'",
+      "--import-map '{}' --no-config 'http://localhost:4545/cat.ts'",
       import_map_url
     );
     if cfg!(windows) {
       expected_string = format!(
-        "\"--import-map\" \"{}\" \"http://localhost:4545/cat.ts\"",
+        "\"--import-map\" \"{}\" \"--no-config\" \"http://localhost:4545/cat.ts\"",
         import_map_url
       );
     }
@@ -1102,9 +1123,11 @@ mod tests {
     }
     assert!(file_path.exists());
 
-    let mut expected_string = format!("run '{}'", &file_module_string);
+    let mut expected_string =
+      format!("run --no-config '{}'", &file_module_string);
     if cfg!(windows) {
-      expected_string = format!("\"run\" \"{}\"", &file_module_string);
+      expected_string =
+        format!("\"run\" \"--no-config\" \"{}\"", &file_module_string);
     }
 
     let content = fs::read_to_string(file_path).unwrap();

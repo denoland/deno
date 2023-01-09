@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::anyhow::Error;
 use deno_core::op;
 use deno_core::AsyncRefCell;
@@ -117,7 +117,7 @@ impl From<tokio::net::TcpStream> for TcpStream {
 }
 
 fn create_js_runtime() -> JsRuntime {
-  let ext = deno_core::Extension::builder()
+  let ext = deno_core::Extension::builder("my_ext")
     .ops(vec![op_listen::decl(), op_accept::decl()])
     .build();
 

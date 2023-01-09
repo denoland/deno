@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -204,7 +204,8 @@
     const arrayBufferIdsInTransferables = [];
     const transferredArrayBuffers = [];
 
-    for (const transferable of messageData.transferables) {
+    for (let i = 0; i < messageData.transferables.length; ++i) {
+      const transferable = messageData.transferables[i];
       switch (transferable.kind) {
         case "messagePort": {
           const port = createMessagePort(transferable.data);
@@ -214,8 +215,8 @@
         }
         case "arrayBuffer": {
           ArrayPrototypePush(transferredArrayBuffers, transferable.data);
-          const i = ArrayPrototypePush(transferables, null);
-          ArrayPrototypePush(arrayBufferIdsInTransferables, i);
+          const index = ArrayPrototypePush(transferables, null);
+          ArrayPrototypePush(arrayBufferIdsInTransferables, index);
           break;
         }
         default:
@@ -228,7 +229,7 @@
       transferredArrayBuffers,
     });
 
-    for (const i in arrayBufferIdsInTransferables) {
+    for (let i = 0; i < arrayBufferIdsInTransferables.length; ++i) {
       const id = arrayBufferIdsInTransferables[i];
       transferables[id] = transferredArrayBuffers[i];
     }
@@ -271,7 +272,8 @@
     const serializedTransferables = [];
 
     let arrayBufferI = 0;
-    for (const transferable of transferables) {
+    for (let i = 0; i < transferables.length; ++i) {
+      const transferable = transferables[i];
       if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, transferable)) {
         webidl.assertBranded(transferable, MessagePortPrototype);
         const id = transferable[_id];

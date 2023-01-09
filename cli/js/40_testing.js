@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -1069,7 +1069,7 @@
     if (shuffle !== null) {
       // http://en.wikipedia.org/wiki/Linear_congruential_generator
       // Use BigInt for everything because the random seed is u64.
-      const nextInt = (function (state) {
+      const nextInt = function (state) {
         const m = 0x80000000n;
         const a = 1103515245n;
         const c = 12345n;
@@ -1077,7 +1077,7 @@
         return function (max) {
           return state = ((a * state + c) % m) % BigInt(max);
         };
-      }(BigInt(shuffle)));
+      }(BigInt(shuffle));
 
       for (let i = filtered.length - 1; i > 0; i--) {
         const j = nextInt(i);

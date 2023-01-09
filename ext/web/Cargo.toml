@@ -1,8 +1,8 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_web"
-version = "0.113.0"
+version = "0.114.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -25,6 +25,7 @@ uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
 deno_bench_util.workspace = true
+deno_console.workspace = true
 deno_url.workspace = true
 deno_webidl.workspace = true
 

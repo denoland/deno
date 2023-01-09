@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::Flags;
 use crate::args::ReplFlags;
@@ -8,6 +8,7 @@ use crate::worker::create_main_worker;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
 
 mod cdp;
@@ -72,7 +73,7 @@ async fn read_eval_file(
 
   let file = ps
     .file_fetcher
-    .fetch(&specifier, &mut Permissions::allow_all())
+    .fetch(&specifier, PermissionsContainer::allow_all())
     .await?;
 
   Ok((*file.source).to_string())
@@ -84,7 +85,9 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let mut worker = create_main_worker(
     &ps,
     main_module.clone(),
-    Permissions::from_options(&ps.options.permissions_options())?,
+    PermissionsContainer::new(Permissions::from_options(
+      &ps.options.permissions_options(),
+    )?),
   )
   .await?;
   worker.setup_repl().await?;
@@ -183,5 +186,5 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     }
   }
 
-  Ok(repl_session.worker.get_exit_code())
+  Ok(repl_session.worker.exit_code())
 }

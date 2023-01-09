@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::TsTypeLib;
 use crate::emit::emit_parsed_source;
@@ -21,7 +21,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::OpState;
 use deno_core::SourceMapGetter;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -38,7 +38,7 @@ pub struct CliModuleLoader {
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. They are decoupled from the worker (dynamic) permissions since
   /// read access errors must be raised based on the parent thread permissions.
-  pub root_permissions: Permissions,
+  pub root_permissions: PermissionsContainer,
   pub ps: ProcState,
 }
 
@@ -46,12 +46,15 @@ impl CliModuleLoader {
   pub fn new(ps: ProcState) -> Rc<Self> {
     Rc::new(CliModuleLoader {
       lib: ps.options.ts_type_lib_window(),
-      root_permissions: Permissions::allow_all(),
+      root_permissions: PermissionsContainer::allow_all(),
       ps,
     })
   }
 
-  pub fn new_for_worker(ps: ProcState, permissions: Permissions) -> Rc<Self> {
+  pub fn new_for_worker(
+    ps: ProcState,
+    permissions: PermissionsContainer,
+  ) -> Rc<Self> {
     Rc::new(CliModuleLoader {
       lib: ps.options.ts_type_lib_worker(),
       root_permissions: permissions,
@@ -235,7 +238,7 @@ impl ModuleLoader for CliModuleLoader {
     let ps = self.ps.clone();
     let state = op_state.borrow();
 
-    let dynamic_permissions = state.borrow::<Permissions>().clone();
+    let dynamic_permissions = state.borrow::<PermissionsContainer>().clone();
     let root_permissions = if is_dynamic {
       dynamic_permissions.clone()
     } else {

@@ -1,13 +1,5 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::RcLike;
-use crate::Resource;
-use futures::future::FusedFuture;
-use futures::future::Future;
-use futures::future::TryFuture;
-use futures::task::Context;
-use futures::task::Poll;
-use pin_project::pin_project;
 use std::any::type_name;
 use std::borrow::Cow;
 use std::error::Error;
@@ -17,6 +9,16 @@ use std::fmt::Formatter;
 use std::io;
 use std::pin::Pin;
 use std::rc::Rc;
+
+use futures::future::FusedFuture;
+use futures::future::Future;
+use futures::future::TryFuture;
+use futures::task::Context;
+use futures::task::Poll;
+use pin_project::pin_project;
+
+use crate::RcLike;
+use crate::Resource;
 
 use self::internal as i;
 

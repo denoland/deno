@@ -53,14 +53,19 @@ const valueA: "test1" = getClient();
       ~~~~~~
     at [WILDCARD]/npm/types/main.ts:[WILDCARD]
 
-TS2322 [ERROR]: Type 'string' is not assignable to type '"test2"'.
-const valueB: "test2" = entryB();
+TS2322 [ERROR]: Type '"import"' is not assignable to type '"test2"'.
+const valueB: "test2" = entryImport();
       ~~~~~~
     at [WILDCARD]/types/main.ts:[WILDCARD]
 
 TS2322 [ERROR]: Type '12' is not assignable to type '"test3"'.
-const valueC: "test3" = entryC();
+const valueC: "test3" = entryA();
       ~~~~~~
     at [WILDCARD]/types/main.ts:[WILDCARD]
 
-Found 8 errors.
+TS2322 [ERROR]: Type '"types"' is not assignable to type '"test4"'.
+const valueD: "test4" = entryTypes();
+      ~~~~~~
+    at file:///[WILDCARD]/types/main.ts:[WILDCARD]
+
+Found 9 errors.

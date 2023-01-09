@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -6,6 +6,7 @@ pub use deno_core::normalize_path;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_node::PathClean;
+use std::borrow::Cow;
 use std::env::current_dir;
 use std::fs::OpenOptions;
 use std::io::Error;
@@ -15,6 +16,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 use walkdir::WalkDir;
+
+use crate::args::FilesConfig;
 
 use super::path::specifier_to_file_path;
 
@@ -181,6 +184,7 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
       ignore_node_modules: false,
     }
   }
+
   pub fn add_ignore_paths(mut self, paths: &[PathBuf]) -> Self {
     // retain only the paths which exist and ignore the rest
     self
@@ -204,7 +208,13 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
     files: &[PathBuf],
   ) -> Result<Vec<PathBuf>, AnyError> {
     let mut target_files = Vec::new();
-    for file in files {
+    let files = if files.is_empty() {
+      // collect files in the current directory when empty
+      Cow::Owned(vec![PathBuf::from(".")])
+    } else {
+      Cow::Borrowed(files)
+    };
+    for file in files.iter() {
       if let Ok(file) = canonicalize_path(file) {
         // use an iterator like this in order to minimize the number of file system operations
         let mut iterator = WalkDir::new(&file).into_iter();
@@ -254,18 +264,24 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
 /// Specifiers that start with http and https are left intact.
 /// Note: This ignores all .git and node_modules folders.
 pub fn collect_specifiers(
-  include: Vec<String>,
-  ignore: &[PathBuf],
+  files: &FilesConfig,
   predicate: impl Fn(&Path) -> bool,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
   let mut prepared = vec![];
   let file_collector = FileCollector::new(predicate)
-    .add_ignore_paths(ignore)
+    .add_ignore_paths(&files.exclude)
     .ignore_git_folder()
     .ignore_node_modules();
 
   let root_path = current_dir()?;
-  for path in include {
+  let include_files = if files.include.is_empty() {
+    // collect files in the current directory when empty
+    Cow::Owned(vec![root_path.clone()])
+  } else {
+    Cow::Borrowed(&files.include)
+  };
+  for path in include_files.iter() {
+    let path = path.to_string_lossy();
     let lowercase_path = path.to_lowercase();
     if lowercase_path.starts_with("http://")
       || lowercase_path.starts_with("https://")
@@ -278,7 +294,7 @@ pub fn collect_specifiers(
     let p = if lowercase_path.starts_with("file://") {
       specifier_to_file_path(&ModuleSpecifier::parse(&path)?)?
     } else {
-      root_path.join(path)
+      root_path.join(path.as_ref())
     };
     let p = normalize_path(p);
     if p.is_dir() {
@@ -675,12 +691,14 @@ mod tests {
     };
 
     let result = collect_specifiers(
-      vec![
-        "http://localhost:8080".to_string(),
-        root_dir_path.to_str().unwrap().to_string(),
-        "https://localhost:8080".to_string(),
-      ],
-      &[ignore_dir_path],
+      &FilesConfig {
+        include: vec![
+          PathBuf::from("http://localhost:8080"),
+          root_dir_path.clone(),
+          PathBuf::from("https://localhost:8080".to_string()),
+        ],
+        exclude: vec![ignore_dir_path],
+      },
       predicate,
     )
     .unwrap();
@@ -713,16 +731,18 @@ mod tests {
       "file://"
     };
     let result = collect_specifiers(
-      vec![format!(
-        "{}{}",
-        scheme,
-        root_dir_path
-          .join("child")
-          .to_str()
-          .unwrap()
-          .replace('\\', "/")
-      )],
-      &[],
+      &FilesConfig {
+        include: vec![PathBuf::from(format!(
+          "{}{}",
+          scheme,
+          root_dir_path
+            .join("child")
+            .to_str()
+            .unwrap()
+            .replace('\\', "/")
+        ))],
+        exclude: vec![],
+      },
       predicate,
     )
     .unwrap();

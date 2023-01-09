@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::time::Duration;
 
@@ -23,7 +23,7 @@ pub struct ProgressData {
   pub duration: Duration,
 }
 
-pub trait ProgressBarRenderer: Send + std::fmt::Debug {
+pub trait ProgressBarRenderer: Send + Sync + std::fmt::Debug {
   fn render(&self, data: ProgressData) -> String;
 }
 
