@@ -1952,7 +1952,7 @@ fn inspect_args(app: Command) -> Command {
     .arg(
       Arg::new("inspect")
         .long("inspect")
-        .value_name("HOST:PORT")
+        .value_name("HOST_AND_PORT")
         .help("Activate inspector on host:port (default: 127.0.0.1:9229)")
         .min_values(0)
         .max_values(1)
@@ -1963,7 +1963,7 @@ fn inspect_args(app: Command) -> Command {
     .arg(
       Arg::new("inspect-brk")
         .long("inspect-brk")
-        .value_name("HOST:PORT")
+        .value_name("HOST_AND_PORT")
         .help(
           "Activate inspector on host:port, wait for debugger to connect and break at the start of user script",
         )
@@ -1976,7 +1976,7 @@ fn inspect_args(app: Command) -> Command {
     .arg(
       Arg::new("inspect-wait")
         .long("inspect-wait")
-        .value_name("HOST:PORT")
+        .value_name("HOST_AND_PORT")
         .help(
           "Activate inspector on host:port and wait for debugger to connect before running user code",
         )
@@ -5528,6 +5528,23 @@ mod tests {
       "script.ts"
     ]);
     assert!(r.is_err(),);
+  }
+
+  #[test]
+  fn test_no_colon_in_value_name() {
+    let app =
+      runtime_args(Command::new("test_inspect_completion_value"), true, true);
+    let inspect_args = app
+      .get_arguments()
+      .filter(|arg| arg.get_id() == "inspect")
+      .collect::<Vec<_>>();
+    // The value_name cannot have a : otherwise it breaks shell completions for zsh.
+    let value_name = "HOST_AND_PORT";
+    let arg = inspect_args
+      .iter()
+      .any(|v| v.get_value_names().unwrap() == [value_name]);
+
+    assert_eq!(arg, true);
   }
 
   #[test]
