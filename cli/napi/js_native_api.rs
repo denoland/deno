@@ -1137,8 +1137,15 @@ fn napi_define_class(
   let scope = &mut env.scope();
   let napi_properties: &[napi_property_descriptor] =
     std::slice::from_raw_parts(properties, property_count);
+  let mut static_property_count = 0;
 
   for p in napi_properties {
+    if p.attributes & napi_static != 0 {
+      // Will be handled below
+      static_property_count += 1;
+      continue;
+    }
+
     let name = if !p.utf8name.is_null() {
       let name_str = CStr::from_ptr(p.utf8name).to_str().unwrap();
       v8::String::new(scope, name_str).unwrap()
@@ -1205,6 +1212,34 @@ fn napi_define_class(
 
   let value: v8::Local<v8::Value> = tpl.get_function(scope).unwrap().into();
   *result = value.into();
+
+  if static_property_count > 0 {
+    eprintln!("static count {}", static_property_count);
+    let mut static_descriptors = Vec::with_capacity(static_property_count);
+
+    for p in napi_properties {
+      if p.attributes & napi_static != 0 {
+        eprintln!("property {:#?}", p);
+        static_descriptors.push(p);
+      }
+    }
+
+    static_descriptors.shrink_to_fit();
+    let (len, ptr) = (static_descriptors.len(), static_descriptors.as_ptr());
+    // std::mem::forget(static_descriptors);
+
+    // The static_descriptors slice contains garbage when this function is called
+    let res = napi_define_properties(
+      env_ptr,
+      *result,
+      len,
+      ptr as *const napi_property_descriptor,
+    );
+
+    // TODO(bartlomieju): error handling
+    assert!(res == napi_ok);
+  }
+
   Ok(())
 }
 
@@ -1219,10 +1254,13 @@ fn napi_define_properties(
   let scope = &mut env.scope();
   let object = transmute::<napi_value, v8::Local<v8::Object>>(obj);
   let properties = std::slice::from_raw_parts(properties, property_count);
-
   for property in properties {
+    eprintln!("property now: {:#?}", property);
     let name = if !property.utf8name.is_null() {
-      let name_str = CStr::from_ptr(property.utf8name).to_str().unwrap();
+      eprintln!("property.utf8name: {:?}", property.utf8name);
+      let name_str = CStr::from_ptr(property.utf8name);
+      eprintln!("property.string: {:?}", name_str);
+      let name_str = name_str.to_str().unwrap();
       v8::String::new(scope, name_str).unwrap()
     } else {
       transmute::<napi_value, v8::Local<v8::String>>(property.name)
