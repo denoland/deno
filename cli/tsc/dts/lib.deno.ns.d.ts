@@ -1485,7 +1485,7 @@ declare namespace Deno {
      *
      * It resolves with the updated offset.
      */
-    seek(offset: number, whence: SeekMode): Promise<number>;
+    seek(offset: number | bigint, whence: SeekMode): Promise<number>;
   }
 
   /**
@@ -1786,7 +1786,7 @@ declare namespace Deno {
    */
   export function seek(
     rid: number,
-    offset: number,
+    offset: number | bigint,
     whence: SeekMode,
   ): Promise<number>;
 
@@ -2150,7 +2150,7 @@ declare namespace Deno {
      * console.log(await file.seek(-2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
      * ```
      */
-    seek(offset: number, whence: SeekMode): Promise<number>;
+    seek(offset: number | bigint, whence: SeekMode): Promise<number>;
     /** Synchronously seek to the given `offset` under mode given by `whence`.
      * The new position within the resource (bytes from the start) is returned.
      *
@@ -2189,7 +2189,7 @@ declare namespace Deno {
      * file.close();
      * ```
      */
-    seekSync(offset: number, whence: SeekMode): number;
+    seekSync(offset: number | bigint, whence: SeekMode): number;
     /** Resolves to a {@linkcode Deno.FileInfo} for the file.
      *
      * ```ts
