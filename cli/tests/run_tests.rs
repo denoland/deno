@@ -1143,6 +1143,12 @@ mod run {
     output: "run/v8_flags.js.out",
   });
 
+  itest!(v8_flags_env_run {
+    envs: vec![("V8_FLAGS".to_string(), "--expose-gc".to_string())],
+    args: "run run/v8_flags.js",
+    output: "run/v8_flags.js.out",
+  });
+
   itest!(v8_flags_unrecognized {
     args: "repl --v8-flags=--foo,bar,--trace-gc,-baz",
     output: "run/v8_flags_unrecognized.out",

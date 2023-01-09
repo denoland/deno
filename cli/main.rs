@@ -44,12 +44,14 @@ use std::env;
 use std::iter::once;
 use std::path::PathBuf;
 
-fn init_v8_flags(v8_flags: &[String]) {
-  let v8_flags_includes_help = v8_flags
+fn init_v8_flags(v8_flags: &[String], env_v8_flags: Vec<String>) {
+  let v8_flags_includes_help = env_v8_flags
     .iter()
+    .chain(v8_flags)
     .any(|flag| flag == "-help" || flag == "--help");
   // Keep in sync with `standalone.rs`.
   let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
+    .chain(env_v8_flags.into_iter())
     .chain(v8_flags.iter().cloned())
     .collect::<Vec<_>>();
   let unrecognized_v8_flags = v8_set_flags(v8_flags)
@@ -285,8 +287,13 @@ pub fn main() {
       }
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
     };
-    if !flags.v8_flags.is_empty() {
-      init_v8_flags(&flags.v8_flags);
+
+    let env_v8_flags = env::var("V8_FLAGS")
+      .ok()
+      .map(|flags| flags.split(",").map(String::from).collect::<Vec<String>>())
+      .unwrap_or_default();
+    if !flags.v8_flags.is_empty() || !env_v8_flags.is_empty() {
+      init_v8_flags(&flags.v8_flags, env_v8_flags);
     }
 
     util::logger::init(flags.log_level);
