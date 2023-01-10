@@ -11,8 +11,10 @@ const ci = {
   jobs: {
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
-      if:
-        "github.event_name == 'push' ||\n!startsWith(github.event.pull_request.head.label, 'denoland:')\n",
+      if: [
+        "github.event_name == 'push' ||",
+        "!startsWith(github.event.pull_request.head.label, 'denoland:')",
+      ].join("\n"),
       "runs-on": "${{ matrix.os }}",
       "timeout-minutes": 120,
       strategy: {
@@ -84,8 +86,10 @@ const ci = {
       steps: [
         {
           name: "Configure git",
-          run:
-            "git config --global core.symlinks true\ngit config --global fetch.parallel 32\n",
+          run: [
+            "git config --global core.symlinks true",
+            "git config --global fetch.parallel 32",
+          ].join("\n"),
         },
         {
           name: "Clone repository",
@@ -100,10 +104,18 @@ const ci = {
         },
         {
           name: "Create source tarballs (release, linux)",
-          if:
-            "startsWith(matrix.os, 'ubuntu') &&\nmatrix.profile == 'release' &&\nmatrix.job == 'test' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')\n",
-          run:
-            'mkdir -p target/release\ntar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \\\n    -czvf target/release/deno_src.tar.gz -C .. deno\n',
+          if: [
+            "startsWith(matrix.os, 'ubuntu') &&",
+            "matrix.profile == 'release' &&",
+            "matrix.job == 'test' &&",
+            "github.repository == 'denoland/deno' &&",
+            "startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
+          run: [
+            "mkdir -p target/release",
+            'tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \\',
+            "    -czvf target/release/deno_src.tar.gz -C .. deno",
+          ].join("\n"),
         },
         { uses: "dtolnay/rust-toolchain@stable" },
         {
@@ -125,13 +137,23 @@ const ci = {
         {
           name: "Remove unused versions of Python",
           if: "startsWith(matrix.os, 'windows')",
-          run:
-            '$env:PATH -split ";" |\n  Where-Object { Test-Path "$_\\python.exe" } |\n  Select-Object -Skip 1 |\n  ForEach-Object { Move-Item "$_" "$_.disabled" }',
+          run: [
+            '$env:PATH -split ";" |',
+            '  Where-Object { Test-Path "$_\\python.exe" } |',
+            "  Select-Object -Skip 1 |",
+            '  ForEach-Object { Move-Item "$_" "$_.disabled" }',
+          ].join("\n"),
         },
         {
           name: "Setup gcloud (unix)",
-          if:
-            "runner.os != 'Windows' &&\nmatrix.profile == 'release' &&\nmatrix.job == 'test' &&\ngithub.repository == 'denoland/deno' &&\n(github.ref == 'refs/heads/main' ||\nstartsWith(github.ref, 'refs/tags/'))\n",
+          if: [
+            "runner.os != 'Windows' &&",
+            "matrix.profile == 'release' &&",
+            "matrix.job == 'test' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' ||",
+            "startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
           uses: "google-github-actions/setup-gcloud@v0",
           with: {
             project_id: "denoland",
@@ -141,8 +163,14 @@ const ci = {
         },
         {
           name: "Setup gcloud (windows)",
-          if:
-            "runner.os == 'Windows' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\n(github.ref == 'refs/heads/main' ||\nstartsWith(github.ref, 'refs/tags/'))\n",
+          if: [
+            "runner.os == 'Windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' ||",
+            "startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
           uses: "google-github-actions/setup-gcloud@v0",
           env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
           with: {
@@ -153,30 +181,104 @@ const ci = {
         },
         {
           name: "Configure canary build",
-          if:
-            "matrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main'\n",
+          if: [
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "github.ref == 'refs/heads/main'",
+          ].join("\n"),
           shell: "bash",
           run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
         },
         {
           name: "Set up incremental LTO and sysroot build",
           if: "matrix.use_sysroot",
-          run:
-            '# Avoid running man-db triggers, which sometimes takes several minutes\n# to complete.\nsudo apt-get remove --purge -y man-db\n\n# Install clang-15, lld-15, and debootstrap.\necho "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main" |\n  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-15.list\ncurl https://apt.llvm.org/llvm-snapshot.gpg.key |\n  gpg --dearmor                                 |\nsudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg\nsudo apt-get update\nsudo apt-get install --no-install-recommends debootstrap     \\\n                                             clang-15 lld-15\n\n# Create ubuntu-16.04 sysroot environment, which is used to avoid\n# depending on a very recent version of glibc.\n# `libc6-dev` is required for building any C source files.\n# `file` and `make` are needed to build libffi-sys.\n# `curl` is needed to build rusty_v8.\nsudo debootstrap                                     \\\n  --include=ca-certificates,curl,file,libc6-dev,make \\\n  --no-merged-usr --variant=minbase xenial /sysroot  \\\n  http://azure.archive.ubuntu.com/ubuntu\nsudo mount --rbind /dev /sysroot/dev\nsudo mount --rbind /sys /sysroot/sys\nsudo mount --rbind /home /sysroot/home\nsudo mount -t proc /proc /sysroot/proc\n\n# Configure the build environment. Both Rust and Clang will produce\n# llvm bitcode only, so we can use lld\'s incremental LTO support.\ncat >> $GITHUB_ENV << __0\nCARGO_PROFILE_BENCH_INCREMENTAL=false\nCARGO_PROFILE_BENCH_LTO=false\nCARGO_PROFILE_RELEASE_INCREMENTAL=false\nCARGO_PROFILE_RELEASE_LTO=false\nRUSTFLAGS<<__1\n  -C linker-plugin-lto=true\n  -C linker=clang-15\n  -C link-arg=-fuse-ld=lld-15\n  -C link-arg=--sysroot=/sysroot\n  -C link-arg=-Wl,--allow-shlib-undefined\n  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache\n  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m\n  ${{ env.RUSTFLAGS }}\n__1\nRUSTDOCFLAGS<<__1\n  -C linker-plugin-lto=true\n  -C linker=clang-15\n  -C link-arg=-fuse-ld=lld-15\n  -C link-arg=--sysroot=/sysroot\n  -C link-arg=-Wl,--allow-shlib-undefined\n  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache\n  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m\n  ${{ env.RUSTFLAGS }}\n__1\nCC=clang-15\nCFLAGS=-flto=thin --sysroot=/sysroot\n__0\n',
+          run: [
+            "# Avoid running man-db triggers, which sometimes takes several minutes",
+            "# to complete.",
+            "sudo apt-get remove --purge -y man-db",
+            "",
+            "# Install clang-15, lld-15, and debootstrap.",
+            'echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main" |',
+            "  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-15.list",
+            "curl https://apt.llvm.org/llvm-snapshot.gpg.key |",
+            "  gpg --dearmor                                 |",
+            "sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg",
+            "sudo apt-get update",
+            "sudo apt-get install --no-install-recommends debootstrap     \\",
+            "                                             clang-15 lld-15",
+            "",
+            "# Create ubuntu-16.04 sysroot environment, which is used to avoid",
+            "# depending on a very recent version of glibc.",
+            "# `libc6-dev` is required for building any C source files.",
+            "# `file` and `make` are needed to build libffi-sys.",
+            "# `curl` is needed to build rusty_v8.",
+            "sudo debootstrap                                     \\",
+            "  --include=ca-certificates,curl,file,libc6-dev,make \\",
+            "  --no-merged-usr --variant=minbase xenial /sysroot  \\",
+            "  http://azure.archive.ubuntu.com/ubuntu",
+            "sudo mount --rbind /dev /sysroot/dev",
+            "sudo mount --rbind /sys /sysroot/sys",
+            "sudo mount --rbind /home /sysroot/home",
+            "sudo mount -t proc /proc /sysroot/proc",
+            "",
+            "# Configure the build environment. Both Rust and Clang will produce",
+            "# llvm bitcode only, so we can use lld's incremental LTO support.",
+            "cat >> $GITHUB_ENV << __0",
+            "CARGO_PROFILE_BENCH_INCREMENTAL=false",
+            "CARGO_PROFILE_BENCH_LTO=false",
+            "CARGO_PROFILE_RELEASE_INCREMENTAL=false",
+            "CARGO_PROFILE_RELEASE_LTO=false",
+            "RUSTFLAGS<<__1",
+            "  -C linker-plugin-lto=true",
+            "  -C linker=clang-15",
+            "  -C link-arg=-fuse-ld=lld-15",
+            "  -C link-arg=--sysroot=/sysroot",
+            "  -C link-arg=-Wl,--allow-shlib-undefined",
+            "  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache",
+            "  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m",
+            "  ${{ env.RUSTFLAGS }}",
+            "__1",
+            "RUSTDOCFLAGS<<__1",
+            "  -C linker-plugin-lto=true",
+            "  -C linker=clang-15",
+            "  -C link-arg=-fuse-ld=lld-15",
+            "  -C link-arg=--sysroot=/sysroot",
+            "  -C link-arg=-Wl,--allow-shlib-undefined",
+            "  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache",
+            "  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m",
+            "  ${{ env.RUSTFLAGS }}",
+            "__1",
+            "CC=clang-15",
+            "CFLAGS=-flto=thin --sysroot=/sysroot",
+            "__0",
+          ].join("\n"),
         },
         {
           name: "Log versions",
           shell: "bash",
-          run:
-            'node -v\npython --version\nrustc --version\ncargo --version\n# Deno is installed when linting.\nif [ "${{ matrix.job }}" == "lint" ]\nthen\n  deno --version\nfi\n',
+          run: [
+            "node -v",
+            "python --version",
+            "rustc --version",
+            "cargo --version",
+            "# Deno is installed when linting.",
+            'if [ "${{ matrix.job }}" == "lint" ]',
+            "then",
+            "  deno --version",
+            "fi",
+          ].join("\n"),
         },
         {
           name: "Cache Cargo home",
           uses: "actions/cache@v3",
           with: {
             // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
-            path:
-              "~/.cargo/registry/index\n~/.cargo/registry/cache\n~/.cargo/git/db\n",
+            path: [
+              "~/.cargo/registry/index",
+              "~/.cargo/registry/cache",
+              "~/.cargo/git/db",
+            ].join("\n"),
             key:
               "18-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
           },
@@ -188,10 +290,14 @@ const ci = {
           if:
             "(matrix.profile == 'release' || matrix.profile == 'fastci') && github.ref == 'refs/heads/main'",
           with: {
-            path:
-              "./target\n!./target/*/gn_out\n!./target/*/*.zip\n!./target/*/*.tar.gz\n",
+            path: [
+              "./target",
+              "!./target/*/gn_out",
+              "!./target/*/*.zip",
+              "!./target/*/*.tar.gz",
+            ].join("\n"),
             key:
-              "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}\n",
+              "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}",
           },
         },
         {
@@ -201,11 +307,15 @@ const ci = {
           if:
             "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           with: {
-            path:
-              "./target\n!./target/*/gn_out\n!./target/*/*.zip\n!./target/*/*.tar.gz\n",
+            path: [
+              "./target",
+              "!./target/*/gn_out",
+              "!./target/*/*.zip",
+              "!./target/*/*.tar.gz",
+            ].join("\n"),
             key: "never_saved",
             "restore-keys":
-              "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-\n",
+              "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
           },
         },
         {
@@ -223,8 +333,14 @@ const ci = {
           // command must be updated.
           name: "Shallow clone crates.io index",
           shell: "bash",
-          run:
-            "if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]\nthen\n  git clone --depth 1 --no-checkout                      \\\n            https://github.com/rust-lang/crates.io-index \\\n            ~/.cargo/registry/index/github.com-1ecc6299db9ec823\nfi\n",
+          run: [
+            "if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]",
+            "then",
+            "  git clone --depth 1 --no-checkout                      \\",
+            "            https://github.com/rust-lang/crates.io-index \\",
+            "            ~/.cargo/registry/index/github.com-1ecc6299db9ec823",
+            "fi",
+          ].join("\n"),
         },
         {
           name: "test_format.js",
@@ -240,8 +356,10 @@ const ci = {
         },
         {
           name: "Build debug",
-          if:
-            "(matrix.job == 'test' || matrix.job == 'bench') &&\nmatrix.profile == 'debug'\n",
+          if: [
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
+            "matrix.profile == 'debug'",
+          ].join("\n"),
           run: "cargo build --locked --all-targets",
         },
         {
@@ -252,14 +370,24 @@ const ci = {
         },
         {
           name: "Build release",
-          if:
-            "(matrix.job == 'test' || matrix.job == 'bench') &&\nmatrix.profile == 'release' && (matrix.use_sysroot ||\n(github.repository == 'denoland/deno' &&\n(github.ref == 'refs/heads/main' ||\nstartsWith(github.ref, 'refs/tags/'))))\n",
+          if: [
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
+            "matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "(github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' ||",
+            "startsWith(github.ref, 'refs/tags/'))))",
+          ].join("\n"),
           run: "cargo build --release --locked --all-targets",
         },
         {
           name: "Upload PR artifact (linux)",
-          if:
-            "matrix.job == 'test' &&\nmatrix.profile == 'release' && (matrix.use_sysroot ||\n(github.repository == 'denoland/deno' &&\n(github.ref == 'refs/heads/main' ||\nstartsWith(github.ref, 'refs/tags/'))))\n",
+          if: [
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "(github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' ||",
+            "startsWith(github.ref, 'refs/tags/'))))",
+          ].join("\n"),
           uses: "actions/upload-artifact@v3",
           with: {
             name: "deno-${{ github.event.number }}",
@@ -268,45 +396,73 @@ const ci = {
         },
         {
           name: "Pre-release (linux)",
-          if:
-            "startsWith(matrix.os, 'ubuntu') &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno'\n",
-          run:
-            "cd target/release\nzip -r deno-x86_64-unknown-linux-gnu.zip deno\n./deno types > lib.deno.d.ts\n",
+          if: [
+            "startsWith(matrix.os, 'ubuntu') &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno'",
+          ].join("\n"),
+          run: [
+            "cd target/release",
+            "zip -r deno-x86_64-unknown-linux-gnu.zip deno",
+            "./deno types > lib.deno.d.ts",
+          ].join("\n"),
         },
         {
           name: "Pre-release (mac)",
-          if:
-            "startsWith(matrix.os, 'macOS') &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\n(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))\n",
-          run: "cd target/release\nzip -r deno-x86_64-apple-darwin.zip deno\n",
+          if: [
+            "startsWith(matrix.os, 'macOS') &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          run: ["cd target/release", "zip -r deno-x86_64-apple-darwin.zip deno"]
+            .join("\n"),
         },
         {
           name: "Pre-release (windows)",
-          if:
-            "startsWith(matrix.os, 'windows') &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\n(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))\n",
+          if: [
+            "startsWith(matrix.os, 'windows') &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
           run:
-            "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip\n",
+            "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip",
         },
         {
           name: "Upload canary to dl.deno.land (unix)",
-          if:
-            "runner.os != 'Windows' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main'\n",
+          if: [
+            "runner.os != 'Windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "github.ref == 'refs/heads/main'",
+          ].join("\n"),
           run:
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/\n',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
         },
         {
           name: "Upload canary to dl.deno.land (windows)",
-          if:
-            "runner.os == 'Windows' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main'\n",
+          if: [
+            "runner.os == 'Windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "github.ref == 'refs/heads/main'",
+          ].join("\n"),
           env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
           shell: "bash",
           run:
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/\n',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
         },
         {
           name: "Test debug",
           if:
-            "matrix.job == 'test' && matrix.profile == 'debug' &&\n!startsWith(github.ref, 'refs/tags/')\n",
-          run: "cargo test --locked --doc\ncargo test --locked\n",
+            "matrix.job == 'test' && matrix.profile == 'debug' &&\n!startsWith(github.ref, 'refs/tags/')",
+          run: "cargo test --locked --doc\ncargo test --locked",
         },
         {
           name: "Test fastci",
@@ -317,7 +473,7 @@ const ci = {
         {
           name: "Test release",
           if:
-            "matrix.job == 'test' && matrix.profile == 'release' &&\n(matrix.use_sysroot || (\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')))\n",
+            "matrix.job == 'test' && matrix.profile == 'release' &&\n(matrix.use_sysroot || (\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')))",
           run: "cargo test --release --locked",
         },
         {
@@ -347,39 +503,39 @@ const ci = {
         {
           name: "Run web platform tests (debug)",
           if:
-            "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&\nmatrix.profile == 'debug' &&\ngithub.ref == 'refs/heads/main'\n",
+            "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&\nmatrix.profile == 'debug' &&\ngithub.ref == 'refs/heads/main'",
           env: { DENO_BIN: "./target/debug/deno" },
           run:
-            'deno run --allow-env --allow-net --allow-read --allow-run \\\n        --allow-write --unstable                         \\\n        --lock=tools/deno.lock.json                      \\\n        ./tools/wpt.ts setup\ndeno run --allow-env --allow-net --allow-read --allow-run \\\n         --allow-write --unstable                         \\\n         --lock=tools/deno.lock.json              \\\n         ./tools/wpt.ts run --quiet --binary="$DENO_BIN"\n',
+            'deno run --allow-env --allow-net --allow-read --allow-run \\\n        --allow-write --unstable                         \\\n        --lock=tools/deno.lock.json                      \\\n        ./tools/wpt.ts setup\ndeno run --allow-env --allow-net --allow-read --allow-run \\\n         --allow-write --unstable                         \\\n         --lock=tools/deno.lock.json              \\\n         ./tools/wpt.ts run --quiet --binary="$DENO_BIN"',
         },
         {
           name: "Run web platform tests (release)",
           if:
-            "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&\nmatrix.profile == 'release' && !startsWith(github.ref, 'refs/tags/')\n",
+            "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&\nmatrix.profile == 'release' && !startsWith(github.ref, 'refs/tags/')",
           env: { DENO_BIN: "./target/release/deno" },
           run:
-            'deno run --allow-env --allow-net --allow-read --allow-run \\\n         --allow-write --unstable                         \\\n         --lock=tools/deno.lock.json                      \\\n         ./tools/wpt.ts setup\ndeno run --allow-env --allow-net --allow-read --allow-run \\\n         --allow-write --unstable                         \\\n         --lock=tools/deno.lock.json                      \\\n         ./tools/wpt.ts run --quiet --release             \\\n                            --binary="$DENO_BIN"          \\\n                            --json=wpt.json               \\\n                            --wptreport=wptreport.json\n',
+            'deno run --allow-env --allow-net --allow-read --allow-run \\\n         --allow-write --unstable                         \\\n         --lock=tools/deno.lock.json                      \\\n         ./tools/wpt.ts setup\ndeno run --allow-env --allow-net --allow-read --allow-run \\\n         --allow-write --unstable                         \\\n         --lock=tools/deno.lock.json                      \\\n         ./tools/wpt.ts run --quiet --release             \\\n                            --binary="$DENO_BIN"          \\\n                            --json=wpt.json               \\\n                            --wptreport=wptreport.json',
         },
         {
           name: "Upload wpt results to dl.deno.land",
           "continue-on-error": true,
           if:
-            "runner.os == 'Linux' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')\n",
+            "runner.os == 'Linux' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           run:
-            'gzip ./wptreport.json\ngsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json\ngsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz\necho $(git rev-parse HEAD) > wpt-latest.txt\ngsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt\n',
+            'gzip ./wptreport.json\ngsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json\ngsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz\necho $(git rev-parse HEAD) > wpt-latest.txt\ngsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt',
         },
         {
           name: "Upload wpt results to wpt.fyi",
           "continue-on-error": true,
           if:
-            "runner.os == 'Linux' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')\n",
+            "runner.os == 'Linux' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           env: {
             WPT_FYI_USER: "deno",
             WPT_FYI_PW: "${{ secrets.WPT_FYI_PW }}",
             GITHUB_TOKEN: "${{ secrets.DENOBOT_PAT }}",
           },
           run:
-            "./target/release/deno run --allow-all --lock=tools/deno.lock.json \\\n    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus\n",
+            "./target/release/deno run --allow-all --lock=tools/deno.lock.json \\\n    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus",
         },
         {
           name: "Run benchmarks",
@@ -389,56 +545,56 @@ const ci = {
         {
           name: "Post Benchmarks",
           if:
-            "matrix.job == 'bench' &&\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')\n",
+            "matrix.job == 'bench' &&\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           env: { DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}" },
           run:
-            'git clone --depth 1 --branch gh-pages                             \\\n    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\\n    gh-pages\n./target/release/deno run --allow-all --unstable \\\n    ./tools/build_benchmark_jsons.js --release\ncd gh-pages\ngit config user.email "propelml@gmail.com"\ngit config user.name "denobot"\ngit add .\ngit commit --message "Update benchmarks"\ngit push origin gh-pages\n',
+            'git clone --depth 1 --branch gh-pages                             \\\n    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\\n    gh-pages\n./target/release/deno run --allow-all --unstable \\\n    ./tools/build_benchmark_jsons.js --release\ncd gh-pages\ngit config user.email "propelml@gmail.com"\ngit config user.name "denobot"\ngit add .\ngit commit --message "Update benchmarks"\ngit push origin gh-pages',
         },
         {
           name: "Build product size info",
           if:
             "matrix.job != 'lint' && matrix.profile != 'fastci' && github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
           run:
-            'du -hd1 "./target/${{ matrix.profile }}"\ndu -ha  "./target/${{ matrix.profile }}/deno"\n',
+            'du -hd1 "./target/${{ matrix.profile }}"\ndu -ha  "./target/${{ matrix.profile }}/deno"',
         },
         {
           name: "Worker info",
           if: "matrix.job == 'bench'",
-          run: "cat /proc/cpuinfo\ncat /proc/meminfo\n",
+          run: "cat /proc/cpuinfo\ncat /proc/meminfo",
         },
         {
           name: "Upload release to dl.deno.land (unix)",
           if:
-            "runner.os != 'Windows' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')\n",
+            "runner.os != 'Windows' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')",
           run:
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/\n',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
         },
         {
           name: "Upload release to dl.deno.land (windows)",
           if:
-            "runner.os == 'Windows' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')\n",
+            "runner.os == 'Windows' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')",
           env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
           shell: "bash",
           run:
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/\n',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
         },
         {
           name: "Create release notes",
           shell: "bash",
           if:
-            "matrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')\n",
+            "matrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')",
           run:
-            "export PATH=$PATH:$(pwd)/target/release\n./tools/release/05_create_release_notes.ts\n",
+            "export PATH=$PATH:$(pwd)/target/release\n./tools/release/05_create_release_notes.ts",
         },
         {
           name: "Upload release to GitHub",
           uses: "softprops/action-gh-release@v0.1.15",
           if:
-            "matrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')\n",
+            "matrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')",
           env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
           with: {
             files:
-              "target/release/deno-x86_64-pc-windows-msvc.zip\ntarget/release/deno-x86_64-unknown-linux-gnu.zip\ntarget/release/deno-x86_64-apple-darwin.zip\ntarget/release/deno_src.tar.gz\ntarget/release/lib.deno.d.ts\n",
+              "target/release/deno-x86_64-pc-windows-msvc.zip\ntarget/release/deno-x86_64-unknown-linux-gnu.zip\ntarget/release/deno-x86_64-apple-darwin.zip\ntarget/release/deno_src.tar.gz\ntarget/release/lib.deno.d.ts",
             body_path: "target/release/release-notes.md",
             draft: true,
           },
@@ -462,7 +618,7 @@ const ci = {
       }, {
         name: "Upload canary version file to dl.deno.land",
         run:
-          'echo ${{ github.sha }} > canary-latest.txt\ngsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt\n',
+          'echo ${{ github.sha }} > canary-latest.txt\ngsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
       }],
     },
   },
