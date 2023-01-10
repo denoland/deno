@@ -265,9 +265,7 @@ pub fn main() {
     };
 
     let env_v8_flags = get_v8_flags_from_env();
-    if !flags.v8_flags.is_empty() || !env_v8_flags.is_empty() {
-      init_v8_flags(&flags.v8_flags, env_v8_flags);
-    }
+    init_v8_flags(&flags.v8_flags, env_v8_flags);
 
     util::logger::init(flags.log_level);
 

@@ -20,6 +20,10 @@ pub fn construct_v8_flags(
 }
 
 pub fn init_v8_flags(v8_flags: &[String], env_v8_flags: Vec<String>) {
+  if v8_flags.is_empty() && env_v8_flags.is_empty() {
+    return;
+  }
+
   let v8_flags_includes_help = env_v8_flags
     .iter()
     .chain(v8_flags)
