@@ -119,7 +119,7 @@ Deno.test(
     const f = readDir[Symbol.asyncIterator]();
     await assertRejects(
       async () => {
-        const x = await Promise.all([
+        await Promise.all([
           f.next(),
           f.next(),
           f.next(),
