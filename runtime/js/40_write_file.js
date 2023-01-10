@@ -5,6 +5,7 @@
   const ops = core.ops;
   const { abortSignal } = window.__bootstrap;
   const { pathFromURL } = window.__bootstrap.util;
+  const { open } = window.__bootstrap.files;
 
   function writeFileSync(
     path,
@@ -36,16 +37,29 @@
       options.signal[abortSignal.add](abortHandler);
     }
     try {
-      await core.opAsync(
-        "op_write_file_async",
-        pathFromURL(path),
-        options.mode,
-        options.append ?? false,
-        options.create ?? true,
-        options.createNew ?? false,
-        data,
-        cancelRid,
-      );
+      if (data instanceof ReadableStream) {
+        const file = await open(path, {
+          mode: options.mode,
+          append: options.append ?? false,
+          create: options.create ?? true,
+          createNew: options.createNew ?? false,
+          write: true,
+        });
+        await data.pipeTo(file.writable, {
+          signal: options.signal,
+        });
+      } else {
+        await core.opAsync(
+          "op_write_file_async",
+          pathFromURL(path),
+          options.mode,
+          options.append ?? false,
+          options.create ?? true,
+          options.createNew ?? false,
+          data,
+          cancelRid,
+        );
+      }
     } finally {
       if (options.signal) {
         options.signal[abortSignal.remove](abortHandler);
@@ -65,13 +79,26 @@
     return writeFileSync(path, encoder.encode(data), options);
   }
 
-  function writeTextFile(
+  async function writeTextFile(
     path,
     data,
     options = {},
   ) {
-    const encoder = new TextEncoder();
-    return writeFile(path, encoder.encode(data), options);
+    if (data instanceof ReadableStream) {
+      const file = await open(path, {
+        mode: options.mode,
+        append: options.append ?? false,
+        create: options.create ?? true,
+        createNew: options.createNew ?? false,
+        write: true,
+      });
+      await data.pipeThrough(new TextEncoderStream()).pipeTo(file.writable, {
+        signal: options.signal,
+      });
+    } else {
+      const encoder = new TextEncoder();
+      return writeFile(path, encoder.encode(data), options);
+    }
   }
 
   window.__bootstrap.writeFile = {
