@@ -1834,7 +1834,7 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .help("Allow network access")
-        .value_parser(flags_allow_net::validator), // TODO: parse, not just validate
+        .value_parser(flags_allow_net::validator),
     )
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(
@@ -2454,7 +2454,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Some(f) => f.collect(),
     None => vec![],
   };
-  let ext = matches.remove_one::<String>("ext").unwrap(); // TODO CHECK
+  let ext = matches.remove_one::<String>("ext").unwrap();
 
   let use_tabs = if matches.get_flag("options-use-tabs") {
     Some(true)
@@ -2471,7 +2471,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let prose_wrap = matches.remove_one::<String>("options-prose-wrap");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
-    check: matches.get_flag("check"), // TODO
+    check: matches.get_flag("check"),
     ext,
     files: FileFlags { include, ignore },
     use_tabs,
@@ -2956,7 +2956,6 @@ fn no_check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       ),
     }
   } else if matches.contains_id("no-check") {
-    // TODO
     flags.type_check_mode = TypeCheckMode::None;
   }
 }
