@@ -106,6 +106,8 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
   ];
 
   if unstable {
+    types.push(DENO_WEBGPU_LIB);
+    types.push(DENO_BROADCAST_CHANNEL_LIB);
     types.push(UNSTABLE_NS_LIB);
   }
 
