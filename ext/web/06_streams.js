@@ -22,7 +22,7 @@
     BigInt64ArrayPrototype,
     BigUint64ArrayPrototype,
     DataView,
-    Float64Array,
+    Float64ArrayPrototype,
     Int8ArrayPrototype,
     Int16ArrayPrototype,
     Int32ArrayPrototype,
@@ -1674,7 +1674,7 @@
       ObjectPrototypeIsPrototypeOf(Uint32ArrayPrototype, view) ||
       ObjectPrototypeIsPrototypeOf(BigInt64ArrayPrototype, view) ||
       ObjectPrototypeIsPrototypeOf(BigUint64ArrayPrototype, view) ||
-      ObjectPrototypeIsPrototypeOf(Float64Array, view)
+      ObjectPrototypeIsPrototypeOf(Float64ArrayPrototype, view)
     ) {
       elementSize = view.constructor.BYTES_PER_ELEMENT;
       ctor = view.constructor;
