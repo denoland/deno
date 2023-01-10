@@ -96,6 +96,9 @@
       return ops.op_env();
     },
     set: setEnv,
+    has(key) {
+      return getEnv(key) !== undefined;
+    },
     delete: deleteEnv,
   };
 
