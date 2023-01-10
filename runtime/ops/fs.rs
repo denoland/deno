@@ -1305,7 +1305,7 @@ async fn op_read_dir_async_next(
     let mut read_dir = resource
       .0
       .try_borrow_mut()
-      .map_err(|_| custom_error("BadResource", "Resource is in use"))?;
+      .map_err(|_| deno_core::error::resource_unavailable())?;
     read_dir.next_entry().await?
   };
 

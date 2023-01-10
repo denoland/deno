@@ -107,6 +107,7 @@
     "op_net_connect_unix": ["connect to a Unix server", "awaiting a `Deno.connect` call"],
     "op_open_async": ["open a file", "awaiting the result of a `Deno.open` call"],
     "op_read_dir_async": ["read a directory", "collecting all items in the async iterable returned from a `Deno.readDir` call"],
+    "op_read_dir_async_next": ["read a directory", "collecting all items in the async iterable returned from a `Deno.readDir` call"],
     "op_read_link_async": ["read a symlink", "awaiting the result of a `Deno.readLink` call"],
     "op_realpath_async": ["resolve a path", "awaiting the result of a `Deno.realpath` call"],
     "op_remove_async": ["remove a file or directory", "awaiting the result of a `Deno.remove` call"],

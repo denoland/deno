@@ -111,3 +111,69 @@ Deno.test({ permissions: { read: true } }, async function readDirNotFound() {
     `readdir 'bad_dir_name'`,
   );
 });
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readDirResourceUnavailable() {
+    const readDir = Deno.readDir("test_util/wpt");
+    const f = readDir[Symbol.asyncIterator]();
+    await assertRejects(
+      async () => {
+        const x = await Promise.all([
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+          f.next(),
+        ]);
+      },
+      Deno.errors.Busy,
+      `Resource is unavailable because it is in use by a promise`,
+    );
+
+    f.return!();
+  },
+);

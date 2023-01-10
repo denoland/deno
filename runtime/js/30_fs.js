@@ -125,26 +125,32 @@
   function readDir(path) {
     const ridPromise = core.opAsync("op_read_dir_async", pathFromURL(path));
 
-    let finished = false;
+    let rid;
     return {
-      async *[SymbolAsyncIterator]() {
-        const rid = await ridPromise;
-        try {
-          while (!finished) {
-            const [entry, done] = await core.opAsync(
-              "op_read_dir_async_next",
-              rid,
-            );
-
-            if (done) {
-              finished = true;
-            } else if (entry) {
-              yield entry;
+      [SymbolAsyncIterator]() {
+        return {
+          async next() {
+            if (!rid) {
+              rid = await ridPromise;
             }
-          }
-        } finally {
-          core.close(rid);
-        }
+            while (true) {
+              const [value, done] = await core.opAsync(
+                "op_read_dir_async_next",
+                rid,
+              );
+              if (value || done) {
+                if (done) {
+                  core.close(rid);
+                }
+                return { value: value ?? undefined, done };
+              }
+            }
+          },
+          return() {
+            core.close(rid);
+            return { done: true };
+          },
+        };
       },
     };
   }
