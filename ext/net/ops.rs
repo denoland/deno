@@ -612,7 +612,12 @@ fn rdata_to_return_record(
           .collect();
         DnsReturnRecord::Txt(texts)
       }),
-      _ => return Err(custom_error("NotSupported", "Provided record type is not supported")),
+      _ => {
+        return Err(custom_error(
+          "NotSupported",
+          "Provided record type is not supported",
+        ))
+      }
     };
     Ok(record)
   }
@@ -653,14 +658,20 @@ mod tests {
   fn rdata_to_return_record_aaaa() {
     let func = rdata_to_return_record(RecordType::AAAA);
     let rdata = RData::AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
-    assert_eq!(func(&rdata).unwrap(), Some(DnsReturnRecord::Aaaa("::1".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Aaaa("::1".to_string()))
+    );
   }
 
   #[test]
   fn rdata_to_return_record_aname() {
     let func = rdata_to_return_record(RecordType::ANAME);
     let rdata = RData::ANAME(Name::new());
-    assert_eq!(func(&rdata).unwrap(), Some(DnsReturnRecord::Aname("".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Aname("".to_string()))
+    );
   }
 
   #[test]
@@ -685,7 +696,10 @@ mod tests {
   fn rdata_to_return_record_cname() {
     let func = rdata_to_return_record(RecordType::CNAME);
     let rdata = RData::CNAME(Name::new());
-    assert_eq!(func(&rdata).unwrap(), Some(DnsReturnRecord::Cname("".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Cname("".to_string()))
+    );
   }
 
   #[test]
@@ -729,14 +743,20 @@ mod tests {
   fn rdata_to_return_record_ns() {
     let func = rdata_to_return_record(RecordType::NS);
     let rdata = RData::NS(Name::new());
-    assert_eq!(func(&rdata).unwrap(), Some(DnsReturnRecord::Ns("".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Ns("".to_string()))
+    );
   }
 
   #[test]
   fn rdata_to_return_record_ptr() {
     let func = rdata_to_return_record(RecordType::PTR);
     let rdata = RData::PTR(Name::new());
-    assert_eq!(func(&rdata).unwrap(), Some(DnsReturnRecord::Ptr("".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Ptr("".to_string()))
+    );
   }
 
   #[test]
