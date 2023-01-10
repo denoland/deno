@@ -83,6 +83,7 @@ fn napi_remove_env_cleanup_hook(
 
   {
     let mut env_cleanup_hooks = env.cleanup_hooks.borrow_mut();
+    // Hooks are supposed to be removed in LIFO order
     let maybe_index = env_cleanup_hooks
       .iter()
       .rev()

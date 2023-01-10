@@ -309,6 +309,7 @@ pub struct NapiState {
 impl Drop for NapiState {
   fn drop(&mut self) {
     let mut hooks = self.env_cleanup_hooks.borrow_mut();
+    // Hooks are supposed to be run in LIFO order
     let hooks = hooks.drain(..).rev().collect::<Vec<_>>();
     for (fn_ptr, data) in hooks {
       (fn_ptr)(data);
