@@ -27,8 +27,8 @@
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeThen,
-    PromisePrototypeFinally,
     ReflectApply,
+    SafePromisePrototypeFinally,
     StringPrototypeSlice,
     SymbolFor,
     setQueueMicrotask,
@@ -236,7 +236,7 @@
     if (opCallTracingEnabled) {
       const stack = StringPrototypeSlice(new Error().stack, 6);
       MapPrototypeSet(opCallTraces, promiseId, { opName, stack });
-      return PromisePrototypeFinally(
+      return SafePromisePrototypeFinally(
         p,
         () => MapPrototypeDelete(opCallTraces, promiseId),
       );
