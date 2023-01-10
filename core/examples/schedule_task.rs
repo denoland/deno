@@ -18,7 +18,7 @@ use deno_core::*;
 type Task = Box<dyn FnOnce()>;
 
 fn main() {
-  let my_ext = Extension::builder()
+  let my_ext = Extension::builder("my_ext")
     .ops(vec![op_schedule_task::decl()])
     .event_loop_middleware(|state_rc, cx| {
       let mut state = state_rc.borrow_mut();

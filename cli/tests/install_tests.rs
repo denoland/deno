@@ -55,12 +55,12 @@ mod install {
     if cfg!(windows) {
       assert_contains!(
         content,
-        r#""run" "--check" "http://localhost:4545/echo.ts""#
+        r#""run" "--check" "--no-config" "http://localhost:4545/echo.ts""#
       );
     } else {
       assert_contains!(
         content,
-        r#"run --check 'http://localhost:4545/echo.ts'"#
+        r#"run --check --no-config 'http://localhost:4545/echo.ts'"#
       );
     }
 
@@ -121,12 +121,12 @@ mod install {
     if cfg!(windows) {
       assert_contains!(
         content,
-        r#""run" "--check" "http://localhost:4545/echo.ts""#
+        r#""run" "--check" "--no-config" "http://localhost:4545/echo.ts""#
       );
     } else {
       assert_contains!(
         content,
-        r#"run --check 'http://localhost:4545/echo.ts'"#
+        r#"run --check --no-config 'http://localhost:4545/echo.ts'"#
       );
     }
   }

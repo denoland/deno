@@ -1479,7 +1479,9 @@ import "/a.js";
       43
     }
 
-    let ext = Extension::builder().ops(vec![op_test::decl()]).build();
+    let ext = Extension::builder("test_ext")
+      .ops(vec![op_test::decl()])
+      .build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],

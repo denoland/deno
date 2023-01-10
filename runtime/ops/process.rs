@@ -27,7 +27,7 @@ use tokio::process::Command;
 use std::os::unix::process::ExitStatusExt;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_process")
     .ops(vec![op_run::decl(), op_run_status::decl(), op_kill::decl()])
     .build()
 }

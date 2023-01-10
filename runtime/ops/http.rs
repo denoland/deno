@@ -27,7 +27,7 @@ use deno_net::io::UnixStreamResource;
 use tokio::net::UnixStream;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_http_runtime")
     .ops(vec![
       op_http_start::decl(),
       op_http_upgrade::decl(),

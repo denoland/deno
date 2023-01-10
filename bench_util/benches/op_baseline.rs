@@ -6,7 +6,7 @@ use deno_core::op;
 use deno_core::Extension;
 
 fn setup() -> Vec<Extension> {
-  vec![Extension::builder()
+  vec![Extension::builder("bench_setup")
     .ops(vec![
       op_pi_json::decl(),
       op_pi_async::decl(),
