@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use napi_sys::PropertyAttributes;
 use napi_sys::Status::napi_ok;
 use napi_sys::ValueType::napi_number;
 use napi_sys::*;
@@ -116,13 +117,31 @@ impl NapiObject {
 
     ptr::null_mut()
   }
+
+  pub extern "C" fn factory(
+    env: napi_env,
+    info: napi_callback_info,
+  ) -> napi_value {
+    let (_args, argc, _this) = crate::get_callback_info!(env, info, 0);
+    assert_eq!(argc, 0);
+
+    let int64 = 64;
+    let mut value: napi_value = ptr::null_mut();
+    assert!(unsafe { napi_create_int64(env, int64, &mut value) } == napi_ok);
+    value
+  }
 }
 
 pub fn init(env: napi_env, exports: napi_value) {
+  let mut static_prop =
+    crate::new_property!(env, "factory\0", NapiObject::factory);
+  static_prop.attributes = PropertyAttributes::static_;
+
   let properties = &[
     crate::new_property!(env, "set_value\0", NapiObject::set_value),
     crate::new_property!(env, "get_value\0", NapiObject::get_value),
     crate::new_property!(env, "increment\0", NapiObject::increment),
+    static_prop,
   ];
 
   let mut cons: napi_value = ptr::null_mut();
