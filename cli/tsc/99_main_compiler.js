@@ -484,12 +484,14 @@ delete Object.prototype.__proto__;
         debug(`host.fileExists("${specifier}")`);
       }
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
+      core.print(`file exists ${specifier}\n`, true);
       return ops.op_exists({ specifier });
     },
     readFile(specifier) {
       if (logDebug) {
         debug(`host.readFile("${specifier}")`);
       }
+      core.print(`read file ${specifier}\n`, true);
       return ops.op_load({ specifier }).data;
     },
     getCancellationToken() {
@@ -512,6 +514,10 @@ delete Object.prototype.__proto__;
       }
 
       // Needs the original specifier
+      core.print(`specifier before normalization ${specifier}\n`, true);
+      // if (specifier.endsWith(".d.tsr")) {
+      //   throw new Error("boom!");
+      // }
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
 
       let sourceFile = sourceFileCache.get(specifier);
@@ -520,6 +526,7 @@ delete Object.prototype.__proto__;
       }
 
       /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
+      core.print(`specifier ${specifier}\n`, true);
       const { data, scriptKind, version } = ops.op_load(
         { specifier },
       );
@@ -1280,6 +1287,7 @@ delete Object.prototype.__proto__;
     }
     // we are caching in memory common type libraries that will be re-used by
     // tsc on when the snapshot is restored
+    core.print(`get source file ${specifier}\n`, true);
     assert(
       host.getSourceFile(`${ASSETS}${specifier}`, ts.ScriptTarget.ESNext),
     );
