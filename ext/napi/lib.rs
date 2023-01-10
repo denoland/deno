@@ -18,6 +18,7 @@ use std::cell::RefCell;
 use std::ffi::CString;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::task::Poll;
 use std::thread_local;
 
@@ -333,8 +334,20 @@ pub struct NapiState {
     mpsc::UnboundedReceiver<ThreadSafeFunctionStatus>,
   pub threadsafe_function_sender:
     mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
+  pub env_cleanup_hooks:
+    Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
 }
 
+impl Drop for NapiState {
+  fn drop(&mut self) {
+    let mut hooks = self.env_cleanup_hooks.borrow_mut();
+    // Hooks are supposed to be run in LIFO order
+    let hooks = hooks.drain(..).rev();
+    for (fn_ptr, data) in hooks {
+      (fn_ptr)(data);
+    }
+  }
+}
 #[repr(C)]
 #[derive(Debug)]
 /// Env that is shared between all contexts in same native module.
@@ -376,6 +389,8 @@ pub struct Env {
   pub async_work_sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   pub threadsafe_function_sender:
     mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
+  pub cleanup_hooks:
+    Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
 }
 
 unsafe impl Send for Env {}
@@ -387,6 +402,9 @@ impl Env {
     context: v8::Global<v8::Context>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
     threadsafe_function_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
+    cleanup_hooks: Rc<
+      RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>,
+    >,
   ) -> Self {
     let sc = sender.clone();
     ASYNC_WORK_SENDER.with(|s| {
@@ -404,6 +422,7 @@ impl Env {
       open_handle_scopes: 0,
       async_work_sender: sender,
       threadsafe_function_sender,
+      cleanup_hooks,
     }
   }
 
@@ -507,6 +526,7 @@ pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
         threadsafe_function_sender,
         threadsafe_function_receiver,
         active_threadsafe_functions: 0,
+        env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
       });
       state.put(Unstable(unstable));
       Ok(())
@@ -543,13 +563,14 @@ where
   let permissions = op_state.borrow_mut::<NP>();
   permissions.check(Some(&PathBuf::from(&path)))?;
 
-  let (async_work_sender, tsfn_sender, isolate_ptr) = {
+  let (async_work_sender, tsfn_sender, isolate_ptr, cleanup_hooks) = {
     let napi_state = op_state.borrow::<NapiState>();
     let isolate_ptr = op_state.borrow::<*mut v8::OwnedIsolate>();
     (
       napi_state.async_work_sender.clone(),
       napi_state.threadsafe_function_sender.clone(),
       *isolate_ptr,
+      napi_state.env_cleanup_hooks.clone(),
     )
   };
 
@@ -571,6 +592,7 @@ where
     v8::Global::new(scope, ctx),
     async_work_sender,
     tsfn_sender,
+    cleanup_hooks,
   );
   env.shared = Box::into_raw(Box::new(env_shared));
   let env_ptr = Box::into_raw(Box::new(env)) as _;
