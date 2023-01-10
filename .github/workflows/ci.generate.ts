@@ -460,9 +460,11 @@ const ci = {
         },
         {
           name: "Test debug",
-          if:
-            "matrix.job == 'test' && matrix.profile == 'debug' &&\n!startsWith(github.ref, 'refs/tags/')",
-          run: "cargo test --locked --doc\ncargo test --locked",
+          if: [
+            "matrix.job == 'test' && matrix.profile == 'debug' &&",
+            "!startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
+          run: ["cargo test --locked --doc", "cargo test --locked"].join("\n"),
         },
         {
           name: "Test fastci",
@@ -472,8 +474,12 @@ const ci = {
         },
         {
           name: "Test release",
-          if:
-            "matrix.job == 'test' && matrix.profile == 'release' &&\n(matrix.use_sysroot || (\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')))",
+          if: [
+            "matrix.job == 'test' && matrix.profile == 'release' &&",
+            "(matrix.use_sysroot || (",
+            "github.repository == 'denoland/deno' &&",
+            "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')))",
+          ].join("\n"),
           run: "cargo test --release --locked",
         },
         {
@@ -502,40 +508,81 @@ const ci = {
         },
         {
           name: "Run web platform tests (debug)",
-          if:
-            "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&\nmatrix.profile == 'debug' &&\ngithub.ref == 'refs/heads/main'",
+          if: [
+            "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&",
+            "matrix.profile == 'debug' &&",
+            "github.ref == 'refs/heads/main'",
+          ].join("\n"),
           env: { DENO_BIN: "./target/debug/deno" },
-          run:
-            'deno run --allow-env --allow-net --allow-read --allow-run \\\n        --allow-write --unstable                         \\\n        --lock=tools/deno.lock.json                      \\\n        ./tools/wpt.ts setup\ndeno run --allow-env --allow-net --allow-read --allow-run \\\n         --allow-write --unstable                         \\\n         --lock=tools/deno.lock.json              \\\n         ./tools/wpt.ts run --quiet --binary="$DENO_BIN"',
+          run: [
+            "deno run --allow-env --allow-net --allow-read --allow-run \\",
+            "        --allow-write --unstable                         \\",
+            "        --lock=tools/deno.lock.json                      \\",
+            "        ./tools/wpt.ts setup",
+            "deno run --allow-env --allow-net --allow-read --allow-run \\",
+            "         --allow-write --unstable                         \\",
+            "         --lock=tools/deno.lock.json              \\",
+            '         ./tools/wpt.ts run --quiet --binary="$DENO_BIN"',
+          ].join("\n"),
         },
         {
           name: "Run web platform tests (release)",
-          if:
-            "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&\nmatrix.profile == 'release' && !startsWith(github.ref, 'refs/tags/')",
+          if: [
+            "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&",
+            "matrix.profile == 'release' && !startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
           env: { DENO_BIN: "./target/release/deno" },
-          run:
-            'deno run --allow-env --allow-net --allow-read --allow-run \\\n         --allow-write --unstable                         \\\n         --lock=tools/deno.lock.json                      \\\n         ./tools/wpt.ts setup\ndeno run --allow-env --allow-net --allow-read --allow-run \\\n         --allow-write --unstable                         \\\n         --lock=tools/deno.lock.json                      \\\n         ./tools/wpt.ts run --quiet --release             \\\n                            --binary="$DENO_BIN"          \\\n                            --json=wpt.json               \\\n                            --wptreport=wptreport.json',
+          run: [
+            "deno run --allow-env --allow-net --allow-read --allow-run \\",
+            "         --allow-write --unstable                         \\",
+            "         --lock=tools/deno.lock.json                      \\",
+            "         ./tools/wpt.ts setup",
+            "deno run --allow-env --allow-net --allow-read --allow-run \\",
+            "         --allow-write --unstable                         \\",
+            "         --lock=tools/deno.lock.json                      \\",
+            "         ./tools/wpt.ts run --quiet --release             \\",
+            '                            --binary="$DENO_BIN"          \\',
+            "                            --json=wpt.json               \\",
+            "                            --wptreport=wptreport.json",
+          ].join("\n"),
         },
         {
           name: "Upload wpt results to dl.deno.land",
           "continue-on-error": true,
-          if:
-            "runner.os == 'Linux' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
-          run:
-            'gzip ./wptreport.json\ngsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json\ngsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz\necho $(git rev-parse HEAD) > wpt-latest.txt\ngsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt',
+          if: [
+            "runner.os == 'Linux' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
+          run: [
+            "gzip ./wptreport.json",
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz',
+            "echo $(git rev-parse HEAD) > wpt-latest.txt",
+            'gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt',
+          ].join("\n"),
         },
         {
           name: "Upload wpt results to wpt.fyi",
           "continue-on-error": true,
-          if:
-            "runner.os == 'Linux' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
+          if: [
+            "runner.os == 'Linux' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
           env: {
             WPT_FYI_USER: "deno",
             WPT_FYI_PW: "${{ secrets.WPT_FYI_PW }}",
             GITHUB_TOKEN: "${{ secrets.DENOBOT_PAT }}",
           },
-          run:
-            "./target/release/deno run --allow-all --lock=tools/deno.lock.json \\\n    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus",
+          run: [
+            "./target/release/deno run --allow-all --lock=tools/deno.lock.json \\",
+            "    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus",
+          ].join("\n"),
         },
         {
           name: "Run benchmarks",
@@ -544,35 +591,61 @@ const ci = {
         },
         {
           name: "Post Benchmarks",
-          if:
-            "matrix.job == 'bench' &&\ngithub.repository == 'denoland/deno' &&\ngithub.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
+          if: [
+            "matrix.job == 'bench' &&",
+            "github.repository == 'denoland/deno' &&",
+            "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
           env: { DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}" },
-          run:
-            'git clone --depth 1 --branch gh-pages                             \\\n    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\\n    gh-pages\n./target/release/deno run --allow-all --unstable \\\n    ./tools/build_benchmark_jsons.js --release\ncd gh-pages\ngit config user.email "propelml@gmail.com"\ngit config user.name "denobot"\ngit add .\ngit commit --message "Update benchmarks"\ngit push origin gh-pages',
+          run: [
+            "git clone --depth 1 --branch gh-pages                             \\",
+            "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
+            "    gh-pages",
+            "./target/release/deno run --allow-all --unstable \\",
+            "    ./tools/build_benchmark_jsons.js --release",
+            "cd gh-pages",
+            'git config user.email "propelml@gmail.com"',
+            'git config user.name "denobot"',
+            "git add .",
+            'git commit --message "Update benchmarks"',
+            "git push origin gh-pages",
+          ].join("\n"),
         },
         {
           name: "Build product size info",
           if:
             "matrix.job != 'lint' && matrix.profile != 'fastci' && github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
-          run:
-            'du -hd1 "./target/${{ matrix.profile }}"\ndu -ha  "./target/${{ matrix.profile }}/deno"',
+          run: [
+            'du -hd1 "./target/${{ matrix.profile }}"',
+            'du -ha  "./target/${{ matrix.profile }}/deno"',
+          ].join("\n"),
         },
         {
           name: "Worker info",
           if: "matrix.job == 'bench'",
-          run: "cat /proc/cpuinfo\ncat /proc/meminfo",
+          run: ["cat /proc/cpuinfo", "cat /proc/meminfo"].join("\n"),
         },
         {
           name: "Upload release to dl.deno.land (unix)",
-          if:
-            "runner.os != 'Windows' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')",
+          if: [
+            "runner.os != 'Windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
           run:
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
         },
         {
           name: "Upload release to dl.deno.land (windows)",
-          if:
-            "runner.os == 'Windows' &&\nmatrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')",
+          if: [
+            "runner.os == 'Windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
           env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
           shell: "bash",
           run:
@@ -581,20 +654,35 @@ const ci = {
         {
           name: "Create release notes",
           shell: "bash",
-          if:
-            "matrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')",
-          run:
-            "export PATH=$PATH:$(pwd)/target/release\n./tools/release/05_create_release_notes.ts",
+          if: [
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
+          run: [
+            "export PATH=$PATH:$(pwd)/target/release",
+            "./tools/release/05_create_release_notes.ts",
+          ].join("\n"),
         },
         {
           name: "Upload release to GitHub",
           uses: "softprops/action-gh-release@v0.1.15",
-          if:
-            "matrix.job == 'test' &&\nmatrix.profile == 'release' &&\ngithub.repository == 'denoland/deno' &&\nstartsWith(github.ref, 'refs/tags/')",
+          if: [
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "startsWith(github.ref, 'refs/tags/')",
+          ].join("\n"),
           env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
           with: {
-            files:
-              "target/release/deno-x86_64-pc-windows-msvc.zip\ntarget/release/deno-x86_64-unknown-linux-gnu.zip\ntarget/release/deno-x86_64-apple-darwin.zip\ntarget/release/deno_src.tar.gz\ntarget/release/lib.deno.d.ts",
+            files: [
+              "target/release/deno-x86_64-pc-windows-msvc.zip",
+              "target/release/deno-x86_64-unknown-linux-gnu.zip",
+              "target/release/deno-x86_64-apple-darwin.zip",
+              "target/release/deno_src.tar.gz",
+              "target/release/lib.deno.d.ts",
+            ].join("\n"),
             body_path: "target/release/release-notes.md",
             draft: true,
           },
@@ -617,8 +705,10 @@ const ci = {
         },
       }, {
         name: "Upload canary version file to dl.deno.land",
-        run:
-          'echo ${{ github.sha }} > canary-latest.txt\ngsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+        run: [
+          "echo ${{ github.sha }} > canary-latest.txt",
+          'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+        ].join("\n"),
       }],
     },
   },
