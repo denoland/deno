@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-write=.
+#!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import * as yaml from "https://deno.land/std@0.171.0/encoding/yaml.ts";
 
