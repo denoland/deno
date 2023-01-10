@@ -995,7 +995,7 @@ async fn test_specifiers(
   let log_level = ps.options.log_level();
   let specifiers_with_mode = if let Some(seed) = ps.options.shuffle_tests() {
     let mut rng = SmallRng::seed_from_u64(seed);
-    let mut specifiers_with_mode = specifiers_with_mode.clone();
+    let mut specifiers_with_mode = specifiers_with_mode;
     specifiers_with_mode.sort_by_key(|(specifier, _)| specifier.clone());
     specifiers_with_mode.shuffle(&mut rng);
     specifiers_with_mode

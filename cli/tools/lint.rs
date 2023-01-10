@@ -126,7 +126,7 @@ pub async fn lint(
           return Ok(());
         }
 
-        let r = lint_file(file_path.clone(), file_text, lint_rules);
+        let r = lint_file(&file_path, file_text, lint_rules);
         if let Ok((file_diagnostics, file_text)) = &r {
           if file_diagnostics.is_empty() {
             // update the incremental cache if there were no diagnostics
@@ -245,12 +245,12 @@ pub fn create_linter(
 }
 
 fn lint_file(
-  file_path: PathBuf,
+  file_path: &PathBuf,
   source_code: String,
   lint_rules: Vec<Arc<dyn LintRule>>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
-  let media_type = MediaType::from(&file_path);
+  let media_type = MediaType::from(file_path);
 
   let linter = create_linter(media_type, lint_rules);
 
