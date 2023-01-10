@@ -38,12 +38,10 @@ use args::CliOptions;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
-use deno_core::v8_set_flags;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::run_local;
 use std::env;
-use std::iter::once;
 use std::path::PathBuf;
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {

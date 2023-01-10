@@ -41,7 +41,6 @@ use std::env::current_exe;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::io::SeekFrom;
-use std::iter::once;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
