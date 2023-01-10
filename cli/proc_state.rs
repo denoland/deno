@@ -621,10 +621,8 @@ impl ProcState {
     }
 
     // Built-in Node modules
-    if specifier.starts_with("node:") {
-      return node::resolve_builtin_node_module(
-        specifier.strip_prefix("node:").unwrap(),
-      );
+    if let Some(module_name) = specifier.strip_prefix("node:") {
+      return node::resolve_builtin_node_module(module_name);
     }
 
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL

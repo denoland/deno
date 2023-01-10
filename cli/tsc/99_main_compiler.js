@@ -1267,9 +1267,11 @@ delete Object.prototype.__proto__;
 
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.
-  /** @type {{ buildSpecifier: string; libs: string[] }} */
+  /** @type {{ buildSpecifier: string; libs: string[]; nodeBuiltInModuleNames: string[] }} */
+  const { buildSpecifier, libs, nodeBuiltInModuleNames } = ops.op_build_info();
 
-  const { buildSpecifier, libs } = ops.op_build_info();
+  ts.deno.setNodeBuiltInModuleNames(nodeBuiltInModuleNames);
+
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into

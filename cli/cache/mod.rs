@@ -101,16 +101,15 @@ impl Loader for FetchCacher {
       ));
     }
 
-    let specifier = if specifier.scheme() == "node" {
-      match crate::node::resolve_builtin_node_module(
-        specifier.as_str().strip_prefix("node:").unwrap(),
-      ) {
-        Ok(specifier) => specifier,
-        Err(err) => return Box::pin(futures::future::ready(Err(err))),
-      }
-    } else {
-      specifier.clone()
-    };
+    let specifier =
+      if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
+        match crate::node::resolve_builtin_node_module(module_name) {
+          Ok(specifier) => specifier,
+          Err(err) => return Box::pin(futures::future::ready(Err(err))),
+        }
+      } else {
+        specifier.clone()
+      };
 
     let permissions = if is_dynamic {
       self.dynamic_permissions.clone()

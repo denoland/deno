@@ -13,6 +13,7 @@ use super::tsc;
 use super::tsc::TsServer;
 
 use crate::args::LintOptions;
+use crate::node;
 use crate::npm::NpmPackageReference;
 use crate::tools::lint::get_configured_rules;
 
@@ -873,6 +874,14 @@ fn diagnose_resolved(
                 .to_lsp_diagnostic(&range),
             );
           }
+        }
+      } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
+      {
+        if node::resolve_builtin_node_module(module_name).is_err() {
+          diagnostics.push(
+            DenoDiagnostic::NoCache(specifier.clone())
+              .to_lsp_diagnostic(&range),
+          );
         }
       } else {
         // When the document is not available, it means that it cannot be found

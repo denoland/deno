@@ -153,10 +153,63 @@ mod ts {
     #[op]
     fn op_build_info(state: &mut OpState) -> Value {
       let build_specifier = "asset:///bootstrap.ts";
+      // todo(dsherret): this is a temporary solution as we should have a
+      // single source of truth for this stored in the Rust code that we
+      // send to TypeScript, but from cli/build.rs we can't access anything
+      // in the CLI crate. When refactoring that code out of the CLI, then
+      // we can use that information here.
+      let node_built_in_module_names = vec![
+        "assert",
+        "assert/strict",
+        "async_hooks",
+        "buffer",
+        "child_process",
+        "cluster",
+        "console",
+        "constants",
+        "crypto",
+        "dgram",
+        "dns",
+        "dns/promises",
+        "domain",
+        "events",
+        "fs",
+        "fs/promises",
+        "http",
+        "https",
+        "module",
+        "net",
+        "os",
+        "path",
+        "path/posix",
+        "path/win32",
+        "perf_hooks",
+        "process",
+        "querystring",
+        "readline",
+        "stream",
+        "stream/consumers",
+        "stream/promises",
+        "stream/web",
+        "string_decoder",
+        "sys",
+        "timers",
+        "timers/promises",
+        "tls",
+        "tty",
+        "url",
+        "util",
+        "util/types",
+        "v8",
+        "vm",
+        "worker_threads",
+        "zlib",
+      ];
       let build_libs = state.borrow::<Vec<&str>>();
       json!({
         "buildSpecifier": build_specifier,
         "libs": build_libs,
+        "nodeBuiltInModuleNames": node_built_in_module_names,
       })
     }
 
