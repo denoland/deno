@@ -2038,6 +2038,7 @@ impl JsRuntime {
           true,
           specifier.as_str(),
           code.as_bytes(),
+          false,
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -2097,6 +2098,7 @@ impl JsRuntime {
           false,
           specifier.as_str(),
           code.as_bytes(),
+          false,
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -2492,6 +2494,7 @@ pub mod tests {
   use crate::modules::ModuleSource;
   use crate::modules::ModuleSourceFuture;
   use crate::modules::ModuleType;
+  use crate::modules::ResolutionKind;
   use crate::ZeroCopyBuf;
   use deno_ops::op;
   use futures::future::lazy;
@@ -3132,7 +3135,7 @@ pub mod tests {
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
@@ -3302,7 +3305,7 @@ pub mod tests {
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
@@ -3869,7 +3872,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
@@ -4001,7 +4004,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
