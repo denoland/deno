@@ -264,8 +264,7 @@ pub fn main() {
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
     };
 
-    let env_v8_flags = get_v8_flags_from_env();
-    init_v8_flags(&flags.v8_flags, env_v8_flags);
+    init_v8_flags(&flags.v8_flags, get_v8_flags_from_env());
 
     util::logger::init(flags.log_level);
 
