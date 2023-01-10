@@ -378,10 +378,10 @@ async fn bench_specifiers(
 
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
 
-  let join_handles = specifiers.iter().map(move |specifier| {
+  let join_handles = specifiers.into_iter().map(move |specifier| {
     let ps = ps.clone();
     let permissions = permissions.clone();
-    let specifier = specifier.clone();
+    let specifier = specifier;
     let sender = sender.clone();
     let options = options.clone();
 

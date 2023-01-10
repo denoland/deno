@@ -724,12 +724,12 @@ async fn test_specifier(
   let stderr = StdioPipe::File(sender.stderr());
   let mut worker = create_main_worker_for_test_or_bench(
     &ps,
-    specifier.clone(),
+    specifier,
     PermissionsContainer::new(permissions),
     vec![ops::testing::init(
       sender,
       fail_fast_tracker,
-      options.filter.clone(),
+      options.filter,
     )],
     Stdio {
       stdin: StdioPipe::Inherit,
@@ -963,10 +963,10 @@ pub async fn check_specifiers(
   }
 
   let module_specifiers = specifiers
-    .iter()
+    .into_iter()
     .filter_map(|(specifier, mode)| {
-      if *mode != TestMode::Documentation {
-        Some(specifier.clone())
+      if mode != TestMode::Documentation {
+        Some(specifier)
       } else {
         None
       }
@@ -1009,43 +1009,45 @@ async fn test_specifiers(
   let concurrent_jobs = options.concurrent_jobs;
 
   let join_handles =
-    specifiers_with_mode.iter().map(move |(specifier, mode)| {
-      let ps = ps.clone();
-      let permissions = permissions.clone();
-      let specifier = specifier.clone();
-      let mode = mode.clone();
-      let mut sender = sender.clone();
-      let options = options.clone();
-      let fail_fast_tracker = fail_fast_tracker.clone();
+    specifiers_with_mode
+      .into_iter()
+      .map(move |(specifier, mode)| {
+        let ps = ps.clone();
+        let permissions = permissions.clone();
+        let specifier = specifier;
+        let mode = mode;
+        let mut sender = sender.clone();
+        let options = options.clone();
+        let fail_fast_tracker = fail_fast_tracker.clone();
 
-      tokio::task::spawn_blocking(move || {
-        if fail_fast_tracker.should_stop() {
-          return Ok(());
-        }
-
-        let origin = specifier.to_string();
-        let file_result = run_local(test_specifier(
-          ps,
-          permissions,
-          specifier,
-          mode,
-          sender.clone(),
-          fail_fast_tracker,
-          options,
-        ));
-        if let Err(error) = file_result {
-          if error.is::<JsError>() {
-            sender.send(TestEvent::UncaughtError(
-              origin,
-              Box::new(error.downcast::<JsError>().unwrap()),
-            ))?;
-          } else {
-            return Err(error);
+        tokio::task::spawn_blocking(move || {
+          if fail_fast_tracker.should_stop() {
+            return Ok(());
           }
-        }
-        Ok(())
-      })
-    });
+
+          let origin = specifier.to_string();
+          let file_result = run_local(test_specifier(
+            ps,
+            permissions,
+            specifier,
+            mode,
+            sender.clone(),
+            fail_fast_tracker,
+            options,
+          ));
+          if let Err(error) = file_result {
+            if error.is::<JsError>() {
+              sender.send(TestEvent::UncaughtError(
+                origin,
+                Box::new(error.downcast::<JsError>().unwrap()),
+              ))?;
+            } else {
+              return Err(error);
+            }
+          }
+          Ok(())
+        })
+      });
 
   let join_stream = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs.get())
