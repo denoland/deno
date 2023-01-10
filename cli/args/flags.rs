@@ -181,7 +181,7 @@ impl RunFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TaskFlags {
   pub cwd: Option<String>,
-  pub task: String,
+  pub task: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -602,7 +602,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       "lsp" => lsp_parse(&mut flags, &mut m),
       "repl" => repl_parse(&mut flags, &mut m),
       "run" => run_parse(&mut flags, &mut m),
-      "task" => task_parse(&mut flags, &mut m, &args),
+      "task" => task_parse(&mut flags, &mut m),
       "test" => test_parse(&mut flags, &mut m),
       "types" => types_parse(&mut flags, &mut m),
       "uninstall" => uninstall_parse(&mut flags, &mut m),
@@ -1520,17 +1520,19 @@ fn task_subcommand() -> Command {
         .value_name("DIR")
         .help("Specify the directory to run the task in")
         .num_args(1)
-        .value_hint(ValueHint::DirPath)
+        .value_hint(ValueHint::DirPath),
     )
-    // Ideally the task name and trailing arguments should be two separate clap
-    // arguments, but there is a bug in clap that's preventing us from doing
-    // this (https://github.com/clap-rs/clap/issues/1538). Once that's fixed,
-    // then we can revert this back to what it used to be.
-    .arg(Arg::new("task_name_and_args")
+    .arg(
+      Arg::new("task")
+        .help("Task to be executed"),
+    )
+    .arg(
+      Arg::new("task-args")
         .num_args(0..)
-        .action(ArgAction::Append)
+        .trailing_var_arg(true)
         .allow_hyphen_values(true)
-    .help("Task to be executed with any additional arguments passed to the task"))
+        .help("Additional arguments passed to the task"),
+    )
     .about("Run a task defined in the configuration file")
     .long_about(
       "Run a task defined in the configuration file
@@ -2603,56 +2605,20 @@ fn run_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
 }
 
-fn task_parse(
-  flags: &mut Flags,
-  matches: &mut ArgMatches,
-  raw_args: &[String],
-) {
+fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.config_flag = matches
     .remove_one::<String>("config")
     .map_or(ConfigFlag::Discover, ConfigFlag::Path);
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
-    task: String::new(),
+    task: None,
   };
+  if let Some(task) = matches.remove_one::<String>("task") {
+    task_flags.task = Some(task);
 
-  if let Some(mut index) = matches.index_of("task_name_and_args") {
-    let task_word_index = raw_args.iter().position(|el| el == "task").unwrap();
-    let raw_args = &raw_args[task_word_index..];
-
-    // temporary workaround until https://github.com/clap-rs/clap/issues/1538 is fixed
-    while index < raw_args.len() {
-      match raw_args[index].as_str() {
-        "-c" | "--config" => {
-          flags.config_flag = ConfigFlag::Path(raw_args[index + 1].to_string());
-          index += 2;
-        }
-        "--cwd" => {
-          task_flags.cwd = Some(raw_args[index + 1].to_string());
-          index += 2;
-        }
-        "--no-config" => {
-          flags.config_flag = ConfigFlag::Disabled;
-          index += 1;
-        }
-        "-q" | "--quiet" => {
-          flags.log_level = Some(Level::Error);
-          index += 1;
-        }
-        _ => break,
-      }
-    }
-
-    if index < raw_args.len() {
-      task_flags.task = raw_args[index].to_string();
-      index += 1;
-
-      if index < raw_args.len() {
-        flags
-          .argv
-          .extend(raw_args[index..].iter().map(String::from));
-      }
+    if let Some(args) = matches.remove_many::<String>("task-args") {
+      flags.argv.extend(args);
     }
   }
 
@@ -6093,7 +6059,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         argv: svec!["hello", "world"],
         ..Flags::default()
@@ -6106,7 +6072,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         ..Flags::default()
       }
@@ -6118,7 +6084,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: Some("foo".to_string()),
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         ..Flags::default()
       }
@@ -6142,7 +6108,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         argv: svec!["--", "hello", "world"],
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
@@ -6158,7 +6124,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: Some("foo".to_string()),
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         argv: svec!["--", "hello", "world"],
         ..Flags::default()
@@ -6175,7 +6141,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         argv: svec!["--"],
         ..Flags::default()
@@ -6191,7 +6157,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         argv: svec!["-1", "--test"],
         ..Flags::default()
@@ -6207,7 +6173,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         argv: svec!["--test"],
         ..Flags::default()
@@ -6225,7 +6191,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         unstable: true,
         log_level: Some(log::Level::Error),
@@ -6242,7 +6208,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "".to_string(),
+          task: None,
         }),
         ..Flags::default()
       }
@@ -6257,7 +6223,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "".to_string(),
+          task: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -6273,7 +6239,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "".to_string(),
+          task: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()

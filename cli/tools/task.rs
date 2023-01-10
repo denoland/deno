@@ -34,7 +34,7 @@ pub async fn execute_script(
     bail!("Only local configuration files are supported")
   };
 
-  if task_flags.task.is_empty() {
+  if task_flags.task.is_none() {
     print_available_tasks(tasks_config);
     return Ok(1);
   }
@@ -43,7 +43,7 @@ pub async fn execute_script(
     Some(path) => canonicalize_path(&PathBuf::from(path))?,
     None => config_file_path.parent().unwrap().to_owned(),
   };
-  let task_name = task_flags.task;
+  let task_name = task_flags.task.unwrap();
   let maybe_script = tasks_config.get(&task_name);
 
   if let Some(script) = maybe_script {
