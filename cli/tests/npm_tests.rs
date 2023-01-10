@@ -360,6 +360,13 @@ mod npm {
     exit_code: 1,
   });
 
+  itest!(permissions_outside_package {
+    args: "run --allow-read npm/permissions_outside_package/main.ts",
+    output: "npm/permissions_outside_package/main.out",
+    envs: env_vars_for_npm_tests(),
+    http_server: true,
+  });
+
   #[test]
   fn parallel_downloading() {
     let (out, _err) = util::run_and_collect_output_with_args(
