@@ -3,7 +3,6 @@
 use napi_sys::Status::napi_ok;
 use napi_sys::ValueType::napi_string;
 use napi_sys::*;
-use std::ptr;
 
 extern "C" fn test_utf8(env: napi_env, info: napi_callback_info) -> napi_value {
   let (args, argc, _) = crate::get_callback_info!(env, info, 1);

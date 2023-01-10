@@ -2,6 +2,9 @@
 #![allow(clippy::all)]
 #![allow(clippy::undocumented_unsafe_blocks)]
 
+use napi_sys::Status::napi_ok;
+use std::ffi::c_void;
+
 use napi_sys::*;
 
 pub mod array;
@@ -20,9 +23,9 @@ pub mod typedarray;
 #[macro_export]
 macro_rules! get_callback_info {
   ($env: expr, $callback_info: expr, $size: literal) => {{
-    let mut args = [ptr::null_mut(); $size];
+    let mut args = [std::ptr::null_mut(); $size];
     let mut argc = $size;
-    let mut this = ptr::null_mut();
+    let mut this = std::ptr::null_mut();
     unsafe {
       assert!(
         napi_get_cb_info(
@@ -31,7 +34,7 @@ macro_rules! get_callback_info {
           &mut argc,
           args.as_mut_ptr(),
           &mut this,
-          ptr::null_mut(),
+          std::ptr::null_mut(),
         ) == napi_ok,
       )
     };
@@ -44,14 +47,55 @@ macro_rules! new_property {
   ($env: expr, $name: expr, $value: expr) => {
     napi_property_descriptor {
       utf8name: $name.as_ptr() as *const std::os::raw::c_char,
-      name: ptr::null_mut(),
+      name: std::ptr::null_mut(),
       method: Some($value),
       getter: None,
       setter: None,
-      data: ptr::null_mut(),
+      data: std::ptr::null_mut(),
       attributes: 0,
-      value: ptr::null_mut(),
+      value: std::ptr::null_mut(),
     }
+  };
+}
+
+extern "C" fn cleanup(arg: *mut c_void) {
+  println!("cleanup({})", arg as i64);
+}
+
+static SECRET: i64 = 42;
+static WRONG_SECRET: i64 = 17;
+static THIRD_SECRET: i64 = 18;
+
+extern "C" fn install_cleanup_hook(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (_args, argc, _) = get_callback_info!(env, info, 1);
+  assert_eq!(argc, 0);
+
+  unsafe {
+    napi_add_env_cleanup_hook(env, Some(cleanup), WRONG_SECRET as *mut c_void);
+    napi_add_env_cleanup_hook(env, Some(cleanup), SECRET as *mut c_void);
+    napi_add_env_cleanup_hook(env, Some(cleanup), THIRD_SECRET as *mut c_void);
+    napi_remove_env_cleanup_hook(
+      env,
+      Some(cleanup),
+      WRONG_SECRET as *mut c_void,
+    );
+  }
+
+  std::ptr::null_mut()
+}
+
+pub fn init_cleanup_hook(env: napi_env, exports: napi_value) {
+  let properties = &[new_property!(
+    env,
+    "installCleanupHook\0",
+    install_cleanup_hook
+  )];
+
+  unsafe {
+    napi_define_properties(env, exports, properties.len(), properties.as_ptr())
   };
 }
 
@@ -77,6 +121,7 @@ unsafe extern "C" fn napi_register_module_v1(
   object_wrap::init(env, exports);
   callback::init(env, exports);
   r#async::init(env, exports);
+  init_cleanup_hook(env, exports);
 
   exports
 }
