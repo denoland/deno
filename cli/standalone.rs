@@ -6,7 +6,6 @@ use crate::file_fetcher::get_source_from_data_url;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::util::v8::construct_v8_flags;
-use crate::util::v8::get_v8_flags_from_env;
 use crate::version;
 use crate::CliResolver;
 use deno_core::anyhow::anyhow;
@@ -251,10 +250,7 @@ pub async fn run(
     todo!("Workers are currently not supported in standalone binaries");
   });
 
-  v8_set_flags(construct_v8_flags(
-    &metadata.v8_flags,
-    get_v8_flags_from_env(),
-  ));
+  v8_set_flags(construct_v8_flags(&metadata.v8_flags, vec![]));
 
   let mut root_cert_store = ps.root_cert_store.clone();
 
