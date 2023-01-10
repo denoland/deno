@@ -6,6 +6,7 @@ use crate::args::TaskFlags;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::specifier_parent;
 use crate::util::path::specifier_to_file_path;
+use crate::colors;
 
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -24,6 +25,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
+use log::info;
 
 pub type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
@@ -524,8 +526,9 @@ impl ConfigFile {
       if checked.insert(ancestor.to_path_buf()) {
         for config_filename in CONFIG_FILE_NAMES {
           let f = ancestor.join(config_filename);
-          match ConfigFile::read(f) {
+          match ConfigFile::read(&f) {
             Ok(cf) => {
+              info!("{} found at '{}'", colors::intense_blue("Config File"), f.display());
               return Ok(Some(cf));
             }
             Err(e) => {
