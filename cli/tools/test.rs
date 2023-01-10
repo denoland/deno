@@ -1502,12 +1502,8 @@ pub async fn run_tests_with_watch(
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-      check_specifiers(
-        &ps,
-        permissions.clone(),
-        specifiers_with_mode.clone(),
-      )
-      .await?;
+      check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
+        .await?;
 
       if test_options.no_run {
         return Ok(());
