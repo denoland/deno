@@ -1220,11 +1220,18 @@ fn napi_define_class(
       static_descriptors.as_ptr() as *const napi_property_descriptor,
     );
 
-    // TODO(bartlomieju): error handling
-    assert!(res == napi_ok);
+    napi_status_to_result(res)?;
   }
 
   Ok(())
+}
+
+fn napi_status_to_result(status: napi_status) -> Result {
+  if status == napi_ok {
+    Ok(())
+  } else {
+    Err(status.into())
+  }
 }
 
 #[napi_sym::napi_sym]
