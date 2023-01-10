@@ -922,7 +922,7 @@ async fn fetch_inline_files(
 
 /// Type check a collection of module and document specifiers.
 pub async fn check_specifiers(
-  ps: ProcState,
+  ps: &ProcState,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
 ) -> Result<(), AnyError> {
@@ -1277,7 +1277,7 @@ fn collect_specifiers_with_test_mode(
 /// cannot be run, and therefore need to be marked as `TestMode::Documentation`
 /// as well.
 async fn fetch_specifiers_with_test_mode(
-  ps: ProcState,
+  ps: &ProcState,
   files: &FilesConfig,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
@@ -1311,7 +1311,7 @@ pub async fn run_tests(
     Permissions::from_options(&ps.options.permissions_options())?;
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
-    ps.clone(),
+    &ps,
     &test_options.files,
     &test_options.doc,
   )
@@ -1321,8 +1321,12 @@ pub async fn run_tests(
     return Err(generic_error("No test modules found"));
   }
 
-  check_specifiers(ps.clone(), permissions.clone(), specifiers_with_mode.clone())
-    .await?;
+  check_specifiers(
+    &ps.clone(),
+    permissions.clone(),
+    specifiers_with_mode.clone(),
+  )
+  .await?;
 
   if test_options.no_run {
     return Ok(());
@@ -1486,7 +1490,7 @@ pub async fn run_tests_with_watch(
 
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
-        ps.clone(),
+        &ps,
         &test_options.files,
         &test_options.doc,
       )
@@ -1498,8 +1502,12 @@ pub async fn run_tests_with_watch(
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-      check_specifiers(ps.clone(), permissions.clone(), specifiers_with_mode.clone())
-        .await?;
+      check_specifiers(
+        &ps,
+        permissions.clone(),
+        specifiers_with_mode.clone(),
+      )
+      .await?;
 
       if test_options.no_run {
         return Ok(());
