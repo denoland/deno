@@ -86,12 +86,9 @@ fn napi_remove_env_cleanup_hook(
     // Hooks are supposed to be removed in LIFO order
     let maybe_index = env_cleanup_hooks
       .iter()
-      .rev()
-      .position(|&pair| pair.0 == hook && pair.1 == data);
+      .rposition(|&pair| pair.0 == hook && pair.1 == data);
 
     if let Some(index) = maybe_index {
-      // We've reversed the iterator so need to fix the index
-      let index = env_cleanup_hooks.len() - index - 1;
       env_cleanup_hooks.remove(index);
     } else {
       panic!("Cleanup hook with this data not found");
