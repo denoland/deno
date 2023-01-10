@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod in_memory_broadcast_channel;
 
@@ -109,7 +109,8 @@ pub fn init<BC: BroadcastChannel + 'static>(
   bc: BC,
   unstable: bool,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl", "deno_web"])
     .js(include_js_files!(
       prefix "deno:ext/broadcast_channel",
       "01_broadcast_channel.js",

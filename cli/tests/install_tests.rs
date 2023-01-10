@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::fs;
 use std::process::Command;
@@ -55,12 +55,12 @@ mod install {
     if cfg!(windows) {
       assert_contains!(
         content,
-        r#""run" "--check" "http://localhost:4545/echo.ts""#
+        r#""run" "--check" "--no-config" "http://localhost:4545/echo.ts""#
       );
     } else {
       assert_contains!(
         content,
-        r#"run --check 'http://localhost:4545/echo.ts'"#
+        r#"run --check --no-config 'http://localhost:4545/echo.ts'"#
       );
     }
 
@@ -121,12 +121,12 @@ mod install {
     if cfg!(windows) {
       assert_contains!(
         content,
-        r#""run" "--check" "http://localhost:4545/echo.ts""#
+        r#""run" "--check" "--no-config" "http://localhost:4545/echo.ts""#
       );
     } else {
       assert_contains!(
         content,
-        r#"run --check 'http://localhost:4545/echo.ts'"#
+        r#"run --check --no-config 'http://localhost:4545/echo.ts'"#
       );
     }
   }

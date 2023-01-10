@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -24,6 +24,13 @@ Deno.test({ permissions: { env: true } }, function deleteEnv() {
   assertEquals(Deno.env.get("TEST_VAR"), "A");
   assertEquals(Deno.env.delete("TEST_VAR"), undefined);
   assertEquals(Deno.env.get("TEST_VAR"), undefined);
+});
+
+Deno.test({ permissions: { env: true } }, function hasEnv() {
+  Deno.env.set("TEST_VAR", "A");
+  assert(Deno.env.has("TEST_VAR"));
+  Deno.env.delete("TEST_VAR");
+  assert(!Deno.env.has("TEST_VAR"));
 });
 
 Deno.test({ permissions: { env: true } }, function avoidEmptyNamedEnv() {

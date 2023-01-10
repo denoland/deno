@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -15,6 +15,7 @@ use regex::Regex;
 use crate::errors;
 use crate::package_json::PackageJson;
 use crate::path::PathClean;
+use crate::NodePermissions;
 use crate::RequireNpmResolver;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
@@ -188,6 +189,7 @@ pub fn package_imports_resolve(
   conditions: &[&str],
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<PathBuf, AnyError> {
   if name == "#" || name.starts_with("#/") || name.ends_with('/') {
     let reason = "is not a valid internal imports specifier name";
@@ -198,7 +200,8 @@ pub fn package_imports_resolve(
     ));
   }
 
-  let package_config = get_package_scope_config(referrer, npm_resolver)?;
+  let package_config =
+    get_package_scope_config(referrer, npm_resolver, permissions)?;
   let mut package_json_path = None;
   if package_config.exists {
     package_json_path = Some(package_config.path.clone());
@@ -216,6 +219,7 @@ pub fn package_imports_resolve(
           conditions,
           mode,
           npm_resolver,
+          permissions,
         )?;
         if let Some(resolved) = maybe_resolved {
           return Ok(resolved);
@@ -258,6 +262,7 @@ pub fn package_imports_resolve(
             conditions,
             mode,
             npm_resolver,
+            permissions,
           )?;
           if let Some(resolved) = maybe_resolved {
             return Ok(resolved);
@@ -322,6 +327,7 @@ fn resolve_package_target_string(
   conditions: &[&str],
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<PathBuf, AnyError> {
   if !subpath.is_empty() && !pattern && !target.ends_with('/') {
     return Err(throw_invalid_package_target(
@@ -355,6 +361,7 @@ fn resolve_package_target_string(
           conditions,
           mode,
           npm_resolver,
+          permissions,
         ) {
           Ok(Some(path)) => Ok(path),
           Ok(None) => Err(generic_error("not found")),
@@ -430,6 +437,7 @@ fn resolve_package_target(
   conditions: &[&str],
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<PathBuf>, AnyError> {
   if let Some(target) = target.as_str() {
     return resolve_package_target_string(
@@ -444,8 +452,15 @@ fn resolve_package_target(
       conditions,
       mode,
       npm_resolver,
+      permissions,
     )
-    .map(Some);
+    .map(|path| {
+      if mode.is_types() {
+        path_to_declaration_path(path, referrer_kind)
+      } else {
+        Some(path)
+      }
+    });
   } else if let Some(target_arr) = target.as_array() {
     if target_arr.is_empty() {
       return Ok(None);
@@ -465,6 +480,7 @@ fn resolve_package_target(
         conditions,
         mode,
         npm_resolver,
+        permissions,
       );
 
       match resolved_result {
@@ -514,6 +530,7 @@ fn resolve_package_target(
           conditions,
           mode,
           npm_resolver,
+          permissions,
         )?;
         match resolved {
           Some(resolved) => return Ok(Some(resolved)),
@@ -558,6 +575,7 @@ pub fn package_exports_resolve(
   conditions: &[&str],
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<PathBuf, AnyError> {
   if package_exports.contains_key(&package_subpath)
     && package_subpath.find('*').is_none()
@@ -576,6 +594,7 @@ pub fn package_exports_resolve(
       conditions,
       mode,
       npm_resolver,
+      permissions,
     )?;
     if resolved.is_none() {
       return Err(throw_exports_not_found(
@@ -635,6 +654,7 @@ pub fn package_exports_resolve(
       conditions,
       mode,
       npm_resolver,
+      permissions,
     )?;
     if let Some(resolved) = maybe_resolved {
       return Ok(resolved);
@@ -712,12 +732,14 @@ pub fn package_resolve(
   conditions: &[&str],
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<PathBuf>, AnyError> {
   let (package_name, package_subpath, _is_scoped) =
     parse_package_name(specifier, referrer)?;
 
   // ResolveSelf
-  let package_config = get_package_scope_config(referrer, npm_resolver)?;
+  let package_config =
+    get_package_scope_config(referrer, npm_resolver, permissions)?;
   if package_config.exists
     && package_config.name.as_ref() == Some(&package_name)
   {
@@ -731,6 +753,7 @@ pub fn package_resolve(
         conditions,
         mode,
         npm_resolver,
+        permissions,
       )
       .map(Some);
     }
@@ -757,7 +780,8 @@ pub fn package_resolve(
   // ))
 
   // Package match.
-  let package_json = PackageJson::load(npm_resolver, package_json_path)?;
+  let package_json =
+    PackageJson::load(npm_resolver, permissions, package_json_path)?;
   if let Some(exports) = &package_json.exports {
     return package_exports_resolve(
       &package_json.path,
@@ -768,6 +792,7 @@ pub fn package_resolve(
       conditions,
       mode,
       npm_resolver,
+      permissions,
     )
     .map(Some);
   }
@@ -789,19 +814,21 @@ pub fn package_resolve(
 pub fn get_package_scope_config(
   referrer: &ModuleSpecifier,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<PackageJson, AnyError> {
   let root_folder = npm_resolver
     .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())?;
   let package_json_path = root_folder.join("package.json");
-  PackageJson::load(npm_resolver, package_json_path)
+  PackageJson::load(npm_resolver, permissions, package_json_path)
 }
 
 pub fn get_closest_package_json(
   url: &ModuleSpecifier,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<PackageJson, AnyError> {
   let package_json_path = get_closest_package_json_path(url, npm_resolver)?;
-  PackageJson::load(npm_resolver, package_json_path)
+  PackageJson::load(npm_resolver, permissions, package_json_path)
 }
 
 fn get_closest_package_json_path(

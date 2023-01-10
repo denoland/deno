@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod integration;
 use deno_core::url;
@@ -3725,4 +3725,21 @@ console.log("finish");
     args: "run --quiet run/001_hello.js --allow-net",
     output: "run/001_hello.js.out",
   });
+
+  // Regression test for https://github.com/denoland/deno/issues/16772
+  #[test]
+  fn file_fetcher_preserves_permissions() {
+    let _guard = util::http_server();
+    util::with_pty(&["repl"], |mut console| {
+      console.write_text(
+        "const a = import('http://127.0.0.1:4545/run/019_media_types.ts');",
+      );
+      console.write_text("y");
+      console.write_line("");
+      console.write_line("close();");
+      let output = console.read_all_output();
+      assert_contains!(output, "success");
+      assert_contains!(output, "true");
+    });
+  }
 }

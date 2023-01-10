@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! Code for global npm cache resolution.
 
@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
 use crate::args::Lockfile;
@@ -154,9 +155,13 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     async move { cache_packages_in_resolver(&resolver).await }.boxed()
   }
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
-    ensure_registry_read_permission(&registry_path, path)
+    ensure_registry_read_permission(permissions, &registry_path, path)
   }
 
   fn snapshot(&self) -> NpmResolutionSnapshot {

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::completions::IMPORT_COMMIT_CHARS;
 use super::logging::lsp_log;
@@ -30,7 +30,7 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -519,7 +519,7 @@ impl ModuleRegistry {
       .file_fetcher
       .fetch_with_accept(
         specifier,
-        &mut Permissions::allow_all(),
+        PermissionsContainer::allow_all(),
         Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
       )
       .await;
@@ -617,7 +617,7 @@ impl ModuleRegistry {
         .ok()?;
         let file = self
           .file_fetcher
-          .fetch(&endpoint, &mut Permissions::allow_all())
+          .fetch(&endpoint, PermissionsContainer::allow_all())
           .await
           .ok()?;
         let documentation: lsp::Documentation =
@@ -973,7 +973,7 @@ impl ModuleRegistry {
     let specifier = Url::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .ok()?;
     serde_json::from_str(&file.source).ok()
@@ -1030,7 +1030,7 @@ impl ModuleRegistry {
     let specifier = ModuleSpecifier::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(
@@ -1066,7 +1066,7 @@ impl ModuleRegistry {
         .ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(

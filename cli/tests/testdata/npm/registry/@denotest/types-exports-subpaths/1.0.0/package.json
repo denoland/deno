@@ -8,12 +8,16 @@
       },
       "import": "./dist/client.mjs"
     },
-    "./entry-b": {
-      "import": "./entry-b.d.ts",
-      "types": "./dist/entry-b-wrong.d.ts"
+    "./entry-import": {
+      "import": "./entry-import.d.ts",
+      "types": "./entry-types.d.ts"
     },
-    "./entry-c": {
-      "import": "./dist/entry-c.js"
+    "./entry-types-last-no-declaration-before": {
+      "import": "./entry-js-only.js",
+      "types": "./entry-types.d.ts"
+    },
+    "./entry-a": {
+      "import": "./dist/entry-a.js"
     }
   }
 }

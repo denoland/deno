@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod config_file;
 mod flags;
@@ -10,23 +10,15 @@ pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
 pub use config_file::EmitConfigOptions;
-pub use config_file::FmtConfig;
+pub use config_file::FilesConfig;
 pub use config_file::FmtOptionsConfig;
-pub use config_file::IgnoredCompilerOptions;
 pub use config_file::JsxImportSourceConfig;
-pub use config_file::LintConfig;
 pub use config_file::LintRulesConfig;
-pub use config_file::MaybeImportsResult;
 pub use config_file::ProseWrap;
-pub use config_file::TestConfig;
 pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
 pub use config_file::TsTypeLib;
-use deno_runtime::deno_tls::rustls;
-use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
-use deno_runtime::deno_tls::rustls_pemfile;
-use deno_runtime::deno_tls::webpki_roots;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
@@ -40,19 +32,29 @@ use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_runtime::colors;
+use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
+use deno_runtime::deno_tls::rustls_pemfile;
+use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use std::collections::BTreeMap;
 use std::env;
 use std::io::BufReader;
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cache::DenoDir;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
+
+use self::config_file::FmtConfig;
+use self::config_file::LintConfig;
+use self::config_file::MaybeImportsResult;
+use self::config_file::TestConfig;
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -92,6 +94,274 @@ impl CacheSetting {
       }
       _ => true,
     }
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BenchOptions {
+  pub files: FilesConfig,
+  pub filter: Option<String>,
+}
+
+impl BenchOptions {
+  pub fn resolve(
+    maybe_bench_config: Option<BenchConfig>,
+    maybe_bench_flags: Option<BenchFlags>,
+  ) -> Result<Self, AnyError> {
+    let bench_flags = maybe_bench_flags.unwrap_or_default();
+    Ok(Self {
+      files: resolve_files(
+        maybe_bench_config.map(|c| c.files),
+        Some(bench_flags.files),
+      ),
+      filter: bench_flags.filter,
+    })
+  }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FmtOptions {
+  pub is_stdin: bool,
+  pub check: bool,
+  pub ext: String,
+  pub options: FmtOptionsConfig,
+  pub files: FilesConfig,
+}
+
+impl FmtOptions {
+  pub fn resolve(
+    maybe_fmt_config: Option<FmtConfig>,
+    mut maybe_fmt_flags: Option<FmtFlags>,
+  ) -> Result<Self, AnyError> {
+    let is_stdin = if let Some(fmt_flags) = maybe_fmt_flags.as_mut() {
+      let args = &mut fmt_flags.files.include;
+      if args.len() == 1 && args[0].to_string_lossy() == "-" {
+        args.pop(); // remove the "-" arg
+        true
+      } else {
+        false
+      }
+    } else {
+      false
+    };
+    let (maybe_config_options, maybe_config_files) =
+      maybe_fmt_config.map(|c| (c.options, c.files)).unzip();
+
+    Ok(Self {
+      is_stdin,
+      check: maybe_fmt_flags.as_ref().map(|f| f.check).unwrap_or(false),
+      ext: maybe_fmt_flags
+        .as_ref()
+        .map(|f| f.ext.to_string())
+        .unwrap_or_else(|| "ts".to_string()),
+      options: resolve_fmt_options(
+        maybe_fmt_flags.as_ref(),
+        maybe_config_options,
+      ),
+      files: resolve_files(
+        maybe_config_files,
+        maybe_fmt_flags.map(|f| f.files),
+      ),
+    })
+  }
+}
+
+fn resolve_fmt_options(
+  fmt_flags: Option<&FmtFlags>,
+  options: Option<FmtOptionsConfig>,
+) -> FmtOptionsConfig {
+  let mut options = options.unwrap_or_default();
+
+  if let Some(fmt_flags) = fmt_flags {
+    if let Some(use_tabs) = fmt_flags.use_tabs {
+      options.use_tabs = Some(use_tabs);
+    }
+
+    if let Some(line_width) = fmt_flags.line_width {
+      options.line_width = Some(line_width.get());
+    }
+
+    if let Some(indent_width) = fmt_flags.indent_width {
+      options.indent_width = Some(indent_width.get());
+    }
+
+    if let Some(single_quote) = fmt_flags.single_quote {
+      options.single_quote = Some(single_quote);
+    }
+
+    if let Some(prose_wrap) = &fmt_flags.prose_wrap {
+      options.prose_wrap = Some(match prose_wrap.as_str() {
+        "always" => ProseWrap::Always,
+        "never" => ProseWrap::Never,
+        "preserve" => ProseWrap::Preserve,
+        // validators in `flags.rs` makes other values unreachable
+        _ => unreachable!(),
+      });
+    }
+  }
+
+  options
+}
+
+#[derive(Clone)]
+pub struct TestOptions {
+  pub files: FilesConfig,
+  pub doc: bool,
+  pub no_run: bool,
+  pub fail_fast: Option<NonZeroUsize>,
+  pub allow_none: bool,
+  pub filter: Option<String>,
+  pub shuffle: Option<u64>,
+  pub concurrent_jobs: NonZeroUsize,
+  pub trace_ops: bool,
+}
+
+impl TestOptions {
+  pub fn resolve(
+    maybe_test_config: Option<TestConfig>,
+    maybe_test_flags: Option<TestFlags>,
+  ) -> Result<Self, AnyError> {
+    let test_flags = maybe_test_flags.unwrap_or_default();
+
+    Ok(Self {
+      files: resolve_files(
+        maybe_test_config.map(|c| c.files),
+        Some(test_flags.files),
+      ),
+      allow_none: test_flags.allow_none,
+      concurrent_jobs: test_flags
+        .concurrent_jobs
+        .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
+      doc: test_flags.doc,
+      fail_fast: test_flags.fail_fast,
+      filter: test_flags.filter,
+      no_run: test_flags.no_run,
+      shuffle: test_flags.shuffle,
+      trace_ops: test_flags.trace_ops,
+    })
+  }
+}
+
+#[derive(Clone, Debug)]
+pub enum LintReporterKind {
+  Pretty,
+  Json,
+  Compact,
+}
+
+impl Default for LintReporterKind {
+  fn default() -> Self {
+    LintReporterKind::Pretty
+  }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct LintOptions {
+  pub rules: LintRulesConfig,
+  pub files: FilesConfig,
+  pub is_stdin: bool,
+  pub reporter_kind: LintReporterKind,
+}
+
+impl LintOptions {
+  pub fn resolve(
+    maybe_lint_config: Option<LintConfig>,
+    mut maybe_lint_flags: Option<LintFlags>,
+  ) -> Result<Self, AnyError> {
+    let is_stdin = if let Some(lint_flags) = maybe_lint_flags.as_mut() {
+      let args = &mut lint_flags.files.include;
+      if args.len() == 1 && args[0].to_string_lossy() == "-" {
+        args.pop(); // remove the "-" arg
+        true
+      } else {
+        false
+      }
+    } else {
+      false
+    };
+
+    let mut maybe_reporter_kind =
+      maybe_lint_flags.as_ref().and_then(|lint_flags| {
+        if lint_flags.json {
+          Some(LintReporterKind::Json)
+        } else if lint_flags.compact {
+          Some(LintReporterKind::Compact)
+        } else {
+          None
+        }
+      });
+
+    if maybe_reporter_kind.is_none() {
+      // Flag not set, so try to get lint reporter from the config file.
+      if let Some(lint_config) = &maybe_lint_config {
+        maybe_reporter_kind = match lint_config.report.as_deref() {
+          Some("json") => Some(LintReporterKind::Json),
+          Some("compact") => Some(LintReporterKind::Compact),
+          Some("pretty") => Some(LintReporterKind::Pretty),
+          Some(_) => {
+            bail!("Invalid lint report type in config file")
+          }
+          None => None,
+        }
+      }
+    }
+
+    let (
+      maybe_file_flags,
+      maybe_rules_tags,
+      maybe_rules_include,
+      maybe_rules_exclude,
+    ) = maybe_lint_flags
+      .map(|f| {
+        (
+          f.files,
+          f.maybe_rules_tags,
+          f.maybe_rules_include,
+          f.maybe_rules_exclude,
+        )
+      })
+      .unwrap_or_default();
+
+    let (maybe_config_files, maybe_config_rules) =
+      maybe_lint_config.map(|c| (c.files, c.rules)).unzip();
+    Ok(Self {
+      reporter_kind: maybe_reporter_kind.unwrap_or_default(),
+      is_stdin,
+      files: resolve_files(maybe_config_files, Some(maybe_file_flags)),
+      rules: resolve_lint_rules_options(
+        maybe_config_rules,
+        maybe_rules_tags,
+        maybe_rules_include,
+        maybe_rules_exclude,
+      ),
+    })
+  }
+}
+
+fn resolve_lint_rules_options(
+  maybe_lint_rules_config: Option<LintRulesConfig>,
+  mut maybe_rules_tags: Option<Vec<String>>,
+  mut maybe_rules_include: Option<Vec<String>>,
+  mut maybe_rules_exclude: Option<Vec<String>>,
+) -> LintRulesConfig {
+  if let Some(config_rules) = maybe_lint_rules_config {
+    // Try to get configured rules. CLI flags take precedence
+    // over config file, i.e. if there's `rules.include` in config file
+    // and `--rules-include` CLI flag, only the flag value is taken into account.
+    if maybe_rules_include.is_none() {
+      maybe_rules_include = config_rules.include;
+    }
+    if maybe_rules_exclude.is_none() {
+      maybe_rules_exclude = config_rules.exclude;
+    }
+    if maybe_rules_tags.is_none() {
+      maybe_rules_tags = config_rules.tags;
+    }
+  }
+  LintRulesConfig {
+    exclude: maybe_rules_exclude,
+    include: maybe_rules_include,
+    tags: maybe_rules_tags,
   }
 }
 
@@ -329,11 +599,11 @@ impl CliOptions {
       // if a location is set, then the ascii serialization of the location is
       // used, unless the origin is opaque, and then no storage origin is set, as
       // we can't expect the origin to be reproducible
-      let storage_origin = location.origin().ascii_serialization();
-      if storage_origin == "null" {
-        None
+      let storage_origin = location.origin();
+      if storage_origin.is_tuple() {
+        Some(storage_origin.ascii_serialization())
       } else {
-        Some(storage_origin)
+        None
       }
     } else if let Some(config_file) = &self.maybe_config_file {
       // otherwise we will use the path to the config file
@@ -394,36 +664,57 @@ impl CliOptions {
     }
   }
 
-  pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
-    if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_lint_config()
-    } else {
-      Ok(None)
-    }
+  pub fn get_maybe_config_file(&self) -> &Option<ConfigFile> {
+    &self.maybe_config_file
   }
 
-  pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
-    if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_test_config()
+  pub fn resolve_fmt_options(
+    &self,
+    fmt_flags: FmtFlags,
+  ) -> Result<FmtOptions, AnyError> {
+    let maybe_fmt_config = if let Some(config_file) = &self.maybe_config_file {
+      config_file.to_fmt_config()?
     } else {
-      Ok(None)
-    }
+      None
+    };
+    FmtOptions::resolve(maybe_fmt_config, Some(fmt_flags))
   }
 
-  pub fn to_bench_config(&self) -> Result<Option<BenchConfig>, AnyError> {
-    if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_bench_config()
+  pub fn resolve_lint_options(
+    &self,
+    lint_flags: LintFlags,
+  ) -> Result<LintOptions, AnyError> {
+    let maybe_lint_config = if let Some(config_file) = &self.maybe_config_file {
+      config_file.to_lint_config()?
     } else {
-      Ok(None)
-    }
+      None
+    };
+    LintOptions::resolve(maybe_lint_config, Some(lint_flags))
   }
 
-  pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
-    if let Some(config) = &self.maybe_config_file {
-      config.to_fmt_config()
+  pub fn resolve_test_options(
+    &self,
+    test_flags: TestFlags,
+  ) -> Result<TestOptions, AnyError> {
+    let maybe_test_config = if let Some(config_file) = &self.maybe_config_file {
+      config_file.to_test_config()?
     } else {
-      Ok(None)
-    }
+      None
+    };
+    TestOptions::resolve(maybe_test_config, Some(test_flags))
+  }
+
+  pub fn resolve_bench_options(
+    &self,
+    bench_flags: BenchFlags,
+  ) -> Result<BenchOptions, AnyError> {
+    let maybe_bench_config = if let Some(config_file) = &self.maybe_config_file
+    {
+      config_file.to_bench_config()?
+    } else {
+      None
+    };
+    BenchOptions::resolve(maybe_bench_config, Some(bench_flags))
   }
 
   /// Vector of user script CLI arguments.
@@ -637,6 +928,25 @@ fn resolve_import_map_specifier(
     }
   }
   Ok(None)
+}
+
+/// Collect included and ignored files. CLI flags take precedence
+/// over config file, i.e. if there's `files.ignore` in config file
+/// and `--ignore` CLI flag, only the flag value is taken into account.
+fn resolve_files(
+  maybe_files_config: Option<FilesConfig>,
+  maybe_file_flags: Option<FileFlags>,
+) -> FilesConfig {
+  let mut result = maybe_files_config.unwrap_or_default();
+  if let Some(file_flags) = maybe_file_flags {
+    if !file_flags.include.is_empty() {
+      result.include = file_flags.include;
+    }
+    if !file_flags.ignore.is_empty() {
+      result.exclude = file_flags.ignore;
+    }
+  }
+  result
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.

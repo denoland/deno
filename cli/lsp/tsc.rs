@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::code_lens;
 use super::config;
@@ -2007,6 +2007,10 @@ impl CompletionEntryDetails {
       documentation,
       command,
       additional_text_edits,
+      // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
+      // but when `completionItem/resolve` is called, we get a list of commit chars
+      // even though we might have returned an empty list in `completion` request.
+      commit_characters: None,
       ..original_item.clone()
     })
   }
@@ -2205,7 +2209,7 @@ impl CompletionEntry {
           return Some(insert_text.clone());
         }
       } else {
-        return Some(self.name.replace('#', ""));
+        return None;
       }
     }
 
@@ -2801,7 +2805,7 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
 }
 
 fn init_extension(performance: Arc<Performance>) -> Extension {
-  Extension::builder()
+  Extension::builder("deno_tsc")
     .ops(vec![
       op_exists::decl(),
       op_is_cancelled::decl(),
@@ -4060,7 +4064,7 @@ mod tests {
       ..Default::default()
     };
     let actual = fixture.get_filter_text();
-    assert_eq!(actual, Some("abc".to_string()));
+    assert_eq!(actual, None);
 
     let fixture = CompletionEntry {
       kind: ScriptElementKind::MemberVariableElement,

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -75,19 +75,14 @@ Deno.test(function permissionStatusIllegalConstructor() {
   assertEquals(Deno.PermissionStatus.length, 0);
 });
 
+// Regression test for https://github.com/denoland/deno/issues/17020
 Deno.test(async function permissionURL() {
-  await Deno.permissions.query({
-    name: "read",
-    path: new URL(".", import.meta.url),
-  });
-  await Deno.permissions.query({
-    name: "write",
-    path: new URL(".", import.meta.url),
-  });
-  await Deno.permissions.query({
-    name: "run",
-    command: new URL(".", import.meta.url),
-  });
+  const path = new URL(".", import.meta.url);
+
+  await Deno.permissions.query({ name: "read", path });
+  await Deno.permissions.query({ name: "write", path });
+  await Deno.permissions.query({ name: "ffi", path });
+  await Deno.permissions.query({ name: "run", command: path });
 });
 
 Deno.test(async function permissionDescriptorValidation() {

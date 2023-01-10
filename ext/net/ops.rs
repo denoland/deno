@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::TcpStreamResource;
 use crate::resolve_addr::resolve_addr;
@@ -366,7 +366,6 @@ fn op_node_unstable_net_listen_udp<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  super::check_unstable(state, "Deno.listenDatagram");
   net_listen_udp::<NP>(state, addr, reuse_address)
 }
 
@@ -866,7 +865,7 @@ mod tests {
       let listener = TcpListener::bind(addr).await.unwrap();
       let _ = listener.accept().await;
     });
-    let my_ext = Extension::builder()
+    let my_ext = Extension::builder("test_ext")
       .state(move |state| {
         state.put(TestPermission {});
         state.put(UnstableChecker { unstable: true });

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod args;
 mod auth_tokens;
@@ -71,10 +71,13 @@ fn init_v8_flags(v8_flags: &[String]) {
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   match flags.subcommand.clone() {
     DenoSubcommand::Bench(bench_flags) => {
-      if flags.watch.is_some() {
-        tools::bench::run_benchmarks_with_watch(flags, bench_flags).await?;
+      let cli_options = CliOptions::from_flags(flags)?;
+      let bench_options = cli_options.resolve_bench_options(bench_flags)?;
+      if cli_options.watch_paths().is_some() {
+        tools::bench::run_benchmarks_with_watch(cli_options, bench_options)
+          .await?;
       } else {
-        tools::bench::run_benchmarks(flags, bench_flags).await?;
+        tools::bench::run_benchmarks(cli_options, bench_options).await?;
       }
       Ok(0)
     }
@@ -109,19 +112,9 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       Ok(0)
     }
     DenoSubcommand::Fmt(fmt_flags) => {
-      let config = CliOptions::from_flags(flags)?;
-
-      if fmt_flags.files.len() == 1
-        && fmt_flags.files[0].to_string_lossy() == "-"
-      {
-        let maybe_fmt_config = config.to_fmt_config()?;
-        tools::fmt::format_stdin(
-          fmt_flags,
-          maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
-        )?;
-      } else {
-        tools::fmt::format(&config, fmt_flags).await?;
-      }
+      let cli_options = CliOptions::from_flags(flags)?;
+      let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
+      tools::fmt::format(cli_options, fmt_options).await?;
       Ok(0)
     }
     DenoSubcommand::Init(init_flags) => {
@@ -148,7 +141,9 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if lint_flags.rules {
         tools::lint::print_rules_list(lint_flags.json);
       } else {
-        tools::lint::lint(flags, lint_flags).await?;
+        let cli_options = CliOptions::from_flags(flags)?;
+        let lint_options = cli_options.resolve_lint_options(lint_flags)?;
+        tools::lint::lint(cli_options, lint_options).await?;
       }
       Ok(0)
     }
@@ -176,11 +171,13 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
           PathBuf::from(coverage_dir).canonicalize()?,
         );
       }
+      let cli_options = CliOptions::from_flags(flags)?;
+      let test_options = cli_options.resolve_test_options(test_flags)?;
 
-      if flags.watch.is_some() {
-        tools::test::run_tests_with_watch(flags, test_flags).await?;
+      if cli_options.watch_paths().is_some() {
+        tools::test::run_tests_with_watch(cli_options, test_options).await?;
       } else {
-        tools::test::run_tests(flags, test_flags).await?;
+        tools::test::run_tests(cli_options, test_options).await?;
       }
 
       Ok(0)

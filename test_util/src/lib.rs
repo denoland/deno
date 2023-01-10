@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
@@ -968,6 +968,17 @@ async fn main_server(
       res.headers_mut().insert(
         "cache-control",
         HeaderValue::from_static("public, max-age=604800, immutable"),
+      );
+      Ok(res)
+    }
+    (_, "/dynamic_module.ts") => {
+      let mut res = Response::new(Body::from(format!(
+        r#"export const time = {};"#,
+        std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+      )));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
     }

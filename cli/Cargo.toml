@@ -1,8 +1,8 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno"
-version = "1.29.1"
+version = "1.29.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -14,6 +14,7 @@ description = "Provides the deno executable"
 [[bin]]
 name = "deno"
 path = "main.rs"
+doc = false
 
 [[bench]]
 name = "deno_bench"
@@ -43,10 +44,10 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core.workspace = true
-deno_doc = "0.51.0"
-deno_emit = "0.12.0"
-deno_graph = "0.39.0"
-deno_lint = { version = "0.35.0", features = ["docs"] }
+deno_doc = "0.52.0"
+deno_emit = "0.13.0"
+deno_graph = "0.41.0"
+deno_lint = { version = "0.37.0", features = ["docs"] }
 deno_runtime.workspace = true
 deno_task_shell = "0.8.1"
 napi_sym.workspace = true
@@ -64,10 +65,10 @@ data-url.workspace = true
 dissimilar = "=1.0.4"
 dprint-plugin-json = "=0.17.0"
 dprint-plugin-markdown = "=0.15.1"
-dprint-plugin-typescript = "=0.79.0"
+dprint-plugin-typescript = "=0.80.2"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
-eszip = "=0.31.0"
+eszip = "=0.32.0"
 fancy-regex = "=0.10.0"
 flate2.workspace = true
 http.workspace = true

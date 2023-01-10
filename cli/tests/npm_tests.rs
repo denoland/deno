@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod integration;
 
@@ -358,6 +358,13 @@ mod npm {
     envs: env_vars_for_npm_tests(),
     http_server: true,
     exit_code: 1,
+  });
+
+  itest!(permissions_outside_package {
+    args: "run --allow-read npm/permissions_outside_package/main.ts",
+    output: "npm/permissions_outside_package/main.out",
+    envs: env_vars_for_npm_tests(),
+    http_server: true,
   });
 
   #[test]

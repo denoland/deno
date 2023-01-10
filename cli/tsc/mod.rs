@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::TsConfig;
 use crate::graph_util::GraphData;
@@ -33,6 +33,7 @@ use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::Resolved;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -510,28 +511,28 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     let specifier = if let Some(remapped_specifier) =
       state.remapped_specifiers.get(&v.specifier)
     {
-      remapped_specifier.clone()
+      remapped_specifier
     } else if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
-      remapped_specifier.clone()
+      remapped_specifier
     } else {
-      specifier
+      &specifier
     };
     let maybe_source = if let Some(ModuleEntry::Module {
       code,
       media_type: mt,
       ..
     }) =
-      graph_data.get(&graph_data.follow_redirect(&specifier))
+      graph_data.get(&graph_data.follow_redirect(specifier))
     {
       media_type = *mt;
       Some(Cow::Borrowed(code as &str))
     } else if state
       .maybe_npm_resolver
       .as_ref()
-      .map(|resolver| resolver.in_npm_package(&specifier))
+      .map(|resolver| resolver.in_npm_package(specifier))
       .unwrap_or(false)
     {
-      media_type = MediaType::from(&specifier);
+      media_type = MediaType::from(specifier);
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path)
         .with_context(|| format!("Unable to load {}", file_path.display()))?;
@@ -647,6 +648,7 @@ fn op_resolve(
                   &referrer,
                   NodeResolutionMode::Types,
                   npm_resolver,
+                  &mut PermissionsContainer::allow_all(),
                 )
                 .ok()
                 .flatten(),
@@ -703,6 +705,7 @@ pub fn resolve_npm_package_reference_types(
     npm_ref,
     NodeResolutionMode::Types,
     npm_resolver,
+    &mut PermissionsContainer::allow_all(),
   )?;
   Ok(NodeResolution::into_specifier_and_media_type(
     maybe_resolution,
@@ -770,7 +773,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .collect();
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
-    extensions: vec![Extension::builder()
+    extensions: vec![Extension::builder("deno_cli_tsc")
       .ops(vec![
         op_cwd::decl(),
         op_create_hash::decl(),
