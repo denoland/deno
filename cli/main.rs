@@ -31,6 +31,8 @@ use crate::args::Flags;
 use crate::proc_state::ProcState;
 use crate::resolver::CliResolver;
 use crate::util::display;
+use crate::util::v8::get_v8_flags_from_env;
+use crate::util::v8::init_v8_flags;
 
 use args::CliOptions;
 use deno_core::anyhow::Context;
@@ -43,32 +45,6 @@ use deno_runtime::tokio_util::run_local;
 use std::env;
 use std::iter::once;
 use std::path::PathBuf;
-
-fn init_v8_flags(v8_flags: &[String], env_v8_flags: Vec<String>) {
-  let v8_flags_includes_help = env_v8_flags
-    .iter()
-    .chain(v8_flags)
-    .any(|flag| flag == "-help" || flag == "--help");
-  // Keep in sync with `standalone.rs`.
-  let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
-    .chain(env_v8_flags.into_iter())
-    .chain(v8_flags.iter().cloned())
-    .collect::<Vec<_>>();
-  let unrecognized_v8_flags = v8_set_flags(v8_flags)
-    .into_iter()
-    .skip(1)
-    .collect::<Vec<_>>();
-  if !unrecognized_v8_flags.is_empty() {
-    for f in unrecognized_v8_flags {
-      eprintln!("error: V8 did not recognize flag '{}'", f);
-    }
-    eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
-    std::process::exit(1);
-  }
-  if v8_flags_includes_help {
-    std::process::exit(0);
-  }
-}
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   match flags.subcommand.clone() {
@@ -288,10 +264,7 @@ pub fn main() {
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
     };
 
-    let env_v8_flags = env::var("DENO_V8_FLAGS")
-      .ok()
-      .map(|flags| flags.split(',').map(String::from).collect::<Vec<String>>())
-      .unwrap_or_default();
+    let env_v8_flags = get_v8_flags_from_env();
     if !flags.v8_flags.is_empty() || !env_v8_flags.is_empty() {
       init_v8_flags(&flags.v8_flags, env_v8_flags);
     }
