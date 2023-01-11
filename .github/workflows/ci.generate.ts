@@ -768,7 +768,7 @@ const ci = {
             "  -X POST \\",
             '  -H "X-GitHub-Api-Version: 2022-11-28" \\',
             '  -H "Accept: application/vnd.github.v3+json" \\',
-            '  -H "Authorization: token ${{ github.token }}" \\',
+            '  -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \\',
             '  "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/${{ github.run_id }}/cancel"',
           ].join("\n"),
         },
