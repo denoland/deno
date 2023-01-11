@@ -150,7 +150,7 @@ const ci = {
         "reopened",
         "synchronize",
         // need to re-run the action when converting from draft because
-        // draft PRs will not necessarily run all the PR steps
+        // draft PRs will not necessarily run all the steps
         "ready_for_review",
       ],
     },
