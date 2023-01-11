@@ -10,7 +10,7 @@ concurrency:
 jobs:
   build:
     name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}'
-    if: contains(github.event.head_commit.message, '[ci]')
+    if: contains(github.event.head_commit.message, 'ci')
     runs-on: '${{ matrix.os }}'
     timeout-minutes: 120
     strategy:
