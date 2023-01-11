@@ -750,6 +750,7 @@ const ci = {
         },
         {
           name: "Cancel build on failure",
+          uses: "vishnudxb/cancel-workflow@v1.2",
           if: "failure()",
           with: {
             repo: "${{ github.event.repository.name }}",
