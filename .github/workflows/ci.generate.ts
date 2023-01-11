@@ -106,6 +106,24 @@ const installDenoStep = {
   with: { "deno-version": "v1.x" },
 };
 
+const authenticateWithGoogleCloud = {
+  name: "Authenticate with Google Cloud",
+  if: [
+    "matrix.profile == 'release' &&",
+    "matrix.job == 'test' &&",
+    "github.repository == 'denoland/deno' &&",
+    "(github.ref == 'refs/heads/main' ||",
+    "startsWith(github.ref, 'refs/tags/'))",
+  ].join("\n"),
+  uses: "google-github-actions/auth@v1",
+  with: {
+    "project_id": "denoland",
+    "credentials_json": "${{ secrets.GCP_SA_KEY }}",
+    "export_environment_variables": true,
+    "create_credentials_file": true,
+  },
+};
+
 function cancelEarlyIfDraftPr(nextSteps: Record<string, unknown>[]): unknown[] {
   // Couple issues with GH Actions:
   //
@@ -280,6 +298,7 @@ const ci = {
           },
           ...installPythonSteps,
           installNodeStep,
+          authenticateWithGoogleCloud,
           {
             name: "Setup gcloud (unix)",
             if: [
@@ -290,11 +309,9 @@ const ci = {
               "(github.ref == 'refs/heads/main' ||",
               "startsWith(github.ref, 'refs/tags/'))",
             ].join("\n"),
-            uses: "google-github-actions/setup-gcloud@v0",
+            uses: "google-github-actions/setup-gcloud@v1",
             with: {
               project_id: "denoland",
-              service_account_key: "${{ secrets.GCP_SA_KEY }}",
-              export_default_credentials: true,
             },
           },
           {
@@ -307,14 +324,12 @@ const ci = {
               "(github.ref == 'refs/heads/main' ||",
               "startsWith(github.ref, 'refs/tags/'))",
             ].join("\n"),
-            uses: "google-github-actions/setup-gcloud@v0",
+            uses: "google-github-actions/setup-gcloud@v1",
             env: {
               CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
             },
             with: {
               project_id: "denoland",
-              service_account_key: "${{ secrets.GCP_SA_KEY }}",
-              export_default_credentials: true,
             },
           },
           {
@@ -799,21 +814,23 @@ const ci = {
       needs: ["build"],
       if:
         "github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'",
-      steps: [{
-        name: "Setup gcloud",
-        uses: "google-github-actions/setup-gcloud@v0",
-        with: {
-          project_id: "denoland",
-          service_account_key: "${{ secrets.GCP_SA_KEY }}",
-          export_default_credentials: true,
+      steps: [
+        authenticateWithGoogleCloud,
+        {
+          name: "Setup gcloud",
+          uses: "google-github-actions/setup-gcloud@v1",
+          with: {
+            project_id: "denoland",
+          },
         },
-      }, {
-        name: "Upload canary version file to dl.deno.land",
-        run: [
-          "echo ${{ github.sha }} > canary-latest.txt",
-          'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
-        ].join("\n"),
-      }],
+        {
+          name: "Upload canary version file to dl.deno.land",
+          run: [
+            "echo ${{ github.sha }} > canary-latest.txt",
+            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+          ].join("\n"),
+        },
+      ],
     },
   },
 };
