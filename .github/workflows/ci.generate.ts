@@ -279,7 +279,7 @@ const ci = {
         RUST_BACKTRACE: "full",
       },
       steps: [
-        ...checkoutSteps(["./test_util/std"]),
+        ...checkoutSteps(["./test_util/std", "./test_util/wpt"]),
         {
           name: "Create source tarballs (release, linux)",
           if: [
@@ -725,6 +725,10 @@ const ci = {
       name: "lint",
       "runs-on": Runners.linux,
       "timeout-minutes": 90,
+      env: {
+        CARGO_TERM_COLOR: "always",
+        RUST_BACKTRACE: "full",
+      },
       steps: [
         ...checkoutSteps(["./test_util/std", "./third_party"]),
         installRustStep,
@@ -743,6 +747,15 @@ const ci = {
           name: "Lint",
           run:
             "deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js",
+        },
+        {
+          name: "Cancel build on failure",
+          if: "failure()",
+          with: {
+            repo: "${{ github.event.repository.name }}",
+            workflow_id: "${{ github.run_id }}",
+            access_token: "${{ github.token }}",
+          },
         },
       ],
     },

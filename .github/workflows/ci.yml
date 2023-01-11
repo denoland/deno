@@ -58,6 +58,8 @@ jobs:
           submodules: false
       - name: Clone submodule ./test_util/std
         run: git submodule update --init --recursive --depth=1 -- ./test_util/std
+      - name: Clone submodule ./test_util/wpt
+        run: git submodule update --init --recursive --depth=1 -- ./test_util/wpt
       - name: 'Create source tarballs (release, linux)'
         if: |-
           startsWith(matrix.os, 'ubuntu') &&
@@ -490,6 +492,9 @@ jobs:
     name: lint
     runs-on: '${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}'
     timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: full
     steps:
       - name: Configure git
         run: |-
@@ -546,6 +551,12 @@ jobs:
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
       - name: Lint
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
+      - name: Cancel build on failure
+        if: failure()
+        with:
+          repo: '${{ github.event.repository.name }}'
+          workflow_id: '${{ github.run_id }}'
+          access_token: '${{ github.token }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-20.04
