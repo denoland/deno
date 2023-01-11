@@ -66,7 +66,7 @@ jobs:
         if: matrix.job == 'test'
       - name: Clone submodule ./third_party
         run: git submodule update --init --recursive --depth=1 -- ./third_party
-        if: matrix.job == 'lint'
+        if: matrix.job == 'lint' || matrix.job == 'bench'
       - name: 'Create source tarballs (release, linux)'
         if: |-
           startsWith(matrix.os, 'ubuntu') &&

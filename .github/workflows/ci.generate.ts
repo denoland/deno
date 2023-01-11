@@ -208,7 +208,7 @@ const ci = {
         },
         {
           ...submoduleStep("./third_party"),
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' || matrix.job == 'bench'",
         },
         {
           name: "Create source tarballs (release, linux)",
