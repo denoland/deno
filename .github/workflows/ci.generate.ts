@@ -123,8 +123,11 @@ function cancelEarlyIfDraftPr(nextSteps: Record<string, unknown>[]): unknown[] {
       id: "exit_early",
       if: "github.event.pull_request.draft == true",
       shell: "bash",
-      run:
-        "git show -s --format=%s | grep -c '[ci]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'EXIT_EARLY=true' >> $GITHUB_OUTPUT)",
+      run: [
+        "GIT_MESSAGE=$(git show -s --format=%s)",
+        "echo Commit message: $GIT_MESSAGE",
+        "echo $GIT_MESSAGE | grep -c '\\[ci\\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'EXIT_EARLY=true' >> $GITHUB_OUTPUT)",
+      ].join("\n"),
     },
     ...nextSteps.map((step) => {
       const condition = "steps.exit_early.outputs.EXIT_EARLY != 'true'";
