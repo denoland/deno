@@ -137,7 +137,7 @@ pub fn init(env: napi_env, exports: napi_value) {
   let mut cons: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_define_class(
     env,
-    "NapiObject".as_ptr() as *mut c_char,
+    "NapiObject\0".as_ptr() as *mut c_char,
     usize::MAX,
     Some(NapiObject::new),
     ptr::null_mut(),
@@ -149,7 +149,7 @@ pub fn init(env: napi_env, exports: napi_value) {
   assert_napi_ok!(napi_set_named_property(
     env,
     exports,
-    "NapiObject".as_ptr() as *const c_char,
+    "NapiObject\0".as_ptr() as *const c_char,
     cons,
   ));
 }
