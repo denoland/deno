@@ -114,6 +114,7 @@ struct NodeModulePolyfill {
   specifier: &'static str,
 }
 
+// note: also update build.rs if adding a module here
 static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
   NodeModulePolyfill {
     name: "assert",

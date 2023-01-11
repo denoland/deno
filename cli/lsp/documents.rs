@@ -1129,6 +1129,7 @@ impl Documents {
       analyzed_specifiers: HashSet<ModuleSpecifier>,
       pending_specifiers: VecDeque<ModuleSpecifier>,
       npm_reqs: HashSet<NpmPackageReq>,
+      has_node_specifier: bool,
     }
 
     impl DocAnalyzer {
@@ -1152,7 +1153,11 @@ impl Documents {
 
       fn analyze_doc(&mut self, specifier: &ModuleSpecifier, doc: &Document) {
         self.analyzed_specifiers.insert(specifier.clone());
-        for dependency in doc.dependencies().values() {
+        for (name, dependency) in doc.dependencies() {
+          if !self.has_node_specifier && name.starts_with("node:") {
+            self.has_node_specifier = true;
+          }
+
           if let Some(dep) = dependency.get_code() {
             self.add(dep, specifier);
           }
@@ -1189,8 +1194,16 @@ impl Documents {
       }
     }
 
+    let mut npm_reqs = doc_analyzer.npm_reqs;
+    // ensure a @types/node package exists when any module uses a node: specifier
+    if doc_analyzer.has_node_specifier
+      && !npm_reqs.iter().any(|r| r.name == "@types/node")
+    {
+      npm_reqs.insert(NpmPackageReq::from_str("@types/node").unwrap());
+    }
+
     self.dependents_map = Arc::new(doc_analyzer.dependents_map);
-    self.npm_reqs = Arc::new(doc_analyzer.npm_reqs);
+    self.npm_reqs = Arc::new(npm_reqs);
     self.dirty = false;
     file_system_docs.dirty = false;
   }

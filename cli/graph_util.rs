@@ -63,6 +63,7 @@ pub enum ModuleEntry {
 pub struct GraphData {
   modules: HashMap<ModuleSpecifier, ModuleEntry>,
   npm_packages: Vec<NpmPackageReq>,
+  has_node_specifier: bool,
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
   referrer_map: HashMap<ModuleSpecifier, Box<Range>>,
@@ -94,6 +95,10 @@ impl GraphData {
       if NpmPackageReference::from_specifier(specifier).is_ok() {
         has_npm_specifier_in_graph = true;
         continue;
+      }
+
+      if !self.has_node_specifier && specifier.scheme() == "node" {
+        self.has_node_specifier = true;
       }
 
       if self.modules.contains_key(specifier) {
@@ -163,6 +168,11 @@ impl GraphData {
     &self,
   ) -> impl Iterator<Item = (&ModuleSpecifier, &ModuleEntry)> {
     self.modules.iter()
+  }
+
+  /// Gets if the graph had a "node:" specifier.
+  pub fn has_node_specifier(&self) -> bool {
+    self.has_node_specifier
   }
 
   /// Gets the npm package requirements from all the encountered graphs
@@ -292,6 +302,7 @@ impl GraphData {
     }
     Some(Self {
       modules,
+      has_node_specifier: self.has_node_specifier,
       npm_packages: self.npm_packages.clone(),
       referrer_map,
       graph_imports: self.graph_imports.to_vec(),
