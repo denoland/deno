@@ -7,7 +7,7 @@ rustflags = [
   "target-feature=+crt-static",
   "-C",
   # increase the stack size to prevent swc overflowing the stack in debug
-  "link-arg=/STACK:2097152",
+  "link-arg=/STACK:3145728",
 ]
 
 [target.aarch64-apple-darwin]

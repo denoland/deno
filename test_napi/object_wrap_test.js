@@ -14,4 +14,5 @@ Deno.test("napi object wrap new", function () {
   obj.increment();
   obj.set_value(10);
   assertEquals(obj.get_value(), 10);
+  assertEquals(objectWrap.NapiObject.factory(), 64);
 });
