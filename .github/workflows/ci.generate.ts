@@ -106,13 +106,17 @@ const installDenoStep = {
   with: { "deno-version": "v1.x" },
 };
 
-function cancelEarlyIfDraftPr(steps: Record<string, unknown>[]): unknown[] {
+function cancelEarlyIfDraftPr(nextSteps: Record<string, unknown>[]): unknown[] {
   // Couple issues with GH Actions:
+  //
   // 1. The pull_request event type does not include the commit message, so
   //    there's no way to override this with a commit message without running
   //    the workflow.
   // 2. Currently no way to early exit in GH Actions, so we need to do all these
   //    if conditions. Waiting on: https://github.com/actions/runner/issues/662
+  //
+  // The solution below will only occur on draft PRs and only run the CI if the
+  // commit message contains [ci].
   return [
     {
       name: "Cancel if draft PR",
@@ -122,7 +126,7 @@ function cancelEarlyIfDraftPr(steps: Record<string, unknown>[]): unknown[] {
       run:
         "git show -s --format=%s | grep -c '[ci]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'EXIT_EARLY=true' >> $GITHUB_OUTPUT)",
     },
-    ...steps.map((step) => {
+    ...nextSteps.map((step) => {
       const condition = "steps.exit_early.outputs.EXIT_EARLY != 'true'";
       step.if = "if" in step ? `${condition} && (${step.if})` : condition;
       return step;
