@@ -712,7 +712,7 @@ pub fn format_test_error(js_error: &JsError) -> String {
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
 async fn test_specifier(
-  ps: ProcState,
+  ps: &ProcState,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
@@ -723,7 +723,7 @@ async fn test_specifier(
   let stdout = StdioPipe::File(sender.stdout());
   let stderr = StdioPipe::File(sender.stderr());
   let mut worker = create_main_worker_for_test_or_bench(
-    &ps,
+    ps,
     specifier,
     PermissionsContainer::new(permissions),
     vec![ops::testing::init(
@@ -892,7 +892,7 @@ fn extract_files_from_fenced_blocks(
 }
 
 async fn fetch_inline_files(
-  ps: ProcState,
+  ps: &ProcState,
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
@@ -928,7 +928,7 @@ pub async fn check_specifiers(
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
   let inline_files = fetch_inline_files(
-    ps.clone(),
+    ps,
     specifiers
       .iter()
       .filter_map(|(specifier, mode)| {
@@ -1004,7 +1004,6 @@ async fn test_specifiers(
   };
 
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
-  let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
   let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
 
@@ -1014,11 +1013,9 @@ async fn test_specifiers(
       .map(move |(specifier, mode)| {
         let ps = ps.clone();
         let permissions = permissions.clone();
-        let specifier = specifier;
-        let mode = mode;
         let mut sender = sender.clone();
         let options = options.clone();
-        let fail_fast_tracker = fail_fast_tracker.clone();
+        let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
 
         tokio::task::spawn_blocking(move || {
           if fail_fast_tracker.should_stop() {
@@ -1027,7 +1024,7 @@ async fn test_specifiers(
 
           let origin = specifier.to_string();
           let file_result = run_local(test_specifier(
-            ps,
+            &ps,
             permissions,
             specifier,
             mode,
