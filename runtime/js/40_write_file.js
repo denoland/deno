@@ -6,6 +6,7 @@
   const { abortSignal } = window.__bootstrap;
   const { pathFromURL } = window.__bootstrap.util;
   const { open } = window.__bootstrap.files;
+  const { ReadableStreamPrototype } = window.__bootstrap.streams;
   const { ObjectPrototypeIsPrototypeOf } = window.__bootstrap.primordials;
 
   function writeFileSync(
@@ -38,7 +39,7 @@
       options.signal[abortSignal.add](abortHandler);
     }
     try {
-      if (ObjectPrototypeIsPrototypeOf(data, ReadableStream)) {
+      if (ObjectPrototypeIsPrototypeOf(data, ReadableStreamPrototype)) {
         const file = await open(path, {
           mode: options.mode,
           append: options.append ?? false,
@@ -85,7 +86,7 @@
     data,
     options = {},
   ) {
-    if (ObjectPrototypeIsPrototypeOf(data, ReadableStream)) {
+    if (ObjectPrototypeIsPrototypeOf(data, ReadableStreamPrototype)) {
       const file = await open(path, {
         mode: options.mode,
         append: options.append ?? false,
