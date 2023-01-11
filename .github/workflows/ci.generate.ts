@@ -119,7 +119,7 @@ const ci = {
       if: [
         "(",
         "  github.event_name == 'push' && ",
-        "  (github.event.pull_request.draft == false || contains(github.event.head_commit.message, '[ci]')",
+        "  (github.event.pull_request.draft == false || contains(github.event.head_commit.message, '[ci]'))",
         ") || !startsWith(github.event.pull_request.head.label, 'denoland:')",
       ].join("\n"),
       "runs-on": "${{ matrix.os }}",
