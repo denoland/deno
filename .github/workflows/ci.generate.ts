@@ -120,7 +120,7 @@ function cancelEarlyIfDraftPr(steps: Record<string, unknown>[]): unknown[] {
       if: "github.event.pull_request.draft == true",
       shell: "bash",
       run:
-        "git show -s --format=%s | grep '[ci]' && (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'EXIT_EARLY=true' >> $GITHUB_STATE) || exit 0",
+        "git show -s --format=%s | grep '[ci]' && (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'EXIT_EARLY=true' >> $GITHUB_OUTPUT) || exit 0",
     },
     {
       name: "TEMP - Check output",
