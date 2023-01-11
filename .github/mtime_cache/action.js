@@ -151,7 +151,10 @@ async function* ls(dir = "") {
       case "120000": // Symbolic link.
         break;
       case "160000": // Git submodule.
-        yield* ls(path);
+        // sometimes we don't checkout all submodules
+        if (fs.existsSync(path)) {
+          yield* ls(path);
+        }
         break;
       default: {
         // Regular file.
