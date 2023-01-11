@@ -1092,7 +1092,7 @@ async fn test_specifiers(
 
           TestEvent::Result(id, result, elapsed) => {
             if tests_with_result.insert(id) {
-              let description = tests.get(&id).unwrap().clone();
+              let description = tests.get(&id).unwrap();
               match &result {
                 TestResult::Ok => {
                   summary.passed += 1;
@@ -1108,7 +1108,7 @@ async fn test_specifiers(
                   unreachable!("should be handled in TestEvent::UncaughtError");
                 }
               }
-              reporter.report_result(&description, &result, elapsed);
+              reporter.report_result(description, &result, elapsed);
             }
           }
 
@@ -1320,12 +1320,8 @@ pub async fn run_tests(
     return Err(generic_error("No test modules found"));
   }
 
-  check_specifiers(
-    &ps.clone(),
-    permissions.clone(),
-    specifiers_with_mode.clone(),
-  )
-  .await?;
+  check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
+    .await?;
 
   if test_options.no_run {
     return Ok(());
@@ -1365,7 +1361,7 @@ pub async fn run_tests_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
     let test_options = &test_options;
-    //let ps = &ps;
+
     let ps = ps.borrow().clone();
 
     async move {
