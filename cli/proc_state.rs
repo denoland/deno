@@ -430,7 +430,7 @@ impl ProcState {
       graph_data.entries().map(|(s, _)| s).cloned().collect()
     };
 
-    let (mut npm_package_reqs, has_node_specifier) = {
+    let (mut npm_package_reqs, has_node_builtin_specifier) = {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph);
       let check_js = self.options.check_js();
@@ -443,14 +443,14 @@ impl ProcState {
         .unwrap()?;
       (
         graph_data.npm_package_reqs().clone(),
-        graph_data.has_node_specifier(),
+        graph_data.has_node_builtin_specifier(),
       )
     };
 
     // add a @types/node package if the code has a "node:" specifier,
     // the code is type checking, and there aren't any existing @types/node
     // packages specified
-    if has_node_specifier
+    if has_node_builtin_specifier
       && self.options.type_check_mode() != TypeCheckMode::None
       && !npm_package_reqs.iter().any(|r| r.name == "@types/node")
     {
