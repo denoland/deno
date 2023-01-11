@@ -139,7 +139,19 @@ function cancelEarlyIfDraftPr(nextSteps: Record<string, unknown>[]): unknown[] {
 
 const ci = {
   name: "ci",
-  on: ["push", "pull_request"],
+  on: {
+    push: true,
+    pull_request: {
+      types: [
+        "opened",
+        "reopened",
+        "synchronize",
+        // need to re-run the action when converting from draft because
+        // draft PRs will not necessarily run all the PR steps
+        "ready_for_review",
+      ],
+    },
+  },
   concurrency: {
     group:
       "${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, 'test-flaky-ci') && github.head_ref || github.run_id }}",
