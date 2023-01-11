@@ -2,17 +2,31 @@
 
 use deno_core::futures::channel::mpsc;
 use deno_runtime::deno_napi::*;
+use once_cell::sync::Lazy;
 use std::mem::forget;
+use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc::channel;
+use std::sync::Arc;
+
+static TS_FN_ID_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
 pub struct TsFn {
+  pub id: usize,
   pub env: *mut Env,
   pub maybe_func: Option<v8::Global<v8::Function>>,
   pub maybe_call_js_cb: Option<napi_threadsafe_function_call_js>,
   pub context: *mut c_void,
   pub thread_counter: usize,
+  pub ref_counter: Arc<AtomicUsize>,
   sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   tsfn_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
+}
+
+impl Drop for TsFn {
+  fn drop(&mut self) {
+    let env = unsafe { self.env.as_mut().unwrap() };
+    env.remove_threadsafe_function_ref_counter(self.id)
+  }
 }
 
 impl TsFn {
@@ -37,17 +51,24 @@ impl TsFn {
 
   pub fn ref_(&mut self) -> Result {
     self
-      .tsfn_sender
-      .unbounded_send(ThreadSafeFunctionStatus::Alive)
-      .map_err(|_| Error::GenericFailure)?;
+      .ref_counter
+      .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     Ok(())
   }
 
   pub fn unref(&mut self) -> Result {
-    self
-      .tsfn_sender
-      .unbounded_send(ThreadSafeFunctionStatus::Dead)
-      .map_err(|_| Error::GenericFailure)?;
+    let _ = self.ref_counter.fetch_update(
+      std::sync::atomic::Ordering::SeqCst,
+      std::sync::atomic::Ordering::SeqCst,
+      |x| {
+        if x == 0 {
+          None
+        } else {
+          Some(x - 1)
+        }
+      },
+    );
+
     Ok(())
   }
 
@@ -123,15 +144,21 @@ fn napi_create_threadsafe_function(
     })
     .transpose()?;
 
+  let id = TS_FN_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
   let tsfn = TsFn {
+    id,
     maybe_func,
     maybe_call_js_cb,
     context,
     thread_counter: initial_thread_count,
     sender: env_ref.async_work_sender.clone(),
     tsfn_sender: env_ref.threadsafe_function_sender.clone(),
+    ref_counter: Arc::new(AtomicUsize::new(1)),
     env,
   };
+  env_ref
+    .add_threadsafe_function_ref_counter(tsfn.id, tsfn.ref_counter.clone());
 
   env_ref
     .threadsafe_function_sender
