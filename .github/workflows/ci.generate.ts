@@ -87,6 +87,7 @@ const installPythonSteps = [{
 }, {
   name: "Remove unused versions of Python",
   if: "startsWith(matrix.os, 'windows')",
+  shell: "pwsh",
   run: [
     '$env:PATH -split ";" |',
     '  Where-Object { Test-Path "$_\\python.exe" } |',
@@ -104,6 +105,30 @@ const installDenoStep = {
   uses: "denoland/setup-deno@v1",
   with: { "deno-version": "v1.x" },
 };
+
+function cancelEarlyIfDraftPr(steps: Record<string, unknown>[]): unknown[] {
+  // Couple issues with GH Actions:
+  // 1. The pull_request event type does not include the commit message, so
+  //    there's no way to override this with a commit message without running
+  //    the workflow.
+  // 2. Currently no way to early exit in GH Actions, so we need to do all these
+  //    if conditions. Waiting on: https://github.com/actions/runner/issues/662
+  return [
+    {
+      name: "Cancel if draft PR",
+      id: "exit_early",
+      if: "github.event.pull_request.draft == true",
+      shell: "bash",
+      run:
+        "git show -s --format=%s | grep '[ci]' && (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo \"EXIT_EARLY=true\" >> $GITHUB_STATE) || exit 0",
+    },
+    ...steps.map((step) => {
+      const condition = "${{ steps.exit_early.outputs.EXIT_EARLY }} != 'true'";
+      step.if = "if" in step ? `${condition} && (${step.if})` : condition;
+      return step;
+    }),
+  ];
+}
 
 const ci = {
   name: "ci",
@@ -201,15 +226,7 @@ const ci = {
             submodules: false,
           },
         },
-        {
-          name: "Cancel if draft PR",
-          id: "exit_early",
-          if: "github.event.pull_request.draft == true",
-          shell: "bash",
-          run:
-            "git show -s --format=%s | grep '[ci]' && (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo \"::set-output name=EXIT_EARLY::true\") || exit 0",
-        },
-        ...[
+        ...cancelEarlyIfDraftPr([
           submoduleStep("./test_util/std"),
           {
             ...submoduleStep("./test_util/wpt"),
@@ -751,16 +768,7 @@ const ci = {
               draft: true,
             },
           },
-        ].map((step) => {
-          const condition =
-            "${{ steps.exit_early.outputs.EXIT_EARLY }} != 'true'";
-          if ("if" in step) {
-            step.if = `${condition} && (${step.if})`;
-          } else {
-            (step as any).if = condition;
-          }
-          return step;
-        }),
+        ]),
       ],
     },
     "publish-canary": {
