@@ -63,7 +63,9 @@ jobs:
         id: exit_early
         if: github.event.pull_request.draft == true
         shell: bash
-        run: 'git show -s --format=%s | grep ''[ci]'' && (echo ''Exiting due to draft PR. Commit with [ci] to bypass.'' ; echo "EXIT_EARLY=true" >> $GITHUB_STATE) || exit 0'
+        run: 'git show -s --format=%s | grep ''[ci]'' && (echo ''Exiting due to draft PR. Commit with [ci] to bypass.'' ; echo ''EXIT_EARLY=true'' >> $GITHUB_STATE) || exit 0'
+      - name: TEMP - Check output
+        run: 'echo ${{ steps.exit_early.outputs.EXIT_EARLY }}'
       - name: Clone submodule ./test_util/std
         run: git submodule update --init --recursive --depth=1 -- ./test_util/std
         if: steps.exit_early.outputs.EXIT_EARLY != 'true'
