@@ -2,7 +2,6 @@
 
 use napi_sys::Status::napi_ok;
 use napi_sys::*;
-use std::ptr;
 
 extern "C" fn test_detached(
   env: napi_env,

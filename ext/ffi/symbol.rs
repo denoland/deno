@@ -2,7 +2,7 @@
 
 /// Defines the accepted types that can be used as
 /// parameters and return values in FFI.
-#[derive(Clone, Copy, Debug, serde::Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum NativeType {
   Void,
@@ -22,6 +22,7 @@ pub enum NativeType {
   Pointer,
   Buffer,
   Function,
+  Struct(Box<[NativeType]>),
 }
 
 impl From<NativeType> for libffi::middle::Type {
@@ -43,6 +44,9 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
         libffi::middle::Type::pointer()
       }
+      NativeType::Struct(fields) => libffi::middle::Type::structure(
+        fields.iter().map(|field| field.clone().into()),
+      ),
     }
   }
 }

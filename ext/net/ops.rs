@@ -865,7 +865,7 @@ mod tests {
       let listener = TcpListener::bind(addr).await.unwrap();
       let _ = listener.accept().await;
     });
-    let my_ext = Extension::builder()
+    let my_ext = Extension::builder("test_ext")
       .state(move |state| {
         state.put(TestPermission {});
         state.put(UnstableChecker { unstable: true });
