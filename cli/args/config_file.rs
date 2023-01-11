@@ -528,7 +528,7 @@ impl ConfigFile {
           let f = ancestor.join(config_filename);
           match ConfigFile::read(&f) {
             Ok(cf) => {
-              info!("{} found at '{}'", colors::intense_blue("Config File"), f.display());
+              info!("{} found at '{}'", colors::intense_blue("Config file"), f.display());
               return Ok(Some(cf));
             }
             Err(e) => {
