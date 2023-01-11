@@ -137,7 +137,7 @@ function cancelEarlyIfDraftPr(
   ];
 }
 
-function cancelTestReleaseMatrixIfPR(
+function cancelTestReleaseJobsIfPR(
   steps: Record<string, unknown>[],
 ): Record<string, unknown>[] {
   // GitHub does not make skipping a specific matrix element easy
@@ -253,7 +253,7 @@ const ci = {
         CARGO_TERM_COLOR: "always",
         RUST_BACKTRACE: "full",
       },
-      steps: cancelTestReleaseMatrixIfPR([
+      steps: cancelTestReleaseJobsIfPR([
         {
           name: "Configure git",
           run: [
