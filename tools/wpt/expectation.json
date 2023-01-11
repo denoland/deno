@@ -1311,7 +1311,10 @@
       "respond-after-enqueue.any.worker.html": true
     },
     "readable-streams": {
-      "async-iterator.any.html": false,
+      "async-iterator.any.html": [
+        "next() that succeeds; return()",
+        "next() that succeeds; return() [no awaiting]"
+      ],
       "bad-strategies.any.html": true,
       "bad-strategies.any.worker.html": true,
       "bad-underlying-sources.any.html": true,
