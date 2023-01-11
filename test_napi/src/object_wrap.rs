@@ -108,13 +108,30 @@ impl NapiObject {
 
     ptr::null_mut()
   }
+
+  pub extern "C" fn factory(
+    env: napi_env,
+    info: napi_callback_info,
+  ) -> napi_value {
+    let (_args, argc, _this) = napi_get_callback_info!(env, info, 0);
+    assert_eq!(argc, 0);
+
+    let int64 = 64;
+    let mut value: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_create_int64(env, int64, &mut value));
+    value
+  }
 }
 
 pub fn init(env: napi_env, exports: napi_value) {
+  let mut static_prop = napi_new_property!(env, "factory", NapiObject::factory);
+  static_prop.attributes = PropertyAttributes::static_;
+
   let properties = &[
     napi_new_property!(env, "set_value", NapiObject::set_value),
     napi_new_property!(env, "get_value", NapiObject::get_value),
     napi_new_property!(env, "increment", NapiObject::increment),
+    static_prop,
   ];
 
   let mut cons: napi_value = ptr::null_mut();
