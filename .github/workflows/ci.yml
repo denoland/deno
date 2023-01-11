@@ -42,9 +42,6 @@ jobs:
             job: test
             profile: debug
             use_sysroot: true
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}'
-            job: lint
-            profile: debug
       fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
     env:
       CARGO_TERM_COLOR: always
@@ -58,7 +55,9 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 5
-          submodules: recursive
+          submodules: false
+      - name: Clone submodule ./test_util/std
+        run: git submodule update --init --recursive --depth=1 -- ./test_util/std
       - name: 'Create source tarballs (release, linux)'
         if: |-
           startsWith(matrix.os, 'ubuntu') &&
@@ -72,7 +71,6 @@ jobs:
               -czvf target/release/deno_src.tar.gz -C .. deno
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Deno
-        if: matrix.job == 'lint' || matrix.job == 'test'
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.x
@@ -80,10 +78,6 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: 3.8
-      - name: Install Node
-        uses: actions/setup-node@v3
-        with:
-          node-version: 17
       - name: Remove unused versions of Python
         if: 'startsWith(matrix.os, ''windows'')'
         run: |-
@@ -91,6 +85,10 @@ jobs:
             Where-Object { Test-Path "$_\python.exe" } |
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
+      - name: Install Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 17
       - name: Setup gcloud (unix)
         if: |-
           runner.os != 'Windows' &&
@@ -127,8 +125,8 @@ jobs:
           github.ref == 'refs/heads/main'
         shell: bash
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
-      - name: Set up incremental LTO and sysroot build
-        if: matrix.use_sysroot
+      - if: matrix.use_sysroot
+        name: Set up incremental LTO and sysroot build
         run: |-
           # Avoid running man-db triggers, which sometimes takes several minutes
           # to complete.
@@ -195,11 +193,6 @@ jobs:
           python --version
           rustc --version
           cargo --version
-          # Deno is installed when linting.
-          if [ "${{ matrix.job }}" == "lint" ]
-          then
-            deno --version
-          fi
       - name: Cache Cargo home
         uses: actions/cache@v3
         with:
@@ -243,12 +236,6 @@ jobs:
                       https://github.com/rust-lang/crates.io-index \
                       ~/.cargo/registry/index/github.com-1ecc6299db9ec823
           fi
-      - name: test_format.js
-        if: matrix.job == 'lint'
-        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
-      - name: lint.js
-        if: matrix.job == 'lint'
-        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
       - name: Build debug
         if: |-
           (matrix.job == 'test' || matrix.job == 'bench') &&
@@ -443,7 +430,7 @@ jobs:
           git commit --message "Update benchmarks"
           git push origin gh-pages
       - name: Build product size info
-        if: 'matrix.job != ''lint'' && matrix.profile != ''fastci'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        if: 'matrix.profile != ''fastci'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
         run: |-
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
@@ -499,6 +486,66 @@ jobs:
             target/release/lib.deno.d.ts
           body_path: target/release/release-notes.md
           draft: true
+  lint:
+    name: lint
+    runs-on: '${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}'
+    timeout-minutes: 90
+    steps:
+      - name: Configure git
+        run: |-
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+      - name: Clone repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 5
+          submodules: false
+      - name: Clone submodule ./test_util/std
+        run: git submodule update --init --recursive --depth=1 -- ./test_util/std
+      - name: Clone submodule ./third_party
+        run: git submodule update --init --recursive --depth=1 -- ./third_party
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+      - name: Cache Cargo home
+        uses: actions/cache@v3
+        with:
+          path: |-
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '18-cargo-home-${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}-${{ hashFiles(''Cargo.lock'') }}'
+      - name: Cache build output (PR)
+        uses: actions/cache/restore@v3
+        if: 'github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
+        with:
+          path: |-
+            ./target
+            !./target/*/gn_out
+            !./target/*/*.zip
+            !./target/*/*.tar.gz
+          key: never_saved
+          restore-keys: '18-cargo-target-${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}-test-'
+      - name: Apply and update mtime cache
+        if: matrix.profile == 'release'
+        uses: ./.github/mtime_cache
+        with:
+          cache-path: ./target
+      - name: Shallow clone crates.io index
+        shell: bash
+        run: |-
+          if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]
+          then
+            git clone --depth 1 --no-checkout                      \
+                      https://github.com/rust-lang/crates.io-index \
+                      ~/.cargo/registry/index/github.com-1ecc6299db9ec823
+          fi
+      - name: Check formatting
+        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
+      - name: Lint
+        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
   publish-canary:
     name: publish canary
     runs-on: ubuntu-20.04
