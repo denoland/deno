@@ -220,6 +220,11 @@ declare namespace Deno {
      * @category Errors */
     export class Interrupted extends Error {}
     /**
+     * Raised when ??.
+     *
+     * @category Errors */
+    export class WouldBlock extends Error {}
+    /**
      * Raised when expecting to write to a IO buffer resulted in zero bytes
      * being written.
      *

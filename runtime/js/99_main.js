@@ -267,6 +267,7 @@ delete Intl.v8BreakIterator;
     core.registerErrorClass("InvalidData", errors.InvalidData);
     core.registerErrorClass("TimedOut", errors.TimedOut);
     core.registerErrorClass("Interrupted", errors.Interrupted);
+    core.registerErrorClass("WouldBlock", errors.WouldBlock);
     core.registerErrorClass("WriteZero", errors.WriteZero);
     core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
     core.registerErrorClass("BadResource", errors.BadResource);

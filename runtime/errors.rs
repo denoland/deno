@@ -58,7 +58,7 @@ fn get_io_error_class(error: &io::Error) -> &'static str {
     WriteZero => "WriteZero",
     UnexpectedEof => "UnexpectedEof",
     Other => "Error",
-    WouldBlock => unreachable!(),
+    WouldBlock => "WouldBlock",
     // Non-exhaustive enum - might add new variants
     // in the future
     _ => "Error",

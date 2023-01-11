@@ -97,6 +97,14 @@
     }
   }
 
+
+  class WouldBlock extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "WouldBlock";
+    }
+  }
+
   class UnexpectedEof extends Error {
     constructor(msg) {
       super(msg);
@@ -140,6 +148,7 @@
     TimedOut,
     Interrupted,
     WriteZero,
+    WouldBlock,
     UnexpectedEof,
     BadResource,
     Http,
