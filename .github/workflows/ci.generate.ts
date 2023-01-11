@@ -123,7 +123,7 @@ function cancelEarlyIfDraftPr(steps: Record<string, unknown>[]): unknown[] {
         "git show -s --format=%s | grep '[ci]' && (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo \"EXIT_EARLY=true\" >> $GITHUB_STATE) || exit 0",
     },
     ...steps.map((step) => {
-      const condition = "${{ steps.exit_early.outputs.EXIT_EARLY }} != 'true'";
+      const condition = "steps.exit_early.outputs.EXIT_EARLY != 'true'";
       step.if = "if" in step ? `${condition} && (${step.if})` : condition;
       return step;
     }),
