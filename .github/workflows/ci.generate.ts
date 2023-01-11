@@ -739,6 +739,18 @@ const ci = {
           cacheBuildOutputCondition: undefined,
         }),
         {
+          name: "Log versions",
+          shell: "bash",
+          run: [
+            "rustc --version",
+            "cargo --version",
+            "deno --version",
+          ].join("\n"),
+        },
+        {
+          run: "exit 1",
+        },
+        {
           name: "Check formatting",
           run:
             "deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check",
@@ -752,13 +764,12 @@ const ci = {
           name: "Cancel build on failure",
           if: "failure()",
           run: [
-            'URL="https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/${{ github.run_id }}/cancel"',
-            "echo Cancelling via $URL",
             "curl \\",
             "  -X POST \\",
             '  -H "X-GitHub-Api-Version: 2022-11-28" \\',
             '  -H "Accept: application/vnd.github+json" \\',
-            "  $URL",
+            '  -H "Authorization: Bearer ${{ github.token }}" \\',
+            '  "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/${{ github.run_id }}/cancel"',
           ].join("\n"),
         },
       ],

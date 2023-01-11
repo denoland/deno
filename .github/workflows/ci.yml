@@ -547,6 +547,13 @@ jobs:
                       https://github.com/rust-lang/crates.io-index \
                       ~/.cargo/registry/index/github.com-1ecc6299db9ec823
           fi
+      - name: Log versions
+        shell: bash
+        run: |-
+          rustc --version
+          cargo --version
+          deno --version
+      - run: exit 1
       - name: Check formatting
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
       - name: Lint
@@ -554,13 +561,12 @@ jobs:
       - name: Cancel build on failure
         if: failure()
         run: |-
-          URL="https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/${{ github.run_id }}/cancel"
-          echo Cancelling via $URL
           curl \
             -X POST \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -H "Accept: application/vnd.github+json" \
-            $URL
+            -H "Authorization: Bearer ${{ github.token }}" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/${{ github.run_id }}/cancel"
   publish-canary:
     name: publish canary
     runs-on: ubuntu-20.04
