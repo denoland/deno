@@ -750,13 +750,14 @@ const ci = {
         },
         {
           name: "Cancel build on failure",
-          uses: "vishnudxb/cancel-workflow@v1.2",
           if: "failure()",
-          with: {
-            repo: "${{ github.event.repository.name }}",
-            workflow_id: "${{ github.run_id }}",
-            access_token: "${{ github.token }}",
-          },
+          run: [
+            "curl \\",
+            "  -X POST \\",
+            '  -H "Accept: application/vnd.github.v3+json" \\',
+            '  -H "Authorization: token ${{ github.token }}" \\',
+            "  https://api.github.com/repos/${{ github.event.repository.name }}/actions/runs/${{ github.run_id }}/cancel",
+          ].join("\n"),
         },
       ],
     },
