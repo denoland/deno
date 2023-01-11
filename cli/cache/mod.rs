@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
@@ -11,7 +11,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::sync::Arc;
 
 mod check;
@@ -42,20 +42,18 @@ pub const CACHE_PERM: u32 = 0o644;
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
   emit_cache: EmitCache,
-  dynamic_permissions: Permissions,
+  dynamic_permissions: PermissionsContainer,
   file_fetcher: Arc<FileFetcher>,
-  root_permissions: Permissions,
+  root_permissions: PermissionsContainer,
 }
 
 impl FetchCacher {
   pub fn new(
     emit_cache: EmitCache,
-    file_fetcher: FileFetcher,
-    root_permissions: Permissions,
-    dynamic_permissions: Permissions,
+    file_fetcher: Arc<FileFetcher>,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
   ) -> Self {
-    let file_fetcher = Arc::new(file_fetcher);
-
     Self {
       emit_cache,
       dynamic_permissions,
@@ -104,7 +102,7 @@ impl Loader for FetchCacher {
     }
 
     let specifier = specifier.clone();
-    let mut permissions = if is_dynamic {
+    let permissions = if is_dynamic {
       self.dynamic_permissions.clone()
     } else {
       self.root_permissions.clone()
@@ -113,7 +111,7 @@ impl Loader for FetchCacher {
 
     async move {
       file_fetcher
-        .fetch(&specifier, &mut permissions)
+        .fetch(&specifier, permissions)
         .await
         .map_or_else(
           |err| {

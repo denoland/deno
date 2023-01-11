@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::process::Command;
 use test_util::deno_cmd;
@@ -127,6 +127,10 @@ fn basic() {
     Static i64: -1242464576485\n\
     Static ptr: true\n\
     Static ptr value: 42\n\
+    Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }\n\
+    Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }\n\
+    Rect { x: 20.0, y: 20.0, w: 100.0, h: 200.0 }\n\
+    Mixed { u8: 3, f32: 12.515, rect: Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }, usize: 12456789, array: [8, 32] }\n\
     arrayBuffer.byteLength: 4\n\
     uint32Array.length: 1\n\
     uint32Array[0]: 42\n\

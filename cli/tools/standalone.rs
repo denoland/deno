@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CompileFlags;
 use crate::args::Flags;
@@ -21,7 +21,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::colors;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -170,7 +170,7 @@ async fn create_standalone_binary(
       Some(import_map_specifier) => {
         let file = ps
           .file_fetcher
-          .fetch(&import_map_specifier, &mut Permissions::allow_all())
+          .fetch(&import_map_specifier, PermissionsContainer::allow_all())
           .await
           .context(format!(
             "Unable to load '{}' import map",

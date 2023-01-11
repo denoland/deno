@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // This file contains the implementation of a Github Action. Github uses
 // Node.js v12.x to run actions, so this is Node code and not Deno code.
 
@@ -151,7 +151,10 @@ async function* ls(dir = "") {
       case "120000": // Symbolic link.
         break;
       case "160000": // Git submodule.
-        yield* ls(path);
+        // sometimes we don't checkout all submodules
+        if (fs.existsSync(path)) {
+          yield* ls(path);
+        }
         break;
       default: {
         // Regular file.

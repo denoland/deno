@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 #![allow(non_upper_case_globals)]
 
@@ -296,7 +296,6 @@ fn napi_create_error(
   let msg = transmute::<napi_value, v8::Local<v8::Value>>(msg);
 
   let msg = msg.to_string(&mut env.scope()).unwrap();
-
   let error = v8::Exception::error(&mut env.scope(), msg);
   *result = error.into();
 
@@ -549,7 +548,7 @@ fn napi_create_string_latin1(
       .unwrap()
       .as_bytes()
   } else {
-    std::slice::from_raw_parts(string, length as usize)
+    std::slice::from_raw_parts(string, length)
   };
   match v8::String::new_from_one_byte(
     &mut env.scope(),
@@ -626,7 +625,7 @@ fn napi_create_string_utf8(
       .to_str()
       .unwrap()
   } else {
-    let string = std::slice::from_raw_parts(string, length as usize);
+    let string = std::slice::from_raw_parts(string, length);
     std::str::from_utf8(string).unwrap()
   };
   let v8str = v8::String::new(&mut env.scope(), string).unwrap();
@@ -1070,7 +1069,7 @@ fn napi_call_function(
     .map_err(|_| Error::FunctionExpected)?;
 
   let argv: &[v8::Local<v8::Value>] =
-    transmute(std::slice::from_raw_parts(argv, argc as usize));
+    transmute(std::slice::from_raw_parts(argv, argc));
   let ret = func.call(&mut env.scope(), recv, argv);
   if !result.is_null() {
     *result = transmute::<Option<v8::Local<v8::Value>>, napi_value>(ret);
@@ -1134,8 +1133,15 @@ fn napi_define_class(
   let scope = &mut env.scope();
   let napi_properties: &[napi_property_descriptor] =
     std::slice::from_raw_parts(properties, property_count);
+  let mut static_property_count = 0;
 
   for p in napi_properties {
+    if p.attributes & napi_static != 0 {
+      // Will be handled below
+      static_property_count += 1;
+      continue;
+    }
+
     let name = if !p.utf8name.is_null() {
       let name_str = CStr::from_ptr(p.utf8name).to_str().unwrap();
       v8::String::new(scope, name_str).unwrap()
@@ -1197,7 +1203,35 @@ fn napi_define_class(
 
   let value: v8::Local<v8::Value> = tpl.get_function(scope).unwrap().into();
   *result = value.into();
+
+  if static_property_count > 0 {
+    let mut static_descriptors = Vec::with_capacity(static_property_count);
+
+    for p in napi_properties {
+      if p.attributes & napi_static != 0 {
+        static_descriptors.push(*p);
+      }
+    }
+
+    let res = napi_define_properties(
+      env_ptr,
+      *result,
+      static_descriptors.len(),
+      static_descriptors.as_ptr() as *const napi_property_descriptor,
+    );
+
+    napi_status_to_result(res)?;
+  }
+
   Ok(())
+}
+
+fn napi_status_to_result(status: napi_status) -> Result {
+  if status == napi_ok {
+    Ok(())
+  } else {
+    Err(status.into())
+  }
 }
 
 #[napi_sym::napi_sym]
@@ -1211,10 +1245,10 @@ fn napi_define_properties(
   let scope = &mut env.scope();
   let object = transmute::<napi_value, v8::Local<v8::Object>>(obj);
   let properties = std::slice::from_raw_parts(properties, property_count);
-
   for property in properties {
     let name = if !property.utf8name.is_null() {
-      let name_str = CStr::from_ptr(property.utf8name).to_str().unwrap();
+      let name_str = CStr::from_ptr(property.utf8name);
+      let name_str = name_str.to_str().unwrap();
       v8::String::new(scope, name_str).unwrap()
     } else {
       transmute::<napi_value, v8::Local<v8::String>>(property.name)

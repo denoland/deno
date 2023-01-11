@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
@@ -76,7 +76,7 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
 });
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_io")
     .ops(vec![op_read_sync::decl(), op_write_sync::decl()])
     .build()
 }
@@ -114,7 +114,7 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
   // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
   let stdio = Rc::new(RefCell::new(Some(stdio)));
 
-  Extension::builder()
+  Extension::builder("deno_stdio")
     .middleware(|op| match op.name {
       "op_print" => op_print::decl(),
       _ => op,

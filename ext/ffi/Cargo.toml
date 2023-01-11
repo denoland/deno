@@ -1,8 +1,8 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_ffi"
-version = "0.69.0"
+version = "0.70.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,7 +17,7 @@ path = "lib.rs"
 deno_core.workspace = true
 dlopen.workspace = true
 dynasmrt = "1.2.3"
-libffi = "3.0.0"
+libffi = "3.1.0"
 serde.workspace = true
 tokio.workspace = true
 

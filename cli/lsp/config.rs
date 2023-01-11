@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::client::Client;
 use super::logging::lsp_log;
@@ -266,8 +266,15 @@ fn default_to_true() -> bool {
   true
 }
 
+fn empty_string_none<'de, D: serde::Deserializer<'de>>(
+  d: D,
+) -> Result<Option<String>, D::Error> {
+  let o: Option<String> = Option::deserialize(d)?;
+  Ok(o.filter(|s| !s.is_empty()))
+}
+
 /// Deno language server specific settings that are applied to a workspace.
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
@@ -280,6 +287,7 @@ pub struct WorkspaceSettings {
 
   /// An option that points to a path string of the path to utilise as the
   /// cache/DENO_DIR for the language server.
+  #[serde(default, deserialize_with = "empty_string_none")]
   pub cache: Option<String>,
 
   /// Override the default stores used to validate certificates. This overrides
@@ -288,10 +296,12 @@ pub struct WorkspaceSettings {
 
   /// An option that points to a path string of the config file to apply to
   /// code within the workspace.
+  #[serde(default, deserialize_with = "empty_string_none")]
   pub config: Option<String>,
 
   /// An option that points to a path string of the import map to apply to the
   /// code within the workspace.
+  #[serde(default, deserialize_with = "empty_string_none")]
   pub import_map: Option<String>,
 
   /// Code lens specific settings for the workspace.
@@ -320,6 +330,7 @@ pub struct WorkspaceSettings {
 
   /// An option which sets the cert file to use when attempting to fetch remote
   /// resources. This overrides `DENO_CERT` if present.
+  #[serde(default, deserialize_with = "empty_string_none")]
   pub tls_certificate: Option<String>,
 
   /// An option, if set, will unsafely ignore certificate errors when fetching
@@ -329,6 +340,28 @@ pub struct WorkspaceSettings {
 
   #[serde(default)]
   pub unstable: bool,
+}
+
+impl Default for WorkspaceSettings {
+  fn default() -> Self {
+    WorkspaceSettings {
+      enable: false,
+      enable_paths: vec![],
+      cache: None,
+      certificate_stores: None,
+      config: None,
+      import_map: None,
+      code_lens: Default::default(),
+      inlay_hints: Default::default(),
+      internal_debug: false,
+      lint: true,
+      suggest: Default::default(),
+      testing: Default::default(),
+      tls_certificate: None,
+      unsafely_ignore_certificate_errors: None,
+      unstable: false,
+    }
+  }
 }
 
 impl WorkspaceSettings {
@@ -718,6 +751,54 @@ mod tests {
         unsafely_ignore_certificate_errors: None,
         unstable: false,
       }
+    );
+  }
+
+  #[test]
+  fn test_empty_cache() {
+    let mut config = Config::new();
+    config
+      .set_workspace_settings(json!({ "cache": "" }))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings::default()
+    );
+  }
+
+  #[test]
+  fn test_empty_import_map() {
+    let mut config = Config::new();
+    config
+      .set_workspace_settings(json!({ "import_map": "" }))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings::default()
+    );
+  }
+
+  #[test]
+  fn test_empty_tls_certificate() {
+    let mut config = Config::new();
+    config
+      .set_workspace_settings(json!({ "tls_certificate": "" }))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings::default()
+    );
+  }
+
+  #[test]
+  fn test_empty_config() {
+    let mut config = Config::new();
+    config
+      .set_workspace_settings(json!({ "config": "" }))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings::default()
     );
   }
 }

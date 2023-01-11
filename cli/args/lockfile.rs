@@ -1,4 +1,7 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use std::collections::BTreeMap;
+use std::io::Write;
+use std::path::PathBuf;
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -6,9 +9,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use log::debug;
-use std::collections::BTreeMap;
-use std::io::Write;
-use std::path::PathBuf;
 
 use crate::args::config_file::LockConfig;
 use crate::args::ConfigFile;
@@ -18,6 +18,8 @@ use crate::npm::NpmResolutionPackage;
 use crate::tools::fmt::format_json;
 use crate::util;
 use crate::Flags;
+
+use super::DenoSubcommand;
 
 #[derive(Debug)]
 pub struct LockfileError(String);
@@ -96,7 +98,12 @@ impl Lockfile {
     flags: &Flags,
     maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<Lockfile>, AnyError> {
-    if flags.no_lock {
+    if flags.no_lock
+      || matches!(
+        flags.subcommand,
+        DenoSubcommand::Install(_) | DenoSubcommand::Uninstall(_)
+      )
+    {
       return Ok(None);
     }
 
@@ -105,7 +112,7 @@ impl Lockfile {
       None => match maybe_config_file {
         Some(config_file) => {
           if config_file.specifier.scheme() == "file" {
-            match config_file.clone().to_lock_config()? {
+            match config_file.to_lock_config()? {
               Some(LockConfig::Bool(lock)) if !lock => {
                 return Ok(None);
               }
@@ -282,12 +289,7 @@ impl Lockfile {
   ) -> Result<(), LockfileError> {
     let specifier = package.id.as_serialized();
     if let Some(package_info) = self.content.npm.packages.get(&specifier) {
-      let integrity = package
-        .dist
-        .integrity
-        .as_ref()
-        .unwrap_or(&package.dist.shasum);
-      if &package_info.integrity != integrity {
+      if package_info.integrity.as_str() != package.dist.integrity().as_str() {
         return Err(LockfileError(format!(
           "Integrity check failed for npm package: \"{}\". Unable to verify that the package
 is the same as when the lockfile was generated.
@@ -314,15 +316,10 @@ Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
       .map(|(name, id)| (name.to_string(), id.as_serialized()))
       .collect::<BTreeMap<String, String>>();
 
-    let integrity = package
-      .dist
-      .integrity
-      .as_ref()
-      .unwrap_or(&package.dist.shasum);
     self.content.npm.packages.insert(
       package.id.as_serialized(),
       NpmPackageInfo {
-        integrity: integrity.to_string(),
+        integrity: package.dist.integrity().to_string(),
         dependencies,
       },
     );
@@ -538,11 +535,11 @@ mod tests {
         peer_dependencies: Vec::new(),
       },
       copy_index: 0,
-      dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(),
-        shasum: "foo".to_string(),
-        integrity: Some("sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==".to_string())
-      },
+      dist: NpmPackageVersionDistInfo::new(
+        "foo".to_string(),
+        "shasum".to_string(),
+        Some("sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==".to_string()),
+      ),
       dependencies: HashMap::new(),
     };
     let check_ok = lockfile.check_or_insert_npm_package(&npm_package);
@@ -555,11 +552,11 @@ mod tests {
         peer_dependencies: Vec::new(),
       },
       copy_index: 0,
-      dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(),
-        shasum: "foo".to_string(),
-        integrity: Some("sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==".to_string())
-      },
+      dist: NpmPackageVersionDistInfo::new(
+        "foo".to_string(),
+        "shasum".to_string(),
+        Some("sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==".to_string()),
+      ),
       dependencies: HashMap::new(),
     };
     // Integrity is borked in the loaded lockfile
@@ -573,11 +570,11 @@ mod tests {
         peer_dependencies: Vec::new(),
       },
       copy_index: 0,
-      dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(),
-        shasum: "foo".to_string(),
-        integrity: Some("sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==".to_string())
-      },
+      dist: NpmPackageVersionDistInfo::new(
+        "foo".to_string(),
+        "foo".to_string(),
+        Some("sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==".to_string()),
+      ),
       dependencies: HashMap::new(),
     };
     // Not present in lockfile yet, should be inserted and check passed.
@@ -591,11 +588,11 @@ mod tests {
         peer_dependencies: Vec::new(),
       },
       copy_index: 0,
-      dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(),
-        shasum: "foo".to_string(),
-        integrity: Some("sha512-foobar".to_string()),
-      },
+      dist: NpmPackageVersionDistInfo::new(
+        "foo".to_string(),
+        "foo".to_string(),
+        Some("sha512-foobar".to_string()),
+      ),
       dependencies: HashMap::new(),
     };
     // Now present in lockfile, should file due to borked integrity

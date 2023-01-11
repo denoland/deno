@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -162,7 +162,9 @@
         context: "Argument 1",
       });
 
-      for (const entry of this[entryList]) {
+      const entries = this[entryList];
+      for (let i = 0; i < entries.length; ++i) {
+        const entry = entries[i];
         if (entry.name === name) return entry.value;
       }
       return null;
@@ -183,7 +185,9 @@
       });
 
       const returnList = [];
-      for (const entry of this[entryList]) {
+      const entries = this[entryList];
+      for (let i = 0; i < entries.length; ++i) {
+        const entry = entries[i];
         if (entry.name === name) ArrayPrototypePush(returnList, entry.value);
       }
       return returnList;
@@ -203,7 +207,9 @@
         context: "Argument 1",
       });
 
-      for (const entry of this[entryList]) {
+      const entries = this[entryList];
+      for (let i = 0; i < entries.length; ++i) {
+        const entry = entries[i];
         if (entry.name === name) return true;
       }
       return false;
@@ -298,6 +304,7 @@
     const chunks = [];
     const prefix = `--${boundary}\r\nContent-Disposition: form-data; name="`;
 
+    // deno-lint-ignore prefer-primordials
     for (const [name, value] of formData) {
       if (typeof value === "string") {
         ArrayPrototypePush(
@@ -372,7 +379,8 @@
     #parseHeaders(headersText) {
       const headers = new Headers();
       const rawHeaders = StringPrototypeSplit(headersText, "\r\n");
-      for (const rawHeader of rawHeaders) {
+      for (let i = 0; i < rawHeaders.length; ++i) {
+        const rawHeader = rawHeaders[i];
         const sepIndex = StringPrototypeIndexOf(rawHeader, ":");
         if (sepIndex < 0) {
           continue; // Skip this header

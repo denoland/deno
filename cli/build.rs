@@ -1,13 +1,13 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::Extension;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
 use deno_core::snapshot_util::*;
+use deno_core::Extension;
 use deno_runtime::deno_cache::SqliteBackedCache;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::*;
 
 mod ts {
@@ -238,7 +238,7 @@ mod ts {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions: vec![Extension::builder()
+      extensions: vec![Extension::builder("deno_tsc")
         .ops(vec![
           op_build_info::decl(),
           op_cwd::decl(),
@@ -294,13 +294,13 @@ fn create_cli_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
     deno_console::init(),
     deno_url::init(),
     deno_tls::init(),
-    deno_web::init::<Permissions>(
+    deno_web::init::<PermissionsContainer>(
       deno_web::BlobStore::default(),
       Default::default(),
     ),
-    deno_fetch::init::<Permissions>(Default::default()),
+    deno_fetch::init::<PermissionsContainer>(Default::default()),
     deno_cache::init::<SqliteBackedCache>(None),
-    deno_websocket::init::<Permissions>("".to_owned(), None, None),
+    deno_websocket::init::<PermissionsContainer>("".to_owned(), None, None),
     deno_webstorage::init(None),
     deno_crypto::init(None),
     deno_webgpu::init(false),
@@ -308,15 +308,15 @@ fn create_cli_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),
-    deno_node::init::<Permissions>(None), // No --unstable.
-    deno_ffi::init::<Permissions>(false),
-    deno_net::init::<Permissions>(
+    deno_node::init::<PermissionsContainer>(None), // No --unstable.
+    deno_ffi::init::<PermissionsContainer>(false),
+    deno_net::init::<PermissionsContainer>(
       None, false, // No --unstable.
       None,
     ),
-    deno_napi::init::<Permissions>(false),
+    deno_napi::init::<PermissionsContainer>(false),
     deno_http::init(),
-    deno_flash::init::<Permissions>(false), // No --unstable
+    deno_flash::init::<PermissionsContainer>(false), // No --unstable
   ];
 
   create_snapshot(CreateSnapshotOptions {

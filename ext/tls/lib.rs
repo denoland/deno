@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub use rustls;
 pub use rustls_native_certs;
@@ -37,7 +37,7 @@ use std::time::SystemTime;
 
 /// This extension has no runtime apis, it only exports some shared native functions.
 pub fn init() -> Extension {
-  Extension::builder().build()
+  Extension::builder(env!("CARGO_PKG_NAME")).build()
 }
 
 struct DefaultSignatureVerification;

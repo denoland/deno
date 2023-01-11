@@ -1,9 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops::TestingFeaturesEnabled;
 use crate::permissions::create_child_permissions;
 use crate::permissions::ChildPermissionsArg;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
@@ -15,7 +15,6 @@ use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalFutureObj;
 use deno_core::op;
-
 use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -32,8 +31,8 @@ use std::sync::Arc;
 pub struct CreateWebWorkerArgs {
   pub name: String,
   pub worker_id: WorkerId,
-  pub parent_permissions: Permissions,
-  pub permissions: Permissions,
+  pub parent_permissions: PermissionsContainer,
+  pub permissions: PermissionsContainer,
   pub main_module: ModuleSpecifier,
   pub worker_type: WebWorkerType,
 }
@@ -95,7 +94,7 @@ pub fn init(
   pre_execute_module_cb: Arc<WorkerEventCb>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder("deno_worker_host")
     .state(move |state| {
       state.put::<WorkersTable>(WorkersTable::default());
       state.put::<WorkerId>(WorkerId::default());
@@ -164,10 +163,13 @@ fn op_create_worker(
   if args.permissions.is_some() {
     super::check_unstable(state, "Worker.deno.permissions");
   }
-  let parent_permissions = state.borrow_mut::<Permissions>();
+  let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
-    create_child_permissions(parent_permissions, child_permissions_arg)?
+    let mut parent_permissions = parent_permissions.0.lock();
+    let perms =
+      create_child_permissions(&mut parent_permissions, child_permissions_arg)?;
+    PermissionsContainer::new(perms)
   } else {
     parent_permissions.clone()
   };

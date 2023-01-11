@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod integration;
 use deno_core::url;
@@ -2505,7 +2505,7 @@ mod run {
       .unwrap();
     assert!(status.success());
     std::fs::write(&mod1_path, "export { foo } from \"./mod2.ts\";").unwrap();
-    std::fs::write(&mod2_path, "(").unwrap();
+    std::fs::write(mod2_path, "(").unwrap();
     let status = deno_cmd
       .current_dir(util::testdata_path())
       .arg("run")
@@ -2528,7 +2528,7 @@ mod run {
     let mut deno_cmd = util::deno_cmd();
     // With a fresh `DENO_DIR`, run a module with a dependency and a type error.
     std::fs::write(&mod1_path, "import './mod2.ts'; Deno.exit('0');").unwrap();
-    std::fs::write(&mod2_path, "console.log('Hello, world!');").unwrap();
+    std::fs::write(mod2_path, "console.log('Hello, world!');").unwrap();
     let status = deno_cmd
       .current_dir(util::testdata_path())
       .arg("run")
@@ -2780,6 +2780,13 @@ mod run {
     exit_code: 1,
   });
 
+  // Regression test for https://github.com/denoland/deno/issues/16340.
+  itest!(error_with_errors_prop {
+    args: "run --quiet run/error_with_errors_prop.js",
+    output: "run/error_with_errors_prop.js.out",
+    exit_code: 1,
+  });
+
   // Regression test for https://github.com/denoland/deno/issues/12143.
   itest!(js_root_with_ts_check {
     args: "run --quiet --check run/js_root_with_ts_check.js",
@@ -2938,6 +2945,19 @@ mod run {
     output: "run/unhandled_rejection_sync_error.ts.out",
   });
 
+  // Regression test for https://github.com/denoland/deno/issues/15661
+  itest!(unhandled_rejection_dynamic_import {
+    args: "run --allow-read run/unhandled_rejection_dynamic_import/main.ts",
+    output: "run/unhandled_rejection_dynamic_import/main.ts.out",
+    exit_code: 1,
+  });
+
+  // Regression test for https://github.com/denoland/deno/issues/16909
+  itest!(unhandled_rejection_dynamic_import2 {
+    args: "run --allow-read run/unhandled_rejection_dynamic_import2/main.ts",
+    output: "run/unhandled_rejection_dynamic_import2/main.ts.out",
+  });
+
   itest!(nested_error {
     args: "run run/nested_error.ts",
     output: "run/nested_error.ts.out",
@@ -2969,7 +2989,7 @@ mod run {
     assert!(output.status.success());
 
     let prg = util::deno_exe_path();
-    let output = Command::new(&prg)
+    let output = Command::new(prg)
       .env("DENO_DIR", deno_dir.path())
       .env("HTTP_PROXY", "http://nil")
       .env("NO_COLOR", "1")
@@ -3705,4 +3725,21 @@ console.log("finish");
     args: "run --quiet run/001_hello.js --allow-net",
     output: "run/001_hello.js.out",
   });
+
+  // Regression test for https://github.com/denoland/deno/issues/16772
+  #[test]
+  fn file_fetcher_preserves_permissions() {
+    let _guard = util::http_server();
+    util::with_pty(&["repl"], |mut console| {
+      console.write_text(
+        "const a = import('http://127.0.0.1:4545/run/019_media_types.ts');",
+      );
+      console.write_text("y");
+      console.write_line("");
+      console.write_line("close();");
+      let output = console.read_all_output();
+      assert_contains!(output, "success");
+      assert_contains!(output, "true");
+    });
+  }
 }
