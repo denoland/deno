@@ -117,7 +117,7 @@ const ci = {
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
       if: [
-        "github.event_name == 'push' || !startsWith(github.event.pull_request.head.label, 'denoland:') &&",
+        "(github.event_name == 'push' || !startsWith(github.event.pull_request.head.label, 'denoland:')) &&",
         "(github.event.pull_request.draft == false || contains(github.event.head_commit.message, '[ci]'))",
       ].join("\n"),
       "runs-on": "${{ matrix.os }}",
