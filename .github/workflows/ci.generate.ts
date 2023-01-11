@@ -116,8 +116,7 @@ const ci = {
   jobs: {
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
-      if:
-        "github.event.pull_request.draft == false || contains(github.event.head_commit.message, '[ci]')",
+      if: "contains(github.event.head_commit.message, '[ci]')",
       "runs-on": "${{ matrix.os }}",
       "timeout-minutes": 120,
       strategy: {
