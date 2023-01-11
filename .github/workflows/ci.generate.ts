@@ -140,7 +140,10 @@ function cancelEarlyIfDraftPr(nextSteps: Record<string, unknown>[]): unknown[] {
 const ci = {
   name: "ci",
   on: {
-    push: true,
+    push: {
+      branches: ["main"],
+      tags: ["*"],
+    },
     pull_request: {
       types: [
         "opened",

@@ -2,7 +2,11 @@
 
 name: ci
 on:
-  push: true
+  push:
+    branches:
+      - main
+    tags:
+      - '*'
   pull_request:
     types:
       - opened
