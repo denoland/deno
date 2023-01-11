@@ -2,6 +2,109 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import * as yaml from "https://deno.land/std@0.171.0/encoding/yaml.ts";
 
+const Runners = {
+  linux:
+    "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
+  macos: "macos-12",
+  windows:
+    "${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}",
+};
+
+const sysRootStep = {
+  name: "Set up incremental LTO and sysroot build",
+  run: `# Avoid running man-db triggers, which sometimes takes several minutes
+# to complete.
+sudo apt-get remove --purge -y man-db
+
+# Install clang-15, lld-15, and debootstrap.
+echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-15.list
+curl https://apt.llvm.org/llvm-snapshot.gpg.key |
+  gpg --dearmor                                 |
+sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
+sudo apt-get update
+sudo apt-get install --no-install-recommends debootstrap     \\
+                                             clang-15 lld-15
+
+# Create ubuntu-16.04 sysroot environment, which is used to avoid
+# depending on a very recent version of glibc.
+# \`libc6-dev\` is required for building any C source files.
+# \`file\` and \`make\` are needed to build libffi-sys.
+# \`curl\` is needed to build rusty_v8.
+sudo debootstrap                                     \\
+  --include=ca-certificates,curl,file,libc6-dev,make \\
+  --no-merged-usr --variant=minbase xenial /sysroot  \\
+  http://azure.archive.ubuntu.com/ubuntu
+sudo mount --rbind /dev /sysroot/dev
+sudo mount --rbind /sys /sysroot/sys
+sudo mount --rbind /home /sysroot/home
+sudo mount -t proc /proc /sysroot/proc
+
+# Configure the build environment. Both Rust and Clang will produce
+# llvm bitcode only, so we can use lld's incremental LTO support.
+cat >> $GITHUB_ENV << __0
+CARGO_PROFILE_BENCH_INCREMENTAL=false
+CARGO_PROFILE_BENCH_LTO=false
+CARGO_PROFILE_RELEASE_INCREMENTAL=false
+CARGO_PROFILE_RELEASE_LTO=false
+RUSTFLAGS<<__1
+  -C linker-plugin-lto=true
+  -C linker=clang-15
+  -C link-arg=-fuse-ld=lld-15
+  -C link-arg=--sysroot=/sysroot
+  -C link-arg=-Wl,--allow-shlib-undefined
+  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  \${{ env.RUSTFLAGS }}
+__1
+RUSTDOCFLAGS<<__1
+  -C linker-plugin-lto=true
+  -C linker=clang-15
+  -C link-arg=-fuse-ld=lld-15
+  -C link-arg=--sysroot=/sysroot
+  -C link-arg=-Wl,--allow-shlib-undefined
+  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  \${{ env.RUSTFLAGS }}
+__1
+CC=clang-15
+CFLAGS=-flto=thin --sysroot=/sysroot
+__0`,
+};
+
+const submoduleStep = (submodule: string) => ({
+  name: `Clone submodule ${submodule}`,
+  run: `git submodule update --init --recursive --depth=1 -- ${submodule}`,
+});
+
+const installRustStep = {
+  uses: "dtolnay/rust-toolchain@stable",
+};
+const installPythonSteps = [{
+  name: "Install Python",
+  uses: "actions/setup-python@v4",
+  with: { "python-version": 3.8 },
+}, {
+  name: "Remove unused versions of Python",
+  if: "startsWith(matrix.os, 'windows')",
+  run: [
+    '$env:PATH -split ";" |',
+    '  Where-Object { Test-Path "$_\\python.exe" } |',
+    "  Select-Object -Skip 1 |",
+    '  ForEach-Object { Move-Item "$_" "$_.disabled" }',
+  ].join("\n"),
+}];
+const installNodeStep = {
+  name: "Install Node",
+  uses: "actions/setup-node@v3",
+  with: { "node-version": 17 },
+};
+const installDenoStep = {
+  name: "Install Deno",
+  uses: "denoland/setup-deno@v1",
+  with: { "deno-version": "v1.x" },
+};
+
 const ci = {
   name: "ci",
   on: ["push", "pull_request"],
@@ -23,51 +126,45 @@ const ci = {
         matrix: {
           include: [
             {
-              os: "macos-12",
+              os: Runners.macos,
               job: "test",
               profile: "fastci",
             },
             {
-              os: "macos-12",
+              os: Runners.macos,
               job: "test",
               profile: "release",
             },
             {
-              os:
-                "${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}",
+              os: Runners.windows,
               job: "test",
               profile: "fastci",
             },
             {
-              os:
-                "${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}",
+              os: Runners.windows,
               job: "test",
               profile: "release",
             },
             {
-              os:
-                "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
+              os: Runners.linux,
               job: "test",
               profile: "release",
               use_sysroot: true,
             },
             {
-              os:
-                "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
+              os: Runners.linux,
               job: "bench",
               profile: "release",
               use_sysroot: true,
             },
             {
-              os:
-                "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
+              os: Runners.linux,
               job: "test",
               profile: "debug",
               use_sysroot: true,
             },
             {
-              os:
-                "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
+              os: Runners.linux,
               job: "lint",
               profile: "debug",
             },
@@ -101,8 +198,17 @@ const ci = {
             // other commits have landed it will become impossible to rebuild if
             // the checkout is too shallow.
             "fetch-depth": 5,
-            submodules: "recursive",
+            submodules: false,
           },
+        },
+        submoduleStep("./test_util/std"),
+        {
+          ...submoduleStep("./test_util/wpt"),
+          if: "matrix.job == 'test'",
+        },
+        {
+          ...submoduleStep("./third_party"),
+          if: "matrix.job == 'lint' || matrix.job == 'bench'",
         },
         {
           name: "Create source tarballs (release, linux)",
@@ -119,33 +225,13 @@ const ci = {
             "    -czvf target/release/deno_src.tar.gz -C .. deno",
           ].join("\n"),
         },
-        { uses: "dtolnay/rust-toolchain@stable" },
+        installRustStep,
         {
-          name: "Install Deno",
           if: "matrix.job == 'lint' || matrix.job == 'test'",
-          uses: "denoland/setup-deno@v1",
-          with: { "deno-version": "v1.x" },
+          ...installDenoStep,
         },
-        {
-          name: "Install Python",
-          uses: "actions/setup-python@v4",
-          with: { "python-version": 3.8 },
-        },
-        {
-          name: "Install Node",
-          uses: "actions/setup-node@v3",
-          with: { "node-version": 17 },
-        },
-        {
-          name: "Remove unused versions of Python",
-          if: "startsWith(matrix.os, 'windows')",
-          run: [
-            '$env:PATH -split ";" |',
-            '  Where-Object { Test-Path "$_\\python.exe" } |',
-            "  Select-Object -Skip 1 |",
-            '  ForEach-Object { Move-Item "$_" "$_.disabled" }',
-          ].join("\n"),
-        },
+        ...installPythonSteps,
+        installNodeStep,
         {
           name: "Setup gcloud (unix)",
           if: [
@@ -174,7 +260,9 @@ const ci = {
             "startsWith(github.ref, 'refs/tags/'))",
           ].join("\n"),
           uses: "google-github-actions/setup-gcloud@v0",
-          env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
+          env: {
+            CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
+          },
           with: {
             project_id: "denoland",
             service_account_key: "${{ secrets.GCP_SA_KEY }}",
@@ -193,68 +281,8 @@ const ci = {
           run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
         },
         {
-          name: "Set up incremental LTO and sysroot build",
           if: "matrix.use_sysroot",
-          run: [
-            "# Avoid running man-db triggers, which sometimes takes several minutes",
-            "# to complete.",
-            "sudo apt-get remove --purge -y man-db",
-            "",
-            "# Install clang-15, lld-15, and debootstrap.",
-            'echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main" |',
-            "  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-15.list",
-            "curl https://apt.llvm.org/llvm-snapshot.gpg.key |",
-            "  gpg --dearmor                                 |",
-            "sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg",
-            "sudo apt-get update",
-            "sudo apt-get install --no-install-recommends debootstrap     \\",
-            "                                             clang-15 lld-15",
-            "",
-            "# Create ubuntu-16.04 sysroot environment, which is used to avoid",
-            "# depending on a very recent version of glibc.",
-            "# `libc6-dev` is required for building any C source files.",
-            "# `file` and `make` are needed to build libffi-sys.",
-            "# `curl` is needed to build rusty_v8.",
-            "sudo debootstrap                                     \\",
-            "  --include=ca-certificates,curl,file,libc6-dev,make \\",
-            "  --no-merged-usr --variant=minbase xenial /sysroot  \\",
-            "  http://azure.archive.ubuntu.com/ubuntu",
-            "sudo mount --rbind /dev /sysroot/dev",
-            "sudo mount --rbind /sys /sysroot/sys",
-            "sudo mount --rbind /home /sysroot/home",
-            "sudo mount -t proc /proc /sysroot/proc",
-            "",
-            "# Configure the build environment. Both Rust and Clang will produce",
-            "# llvm bitcode only, so we can use lld's incremental LTO support.",
-            "cat >> $GITHUB_ENV << __0",
-            "CARGO_PROFILE_BENCH_INCREMENTAL=false",
-            "CARGO_PROFILE_BENCH_LTO=false",
-            "CARGO_PROFILE_RELEASE_INCREMENTAL=false",
-            "CARGO_PROFILE_RELEASE_LTO=false",
-            "RUSTFLAGS<<__1",
-            "  -C linker-plugin-lto=true",
-            "  -C linker=clang-15",
-            "  -C link-arg=-fuse-ld=lld-15",
-            "  -C link-arg=--sysroot=/sysroot",
-            "  -C link-arg=-Wl,--allow-shlib-undefined",
-            "  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache",
-            "  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m",
-            "  ${{ env.RUSTFLAGS }}",
-            "__1",
-            "RUSTDOCFLAGS<<__1",
-            "  -C linker-plugin-lto=true",
-            "  -C linker=clang-15",
-            "  -C link-arg=-fuse-ld=lld-15",
-            "  -C link-arg=--sysroot=/sysroot",
-            "  -C link-arg=-Wl,--allow-shlib-undefined",
-            "  -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache",
-            "  -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m",
-            "  ${{ env.RUSTFLAGS }}",
-            "__1",
-            "CC=clang-15",
-            "CFLAGS=-flto=thin --sysroot=/sysroot",
-            "__0",
-          ].join("\n"),
+          ...sysRootStep,
         },
         {
           name: "Log versions",
@@ -455,7 +483,9 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "github.ref == 'refs/heads/main'",
           ].join("\n"),
-          env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
+          env: {
+            CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
+          },
           shell: "bash",
           run:
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
@@ -472,7 +502,9 @@ const ci = {
           name: "Test fastci",
           if: "(matrix.job == 'test' && matrix.profile == 'fastci')",
           run: "cargo test --locked",
-          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+          env: {
+            CARGO_PROFILE_DEV_DEBUG: 0,
+          },
         },
         {
           name: "Test release",
@@ -492,7 +524,9 @@ const ci = {
             "matrix.profile == 'release' && startsWith(github.ref, 'refs/tags/')",
           shell: "bash",
           run: 'target/release/deno eval "console.log(1+2)" | grep 3',
-          env: { NO_COLOR: 1 },
+          env: {
+            NO_COLOR: 1,
+          },
         },
         {
           // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
@@ -515,7 +549,9 @@ const ci = {
             "matrix.profile == 'debug' &&",
             "github.ref == 'refs/heads/main'",
           ].join("\n"),
-          env: { DENO_BIN: "./target/debug/deno" },
+          env: {
+            DENO_BIN: "./target/debug/deno",
+          },
           run: [
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "        --allow-write --unstable                         \\",
@@ -533,7 +569,9 @@ const ci = {
             "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&",
             "matrix.profile == 'release' && !startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
-          env: { DENO_BIN: "./target/release/deno" },
+          env: {
+            DENO_BIN: "./target/release/deno",
+          },
           run: [
             "deno run --allow-env --allow-net --allow-read --allow-run \\",
             "         --allow-write --unstable                         \\",
@@ -598,7 +636,9 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
-          env: { DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}" },
+          env: {
+            DENOBOT_PAT: "${{ secrets.DENOBOT_PAT }}",
+          },
           run: [
             "git clone --depth 1 --branch gh-pages                             \\",
             "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
@@ -625,7 +665,10 @@ const ci = {
         {
           name: "Worker info",
           if: "matrix.job == 'bench'",
-          run: ["cat /proc/cpuinfo", "cat /proc/meminfo"].join("\n"),
+          run: [
+            "cat /proc/cpuinfo",
+            "cat /proc/meminfo",
+          ].join("\n"),
         },
         {
           name: "Upload release to dl.deno.land (unix)",
@@ -648,7 +691,9 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
-          env: { CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe" },
+          env: {
+            CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
+          },
           shell: "bash",
           run:
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
@@ -676,7 +721,9 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
-          env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           with: {
             files: [
               "target/release/deno-x86_64-pc-windows-msvc.zip",
