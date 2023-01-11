@@ -2,7 +2,6 @@
 #![allow(clippy::all)]
 #![allow(clippy::undocumented_unsafe_blocks)]
 
-use napi_sys::Status::napi_ok;
 use std::ffi::c_void;
 
 use napi_sys::*;
@@ -21,32 +20,35 @@ pub mod strings;
 pub mod typedarray;
 
 #[macro_export]
-macro_rules! get_callback_info {
+macro_rules! assert_napi_ok {
+  ($call: expr) => {{
+    assert_eq!(unsafe { $call }, napi_sys::Status::napi_ok);
+  }};
+}
+
+#[macro_export]
+macro_rules! napi_get_callback_info {
   ($env: expr, $callback_info: expr, $size: literal) => {{
     let mut args = [std::ptr::null_mut(); $size];
     let mut argc = $size;
     let mut this = std::ptr::null_mut();
-    unsafe {
-      assert!(
-        napi_get_cb_info(
-          $env,
-          $callback_info,
-          &mut argc,
-          args.as_mut_ptr(),
-          &mut this,
-          std::ptr::null_mut(),
-        ) == napi_ok,
-      )
-    };
+    crate::assert_napi_ok!(napi_get_cb_info(
+      $env,
+      $callback_info,
+      &mut argc,
+      args.as_mut_ptr(),
+      &mut this,
+      std::ptr::null_mut(),
+    ));
     (args, argc, this)
   }};
 }
 
 #[macro_export]
-macro_rules! new_property {
+macro_rules! napi_new_property {
   ($env: expr, $name: expr, $value: expr) => {
     napi_property_descriptor {
-      utf8name: $name.as_ptr() as *const std::os::raw::c_char,
+      utf8name: concat!($name, "\0").as_ptr() as *const std::os::raw::c_char,
       name: std::ptr::null_mut(),
       method: Some($value),
       getter: None,
@@ -70,7 +72,7 @@ extern "C" fn install_cleanup_hook(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (_args, argc, _) = get_callback_info!(env, info, 1);
+  let (_args, argc, _) = napi_get_callback_info!(env, info, 1);
   assert_eq!(argc, 0);
 
   unsafe {
@@ -88,15 +90,18 @@ extern "C" fn install_cleanup_hook(
 }
 
 pub fn init_cleanup_hook(env: napi_env, exports: napi_value) {
-  let properties = &[new_property!(
+  let properties = &[napi_new_property!(
     env,
-    "installCleanupHook\0",
+    "installCleanupHook",
     install_cleanup_hook
   )];
 
-  unsafe {
-    napi_define_properties(env, exports, properties.len(), properties.as_ptr())
-  };
+  assert_napi_ok!(napi_define_properties(
+    env,
+    exports,
+    properties.len(),
+    properties.as_ptr()
+  ));
 }
 
 #[no_mangle]
