@@ -137,7 +137,7 @@ function cancelEarlyIfDraftPr(
   ];
 }
 
-function cancelTestReleaseJobsIfPR(
+function skipJobsIfPrAndMarkedSkip(
   steps: Record<string, unknown>[],
 ): Record<string, unknown>[] {
   // GitHub does not make skipping a specific matrix element easy
@@ -146,7 +146,7 @@ function cancelTestReleaseJobsIfPR(
   return steps.map((s) =>
     skipForCondition(
       s,
-      "!(github.event_name == 'pull_request' && matrix.job == 'test' && matrix.profile == 'release')",
+      "!(github.event_name == 'pull_request' && matrix.skip_pr)",
     )
   );
 }
@@ -205,6 +205,7 @@ const ci = {
               os: Runners.macos,
               job: "test",
               profile: "release",
+              skip_pr: true,
             },
             {
               os: Runners.windows,
@@ -215,6 +216,7 @@ const ci = {
               os: Runners.windows,
               job: "test",
               profile: "release",
+              skip_pr: true,
             },
             {
               os: Runners.linux,
@@ -253,7 +255,7 @@ const ci = {
         CARGO_TERM_COLOR: "always",
         RUST_BACKTRACE: "full",
       },
-      steps: cancelTestReleaseJobsIfPR([
+      steps: skipJobsIfPrAndMarkedSkip([
         {
           name: "Configure git",
           run: [
