@@ -362,23 +362,6 @@ const ci = {
             },
           },
           {
-            // In main branch, always creates fresh cache
-            name: "Cache build output (main)",
-            uses: "actions/cache/save@v3",
-            if:
-              "(matrix.profile == 'release' || matrix.profile == 'fastci') && github.ref == 'refs/heads/main'",
-            with: {
-              path: [
-                "./target",
-                "!./target/*/gn_out",
-                "!./target/*/*.zip",
-                "!./target/*/*.tar.gz",
-              ].join("\n"),
-              key:
-                "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}",
-            },
-          },
-          {
             // Restore cache from the latest 'main' branch build.
             name: "Cache build output (PR)",
             uses: "actions/cache/restore@v3",
@@ -788,6 +771,23 @@ const ci = {
               ].join("\n"),
               body_path: "target/release/release-notes.md",
               draft: true,
+            },
+          },
+          {
+            // In main branch, always creates fresh cache
+            name: "Cache build output (main)",
+            uses: "actions/cache/save@v3",
+            if:
+              "(matrix.profile == 'release' || matrix.profile == 'fastci') && github.ref == 'refs/heads/main'",
+            with: {
+              path: [
+                "./target",
+                "!./target/*/gn_out",
+                "!./target/*/*.zip",
+                "!./target/*/*.tar.gz",
+              ].join("\n"),
+              key:
+                "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}",
             },
           },
         ]),
