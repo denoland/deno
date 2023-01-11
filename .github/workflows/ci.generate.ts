@@ -98,7 +98,7 @@ const installPythonSteps = [{
 const installNodeStep = {
   name: "Install Node",
   uses: "actions/setup-node@v3",
-  with: { "node-version": 17 },
+  with: { "node-version": 18 },
 };
 const installDenoStep = {
   name: "Install Deno",
