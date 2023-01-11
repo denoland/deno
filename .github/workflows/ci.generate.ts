@@ -759,7 +759,6 @@ const ci = {
             '  -H "X-GitHub-Api-Version: 2022-11-28" \\',
             '  -H "Accept: application/vnd.github+json" \\',
             "  $URL",
-            '  "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/${{ github.run_id }}/cancel"',
           ].join("\n"),
         },
       ],
