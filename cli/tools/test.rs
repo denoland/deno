@@ -46,6 +46,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -957,7 +958,6 @@ pub async fn check_specifiers(
       lib,
       PermissionsContainer::new(Permissions::allow_all()),
       PermissionsContainer::new(permissions.clone()),
-      false,
     )
     .await?;
   }
@@ -979,7 +979,6 @@ pub async fn check_specifiers(
     lib,
     PermissionsContainer::allow_all(),
     PermissionsContainer::new(permissions),
-    true,
   )
   .await?;
 
@@ -1355,12 +1354,14 @@ pub async fn run_tests_with_watch(
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
   let test_options = &test_options;
 
+  let ps = RefCell::new(ps);
+
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let ps = ps.clone();
+    let ps = ps.borrow().clone();
 
     async move {
       let test_modules = if test_options.doc {
@@ -1477,7 +1478,8 @@ pub async fn run_tests_with_watch(
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
     let permissions = permissions.clone();
-    let ps = ps.clone();
+    ps.borrow_mut().reset_for_file_watcher();
+    let ps = ps.borrow().clone();
     let test_options = test_options.clone();
 
     async move {
@@ -1517,12 +1519,13 @@ pub async fn run_tests_with_watch(
     }
   };
 
+  let clear_screen = !ps.borrow().options.no_clear_screen();
   file_watcher::watch_func(
     resolver,
     operation,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),
-      clear_screen: !ps.options.no_clear_screen(),
+      clear_screen,
     },
   )
   .await?;
@@ -1600,16 +1603,18 @@ impl TestEventSender {
         | TestEvent::StepResult(_, _, _)
         | TestEvent::UncaughtError(_, _)
     ) {
-      self.flush_stdout_and_stderr();
+      self.flush_stdout_and_stderr()?;
     }
 
     self.sender.send(message)?;
     Ok(())
   }
 
-  fn flush_stdout_and_stderr(&mut self) {
-    self.stdout_writer.flush();
-    self.stderr_writer.flush();
+  fn flush_stdout_and_stderr(&mut self) -> Result<(), AnyError> {
+    self.stdout_writer.flush()?;
+    self.stderr_writer.flush()?;
+
+    Ok(())
   }
 }
 
@@ -1640,7 +1645,7 @@ impl TestOutputPipe {
     Self { writer, state }
   }
 
-  pub fn flush(&mut self) {
+  pub fn flush(&mut self) -> Result<(), AnyError> {
     // We want to wake up the other thread and have it respond back
     // that it's done clearing out its pipe before returning.
     let (sender, receiver) = std::sync::mpsc::channel();
@@ -1650,10 +1655,12 @@ impl TestOutputPipe {
     // Bit of a hack to send a zero width space in order to wake
     // the thread up. It seems that sending zero bytes here does
     // not work on windows.
-    self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes()).unwrap();
-    self.writer.flush().unwrap();
+    self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes())?;
+    self.writer.flush()?;
     // ignore the error as it might have been picked up and closed
     let _ = receiver.recv();
+
+    Ok(())
   }
 
   pub fn as_file(&self) -> std::fs::File {
