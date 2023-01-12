@@ -241,6 +241,9 @@ const ci = {
               job: "test",
               profile: "release",
               use_sysroot: true,
+              // TODO(ry): Because CI is so slow on for OSX and Windows, we
+              // currently run the Web Platform tests only on Linux.
+              wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
             },
             {
               os: Runners.linux,
@@ -253,6 +256,8 @@ const ci = {
               job: "test",
               profile: "debug",
               use_sysroot: true,
+              wpt:
+                "${{ github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}",
             },
             {
               os: Runners.linux,
@@ -296,7 +301,7 @@ const ci = {
           submoduleStep("./test_util/std"),
           {
             ...submoduleStep("./test_util/wpt"),
-            if: "matrix.job == 'test'",
+            if: "matrix.wpt",
           },
           {
             ...submoduleStep("./third_party"),
@@ -620,20 +625,14 @@ const ci = {
             run: 'sudo chroot /sysroot "$(pwd)/target/release/deno" --version',
           },
           {
-            // TODO(ry): Because CI is so slow on for OSX and Windows, we currently
-            //           run the Web Platform tests only on Linux.
             name: "Configure hosts file for WPT",
-            if: "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test'",
+            if: "matrix.wpt",
             run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
             "working-directory": "test_util/wpt/",
           },
           {
             name: "Run web platform tests (debug)",
-            if: [
-              "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&",
-              "matrix.profile == 'debug' &&",
-              "github.ref == 'refs/heads/main'",
-            ].join("\n"),
+            if: "matrix.wpt && matrix.profile == 'debug'",
             env: {
               DENO_BIN: "./target/debug/deno",
             },
@@ -650,10 +649,7 @@ const ci = {
           },
           {
             name: "Run web platform tests (release)",
-            if: [
-              "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&",
-              "matrix.profile == 'release' && !startsWith(github.ref, 'refs/tags/')",
-            ].join("\n"),
+            if: "matrix.wpt && matrix.profile == 'release'",
             env: {
               DENO_BIN: "./target/release/deno",
             },
@@ -675,8 +671,8 @@ const ci = {
             name: "Upload wpt results to dl.deno.land",
             "continue-on-error": true,
             if: [
+              "matrix.wpt &&",
               "runner.os == 'Linux' &&",
-              "matrix.job == 'test' &&",
               "matrix.profile == 'release' &&",
               "github.repository == 'denoland/deno' &&",
               "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
@@ -693,8 +689,8 @@ const ci = {
             name: "Upload wpt results to wpt.fyi",
             "continue-on-error": true,
             if: [
+              "matrix.wpt &&",
               "runner.os == 'Linux' &&",
-              "matrix.job == 'test' &&",
               "matrix.profile == 'release' &&",
               "github.repository == 'denoland/deno' &&",
               "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
