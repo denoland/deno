@@ -1048,6 +1048,108 @@
     });
   }
 
+  const setlikeInner = Symbol("[[set]]");
+
+  // Ref: https://webidl.spec.whatwg.org/#es-setlike
+  function setlike(obj, objPrototype, readonly) {
+    ObjectDefineProperties(obj, {
+      size: {
+        configurable: true,
+        enumerable: true,
+        get() {
+          assertBranded(this, objPrototype);
+          return obj[setlikeInner].size;
+        },
+      },
+      [SymbolIterator]: {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value() {
+          assertBranded(this, objPrototype);
+          return obj[setlikeInner][SymbolIterator]();
+        },
+      },
+      entries: {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value() {
+          assertBranded(this, objPrototype);
+          return obj[setlikeInner].entries();
+        },
+      },
+      keys: {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value() {
+          assertBranded(this, objPrototype);
+          return obj[setlikeInner].keys();
+        },
+      },
+      values: {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value() {
+          assertBranded(this, objPrototype);
+          return obj[setlikeInner].values();
+        },
+      },
+      forEach: {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value(callbackfn, thisArg) {
+          assertBranded(this, objPrototype);
+          return obj[setlikeInner].forEach(callbackfn, thisArg);
+        },
+      },
+      has: {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value(value) {
+          assertBranded(this, objPrototype);
+          return obj[setlikeInner].has(value);
+        },
+      },
+    });
+
+    if (!readonly) {
+      ObjectDefineProperties(obj, {
+        add: {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value(value) {
+            assertBranded(this, objPrototype);
+            return obj[setlikeInner].add(value);
+          },
+        },
+        delete: {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value(value) {
+            assertBranded(this, objPrototype);
+            return obj[setlikeInner].delete(value);
+          },
+        },
+        clear: {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value() {
+            assertBranded(this, objPrototype);
+            return obj[setlikeInner].clear();
+          },
+        },
+      });
+    }
+  }
+
   window.__bootstrap ??= {};
   window.__bootstrap.webidl = {
     type,
@@ -1068,5 +1170,7 @@
     illegalConstructor,
     mixinPairIterable,
     configurePrototype,
+    setlike,
+    setlikeInner,
   };
 })(this);
