@@ -61,6 +61,14 @@
     ReflectOwnKeys,
     RegExpPrototypeTest,
     Set,
+    SetPrototypeEntries,
+    SetPrototypeForEach,
+    SetPrototypeKeys,
+    SetPrototypeValues,
+    SetPrototypeHas,
+    SetPrototypeClear,
+    SetPrototypeDelete,
+    SetPrototypeAdd,
     // TODO(lucacasonato): add SharedArrayBuffer to primordials
     // SharedArrayBuffer,
     String,
@@ -1076,7 +1084,7 @@
         writable: true,
         value() {
           assertBranded(this, objPrototype);
-          return obj[setlikeInner].entries();
+          return SetPrototypeEntries(obj[setlikeInner]);
         },
       },
       keys: {
@@ -1085,7 +1093,7 @@
         writable: true,
         value() {
           assertBranded(this, objPrototype);
-          return obj[setlikeInner].keys();
+          return SetPrototypeKeys(obj[setlikeInner]);
         },
       },
       values: {
@@ -1094,7 +1102,7 @@
         writable: true,
         value() {
           assertBranded(this, objPrototype);
-          return obj[setlikeInner].values();
+          return SetPrototypeValues(obj[setlikeInner]);
         },
       },
       forEach: {
@@ -1103,7 +1111,7 @@
         writable: true,
         value(callbackfn, thisArg) {
           assertBranded(this, objPrototype);
-          return obj[setlikeInner].forEach(callbackfn, thisArg);
+          return SetPrototypeForEach(obj[setlikeInner], callbackfn, thisArg);
         },
       },
       has: {
@@ -1112,7 +1120,7 @@
         writable: true,
         value(value) {
           assertBranded(this, objPrototype);
-          return obj[setlikeInner].has(value);
+          return SetPrototypeHas(obj[setlikeInner], value);
         },
       },
     });
@@ -1125,7 +1133,7 @@
           writable: true,
           value(value) {
             assertBranded(this, objPrototype);
-            return obj[setlikeInner].add(value);
+            return SetPrototypeAdd(obj[setlikeInner], value);
           },
         },
         delete: {
@@ -1134,7 +1142,7 @@
           writable: true,
           value(value) {
             assertBranded(this, objPrototype);
-            return obj[setlikeInner].delete(value);
+            return SetPrototypeDelete(obj[setlikeInner], value);
           },
         },
         clear: {
@@ -1143,7 +1151,7 @@
           writable: true,
           value() {
             assertBranded(this, objPrototype);
-            return obj[setlikeInner].clear();
+            return SetPrototypeClear(obj[setlikeInner]);
           },
         },
       });
