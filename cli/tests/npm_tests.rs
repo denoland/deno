@@ -7,11 +7,11 @@ mod npm {
   use pretty_assertions::assert_eq;
   use std::process::Stdio;
   use test_util as util;
-  use util::wildcard_match;
   use util::assert_contains;
   use util::env_vars_for_npm_tests;
   use util::env_vars_for_npm_tests_no_sync_download;
   use util::http_server;
+  use util::wildcard_match;
 
   // NOTE: See how to make test npm packages at ./testdata/npm/README.md
 
@@ -1397,7 +1397,10 @@ mod npm {
     let expected_output =
       std::fs::read_to_string(test_folder_path.join("main.out")).unwrap();
 
-    assert!(wildcard_match(&expected_output, &String::from_utf8(output.stderr).unwrap()));
+    assert!(wildcard_match(
+      &expected_output,
+      &String::from_utf8(output.stderr).unwrap()
+    ));
 
     assert!(temp_dir.path().join("deno.lock").exists());
     let grandchild_path = deno_dir
@@ -1423,7 +1426,10 @@ mod npm {
       .spawn()
       .unwrap();
     let output = deno.wait_with_output().unwrap();
-    assert!(wildcard_match("Config file found at '[WILDCARD]/deno.json'\n1\n2\n", &String::from_utf8(output.stderr).unwrap()));
+    assert!(wildcard_match(
+      "Config file found at '[WILDCARD]/deno.json'\n1\n2\n",
+      &String::from_utf8(output.stderr).unwrap()
+    ));
     assert!(output.status.success());
 
     let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -1438,7 +1444,10 @@ mod npm {
       .spawn()
       .unwrap();
     let output = deno.wait_with_output().unwrap();
-    assert!(wildcard_match(&expected_output, &String::from_utf8(output.stderr).unwrap()));
+    assert!(wildcard_match(
+      &expected_output,
+      &String::from_utf8(output.stderr).unwrap()
+    ));
     assert!(output.status.success());
 
     // now run with local node modules
@@ -1454,7 +1463,10 @@ mod npm {
       .spawn()
       .unwrap();
     let output = deno.wait_with_output().unwrap();
-    assert!(wildcard_match("Config file found at '[WILDCARD]/deno.json'\n1\n2\n", &String::from_utf8(output.stderr).unwrap()));
+    assert!(wildcard_match(
+      "Config file found at '[WILDCARD]/deno.json'\n1\n2\n",
+      &String::from_utf8(output.stderr).unwrap()
+    ));
     assert!(output.status.success());
 
     let deno_folder = temp_dir.path().join("node_modules").join(".deno");
@@ -1479,7 +1491,10 @@ mod npm {
       .unwrap();
     let output = deno.wait_with_output().unwrap();
     assert!(output.status.success());
-    assert!(wildcard_match("Config file found at '[WILDCARD]/deno.json'\n1\n2\n", &String::from_utf8(output.stderr).unwrap()));
+    assert!(wildcard_match(
+      "Config file found at '[WILDCARD]/deno.json'\n1\n2\n",
+      &String::from_utf8(output.stderr).unwrap()
+    ));
 
     // now ensure it works with reloading
     let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -1496,7 +1511,10 @@ mod npm {
       .unwrap();
     let output = deno.wait_with_output().unwrap();
     assert!(output.status.success());
-    assert!(wildcard_match(&expected_output, &String::from_utf8(output.stderr).unwrap()));
+    assert!(wildcard_match(
+      &expected_output,
+      &String::from_utf8(output.stderr).unwrap()
+    ));
 
     // now ensure it works with reloading and no lockfile
     let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -1513,7 +1531,10 @@ mod npm {
       .spawn()
       .unwrap();
     let output = deno.wait_with_output().unwrap();
-    assert!(wildcard_match(&expected_output, &String::from_utf8(output.stderr).unwrap()));
+    assert!(wildcard_match(
+      &expected_output,
+      &String::from_utf8(output.stderr).unwrap()
+    ));
     assert!(output.status.success());
   }
 
