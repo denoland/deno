@@ -323,7 +323,11 @@ const ci = {
             ...installDenoStep,
           },
           ...installPythonSteps,
-          installNodeStep,
+          {
+            // only necessary for benchmarks
+            if: "matrix.job == 'bench'",
+            ...installNodeStep,
+          },
           authenticateWithGoogleCloud,
           {
             name: "Setup gcloud (unix)",
@@ -377,14 +381,18 @@ const ci = {
             name: "Log versions",
             shell: "bash",
             run: [
-              "node -v",
               "python --version",
               "rustc --version",
               "cargo --version",
-              "# Deno is installed when linting.",
+              // Deno is installed when linting.
               'if [ "${{ matrix.job }}" == "lint" ]',
               "then",
               "  deno --version",
+              "fi",
+              // Node is installed for benchmarks.
+              'if [ "${{ matrix.job }}" == "bench" ]',
+              "then",
+              "  node -v",
               "fi",
             ].join("\n"),
           },

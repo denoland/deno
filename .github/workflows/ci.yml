@@ -120,11 +120,11 @@ jobs:
             Where-Object { Test-Path "$_\python.exe" } |
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
-      - name: Install Node
+      - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''bench''))'
+        name: Install Node
         uses: actions/setup-node@v3
         with:
           node-version: 18
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
       - name: Authenticate with Google Cloud
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.profile == 'release' &&
@@ -234,14 +234,16 @@ jobs:
       - name: Log versions
         shell: bash
         run: |-
-          node -v
           python --version
           rustc --version
           cargo --version
-          # Deno is installed when linting.
           if [ "${{ matrix.job }}" == "lint" ]
           then
             deno --version
+          fi
+          if [ "${{ matrix.job }}" == "bench" ]
+          then
+            node -v
           fi
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
       - name: Cache Cargo home
