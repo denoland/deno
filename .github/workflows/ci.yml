@@ -34,10 +34,10 @@ jobs:
             job: test
             profile: release
             skip_pr: true
-          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2019-xl'' || ''windows-2019'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             job: test
             profile: fastci
-          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2019-xl'' || ''windows-2019'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             job: test
             profile: release
             skip_pr: true
@@ -125,6 +125,19 @@ jobs:
         with:
           node-version: 18
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
+      - name: Authenticate with Google Cloud
+        if: |-
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.profile == 'release' &&
+          matrix.job == 'test' &&
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' ||
+          startsWith(github.ref, 'refs/tags/'))))
+        uses: google-github-actions/auth@v1
+        with:
+          project_id: denoland
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
       - name: Setup gcloud (unix)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (runner.os != 'Windows' &&
@@ -133,11 +146,9 @@ jobs:
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/'))))
-        uses: google-github-actions/setup-gcloud@v0
+        uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: denoland
-          service_account_key: '${{ secrets.GCP_SA_KEY }}'
-          export_default_credentials: true
       - name: Setup gcloud (windows)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (runner.os == 'Windows' &&
@@ -146,13 +157,11 @@ jobs:
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/'))))
-        uses: google-github-actions/setup-gcloud@v0
+        uses: google-github-actions/setup-gcloud@v1
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         with:
           project_id: denoland
-          service_account_key: '${{ secrets.GCP_SA_KEY }}'
-          export_default_credentials: true
       - name: Configure canary build
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.job == 'test' &&
@@ -543,12 +552,23 @@ jobs:
       - build
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     steps:
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v0
+      - name: Authenticate with Google Cloud
+        if: |-
+          matrix.profile == 'release' &&
+          matrix.job == 'test' &&
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' ||
+          startsWith(github.ref, 'refs/tags/'))
+        uses: google-github-actions/auth@v1
         with:
           project_id: denoland
-          service_account_key: '${{ secrets.GCP_SA_KEY }}'
-          export_default_credentials: true
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: denoland
       - name: Upload canary version file to dl.deno.land
         run: |-
           echo ${{ github.sha }} > canary-latest.txt
