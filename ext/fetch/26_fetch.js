@@ -259,6 +259,7 @@
           }
         }
         WeakMapPrototypeDelete(requestBodyReaders, req);
+        reader.releaseLock();
         core.tryClose(requestBodyRid);
       })();
     }
