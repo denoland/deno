@@ -366,13 +366,17 @@ jobs:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         shell: bash
         run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/'
+      - name: Test debug (doc)
+        if: |-
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (startsWith(matrix.os, 'ubuntu') &&
+          matrix.job == 'test' && matrix.profile == 'debug' &&
+          !startsWith(github.ref, 'refs/tags/')))
+        run: cargo test --locked --doc
       - name: Test debug
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.job == 'test' && matrix.profile == 'debug' &&
           !startsWith(github.ref, 'refs/tags/')))
-        run: |-
-          cargo test --locked --doc
-          cargo test --locked
+        run: cargo test --locked
       - name: Test fastci
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && ((matrix.job == ''test'' && matrix.profile == ''fastci'')))'
         run: cargo test --locked

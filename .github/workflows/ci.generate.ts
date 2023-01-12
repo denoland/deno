@@ -587,14 +587,22 @@ const ci = {
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
           },
           {
+            name: "Test debug (doc)",
+            if: [
+              // only bother running on linux CI
+              "startsWith(matrix.os, 'ubuntu') &&",
+              "matrix.job == 'test' && matrix.profile == 'debug' &&",
+              "!startsWith(github.ref, 'refs/tags/')",
+            ].join("\n"),
+            run: "cargo test --locked --doc",
+          },
+          {
             name: "Test debug",
             if: [
               "matrix.job == 'test' && matrix.profile == 'debug' &&",
               "!startsWith(github.ref, 'refs/tags/')",
             ].join("\n"),
-            run: ["cargo test --locked --doc", "cargo test --locked"].join(
-              "\n",
-            ),
+            run: "cargo test --locked",
           },
           {
             name: "Test fastci",
