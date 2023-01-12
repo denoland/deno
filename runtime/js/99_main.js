@@ -525,7 +525,7 @@ delete Intl.v8BreakIterator;
 
     // Setup `Deno` global - we're actually overriding already existing global
     // `Deno` with `Deno` namespace from "./deno.ts".
-    ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+    ObjectDefineProperty(globalThis, "Deno", finalDenoNs);
     ObjectFreeze(globalThis.Deno.core);
 
     util.log("args", runtimeOptions.args);
@@ -662,7 +662,7 @@ delete Intl.v8BreakIterator;
     });
     // Setup `Deno` global - we're actually overriding already
     // existing global `Deno` with `Deno` namespace from "./deno.ts".
-    ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+    ObjectDefineProperty(globalThis, "Deno", finalDenoNs);
     ObjectFreeze(globalThis.Deno.core);
   }
 
