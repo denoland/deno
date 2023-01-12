@@ -1907,7 +1907,7 @@ Deno.test(
         });
       },
       DOMException,
-      "TimeoutError",
+      "Signal timed out.",
     );
   },
 );
