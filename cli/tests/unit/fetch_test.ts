@@ -1887,3 +1887,27 @@ Deno.test(
     await server;
   },
 );
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchRequestBodyEmptyStream() {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array([]));
+        controller.close();
+      },
+    });
+
+    await assertRejects(
+      async () => {
+        await fetch("http://localhost:4545/echo_server", {
+          body,
+          method: "POST",
+          signal: AbortSignal.timeout(0),
+        });
+      },
+      DOMException,
+      "TimeoutError",
+    );
+  },
+);
