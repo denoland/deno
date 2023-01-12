@@ -263,7 +263,7 @@ pub async fn upgrade(
     ), current_exe_path.display());
   }
 
-  let client = ps.http_client.clone();
+  let client = &ps.http_client;
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
@@ -298,10 +298,10 @@ pub async fn upgrade(
     None => {
       let latest_version = if upgrade_flags.canary {
         log::info!("Looking up latest canary version");
-        get_latest_canary_version(&client).await?
+        get_latest_canary_version(client).await?
       } else {
         log::info!("Looking up latest version");
-        get_latest_release_version(&client).await?
+        get_latest_release_version(client).await?
       };
 
       let current_is_most_recent = if upgrade_flags.canary {
@@ -351,7 +351,7 @@ pub async fn upgrade(
     )
   };
 
-  let archive_data = download_package(&client, &download_url)
+  let archive_data = download_package(client, &download_url)
     .await
     .with_context(|| format!("Failed downloading {}", download_url))?;
 

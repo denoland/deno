@@ -39,7 +39,7 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags.clone()).await?;
+  let ps = ProcState::build(flags).await?;
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   let deno_dir = &ps.dir;
 
@@ -72,7 +72,7 @@ pub async fn compile(
   let final_bin = create_standalone_binary(
     original_binary,
     eszip,
-    module_specifier.clone(),
+    module_specifier,
     &compile_flags,
     ps,
   )
