@@ -81,7 +81,7 @@
     return writeFileSync(path, encoder.encode(data), options);
   }
 
-  async function writeTextFile(
+  function writeTextFile(
     path,
     data,
     options = {},
