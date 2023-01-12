@@ -192,7 +192,7 @@ const ci = {
   },
   concurrency: {
     group:
-      "${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, 'test-flaky-ci') && github.head_ref || github.run_id }}",
+      "${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, 'ci-test-flaky') && github.head_ref || github.run_id }}",
     "cancel-in-progress": true,
   },
   jobs: {
@@ -243,6 +243,8 @@ const ci = {
               job: "bench",
               profile: "release",
               use_sysroot: true,
+              skip_pr:
+                "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
             },
             {
               os: Runners.linux,
