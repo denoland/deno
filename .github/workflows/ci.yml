@@ -50,7 +50,7 @@ jobs:
             job: bench
             profile: release
             use_sysroot: true
-            skip_pr: '{{ contains(github.event.pull_request.labels.*.name, ''ci-bench'') }}'
+            skip_pr: '${{ contains(github.event.pull_request.labels.*.name, ''ci-bench'') }}'
           - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}'
             job: test
             profile: debug
