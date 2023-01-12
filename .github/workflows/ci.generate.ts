@@ -244,7 +244,7 @@ const ci = {
               profile: "release",
               use_sysroot: true,
               skip_pr:
-                "{{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
+                "{{ contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
             },
             {
               os: Runners.linux,
