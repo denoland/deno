@@ -515,14 +515,17 @@ impl ModuleRegistry {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
-    let fetch_result = self
-      .file_fetcher
-      .fetch_with_accept(
-        specifier,
-        PermissionsContainer::allow_all(),
-        Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
-      )
-      .await;
+    let fetch_result = async {
+      tokio::time::timeout(std::time::Duration::from_secs(20), self
+        .file_fetcher
+        .fetch_with_accept(
+          specifier,
+          PermissionsContainer::allow_all(),
+          Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
+        ))
+        .await?
+    }.await;
+
     // if there is an error fetching, we will cache an empty file, so that
     // subsequent requests they are just an empty doc which will error without
     // needing to connect to the remote URL. We will cache it for 1 week.
