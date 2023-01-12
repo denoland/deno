@@ -23,12 +23,14 @@ use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
@@ -136,7 +138,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     specifier: &str,
     referrer: &str,
-    _is_main: bool,
+    _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
     // Try to follow redirects when resolving.
     let referrer = match self.eszip.get_module(referrer) {
@@ -161,14 +163,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let module_specifier = module_specifier.clone();
-
-    let is_data_uri = get_source_from_data_url(&module_specifier).ok();
+    let is_data_uri = get_source_from_data_url(module_specifier).ok();
     let module = self
       .eszip
       .get_module(module_specifier.as_str())
       .ok_or_else(|| type_error("Module not found"));
 
+    let module_specifier = module_specifier.clone();
     async move {
       if let Some((source, _)) = is_data_uri {
         return Ok(deno_core::ModuleSource {
@@ -227,7 +228,9 @@ pub async fn run(
   let flags = metadata_to_flags(&metadata);
   let main_module = &metadata.entrypoint;
   let ps = ProcState::build(flags).await?;
-  let permissions = Permissions::from_options(&metadata.permissions)?;
+  let permissions = PermissionsContainer::new(Permissions::from_options(
+    &metadata.permissions,
+  )?);
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader {
@@ -289,7 +292,7 @@ pub async fn run(
       user_agent: version::get_user_agent(),
       inspect: ps.options.is_inspecting(),
     },
-    extensions: ops::cli_exts(ps.clone()),
+    extensions: ops::cli_exts(ps),
     extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: metadata

@@ -275,11 +275,7 @@ impl NpmResolutionSnapshot {
           id: package_id.clone(),
           copy_index: copy_index_resolver.resolve(&package_id),
           // temporary dummy value
-          dist: NpmPackageVersionDistInfo {
-            tarball: "foobar".to_string(),
-            shasum: "foobar".to_string(),
-            integrity: Some("foobar".to_string()),
-          },
+          dist: NpmPackageVersionDistInfo::default(),
           dependencies,
         };
 
