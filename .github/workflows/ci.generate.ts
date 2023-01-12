@@ -587,16 +587,6 @@ const ci = {
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
           },
           {
-            name: "Test debug (doc)",
-            if: [
-              // only bother running on linux CI
-              "startsWith(matrix.os, 'ubuntu') &&",
-              "matrix.job == 'test' && matrix.profile == 'debug' &&",
-              "!startsWith(github.ref, 'refs/tags/')",
-            ].join("\n"),
-            run: "cargo test --locked --doc",
-          },
-          {
             name: "Test debug",
             if: [
               "matrix.job == 'test' && matrix.profile == 'debug' &&",
@@ -606,8 +596,13 @@ const ci = {
           },
           {
             name: "Test fastci",
-            if: "(matrix.job == 'test' && matrix.profile == 'fastci')",
-            run: "cargo test --locked",
+            if: "matrix.job == 'test' && matrix.profile == 'fastci'",
+            run: [
+              // Run unit then integration tests. Skip doc tests here
+              // since they are sometimes very slow on Mac.
+              "cargo test --locked --lib",
+              "cargo test --locked --tests '*'",
+            ].join("\n"),
             env: {
               CARGO_PROFILE_DEV_DEBUG: 0,
             },
