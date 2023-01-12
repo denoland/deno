@@ -3,9 +3,10 @@
 // Node.js v12.x to run actions, so this is Node code and not Deno code.
 
 const { spawn } = require("child_process");
+const fs = require("fs");
+const { utimes, mkdir, readFile, writeFile } = require("fs/promises");
 const { dirname, resolve } = require("path");
 const { StringDecoder } = require("string_decoder");
-const { utimes, mkdir, readFile, writeFile } = require("fs/promises");
 
 process.on("unhandledRejection", abort);
 main().catch(abort);
