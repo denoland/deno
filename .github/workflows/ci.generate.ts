@@ -601,7 +601,7 @@ const ci = {
               // Run unit then integration tests. Skip doc tests here
               // since they are sometimes very slow on Mac.
               "cargo test --locked --lib",
-              "cargo test --locked --tests '*'",
+              "cargo test --locked --test '*'",
             ].join("\n"),
             env: {
               CARGO_PROFILE_DEV_DEBUG: 0,
