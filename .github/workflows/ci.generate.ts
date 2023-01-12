@@ -298,10 +298,7 @@ const ci = {
           },
         },
         ...cancelEarlyIfDraftPr([
-          {
-            ...submoduleStep("./test_util/std"),
-            if: "matrix.job != 'lint'",
-          },
+          submoduleStep("./test_util/std"),
           {
             ...submoduleStep("./test_util/wpt"),
             if: "matrix.wpt",
