@@ -157,7 +157,7 @@ async function run() {
 
   const results = await runWithTestUtil(false, async () => {
     const results: { test: TestToRun; result: TestResult }[] = [];
-    const cores = Deno.systemCpuInfo().cores ?? 4;
+    const cores = navigator.hardwareConcurrency;
     const inParallel = !(cores === 1 || tests.length === 1);
     const partitionedTests = partitionTests(tests);
 
