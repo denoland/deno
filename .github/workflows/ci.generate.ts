@@ -108,13 +108,6 @@ const installDenoStep = {
 
 const authenticateWithGoogleCloud = {
   name: "Authenticate with Google Cloud",
-  if: [
-    "matrix.profile == 'release' &&",
-    "matrix.job == 'test' &&",
-    "github.repository == 'denoland/deno' &&",
-    "(github.ref == 'refs/heads/main' ||",
-    "startsWith(github.ref, 'refs/tags/'))",
-  ].join("\n"),
   uses: "google-github-actions/auth@v1",
   with: {
     "project_id": "denoland",
@@ -199,7 +192,7 @@ const ci = {
   },
   concurrency: {
     group:
-      "${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, 'test-flaky-ci') && github.head_ref || github.run_id }}",
+      "${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, 'ci-test-flaky') && github.head_ref || github.run_id }}",
     "cancel-in-progress": true,
   },
   jobs: {
@@ -250,6 +243,8 @@ const ci = {
               job: "bench",
               profile: "release",
               use_sysroot: true,
+              skip_pr:
+                "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
             },
             {
               os: Runners.linux,
@@ -335,7 +330,16 @@ const ci = {
             if: "matrix.job == 'bench'",
             ...installNodeStep,
           },
-          authenticateWithGoogleCloud,
+          {
+            if: [
+              "matrix.profile == 'release' &&",
+              "matrix.job == 'test' &&",
+              "github.repository == 'denoland/deno' &&",
+              "(github.ref == 'refs/heads/main' ||",
+              "startsWith(github.ref, 'refs/tags/'))",
+            ].join("\n"),
+            ...authenticateWithGoogleCloud,
+          },
           {
             name: "Setup gcloud (unix)",
             if: [
@@ -355,8 +359,8 @@ const ci = {
             name: "Setup gcloud (windows)",
             if: [
               "runner.os == 'Windows' &&",
-              "matrix.job == 'test' &&",
               "matrix.profile == 'release' &&",
+              "matrix.job == 'test' &&",
               "github.repository == 'denoland/deno' &&",
               "(github.ref == 'refs/heads/main' ||",
               "startsWith(github.ref, 'refs/tags/'))",
