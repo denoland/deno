@@ -1,8 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::Result;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::{collections::HashMap, path::Path, process::Command, time::Duration};
+
+use super::Result;
+
 pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
 // Some of the benchmarks in this file have been renamed. In case the history
 // somehow gets messed up:
@@ -10,7 +12,7 @@ pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
 //   "deno_tcp" was once called "deno"
 //   "deno_http" was once called "deno_net_http"
 
-const DURATION: &str = "20s";
+const DURATION: &str = "10s";
 
 pub fn benchmark(
   target_path: &Path,
@@ -27,7 +29,7 @@ pub fn benchmark(
   let mut res = HashMap::new();
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let http_dir = manifest_dir.join("bench").join("http");
-  for entry in std::fs::read_dir(http_dir.clone())? {
+  for entry in std::fs::read_dir(&http_dir)? {
     let entry = entry?;
     let pathbuf = entry.path();
     let path = pathbuf.to_str().unwrap();
@@ -65,6 +67,9 @@ pub fn benchmark(
       #[cfg(target_arch = "x86_64")]
       let bun_exe = test_util::prebuilt_tool_path("bun-x64");
       #[cfg(target_vendor = "apple")]
+      #[cfg(target_arch = "aarch64")]
+      let bun_exe = test_util::prebuilt_tool_path("bun-aarch64");
+      #[cfg(target_os = "linux")]
       #[cfg(target_arch = "aarch64")]
       let bun_exe = test_util::prebuilt_tool_path("bun-aarch64");
 
@@ -188,8 +193,9 @@ fn server_addr(port: u16) -> String {
 }
 
 fn core_http_json_ops(exe: &str) -> Result<HttpBenchmarkResult> {
+  // let port = get_port();
   println!("http_benchmark testing CORE http_bench_json_ops");
-  run(&[exe], 4544, None, None, None)
+  run(&[exe], 4570, None, None, None)
 }
 
 fn hyper_http(exe: &str) -> Result<HttpBenchmarkResult> {

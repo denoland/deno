@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::Flags;
 use crate::colors;
@@ -6,11 +6,14 @@ use crate::file_fetcher::get_source_from_data_url;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::version;
-use crate::ImportMapResolver;
+use crate::CliResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::io::AllowStdIo;
+use deno_core::futures::AsyncReadExt;
+use deno_core::futures::AsyncSeekExt;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::serde::Deserialize;
@@ -20,12 +23,14 @@ use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
@@ -40,7 +45,6 @@ use std::iter::once;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
@@ -74,9 +78,10 @@ pub async fn extract_standalone(
 ) -> Result<Option<(Metadata, eszip::EszipV2)>, AnyError> {
   let current_exe_path = current_exe()?;
 
-  let file = tokio::fs::File::open(current_exe_path).await?;
+  let file = std::fs::File::open(current_exe_path)?;
 
-  let mut bufreader = tokio::io::BufReader::new(file);
+  let mut bufreader =
+    deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
 
   let trailer_pos = bufreader.seek(SeekFrom::End(-24)).await?;
   let mut trailer = [0; 24];
@@ -125,7 +130,7 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
 
 struct EmbeddedModuleLoader {
   eszip: eszip::EszipV2,
-  maybe_import_map_resolver: Option<ImportMapResolver>,
+  maybe_import_map_resolver: Option<CliResolver>,
 }
 
 impl ModuleLoader for EmbeddedModuleLoader {
@@ -133,7 +138,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     specifier: &str,
     referrer: &str,
-    _is_main: bool,
+    _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
     // Try to follow redirects when resolving.
     let referrer = match self.eszip.get_module(referrer) {
@@ -158,14 +163,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let module_specifier = module_specifier.clone();
-
-    let is_data_uri = get_source_from_data_url(&module_specifier).ok();
+    let is_data_uri = get_source_from_data_url(module_specifier).ok();
     let module = self
       .eszip
       .get_module(module_specifier.as_str())
       .ok_or_else(|| type_error("Module not found"));
 
+    let module_specifier = module_specifier.clone();
     async move {
       if let Some((source, _)) = is_data_uri {
         return Ok(deno_core::ModuleSource {
@@ -224,14 +228,16 @@ pub async fn run(
   let flags = metadata_to_flags(&metadata);
   let main_module = &metadata.entrypoint;
   let ps = ProcState::build(flags).await?;
-  let permissions = Permissions::from_options(&metadata.permissions)?;
+  let permissions = PermissionsContainer::new(Permissions::from_options(
+    &metadata.permissions,
+  )?);
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader {
     eszip,
     maybe_import_map_resolver: metadata.maybe_import_map.map(
       |(base, source)| {
-        ImportMapResolver::new(Arc::new(
+        CliResolver::with_import_map(Arc::new(
           parse_from_json(&base, &source).unwrap().import_map,
         ))
       },
@@ -276,6 +282,7 @@ pub async fn run(
         .unwrap_or(1),
       debug_flag: metadata.log_level.map_or(false, |l| l == Level::Debug),
       enable_testing_features: false,
+      locale: deno_core::v8::icu::get_language_tag(),
       location: metadata.location,
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
@@ -285,7 +292,9 @@ pub async fn run(
       user_agent: version::get_user_agent(),
       inspect: ps.options.is_inspecting(),
     },
-    extensions: ops::cli_exts(ps.clone()),
+    extensions: ops::cli_exts(ps),
+    extensions_with_js: vec![],
+    startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
     root_cert_store: Some(root_cert_store),
@@ -297,6 +306,7 @@ pub async fn run(
     web_worker_pre_execute_module_cb: web_worker_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
+    should_wait_for_inspector_session: false,
     module_loader,
     npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),

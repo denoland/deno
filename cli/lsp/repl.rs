@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 
@@ -74,6 +74,7 @@ impl ReplLanguageServer {
           window: None,
           general: None,
           experimental: None,
+          offset_encoding: None,
         },
         trace: None,
         workspace_folders: None,
@@ -287,6 +288,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     cache: None,
     import_map: None,
     code_lens: Default::default(),
+    inlay_hints: Default::default(),
     internal_debug: false,
     lint: false,
     tls_certificate: None,

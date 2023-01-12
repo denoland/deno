@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   buildMode,
   getPrebuiltToolPath,
@@ -24,7 +24,7 @@ async function dlint() {
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
-    ":!:cli/dts/**",
+    ":!:cli/tsc/dts/**",
     ":!:cli/tests/testdata/encoding/**",
     ":!:cli/tests/testdata/error_syntax.js",
     ":!:cli/tests/testdata/fmt/**",
@@ -43,12 +43,14 @@ async function dlint() {
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
-    const { success } = await Deno.spawn(execPath, {
+    const cmd = new Deno.Command(execPath, {
       args: ["run", "--config=" + configFile, ...chunk],
       stdout: "inherit",
       stderr: "inherit",
     });
-    if (!success) {
+    const { code } = await cmd.output();
+
+    if (code > 0) {
       throw new Error("dlint failed");
     }
   }
@@ -74,12 +76,14 @@ async function dlintPreferPrimordials() {
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
-    const { success } = await Deno.spawn(execPath, {
+    const cmd = new Deno.Command(execPath, {
       args: ["run", "--rule", "prefer-primordials", ...chunk],
       stdout: "inherit",
       stderr: "inherit",
     });
-    if (!success) {
+    const { code } = await cmd.output();
+
+    if (code > 0) {
       throw new Error("prefer-primordials failed");
     }
   }
@@ -111,12 +115,19 @@ async function clippy() {
     cmd.push("--release");
   }
 
-  const { success } = await Deno.spawn("cargo", {
-    args: [...cmd, "--", "-D", "warnings"],
+  const cargoCmd = new Deno.Command("cargo", {
+    args: [
+      ...cmd,
+      "--",
+      "-D",
+      "warnings",
+    ],
     stdout: "inherit",
     stderr: "inherit",
   });
-  if (!success) {
+  const { code } = await cargoCmd.output();
+
+  if (code > 0) {
     throw new Error("clippy failed");
   }
 }

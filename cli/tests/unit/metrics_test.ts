@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals } from "./test_util.ts";
 
 Deno.test(async function metrics() {
@@ -84,6 +84,6 @@ Deno.test(function opNamesMatch() {
     // @ts-ignore: Deno.core allowed
     Deno.core.opNames().sort(),
     // @ts-ignore: Deno.core allowed
-    Object.keys(Deno.core.ops).sort(),
+    Object.keys(Deno.core.ops).sort().filter((name) => name !== "asyncOpsInfo"),
   );
 });

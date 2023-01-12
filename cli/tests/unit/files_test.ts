@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
@@ -8,7 +8,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
-import { copy } from "../../../test_util/std/io/util.ts";
+import { copy } from "../../../test_util/std/streams/conversion.ts";
 
 Deno.test(function filesStdioFileDescriptors() {
   assertEquals(Deno.stdin.rid, 0);

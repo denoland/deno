@@ -1,10 +1,12 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
 use crate::tools::test::TestFilter;
 use crate::tools::test::TestLocation;
+use crate::tools::test::TestResult;
 use crate::tools::test::TestStepDescription;
 
 use deno_core::error::generic_error;
@@ -15,7 +17,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -23,8 +25,12 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
 
-pub fn init(sender: TestEventSender, filter: TestFilter) -> Extension {
-  Extension::builder()
+pub fn init(
+  sender: TestEventSender,
+  fail_fast_tracker: FailFastTracker,
+  filter: TestFilter,
+) -> Extension {
+  Extension::builder("deno_test")
     .ops(vec![
       op_pledge_test_permissions::decl(),
       op_restore_test_permissions::decl(),
@@ -32,9 +38,11 @@ pub fn init(sender: TestEventSender, filter: TestFilter) -> Extension {
       op_register_test::decl(),
       op_register_test_step::decl(),
       op_dispatch_test_event::decl(),
+      op_tests_should_stop::decl(),
     ])
     .state(move |state| {
       state.put(sender.clone());
+      state.put(fail_fast_tracker.clone());
       state.put(filter.clone());
       Ok(())
     })
@@ -42,7 +50,7 @@ pub fn init(sender: TestEventSender, filter: TestFilter) -> Extension {
 }
 
 #[derive(Clone)]
-struct PermissionsHolder(Uuid, Permissions);
+struct PermissionsHolder(Uuid, PermissionsContainer);
 
 #[op]
 pub fn op_pledge_test_permissions(
@@ -50,8 +58,12 @@ pub fn op_pledge_test_permissions(
   args: ChildPermissionsArg,
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
-  let parent_permissions = state.borrow_mut::<Permissions>();
-  let worker_permissions = create_child_permissions(parent_permissions, args)?;
+  let parent_permissions = state.borrow_mut::<PermissionsContainer>();
+  let worker_permissions = {
+    let mut parent_permissions = parent_permissions.0.lock();
+    let perms = create_child_permissions(&mut parent_permissions, args)?;
+    PermissionsContainer::new(perms)
+  };
   let parent_permissions = parent_permissions.clone();
 
   if state.try_take::<PermissionsHolder>().is_some() {
@@ -60,7 +72,7 @@ pub fn op_pledge_test_permissions(
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 
   // NOTE: This call overrides current permission set for the worker
-  state.put::<Permissions>(worker_permissions);
+  state.put::<PermissionsContainer>(worker_permissions);
 
   Ok(token)
 }
@@ -76,7 +88,7 @@ pub fn op_restore_test_permissions(
     }
 
     let permissions = permissions_holder.1;
-    state.put::<Permissions>(permissions);
+    state.put::<PermissionsContainer>(permissions);
     Ok(())
   } else {
     Err(generic_error("no permissions to restore"))
@@ -178,7 +190,18 @@ fn op_dispatch_test_event(
   state: &mut OpState,
   event: TestEvent,
 ) -> Result<(), AnyError> {
+  if matches!(
+    event,
+    TestEvent::Result(_, TestResult::Cancelled | TestResult::Failed(_), _)
+  ) {
+    state.borrow::<FailFastTracker>().add_failure();
+  }
   let mut sender = state.borrow::<TestEventSender>().clone();
   sender.send(event).ok();
   Ok(())
+}
+
+#[op]
+fn op_tests_should_stop(state: &mut OpState) -> bool {
+  state.borrow::<FailFastTracker>().should_stop()
 }

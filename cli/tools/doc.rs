@@ -1,13 +1,13 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::DocFlags;
 use crate::args::Flags;
 use crate::colors;
+use crate::display::write_json_to_stdout;
+use crate::display::write_to_stdout_ignore_sigpipe;
 use crate::file_fetcher::File;
-use crate::get_types;
 use crate::proc_state::ProcState;
-use crate::write_json_to_stdout;
-use crate::write_to_stdout_ignore_sigpipe;
+use crate::tsc::get_types_declaration_file_text;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -29,7 +29,7 @@ pub async fn print_docs(
   let mut doc_nodes = if source_file == "--builtin" {
     let source_file_specifier =
       ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
-    let content = get_types(ps.options.unstable());
+    let content = get_types_declaration_file_text(ps.options.unstable());
     let mut loader = deno_graph::source::MemoryLoader::new(
       vec![(
         source_file_specifier.to_string(),
@@ -44,13 +44,14 @@ pub async fn print_docs(
     let analyzer = deno_graph::CapturingModuleAnalyzer::default();
     let graph = deno_graph::create_graph(
       vec![(source_file_specifier.clone(), ModuleKind::Esm)],
-      false,
-      None,
       &mut loader,
-      None,
-      None,
-      Some(&analyzer),
-      None,
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: None,
+        resolver: None,
+        module_analyzer: Some(&analyzer),
+        reporter: None,
+      },
     )
     .await;
     let doc_parser = doc::DocParser::new(
