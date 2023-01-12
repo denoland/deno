@@ -234,7 +234,7 @@ mod fmt {
 
   itest!(fmt_with_config_default {
     args: "fmt fmt/with_config/subdir",
-    output: "fmt/fmt_with_config.out",
+    output: "fmt/fmt_with_config_default.out",
   });
 
   // Check if CLI flags take precedence
