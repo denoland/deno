@@ -32,25 +32,25 @@ macro_rules! check_arg_option {
   };
 }
 
-fn napi_clear_last_error(env: &mut Env) -> napi_status {
+fn napi_clear_last_error(env: *mut Env) {
+  let env: &mut Env = unsafe { env.as_mut().unwrap() };
   env.last_error.error_code = napi_ok;
   env.last_error.engine_error_code = 0;
   env.last_error.engine_reserved = std::ptr::null_mut();
   env.last_error.error_message = std::ptr::null_mut();
-  napi_ok
 }
 
 #[allow(unused)]
 fn napi_set_last_error(
-  env: &mut Env,
+  env: *mut Env,
   error_code: napi_status,
   engine_error_code: i32,
   engine_reserved: *mut c_void,
-) -> napi_status {
+) {
+  let env: &mut Env = unsafe { env.as_mut().unwrap() };
   env.last_error.error_code = error_code;
   env.last_error.engine_error_code = engine_error_code;
   env.last_error.engine_reserved = engine_reserved;
-  napi_ok
 }
 
 /// Returns napi_value that represents a new JavaScript Array.
@@ -348,28 +348,28 @@ fn napi_create_error(
   msg: napi_value,
   result: *mut napi_value,
 ) -> Result {
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  check_arg_option!(msg);
-  check_arg!(result);
+  {
+    let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+    check_arg_option!(msg);
+    check_arg!(result);
 
-  let mut message_value =
-    unsafe { transmute::<napi_value, v8::Local<v8::Value>>(msg) };
-  // TODO: store last error here
-  if !message_value.is_string() {
-    return Err(Error::StringExpected);
+    let mut message_value =
+      unsafe { transmute::<napi_value, v8::Local<v8::Value>>(msg) };
+    // TODO: store last error here
+    if !message_value.is_string() {
+      return Err(Error::StringExpected);
+    }
+
+    let scope = &mut env.scope();
+    let error_obj =
+      v8::Exception::error(scope, message_value.try_into().unwrap());
+    let status = set_error_code(scope, error_obj, code, std::ptr::null());
+    if status != napi_ok {
+      return Err(status.into());
+    }
+    *result = error_obj.into();
   }
-
-  let scope = &mut env.scope();
-  let error_obj =
-    v8::Exception::error(scope, message_value.try_into().unwrap());
-  let status = set_error_code(scope, error_obj, code, std::ptr::null());
-  if status != napi_ok {
-    return Err(status.into());
-  }
-  *result = error_obj.into();
-  // TODO:
-  // napi_clear_last_error(env);
-
+  napi_clear_last_error(env);
   Ok(())
 }
 
@@ -380,17 +380,17 @@ fn napi_create_type_error(
   msg: napi_value,
   result: *mut napi_value,
 ) -> Result {
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  check_arg_option!(msg);
-  check_arg!(result);
-
-  let mut message_value =
-    unsafe { transmute::<napi_value, v8::Local<v8::Value>>(msg) };
-  // TODO: store last error here
-  if !message_value.is_string() {
-    return Err(Error::StringExpected);
-  }
   {
+    let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+    check_arg_option!(msg);
+    check_arg!(result);
+
+    let mut message_value =
+      unsafe { transmute::<napi_value, v8::Local<v8::Value>>(msg) };
+    // TODO: store last error here
+    if !message_value.is_string() {
+      return Err(Error::StringExpected);
+    }
     let scope = &mut env.scope();
     let error_obj =
       v8::Exception::type_error(scope, message_value.try_into().unwrap());
@@ -400,8 +400,7 @@ fn napi_create_type_error(
     }
     *result = error_obj.into();
   }
-  // TODO:
-  // napi_clear_last_error(env);
+  napi_clear_last_error(env);
   Ok(())
 }
 
@@ -412,18 +411,18 @@ fn napi_create_range_error(
   msg: napi_value,
   result: *mut napi_value,
 ) -> Result {
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  check_arg_option!(msg);
-  check_arg!(result);
-
-  let mut message_value =
-    unsafe { transmute::<napi_value, v8::Local<v8::Value>>(msg) };
-  // TODO: store last error here
-  if !message_value.is_string() {
-    return Err(Error::StringExpected);
-  }
-
   {
+    let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+    check_arg_option!(msg);
+    check_arg!(result);
+
+    let mut message_value =
+      unsafe { transmute::<napi_value, v8::Local<v8::Value>>(msg) };
+    // TODO: store last error here
+    if !message_value.is_string() {
+      return Err(Error::StringExpected);
+    }
+
     let scope = &mut env.scope();
     let error_obj =
       v8::Exception::range_error(scope, message_value.try_into().unwrap());
@@ -433,8 +432,7 @@ fn napi_create_range_error(
     }
     *result = error_obj.into();
   }
-  // TODO:
-  // napi_clear_last_error(env);
+  napi_clear_last_error(env);
   Ok(())
 }
 
@@ -1962,14 +1960,15 @@ fn napi_is_error(
   value: napi_value,
   result: *mut bool,
 ) -> Result {
-  // TODO(bartlomieju): add `check_env!` macro?
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  value.ok_or(Error::InvalidArg)?;
-  check_arg!(result);
+  {
+    // TODO(bartlomieju): add `check_env!` macro?
+    let _env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+    value.ok_or(Error::InvalidArg)?;
+    check_arg!(result);
 
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
-  *result = value.is_native_error();
-
+    let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+    *result = value.is_native_error();
+  }
   napi_clear_last_error(env);
   Ok(())
 }
@@ -2280,9 +2279,10 @@ fn napi_throw_error(
   msg: *const c_char,
 ) -> Result {
   // TODO: add preamble here
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
 
   {
+    let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+
     let scope = &mut env.scope();
     // TODO(bartlomieju): graceful handling of strings here
     let msg = CStr::from_ptr(msg).to_str().unwrap();
@@ -2313,8 +2313,8 @@ fn napi_throw_range_error(
 ) -> Result {
   // TODO: add preamble here
 
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   {
+    let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
     let scope = &mut env.scope();
     // TODO(bartlomieju): graceful handling of strings here
     let msg = CStr::from_ptr(msg).to_str().unwrap();
@@ -2343,8 +2343,8 @@ fn napi_throw_type_error(
 ) -> Result {
   // TODO: add preamble here
 
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   {
+    let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
     // TODO(bartlomieju): graceful handling of strings here
     let scope = &mut env.scope();
     let msg = CStr::from_ptr(msg).to_str().unwrap();
