@@ -13,13 +13,10 @@ extern "C" fn check_error(
 ) -> napi_value {
   let (args, argc, _) = napi_get_callback_info!(env, info, 1);
   assert_eq!(argc, 1);
-
   let mut r = false;
   assert_napi_ok!(napi_is_error(env, args[0], &mut r));
-
   let mut result: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_get_boolean(env, r, &mut result));
-
   result
 }
 
@@ -43,7 +40,6 @@ extern "C" fn create_error(
     message,
     &mut result
   ));
-
   result
 }
 
@@ -67,7 +63,6 @@ extern "C" fn create_range_error(
     message,
     &mut result
   ));
-
   result
 }
 
@@ -91,7 +86,6 @@ extern "C" fn create_type_error(
     message,
     &mut result
   ));
-
   result
 }
 
@@ -119,7 +113,6 @@ extern "C" fn create_error_code(
     &mut code
   ));
   assert_napi_ok!(napi_create_error(env, code, message, &mut result));
-
   result
 }
 
@@ -147,7 +140,6 @@ extern "C" fn create_range_error_code(
     &mut code
   ));
   assert_napi_ok!(napi_create_range_error(env, code, message, &mut result));
-
   result
 }
 
@@ -175,7 +167,6 @@ extern "C" fn create_type_error_code(
     &mut code
   ));
   assert_napi_ok!(napi_create_type_error(env, code, message, &mut result));
-
   result
 }
 
@@ -200,7 +191,88 @@ extern "C" fn throw_existing_error(
     &mut error
   ));
   assert_napi_ok!(napi_throw(env, error));
+  std::ptr::null_mut()
+}
 
+extern "C" fn throw_error(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  assert_napi_ok!(napi_throw_error(
+    env,
+    std::ptr::null_mut(),
+    "error".as_ptr() as *const c_char,
+  ));
+  std::ptr::null_mut()
+}
+
+extern "C" fn throw_range_error(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  assert_napi_ok!(napi_throw_range_error(
+    env,
+    std::ptr::null_mut(),
+    "range error".as_ptr() as *const c_char,
+  ));
+  std::ptr::null_mut()
+}
+
+extern "C" fn throw_type_error(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  assert_napi_ok!(napi_throw_type_error(
+    env,
+    std::ptr::null_mut(),
+    "type error".as_ptr() as *const c_char,
+  ));
+  std::ptr::null_mut()
+}
+
+extern "C" fn throw_arbitrary(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+  assert_napi_ok!(napi_throw(env, args[0]));
+  std::ptr::null_mut()
+}
+
+extern "C" fn throw_error_code(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  assert_napi_ok!(napi_throw_error(
+    env,
+    "ERR_TEST_CODE\0".as_ptr() as *const c_char,
+    "Error [error]\0".as_ptr() as *const c_char,
+  ));
+  std::ptr::null_mut()
+}
+
+extern "C" fn throw_range_error_code(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  assert_napi_ok!(napi_throw_range_error(
+    env,
+    "ERR_TEST_CODE\0".as_ptr() as *const c_char,
+    "RangeError [range error]\0".as_ptr() as *const c_char,
+  ));
+  std::ptr::null_mut()
+}
+
+extern "C" fn throw_type_error_code(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  assert_napi_ok!(napi_throw_type_error(
+    env,
+    "ERR_TEST_CODE\0".as_ptr() as *const c_char,
+    "TypeError [type error]\0".as_ptr() as *const c_char,
+  ));
   std::ptr::null_mut()
 }
 
@@ -208,15 +280,17 @@ pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "checkError", check_error),
     napi_new_property!(env, "throwExistingError", throw_existing_error),
-    // napi_new_property!(env, "throwError", throw_error),
-    // napi_new_property!(env, "throwRangeError", throw_range_error),
-    // napi_new_property!(env, "throwTypeError", throw_type_error),
+    napi_new_property!(env, "throwError", throw_error),
+    napi_new_property!(env, "throwRangeError", throw_range_error),
+    napi_new_property!(env, "throwTypeError", throw_type_error),
+    // NOTE(bartlomieju): currently experimental api
     // napi_new_property!(env, "throwSyntaxError", throw_syntax_error),
-    // napi_new_property!(env, "throwErrorCode", throw_error_code),
-    // napi_new_property!(env, "throwRangeErrorCode", throw_range_error_code),
-    // napi_new_property!(env, "throwTypeErrorCode", throw_type_error_code),
+    napi_new_property!(env, "throwErrorCode", throw_error_code),
+    napi_new_property!(env, "throwRangeErrorCode", throw_range_error_code),
+    napi_new_property!(env, "throwTypeErrorCode", throw_type_error_code),
+    // NOTE(bartlomieju): currently experimental api
     // napi_new_property!(env, "throwSyntaxErrorCode", throw_syntax_error_code),
-    // napi_new_property!(env, "throwArbitrary", throw_arbitrary),
+    napi_new_property!(env, "throwArbitrary", throw_arbitrary),
     napi_new_property!(env, "createError", create_error),
     napi_new_property!(env, "createRangeError", create_range_error),
     napi_new_property!(env, "createTypeError", create_type_error),

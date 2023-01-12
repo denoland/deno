@@ -340,7 +340,7 @@ fn napi_create_error(
   let scope = &mut env.scope();
   let error_obj =
     v8::Exception::error(scope, message_value.try_into().unwrap());
-  let status = set_error_code(scope, error_obj.into(), code, std::ptr::null());
+  let status = set_error_code(scope, error_obj, code, std::ptr::null());
   if status != napi_ok {
     return Err(status.into());
   }
@@ -370,7 +370,7 @@ fn napi_create_type_error(
   let scope = &mut env.scope();
   let error_obj =
     v8::Exception::type_error(scope, message_value.try_into().unwrap());
-  let status = set_error_code(scope, error_obj.into(), code, std::ptr::null());
+  let status = set_error_code(scope, error_obj, code, std::ptr::null());
   if status != napi_ok {
     return Err(status.into());
   }
@@ -399,7 +399,7 @@ fn napi_create_range_error(
   let scope = &mut env.scope();
   let error_obj =
     v8::Exception::range_error(scope, message_value.try_into().unwrap());
-  let status = set_error_code(scope, error_obj.into(), code, std::ptr::null());
+  let status = set_error_code(scope, error_obj, code, std::ptr::null());
   if status != napi_ok {
     return Err(status.into());
   }
@@ -2243,60 +2243,88 @@ fn napi_throw(env: *mut Env, error: napi_value) -> Result {
 #[napi_sym::napi_sym]
 fn napi_throw_error(
   env: *mut Env,
-  _code: *const c_char,
+  code: *const c_char,
   msg: *const c_char,
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
 
-  // let code = CStr::from_ptr(code).to_str().unwrap();
+  // TODO(bartlomieju): graceful handling of strings here
   let msg = CStr::from_ptr(msg).to_str().unwrap();
-
-  // let code = v8::String::new(&mut env.scope(), code).unwrap();
   let msg = v8::String::new(&mut env.scope(), msg).unwrap();
 
-  let error = v8::Exception::error(&mut env.scope(), msg);
+  let scope = &mut env.scope();
+  let error = v8::Exception::error(scope, msg);
+  let status = set_error_code(
+    scope,
+    error,
+    transmute::<*mut (), napi_value>(std::ptr::null_mut()),
+    code,
+  );
+  if status != napi_ok {
+    return Err(status.into());
+  }
+
   env.scope().throw_exception(error);
 
+  // TODO(bartlomieju): clear last error here
   Ok(())
 }
 
 #[napi_sym::napi_sym]
 fn napi_throw_range_error(
   env: *mut Env,
-  _code: *const c_char,
+  code: *const c_char,
   msg: *const c_char,
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
 
-  // let code = CStr::from_ptr(code).to_str().unwrap();
+  // TODO(bartlomieju): graceful handling of strings here
   let msg = CStr::from_ptr(msg).to_str().unwrap();
-
-  // let code = v8::String::new(&mut env.scope(), code).unwrap();
   let msg = v8::String::new(&mut env.scope(), msg).unwrap();
 
-  let error = v8::Exception::range_error(&mut env.scope(), msg);
+  let scope = &mut env.scope();
+  let error = v8::Exception::range_error(scope, msg);
+  let status = set_error_code(
+    scope,
+    error,
+    transmute::<*mut (), napi_value>(std::ptr::null_mut()),
+    code,
+  );
+  if status != napi_ok {
+    return Err(status.into());
+  }
   env.scope().throw_exception(error);
 
+  // TODO(bartlomieju): clear last error here
   Ok(())
 }
 
 #[napi_sym::napi_sym]
 fn napi_throw_type_error(
   env: *mut Env,
-  _code: *const c_char,
+  code: *const c_char,
   msg: *const c_char,
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
 
-  // let code = CStr::from_ptr(code).to_str().unwrap();
+  // TODO(bartlomieju): graceful handling of strings here
   let msg = CStr::from_ptr(msg).to_str().unwrap();
-
-  // let code = v8::String::new(&mut env.scope(), code).unwrap();
   let msg = v8::String::new(&mut env.scope(), msg).unwrap();
 
-  let error = v8::Exception::type_error(&mut env.scope(), msg);
+  let scope = &mut env.scope();
+  let error = v8::Exception::type_error(scope, msg);
+  let status = set_error_code(
+    scope,
+    error,
+    transmute::<*mut (), napi_value>(std::ptr::null_mut()),
+    code,
+  );
+  if status != napi_ok {
+    return Err(status.into());
+  }
   env.scope().throw_exception(error);
 
+  // TODO(bartlomieju): clear last error here
   Ok(())
 }
 

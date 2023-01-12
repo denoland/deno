@@ -7,7 +7,7 @@ import {
   loadTestLibrary,
 } from "./common.js";
 
-const test_error = loadTestLibrary();
+const testError = loadTestLibrary();
 
 const theError = new Error("Some error");
 const theTypeError = new TypeError("Some type error");
@@ -17,131 +17,151 @@ const theReferenceError = new ReferenceError("Some reference error");
 const theURIError = new URIError("Some URI error");
 const theEvalError = new EvalError("Some eval error");
 
+function assertThrowsWithCode(fn, value) {
+  let thrown = false;
+
+  try {
+    fn();
+  } catch (e) {
+    thrown = true;
+    assertEquals(e.message, value.message);
+    assertEquals(e.code, value.code);
+  } finally {
+    assert(thrown);
+  }
+}
+
 Deno.test("napi error", function () {
   class MyError extends Error {}
   const myError = new MyError("Some MyError");
 
   // Test that native error object is correctly classed
-  assertEquals(test_error.checkError(theError), true);
+  assertEquals(testError.checkError(theError), true);
 
   // Test that native type error object is correctly classed
-  assertEquals(test_error.checkError(theTypeError), true);
+  assertEquals(testError.checkError(theTypeError), true);
 
   // Test that native syntax error object is correctly classed
-  assertEquals(test_error.checkError(theSyntaxError), true);
+  assertEquals(testError.checkError(theSyntaxError), true);
 
   // Test that native range error object is correctly classed
-  assertEquals(test_error.checkError(theRangeError), true);
+  assertEquals(testError.checkError(theRangeError), true);
 
   // Test that native reference error object is correctly classed
-  assertEquals(test_error.checkError(theReferenceError), true);
+  assertEquals(testError.checkError(theReferenceError), true);
 
   // Test that native URI error object is correctly classed
-  assertEquals(test_error.checkError(theURIError), true);
+  assertEquals(testError.checkError(theURIError), true);
 
   // Test that native eval error object is correctly classed
-  assertEquals(test_error.checkError(theEvalError), true);
+  assertEquals(testError.checkError(theEvalError), true);
 
   // Test that class derived from native error is correctly classed
-  assertEquals(test_error.checkError(myError), true);
+  assertEquals(testError.checkError(myError), true);
 
   // Test that non-error object is correctly classed
-  assertEquals(test_error.checkError({}), false);
+  assertEquals(testError.checkError({}), false);
 
   // Test that non-error primitive is correctly classed
-  assertEquals(test_error.checkError("non-object"), false);
+  assertEquals(testError.checkError("non-object"), false);
 
   assertThrows(
     () => {
-      test_error.throwExistingError();
+      testError.throwExistingError();
     },
     Error,
-    "Error: existing error",
+    "existing error",
   );
 
   assertThrows(
     () => {
-      test_error.throwError();
+      testError.throwError();
     },
     Error,
-    "Error: error",
+    "error",
   );
 
   assertThrows(
     () => {
-      test_error.throwRangeError();
+      testError.throwRangeError();
     },
     RangeError,
-    "RangeError: range error",
+    "range error",
   );
 
   assertThrows(
     () => {
-      test_error.throwTypeError();
+      testError.throwTypeError();
     },
     TypeError,
-    "TypeError: type error",
+    "type error",
   );
 
   // assertThrows(() => {
-  //   test_error.throwSyntaxError();
+  //   testError.throwSyntaxError();
   // }, "SyntaxError: syntax error");
 
   [42, {}, [], Symbol("xyzzy"), true, "ball", undefined, null, NaN]
-    .forEach((value) =>
-      assertThrows(
-        () => test_error.throwArbitrary(value),
-        value,
-      )
-    );
+    .forEach((value) => {
+      let thrown = false;
 
-  assertThrows(
-    () => test_error.throwErrorCode(),
+      try {
+        testError.throwArbitrary(value);
+      } catch (e) {
+        thrown = true;
+        assertEquals(e, value);
+      } finally {
+        assert(thrown);
+      }
+    });
+
+  assertThrowsWithCode(
+    () => testError.throwErrorCode(),
     {
       code: "ERR_TEST_CODE",
       message: "Error [error]",
     },
   );
 
-  assertThrows(
-    () => test_error.throwRangeErrorCode(),
+  assertThrowsWithCode(
+    () => testError.throwRangeErrorCode(),
     {
       code: "ERR_TEST_CODE",
       message: "RangeError [range error]",
     },
   );
 
-  assertThrows(
-    () => test_error.throwTypeErrorCode(),
+  assertThrowsWithCode(
+    () => testError.throwTypeErrorCode(),
     {
       code: "ERR_TEST_CODE",
       message: "TypeError [type error]",
     },
   );
 
-  assertThrows(
-    () => test_error.throwSyntaxErrorCode(),
-    {
-      code: "ERR_TEST_CODE",
-      message: "SyntaxError [syntax error]",
-    },
-  );
+  // assertThrowsWithCode(
+  //   () => testError.throwSyntaxErrorCode(),
+  //   {
+  //     code: "ERR_TEST_CODE",
+  //     message: "SyntaxError [syntax error]",
+  //   },
+  // );
 
-  let error = test_error.createError();
+  let error = testError.createError();
   assert(
     error instanceof Error,
     "expected error to be an instance of Error",
   );
   assertEquals(error.message, "error");
 
-  error = test_error.createRangeError();
+  error = testError.createRangeError();
   assert(
     error instanceof RangeError,
     "expected error to be an instance of RangeError",
   );
   assertEquals(error.message, "range error");
 
-  error = test_error.createTypeError();
+  error = testError.createTypeError();
   assert(
     error instanceof TypeError,
     "expected error to be an instance of TypeError",
@@ -149,14 +169,14 @@ Deno.test("napi error", function () {
   assertEquals(error.message, "type error");
 
   // TODO(bartlomieju): this is experimental API
-  // error = test_error.createSyntaxError();
+  // error = testError.createSyntaxError();
   // assert(
   //   error instanceof SyntaxError,
   //   "expected error to be an instance of SyntaxError",
   // );
   // assertEquals(error.message, "syntax error");
 
-  error = test_error.createErrorCode();
+  error = testError.createErrorCode();
   assert(
     error instanceof Error,
     "expected error to be an instance of Error",
@@ -165,7 +185,7 @@ Deno.test("napi error", function () {
   assertEquals(error.message, "Error [error]");
   assertEquals(error.name, "Error");
 
-  error = test_error.createRangeErrorCode();
+  error = testError.createRangeErrorCode();
   assert(
     error instanceof RangeError,
     "expected error to be an instance of RangeError",
@@ -174,7 +194,7 @@ Deno.test("napi error", function () {
   assertEquals(error.code, "ERR_TEST_CODE");
   assertEquals(error.name, "RangeError");
 
-  error = test_error.createTypeErrorCode();
+  error = testError.createTypeErrorCode();
   assert(
     error instanceof TypeError,
     "expected error to be an instance of TypeError",
@@ -184,7 +204,7 @@ Deno.test("napi error", function () {
   assertEquals(error.name, "TypeError");
 
   // TODO(bartlomieju): this is experimental API
-  // error = test_error.createSyntaxErrorCode();
+  // error = testError.createSyntaxErrorCode();
   // assert(
   //   error instanceof SyntaxError,
   //   "expected error to be an instance of SyntaxError",
