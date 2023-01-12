@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::assert_napi_ok;
+use crate::cstr;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
 use napi_sys::*;
@@ -246,8 +247,8 @@ extern "C" fn throw_error_code(
 ) -> napi_value {
   assert_napi_ok!(napi_throw_error(
     env,
-    "ERR_TEST_CODE\0".as_ptr() as *const c_char,
-    "Error [error]\0".as_ptr() as *const c_char,
+    cstr!("ERR_TEST_CODE"),
+    cstr!("Error [error]"),
   ));
   std::ptr::null_mut()
 }
@@ -258,8 +259,8 @@ extern "C" fn throw_range_error_code(
 ) -> napi_value {
   assert_napi_ok!(napi_throw_range_error(
     env,
-    "ERR_TEST_CODE\0".as_ptr() as *const c_char,
-    "RangeError [range error]\0".as_ptr() as *const c_char,
+    cstr!("ERR_TEST_CODE"),
+    cstr!("RangeError [range error]"),
   ));
   std::ptr::null_mut()
 }
@@ -270,8 +271,8 @@ extern "C" fn throw_type_error_code(
 ) -> napi_value {
   assert_napi_ok!(napi_throw_type_error(
     env,
-    "ERR_TEST_CODE\0".as_ptr() as *const c_char,
-    "TypeError [type error]\0".as_ptr() as *const c_char,
+    cstr!("ERR_TEST_CODE"),
+    cstr!("TypeError [type error]"),
   ));
   std::ptr::null_mut()
 }

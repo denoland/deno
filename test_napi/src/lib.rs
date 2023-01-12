@@ -21,6 +21,13 @@ pub mod strings;
 pub mod typedarray;
 
 #[macro_export]
+macro_rules! cstr {
+  ($s: literal) => {{
+    std::ffi::CString::new($s).unwrap().as_ptr()
+  }};
+}
+
+#[macro_export]
 macro_rules! assert_napi_ok {
   ($call: expr) => {{
     assert_eq!(unsafe { $call }, napi_sys::Status::napi_ok);
