@@ -108,13 +108,6 @@ const installDenoStep = {
 
 const authenticateWithGoogleCloud = {
   name: "Authenticate with Google Cloud",
-  if: [
-    "matrix.profile == 'release' &&",
-    "matrix.job == 'test' &&",
-    "github.repository == 'denoland/deno' &&",
-    "(github.ref == 'refs/heads/main' ||",
-    "startsWith(github.ref, 'refs/tags/'))",
-  ].join("\n"),
   uses: "google-github-actions/auth@v1",
   with: {
     "project_id": "denoland",
@@ -335,7 +328,16 @@ const ci = {
             if: "matrix.job == 'bench'",
             ...installNodeStep,
           },
-          authenticateWithGoogleCloud,
+          {
+            if: [
+              "matrix.profile == 'release' &&",
+              "matrix.job == 'test' &&",
+              "github.repository == 'denoland/deno' &&",
+              "(github.ref == 'refs/heads/main' ||",
+              "startsWith(github.ref, 'refs/tags/'))",
+            ].join("\n"),
+            ...authenticateWithGoogleCloud,
+          },
           {
             name: "Setup gcloud (unix)",
             if: [
@@ -355,8 +357,8 @@ const ci = {
             name: "Setup gcloud (windows)",
             if: [
               "runner.os == 'Windows' &&",
-              "matrix.job == 'test' &&",
               "matrix.profile == 'release' &&",
+              "matrix.job == 'test' &&",
               "github.repository == 'denoland/deno' &&",
               "(github.ref == 'refs/heads/main' ||",
               "startsWith(github.ref, 'refs/tags/'))",
