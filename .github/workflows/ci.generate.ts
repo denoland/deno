@@ -150,7 +150,7 @@ function cancelEarlyIfDraftPr(
       ].join("\n"),
     },
     ...nextSteps.map((step) =>
-      skipForCondition(step, "steps.exit_early.outputs.EXIT_EARLY != 'true'")
+      withCondition(step, "steps.exit_early.outputs.EXIT_EARLY != 'true'")
     ),
   ];
 }
@@ -162,14 +162,14 @@ function skipJobsIfPrAndMarkedSkip(
   // so just apply this condition to all the steps.
   // https://stackoverflow.com/questions/65384420/how-to-make-a-github-action-matrix-element-conditional
   return steps.map((s) =>
-    skipForCondition(
+    withCondition(
       s,
       "!(github.event_name == 'pull_request' && matrix.skip_pr)",
     )
   );
 }
 
-function skipForCondition(
+function withCondition(
   step: Record<string, unknown>,
   condition: string,
 ): Record<string, unknown> {
@@ -327,7 +327,9 @@ const ci = {
             if: "matrix.job == 'lint' || matrix.job == 'test'",
             ...installDenoStep,
           },
-          ...installPythonSteps,
+          ...installPythonSteps.map((s) =>
+            withCondition(s, "matrix.job != 'lint'")
+          ),
           {
             // only necessary for benchmarks
             if: "matrix.job == 'bench'",
@@ -435,9 +437,11 @@ const ci = {
           },
           {
             name: "Apply and update mtime cache",
-            if: "matrix.profile == 'release'",
+            if: "!startsWith(github.ref, 'refs/tags/')",
             uses: "./.github/mtime_cache",
-            with: { "cache-path": "./target" },
+            with: {
+              "cache-path": "./target",
+            },
           },
           {
             // Shallow the cloning the crates.io index makes CI faster because it
