@@ -159,6 +159,8 @@ async function run() {
     const results: { test: TestToRun; result: TestResult }[] = [];
     const cores = navigator.hardwareConcurrency;
     const inParallel = !(cores === 1 || tests.length === 1);
+    // ideally we would parallelize all tests, but we ran into some flakiness
+    // on the CI, so here we're partitioning based on the start of the test path
     const partitionedTests = partitionTests(tests);
 
     const iter = pooledMap(cores, partitionedTests, async (tests) => {
@@ -178,7 +180,7 @@ async function run() {
     });
 
     for await (const _ of iter) {
-      // do nothing
+      // ignore
     }
 
     return results;
@@ -739,6 +741,7 @@ function discoverTestsToRun(
 function partitionTests(tests: TestToRun[]): TestToRun[][] {
   const testsByKey: { [key: string]: TestToRun[] } = {};
   for (const test of tests) {
+    // Paths looks like: /fetch/corb/img-html-correctly-labeled.sub-ref.html
     const key = test.path.split("/")[1];
     if (!(key in testsByKey)) {
       testsByKey[key] = [];
