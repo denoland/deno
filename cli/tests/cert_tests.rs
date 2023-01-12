@@ -58,8 +58,9 @@ mod cert {
 
   itest!(deno_land_unsafe_ssl {
     args:
-      "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/deno_land_unsafe_ssl.ts",
+      "run --quiet --reload --allow-net --cert=tls/RootCA.pem --unsafely-ignore-certificate-errors=localhost cert/deno_land_unsafe_ssl.ts",
     output: "cert/deno_land_unsafe_ssl.ts.out",
+    http_server: true,
   });
 
   itest!(ip_address_unsafe_ssl {

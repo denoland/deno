@@ -124,7 +124,9 @@ const authenticateWithGoogleCloud = {
   },
 };
 
-function cancelEarlyIfDraftPr(nextSteps: Record<string, unknown>[]): unknown[] {
+function cancelEarlyIfDraftPr(
+  nextSteps: Record<string, unknown>[],
+): Record<string, unknown>[] {
   // Couple issues with GH Actions:
   //
   // 1. The pull_request event type does not include the commit message, so
@@ -147,12 +149,34 @@ function cancelEarlyIfDraftPr(nextSteps: Record<string, unknown>[]): unknown[] {
         "echo $GIT_MESSAGE | grep '\\[ci\\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'EXIT_EARLY=true' >> $GITHUB_OUTPUT)",
       ].join("\n"),
     },
-    ...nextSteps.map((step) => {
-      const condition = "steps.exit_early.outputs.EXIT_EARLY != 'true'";
-      step.if = "if" in step ? `${condition} && (${step.if})` : condition;
-      return step;
-    }),
+    ...nextSteps.map((step) =>
+      skipForCondition(step, "steps.exit_early.outputs.EXIT_EARLY != 'true'")
+    ),
   ];
+}
+
+function skipJobsIfPrAndMarkedSkip(
+  steps: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  // GitHub does not make skipping a specific matrix element easy
+  // so just apply this condition to all the steps.
+  // https://stackoverflow.com/questions/65384420/how-to-make-a-github-action-matrix-element-conditional
+  return steps.map((s) =>
+    skipForCondition(
+      s,
+      "!(github.event_name == 'pull_request' && matrix.skip_pr)",
+    )
+  );
+}
+
+function skipForCondition(
+  step: Record<string, unknown>,
+  condition: string,
+): Record<string, unknown> {
+  return {
+    ...step,
+    if: "if" in step ? `${condition} && (${step.if})` : condition,
+  };
 }
 
 const ci = {
@@ -199,6 +223,7 @@ const ci = {
               os: Runners.macos,
               job: "test",
               profile: "release",
+              skip_pr: true,
             },
             {
               os: Runners.windows,
@@ -209,6 +234,7 @@ const ci = {
               os: Runners.windows,
               job: "test",
               profile: "release",
+              skip_pr: true,
             },
             {
               os: Runners.linux,
@@ -247,7 +273,7 @@ const ci = {
         CARGO_TERM_COLOR: "always",
         RUST_BACKTRACE: "full",
       },
-      steps: [
+      steps: skipJobsIfPrAndMarkedSkip([
         {
           name: "Configure git",
           run: [
@@ -806,7 +832,7 @@ const ci = {
             },
           },
         ]),
-      ],
+      ]),
     },
     "publish-canary": {
       name: "publish canary",
