@@ -1603,16 +1603,18 @@ impl TestEventSender {
         | TestEvent::StepResult(_, _, _)
         | TestEvent::UncaughtError(_, _)
     ) {
-      self.flush_stdout_and_stderr();
+      self.flush_stdout_and_stderr()?;
     }
 
     self.sender.send(message)?;
     Ok(())
   }
 
-  fn flush_stdout_and_stderr(&mut self) {
-    self.stdout_writer.flush();
-    self.stderr_writer.flush();
+  fn flush_stdout_and_stderr(&mut self) -> Result<(), AnyError> {
+    self.stdout_writer.flush()?;
+    self.stderr_writer.flush()?;
+
+    Ok(())
   }
 }
 
@@ -1643,7 +1645,7 @@ impl TestOutputPipe {
     Self { writer, state }
   }
 
-  pub fn flush(&mut self) {
+  pub fn flush(&mut self) -> Result<(), AnyError> {
     // We want to wake up the other thread and have it respond back
     // that it's done clearing out its pipe before returning.
     let (sender, receiver) = std::sync::mpsc::channel();
@@ -1653,10 +1655,12 @@ impl TestOutputPipe {
     // Bit of a hack to send a zero width space in order to wake
     // the thread up. It seems that sending zero bytes here does
     // not work on windows.
-    self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes()).unwrap();
-    self.writer.flush().unwrap();
+    self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes())?;
+    self.writer.flush()?;
     // ignore the error as it might have been picked up and closed
     let _ = receiver.recv();
+
+    Ok(())
   }
 
   pub fn as_file(&self) -> std::fs::File {
