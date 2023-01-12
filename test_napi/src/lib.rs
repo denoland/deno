@@ -17,6 +17,7 @@ pub mod primitives;
 pub mod promise;
 pub mod properties;
 pub mod strings;
+pub mod tsfn;
 pub mod typedarray;
 
 #[macro_export]
@@ -126,6 +127,7 @@ unsafe extern "C" fn napi_register_module_v1(
   object_wrap::init(env, exports);
   callback::init(env, exports);
   r#async::init(env, exports);
+  tsfn::init(env, exports);
   init_cleanup_hook(env, exports);
 
   exports
