@@ -39,7 +39,7 @@
       options.signal[abortSignal.add](abortHandler);
     }
     try {
-      if (ObjectPrototypeIsPrototypeOf(data, ReadableStreamPrototype)) {
+      if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
         const file = await open(path, {
           mode: options.mode,
           append: options.append ?? false,
@@ -86,17 +86,12 @@
     data,
     options = {},
   ) {
-    if (ObjectPrototypeIsPrototypeOf(data, ReadableStreamPrototype)) {
-      const file = await open(path, {
-        mode: options.mode,
-        append: options.append ?? false,
-        create: options.create ?? true,
-        createNew: options.createNew ?? false,
-        write: true,
-      });
-      await data.pipeThrough(new TextEncoderStream()).pipeTo(file.writable, {
-        signal: options.signal,
-      });
+    if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
+      return writeFile(
+        path,
+        data.pipeThrough(new TextEncoderStream()),
+        options,
+      );
     } else {
       const encoder = new TextEncoder();
       return writeFile(path, encoder.encode(data), options);
