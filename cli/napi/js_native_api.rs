@@ -7,8 +7,6 @@ use libc::INT_MAX;
 use v8::BackingStore;
 use v8::UniqueRef;
 
-use crate::tools::check;
-
 use super::util::get_array_buffer_ptr;
 use deno_runtime::deno_napi::function::create_function;
 use deno_runtime::deno_napi::function::create_function_template;
@@ -286,17 +284,15 @@ fn napi_create_double(
 }
 
 fn set_error_code(
-  env: &mut Env,
+  scope: &mut v8::HandleScope,
   error: v8::Local<v8::Value>,
   code: napi_value,
   code_cstring: *const c_char,
 ) -> napi_status {
-  if !code.is_null() || !code_cstring.is_null() {
-    let err_object: v8::Local<v8::Object> = error.into();
+  if code.is_some() || !code_cstring.is_null() {
+    let err_object: v8::Local<v8::Object> = error.try_into().unwrap();
 
-    let code_value: v8::Local<v8::Value>;
-
-    code_value = if !code.is_null() {
+    let code_value: v8::Local<v8::Value> = if code.is_some() {
       let mut code_value =
         unsafe { transmute::<napi_value, v8::Local<v8::Value>>(code) };
 
@@ -310,16 +306,13 @@ fn set_error_code(
       let code_string =
         unsafe { CStr::from_ptr(code_cstring).to_str().unwrap() };
       // FIXME(bartlomieju): unsafe unwrap
-      let name = v8::String::new(&mut env.scope(), code_string).unwrap();
+      let name = v8::String::new(scope, code_string).unwrap();
       name.into()
     };
 
-    let code_key = v8::String::new(&mut env.scope(), "code").unwrap();
+    let code_key = v8::String::new(scope, "code").unwrap();
 
-    if err_object
-      .set(&mut env.scope(), code_key.into(), code_value)
-      .is_none()
-    {
+    if err_object.set(scope, code_key.into(), code_value).is_none() {
       return napi_generic_failure;
     }
   }
@@ -335,21 +328,83 @@ fn napi_create_error(
   result: *mut napi_value,
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  let msg = msg.as_mut().ok_or(Error::InvalidArg)?;
+  check_arg_option!(msg);
   check_arg!(result);
 
-  let message_value = transmute::<napi_value, v8::Local<v8::Value>>(msg);
+  let mut message_value =
+    unsafe { transmute::<napi_value, v8::Local<v8::Value>>(msg) };
   if !message_value.is_string() {
     return Err(Error::StringExpected);
   }
 
+  let scope = &mut env.scope();
   let error_obj =
-    v8::Exception::error(&mut env.scope(), msg.try_into().unwrap());
-  set_error_code(env, error_obj.into(), code, std::ptr::null())
-    .map_err(|e| e.into())?;
-
+    v8::Exception::error(scope, message_value.try_into().unwrap());
+  let status = set_error_code(scope, error_obj.into(), code, std::ptr::null());
+  if status != napi_ok {
+    return Err(status.into());
+  }
   *result = error_obj.into();
 
+  // TODO(bartlomieju): clear last error here
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_type_error(
+  env: *mut Env,
+  code: napi_value,
+  msg: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+  check_arg_option!(msg);
+  check_arg!(result);
+
+  let mut message_value =
+    unsafe { transmute::<napi_value, v8::Local<v8::Value>>(msg) };
+  if !message_value.is_string() {
+    return Err(Error::StringExpected);
+  }
+
+  let scope = &mut env.scope();
+  let error_obj =
+    v8::Exception::type_error(scope, message_value.try_into().unwrap());
+  let status = set_error_code(scope, error_obj.into(), code, std::ptr::null());
+  if status != napi_ok {
+    return Err(status.into());
+  }
+  *result = error_obj.into();
+  // TODO(bartlomieju): clear last error here
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_create_range_error(
+  env: *mut Env,
+  code: napi_value,
+  msg: napi_value,
+  result: *mut napi_value,
+) -> Result {
+  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+  check_arg_option!(msg);
+  check_arg!(result);
+
+  let mut message_value =
+    unsafe { transmute::<napi_value, v8::Local<v8::Value>>(msg) };
+  if !message_value.is_string() {
+    return Err(Error::StringExpected);
+  }
+
+  let scope = &mut env.scope();
+  let error_obj =
+    v8::Exception::range_error(scope, message_value.try_into().unwrap());
+  let status = set_error_code(scope, error_obj.into(), code, std::ptr::null());
+  if status != napi_ok {
+    return Err(status.into());
+  }
+  *result = error_obj.into();
+  // TODO(bartlomieju): clear last error here
   Ok(())
 }
 
@@ -541,26 +596,6 @@ fn napi_create_promise(
 }
 
 #[napi_sym::napi_sym]
-fn napi_create_range_error(
-  env: *mut Env,
-  _code: napi_value,
-  msg: napi_value,
-  result: *mut napi_value,
-) -> Result {
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-
-  // let code = transmute::<napi_value, v8::Local<v8::Value>>(code);
-  let msg = transmute::<napi_value, v8::Local<v8::Value>>(msg);
-
-  let msg = msg.to_string(&mut env.scope()).unwrap();
-
-  let error = v8::Exception::range_error(&mut env.scope(), msg);
-  *result = error.into();
-
-  Ok(())
-}
-
-#[napi_sym::napi_sym]
 fn napi_create_reference(
   env: *mut Env,
   value: napi_value,
@@ -702,26 +737,6 @@ fn napi_create_symbol(
     })
     .transpose()?;
   *result = v8::Symbol::new(scope, description).into();
-  Ok(())
-}
-
-#[napi_sym::napi_sym]
-fn napi_create_type_error(
-  env: *mut Env,
-  _code: napi_value,
-  msg: napi_value,
-  result: *mut napi_value,
-) -> Result {
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-
-  // let code = transmute::<napi_value, v8::Local<v8::Value>>(code);
-  let msg = transmute::<napi_value, v8::Local<v8::Value>>(msg);
-
-  let msg = msg.to_string(&mut env.scope()).unwrap();
-
-  let error = v8::Exception::type_error(&mut env.scope(), msg);
-  *result = error.into();
-
   Ok(())
 }
 
@@ -1917,7 +1932,7 @@ fn napi_is_error(
   result: *mut bool,
 ) -> Result {
   // TODO(bartlomieju): add `check_env!` macro?
-  let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+  let _env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   value.ok_or(Error::InvalidArg)?;
   check_arg!(result);
 
