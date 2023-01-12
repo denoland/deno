@@ -175,6 +175,9 @@ async function run() {
           inspectBrk,
         );
         results.push({ test, result });
+        if (inParallel) {
+          console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+        }
         reportVariation(result, test.expectation);
       }
     });
