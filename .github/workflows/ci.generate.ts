@@ -323,12 +323,12 @@ const ci = {
             ...installDenoStep,
           },
           ...installPythonSteps,
-          authenticateWithGoogleCloud,
           {
             // only necessary for benchmarks
             if: "matrix.job == 'bench'",
             ...installNodeStep,
           },
+          authenticateWithGoogleCloud,
           {
             name: "Setup gcloud (unix)",
             if: [
