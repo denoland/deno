@@ -113,9 +113,9 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: 3.8
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job != ''lint))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job != ''lint''))'
       - name: Remove unused versions of Python
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job != ''lint && (startsWith(matrix.os, ''windows''))))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job != ''lint'' && (startsWith(matrix.os, ''windows''))))'
         shell: pwsh
         run: |-
           $env:PATH -split ";" |

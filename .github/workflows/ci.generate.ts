@@ -331,7 +331,7 @@ const ci = {
             ...installDenoStep,
           },
           ...installPythonSteps.map((s) =>
-            withCondition(s, "matrix.job != 'lint")
+            withCondition(s, "matrix.job != 'lint'")
           ),
           {
             // only necessary for benchmarks
