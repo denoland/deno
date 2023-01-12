@@ -2,7 +2,7 @@
 import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
 
-Deno.test("broadcastchannel worker", async () => {
+Deno.test("BroadcastChannel worker", async () => {
   const intercom = new BroadcastChannel("intercom");
   let count = 0;
 
@@ -26,4 +26,10 @@ Deno.test("broadcastchannel worker", async () => {
   };
 
   await promise;
+});
+
+Deno.test("BroadcastChannel immediate close after post", () => {
+  const bc = new BroadcastChannel("internal_notification");
+  bc.postMessage("New listening connected!");
+  bc.close();
 });
