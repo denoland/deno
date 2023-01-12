@@ -1,0 +1,179 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use crate::assert_napi_ok;
+use crate::napi_get_callback_info;
+use crate::napi_new_property;
+use napi_sys::*;
+use std::ffi::c_char;
+use std::ptr;
+
+extern "C" fn check_error(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut r = false;
+  assert_napi_ok!(napi_is_error(env, args[0], &mut r));
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, r, &mut result));
+
+  result
+}
+
+extern "C" fn create_error(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut result: napi_value = ptr::null_mut();
+  let mut message: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
+    // to null terminate... I think
+    "error\0".as_ptr() as *const c_char,
+    usize::MAX,
+    &mut message
+  ));
+  assert_napi_ok!(napi_create_error(
+    env,
+    ptr::null_mut(),
+    message,
+    &mut result
+  ));
+
+  result
+}
+
+extern "C" fn create_range_error(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut result: napi_value = ptr::null_mut();
+  let mut message: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
+    // to null terminate... I think
+    "range error\0".as_ptr() as *const c_char,
+    usize::MAX,
+    &mut message
+  ));
+  assert_napi_ok!(napi_create_range_error(
+    env,
+    ptr::null_mut(),
+    message,
+    &mut result
+  ));
+
+  result
+}
+
+extern "C" fn create_type_error(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut result: napi_value = ptr::null_mut();
+  let mut message: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
+    // to null terminate... I think
+    "type error\0".as_ptr() as *const c_char,
+    usize::MAX,
+    &mut message
+  ));
+  assert_napi_ok!(napi_create_type_error(
+    env,
+    ptr::null_mut(),
+    message,
+    &mut result
+  ));
+
+  result
+}
+
+// NOTE(bartlomieju): currently experimental api
+// extern "C" fn create_syntax_error(
+//   env: napi_env,
+//   _info: napi_callback_info,
+// ) -> napi_value {
+//   let mut result: napi_value = ptr::null_mut();
+//   let mut message: napi_value = ptr::null_mut();
+//   assert_napi_ok!(napi_create_string_utf8(
+//     env,
+//     // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
+//     // to null terminate... I think
+//     "syntax error\0".as_ptr() as *const c_char,
+//     usize::MAX,
+//     &mut message
+//   ));
+//   assert_napi_ok!(node_api_create_syntax_error(
+//     env,
+//     ptr::null_mut(),
+//     message,
+//     &mut result
+//   ));
+
+//   result
+// }
+
+extern "C" fn create_error_code(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut result: napi_value = ptr::null_mut();
+  let mut message: napi_value = ptr::null_mut();
+  let mut code: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
+    // to null terminate... I think
+    "Error [error]\0".as_ptr() as *const c_char,
+    usize::MAX,
+    &mut message
+  ));
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
+    // to null terminate... I think
+    "ERR_TEST_CODE\0".as_ptr() as *const c_char,
+    usize::MAX,
+    &mut code
+  ));
+  assert_napi_ok!(napi_create_error(env, code, message, &mut result));
+
+  result
+}
+
+pub fn init(env: napi_env, exports: napi_value) {
+  let properties = &[
+    napi_new_property!(env, "checkError", check_error),
+    // napi_new_property!(env, "throwError", throw_error),
+    // napi_new_property!(env, "throwRangeError", throw_range_error),
+    // napi_new_property!(env, "throwTypeError", throw_type_error),
+    // napi_new_property!(env, "throwSyntaxError", throw_syntax_error),
+    // napi_new_property!(env, "throwErrorCode", throw_error_code),
+    // napi_new_property!(env, "throwRangeErrorCode", throw_range_error_code),
+    // napi_new_property!(env, "throwTypeErrorCode", throw_type_error_code),
+    // napi_new_property!(env, "throwSyntaxErrorCode", throw_syntax_error_code),
+    // napi_new_property!(env, "throwArbitrary", throw_arbitrary),
+    napi_new_property!(env, "createError", create_error),
+    napi_new_property!(env, "createRangeError", create_range_error),
+    napi_new_property!(env, "createTypeError", create_type_error),
+    // napi_new_property!(env, "createSyntaxError", create_syntax_error),
+    napi_new_property!(env, "createErrorCode", create_error_code),
+    // napi_new_property!(env, "createRangeErrorCode", create_range_error_code),
+    // napi_new_property!(env, "createTypeErrorCode", create_type_error_code),
+    // napi_new_property!(env, "createSyntaxErrorCode", create_syntax_error_code),
+  ];
+
+  assert_napi_ok!(napi_define_properties(
+    env,
+    exports,
+    properties.len(),
+    properties.as_ptr()
+  ));
+}

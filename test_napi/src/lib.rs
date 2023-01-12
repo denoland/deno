@@ -11,6 +11,7 @@ pub mod arraybuffer;
 pub mod r#async;
 pub mod callback;
 pub mod coerce;
+pub mod error;
 pub mod numbers;
 pub mod object_wrap;
 pub mod primitives;
@@ -119,6 +120,7 @@ unsafe extern "C" fn napi_register_module_v1(
   typedarray::init(env, exports);
   arraybuffer::init(env, exports);
   array::init(env, exports);
+  error::init(env, exports);
   primitives::init(env, exports);
   properties::init(env, exports);
   promise::init(env, exports);
