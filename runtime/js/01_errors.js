@@ -97,7 +97,6 @@
     }
   }
 
-
   class WouldBlock extends Error {
     constructor(msg) {
       super(msg);
