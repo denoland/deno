@@ -198,3 +198,19 @@ Deno.test(
     assertEquals(Deno.readTextFileSync(filename), "Hello");
   },
 );
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeTextFileStream() {
+    const stream = new ReadableStream({
+      pull(controller) {
+        controller.enqueue("Hello");
+        controller.enqueue("World");
+        controller.close();
+      },
+    });
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    await Deno.writeTextFile(filename, stream);
+    assertEquals(Deno.readTextFileSync(filename), "HelloWorld");
+  },
+);
