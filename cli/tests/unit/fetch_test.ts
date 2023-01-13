@@ -1887,3 +1887,19 @@ Deno.test(
     await server;
   },
 );
+
+Deno.test(
+  async function responseUint8ArrayByteStream() {
+    const reader = new Response(new Uint8Array([1, 2])).body.getReader({
+      mode: "byob",
+    });
+    await reader.cancel();
+  },
+);
+
+Deno.test(
+  async function responseStringByteStream() {
+    const reader = new Response("foo").body.getReader({ mode: "byob" });
+    await reader.cancel();
+  },
+);
