@@ -13,7 +13,4 @@ const cmd = new Deno.Command(execPath, {
 });
 
 const { code } = await cmd.output();
-
-if (code > 0) {
-  throw new Error("dprint failed");
-}
+Deno.exit(code);

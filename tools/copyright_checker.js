@@ -68,8 +68,7 @@ for (const file of sourceFilesSet) {
   }
 }
 
-console.log("\nTotal errors: " + totalCount);
-
 if (totalCount > 0) {
+  console.log("\nTotal errors: " + totalCount);
   Deno.exit(1);
 }
