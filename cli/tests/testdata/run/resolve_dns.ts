@@ -73,7 +73,10 @@ try {
 try {
   const ac = new AbortController();
   queueMicrotask(() => ac.abort());
-  await Deno.resolveDns("www.example.com", "A", {...nameServer, signal: ac.signal });
+  await Deno.resolveDns("www.example.com", "A", {
+    ...nameServer,
+    signal: ac.signal,
+  });
 } catch (e) {
   console.log(e.name);
 }
@@ -81,8 +84,10 @@ try {
 try {
   const ac = new AbortController();
   ac.abort();
-  await Deno.resolveDns("www.example.com", "A", {...nameServer, signal: ac.signal });
+  await Deno.resolveDns("www.example.com", "A", {
+    ...nameServer,
+    signal: ac.signal,
+  });
 } catch (e) {
   console.log(e.name);
 }
-
