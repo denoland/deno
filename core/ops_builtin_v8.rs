@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::bindings::script_origin;
 use crate::error::custom_error;
 use crate::error::is_instance_of_error;
@@ -9,6 +9,7 @@ use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url_or_path;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map as apply_source_map_;
+use crate::JsRealm;
 use crate::JsRuntime;
 use crate::OpDecl;
 use crate::ZeroCopyBuf;
@@ -472,7 +473,7 @@ fn op_serialize(
         }
 
         let backing_store = buf.get_backing_store();
-        buf.detach(v8::undefined(scope).into());
+        buf.detach(None);
         let id = shared_array_buffer_store.insert(backing_store);
         value_serializer.transfer_array_buffer(id, buf);
         let id = v8::Number::new(scope, id as f64).into();
@@ -654,7 +655,7 @@ fn op_get_proxy_details<'a>(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MemoryUsage {
-  rss: usize,
+  physical_total: usize,
   heap_total: usize,
   heap_used: usize,
   external: usize,
@@ -668,7 +669,7 @@ fn op_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
   let mut s = v8::HeapStatistics::default();
   scope.get_heap_statistics(&mut s);
   MemoryUsage {
-    rss: s.total_physical_size(),
+    physical_total: s.total_physical_size(),
     heap_total: s.total_heap_size(),
     heap_used: s.used_heap_size(),
     external: s.external_memory(),
@@ -770,18 +771,19 @@ fn op_dispatch_exception(
     scope.terminate_execution();
     return;
   }
-  match state.inspector().try_borrow() {
-    Ok(inspector) if !inspector.has_active_sessions() => {
-      scope.terminate_execution();
-    }
+
+  // FIXME(bartlomieju): I'm not sure if this assumption is valid... Maybe when
+  // inspector is polling on pause?
+  if state.inspector().try_borrow().is_ok() {
+    scope.terminate_execution();
+  } else {
     // If the inspector is borrowed at this time, assume an inspector is active.
-    _ => {}
   }
 }
 
 #[op(v8)]
 fn op_op_names(scope: &mut v8::HandleScope) -> Vec<String> {
-  let state_rc = JsRuntime::state(scope);
+  let state_rc = JsRealm::state_from_scope(scope);
   let state = state_rc.borrow();
   state
     .op_ctxs

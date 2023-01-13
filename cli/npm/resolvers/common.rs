@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::io::ErrorKind;
@@ -10,8 +10,10 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
+use deno_runtime::deno_node::NodePermissions;
+use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::lockfile::Lockfile;
+use crate::args::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
@@ -29,7 +31,7 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_specifier(
@@ -51,7 +53,13 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     packages: HashSet<NpmPackageReq>,
   ) -> BoxFuture<'static, Result<(), AnyError>>;
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
+  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>>;
+
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError>;
 
   fn snapshot(&self) -> NpmResolutionSnapshot;
 
@@ -100,6 +108,7 @@ pub async fn cache_packages(
 }
 
 pub fn ensure_registry_read_permission(
+  permissions: &mut dyn NodePermissions,
   registry_path: &Path,
   path: &Path,
 ) -> Result<(), AnyError> {
@@ -123,10 +132,7 @@ pub fn ensure_registry_read_permission(
     }
   }
 
-  Err(deno_core::error::custom_error(
-    "PermissionDenied",
-    format!("Reading {} is not allowed", path.display()),
-  ))
+  permissions.check_read(path)
 }
 
 /// Gets the corresponding @types package for the provided package name.

@@ -1311,7 +1311,10 @@
       "respond-after-enqueue.any.worker.html": true
     },
     "readable-streams": {
-      "async-iterator.any.html": false,
+      "async-iterator.any.html": [
+        "next() that succeeds; return()",
+        "next() that succeeds; return() [no awaiting]"
+      ],
       "bad-strategies.any.html": true,
       "bad-strategies.any.worker.html": true,
       "bad-underlying-sources.any.html": true,
@@ -2555,13 +2558,9 @@
         "request-consume.any.html": true,
         "request-consume.any.worker.html": true,
         "request-disturbed.any.html": [
-          "Request construction failure should not set \"bodyUsed\"",
-          "Input request used for creating new request became disturbed",
           "Input request used for creating new request became disturbed even if body is not used"
         ],
         "request-disturbed.any.worker.html": [
-          "Request construction failure should not set \"bodyUsed\"",
-          "Input request used for creating new request became disturbed",
           "Input request used for creating new request became disturbed even if body is not used"
         ],
         "request-error.any.html": [

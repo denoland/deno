@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -32,8 +32,12 @@ impl NpmPackageReference {
   }
 
   pub fn from_str(specifier: &str) -> Result<NpmPackageReference, AnyError> {
+    let original_text = specifier;
     let specifier = match specifier.strip_prefix("npm:") {
-      Some(s) => s,
+      Some(s) => {
+        // Strip leading slash, which might come from import map
+        s.strip_prefix('/').unwrap_or(s)
+      }
       None => {
         // don't allocate a string here and instead use a static string
         // because this is hit a lot when a url is not an npm specifier
@@ -65,7 +69,12 @@ impl NpmPackageReference {
     let sub_path = if parts.len() == name_parts.len() {
       None
     } else {
-      Some(parts[name_part_len..].join("/"))
+      let sub_path = parts[name_part_len..].join("/");
+      if sub_path.is_empty() {
+        None
+      } else {
+        Some(sub_path)
+      }
     };
 
     if let Some(sub_path) = &sub_path {
@@ -77,6 +86,14 @@ impl NpmPackageReference {
         );
         return Err(generic_error(msg));
       }
+    }
+
+    if name.is_empty() {
+      let msg = format!(
+        "Invalid npm specifier '{}'. Did not contain a package name.",
+        original_text
+      );
+      return Err(generic_error(msg));
     }
 
     Ok(NpmPackageReference {
@@ -115,7 +132,7 @@ impl std::fmt::Display for NpmPackageReq {
 
 impl NpmPackageReq {
   pub fn from_str(text: &str) -> Result<Self, AnyError> {
-    // probably should do something more targetted in the future
+    // probably should do something more targeted in the future
     let reference = NpmPackageReference::from_str(&format!("npm:{}", text))?;
     Ok(reference.req)
   }
@@ -260,9 +277,14 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     }
   }
 
+  let root_specifiers = graph
+    .roots
+    .iter()
+    .map(|(url, _)| graph.resolve(url))
+    .collect::<Vec<_>>();
   let mut seen = HashSet::new();
   let mut specifier_graph = SpecifierTree::default();
-  for (root, _) in graph.roots.iter() {
+  for root in &root_specifiers {
     if let Some(module) = graph.get(root) {
       analyze_module(module, graph, &mut specifier_graph, &mut seen);
     }
@@ -272,7 +294,7 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
   let mut pending_specifiers = VecDeque::new();
   let mut result = Vec::new();
 
-  for (specifier, _) in &graph.roots {
+  for specifier in &root_specifiers {
     match NpmPackageReference::from_specifier(specifier) {
       Ok(npm_ref) => result.push(npm_ref.req),
       Err(_) => {
@@ -631,6 +653,54 @@ mod tests {
         .to_string(),
       "Not a valid package: @package"
     );
+
+    // should parse leading slash
+    assert_eq!(
+      NpmPackageReference::from_str("npm:/@package/test/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: None,
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+    assert_eq!(
+      NpmPackageReference::from_str("npm:/test").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: None,
+        },
+        sub_path: None,
+      }
+    );
+    assert_eq!(
+      NpmPackageReference::from_str("npm:/test/").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: None,
+        },
+        sub_path: None,
+      }
+    );
+
+    // should error for no name
+    assert_eq!(
+      NpmPackageReference::from_str("npm:/")
+        .err()
+        .unwrap()
+        .to_string(),
+      "Invalid npm specifier 'npm:/'. Did not contain a package name."
+    );
+    assert_eq!(
+      NpmPackageReference::from_str("npm://test")
+        .err()
+        .unwrap()
+        .to_string(),
+      "Invalid npm specifier 'npm://test'. Did not contain a package name."
+    );
   }
 
   #[test]
@@ -868,21 +938,49 @@ mod tests {
             )]),
           },
         ),
+        // redirect module
+        (
+          "https://deno.land/x/module_redirect/mod.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_redirect@0.0.1/mod.ts".to_string(),
+            content: concat!(
+              "import 'npm:package-a@module_redirect';",
+              // try another redirect here
+              "import 'https://deno.land/x/module_redirect/other.ts';",
+            ).to_string(),
+            maybe_headers: None,
+          }
+        ),
+        (
+          "https://deno.land/x/module_redirect/other.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_redirect@0.0.1/other.ts".to_string(),
+            content: "import 'npm:package-b@module_redirect';".to_string(),
+            maybe_headers: None,
+          }
+        ),
       ],
       Vec::new(),
     );
     let analyzer = deno_graph::CapturingModuleAnalyzer::default();
     let graph = deno_graph::create_graph(
-      vec![(
-        ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
-        ModuleKind::Esm,
-      )],
+      vec![
+        (
+          ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
+          ModuleKind::Esm,
+        ),
+        (
+          // test redirect at root
+          ModuleSpecifier::parse("https://deno.land/x/module_redirect/mod.ts")
+            .unwrap(),
+          ModuleKind::Esm,
+        ),
+      ],
       &mut loader,
       deno_graph::GraphOptions {
         is_dynamic: false,
         imports: None,
         resolver: None,
-        locker: None,
         module_analyzer: Some(&analyzer),
         reporter: None,
       },
@@ -898,6 +996,8 @@ mod tests {
       vec![
         "package-a@local_module_a",
         "package-b@local_module_a",
+        "package-a@module_redirect",
+        "package-b@module_redirect",
         "package-b@local_module_b",
         "package-data@local_module_b",
         "package-a@module_a",
