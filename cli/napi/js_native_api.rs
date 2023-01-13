@@ -745,10 +745,11 @@ fn napi_create_string_latin1(
     check_arg!(env, string);
   }
   check_arg!(env, result);
-  let safe_len = (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _;
-  if !safe_len {
-    return Err(Error::InvalidArg);
-  }
+  return_status_if_false!(
+    env,
+    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    napi_invalid_arg
+  );
 
   let string = if length == NAPI_AUTO_LENGTH {
     std::ffi::CStr::from_ptr(string as *const _)
@@ -785,10 +786,11 @@ fn napi_create_string_utf16(
     check_arg!(env, string);
   }
   check_arg!(env, result);
-  let safe_len = (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _;
-  if !safe_len {
-    return Err(Error::InvalidArg);
-  }
+  return_status_if_false!(
+    env,
+    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    napi_invalid_arg
+  );
 
   let string = if length == NAPI_AUTO_LENGTH {
     let s = std::ffi::CStr::from_ptr(string as *const _)
@@ -825,10 +827,11 @@ fn napi_create_string_utf8(
     check_arg!(env, string);
   }
   check_arg!(env, result);
-  let safe_len = (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _;
-  if !safe_len {
-    return Err(Error::InvalidArg);
-  }
+  return_status_if_false!(
+    env,
+    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    napi_invalid_arg
+  );
 
   let string = if length == NAPI_AUTO_LENGTH {
     std::ffi::CStr::from_ptr(string as *const _)
