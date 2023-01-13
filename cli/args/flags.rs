@@ -87,9 +87,8 @@ pub struct CompletionsFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoverageFlags {
-  pub files: Vec<PathBuf>,
+  pub files: FileFlags,
   pub output: Option<PathBuf>,
-  pub ignore: Vec<PathBuf>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub lcov: bool,
@@ -1952,7 +1951,7 @@ fn inspect_args(app: Command) -> Command {
     .arg(
       Arg::new("inspect")
         .long("inspect")
-        .value_name("HOST:PORT")
+        .value_name("HOST_AND_PORT")
         .help("Activate inspector on host:port (default: 127.0.0.1:9229)")
         .min_values(0)
         .max_values(1)
@@ -1963,7 +1962,7 @@ fn inspect_args(app: Command) -> Command {
     .arg(
       Arg::new("inspect-brk")
         .long("inspect-brk")
-        .value_name("HOST:PORT")
+        .value_name("HOST_AND_PORT")
         .help(
           "Activate inspector on host:port, wait for debugger to connect and break at the start of user script",
         )
@@ -1976,7 +1975,7 @@ fn inspect_args(app: Command) -> Command {
     .arg(
       Arg::new("inspect-wait")
         .long("inspect-wait")
-        .value_name("HOST:PORT")
+        .value_name("HOST_AND_PORT")
         .help(
           "Activate inspector on host:port and wait for debugger to connect before running user code",
         )
@@ -2430,9 +2429,11 @@ fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let lcov = matches.is_present("lcov");
   let output = matches.value_of("output").map(PathBuf::from);
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
-    files,
+    files: FileFlags {
+      include: files,
+      ignore,
+    },
     output,
-    ignore,
     include,
     exclude,
     lcov,
@@ -5531,6 +5532,23 @@ mod tests {
   }
 
   #[test]
+  fn test_no_colon_in_value_name() {
+    let app =
+      runtime_args(Command::new("test_inspect_completion_value"), true, true);
+    let inspect_args = app
+      .get_arguments()
+      .filter(|arg| arg.get_id() == "inspect")
+      .collect::<Vec<_>>();
+    // The value_name cannot have a : otherwise it breaks shell completions for zsh.
+    let value_name = "HOST_AND_PORT";
+    let arg = inspect_args
+      .iter()
+      .any(|v| v.get_value_names().unwrap() == [value_name]);
+
+    assert_eq!(arg, true);
+  }
+
+  #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
     let r = flags_from_vec(svec!["deno", "test", "--unstable", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
@@ -6083,9 +6101,11 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
-          files: vec![PathBuf::from("foo.json")],
+          files: FileFlags {
+            include: vec![PathBuf::from("foo.json")],
+            ignore: vec![],
+          },
           output: None,
-          ignore: vec![],
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           lcov: false,
@@ -6108,8 +6128,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
-          files: vec![PathBuf::from("foo.json")],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![PathBuf::from("foo.json")],
+            ignore: vec![],
+          },
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           lcov: true,
