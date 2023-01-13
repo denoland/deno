@@ -3,15 +3,10 @@
 // Node.js v12.x to run actions, so this is Node code and not Deno code.
 
 const { spawn } = require("child_process");
+const fs = require("fs");
+const { utimes, mkdir, readFile, writeFile } = require("fs/promises");
 const { dirname, resolve } = require("path");
 const { StringDecoder } = require("string_decoder");
-const { promisify } = require("util");
-
-const fs = require("fs");
-const utimes = promisify(fs.utimes);
-const mkdir = promisify(fs.mkdir);
-const readFile = promisify(fs.readFile);
-const writeFile = promisify(fs.writeFile);
 
 process.on("unhandledRejection", abort);
 main().catch(abort);

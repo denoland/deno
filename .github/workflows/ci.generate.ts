@@ -7,7 +7,7 @@ const Runners = {
     "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
   macos: "macos-12",
   windows:
-    "${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}",
+    "${{ github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022' }}",
 };
 
 const sysRootStep = {
@@ -106,6 +106,17 @@ const installDenoStep = {
   with: { "deno-version": "v1.x" },
 };
 
+const authenticateWithGoogleCloud = {
+  name: "Authenticate with Google Cloud",
+  uses: "google-github-actions/auth@v1",
+  with: {
+    "project_id": "denoland",
+    "credentials_json": "${{ secrets.GCP_SA_KEY }}",
+    "export_environment_variables": true,
+    "create_credentials_file": true,
+  },
+};
+
 function cancelEarlyIfDraftPr(
   nextSteps: Record<string, unknown>[],
 ): Record<string, unknown>[] {
@@ -132,7 +143,7 @@ function cancelEarlyIfDraftPr(
       ].join("\n"),
     },
     ...nextSteps.map((step) =>
-      skipForCondition(step, "steps.exit_early.outputs.EXIT_EARLY != 'true'")
+      withCondition(step, "steps.exit_early.outputs.EXIT_EARLY != 'true'")
     ),
   ];
 }
@@ -144,14 +155,14 @@ function skipJobsIfPrAndMarkedSkip(
   // so just apply this condition to all the steps.
   // https://stackoverflow.com/questions/65384420/how-to-make-a-github-action-matrix-element-conditional
   return steps.map((s) =>
-    skipForCondition(
+    withCondition(
       s,
       "!(github.event_name == 'pull_request' && matrix.skip_pr)",
     )
   );
 }
 
-function skipForCondition(
+function withCondition(
   step: Record<string, unknown>,
   condition: string,
 ): Record<string, unknown> {
@@ -181,7 +192,7 @@ const ci = {
   },
   concurrency: {
     group:
-      "${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, 'test-flaky-ci') && github.head_ref || github.run_id }}",
+      "${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, 'ci-test-flaky') && github.head_ref || github.run_id }}",
     "cancel-in-progress": true,
   },
   jobs: {
@@ -223,18 +234,25 @@ const ci = {
               job: "test",
               profile: "release",
               use_sysroot: true,
+              // TODO(ry): Because CI is so slow on for OSX and Windows, we
+              // currently run the Web Platform tests only on Linux.
+              wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
             },
             {
               os: Runners.linux,
               job: "bench",
               profile: "release",
               use_sysroot: true,
+              skip_pr:
+                "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
             },
             {
               os: Runners.linux,
               job: "test",
               profile: "debug",
               use_sysroot: true,
+              wpt:
+                "${{ github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}",
             },
             {
               os: Runners.linux,
@@ -278,7 +296,7 @@ const ci = {
           submoduleStep("./test_util/std"),
           {
             ...submoduleStep("./test_util/wpt"),
-            if: "matrix.job == 'test'",
+            if: "matrix.wpt",
           },
           {
             ...submoduleStep("./third_party"),
@@ -304,8 +322,24 @@ const ci = {
             if: "matrix.job == 'lint' || matrix.job == 'test'",
             ...installDenoStep,
           },
-          ...installPythonSteps,
-          installNodeStep,
+          ...installPythonSteps.map((s) =>
+            withCondition(s, "matrix.job != 'lint'")
+          ),
+          {
+            // only necessary for benchmarks
+            if: "matrix.job == 'bench'",
+            ...installNodeStep,
+          },
+          {
+            if: [
+              "matrix.profile == 'release' &&",
+              "matrix.job == 'test' &&",
+              "github.repository == 'denoland/deno' &&",
+              "(github.ref == 'refs/heads/main' ||",
+              "startsWith(github.ref, 'refs/tags/'))",
+            ].join("\n"),
+            ...authenticateWithGoogleCloud,
+          },
           {
             name: "Setup gcloud (unix)",
             if: [
@@ -316,31 +350,27 @@ const ci = {
               "(github.ref == 'refs/heads/main' ||",
               "startsWith(github.ref, 'refs/tags/'))",
             ].join("\n"),
-            uses: "google-github-actions/setup-gcloud@v0",
+            uses: "google-github-actions/setup-gcloud@v1",
             with: {
               project_id: "denoland",
-              service_account_key: "${{ secrets.GCP_SA_KEY }}",
-              export_default_credentials: true,
             },
           },
           {
             name: "Setup gcloud (windows)",
             if: [
               "runner.os == 'Windows' &&",
-              "matrix.job == 'test' &&",
               "matrix.profile == 'release' &&",
+              "matrix.job == 'test' &&",
               "github.repository == 'denoland/deno' &&",
               "(github.ref == 'refs/heads/main' ||",
               "startsWith(github.ref, 'refs/tags/'))",
             ].join("\n"),
-            uses: "google-github-actions/setup-gcloud@v0",
+            uses: "google-github-actions/setup-gcloud@v1",
             env: {
               CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
             },
             with: {
               project_id: "denoland",
-              service_account_key: "${{ secrets.GCP_SA_KEY }}",
-              export_default_credentials: true,
             },
           },
           {
@@ -362,14 +392,18 @@ const ci = {
             name: "Log versions",
             shell: "bash",
             run: [
-              "node -v",
               "python --version",
               "rustc --version",
               "cargo --version",
-              "# Deno is installed when linting.",
+              // Deno is installed when linting.
               'if [ "${{ matrix.job }}" == "lint" ]',
               "then",
               "  deno --version",
+              "fi",
+              // Node is installed for benchmarks.
+              'if [ "${{ matrix.job }}" == "bench" ]',
+              "then",
+              "  node -v",
               "fi",
             ].join("\n"),
           },
@@ -407,9 +441,11 @@ const ci = {
           },
           {
             name: "Apply and update mtime cache",
-            if: "matrix.profile == 'release'",
+            if: "!startsWith(github.ref, 'refs/tags/')",
             uses: "./.github/mtime_cache",
-            with: { "cache-path": "./target" },
+            with: {
+              "cache-path": "./target",
+            },
           },
           {
             // Shallow the cloning the crates.io index makes CI faster because it
@@ -556,14 +592,17 @@ const ci = {
               "matrix.job == 'test' && matrix.profile == 'debug' &&",
               "!startsWith(github.ref, 'refs/tags/')",
             ].join("\n"),
-            run: ["cargo test --locked --doc", "cargo test --locked"].join(
-              "\n",
-            ),
+            run: "cargo test --locked",
           },
           {
             name: "Test fastci",
-            if: "(matrix.job == 'test' && matrix.profile == 'fastci')",
-            run: "cargo test --locked",
+            if: "matrix.job == 'test' && matrix.profile == 'fastci'",
+            run: [
+              // Run unit then integration tests. Skip doc tests here
+              // since they are sometimes very slow on Mac.
+              "cargo test --locked --lib",
+              "cargo test --locked --test '*'",
+            ].join("\n"),
             env: {
               CARGO_PROFILE_DEV_DEBUG: 0,
             },
@@ -597,20 +636,14 @@ const ci = {
             run: 'sudo chroot /sysroot "$(pwd)/target/release/deno" --version',
           },
           {
-            // TODO(ry): Because CI is so slow on for OSX and Windows, we currently
-            //           run the Web Platform tests only on Linux.
             name: "Configure hosts file for WPT",
-            if: "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test'",
+            if: "matrix.wpt",
             run: "./wpt make-hosts-file | sudo tee -a /etc/hosts",
             "working-directory": "test_util/wpt/",
           },
           {
             name: "Run web platform tests (debug)",
-            if: [
-              "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&",
-              "matrix.profile == 'debug' &&",
-              "github.ref == 'refs/heads/main'",
-            ].join("\n"),
+            if: "matrix.wpt && matrix.profile == 'debug'",
             env: {
               DENO_BIN: "./target/debug/deno",
             },
@@ -627,10 +660,7 @@ const ci = {
           },
           {
             name: "Run web platform tests (release)",
-            if: [
-              "startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&",
-              "matrix.profile == 'release' && !startsWith(github.ref, 'refs/tags/')",
-            ].join("\n"),
+            if: "matrix.wpt && matrix.profile == 'release'",
             env: {
               DENO_BIN: "./target/release/deno",
             },
@@ -652,8 +682,8 @@ const ci = {
             name: "Upload wpt results to dl.deno.land",
             "continue-on-error": true,
             if: [
+              "matrix.wpt &&",
               "runner.os == 'Linux' &&",
-              "matrix.job == 'test' &&",
               "matrix.profile == 'release' &&",
               "github.repository == 'denoland/deno' &&",
               "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
@@ -670,8 +700,8 @@ const ci = {
             name: "Upload wpt results to wpt.fyi",
             "continue-on-error": true,
             if: [
+              "matrix.wpt &&",
               "runner.os == 'Linux' &&",
-              "matrix.job == 'test' &&",
               "matrix.profile == 'release' &&",
               "github.repository == 'denoland/deno' &&",
               "github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
@@ -825,21 +855,23 @@ const ci = {
       needs: ["build"],
       if:
         "github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'",
-      steps: [{
-        name: "Setup gcloud",
-        uses: "google-github-actions/setup-gcloud@v0",
-        with: {
-          project_id: "denoland",
-          service_account_key: "${{ secrets.GCP_SA_KEY }}",
-          export_default_credentials: true,
+      steps: [
+        authenticateWithGoogleCloud,
+        {
+          name: "Setup gcloud",
+          uses: "google-github-actions/setup-gcloud@v1",
+          with: {
+            project_id: "denoland",
+          },
         },
-      }, {
-        name: "Upload canary version file to dl.deno.land",
-        run: [
-          "echo ${{ github.sha }} > canary-latest.txt",
-          'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
-        ].join("\n"),
-      }],
+        {
+          name: "Upload canary version file to dl.deno.land",
+          run: [
+            "echo ${{ github.sha }} > canary-latest.txt",
+            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt',
+          ].join("\n"),
+        },
+      ],
     },
   },
 };
