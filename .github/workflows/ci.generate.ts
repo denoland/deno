@@ -202,6 +202,7 @@ const ci = {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
       if: [
         "github.event_name == 'push' ||",
+        "contains(github.head_ref, 'release_') ||",
         "!startsWith(github.event.pull_request.head.label, 'denoland:')",
       ].join("\n"),
       "runs-on": "${{ matrix.os }}",
