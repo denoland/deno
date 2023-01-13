@@ -148,8 +148,8 @@ fn napi_get_uv_event_loop(_env: *mut Env, uv_loop: *mut *mut ()) -> Result {
 }
 
 const NODE_VERSION: napi_node_version = napi_node_version {
-  major: 17,
-  minor: 4,
+  major: 18,
+  minor: 13,
   patch: 0,
   release: "Deno\0".as_ptr() as *const c_char,
 };
