@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use curve25519_dalek::montgomery::MontgomeryPoint;
 use deno_core::error::AnyError;
 use deno_core::op;

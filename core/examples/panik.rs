@@ -24,8 +24,9 @@ fn main() {
     panic!("panik !!!")
   }
 
-  let extensions =
-    vec![Extension::builder().ops(vec![op_panik::decl()]).build()];
+  let extensions = vec![Extension::builder("my_ext")
+    .ops(vec![op_panik::decl()])
+    .build()];
   let mut rt = JsRuntime::new(RuntimeOptions {
     extensions,
     ..Default::default()

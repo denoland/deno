@@ -1,6 +1,6 @@
-/// Code generation for V8 fast calls.
-use crate::optimizer::FastValue;
-use crate::optimizer::Optimizer;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+//! Code generation for V8 fast calls.
+
 use pmutil::{q, Quote, ToTokensExt};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -8,6 +8,9 @@ use syn::{
   parse_quote, punctuated::Punctuated, token::Comma, GenericParam, Generics,
   Ident, ItemFn, ItemImpl, Path, PathArguments, PathSegment, Type, TypePath,
 };
+
+use crate::optimizer::FastValue;
+use crate::optimizer::Optimizer;
 
 pub(crate) struct FastImplItems {
   pub(crate) impl_and_fn: TokenStream,

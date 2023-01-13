@@ -50,12 +50,10 @@ pub struct FetchCacher {
 impl FetchCacher {
   pub fn new(
     emit_cache: EmitCache,
-    file_fetcher: FileFetcher,
+    file_fetcher: Arc<FileFetcher>,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
   ) -> Self {
-    let file_fetcher = Arc::new(file_fetcher);
-
     Self {
       emit_cache,
       dynamic_permissions,

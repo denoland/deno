@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -459,6 +461,7 @@ async fn create_main_worker_internal(
       &package_ref.req,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
+      &mut PermissionsContainer::allow_all(),
     )?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
@@ -473,7 +476,11 @@ async fn create_main_worker_internal(
     (main_module, false)
   };
 
-  let module_loader = CliModuleLoader::new(ps.clone());
+  let module_loader = CliModuleLoader::new(
+    ps.clone(),
+    PermissionsContainer::allow_all(),
+    permissions.clone(),
+  );
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
 
@@ -649,6 +656,7 @@ fn create_web_worker_callback(
     let module_loader = CliModuleLoader::new_for_worker(
       ps.clone(),
       args.parent_permissions.clone(),
+      args.permissions.clone(),
     );
     let create_web_worker_cb =
       create_web_worker_callback(ps.clone(), stdio.clone());

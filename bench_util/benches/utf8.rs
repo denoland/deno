@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use deno_bench_util::bench_js_sync_with;
 use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::benchmark_group;
@@ -6,7 +8,7 @@ use deno_bench_util::BenchOptions;
 use deno_core::Extension;
 
 fn setup() -> Vec<Extension> {
-  vec![Extension::builder()
+  vec![Extension::builder("bench_setup")
     .js(vec![(
       "setup.js",
       r#"

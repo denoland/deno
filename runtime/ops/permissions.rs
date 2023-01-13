@@ -13,7 +13,7 @@ use serde::Deserialize;
 use std::path::Path;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_permissions")
     .ops(vec![
       op_query_permission::decl(),
       op_revoke_permission::decl(),
