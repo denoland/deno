@@ -349,9 +349,9 @@ impl Drop for NapiState {
     };
 
     // Hooks are supposed to be run in LIFO order
-    let hooks = hooks.into_iter().rev();
+    let hooks_to_run = hooks.into_iter().rev();
 
-    for hook in hooks {
+    for hook in hooks_to_run {
       // This hook might have been removed by a previous hook, in such case skip it here.
       if !self
         .env_cleanup_hooks
@@ -364,16 +364,10 @@ impl Drop for NapiState {
 
       (hook.0)(hook.1);
       {
-        let mut hooks = self.env_cleanup_hooks.borrow_mut();
-        let hooks_to_filter: Vec<(
-          extern "C" fn(*const c_void),
-          *const c_void,
-        )> = hooks.drain(..).collect();
-        let filtered_hooks = hooks_to_filter
-          .into_iter()
-          .filter(|pair| pair.0 != hook.0 && pair.1 != hook.1)
-          .collect();
-        *hooks = filtered_hooks;
+        self
+          .env_cleanup_hooks
+          .borrow_mut()
+          .retain(|pair| !(pair.0 == hook.0 && pair.1 == hook.1));
       }
     }
   }

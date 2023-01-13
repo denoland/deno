@@ -66,6 +66,11 @@ extern "C" fn cleanup(arg: *mut c_void) {
   println!("cleanup({})", arg as i64);
 }
 
+extern "C" fn remove_this_hook(arg: *mut c_void) {
+  let env = arg as napi_env;
+  unsafe { napi_remove_env_cleanup_hook(env, Some(remove_this_hook), arg) };
+}
+
 static SECRET: i64 = 42;
 static WRONG_SECRET: i64 = 17;
 static THIRD_SECRET: i64 = 18;
@@ -81,6 +86,7 @@ extern "C" fn install_cleanup_hook(
     napi_add_env_cleanup_hook(env, Some(cleanup), WRONG_SECRET as *mut c_void);
     napi_add_env_cleanup_hook(env, Some(cleanup), SECRET as *mut c_void);
     napi_add_env_cleanup_hook(env, Some(cleanup), THIRD_SECRET as *mut c_void);
+    napi_add_env_cleanup_hook(env, Some(remove_this_hook), env as *mut c_void);
     napi_remove_env_cleanup_hook(
       env,
       Some(cleanup),
