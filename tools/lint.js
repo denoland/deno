@@ -8,6 +8,25 @@ import {
   ROOT_PATH,
 } from "./util.js";
 
+let didLint = false;
+
+if (Deno.args.includes("--js")) {
+  await dlint();
+  await dlintPreferPrimordials();
+  didLint = true;
+}
+
+if (Deno.args.includes("--rs")) {
+  await clippy();
+  didLint = true;
+}
+
+if (!didLint) {
+  await dlint();
+  await dlintPreferPrimordials();
+  await clippy();
+}
+
 async function dlint() {
   const configFile = join(ROOT_PATH, ".dlint.json");
   const execPath = getPrebuiltToolPath("dlint");
@@ -44,6 +63,7 @@ async function dlint() {
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
     const cmd = new Deno.Command(execPath, {
+      cwd: ROOT_PATH,
       args: ["run", "--config=" + configFile, ...chunk],
       stdout: "inherit",
       stderr: "inherit",
@@ -77,6 +97,7 @@ async function dlintPreferPrimordials() {
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
     const cmd = new Deno.Command(execPath, {
+      cwd: ROOT_PATH,
       args: ["run", "--rule", "prefer-primordials", ...chunk],
       stdout: "inherit",
       stderr: "inherit",
@@ -116,6 +137,7 @@ async function clippy() {
   }
 
   const cargoCmd = new Deno.Command("cargo", {
+    cwd: ROOT_PATH,
     args: [
       ...cmd,
       "--",
@@ -131,28 +153,3 @@ async function clippy() {
     throw new Error("clippy failed");
   }
 }
-
-async function main() {
-  await Deno.chdir(ROOT_PATH);
-
-  let didLint = false;
-
-  if (Deno.args.includes("--js")) {
-    await dlint();
-    await dlintPreferPrimordials();
-    didLint = true;
-  }
-
-  if (Deno.args.includes("--rs")) {
-    await clippy();
-    didLint = true;
-  }
-
-  if (!didLint) {
-    await dlint();
-    await dlintPreferPrimordials();
-    await clippy();
-  }
-}
-
-await main();

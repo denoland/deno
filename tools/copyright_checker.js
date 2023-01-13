@@ -16,69 +16,60 @@ async function readFirstPartOfFile(filePath) {
   }
 }
 
-async function checkCopyright() {
-  const sourceFiles = await getSources(ROOT_PATH, [
-    // js and ts
-    "*.js",
-    "*.ts",
-    ":!:.github/mtime_cache/action.js",
-    ":!:cli/tests/testdata/**",
-    ":!:cli/bench/testdata/**",
-    ":!:cli/tsc/dts/**",
-    ":!:cli/tsc/*typescript.js",
-    ":!:cli/tsc/compiler.d.ts",
-    ":!:test_util/wpt/**",
-    ":!:tools/**", // these files are starts with `#!/usr/bin/env`
-    ":!:cli/tools/init/templates/**",
+const sourceFiles = await getSources(ROOT_PATH, [
+  // js and ts
+  "*.js",
+  "*.ts",
+  ":!:.github/mtime_cache/action.js",
+  ":!:cli/tests/testdata/**",
+  ":!:cli/bench/testdata/**",
+  ":!:cli/tsc/dts/**",
+  ":!:cli/tsc/*typescript.js",
+  ":!:cli/tsc/compiler.d.ts",
+  ":!:test_util/wpt/**",
+  ":!:tools/**", // these files are starts with `#!/usr/bin/env`
+  ":!:cli/tools/init/templates/**",
 
-    // rust
-    "*.rs",
-    ":!:ops/optimizer_tests/**",
+  // rust
+  "*.rs",
+  ":!:ops/optimizer_tests/**",
 
-    // toml
-    "*Cargo.toml",
-  ]);
+  // toml
+  "*Cargo.toml",
+]);
 
-  let totalCount = 0;
-  const sourceFilesSet = new Set(sourceFiles);
+let totalCount = 0;
+const sourceFilesSet = new Set(sourceFiles);
 
-  for (const file of sourceFilesSet) {
-    const ERROR_MSG = "Copyright header is missing: ";
+for (const file of sourceFilesSet) {
+  const ERROR_MSG = "Copyright header is missing: ";
 
-    const fileText = await readFirstPartOfFile(file);
-    if (file.endsWith("Cargo.toml")) {
-      if (
-        !fileText.startsWith(
-          "# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
-        )
-      ) {
-        console.log(ERROR_MSG + file);
-        totalCount += 1;
-      }
-      continue;
-    }
-
+  const fileText = await readFirstPartOfFile(file);
+  if (file.endsWith("Cargo.toml")) {
     if (
       !fileText.startsWith(
-        "// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
+        "# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
       )
     ) {
       console.log(ERROR_MSG + file);
       totalCount += 1;
     }
+    continue;
   }
 
-  console.log("\nTotal errors: " + totalCount);
-
-  if (totalCount > 0) {
-    Deno.exit(1);
+  // use .includes(...) because the first line might be a shebang
+  if (
+    !fileText.includes(
+      "// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
+    )
+  ) {
+    console.log(ERROR_MSG + file);
+    totalCount += 1;
   }
 }
 
-async function main() {
-  await Deno.chdir(ROOT_PATH);
+console.log("\nTotal errors: " + totalCount);
 
-  await checkCopyright();
+if (totalCount > 0) {
+  Deno.exit(1);
 }
-
-await main();
