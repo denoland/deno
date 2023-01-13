@@ -3722,3 +3722,23 @@ fn file_fetcher_preserves_permissions() {
     assert_contains!(output, "true");
   });
 }
+
+#[test]
+fn stdio_streams_are_locked_in_permission_prompt() {
+  let _guard = util::http_server();
+  util::with_pty(&[
+    "repl",
+    "--allow-read=./testdata/stdio_streams_are_locked_in_permission_prompt/worker.js,./testdata/stdio_streams_are_locked_in_permission_prompt/text.txt"
+    ], |mut console| {
+    console.write_line(
+      r#"new Worker(`${Deno.cwd()}/testdata/stdio_streams_are_locked_in_permissions_prompt/worker.js`, { type: "module" });
+      await Deno.writeTextFile("./testdata/stdio_streams_are_locked_in_permissions_prompt/text.txt", "some code");"#,
+    );
+    console.write_line("y");
+    console.write_line("close();");
+    let output = console.read_all_output();
+
+    let expected_output = r#"\x1b[1;1H\x1b[0JAre you sure you want to continue?"#;
+    assert_eq!(output, expected_output);
+  });
+}

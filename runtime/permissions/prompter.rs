@@ -192,6 +192,8 @@ impl PermissionPrompter for TtyPrompter {
       return PromptResponse::Deny; // don't grant permission if this fails
     }
 
+    // Lock stdio streams, so no other output is written while the prompt is
+    // displayed.
     let _stdout_guard = std::io::stdout().lock();
     let _stderr_guard = std::io::stderr().lock();
 
