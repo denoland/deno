@@ -122,6 +122,9 @@ where
           options.proxy.clone(),
           options.unsafely_ignore_certificate_errors.clone(),
           options.client_cert_chain_and_key.clone(),
+          None,
+          None,
+          None,
         )
         .unwrap()
       });
@@ -591,11 +594,28 @@ impl HttpClientResource {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+pub enum HttpOnly {
+  Http1,
+  Http2,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum PoolIdleTimeout {
+  State(bool),
+  Specify(u64),
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateHttpClientOptions {
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
   cert_chain: Option<String>,
   private_key: Option<String>,
+  pool_max_idle_per_host: Option<usize>,
+  pool_idle_timeout: Option<PoolIdleTimeout>,
+  only: Option<HttpOnly>,
 }
 
 #[op]
@@ -641,6 +661,13 @@ where
     args.proxy,
     options.unsafely_ignore_certificate_errors.clone(),
     client_cert_chain_and_key,
+    args.pool_max_idle_per_host,
+    args.pool_idle_timeout.and_then(|timeout| match timeout {
+      PoolIdleTimeout::State(true) => None,
+      PoolIdleTimeout::State(false) => Some(None),
+      PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
+    }),
+    args.only,
   )?;
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
@@ -656,6 +683,9 @@ pub fn create_http_client(
   proxy: Option<Proxy>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
   client_cert_chain_and_key: Option<(String, String)>,
+  pool_max_idle_per_host: Option<usize>,
+  pool_idle_timeout: Option<Option<u64>>,
+  only: Option<HttpOnly>,
 ) -> Result<Client, AnyError> {
   let mut tls_config = deno_tls::create_client_config(
     root_cert_store,
@@ -680,6 +710,23 @@ pub fn create_http_client(
         reqwest_proxy.basic_auth(&basic_auth.username, &basic_auth.password);
     }
     builder = builder.proxy(reqwest_proxy);
+  }
+
+  if let Some(pool_max_idle_per_host) = pool_max_idle_per_host {
+    builder = builder.pool_max_idle_per_host(pool_max_idle_per_host);
+  }
+
+  if let Some(pool_idle_timeout) = pool_idle_timeout {
+    builder = builder.pool_idle_timeout(
+      pool_idle_timeout.map(std::time::Duration::from_millis),
+    );
+  }
+
+  if let Some(only) = only {
+    builder = match only {
+      HttpOnly::Http1 => builder.http1_only(),
+      HttpOnly::Http2 => builder.http2_prior_knowledge(),
+    };
   }
 
   // unwrap here because it can only fail when native TLS is used.

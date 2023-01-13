@@ -95,9 +95,9 @@ declare namespace Deno {
   type NativeVoidType = "void";
 
   /** **UNSTABLE**: New API, yet to be vetted.
-   * 
+   *
    * The native struct type for interfacing with foreign functions.
-   * 
+   *
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
@@ -748,6 +748,13 @@ declare namespace Deno {
     certChain?: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey?: string;
+    /** Sets the maximum idle connection per host allowed in the pool. */
+    poolMaxIdlePerHost?: number;
+    /** Set an optional timeout for idle sockets being kept-alive.
+     * Set to false to disable the timeout. */
+    poolIdleTimeout?: number | false;
+    /** Specify whether only wanting HTTP1 or HTTP2 */
+    only?: "http1" | "http2";
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
