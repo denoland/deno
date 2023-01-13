@@ -676,6 +676,7 @@ where
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
+#[allow(clippy::too_many_arguments)]
 pub fn create_http_client(
   user_agent: String,
   root_cert_store: Option<RootCertStore>,
