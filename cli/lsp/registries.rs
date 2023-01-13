@@ -516,7 +516,7 @@ impl ModuleRegistry {
     specifier: &ModuleSpecifier,
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
     let fetch_result = async {
-      tokio::time::timeout(std::time::Duration::from_secs(20), self
+      tokio::time::timeout(std::time::Duration::from_secs(10), self
         .file_fetcher
         .fetch_with_accept(
           specifier,
