@@ -3728,11 +3728,11 @@ fn stdio_streams_are_locked_in_permission_prompt() {
   let _guard = util::http_server();
   util::with_pty(&[
     "repl",
-    "--allow-read=./testdata/stdio_streams_are_locked_in_permission_prompt/worker.js,./testdata/stdio_streams_are_locked_in_permission_prompt/text.txt"
+    "--allow-read=run/stdio_streams_are_locked_in_permission_prompt/worker.js,run/stdio_streams_are_locked_in_permission_prompt/text.txt"
     ], |mut console| {
     console.write_line(
-      r#"new Worker(`${Deno.cwd()}/testdata/stdio_streams_are_locked_in_permissions_prompt/worker.js`, { type: "module" });
-      await Deno.writeTextFile("./testdata/stdio_streams_are_locked_in_permissions_prompt/text.txt", "some code");"#,
+      r#"new Worker(`${Deno.cwd()}/run/stdio_streams_are_locked_in_permissions_prompt/worker.js`, { type: "module" });
+      await Deno.writeTextFile("./run/stdio_streams_are_locked_in_permissions_prompt/text.txt", "some code");"#,
     );
     console.write_line("y");
     console.write_line("close();");
