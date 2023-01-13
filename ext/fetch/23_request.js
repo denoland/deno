@@ -155,6 +155,7 @@
   /**
    * https://fetch.spec.whatwg.org/#concept-request-clone
    * @param {InnerRequest} request
+   * @param {boolean} skipBody
    * @param {boolean} flash
    * @returns {InnerRequest}
    */
@@ -246,9 +247,7 @@
     }
     const upperCase = byteUpperCase(m);
     if (
-      upperCase === "CONNECT" ||
-      upperCase === "TRACE" ||
-      upperCase === "TRACK"
+      upperCase === "CONNECT" || upperCase === "TRACE" || upperCase === "TRACK"
     ) {
       throw new TypeError("Method is forbidden.");
     }
@@ -327,8 +326,7 @@
           null,
           true,
         );
-      } else {
-        // 6.
+      } else { // 6.
         if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
           throw new TypeError("Unreachable");
         }
@@ -414,7 +412,8 @@
       // 34.
       if (
         (request.method === "GET" || request.method === "HEAD") &&
-        ((init.body !== undefined && init.body !== null) || inputBody !== null)
+        ((init.body !== undefined && init.body !== null) ||
+          inputBody !== null)
       ) {
         throw new TypeError("Request with GET/HEAD method cannot have body.");
       }
@@ -507,7 +506,6 @@
       } else {
         newReq = cloneInnerRequest(this[_request]);
       }
-
       const newSignal = abortSignal.newSignal();
 
       if (this[_signal]) {
@@ -532,13 +530,17 @@
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      return inspect(
-        consoleInternal.createFilteredInspectProxy({
-          object: this,
-          evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
-          keys: ["bodyUsed", "headers", "method", "redirect", "url"],
-        }),
-      );
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
+        keys: [
+          "bodyUsed",
+          "headers",
+          "method",
+          "redirect",
+          "url",
+        ],
+      }));
     }
   }
 
@@ -562,7 +564,11 @@
   };
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
     "RequestRedirect",
-    ["follow", "error", "manual"],
+    [
+      "follow",
+      "error",
+      "manual",
+    ],
   );
   webidl.converters["RequestInit"] = webidl.createDictionaryConverter(
     "RequestInit",
