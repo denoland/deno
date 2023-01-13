@@ -1434,7 +1434,7 @@ mod npm {
       .unwrap();
     let output = deno.wait_with_output().unwrap();
     assert!(wildcard_match(
-      "Config file found at '[WILDCARD]/deno.json'\n1\n2\n",
+      "Config file found at '[WILDCARD]deno.json'\n1\n2\n",
       &String::from_utf8(output.stderr).unwrap()
     ));
     assert!(output.status.success());
@@ -1471,7 +1471,7 @@ mod npm {
       .unwrap();
     let output = deno.wait_with_output().unwrap();
     assert!(wildcard_match(
-      "Config file found at '[WILDCARD]/deno.json'\n1\n2\n",
+      "Config file found at '[WILDCARD]deno.json'\n1\n2\n",
       &String::from_utf8(output.stderr).unwrap()
     ));
     assert!(output.status.success());
@@ -1499,7 +1499,7 @@ mod npm {
     let output = deno.wait_with_output().unwrap();
     assert!(output.status.success());
     assert!(wildcard_match(
-      "Config file found at '[WILDCARD]/deno.json'\n1\n2\n",
+      "Config file found at '[WILDCARD]deno.json'\n1\n2\n",
       &String::from_utf8(output.stderr).unwrap()
     ));
 
