@@ -201,10 +201,6 @@ const ci = {
   jobs: {
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
-      if: [
-        "github.event_name == 'push' ||",
-        "!startsWith(github.event.pull_request.head.label, 'denoland:')",
-      ].join("\n"),
       "runs-on": "${{ matrix.runner || matrix.os }}",
       "timeout-minutes": 120,
       strategy: {
