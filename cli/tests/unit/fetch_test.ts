@@ -1890,7 +1890,7 @@ Deno.test(
 
 Deno.test(
   async function responseUint8ArrayByteStream() {
-    const reader = new Response(new Uint8Array([1, 2])).body.getReader({
+    const reader = new Response(new Uint8Array([1, 2])).body!.getReader({
       mode: "byob",
     });
     await reader.cancel();
@@ -1899,7 +1899,7 @@ Deno.test(
 
 Deno.test(
   async function responseStringByteStream() {
-    const reader = new Response("foo").body.getReader({ mode: "byob" });
+    const reader = new Response("foo").body!.getReader({ mode: "byob" });
     await reader.cancel();
   },
 );
