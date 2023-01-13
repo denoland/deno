@@ -592,14 +592,17 @@ const ci = {
               "matrix.job == 'test' && matrix.profile == 'debug' &&",
               "!startsWith(github.ref, 'refs/tags/')",
             ].join("\n"),
-            run: ["cargo test --locked --doc", "cargo test --locked"].join(
-              "\n",
-            ),
+            run: "cargo test --locked",
           },
           {
             name: "Test fastci",
-            if: "(matrix.job == 'test' && matrix.profile == 'fastci')",
-            run: "cargo test --locked",
+            if: "matrix.job == 'test' && matrix.profile == 'fastci'",
+            run: [
+              // Run unit then integration tests. Skip doc tests here
+              // since they are sometimes very slow on Mac.
+              "cargo test --locked --lib",
+              "cargo test --locked --test '*'",
+            ].join("\n"),
             env: {
               CARGO_PROFILE_DEV_DEBUG: 0,
             },
