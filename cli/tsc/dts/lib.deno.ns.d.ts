@@ -3364,7 +3364,7 @@ declare namespace Deno {
    */
   export function writeFile(
     path: string | URL,
-    data: Uint8Array,
+    data: Uint8Array | ReadableStream<Uint8Array>,
     options?: WriteFileOptions,
   ): Promise<void>;
 
@@ -3407,7 +3407,7 @@ declare namespace Deno {
    */
   export function writeTextFile(
     path: string | URL,
-    data: string,
+    data: string | ReadableStream<string>,
     options?: WriteFileOptions,
   ): Promise<void>;
 
