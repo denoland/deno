@@ -18,4 +18,7 @@ Before submitting a PR, please read http://deno.land/manual/contributing
 4. Ensure `cargo test` passes.
 5. Ensure `./tools/format.js` passes without changing files.
 6. Ensure `./tools/lint.js` passes.
+7. Open as a draft PR if your work is still in progress. The CI won't run
+   all steps, but you can add '[ci]' to a commit message to force it to.
+8. If you would like to run the benchmarks on the CI, add the 'ci-bench' label.
 -->
