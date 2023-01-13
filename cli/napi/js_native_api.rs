@@ -23,6 +23,13 @@ macro_rules! check_env {
 }
 
 #[macro_export]
+macro_rules! napi_to_v8 {
+  ($val: ident) => {
+    transmute::<napi_value, v8::Local<v8::Value>>($val)
+  };
+}
+
+#[macro_export]
 macro_rules! status_call {
   ($call: expr) => {
     let status = $call;
@@ -239,7 +246,7 @@ fn napi_coerce_to_bool(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let coerced = value.to_boolean(&mut env.scope());
   let value: v8::Local<v8::Value> = coerced.into();
   *result = value.into();
@@ -254,7 +261,7 @@ fn napi_coerce_to_number(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let coerced = value
     .to_number(&mut env.scope())
     .ok_or(Error::NumberExpected)?;
@@ -271,7 +278,7 @@ fn napi_coerce_to_object(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let coerced = value.to_object(&mut env.scope()).unwrap();
   let value: v8::Local<v8::Value> = coerced.into();
   *result = value.into();
@@ -286,7 +293,7 @@ fn napi_coerce_to_string(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let coerced = value.to_string(&mut env.scope()).unwrap();
   let value: v8::Local<v8::Value> = coerced.into();
   *result = value.into();
@@ -364,8 +371,7 @@ fn set_error_code(
     let err_object: v8::Local<v8::Object> = error.try_into().unwrap();
 
     let code_value: v8::Local<v8::Value> = if code.is_some() {
-      let mut code_value =
-        unsafe { transmute::<napi_value, v8::Local<v8::Value>>(code) };
+      let mut code_value = unsafe { napi_to_v8!(code) };
 
       if !code_value.is_string() {
         return napi_string_expected;
@@ -404,8 +410,7 @@ fn napi_create_error(
     check_arg!(env, result);
     let env = unsafe { &mut *env };
 
-    let mut message_value =
-      unsafe { transmute::<napi_value, v8::Local<v8::Value>>(msg) };
+    let mut message_value = unsafe { napi_to_v8!(msg) };
     // TODO: store last error here
     if !message_value.is_string() {
       return Err(Error::StringExpected);
@@ -434,8 +439,7 @@ fn napi_create_type_error(
     check_arg!(env, result);
     let env = unsafe { &mut *env };
 
-    let mut message_value =
-      unsafe { transmute::<napi_value, v8::Local<v8::Value>>(msg) };
+    let mut message_value = unsafe { napi_to_v8!(msg) };
     // TODO: store last error here
     if !message_value.is_string() {
       return Err(Error::StringExpected);
@@ -463,8 +467,7 @@ fn napi_create_range_error(
     check_arg!(env, result);
     let env = unsafe { &mut *env };
 
-    let mut message_value =
-      unsafe { transmute::<napi_value, v8::Local<v8::Value>>(msg) };
+    let mut message_value = unsafe { napi_to_v8!(msg) };
     // TODO: store last error here
     if !message_value.is_string() {
       return Err(Error::StringExpected);
@@ -685,7 +688,7 @@ fn napi_create_reference(
   check_env!(env);
   let env = unsafe { &mut *env };
 
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let global = v8::Global::new(&mut env.scope(), value);
   let mut global_ptr = global.into_raw();
   *result = transmute::<NonNull<v8::Value>, napi_ref>(global_ptr);
@@ -836,7 +839,7 @@ fn napi_create_typedarray(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let ab = transmute::<napi_value, v8::Local<v8::Value>>(arraybuffer);
+  let ab = napi_to_v8!(arraybuffer);
   let ab = v8::Local::<v8::ArrayBuffer>::try_from(ab).unwrap();
   let typedarray: v8::Local<v8::Value> = match ty {
     napi_uint8_array => {
@@ -923,8 +926,8 @@ fn napi_make_callback(
     log::info!("napi_make_callback: async_context is not supported");
   }
 
-  let recv = transmute::<napi_value, v8::Local<v8::Value>>(recv);
-  let func = transmute::<napi_value, v8::Local<v8::Value>>(func);
+  let recv = napi_to_v8!(recv);
+  let func = napi_to_v8!(func);
 
   let func = v8::Local::<v8::Function>::try_from(func)
     .map_err(|_| Error::FunctionExpected)?;
@@ -943,7 +946,7 @@ fn napi_get_value_bigint_int64(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let bigint = value.to_big_int(&mut env.scope()).unwrap();
   *result = bigint.i64_value().0;
   Ok(())
@@ -957,7 +960,7 @@ fn napi_get_value_bigint_uint64(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let bigint = value.to_big_int(&mut env.scope()).unwrap();
   *result = bigint.u64_value().0;
   Ok(())
@@ -974,7 +977,7 @@ fn napi_get_value_bigint_words(
   check_env!(env);
   let env = unsafe { &mut *env };
 
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let bigint = value.to_big_int(&mut env.scope()).unwrap();
 
   let out_words = std::slice::from_raw_parts_mut(out_words, *size);
@@ -997,7 +1000,7 @@ fn napi_get_value_bool(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   *result = value.boolean_value(&mut env.scope());
   Ok(())
 }
@@ -1010,7 +1013,7 @@ fn napi_get_value_double(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   *result = value.number_value(&mut env.scope()).unwrap();
   Ok(())
 }
@@ -1021,7 +1024,7 @@ fn napi_get_value_external(
   value: napi_value,
   result: *mut *mut c_void,
 ) -> Result {
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let ext = v8::Local::<v8::External>::try_from(value).unwrap();
   *result = ext.value();
   Ok(())
@@ -1035,7 +1038,7 @@ fn napi_get_value_int32(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   *result = value.int32_value(&mut env.scope()).unwrap();
   Ok(())
 }
@@ -1048,7 +1051,7 @@ fn napi_get_value_int64(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   *result = value.integer_value(&mut env.scope()).unwrap();
   Ok(())
 }
@@ -1064,7 +1067,7 @@ fn napi_get_value_string_latin1(
   check_env!(env);
   let env = unsafe { &mut *env };
 
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
 
   if !value.is_string() && !value.is_string_object() {
     return Err(Error::StringExpected);
@@ -1105,7 +1108,7 @@ fn napi_get_value_string_utf8(
   check_env!(env);
   let env = unsafe { &mut *env };
 
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
 
   if !value.is_string() && !value.is_string_object() {
     return Err(Error::StringExpected);
@@ -1147,7 +1150,7 @@ fn napi_get_value_string_utf16(
   check_env!(env);
   let env = unsafe { &mut *env };
 
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
 
   if !value.is_string() && !value.is_string_object() {
     return Err(Error::StringExpected);
@@ -1185,7 +1188,7 @@ fn napi_get_value_uint32(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   *result = value.uint32_value(&mut env.scope()).unwrap();
   Ok(())
 }
@@ -1229,8 +1232,8 @@ fn napi_call_function(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let recv = transmute::<napi_value, v8::Local<v8::Value>>(recv);
-  let func = transmute::<napi_value, v8::Local<v8::Value>>(func);
+  let recv = napi_to_v8!(recv);
+  let func = napi_to_v8!(func);
   let func = v8::Local::<v8::Function>::try_from(func)
     .map_err(|_| Error::FunctionExpected)?;
 
@@ -1444,7 +1447,7 @@ fn napi_delete_element(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let obj = value.to_object(&mut env.scope()).unwrap();
   *result = obj.delete_index(&mut env.scope(), index).unwrap_or(false);
   Ok(())
@@ -1483,7 +1486,7 @@ fn napi_delete_reference(env: *mut Env, _nref: napi_ref) -> Result {
 
 #[napi_sym::napi_sym]
 fn napi_detach_arraybuffer(_env: *mut Env, value: napi_value) -> Result {
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
   ab.detach(None);
   Ok(())
@@ -1527,7 +1530,7 @@ fn napi_get_array_length(
   value: napi_value,
   result: *mut u32,
 ) -> Result {
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   *result = v8::Local::<v8::Array>::try_from(value).unwrap().length();
   Ok(())
 }
@@ -1539,7 +1542,7 @@ fn napi_get_arraybuffer_info(
   data: *mut *mut u8,
   length: *mut usize,
 ) -> Result {
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let buf = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
   if !data.is_null() {
     *data = get_array_buffer_ptr(buf);
@@ -1570,7 +1573,7 @@ fn napi_get_buffer_info(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let buf = v8::Local::<v8::Uint8Array>::try_from(value).unwrap();
   let buffer_name = v8::String::new(&mut env.scope(), "buffer").unwrap();
   let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
@@ -1634,7 +1637,7 @@ fn napi_get_dataview_info(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let buf = v8::Local::<v8::DataView>::try_from(value).unwrap();
   let buffer_name = v8::String::new(&mut env.scope(), "buffer").unwrap();
   let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
@@ -1656,7 +1659,7 @@ fn napi_get_date_value(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let date = v8::Local::<v8::Date>::try_from(value).unwrap();
   *result = date.number_value(&mut env.scope()).unwrap();
   Ok(())
@@ -1671,7 +1674,7 @@ fn napi_get_element(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let object = transmute::<napi_value, v8::Local<v8::Value>>(object);
+  let object = napi_to_v8!(object);
   let array = v8::Local::<v8::Array>::try_from(object).unwrap();
   let value: v8::Local<v8::Value> =
     array.get_index(&mut env.scope(), index).unwrap();
@@ -1725,7 +1728,7 @@ fn napi_get_named_property(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let object = transmute::<napi_value, v8::Local<v8::Value>>(object);
+  let object = napi_to_v8!(object);
   let utf8_name = std::ffi::CStr::from_ptr(utf8_name);
   let name =
     v8::String::new(&mut env.scope(), &utf8_name.to_string_lossy()).unwrap();
@@ -1768,7 +1771,7 @@ fn napi_get_property(
   check_env!(env);
   let env = unsafe { &mut *env };
   let object = transmute::<napi_value, v8::Local<v8::Object>>(object);
-  let key = transmute::<napi_value, v8::Local<v8::Value>>(key);
+  let key = napi_to_v8!(key);
   let value: v8::Local<v8::Value> = object.get(&mut env.scope(), key).unwrap();
   *result = value.into();
   Ok(())
@@ -1782,7 +1785,7 @@ fn napi_get_property_names(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let object = transmute::<napi_value, v8::Local<v8::Value>>(object);
+  let object = napi_to_v8!(object);
   let array: v8::Local<v8::Array> = object
     .to_object(&mut env.scope())
     .unwrap()
@@ -1801,7 +1804,7 @@ fn napi_get_prototype(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let obj = value.to_object(&mut env.scope()).unwrap();
   let proto = obj.get_prototype(&mut env.scope()).unwrap();
   *result = proto.into();
@@ -1831,7 +1834,7 @@ fn napi_get_typedarray_info(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let buf = v8::Local::<v8::TypedArray>::try_from(value).unwrap();
   let buffer_name = v8::String::new(&mut env.scope(), "buffer").unwrap();
   let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
@@ -1871,7 +1874,7 @@ fn napi_has_element(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let obj = value.to_object(&mut env.scope()).unwrap();
   *result = obj.has_index(&mut env.scope(), index).unwrap_or(false);
   Ok(())
@@ -1886,7 +1889,7 @@ fn napi_has_named_property(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let obj = value.to_object(&mut env.scope()).unwrap();
   let key = CStr::from_ptr(key).to_str().unwrap();
   let key = v8::String::new(&mut env.scope(), key).unwrap();
@@ -1960,8 +1963,8 @@ fn napi_instanceof(
   check_arg_option!(env, constructor);
   check_arg_option!(env, value);
 
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
-  let constructor = transmute::<napi_value, v8::Local<v8::Value>>(constructor);
+  let value = napi_to_v8!(value);
+  let constructor = napi_to_v8!(constructor);
   let ctor = constructor
     .to_object(&mut env.scope())
     .ok_or(Error::ObjectExpected)?;
@@ -1984,7 +1987,7 @@ fn napi_is_array(
   value: napi_value,
   result: *mut bool,
 ) -> Result {
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   *result = value.is_array();
   Ok(())
 }
@@ -1995,7 +1998,7 @@ fn napi_is_arraybuffer(
   value: napi_value,
   result: *mut bool,
 ) -> Result {
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   *result = value.is_array_buffer();
   Ok(())
 }
@@ -2006,7 +2009,7 @@ fn napi_is_buffer(
   value: napi_value,
   result: *mut bool,
 ) -> Result {
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   // TODO: should we assume Buffer as Uint8Array in Deno?
   // or use std/node polyfill?
   *result = value.is_typed_array();
@@ -2019,7 +2022,7 @@ fn napi_is_dataview(
   value: napi_value,
   result: *mut bool,
 ) -> Result {
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   *result = value.is_data_view();
   Ok(())
 }
@@ -2030,7 +2033,7 @@ fn napi_is_date(
   value: napi_value,
   result: *mut bool,
 ) -> Result {
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   *result = value.is_date();
   Ok(())
 }
@@ -2041,7 +2044,7 @@ fn napi_is_detached_arraybuffer(
   value: napi_value,
   result: *mut bool,
 ) -> Result {
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let _ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
   *result = _ab.was_detached();
   Ok(())
@@ -2059,7 +2062,7 @@ fn napi_is_error(
     value.ok_or(Error::InvalidArg)?;
     check_arg!(env, result);
 
-    let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+    let value = napi_to_v8!(value);
     *result = value.is_native_error();
   }
   napi_clear_last_error(env);
@@ -2080,7 +2083,7 @@ fn napi_is_promise(
   value: napi_value,
   result: *mut bool,
 ) -> Result {
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   *result = value.is_promise();
   Ok(())
 }
@@ -2091,7 +2094,7 @@ fn napi_is_typedarray(
   value: napi_value,
   result: *mut bool,
 ) -> Result {
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   *result = value.is_typed_array();
   Ok(())
 }
@@ -2106,7 +2109,7 @@ fn napi_new_instance(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let constructor = transmute::<napi_value, v8::Local<v8::Value>>(constructor);
+  let constructor = napi_to_v8!(constructor);
   let constructor = v8::Local::<v8::Function>::try_from(constructor).unwrap();
   let args: &[v8::Local<v8::Value>] =
     transmute(std::slice::from_raw_parts(argv, argc));
@@ -2193,10 +2196,7 @@ fn napi_reject_deferred(
     v8::Local<v8::PromiseResolver>,
   >(deferred_ptr);
   resolver
-    .reject(
-      &mut env.scope(),
-      transmute::<napi_value, v8::Local<v8::Value>>(error),
-    )
+    .reject(&mut env.scope(), napi_to_v8!(error))
     .unwrap();
   Ok(())
 }
@@ -2205,7 +2205,7 @@ fn napi_reject_deferred(
 fn napi_remove_wrap(env: *mut Env, value: napi_value) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let obj = value.to_object(&mut env.scope()).unwrap();
   let shared = &*(env.shared as *const EnvShared);
   let napi_wrap = v8::Local::new(&mut env.scope(), &shared.napi_wrap);
@@ -2232,10 +2232,7 @@ fn napi_resolve_deferred(
     v8::Local<v8::PromiseResolver>,
   >(deferred_ptr);
   resolver
-    .resolve(
-      &mut env.scope(),
-      transmute::<napi_value, v8::Local<v8::Value>>(result),
-    )
+    .resolve(&mut env.scope(), napi_to_v8!(result))
     .unwrap();
   Ok(())
 }
@@ -2249,7 +2246,7 @@ fn napi_run_script(
   check_env!(env);
   let env = unsafe { &mut *env };
 
-  let script = transmute::<napi_value, v8::Local<v8::Value>>(script);
+  let script = napi_to_v8!(script);
   if !script.is_string() {
     // TODO:
     // napi_set_last_error
@@ -2282,9 +2279,9 @@ fn napi_set_element(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let object = transmute::<napi_value, v8::Local<v8::Value>>(object);
+  let object = napi_to_v8!(object);
   let array = v8::Local::<v8::Array>::try_from(object).unwrap();
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   array.set_index(&mut env.scope(), index, value).unwrap();
   Ok(())
 }
@@ -2319,7 +2316,7 @@ fn napi_set_named_property(
   let env = unsafe { &mut *env };
   let name = CStr::from_ptr(name).to_str().unwrap();
   let object = transmute::<napi_value, v8::Local<v8::Object>>(object);
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let name = v8::String::new(&mut env.scope(), name).unwrap();
   object.set(&mut env.scope(), name.into(), value).unwrap();
   Ok(())
@@ -2369,7 +2366,7 @@ fn napi_strict_equals(
 fn napi_throw(env: *mut Env, error: napi_value) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let error = transmute::<napi_value, v8::Local<v8::Value>>(error);
+  let error = napi_to_v8!(error);
   env.scope().throw_exception(error);
   Ok(())
 }
@@ -2525,7 +2522,7 @@ fn napi_unwrap(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let obj = value.to_object(&mut env.scope()).unwrap();
   let shared = &*(env.shared as *const EnvShared);
   let napi_wrap = v8::Local::new(&mut env.scope(), &shared.napi_wrap);
@@ -2543,7 +2540,7 @@ fn napi_wrap(
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+  let value = napi_to_v8!(value);
   let obj = value.to_object(&mut env.scope()).unwrap();
   let shared = &*(env.shared as *const EnvShared);
   let napi_wrap = v8::Local::new(&mut env.scope(), &shared.napi_wrap);
@@ -2583,8 +2580,8 @@ fn node_api_create_syntax_error(
   check_env!(env);
   let env = unsafe { &mut *env };
 
-  // let code = transmute::<napi_value, v8::Local<v8::Value>>(code);
-  let msg = transmute::<napi_value, v8::Local<v8::Value>>(msg);
+  // let code = napi_to_v8!(code);
+  let msg = napi_to_v8!(msg);
 
   let msg = msg.to_string(&mut env.scope()).unwrap();
 
