@@ -34,14 +34,9 @@
     SafeArrayIterator,
     SafePromiseAll,
     Set,
-    SetPrototypeEntries,
-    SetPrototypeForEach,
     SetPrototypeHas,
-    SetPrototypeKeys,
-    SetPrototypeValues,
     Symbol,
     SymbolFor,
-    SymbolIterator,
     TypeError,
     Uint32Array,
     Uint32ArrayPrototype,
@@ -602,58 +597,18 @@
 
   function createGPUSupportedFeatures(features) {
     /** @type {GPUSupportedFeatures} */
-    const adapterFeatures = webidl.createBranded(GPUSupportedFeatures);
-    adapterFeatures[_features] = new Set(features);
-    return adapterFeatures;
+    const supportedFeatures = webidl.createBranded(GPUSupportedFeatures);
+    supportedFeatures[webidl.setlikeInner] = new Set(features);
+    return webidl.setlike(
+      supportedFeatures,
+      GPUSupportedFeaturesPrototype,
+      true,
+    );
   }
 
   class GPUSupportedFeatures {
-    /** @type {Set<string>} */
-    [_features];
-
     constructor() {
       webidl.illegalConstructor();
-    }
-
-    /** @return {IterableIterator<[string, string]>} */
-    entries() {
-      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
-      return SetPrototypeEntries(this[_features]);
-    }
-
-    /** @return {void} */
-    forEach(callbackfn, thisArg) {
-      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
-      SetPrototypeForEach(this[_features], callbackfn, thisArg);
-    }
-
-    /** @return {boolean} */
-    has(value) {
-      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
-      return SetPrototypeHas(this[_features], value);
-    }
-
-    /** @return {IterableIterator<string>} */
-    keys() {
-      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
-      return SetPrototypeKeys(this[_features]);
-    }
-
-    /** @return {IterableIterator<string>} */
-    values() {
-      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
-      return SetPrototypeValues(this[_features]);
-    }
-
-    /** @return {number} */
-    get size() {
-      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
-      return this[_features].size;
-    }
-
-    [SymbolIterator]() {
-      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
-      return this[_features][SymbolIterator]();
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
