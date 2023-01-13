@@ -1484,6 +1484,11 @@ fn napi_get_date_value(
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
+
+  if !value.is_date() {
+    return Err(Error::DateExpected);
+  }
+
   let date = v8::Local::<v8::Date>::try_from(value).unwrap();
   *result = date.number_value(&mut env.scope()).unwrap();
   Ok(())
@@ -2287,7 +2292,9 @@ fn napi_unwrap(
   let shared = &*(env.shared as *const EnvShared);
   let napi_wrap = v8::Local::new(&mut env.scope(), &shared.napi_wrap);
   let ext = obj.get_private(&mut env.scope(), napi_wrap).unwrap();
-  let ext = v8::Local::<v8::External>::try_from(ext).unwrap();
+  let ext = v8::Local::<v8::External>::try_from(ext)
+    .ok()
+    .ok_or(Error::InvalidArg)?;
   *result = ext.value();
   Ok(())
 }

@@ -10,6 +10,8 @@ const Runners = {
     "${{ github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022' }}",
 };
 
+const installPkgsCommand =
+  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Avoid running man-db triggers, which sometimes takes several minutes
@@ -23,8 +25,8 @@ curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
 sudo apt-get update
-sudo apt-get install --no-install-recommends debootstrap     \\
-                                             clang-15 lld-15
+# this was unreliable sometimes, so try again if it fails
+${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
 
 # Create ubuntu-16.04 sysroot environment, which is used to avoid
 # depending on a very recent version of glibc.
