@@ -1420,6 +1420,21 @@ Deno.test(function consoleTable() {
     );
   });
   mockConsole((console, out) => {
+    console.table([[1, 1], [234, 2.34], [56789, 56.789]]);
+    assertEquals(
+      stripColor(out.toString()),
+      `\
+┌───────┬───────┬────────┐
+│ (idx) │ 0     │ 1      │
+├───────┼───────┼────────┤
+│     0 │     1 │ 1      │
+│     1 │   234 │ 2.34   │
+│     2 │ 56789 │ 56.789 │
+└───────┴───────┴────────┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
     console.table([1, 2, [3, [4]], [5, 6], [[7], [8]]]);
     assertEquals(
       stripColor(out.toString()),
