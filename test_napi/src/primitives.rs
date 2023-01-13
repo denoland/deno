@@ -5,8 +5,6 @@ use crate::napi_new_property;
 use napi_sys::*;
 use std::ptr;
 
-use napi_sys::*;
-
 extern "C" fn test_get_undefined(
   env: napi_env,
   _: napi_callback_info,
