@@ -5,7 +5,7 @@ use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use super::process::Stdio;
 use super::process::StdioOrRid;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
@@ -28,7 +28,7 @@ use std::os::unix::prelude::ExitStatusExt;
 use std::os::unix::process::CommandExt;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_spawn")
     .ops(vec![
       op_spawn_child::decl(),
       op_node_unstable_spawn_child::decl(),
@@ -131,9 +131,8 @@ fn node_unstable_create_command(
   api_name: &str,
 ) -> Result<std::process::Command, AnyError> {
   state
-    .borrow_mut::<Permissions>()
-    .run
-    .check(&args.cmd, Some(api_name))?;
+    .borrow_mut::<PermissionsContainer>()
+    .check_run(&args.cmd, api_name)?;
 
   let mut command = std::process::Command::new(args.cmd);
 
@@ -196,9 +195,8 @@ fn create_command(
 ) -> Result<std::process::Command, AnyError> {
   super::check_unstable(state, "Deno.spawn");
   state
-    .borrow_mut::<Permissions>()
-    .run
-    .check(&args.cmd, Some(api_name))?;
+    .borrow_mut::<PermissionsContainer>()
+    .check_run(&args.cmd, api_name)?;
 
   let mut command = std::process::Command::new(args.cmd);
 

@@ -8,7 +8,7 @@ use deno_bench_util::BenchOptions;
 use deno_core::Extension;
 
 fn setup() -> Vec<Extension> {
-  vec![Extension::builder()
+  vec![Extension::builder("bench_setup")
     .js(vec![(
       "setup.js",
       r#"

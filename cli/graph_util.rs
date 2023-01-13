@@ -28,7 +28,7 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::Range;
 use deno_graph::Resolved;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -72,7 +72,7 @@ pub struct GraphData {
 
 impl GraphData {
   /// Store data from `graph` into `self`.
-  pub fn add_graph(&mut self, graph: &ModuleGraph, reload: bool) {
+  pub fn add_graph(&mut self, graph: &ModuleGraph) {
     for graph_import in &graph.imports {
       for dep in graph_import.dependencies.values() {
         for resolved in [&dep.maybe_code, &dep.maybe_type] {
@@ -96,7 +96,7 @@ impl GraphData {
         continue;
       }
 
-      if !reload && self.modules.contains_key(specifier) {
+      if self.modules.contains_key(specifier) {
         continue;
       }
 
@@ -470,7 +470,7 @@ impl GraphData {
 impl From<&ModuleGraph> for GraphData {
   fn from(graph: &ModuleGraph) -> Self {
     let mut graph_data = GraphData::default();
-    graph_data.add_graph(graph, false);
+    graph_data.add_graph(graph);
     graph_data
   }
 }
@@ -514,8 +514,8 @@ pub async fn create_graph_and_maybe_check(
   let mut cache = cache::FetchCacher::new(
     ps.emit_cache.clone(),
     ps.file_fetcher.clone(),
-    Permissions::allow_all(),
-    Permissions::allow_all(),
+    PermissionsContainer::allow_all(),
+    PermissionsContainer::allow_all(),
   );
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_cli_resolver = CliResolver::maybe_new(
@@ -542,7 +542,7 @@ pub async fn create_graph_and_maybe_check(
 
   let check_js = ps.options.check_js();
   let mut graph_data = GraphData::default();
-  graph_data.add_graph(&graph, false);
+  graph_data.add_graph(&graph);
   graph_data
     .check(
       &graph.roots,
