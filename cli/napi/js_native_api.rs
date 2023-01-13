@@ -2524,7 +2524,7 @@ fn napi_typeof(
   value: napi_value,
   result: *mut napi_valuetype,
 ) -> Result {
-  let _: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+  check_env!(env);
   check_arg_option!(env, value);
   check_arg!(env, result);
   match get_value_type(value.unwrap()) {

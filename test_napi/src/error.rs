@@ -29,9 +29,7 @@ extern "C" fn create_error(
   let mut message: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
-    // to null terminate... I think
-    "error\0".as_ptr() as *const c_char,
+    cstr!("error"),
     usize::MAX,
     &mut message
   ));
@@ -52,9 +50,7 @@ extern "C" fn create_range_error(
   let mut message: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
-    // to null terminate... I think
-    "range error\0".as_ptr() as *const c_char,
+    cstr!("range error"),
     usize::MAX,
     &mut message
   ));
@@ -75,9 +71,7 @@ extern "C" fn create_type_error(
   let mut message: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
-    // to null terminate... I think
-    "type error\0".as_ptr() as *const c_char,
+    cstr!("type error"),
     usize::MAX,
     &mut message
   ));
@@ -99,17 +93,13 @@ extern "C" fn create_error_code(
   let mut code: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
-    // to null terminate... I think
-    "Error [error]\0".as_ptr() as *const c_char,
+    cstr!("Error [error]"),
     usize::MAX,
     &mut message
   ));
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
-    // to null terminate... I think
-    "ERR_TEST_CODE\0".as_ptr() as *const c_char,
+    cstr!("ERR_TEST_CODE"),
     usize::MAX,
     &mut code
   ));
@@ -126,17 +116,13 @@ extern "C" fn create_range_error_code(
   let mut code: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
-    // to null terminate... I think
-    "RangeError [range error]\0".as_ptr() as *const c_char,
+    cstr!("RangeError [range error]"),
     usize::MAX,
     &mut message
   ));
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
-    // to null terminate... I think
-    "ERR_TEST_CODE\0".as_ptr() as *const c_char,
+    cstr!("ERR_TEST_CODE"),
     usize::MAX,
     &mut code
   ));
@@ -153,17 +139,13 @@ extern "C" fn create_type_error_code(
   let mut code: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
-    // to null terminate... I think
-    "TypeError [type error]\0".as_ptr() as *const c_char,
+    cstr!("TypeError [type error]"),
     usize::MAX,
     &mut message
   ));
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
-    // to null terminate... I think
-    "ERR_TEST_CODE\0".as_ptr() as *const c_char,
+    cstr!("ERR_TEST_CODE"),
     usize::MAX,
     &mut code
   ));
@@ -179,9 +161,7 @@ extern "C" fn throw_existing_error(
   let mut error: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    // TODO(bartlomieju): this is broken, if we pass usize::MAX then we shouldn't need
-    // to null terminate... I think
-    "existing error\0".as_ptr() as *const c_char,
+    cstr!("existing error"),
     usize::MAX,
     &mut message
   ));
