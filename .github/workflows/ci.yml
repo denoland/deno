@@ -34,10 +34,10 @@ jobs:
             job: test
             profile: release
             skip_pr: true
-          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && github.event_name != ''pull_request'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             job: test
             profile: fastci
-          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && github.event_name != ''pull_request'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             job: test
             profile: release
             skip_pr: true

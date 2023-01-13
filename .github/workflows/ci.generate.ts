@@ -7,7 +7,7 @@ const Runners = {
     "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
   macos: "macos-12",
   windows:
-    "${{ github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022' }}",
+    "${{ github.repository == 'denoland/deno' && github.event_name != 'pull_request' && 'windows-2022-xl' || 'windows-2022' }}",
 };
 
 const installPkgsCommand =
