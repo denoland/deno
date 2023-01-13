@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - v*
     tags:
       - '*'
   pull_request:

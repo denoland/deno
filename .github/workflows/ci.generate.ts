@@ -178,7 +178,7 @@ const ci = {
   name: "ci",
   on: {
     push: {
-      branches: ["main"],
+      branches: ["main", "v*"],
       tags: ["*"],
     },
     pull_request: {
