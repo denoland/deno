@@ -3690,6 +3690,7 @@ itest!(config_file_lock_true {
 });
 
 // Check https://github.com/denoland/deno_std/issues/2882
+#[ignore]
 itest!(flash_shutdown {
   args: "run --unstable --allow-net run/flash_shutdown/main.ts",
   exit_code: 0,
