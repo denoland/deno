@@ -1,5 +1,8 @@
-use super::transl8::{impl_magic, impl_wrapper, FromV8, ToV8};
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use crate::Error;
+
+use super::transl8::{impl_magic, impl_wrapper, FromV8, ToV8};
 
 impl_wrapper!(
   pub struct U16String(Vec<u16>);
