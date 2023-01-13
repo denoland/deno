@@ -25,7 +25,7 @@ curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
 sudo apt-get update
-# this was unreliable sometimes, so try doing an update with no cache when it fails
+# this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
 
 # Create ubuntu-16.04 sysroot environment, which is used to avoid
