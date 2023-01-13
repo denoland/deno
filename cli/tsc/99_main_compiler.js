@@ -854,25 +854,7 @@ delete Object.prototype.__proto__;
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
       ...program.getSemanticDiagnostics(),
-    ].filter((diagnostic) => {
-      if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
-        return false;
-      } else if (
-        diagnostic.code === 1259 &&
-        typeof diagnostic.messageText === "string" &&
-        diagnostic.messageText.startsWith(
-          "Module '\"deno:///missing_dependency.d.ts\"' can only be default-imported using the 'allowSyntheticDefaultImports' flag",
-        )
-      ) {
-        // For now, ignore diagnostics like:
-        // > TS1259 [ERROR]: Module '"deno:///missing_dependency.d.ts"' can only be default-imported using the 'allowSyntheticDefaultImports' flag
-        // This diagnostic has surfaced due to supporting node cjs imports because this module does `export =`.
-        // See discussion in https://github.com/microsoft/TypeScript/pull/51136
-        return false;
-      } else {
-        return true;
-      }
-    });
+    ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code));
 
     // emit the tsbuildinfo file
     // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
