@@ -343,11 +343,38 @@ pub struct NapiState {
 
 impl Drop for NapiState {
   fn drop(&mut self) {
-    let mut hooks = self.env_cleanup_hooks.borrow_mut();
+    let hooks = {
+      let h = self.env_cleanup_hooks.borrow_mut();
+      h.clone()
+    };
+
     // Hooks are supposed to be run in LIFO order
-    let hooks = hooks.drain(..).rev();
-    for (fn_ptr, data) in hooks {
-      (fn_ptr)(data);
+    let hooks = hooks.into_iter().rev();
+
+    for hook in hooks {
+      // This hook might have been removed by a previous hook, in such case skip it here.
+      if !self
+        .env_cleanup_hooks
+        .borrow()
+        .iter()
+        .any(|pair| pair.0 == hook.0 && pair.1 == hook.1)
+      {
+        continue;
+      }
+
+      (hook.0)(hook.1);
+      {
+        let mut hooks = self.env_cleanup_hooks.borrow_mut();
+        let hooks_to_filter: Vec<(
+          extern "C" fn(*const c_void),
+          *const c_void,
+        )> = hooks.drain(..).collect();
+        let filtered_hooks = hooks_to_filter
+          .into_iter()
+          .filter(|pair| pair.0 != hook.0 && pair.1 != hook.1)
+          .collect();
+        *hooks = filtered_hooks;
+      }
     }
   }
 }
