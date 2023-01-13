@@ -8,32 +8,38 @@ https://github.com/denoland/deno_install
 
 ### 1.29.3 / 2023.01.13
 
-- Revert "test: fix flaky deno_land_unsafe_ssl test (#17357)" (#17368)
 - feat(core): allow specifying name and dependencies of an Extension (#17301)
 - feat(ext/ffi): structs by value (#15060)
-- fix(ci): use Node 18 (#17355)
 - fix(cli): uninstall command accept short flags (#17259)
-- fix(cli/args): update value_name of inspect args to resolve broken completions (#17287)
+- fix(cli/args): update value_name of inspect args to resolve broken completions
+  (#17287)
 - fix(core): get v8 console from context extra bindings (#17243)
 - fix(ext/web/streams): fix ReadableStream asyncIterator (#16276)
-- fix(fmt): better handling of link reference definitions when formatting markdown (#17352)
-- fix(install): should always include `--no-config` in shim unless `--config` is specified (#17300)
+- fix(fmt): better handling of link reference definitions when formatting
+  markdown (#17352)
+- fix(install): should always include `--no-config` in shim unless `--config` is
+  specified (#17300)
 - fix(napi): Implement `napi_threadsafe_function` ref and unref (#17304)
 - fix(napi): date and unwrap handling (#17369)
 - fix(napi): handle static properties in classes (#17320)
 - fix(napi): support for env cleanup hooks (#17324)
 - fix(npm): allow to read package.json if permissions are granted (#17209)
-- fix(npm): handle declaration file resolution where packages incorrectly define "types" last in "exports" (#17290)
+- fix(npm): handle declaration file resolution where packages incorrectly define
+  "types" last in "exports" (#17290)
 - fix(npm): panic resolving some dependencies with dist tags (#17278)
-- fix(npm): reduce copy packages when resolving optional peer dependencies (#17280)
-- fix(npm): support old packages and registries with no integrity, but with a sha1sum (#17289)
+- fix(npm): reduce copy packages when resolving optional peer dependencies
+  (#17280)
+- fix(npm): support old packages and registries with no integrity, but with a
+  sha1sum (#17289)
 - fix(permissions): lock stdio streams when prompt is shown (#17392)
 - fix(watch): preserve `ProcState::file_fetcher` between restarts (#15466)
 - fix(webidl): properly implement setlike (#17363)
 - fix: check if BroadcastChannel is open before sending (#17366)
-- fix: don't panic on resolveDns if unsupported record type is specified (#17336)
+- fix: don't panic on resolveDns if unsupported record type is specified
+  (#17336)
 - fix: don't unwrap in test pipe handling logic (#17341)
-- fix: make self and window getters only & make getterOnly ignore setting (#17362)
+- fix: make self and window getters only & make getterOnly ignore setting
+  (#17362)
 - perf(ext,runtime): remove using `SafeArrayIterator` from `for-of` (#17255)
 
 ### 1.29.2 / 2023.01.05
