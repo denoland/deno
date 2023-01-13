@@ -5,7 +5,6 @@ use crate::cstr;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
 use napi_sys::*;
-use std::ffi::c_char;
 use std::ptr;
 
 extern "C" fn check_error(
@@ -179,11 +178,7 @@ extern "C" fn throw_error(
   env: napi_env,
   _info: napi_callback_info,
 ) -> napi_value {
-  assert_napi_ok!(napi_throw_error(
-    env,
-    std::ptr::null_mut(),
-    "error".as_ptr() as *const c_char,
-  ));
+  assert_napi_ok!(napi_throw_error(env, std::ptr::null_mut(), cstr!("error"),));
   std::ptr::null_mut()
 }
 
@@ -194,7 +189,7 @@ extern "C" fn throw_range_error(
   assert_napi_ok!(napi_throw_range_error(
     env,
     std::ptr::null_mut(),
-    "range error".as_ptr() as *const c_char,
+    cstr!("range error"),
   ));
   std::ptr::null_mut()
 }
@@ -206,7 +201,7 @@ extern "C" fn throw_type_error(
   assert_napi_ok!(napi_throw_type_error(
     env,
     std::ptr::null_mut(),
-    "type error".as_ptr() as *const c_char,
+    cstr!("type error"),
   ));
   std::ptr::null_mut()
 }

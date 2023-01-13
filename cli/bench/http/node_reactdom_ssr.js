@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 var Gd = Object.create;
 var Ac = Object.defineProperty;
 var Xd = Object.getOwnPropertyDescriptor;

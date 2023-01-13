@@ -1,2 +1,2 @@
-const r = await fetch("https://localhost:5545/cert/cafile_info.ts");
+const r = await fetch("https://google.com");
 console.log(r.status);

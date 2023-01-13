@@ -1699,9 +1699,11 @@ fn napi_get_date_value(
   result: *mut f64,
 ) -> Result {
   check_env!(env);
-  let env = unsafe { &mut *env };
   let value = napi_to_v8!(value);
+  return_status_if_false!(env, value.is_date(), napi_date_expected);
+  let env = unsafe { &mut *env };
   let date = v8::Local::<v8::Date>::try_from(value).unwrap();
+  // TODO: should be value of
   *result = date.number_value(&mut env.scope()).unwrap();
   Ok(())
 }
@@ -2555,7 +2557,9 @@ fn napi_unwrap(
   let shared = &*(env.shared as *const EnvShared);
   let napi_wrap = v8::Local::new(&mut env.scope(), &shared.napi_wrap);
   let ext = obj.get_private(&mut env.scope(), napi_wrap).unwrap();
-  let ext = v8::Local::<v8::External>::try_from(ext).unwrap();
+  let ext = v8::Local::<v8::External>::try_from(ext)
+    .ok()
+    .ok_or(Error::InvalidArg)?;
   *result = ext.value();
   Ok(())
 }
