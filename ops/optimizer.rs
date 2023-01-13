@@ -1,16 +1,21 @@
-/// Optimizer for #[op]
-use crate::Op;
-use pmutil::{q, Quote};
-use proc_macro2::TokenStream;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+//! Optimizer for #[op]
+
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Formatter;
+
+use pmutil::{q, Quote};
+use proc_macro2::TokenStream;
+
 use syn::{
   parse_quote, punctuated::Punctuated, token::Colon2,
   AngleBracketedGenericArguments, FnArg, GenericArgument, PatType, Path,
   PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypePtr,
   TypeReference, TypeSlice, TypeTuple,
 };
+
+use crate::Op;
 
 #[derive(Debug)]
 pub(crate) enum BailoutReason {
