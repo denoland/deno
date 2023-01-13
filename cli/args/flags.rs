@@ -87,9 +87,8 @@ pub struct CompletionsFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoverageFlags {
-  pub files: Vec<PathBuf>,
+  pub files: FileFlags,
   pub output: Option<PathBuf>,
-  pub ignore: Vec<PathBuf>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub lcov: bool,
@@ -2430,9 +2429,11 @@ fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let lcov = matches.is_present("lcov");
   let output = matches.value_of("output").map(PathBuf::from);
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
-    files,
+    files: FileFlags {
+      include: files,
+      ignore,
+    },
     output,
-    ignore,
     include,
     exclude,
     lcov,
@@ -6100,9 +6101,11 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
-          files: vec![PathBuf::from("foo.json")],
+          files: FileFlags {
+            include: vec![PathBuf::from("foo.json")],
+            ignore: vec![],
+          },
           output: None,
-          ignore: vec![],
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           lcov: false,
@@ -6125,8 +6128,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
-          files: vec![PathBuf::from("foo.json")],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![PathBuf::from("foo.json")],
+            ignore: vec![],
+          },
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           lcov: true,

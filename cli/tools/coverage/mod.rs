@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CoverageFlags;
+use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::colors;
 use crate::emit::get_source_hash;
@@ -555,8 +556,7 @@ impl CoverageReporter for PrettyCoverageReporter {
 }
 
 fn collect_coverages(
-  files: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
+  files: FileFlags,
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
   let file_paths = FileCollector::new(|file_path| {
@@ -564,8 +564,8 @@ fn collect_coverages(
   })
   .ignore_git_folder()
   .ignore_node_modules()
-  .add_ignore_paths(&ignore)
-  .collect_files(&files)?;
+  .add_ignore_paths(&files.ignore)
+  .collect_files(&files.include)?;
 
   for file_path in file_paths {
     let json = fs::read_to_string(file_path.as_path())?;
@@ -609,14 +609,13 @@ pub async fn cover_files(
   flags: Flags,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
-  if coverage_flags.files.is_empty() {
+  if coverage_flags.files.include.is_empty() {
     return Err(generic_error("No matching coverage profiles found"));
   }
 
   let ps = ProcState::build(flags).await?;
 
-  let script_coverages =
-    collect_coverages(coverage_flags.files, coverage_flags.ignore)?;
+  let script_coverages = collect_coverages(coverage_flags.files)?;
   let script_coverages = filter_coverages(
     script_coverages,
     coverage_flags.include,
