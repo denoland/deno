@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::BTreeMap;
 use std::collections::HashSet;
@@ -69,7 +69,8 @@ pub fn is_remote_specifier(specifier: &ModuleSpecifier) -> bool {
 }
 
 pub fn is_remote_specifier_text(text: &str) -> bool {
-  text.trim_start().to_lowercase().starts_with("http")
+  let text = text.trim_start().to_lowercase();
+  text.starts_with("http:") || text.starts_with("https:")
 }
 
 pub fn sanitize_filepath(text: &str) -> String {

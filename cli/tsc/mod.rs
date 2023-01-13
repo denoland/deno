@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::TsConfig;
 use crate::graph_util::GraphData;
@@ -6,7 +6,6 @@ use crate::graph_util::ModuleEntry;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
-use crate::node::NodeResolutionMode;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 use crate::util::checksum;
@@ -33,6 +32,8 @@ use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::Resolved;
+use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -86,6 +87,31 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
     .into_boxed_slice()
   },
 );
+
+pub fn get_types_declaration_file_text(unstable: bool) -> String {
+  let mut types = vec![
+    DENO_NS_LIB,
+    DENO_CONSOLE_LIB,
+    DENO_URL_LIB,
+    DENO_WEB_LIB,
+    DENO_FETCH_LIB,
+    DENO_WEBGPU_LIB,
+    DENO_WEBSOCKET_LIB,
+    DENO_WEBSTORAGE_LIB,
+    DENO_CRYPTO_LIB,
+    DENO_BROADCAST_CHANNEL_LIB,
+    DENO_NET_LIB,
+    SHARED_GLOBALS_LIB,
+    DENO_CACHE_LIB,
+    WINDOW_LIB,
+  ];
+
+  if unstable {
+    types.push(UNSTABLE_NS_LIB);
+  }
+
+  types.join("\n")
+}
 
 pub fn compiler_snapshot() -> Snapshot {
   Snapshot::Static(&COMPILER_SNAPSHOT)
@@ -485,28 +511,28 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     let specifier = if let Some(remapped_specifier) =
       state.remapped_specifiers.get(&v.specifier)
     {
-      remapped_specifier.clone()
+      remapped_specifier
     } else if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
-      remapped_specifier.clone()
+      remapped_specifier
     } else {
-      specifier
+      &specifier
     };
     let maybe_source = if let Some(ModuleEntry::Module {
       code,
       media_type: mt,
       ..
     }) =
-      graph_data.get(&graph_data.follow_redirect(&specifier))
+      graph_data.get(&graph_data.follow_redirect(specifier))
     {
       media_type = *mt;
       Some(Cow::Borrowed(code as &str))
     } else if state
       .maybe_npm_resolver
       .as_ref()
-      .map(|resolver| resolver.in_npm_package(&specifier))
+      .map(|resolver| resolver.in_npm_package(specifier))
       .unwrap_or(false)
     {
-      media_type = MediaType::from(&specifier);
+      media_type = MediaType::from(specifier);
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path)
         .with_context(|| format!("Unable to load {}", file_path.display()))?;
@@ -542,7 +568,8 @@ fn op_resolve(
   args: ResolveArgs,
 ) -> Result<Vec<(String, String)>, AnyError> {
   let state = state.borrow_mut::<State>();
-  let mut resolved: Vec<(String, String)> = Vec::new();
+  let mut resolved: Vec<(String, String)> =
+    Vec::with_capacity(args.specifiers.len());
   let referrer = if let Some(remapped_specifier) =
     state.remapped_specifiers.get(&args.base)
   {
@@ -619,8 +646,9 @@ fn op_resolve(
                 node::node_resolve(
                   specifier,
                   &referrer,
-                  node::NodeResolutionMode::Types,
+                  NodeResolutionMode::Types,
                   npm_resolver,
+                  &mut PermissionsContainer::allow_all(),
                 )
                 .ok()
                 .flatten(),
@@ -661,6 +689,7 @@ fn op_resolve(
           ".d.ts".to_string(),
         ),
       };
+      log::debug!("Resolved {} to {:?}", specifier, result);
       resolved.push(result);
     }
   }
@@ -676,6 +705,7 @@ pub fn resolve_npm_package_reference_types(
     npm_ref,
     NodeResolutionMode::Types,
     npm_resolver,
+    &mut PermissionsContainer::allow_all(),
   )?;
   Ok(NodeResolution::into_specifier_and_media_type(
     maybe_resolution,
@@ -743,7 +773,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .collect();
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
-    extensions: vec![Extension::builder()
+    extensions: vec![Extension::builder("deno_cli_tsc")
       .ops(vec![
         op_cwd::decl(),
         op_create_hash::decl(),
@@ -831,7 +861,7 @@ mod tests {
         .replace("://", "_")
         .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
-      let response = fs::read_to_string(&source_path)
+      let response = fs::read_to_string(source_path)
         .map(|c| {
           Some(deno_graph::source::LoadResponse::Module {
             specifier: specifier.clone(),
@@ -861,7 +891,6 @@ mod tests {
         is_dynamic: false,
         imports: None,
         resolver: None,
-        locker: None,
         module_analyzer: None,
         reporter: None,
       },
@@ -894,7 +923,6 @@ mod tests {
         is_dynamic: false,
         imports: None,
         resolver: None,
-        locker: None,
         module_analyzer: None,
         reporter: None,
       },
@@ -1197,7 +1225,6 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
@@ -1209,7 +1236,6 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
@@ -1221,7 +1247,6 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
   }
 }

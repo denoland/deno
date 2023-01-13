@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -433,7 +433,7 @@ async fn main() -> Result<()> {
 
   let target_dir = test_util::target_dir();
   let deno_exe = test_util::deno_exe_path();
-  env::set_current_dir(&test_util::root_path())?;
+  env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
     created_at: chrono::Utc::now()

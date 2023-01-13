@@ -1,12 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::cache::NodeAnalysisCache;
-use crate::deno_std::CURRENT_STD_URL;
 use deno_ast::CjsAnalysis;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -27,15 +25,19 @@ use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::path_to_declaration_path;
 use deno_runtime::deno_node::NodeModuleKind;
+use deno_runtime::deno_node::NodePermissions;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
-use deno_runtime::deno_node::TYPES_CONDITIONS;
+use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::cache::NodeAnalysisCache;
+use crate::deno_std::CURRENT_STD_URL;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
@@ -95,23 +97,13 @@ impl NodeResolution {
           },
         )
       }
-      maybe_response => {
-        let specifier = match maybe_response {
-          Some(response) => response.into_url(),
-          None => {
-            ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap()
-          }
-        };
-        (specifier, MediaType::Dts)
-      }
+      Some(resolution) => (resolution.into_url(), MediaType::Dts),
+      None => (
+        ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap(),
+        MediaType::Dts,
+      ),
     }
   }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeResolutionMode {
-  Execution,
-  Types,
 }
 
 struct NodeModulePolyfill {
@@ -401,14 +393,19 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
 
 pub async fn initialize_runtime(
   js_runtime: &mut JsRuntime,
+  uses_local_node_modules_dir: bool,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName) {{
+    r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName, usesLocalNodeModulesDir) {{
       const moduleAll = await import(moduleAllUrl);
       Deno[Deno.internal].node.initialize(moduleAll.default, nodeGlobalThisName);
-    }})('{}', '{}');"#,
+      if (usesLocalNodeModulesDir) {{
+        Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
+      }}
+    }})('{}', '{}', {});"#,
     MODULE_ALL_URL.as_str(),
     NODE_GLOBAL_THIS_NAME.as_str(),
+    uses_local_node_modules_dir,
   );
 
   let value =
@@ -445,6 +442,7 @@ pub fn node_resolve(
   referrer: &ModuleSpecifier,
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<NodeResolution>, AnyError> {
   // Note: if we are here, then the referrer is an esm module
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
@@ -480,8 +478,14 @@ pub fn node_resolve(
     }
   }
 
-  let conditions = mode_conditions(mode);
-  let url = module_resolve(specifier, referrer, conditions, npm_resolver)?;
+  let url = module_resolve(
+    specifier,
+    referrer,
+    DEFAULT_CONDITIONS,
+    mode,
+    npm_resolver,
+    permissions,
+  )?;
   let url = match url {
     Some(url) => url,
     None => return Ok(None),
@@ -510,6 +514,7 @@ pub fn node_resolve_npm_reference(
   reference: &NpmPackageReference,
   mode: NodeResolutionMode,
   npm_resolver: &NpmPackageResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<NodeResolution>, AnyError> {
   let package_folder =
     npm_resolver.resolve_package_folder_from_deno_module(&reference.req)?;
@@ -522,11 +527,13 @@ pub fn node_resolve_npm_reference(
       .unwrap_or_else(|| ".".to_string()),
     &package_folder,
     node_module_kind,
-    mode_conditions(mode),
+    DEFAULT_CONDITIONS,
+    mode,
     npm_resolver,
+    permissions,
   )
   .with_context(|| {
-    format!("Error resolving package config for '{}'.", reference)
+    format!("Error resolving package config for '{}'", reference)
   })?;
   let resolved_path = match maybe_resolved_path {
     Some(resolved_path) => resolved_path,
@@ -548,22 +555,17 @@ pub fn node_resolve_npm_reference(
   Ok(Some(resolve_response))
 }
 
-fn mode_conditions(mode: NodeResolutionMode) -> &'static [&'static str] {
-  match mode {
-    NodeResolutionMode::Execution => DEFAULT_CONDITIONS,
-    NodeResolutionMode::Types => TYPES_CONDITIONS,
-  }
-}
-
 pub fn node_resolve_binary_export(
   pkg_req: &NpmPackageReq,
   bin_name: Option<&str>,
   npm_resolver: &NpmPackageResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<NodeResolution, AnyError> {
   let package_folder =
     npm_resolver.resolve_package_folder_from_deno_module(pkg_req)?;
   let package_json_path = package_folder.join("package.json");
-  let package_json = PackageJson::load(npm_resolver, package_json_path)?;
+  let package_json =
+    PackageJson::load(npm_resolver, permissions, package_json_path)?;
   let bin = match &package_json.bin {
     Some(bin) => bin,
     None => bail!(
@@ -669,12 +671,14 @@ fn package_config_resolve(
   package_dir: &Path,
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<PathBuf>, AnyError> {
   let package_json_path = package_dir.join("package.json");
   let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
   let package_config =
-    PackageJson::load(npm_resolver, package_json_path.clone())?;
+    PackageJson::load(npm_resolver, permissions, package_json_path.clone())?;
   if let Some(exports) = &package_config.exports {
     let result = package_exports_resolve(
       &package_json_path,
@@ -683,15 +687,16 @@ fn package_config_resolve(
       &referrer,
       referrer_kind,
       conditions,
+      mode,
       npm_resolver,
+      permissions,
     );
     match result {
       Ok(found) => return Ok(Some(found)),
       Err(exports_err) => {
-        let is_types = conditions == TYPES_CONDITIONS;
-        if is_types && package_subpath == "." {
+        if mode.is_types() && package_subpath == "." {
           if let Ok(Some(path)) =
-            legacy_main_resolve(&package_config, referrer_kind, conditions)
+            legacy_main_resolve(&package_config, referrer_kind, mode)
           {
             return Ok(Some(path));
           } else {
@@ -703,7 +708,7 @@ fn package_config_resolve(
     }
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_config, referrer_kind, conditions);
+    return legacy_main_resolve(&package_config, referrer_kind, mode);
   }
 
   Ok(Some(package_dir.join(package_subpath)))
@@ -717,7 +722,11 @@ pub fn url_to_node_resolution(
   if url_str.starts_with("http") {
     Ok(NodeResolution::Esm(url))
   } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
-    let package_config = get_closest_package_json(&url, npm_resolver)?;
+    let package_config = get_closest_package_json(
+      &url,
+      npm_resolver,
+      &mut PermissionsContainer::allow_all(),
+    )?;
     if package_config.typ == "module" {
       Ok(NodeResolution::Esm(url))
     } else {
@@ -764,7 +773,7 @@ fn finalize_resolution(
     p_str.to_string()
   };
 
-  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(&p) {
+  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(p) {
     (stats.is_dir(), stats.is_file())
   } else {
     (false, false)
@@ -789,12 +798,14 @@ fn module_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   // note: if we're here, the referrer is an esm module
   let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
     let resolved_specifier = referrer.join(specifier)?;
-    if conditions == TYPES_CONDITIONS {
+    if mode.is_types() {
       let file_path = to_file_path(&resolved_specifier);
       // todo(dsherret): the node module kind is not correct and we
       // should use the value provided by typescript instead
@@ -813,7 +824,9 @@ fn module_resolve(
         referrer,
         NodeModuleKind::Esm,
         conditions,
+        mode,
         npm_resolver,
+        permissions,
       )
       .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
     )
@@ -825,7 +838,9 @@ fn module_resolve(
       referrer,
       NodeModuleKind::Esm,
       conditions,
+      mode,
       npm_resolver,
+      permissions,
     )?
     .map(|p| ModuleSpecifier::from_file_path(p).unwrap())
   };
@@ -881,6 +896,7 @@ pub fn translate_cjs_to_esm(
   media_type: MediaType,
   npm_resolver: &NpmPackageResolver,
   node_analysis_cache: &NodeAnalysisCache,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<String, AnyError> {
   fn perform_cjs_analysis(
     analysis_cache: &NodeAnalysisCache,
@@ -956,10 +972,12 @@ pub fn translate_cjs_to_esm(
       // FIXME(bartlomieju): check if these conditions are okay, probably
       // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
       &["deno", "require", "default"],
+      NodeResolutionMode::Execution,
       npm_resolver,
+      permissions,
     )?;
     let reexport_specifier =
-      ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
+      ModuleSpecifier::from_file_path(resolved_reexport).unwrap();
     // Second, read the source code from disk
     let reexport_file = file_fetcher
       .get_source(&reexport_specifier)
@@ -1026,7 +1044,9 @@ fn resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<PathBuf, AnyError> {
   if specifier.starts_with('/') {
     todo!();
@@ -1050,13 +1070,13 @@ fn resolve(
   let module_dir = npm_resolver.resolve_package_folder_from_package(
     package_specifier.as_str(),
     &referrer_path,
-    conditions,
+    mode,
   )?;
 
   let package_json_path = module_dir.join("package.json");
   if package_json_path.exists() {
     let package_json =
-      PackageJson::load(npm_resolver, package_json_path.clone())?;
+      PackageJson::load(npm_resolver, permissions, package_json_path.clone())?;
 
     if let Some(exports) = &package_json.exports {
       return package_exports_resolve(
@@ -1066,7 +1086,9 @@ fn resolve(
         referrer,
         NodeModuleKind::Esm,
         conditions,
+        mode,
         npm_resolver,
+        permissions,
       );
     }
 
@@ -1079,7 +1101,7 @@ fn resolve(
           let package_json_path = d.join("package.json");
           if package_json_path.exists() {
             let package_json =
-              PackageJson::load(npm_resolver, package_json_path)?;
+              PackageJson::load(npm_resolver, permissions, package_json_path)?;
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
               return Ok(d.join(main).clean());
             }

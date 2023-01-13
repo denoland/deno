@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::definitions::TestDefinition;
 use super::definitions::TestDefinitions;
@@ -13,6 +13,7 @@ use crate::lsp::logging::lsp_log;
 use crate::ops;
 use crate::proc_state;
 use crate::tools::test;
+use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestEventSender;
 use crate::util::checksum;
 use crate::worker::create_main_worker_for_test_or_bench;
@@ -29,10 +30,12 @@ use deno_core::ModuleSpecifier;
 use deno_runtime::ops::io::Stdio;
 use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -144,25 +147,29 @@ impl LspTestFilter {
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn test_specifier(
   ps: proc_state::ProcState,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: test::TestMode,
-  sender: &TestEventSender,
+  sender: TestEventSender,
+  fail_fast_tracker: FailFastTracker,
   token: CancellationToken,
   filter: test::TestFilter,
 ) -> Result<(), AnyError> {
   if !token.is_cancelled() {
+    let stdout = StdioPipe::File(sender.stdout());
+    let stderr = StdioPipe::File(sender.stderr());
     let mut worker = create_main_worker_for_test_or_bench(
       &ps,
       specifier.clone(),
-      permissions,
-      vec![ops::testing::init(sender.clone(), filter)],
+      PermissionsContainer::new(permissions),
+      vec![ops::testing::init(sender, fail_fast_tracker, filter)],
       Stdio {
         stdin: StdioPipe::Inherit,
-        stdout: StdioPipe::File(sender.stdout()),
-        stderr: StdioPipe::File(sender.stderr()),
+        stdout,
+        stderr,
       },
     )
     .await?;
@@ -249,6 +256,9 @@ impl TestRun {
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
     let ps = proc_state::ProcState::build(flags).await?;
+    // Various test files should not share the same permissions in terms of
+    // `PermissionsContainer` - otherwise granting/revoking permissions in one
+    // file would have impact on other files, which is undesirable.
     let permissions =
       Permissions::from_options(&ps.options.permissions_options())?;
     test::check_specifiers(
@@ -262,18 +272,22 @@ impl TestRun {
     )
     .await?;
 
-    let (sender, mut receiver) = mpsc::unbounded_channel::<test::TestEvent>();
-    let sender = TestEventSender::new(sender);
-
     let (concurrent_jobs, fail_fast) =
       if let DenoSubcommand::Test(test_flags) = ps.options.sub_command() {
         (
-          test_flags.concurrent_jobs.into(),
-          test_flags.fail_fast.map(|count| count.into()),
+          test_flags
+            .concurrent_jobs
+            .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
+            .into(),
+          test_flags.fail_fast,
         )
       } else {
         unreachable!("Should always be Test subcommand.");
       };
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<test::TestEvent>();
+    let sender = TestEventSender::new(sender);
+    let fail_fast_tracker = FailFastTracker::new(fail_fast);
 
     let mut queue = self.queue.iter().collect::<Vec<&ModuleSpecifier>>();
     queue.sort();
@@ -288,6 +302,7 @@ impl TestRun {
       let ps = ps.clone();
       let permissions = permissions.clone();
       let mut sender = sender.clone();
+      let fail_fast_tracker = fail_fast_tracker.clone();
       let lsp_filter = self.filters.get(&specifier);
       let filter = test::TestFilter {
         substring: None,
@@ -305,13 +320,17 @@ impl TestRun {
       let tests = tests_.clone();
 
       tokio::task::spawn_blocking(move || {
+        if fail_fast_tracker.should_stop() {
+          return Ok(());
+        }
         let origin = specifier.to_string();
         let file_result = run_local(test_specifier(
           ps,
           permissions,
           specifier,
           test::TestMode::Executable,
-          &sender,
+          sender.clone(),
+          fail_fast_tracker,
           token,
           filter,
         ));
@@ -425,12 +444,6 @@ impl TestRun {
                 &result,
                 duration,
               );
-            }
-          }
-
-          if let Some(count) = fail_fast {
-            if summary.failed >= count {
-              break;
             }
           }
         }

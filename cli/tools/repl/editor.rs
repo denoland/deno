@@ -1,9 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use deno_ast::swc::parser::error::SyntaxError;
+use deno_ast::swc::parser::token::BinOpToken;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
+use deno_ast::view::AssignOp;
 use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -235,6 +237,12 @@ impl Validator for EditorHelper {
     for item in deno_ast::lex(ctx.input(), deno_ast::MediaType::TypeScript) {
       if let deno_ast::TokenOrComment::Token(token) = item.inner {
         match token {
+          Token::BinOp(BinOpToken::Div)
+          | Token::AssignOp(AssignOp::DivAssign) => {
+            // it's too complicated to write code to detect regular expression literals
+            // which are no longer tokenized, so if a `/` or `/=` happens, then we bail
+            return Ok(ValidationResult::Valid(None));
+          }
           Token::BackQuote => in_template = !in_template,
           Token::LParen
           | Token::LBracket
@@ -372,6 +380,7 @@ pub struct ReplEditor {
   inner: Arc<Mutex<Editor<EditorHelper>>>,
   history_file_path: PathBuf,
   errored_on_history_save: Arc<AtomicBool>,
+  should_exit_on_interrupt: Arc<AtomicBool>,
 }
 
 impl ReplEditor {
@@ -395,6 +404,13 @@ impl ReplEditor {
       KeyEvent(KeyCode::Tab, Modifiers::NONE),
       EventHandler::Conditional(Box::new(TabEventHandler)),
     );
+    let should_exit_on_interrupt = Arc::new(AtomicBool::new(false));
+    editor.bind_sequence(
+      KeyEvent(KeyCode::Char('r'), Modifiers::CTRL),
+      EventHandler::Conditional(Box::new(ReverseSearchHistoryEventHandler {
+        should_exit_on_interrupt: should_exit_on_interrupt.clone(),
+      })),
+    );
 
     let history_file_dir = history_file_path.parent().unwrap();
     std::fs::create_dir_all(history_file_dir).with_context(|| {
@@ -408,6 +424,7 @@ impl ReplEditor {
       inner: Arc::new(Mutex::new(editor)),
       history_file_path,
       errored_on_history_save: Arc::new(AtomicBool::new(false)),
+      should_exit_on_interrupt,
     })
   }
 
@@ -425,6 +442,31 @@ impl ReplEditor {
       self.errored_on_history_save.store(true, Relaxed);
       eprintln!("Unable to save history file: {}", e);
     }
+  }
+
+  pub fn should_exit_on_interrupt(&self) -> bool {
+    self.should_exit_on_interrupt.load(Relaxed)
+  }
+
+  pub fn set_should_exit_on_interrupt(&self, yes: bool) {
+    self.should_exit_on_interrupt.store(yes, Relaxed);
+  }
+}
+
+/// Command to reverse search history , same as rustyline default C-R but that resets repl should_exit flag to false
+struct ReverseSearchHistoryEventHandler {
+  should_exit_on_interrupt: Arc<AtomicBool>,
+}
+impl ConditionalEventHandler for ReverseSearchHistoryEventHandler {
+  fn handle(
+    &self,
+    _: &Event,
+    _: RepeatCount,
+    _: bool,
+    _: &EventContext,
+  ) -> Option<Cmd> {
+    self.should_exit_on_interrupt.store(false, Relaxed);
+    Some(Cmd::ReverseSearchHistory)
   }
 }
 

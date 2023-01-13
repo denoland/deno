@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -56,6 +56,7 @@
     RegExpPrototypeTest,
     RegExpPrototypeToString,
     SafeArrayIterator,
+    SafeStringIterator,
     SafeSet,
     SetPrototype,
     SetPrototypeEntries,
@@ -206,7 +207,7 @@
     str = StringPrototypeNormalize(colors.stripColor(str), "NFC");
     let width = 0;
 
-    for (const ch of str) {
+    for (const ch of new SafeStringIterator(str)) {
       width += isFullWidthCodePoint(StringPrototypeCodePointAt(ch, 0)) ? 2 : 1;
     }
 
@@ -276,7 +277,8 @@
       }` +
       `${tableChars.rightMiddle}\n`;
 
-    for (const row of rows) {
+    for (let i = 0; i < rows.length; ++i) {
+      const row = rows[i];
       result += `${renderRow(row, columnWidths, columnRightAlign)}\n`;
     }
 
@@ -994,7 +996,8 @@
     }
 
     const refMap = new Map();
-    for (const cause of causes) {
+    for (let i = 0; i < causes.length; ++i) {
+      const cause = causes[i];
       if (circular !== undefined) {
         const index = MapPrototypeGet(circular, cause);
         if (index !== undefined) {
@@ -1004,7 +1007,7 @@
     }
     ArrayPrototypeShift(causes);
 
-    let finalMessage = (MapPrototypeGet(refMap, value) ?? "");
+    let finalMessage = MapPrototypeGet(refMap, value) ?? "";
 
     if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
       const stackLines = StringPrototypeSplit(value.stack, "\n");
@@ -1171,7 +1174,8 @@
 
     inspectOptions.indentLevel++;
 
-    for (const key of stringKeys) {
+    for (let i = 0; i < stringKeys.length; ++i) {
+      const key = stringKeys[i];
       if (inspectOptions.getters) {
         let propertyValue;
         let error = null;
@@ -1207,7 +1211,8 @@
       }
     }
 
-    for (const key of symbolKeys) {
+    for (let i = 0; i < symbolKeys.length; ++i) {
+      const key = symbolKeys[i];
       if (
         !inspectOptions.showHidden &&
         !propertyIsEnumerable(value, key)
@@ -1639,7 +1644,8 @@
       currentPart = "";
     }
 
-    for (const [key, value] of rawEntries) {
+    for (let i = 0; i < rawEntries.length; ++i) {
+      const [key, value] = rawEntries[i];
       if (key == "background-color") {
         if (value != null) {
           css.backgroundColor = value;
@@ -1660,7 +1666,9 @@
         }
       } else if (key == "text-decoration-line") {
         css.textDecorationLine = [];
-        for (const lineType of StringPrototypeSplit(value, /\s+/g)) {
+        const lineTypes = StringPrototypeSplit(value, /\s+/g);
+        for (let i = 0; i < lineTypes.length; ++i) {
+          const lineType = lineTypes[i];
           if (
             ArrayPrototypeIncludes(
               ["line-through", "overline", "underline"],
@@ -1678,7 +1686,9 @@
       } else if (key == "text-decoration") {
         css.textDecorationColor = null;
         css.textDecorationLine = [];
-        for (const arg of StringPrototypeSplit(value, /\s+/g)) {
+        const args = StringPrototypeSplit(value, /\s+/g);
+        for (let i = 0; i < args.length; ++i) {
+          const arg = args[i];
           const maybeColor = parseCssColor(arg);
           if (maybeColor != null) {
             css.textDecorationColor = maybeColor;
@@ -2135,7 +2145,8 @@
         } else {
           const valueObj = value || {};
           const keys = properties || ObjectKeys(valueObj);
-          for (const k of keys) {
+          for (let i = 0; i < keys.length; ++i) {
+            const k = keys[i];
             if (!primitive && ReflectHas(valueObj, k)) {
               if (!(ReflectHas(objectValues, k))) {
                 objectValues[k] = ArrayPrototypeFill(new Array(numRows), "");
@@ -2330,7 +2341,9 @@
   function wrapConsole(consoleFromDeno, consoleFromV8) {
     const callConsole = core.callConsole;
 
-    for (const key of ObjectKeys(consoleFromV8)) {
+    const keys = ObjectKeys(consoleFromV8);
+    for (let i = 0; i < keys.length; ++i) {
+      const key = keys[i];
       if (ObjectPrototypeHasOwnProperty(consoleFromDeno, key)) {
         consoleFromDeno[key] = FunctionPrototypeBind(
           callConsole,

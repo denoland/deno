@@ -1,6 +1,13 @@
 Download http://localhost:4545/npm/registry/@denotest/conditional-exports
+Download http://localhost:4545/npm/registry/supports-esm
+Download http://localhost:4545/npm/registry/has-package-exports
+Download http://localhost:4545/npm/registry/@ljharb/has-package-exports-patterns
 Download http://localhost:4545/npm/registry/@denotest/conditional-exports/1.0.0.tgz
+Download http://localhost:4545/npm/registry/@ljharb/has-package-exports-patterns/has-package-exports-patterns-0.0.2.tgz
+Download http://localhost:4545/npm/registry/has-package-exports/has-package-exports-1.3.0.tgz
+Download http://localhost:4545/npm/registry/supports-esm/supports-esm-1.0.0.tgz
 { hello: "from esm" }
 { hello: "from esm client" }
 { hello: "from esm client foo" }
 { hello: "from esm client bar" }
+true

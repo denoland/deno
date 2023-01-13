@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
@@ -97,7 +97,7 @@ lazy_static! {
 pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
   vec![
     ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
-    ("DENO_NPM_REGISTRY".to_string(), npm_registry_url()),
+    ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
@@ -968,6 +968,17 @@ async fn main_server(
       res.headers_mut().insert(
         "cache-control",
         HeaderValue::from_static("public, max-age=604800, immutable"),
+      );
+      Ok(res)
+    }
+    (_, "/dynamic_module.ts") => {
+      let mut res = Response::new(Body::from(format!(
+        r#"export const time = {};"#,
+        std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+      )));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
     }
@@ -1930,7 +1941,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       testdata_dir.as_path()
     };
     println!("deno_exe args {}", args.join(" "));
-    println!("deno_exe cwd {:?}", &testdata_dir);
+    println!("deno_exe cwd {:?}", &cwd);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();

@@ -1,7 +1,7 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::BenchFlags;
-use crate::args::Flags;
+use crate::args::BenchOptions;
+use crate::args::CliOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::graph_util::contains_specifier;
@@ -26,14 +26,17 @@ use deno_core::futures::StreamExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -335,9 +338,8 @@ async fn check_specifiers(
     specifiers,
     false,
     lib,
-    Permissions::allow_all(),
-    permissions,
-    true,
+    PermissionsContainer::allow_all(),
+    PermissionsContainer::new(permissions),
   )
   .await?;
 
@@ -356,7 +358,7 @@ async fn bench_specifier(
   let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier.clone(),
-    permissions,
+    PermissionsContainer::new(permissions),
     vec![ops::bench::init(channel.clone(), filter)],
     Default::default(),
   )
@@ -484,17 +486,18 @@ fn is_supported_bench_path(path: &Path) -> bool {
 }
 
 pub async fn run_benchmarks(
-  flags: Flags,
-  bench_flags: BenchFlags,
+  cli_options: CliOptions,
+  bench_options: BenchOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  // Various bench files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
-  let specifiers = collect_specifiers(
-    bench_flags.include.unwrap_or_else(|| vec![".".to_string()]),
-    &bench_flags.ignore.clone(),
-    is_supported_bench_path,
-  )?;
+
+  let specifiers =
+    collect_specifiers(&bench_options.files, is_supported_bench_path)?;
 
   if specifiers.is_empty() {
     return Err(generic_error("No bench modules found"));
@@ -507,7 +510,7 @@ pub async fn run_benchmarks(
     permissions,
     specifiers,
     BenchSpecifierOptions {
-      filter: bench_flags.filter,
+      filter: bench_options.filter,
     },
   )
   .await?;
@@ -517,30 +520,36 @@ pub async fn run_benchmarks(
 
 // TODO(bartlomieju): heavy duplication of code with `cli/tools/test.rs`
 pub async fn run_benchmarks_with_watch(
-  flags: Flags,
-  bench_flags: BenchFlags,
+  cli_options: CliOptions,
+  bench_options: BenchOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  // Various bench files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let include = bench_flags.include.unwrap_or_else(|| vec![".".to_string()]);
-  let ignore = bench_flags.ignore.clone();
-  let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
+  let paths_to_watch: Vec<_> = bench_options
+    .files
+    .include
+    .iter()
+    .map(PathBuf::from)
+    .collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
+
+  let ps = RefCell::new(ps);
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = include.clone();
-    let ignore = ignore.clone();
-    let ps = ps.clone();
+    let files = bench_options.files.clone();
+    let ps = ps.borrow().clone();
 
     async move {
-      let bench_modules =
-        collect_specifiers(include.clone(), &ignore, is_supported_bench_path)?;
+      let bench_modules = collect_specifiers(&files, is_supported_bench_path)?;
 
       let mut paths_to_watch = paths_to_watch_clone;
       let mut modules_to_reload = if files_changed {
@@ -600,7 +609,6 @@ pub async fn run_benchmarks_with_watch(
             }
           }
         }
-
         // This bench module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
@@ -649,38 +657,40 @@ pub async fn run_benchmarks_with_watch(
   };
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let filter = bench_flags.filter.clone();
-    let include = include.clone();
-    let ignore = ignore.clone();
     let permissions = permissions.clone();
-    let ps = ps.clone();
+    ps.borrow_mut().reset_for_file_watcher();
+    let ps = ps.borrow().clone();
+    let filter = bench_options.filter.clone();
+    let files = bench_options.files.clone();
 
     async move {
-      let specifiers =
-        collect_specifiers(include.clone(), &ignore, is_supported_bench_path)?
-          .iter()
-          .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
-          .cloned()
-          .collect::<Vec<ModuleSpecifier>>();
+      let specifiers = collect_specifiers(&files, is_supported_bench_path)?
+        .iter()
+        .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
+        .cloned()
+        .collect::<Vec<ModuleSpecifier>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
-      let specifier_options = BenchSpecifierOptions {
-        filter: filter.clone(),
-      };
-      bench_specifiers(ps, permissions.clone(), specifiers, specifier_options)
-        .await?;
+      bench_specifiers(
+        ps,
+        permissions.clone(),
+        specifiers,
+        BenchSpecifierOptions { filter },
+      )
+      .await?;
 
       Ok(())
     }
   };
 
+  let clear_screen = !ps.borrow().options.no_clear_screen();
   file_watcher::watch_func(
     resolver,
     operation,
     file_watcher::PrintConfig {
       job_name: "Bench".to_string(),
-      clear_screen: !ps.options.no_clear_screen(),
+      clear_screen,
     },
   )
   .await?;

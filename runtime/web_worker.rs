@@ -1,10 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::ops;
 use crate::ops::io::Stdio;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
@@ -348,7 +348,7 @@ pub struct WebWorkerOptions {
 impl WebWorker {
   pub fn bootstrap_from_options(
     name: String,
-    permissions: Permissions,
+    permissions: PermissionsContainer,
     main_module: ModuleSpecifier,
     worker_id: WorkerId,
     options: WebWorkerOptions,
@@ -362,7 +362,7 @@ impl WebWorker {
 
   pub fn from_options(
     name: String,
-    permissions: Permissions,
+    permissions: PermissionsContainer,
     main_module: ModuleSpecifier,
     worker_id: WorkerId,
     mut options: WebWorkerOptions,
@@ -370,9 +370,9 @@ impl WebWorker {
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let perm_ext = Extension::builder()
+    let perm_ext = Extension::builder("deno_permissions_web_worker")
       .state(move |state| {
-        state.put::<Permissions>(permissions.clone());
+        state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
         Ok(())
@@ -388,11 +388,11 @@ impl WebWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init::<Permissions>(
+      deno_web::init::<PermissionsContainer>(
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
-      deno_fetch::init::<Permissions>(deno_fetch::Options {
+      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
@@ -402,7 +402,7 @@ impl WebWorker {
         ..Default::default()
       }),
       deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<Permissions>(
+      deno_websocket::init::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
@@ -412,7 +412,7 @@ impl WebWorker {
       deno_crypto::init(options.seed),
       deno_webgpu::init(unstable),
       // ffi
-      deno_ffi::init::<Permissions>(unstable),
+      deno_ffi::init::<PermissionsContainer>(unstable),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),
@@ -428,13 +428,13 @@ impl WebWorker {
       ops::io::init(),
       ops::io::init_stdio(options.stdio),
       deno_tls::init(),
-      deno_net::init::<Permissions>(
+      deno_net::init::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init::<Permissions>(unstable),
-      deno_node::init::<Permissions>(options.npm_resolver),
+      deno_napi::init::<PermissionsContainer>(unstable),
+      deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),
       ops::process::init(),
@@ -442,7 +442,7 @@ impl WebWorker {
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
-      deno_flash::init::<Permissions>(unstable),
+      deno_flash::init::<PermissionsContainer>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,

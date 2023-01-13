@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
@@ -504,9 +504,12 @@ pub fn op_ws_try_send_string(
   state: &mut OpState,
   rid: ResourceId,
   text: String,
-) -> Result<bool, AnyError> {
-  let resource = state.resource_table.get::<WsStreamResource>(rid)?;
-  resource.try_send(Message::Text(text))
+) -> bool {
+  let resource = match state.resource_table.get::<WsStreamResource>(rid) {
+    Ok(resource) => resource,
+    Err(_) => return false,
+  };
+  resource.try_send(Message::Text(text)).is_ok()
 }
 
 #[op(fast)]
@@ -514,9 +517,12 @@ pub fn op_ws_try_send_binary(
   state: &mut OpState,
   rid: u32,
   value: &[u8],
-) -> Result<bool, AnyError> {
-  let resource = state.resource_table.get::<WsStreamResource>(rid)?;
-  resource.try_send(Message::Binary(value.to_vec()))
+) -> bool {
+  let resource = match state.resource_table.get::<WsStreamResource>(rid) {
+    Ok(resource) => resource,
+    Err(_) => return false,
+  };
+  resource.try_send(Message::Binary(value.to_vec())).is_ok()
 }
 
 #[op(deferred)]
@@ -596,7 +602,8 @@ pub fn init<P: WebSocketPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_url", "deno_webidl"])
     .js(include_js_files!(
       prefix "deno:ext/websocket",
       "01_websocket.js",

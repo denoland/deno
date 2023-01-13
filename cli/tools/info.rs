@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -47,7 +47,11 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     }
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&ps, info_flags.json, ps.options.location_flag())?;
+    print_cache_info(
+      &ps,
+      info_flags.json,
+      ps.options.location_flag().as_ref(),
+    )?;
   }
   Ok(())
 }
@@ -66,7 +70,7 @@ fn print_cache_info(
 
   if let Some(location) = &location {
     origin_dir =
-      origin_dir.join(&checksum::gen(&[location.to_string().as_bytes()]));
+      origin_dir.join(checksum::gen(&[location.to_string().as_bytes()]));
   }
 
   let local_storage_dir = origin_dir.join("local_storage");
@@ -311,7 +315,7 @@ impl NpmInfo {
     }
 
     for (specifier, _) in graph.specifiers() {
-      if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+      if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
         info
           .specifiers
           .insert(specifier.clone(), reference.req.clone());
@@ -421,9 +425,8 @@ impl<'a> GraphDisplayContext<'a> {
           }
         }
         writeln!(writer, "{} {}", colors::bold("type:"), root.media_type)?;
-        let modules = self.graph.modules();
         let total_modules_size =
-          modules.iter().map(|m| m.size() as f64).sum::<f64>();
+          self.graph.modules().map(|m| m.size() as f64).sum::<f64>();
         let total_npm_package_size = self
           .npm_info
           .package_sizes
@@ -431,7 +434,8 @@ impl<'a> GraphDisplayContext<'a> {
           .map(|s| *s as f64)
           .sum::<f64>();
         let total_size = total_modules_size + total_npm_package_size;
-        let dep_count = modules.len() - 1 + self.npm_info.packages.len()
+        let dep_count = self.graph.modules().count() - 1
+          + self.npm_info.packages.len()
           - self.npm_info.resolved_reqs.len();
         writeln!(
           writer,
@@ -522,11 +526,9 @@ impl<'a> GraphDisplayContext<'a> {
         Specifier(_) => specifier_str,
       };
       let maybe_size = match &package_or_specifier {
-        Package(package) => self
-          .npm_info
-          .package_sizes
-          .get(&package.id)
-          .map(|s| *s as u64),
+        Package(package) => {
+          self.npm_info.package_sizes.get(&package.id).copied()
+        }
         Specifier(_) => module
           .maybe_source
           .as_ref()
@@ -595,9 +597,6 @@ impl<'a> GraphDisplayContext<'a> {
   ) -> TreeNode {
     self.seen.insert(specifier.to_string());
     match err {
-      ModuleGraphError::InvalidSource(_, _) => {
-        self.build_error_msg(specifier, "(invalid source)")
-      }
       ModuleGraphError::InvalidTypeAssertion { .. } => {
         self.build_error_msg(specifier, "(invalid import assertion)")
       }

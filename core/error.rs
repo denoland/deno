@@ -1,17 +1,20 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::runtime::GetErrorClassFn;
-use crate::runtime::JsRuntime;
-use crate::source_map::apply_source_map;
-use crate::source_map::get_source_line;
-use crate::url::Url;
-use anyhow::Error;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
+
+use anyhow::Error;
+
+use crate::runtime::GetErrorClassFn;
+use crate::runtime::JsRealm;
+use crate::runtime::JsRuntime;
+use crate::source_map::apply_source_map;
+use crate::source_map::get_source_line;
+use crate::url::Url;
 
 /// A generic wrapper that can encapsulate any concrete error type.
 // TODO(ry) Deprecate AnyError and encourage deno_core::anyhow::Error instead.
@@ -97,23 +100,35 @@ pub fn to_v8_error<'a>(
   get_class: GetErrorClassFn,
   error: &Error,
 ) -> v8::Local<'a, v8::Value> {
-  let cb = JsRuntime::state(scope)
+  let tc_scope = &mut v8::TryCatch::new(scope);
+  let cb = JsRealm::state_from_scope(tc_scope)
     .borrow()
     .js_build_custom_error_cb
     .clone()
     .expect("Custom error builder must be set");
-  let cb = cb.open(scope);
-  let this = v8::undefined(scope).into();
-  let class = v8::String::new(scope, get_class(error)).unwrap();
-  let message = v8::String::new(scope, &format!("{:#}", error)).unwrap();
+  let cb = cb.open(tc_scope);
+  let this = v8::undefined(tc_scope).into();
+  let class = v8::String::new(tc_scope, get_class(error)).unwrap();
+  let message = v8::String::new(tc_scope, &format!("{:#}", error)).unwrap();
   let mut args = vec![class.into(), message.into()];
   if let Some(code) = crate::error_codes::get_error_code(error) {
-    args.push(v8::String::new(scope, code).unwrap().into());
+    args.push(v8::String::new(tc_scope, code).unwrap().into());
   }
-  let exception = cb
-    .call(scope, this, &args)
-    .expect("Custom error class must have a builder registered");
-  exception
+  let maybe_exception = cb.call(tc_scope, this, &args);
+
+  match maybe_exception {
+    Some(exception) => exception,
+    None => {
+      let mut msg =
+        "Custom error class must have a builder registered".to_string();
+      if tc_scope.has_caught() {
+        let e = tc_scope.exception().unwrap();
+        let js_error = JsError::from_v8_exception(tc_scope, e);
+        msg = format!("{}: {}", msg, js_error.exception_message);
+      }
+      panic!("{}", msg);
+    }
+  }
 }
 
 /// A `JsError` represents an exception coming from V8, with stack frames and
@@ -313,6 +328,7 @@ impl JsError {
     }
 
     if is_instance_of_error(scope, exception) {
+      let v8_exception = exception;
       // The exception is a JS Error object.
       let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
       let cause = get_property(scope, exception, "cause");
@@ -431,24 +447,25 @@ impl JsError {
         }
       }
 
-      // Read an array of stored errors, this is only defined for `AggregateError`
-      let aggregated_errors = get_property(scope, exception, "errors");
-      let aggregated_errors: Option<v8::Local<v8::Array>> =
-        aggregated_errors.and_then(|a| a.try_into().ok());
-
       let mut aggregated: Option<Vec<JsError>> = None;
+      if is_aggregate_error(scope, v8_exception) {
+        // Read an array of stored errors, this is only defined for `AggregateError`
+        let aggregated_errors = get_property(scope, exception, "errors");
+        let aggregated_errors: Option<v8::Local<v8::Array>> =
+          aggregated_errors.and_then(|a| a.try_into().ok());
 
-      if let Some(errors) = aggregated_errors {
-        if errors.length() > 0 {
-          let mut agg = vec![];
-          for i in 0..errors.length() {
-            let error = errors.get_index(scope, i).unwrap();
-            let js_error = Self::from_v8_exception(scope, error);
-            agg.push(js_error);
+        if let Some(errors) = aggregated_errors {
+          if errors.length() > 0 {
+            let mut agg = vec![];
+            for i in 0..errors.length() {
+              let error = errors.get_index(scope, i).unwrap();
+              let js_error = Self::from_v8_exception(scope, error);
+              agg.push(js_error);
+            }
+            aggregated = Some(agg);
           }
-          aggregated = Some(agg);
         }
-      }
+      };
 
       Self {
         name: e.name,
@@ -522,7 +539,24 @@ pub(crate) fn to_v8_type_error(
   scope: &mut v8::HandleScope,
   err: Error,
 ) -> v8::Global<v8::Value> {
-  let message = err.to_string();
+  let err_string = err.to_string();
+  let error_chain = err
+    .chain()
+    .skip(1)
+    .filter(|e| e.to_string() != err_string)
+    .map(|e| e.to_string())
+    .collect::<Vec<_>>();
+
+  let message = if !error_chain.is_empty() {
+    format!(
+      "{}\n  Caused by:\n    {}",
+      err_string,
+      error_chain.join("\n    ")
+    )
+  } else {
+    err_string
+  };
+
   let message = v8::String::new(scope, &message).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   v8::Global::new(scope, exception)
@@ -559,6 +593,41 @@ pub(crate) fn is_instance_of_error<'s>(
       .to_object(scope)
       .and_then(|o| o.get_prototype(scope));
   }
+  false
+}
+
+/// Implements `value instanceof primordials.AggregateError` in JS,
+/// by walking the prototype chain, and comparing each links constructor `name` property.
+///
+/// NOTE: There is currently no way to detect `AggregateError` via `rusty_v8`,
+/// as v8 itself doesn't expose `v8__Exception__AggregateError`,
+/// and we cannot create bindings for it. This forces us to rely on `name` inference.
+pub(crate) fn is_aggregate_error<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  value: v8::Local<v8::Value>,
+) -> bool {
+  let mut maybe_prototype = Some(value);
+  while let Some(prototype) = maybe_prototype {
+    if !prototype.is_object() {
+      return false;
+    }
+
+    let prototype = prototype.to_object(scope).unwrap();
+    let prototype_name = match get_property(scope, prototype, "constructor") {
+      Some(constructor) => {
+        let ctor = constructor.to_object(scope).unwrap();
+        get_property(scope, ctor, "name").map(|v| v.to_rust_string_lossy(scope))
+      }
+      None => return false,
+    };
+
+    if prototype_name == Some(String::from("AggregateError")) {
+      return true;
+    }
+
+    maybe_prototype = prototype.get_prototype(scope);
+  }
+
   false
 }
 

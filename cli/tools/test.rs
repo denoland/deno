@@ -1,7 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::Flags;
-use crate::args::TestFlags;
+use crate::args::CliOptions;
+use crate::args::FilesConfig;
+use crate::args::TestOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display;
@@ -16,7 +17,6 @@ use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_supported_ext;
-use crate::util::path::specifier_to_file_path;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_ast::swc::common::comments::CommentKind;
@@ -37,6 +37,7 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::io::Stdio;
 use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use log::Level;
@@ -45,6 +46,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -53,6 +55,7 @@ use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -713,18 +716,25 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  sender: &TestEventSender,
+  sender: TestEventSender,
+  fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
+  let stdout = StdioPipe::File(sender.stdout());
+  let stderr = StdioPipe::File(sender.stderr());
   let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier.clone(),
-    permissions,
-    vec![ops::testing::init(sender.clone(), options.filter.clone())],
+    PermissionsContainer::new(permissions),
+    vec![ops::testing::init(
+      sender,
+      fail_fast_tracker,
+      options.filter.clone(),
+    )],
     Stdio {
       stdin: StdioPipe::Inherit,
-      stdout: StdioPipe::File(sender.stdout()),
-      stderr: StdioPipe::File(sender.stderr()),
+      stdout,
+      stderr,
     },
   )
   .await?;
@@ -887,11 +897,8 @@ async fn fetch_inline_files(
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
   for specifier in specifiers {
-    let mut fetch_permissions = Permissions::allow_all();
-    let file = ps
-      .file_fetcher
-      .fetch(&specifier, &mut fetch_permissions)
-      .await?;
+    let fetch_permissions = PermissionsContainer::allow_all();
+    let file = ps.file_fetcher.fetch(&specifier, fetch_permissions).await?;
 
     let inline_files = if file.media_type == MediaType::Unknown {
       extract_files_from_fenced_blocks(
@@ -949,9 +956,8 @@ pub async fn check_specifiers(
       specifiers,
       false,
       lib,
-      Permissions::allow_all(),
-      permissions.clone(),
-      false,
+      PermissionsContainer::new(Permissions::allow_all()),
+      PermissionsContainer::new(permissions.clone()),
     )
     .await?;
   }
@@ -971,9 +977,8 @@ pub async fn check_specifiers(
     module_specifiers,
     false,
     lib,
-    Permissions::allow_all(),
-    permissions,
-    true,
+    PermissionsContainer::allow_all(),
+    PermissionsContainer::new(permissions),
   )
   .await?;
 
@@ -999,9 +1004,9 @@ async fn test_specifiers(
   };
 
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
+  let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
   let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
-  let fail_fast = options.fail_fast;
 
   let join_handles =
     specifiers_with_mode.iter().map(move |(specifier, mode)| {
@@ -1011,15 +1016,21 @@ async fn test_specifiers(
       let mode = mode.clone();
       let mut sender = sender.clone();
       let options = options.clone();
+      let fail_fast_tracker = fail_fast_tracker.clone();
 
       tokio::task::spawn_blocking(move || {
+        if fail_fast_tracker.should_stop() {
+          return Ok(());
+        }
+
         let origin = specifier.to_string();
         let file_result = run_local(test_specifier(
           ps,
           permissions,
           specifier,
           mode,
-          &sender,
+          sender.clone(),
+          fail_fast_tracker,
           options,
         ));
         if let Err(error) = file_result {
@@ -1148,12 +1159,6 @@ async fn test_specifiers(
             );
           }
         }
-
-        if let Some(x) = fail_fast {
-          if summary.failed >= x.get() {
-            break;
-          }
-        }
       }
 
       let elapsed = Instant::now().duration_since(earlier);
@@ -1231,15 +1236,13 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
-  include: Vec<String>,
-  ignore: Vec<PathBuf>,
+  files: FilesConfig,
   include_inline: bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let module_specifiers =
-    collect_specifiers(include.clone(), &ignore, is_supported_test_path)?;
+  let module_specifiers = collect_specifiers(&files, is_supported_test_path)?;
 
   if include_inline {
-    return collect_specifiers(include, &ignore, is_supported_test_ext).map(
+    return collect_specifiers(&files, is_supported_test_ext).map(
       |specifiers| {
         specifiers
           .into_iter()
@@ -1275,48 +1278,14 @@ fn collect_specifiers_with_test_mode(
 /// as well.
 async fn fetch_specifiers_with_test_mode(
   ps: &ProcState,
-  include: Vec<String>,
-  ignore: Vec<PathBuf>,
-  include_inline: bool,
+  files: FilesConfig,
+  doc: bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let maybe_test_config = ps.options.to_test_config()?;
-
-  let mut include_files = include.clone();
-  let mut exclude_files = ignore.clone();
-
-  if let Some(test_config) = maybe_test_config.as_ref() {
-    if include_files.is_empty() {
-      include_files = test_config
-        .files
-        .include
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>();
-    }
-
-    if exclude_files.is_empty() {
-      exclude_files = test_config
-        .files
-        .exclude
-        .iter()
-        .filter_map(|s| specifier_to_file_path(s).ok())
-        .collect::<Vec<_>>();
-    }
-  }
-
-  if include_files.is_empty() {
-    include_files.push(".".to_string());
-  }
-
-  let mut specifiers_with_mode = collect_specifiers_with_test_mode(
-    include_files,
-    exclude_files,
-    include_inline,
-  )?;
+  let mut specifiers_with_mode = collect_specifiers_with_test_mode(files, doc)?;
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = ps
       .file_fetcher
-      .fetch(specifier, &mut Permissions::allow_all())
+      .fetch(specifier, PermissionsContainer::allow_all())
       .await?;
 
     if file.media_type == MediaType::Unknown
@@ -1330,28 +1299,28 @@ async fn fetch_specifiers_with_test_mode(
 }
 
 pub async fn run_tests(
-  flags: Flags,
-  test_flags: TestFlags,
+  cli_options: CliOptions,
+  test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  // Various test files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
-  let specifiers_with_mode = fetch_specifiers_with_test_mode(
-    &ps,
-    test_flags.include,
-    test_flags.ignore.clone(),
-    test_flags.doc,
-  )
-  .await?;
 
-  if !test_flags.allow_none && specifiers_with_mode.is_empty() {
+  let specifiers_with_mode =
+    fetch_specifiers_with_test_mode(&ps, test_options.files, test_options.doc)
+      .await?;
+
+  if !test_options.allow_none && specifiers_with_mode.is_empty() {
     return Err(generic_error("No test modules found"));
   }
 
   check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
     .await?;
 
-  if test_flags.no_run {
+  if test_options.no_run {
     return Ok(());
   }
 
@@ -1360,9 +1329,9 @@ pub async fn run_tests(
     permissions,
     specifiers_with_mode,
     TestSpecifierOptions {
-      concurrent_jobs: test_flags.concurrent_jobs,
-      fail_fast: test_flags.fail_fast,
-      filter: TestFilter::from_flag(&test_flags.filter),
+      concurrent_jobs: test_options.concurrent_jobs,
+      fail_fast: test_options.fail_fast,
+      filter: TestFilter::from_flag(&test_options.filter),
     },
   )
   .await?;
@@ -1371,32 +1340,34 @@ pub async fn run_tests(
 }
 
 pub async fn run_tests_with_watch(
-  flags: Flags,
-  test_flags: TestFlags,
+  cli_options: CliOptions,
+  test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  // Various test files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let include = test_flags.include;
-  let ignore = test_flags.ignore.clone();
-  let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
+  let paths_to_watch: Vec<_> = test_options.files.include.clone();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
+  let test_options = &test_options;
+
+  let ps = RefCell::new(ps);
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let files_changed = changed.is_some();
-    let include = include.clone();
-    let ignore = ignore.clone();
-    let ps = ps.clone();
+    let ps = ps.borrow().clone();
 
     async move {
-      let test_modules = if test_flags.doc {
-        collect_specifiers(include.clone(), &ignore, is_supported_test_ext)
+      let test_modules = if test_options.doc {
+        collect_specifiers(&test_options.files, is_supported_test_ext)
       } else {
-        collect_specifiers(include.clone(), &ignore, is_supported_test_path)
+        collect_specifiers(&test_options.files, is_supported_test_path)
       }?;
 
       let mut paths_to_watch = paths_to_watch_clone;
@@ -1505,20 +1476,17 @@ pub async fn run_tests_with_watch(
     })
   };
 
-  let cli_options = ps.options.clone();
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let filter = test_flags.filter.clone();
-    let include = include.clone();
-    let ignore = ignore.clone();
     let permissions = permissions.clone();
-    let ps = ps.clone();
+    ps.borrow_mut().reset_for_file_watcher();
+    let ps = ps.borrow().clone();
+    let test_options = test_options.clone();
 
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
         &ps,
-        include.clone(),
-        ignore.clone(),
-        test_flags.doc,
+        test_options.files,
+        test_options.doc,
       )
       .await?
       .iter()
@@ -1531,7 +1499,7 @@ pub async fn run_tests_with_watch(
       check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
         .await?;
 
-      if test_flags.no_run {
+      if test_options.no_run {
         return Ok(());
       }
 
@@ -1540,9 +1508,9 @@ pub async fn run_tests_with_watch(
         permissions.clone(),
         specifiers_with_mode,
         TestSpecifierOptions {
-          concurrent_jobs: test_flags.concurrent_jobs,
-          fail_fast: test_flags.fail_fast,
-          filter: TestFilter::from_flag(&filter),
+          concurrent_jobs: test_options.concurrent_jobs,
+          fail_fast: test_options.fail_fast,
+          filter: TestFilter::from_flag(&test_options.filter),
         },
       )
       .await?;
@@ -1551,17 +1519,54 @@ pub async fn run_tests_with_watch(
     }
   };
 
+  let clear_screen = !ps.borrow().options.no_clear_screen();
   file_watcher::watch_func(
     resolver,
     operation,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),
-      clear_screen: !cli_options.no_clear_screen(),
+      clear_screen,
     },
   )
   .await?;
 
   Ok(())
+}
+
+/// Tracks failures for the `--fail-fast` argument in
+/// order to tell when to stop running tests.
+#[derive(Clone)]
+pub struct FailFastTracker {
+  max_count: Option<usize>,
+  failure_count: Arc<AtomicUsize>,
+}
+
+impl FailFastTracker {
+  pub fn new(fail_fast: Option<NonZeroUsize>) -> Self {
+    Self {
+      max_count: fail_fast.map(|v| v.into()),
+      failure_count: Default::default(),
+    }
+  }
+
+  pub fn add_failure(&self) -> bool {
+    if let Some(max_count) = &self.max_count {
+      self
+        .failure_count
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        >= *max_count
+    } else {
+      false
+    }
+  }
+
+  pub fn should_stop(&self) -> bool {
+    if let Some(max_count) = &self.max_count {
+      self.failure_count.load(std::sync::atomic::Ordering::SeqCst) >= *max_count
+    } else {
+      false
+    }
+  }
 }
 
 #[derive(Clone)]
@@ -1596,17 +1601,20 @@ impl TestEventSender {
       TestEvent::Result(_, _, _)
         | TestEvent::StepWait(_)
         | TestEvent::StepResult(_, _, _)
+        | TestEvent::UncaughtError(_, _)
     ) {
-      self.flush_stdout_and_stderr();
+      self.flush_stdout_and_stderr()?;
     }
 
     self.sender.send(message)?;
     Ok(())
   }
 
-  fn flush_stdout_and_stderr(&mut self) {
-    self.stdout_writer.flush();
-    self.stderr_writer.flush();
+  fn flush_stdout_and_stderr(&mut self) -> Result<(), AnyError> {
+    self.stdout_writer.flush()?;
+    self.stderr_writer.flush()?;
+
+    Ok(())
   }
 }
 
@@ -1637,7 +1645,7 @@ impl TestOutputPipe {
     Self { writer, state }
   }
 
-  pub fn flush(&mut self) {
+  pub fn flush(&mut self) -> Result<(), AnyError> {
     // We want to wake up the other thread and have it respond back
     // that it's done clearing out its pipe before returning.
     let (sender, receiver) = std::sync::mpsc::channel();
@@ -1647,10 +1655,12 @@ impl TestOutputPipe {
     // Bit of a hack to send a zero width space in order to wake
     // the thread up. It seems that sending zero bytes here does
     // not work on windows.
-    self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes()).unwrap();
-    self.writer.flush().unwrap();
+    self.writer.write_all(ZERO_WIDTH_SPACE.as_bytes())?;
+    self.writer.flush()?;
     // ignore the error as it might have been picked up and closed
     let _ = receiver.recv();
+
+    Ok(())
   }
 
   pub fn as_file(&self) -> std::fs::File {

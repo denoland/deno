@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -10,6 +10,7 @@
   const {
     ArrayPrototypeMap,
     ObjectEntries,
+    ObjectPrototypeIsPrototypeOf,
     String,
     TypeError,
     PromisePrototypeThen,
@@ -21,6 +22,7 @@
     readableStreamForRidUnrefable,
     readableStreamForRidUnrefableRef,
     readableStreamForRidUnrefableUnref,
+    ReadableStreamPrototype,
     writableStreamForRid,
   } = window.__bootstrap.streams;
 
@@ -60,12 +62,14 @@
 
   function createSpawnChild(opFn) {
     return function spawnChild(command, options = {}) {
-      return spawnChildInner(opFn, command, "Deno.spawnChild()", options);
+      return spawnChildInner(opFn, command, "Deno.Command().spawn()", options);
     };
   }
 
   function collectOutput(readableStream) {
-    if (!(readableStream instanceof ReadableStream)) {
+    if (
+      !(ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, readableStream))
+    ) {
       return null;
     }
 
@@ -219,10 +223,11 @@
     return function spawn(command, options) {
       if (options?.stdin === "piped") {
         throw new TypeError(
-          "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+          "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
         );
       }
-      return spawnChildInner(opFn, command, "Deno.spawn()", options).output();
+      return spawnChildInner(opFn, command, "Deno.Command().output()", options)
+        .output();
     };
   }
 
@@ -241,7 +246,7 @@
     } = {}) {
       if (stdin === "piped") {
         throw new TypeError(
-          "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
+          "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
         );
       }
       const result = opFn({
@@ -306,7 +311,12 @@
       }
 
       spawn() {
-        return spawnChild(this.#command, this.#options);
+        const options = {
+          ...(this.#options ?? {}),
+          stdout: this.#options?.stdout ?? "inherit",
+          stderr: this.#options?.stderr ?? "inherit",
+        };
+        return spawnChild(this.#command, options);
       }
     };
   }

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // False positive lint for explicit drops.
 // https://github.com/rust-lang/rust-clippy/issues/6446
@@ -1290,10 +1290,11 @@ where
 
 #[op]
 fn op_flash_wait_for_listening(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   server_id: u32,
 ) -> Result<impl Future<Output = Result<u16, AnyError>> + 'static, AnyError> {
   let mut listening_rx = {
+    let mut state = state.borrow_mut();
     let flash_ctx = state.borrow_mut::<FlashContext>();
     let server_ctx = flash_ctx
       .servers
@@ -1312,10 +1313,11 @@ fn op_flash_wait_for_listening(
 
 #[op]
 fn op_flash_drive_server(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   server_id: u32,
 ) -> Result<impl Future<Output = Result<(), AnyError>> + 'static, AnyError> {
   let join_handle = {
+    let mut state = state.borrow_mut();
     let flash_ctx = state.borrow_mut::<FlashContext>();
     flash_ctx
       .join_handles
@@ -1503,7 +1505,14 @@ pub trait FlashPermissions {
 }
 
 pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec![
+      "deno_web",
+      "deno_net",
+      "deno_fetch",
+      "deno_websocket",
+      "deno_http",
+    ])
     .js(deno_core::include_js_files!(
       prefix "deno:ext/flash",
       "01_http.js",

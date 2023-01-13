@@ -1,1 +1,1 @@
-export function getValue(): 5;
+export { getValue } from "@denotest/types-entry-value-not-exists";

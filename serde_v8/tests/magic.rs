@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use serde::{Deserialize, Serialize};
 
 use serde_v8::utils::{js_exec, v8_do};

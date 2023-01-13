@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 mod async_cancel;
 mod async_cell;
 mod bindings;
@@ -77,6 +77,7 @@ pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::ModuleType;
 pub use crate::modules::NoopModuleLoader;
+pub use crate::modules::ResolutionKind;
 pub use crate::normalize_path::normalize_path;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;

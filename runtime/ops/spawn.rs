@@ -1,11 +1,11 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::io::ChildStderrResource;
 use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use super::process::Stdio;
 use super::process::StdioOrRid;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
@@ -28,7 +28,7 @@ use std::os::unix::prelude::ExitStatusExt;
 use std::os::unix::process::CommandExt;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_spawn")
     .ops(vec![
       op_spawn_child::decl(),
       op_node_unstable_spawn_child::decl(),
@@ -131,9 +131,8 @@ fn node_unstable_create_command(
   api_name: &str,
 ) -> Result<std::process::Command, AnyError> {
   state
-    .borrow_mut::<Permissions>()
-    .run
-    .check(&args.cmd, Some(api_name))?;
+    .borrow_mut::<PermissionsContainer>()
+    .check_run(&args.cmd, api_name)?;
 
   let mut command = std::process::Command::new(args.cmd);
 
@@ -196,9 +195,8 @@ fn create_command(
 ) -> Result<std::process::Command, AnyError> {
   super::check_unstable(state, "Deno.spawn");
   state
-    .borrow_mut::<Permissions>()
-    .run
-    .check(&args.cmd, Some(api_name))?;
+    .borrow_mut::<PermissionsContainer>()
+    .check_run(&args.cmd, api_name)?;
 
   let mut command = std::process::Command::new(args.cmd);
 
@@ -350,7 +348,8 @@ fn op_spawn_sync(
 ) -> Result<SpawnOutput, AnyError> {
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
-  let output = create_command(state, args, "Deno.spawnSync()")?.output()?;
+  let output =
+    create_command(state, args, "Deno.Command().outputSync()")?.output()?;
 
   Ok(SpawnOutput {
     status: output.status.try_into()?,
@@ -375,7 +374,8 @@ fn op_node_unstable_spawn_sync(
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
   let output =
-    node_unstable_create_command(state, args, "Deno.spawnSync()")?.output()?;
+    node_unstable_create_command(state, args, "Deno.Command().outputSync()")?
+      .output()?;
 
   Ok(SpawnOutput {
     status: output.status.try_into()?,

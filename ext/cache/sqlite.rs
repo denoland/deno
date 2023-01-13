@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
@@ -114,7 +114,7 @@ impl Cache for SqliteBackedCache {
         },
       )?;
       let responses_dir = get_responses_dir(cache_storage_dir, cache_id);
-      std::fs::create_dir_all(&responses_dir)?;
+      std::fs::create_dir_all(responses_dir)?;
       Ok::<i64, AnyError>(cache_id)
     })
     .await?

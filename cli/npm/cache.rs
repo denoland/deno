@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::fs;
@@ -409,26 +409,18 @@ impl NpmCache {
       );
     }
 
-    let _guard = self.progress_bar.update(&dist.tarball);
-    let response = self.http_client.get(&dist.tarball).send().await?;
-
-    if response.status() == 404 {
-      bail!("Could not find npm package tarball at: {}", dist.tarball);
-    } else if !response.status().is_success() {
-      let status = response.status();
-      let maybe_response_text = response.text().await.ok();
-      bail!(
-        "Bad response: {:?}{}",
-        status,
-        match maybe_response_text {
-          Some(text) => format!("\n\n{}", text),
-          None => String::new(),
-        }
-      );
-    } else {
-      let bytes = response.bytes().await?;
-
-      verify_and_extract_tarball(package, &bytes, dist, &package_folder)
+    let guard = self.progress_bar.update(&dist.tarball);
+    let maybe_bytes = self
+      .http_client
+      .download_with_progress(&dist.tarball, &guard)
+      .await?;
+    match maybe_bytes {
+      Some(bytes) => {
+        verify_and_extract_tarball(package, &bytes, dist, &package_folder)
+      }
+      None => {
+        bail!("Could not find npm package tarball at: {}", dist.tarball);
+      }
     }
   }
 

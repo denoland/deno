@@ -1,8 +1,8 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_node"
-version = "0.16.0"
+version = "0.20.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,4 +18,4 @@ deno_core.workspace = true
 once_cell.workspace = true
 path-clean = "=0.1.0"
 regex.workspace = true
-serde = "1.0.144"
+serde = "1.0.149"

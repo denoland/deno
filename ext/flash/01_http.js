@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -27,9 +27,8 @@
   } = window.__bootstrap.webSocket;
   const { _ws } = window.__bootstrap.http;
   const {
-    Function,
     ObjectPrototypeIsPrototypeOf,
-    Promise,
+    PromisePrototype,
     PromisePrototypeCatch,
     PromisePrototypeThen,
     SafePromiseAll,
@@ -140,7 +139,8 @@
     // status-line = HTTP-version SP status-code SP reason-phrase CRLF
     // Date header: https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.2
     let str = `HTTP/1.1 ${status} ${statusCodes[status]}\r\nDate: ${date}\r\n`;
-    for (const [name, value] of headerList) {
+    for (let i = 0; i < headerList.length; ++i) {
+      const [name, value] = headerList[i];
       // header-field   = field-name ":" OWS field-value OWS
       str += `${name}: ${value}\r\n`;
     }
@@ -439,10 +439,10 @@
     return async function serve(arg1, arg2) {
       let options = undefined;
       let handler = undefined;
-      if (arg1 instanceof Function) {
+      if (typeof arg1 === "function") {
         handler = arg1;
         options = arg2;
-      } else if (arg2 instanceof Function) {
+      } else if (typeof arg2 === "function") {
         handler = arg2;
         options = arg1;
       } else {
@@ -456,7 +456,7 @@
         }
         handler = options.handler;
       }
-      if (!(handler instanceof Function)) {
+      if (typeof handler !== "function") {
         throw new TypeError("A handler function must be provided.");
       }
       if (options === undefined) {
@@ -570,7 +570,7 @@
               let resp;
               try {
                 resp = handler(req);
-                if (resp instanceof Promise) {
+                if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
                   PromisePrototypeCatch(
                     PromisePrototypeThen(
                       resp,

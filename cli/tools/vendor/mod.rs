@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -49,10 +49,11 @@ pub async fn vendor(
     &ps.parsed_source_cache,
     &output_dir,
     ps.maybe_import_map.as_deref(),
+    ps.lockfile.clone(),
     &build::RealVendorEnvironment,
   )?;
 
-  eprintln!(
+  log::info!(
     concat!("Vendored {} {} into {} directory.",),
     vendored_count,
     if vendored_count == 1 {
@@ -65,7 +66,7 @@ pub async fn vendor(
   if vendored_count > 0 {
     let import_map_path = raw_output_dir.join("import_map.json");
     if maybe_update_config_file(&output_dir, &ps) {
-      eprintln!(
+      log::info!(
         concat!(
           "\nUpdated your local Deno configuration file with a reference to the ",
           "new vendored import map at {}. Invoking Deno subcommands will now ",
@@ -76,7 +77,7 @@ pub async fn vendor(
         import_map_path.display(),
       );
     } else {
-      eprintln!(
+      log::info!(
         concat!(
           "\nTo use vendored modules, specify the `--import-map {}` flag when ",
           r#"invoking Deno subcommands or add an `"importMap": "<path_to_vendored_import_map>"` "#,
@@ -119,7 +120,7 @@ fn validate_options(
       format!("Failed to canonicalize: {}", output_dir.display())
     })?;
 
-    if import_map_path.starts_with(&output_dir) {
+    if import_map_path.starts_with(output_dir) {
       // canonicalize to make the test for this pass on the CI
       let cwd = canonicalize_path(&std::env::current_dir()?)?;
       // We don't allow using the output directory to help generate the
@@ -152,9 +153,12 @@ fn maybe_update_config_file(output_dir: &Path, ps: &ProcState) -> bool {
     Some(f) => f,
     None => return false,
   };
+
   let fmt_config = ps
     .options
-    .to_fmt_config()
+    .get_maybe_config_file()
+    .as_ref()
+    .and_then(|config| config.to_fmt_config().ok())
     .unwrap_or_default()
     .unwrap_or_default();
   let result = update_config_file(

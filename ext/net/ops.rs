@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::TcpStreamResource;
 use crate::resolve_addr::resolve_addr;
@@ -366,7 +366,6 @@ fn op_node_unstable_net_listen_udp<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  super::check_unstable(state, "Deno.listenDatagram");
   net_listen_udp::<NP>(state, addr, reuse_address)
 }
 
@@ -485,7 +484,7 @@ where
 
   let resolver = AsyncResolver::tokio(config, opts)?;
 
-  let results = resolver
+  resolver
     .lookup(query, record_type)
     .await
     .map_err(|e| {
@@ -502,10 +501,8 @@ where
       }
     })?
     .iter()
-    .filter_map(rdata_to_return_record(record_type))
-    .collect();
-
-  Ok(results)
+    .filter_map(|rdata| rdata_to_return_record(record_type)(rdata).transpose())
+    .collect::<Result<Vec<DnsReturnRecord>, AnyError>>()
 }
 
 #[op]
@@ -514,7 +511,6 @@ pub fn op_set_nodelay(
   rid: ResourceId,
   nodelay: bool,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.Conn#setNoDelay");
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_nodelay(nodelay)
@@ -526,7 +522,6 @@ pub fn op_set_keepalive(
   rid: ResourceId,
   keepalive: bool,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.Conn#setKeepAlive");
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_keepalive(keepalive)
@@ -534,10 +529,10 @@ pub fn op_set_keepalive(
 
 fn rdata_to_return_record(
   ty: RecordType,
-) -> impl Fn(&RData) -> Option<DnsReturnRecord> {
+) -> impl Fn(&RData) -> Result<Option<DnsReturnRecord>, AnyError> {
   use RecordType::*;
-  move |r: &RData| -> Option<DnsReturnRecord> {
-    match ty {
+  move |r: &RData| -> Result<Option<DnsReturnRecord>, AnyError> {
+    let record = match ty {
       A => r.as_a().map(ToString::to_string).map(DnsReturnRecord::A),
       AAAA => r
         .as_aaaa()
@@ -617,9 +612,14 @@ fn rdata_to_return_record(
           .collect();
         DnsReturnRecord::Txt(texts)
       }),
-      // TODO(magurotuna): Other record types are not supported
-      _ => todo!(),
-    }
+      _ => {
+        return Err(custom_error(
+          "NotSupported",
+          "Provided record type is not supported",
+        ))
+      }
+    };
+    Ok(record)
   }
 }
 
@@ -649,7 +649,7 @@ mod tests {
     let func = rdata_to_return_record(RecordType::A);
     let rdata = RData::A(Ipv4Addr::new(127, 0, 0, 1));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::A("127.0.0.1".to_string()))
     );
   }
@@ -658,14 +658,20 @@ mod tests {
   fn rdata_to_return_record_aaaa() {
     let func = rdata_to_return_record(RecordType::AAAA);
     let rdata = RData::AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::Aaaa("::1".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Aaaa("::1".to_string()))
+    );
   }
 
   #[test]
   fn rdata_to_return_record_aname() {
     let func = rdata_to_return_record(RecordType::ANAME);
     let rdata = RData::ANAME(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::Aname("".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Aname("".to_string()))
+    );
   }
 
   #[test]
@@ -677,7 +683,7 @@ mod tests {
       vec![KeyValue::new("account", "123456")],
     ));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::Caa {
         critical: false,
         tag: "issue".to_string(),
@@ -690,7 +696,10 @@ mod tests {
   fn rdata_to_return_record_cname() {
     let func = rdata_to_return_record(RecordType::CNAME);
     let rdata = RData::CNAME(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::Cname("".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Cname("".to_string()))
+    );
   }
 
   #[test]
@@ -698,7 +707,7 @@ mod tests {
     let func = rdata_to_return_record(RecordType::MX);
     let rdata = RData::MX(MX::new(10, Name::new()));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::Mx {
         preference: 10,
         exchange: "".to_string()
@@ -718,7 +727,7 @@ mod tests {
       Name::new(),
     ));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::Naptr {
         order: 1,
         preference: 2,
@@ -734,14 +743,20 @@ mod tests {
   fn rdata_to_return_record_ns() {
     let func = rdata_to_return_record(RecordType::NS);
     let rdata = RData::NS(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::Ns("".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Ns("".to_string()))
+    );
   }
 
   #[test]
   fn rdata_to_return_record_ptr() {
     let func = rdata_to_return_record(RecordType::PTR);
     let rdata = RData::PTR(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::Ptr("".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Ptr("".to_string()))
+    );
   }
 
   #[test]
@@ -757,7 +772,7 @@ mod tests {
       0,
     ));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::Soa {
         mname: "".to_string(),
         rname: "".to_string(),
@@ -775,7 +790,7 @@ mod tests {
     let func = rdata_to_return_record(RecordType::SRV);
     let rdata = RData::SRV(SRV::new(1, 2, 3, Name::new()));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::Srv {
         priority: 1,
         weight: 2,
@@ -795,7 +810,7 @@ mod tests {
       &[0xe3, 0x81, 0x82], // "あ" in UTF-8
     ]));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::Txt(vec![
         "foo".to_string(),
         "bar".to_string(),
@@ -868,7 +883,7 @@ mod tests {
       let listener = TcpListener::bind(addr).await.unwrap();
       let _ = listener.accept().await;
     });
-    let my_ext = Extension::builder()
+    let my_ext = Extension::builder("test_ext")
       .state(move |state| {
         state.put(TestPermission {});
         state.put(UnstableChecker { unstable: true });

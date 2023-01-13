@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::client::Client;
 use super::config::ConfigSnapshot;
@@ -526,7 +526,7 @@ mod tests {
       documents.open(
         specifier.clone(),
         *version,
-        language_id.clone(),
+        *language_id,
         (*source).into(),
       );
     }
@@ -587,11 +587,11 @@ mod tests {
     let file_c = dir_a.join("c.ts");
     std::fs::write(&file_c, b"").expect("could not create");
     let file_d = dir_b.join("d.ts");
-    std::fs::write(&file_d, b"").expect("could not create");
+    std::fs::write(file_d, b"").expect("could not create");
     let file_e = dir_a.join("e.txt");
-    std::fs::write(&file_e, b"").expect("could not create");
+    std::fs::write(file_e, b"").expect("could not create");
     let file_f = dir_a.join("f.mjs");
-    std::fs::write(&file_f, b"").expect("could not create");
+    std::fs::write(file_f, b"").expect("could not create");
     let specifier =
       ModuleSpecifier::from_file_path(file_c).expect("could not create");
     let actual = get_local_completions(
