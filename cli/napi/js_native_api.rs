@@ -74,8 +74,8 @@ macro_rules! check_new_from_utf8_len {
 
 #[macro_export]
 macro_rules! check_new_from_utf8 {
-  ($env: expr, $result: expr, $str: expr) => {
-    check_new_from_utf8_len!(
+  ($env: expr, $str: expr) => {
+    $crate::check_new_from_utf8_len!(
       $env,
       $result,
       $str as *const u8,
