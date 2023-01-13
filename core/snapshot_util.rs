@@ -1,9 +1,12 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::path::Path;
+use std::path::PathBuf;
+
 use crate::Extension;
 use crate::JsRuntime;
 use crate::RuntimeOptions;
 use crate::Snapshot;
-use std::path::Path;
-use std::path::PathBuf;
 
 pub type CompressionCb = dyn Fn(&mut Vec<u8>, &[u8]);
 
