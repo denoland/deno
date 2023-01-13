@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --unstable --allow-read --allow-run
+#!/usr/bin/env -S deno run --unstable --allow-read=. --allow-run=git
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import { getSources, ROOT_PATH } from "./util.js";
@@ -16,59 +16,63 @@ async function readFirstPartOfFile(filePath) {
   }
 }
 
-const sourceFiles = await getSources(ROOT_PATH, [
-  // js and ts
-  "*.js",
-  "*.ts",
-  ":!:.github/mtime_cache/action.js",
-  ":!:cli/tests/testdata/**",
-  ":!:cli/bench/testdata/**",
-  ":!:cli/tsc/dts/**",
-  ":!:cli/tsc/*typescript.js",
-  ":!:cli/tsc/compiler.d.ts",
-  ":!:test_util/wpt/**",
-  ":!:tools/**", // these files are starts with `#!/usr/bin/env`
-  ":!:cli/tools/init/templates/**",
+export async function checkCopyright() {
+  const sourceFiles = await getSources(ROOT_PATH, [
+    // js and ts
+    "*.js",
+    "*.ts",
+    ":!:.github/mtime_cache/action.js",
+    ":!:cli/tests/testdata/**",
+    ":!:cli/bench/testdata/**",
+    ":!:cli/tsc/dts/**",
+    ":!:cli/tsc/*typescript.js",
+    ":!:cli/tsc/compiler.d.ts",
+    ":!:test_util/wpt/**",
+    ":!:cli/tools/init/templates/**",
 
-  // rust
-  "*.rs",
-  ":!:ops/optimizer_tests/**",
+    // rust
+    "*.rs",
+    ":!:ops/optimizer_tests/**",
 
-  // toml
-  "*Cargo.toml",
-]);
+    // toml
+    "*Cargo.toml",
+  ]);
 
-let totalCount = 0;
-const sourceFilesSet = new Set(sourceFiles);
+  let totalCount = 0;
+  const sourceFilesSet = new Set(sourceFiles);
 
-for (const file of sourceFilesSet) {
-  const ERROR_MSG = "Copyright header is missing: ";
+  for (const file of sourceFilesSet) {
+    const ERROR_MSG = "Copyright header is missing: ";
 
-  const fileText = await readFirstPartOfFile(file);
-  if (file.endsWith("Cargo.toml")) {
+    const fileText = await readFirstPartOfFile(file);
+    if (file.endsWith("Cargo.toml")) {
+      if (
+        !fileText.startsWith(
+          "# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
+        )
+      ) {
+        console.log(ERROR_MSG + file);
+        totalCount += 1;
+      }
+      continue;
+    }
+
+    // use .includes(...) because the first line might be a shebang
     if (
-      !fileText.startsWith(
-        "# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
+      !fileText.includes(
+        "// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
       )
     ) {
       console.log(ERROR_MSG + file);
       totalCount += 1;
     }
-    continue;
   }
 
-  // use .includes(...) because the first line might be a shebang
-  if (
-    !fileText.includes(
-      "// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
-    )
-  ) {
-    console.log(ERROR_MSG + file);
-    totalCount += 1;
+  if (totalCount > 0) {
+    throw new Error(`Copyright checker had ${totalCount} errors.`);
   }
 }
 
-if (totalCount > 0) {
-  console.log("\nTotal errors: " + totalCount);
-  Deno.exit(1);
+if (import.meta.main) {
+  await checkCopyright();
 }

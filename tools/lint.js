@@ -7,6 +7,7 @@ import {
   join,
   ROOT_PATH,
 } from "./util.js";
+import { checkCopyright } from "./copyright_checker.js";
 
 let didLint = false;
 
@@ -24,6 +25,8 @@ if (Deno.args.includes("--rs")) {
 if (!didLint) {
   await dlint();
   await dlintPreferPrimordials();
+  console.log("copyright checker");
+  await checkCopyright();
   await clippy();
 }
 
