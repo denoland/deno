@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -262,7 +262,7 @@ fn existing_import_map_no_remote() {
   let import_map_filename = "imports2.json";
   let import_map_text =
     r#"{ "imports": { "http://localhost:4545/vendor/": "./logger/" } }"#;
-  t.write(import_map_filename, &import_map_text);
+  t.write(import_map_filename, import_map_text);
   t.create_dir_all("logger");
   t.write("logger/logger.ts", "export class Logger {}");
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use serde::de::{self, SeqAccess as _, Visitor};
 use serde::Deserialize;
 
@@ -170,11 +170,11 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     visitor.visit_f64(
       if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
-        x.value() as f64
+        x.value()
       } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
         bigint_to_f64(x)
       } else if let Some(x) = self.input.number_value(self.scope) {
-        x as f64
+        x
       } else if let Some(x) = self.input.to_big_int(self.scope) {
         bigint_to_f64(x)
       } else {
@@ -434,7 +434,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
-      .and_then(|zb| visitor.visit_bytes(&*zb))
+      .and_then(|zb| visitor.visit_bytes(&zb))
   }
 
   fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
@@ -733,28 +733,26 @@ fn to_utf8_fast(
   scope: &mut v8::HandleScope,
 ) -> Option<String> {
   // Over-allocate by 20% to avoid checking string twice
-  let len = s.length();
-  let capacity = (len as f64 * 1.2) as usize;
+  let str_chars = s.length();
+  let capacity = (str_chars as f64 * 1.2) as usize;
   let mut buf = Vec::with_capacity(capacity);
+
   let mut nchars = 0;
-  let data = buf.as_mut_ptr();
-  let length = s.write_utf8(
+  let bytes_len = s.write_utf8_uninit(
     scope,
-    // SAFETY: we're essentially providing the raw internal slice/buffer owned by the Vec
-    // which fulfills all of from_raw_parts_mut's safety requirements besides "initialization"
-    // and since we're operating on a [u8] not [T] we can safely assume the slice's values
-    // are sufficiently "initialized" for writes
-    unsafe { std::slice::from_raw_parts_mut(data, capacity) },
+    buf.spare_capacity_mut(),
     Some(&mut nchars),
     v8::WriteOptions::NO_NULL_TERMINATION
       | v8::WriteOptions::REPLACE_INVALID_UTF8,
   );
-  if nchars < len {
+
+  if nchars < str_chars {
     return None;
   }
-  // SAFETY: write_utf8 guarantees `length` bytes are initialized & valid utf8
+
+  // SAFETY: write_utf8_uninit guarantees `bytes_len` bytes are initialized & valid utf8
   unsafe {
-    buf.set_len(length);
+    buf.set_len(bytes_len);
     Some(String::from_utf8_unchecked(buf))
   }
 }
@@ -765,21 +763,18 @@ fn to_utf8_slow(
 ) -> String {
   let capacity = s.utf8_length(scope);
   let mut buf = Vec::with_capacity(capacity);
-  let data = buf.as_mut_ptr();
-  let length = s.write_utf8(
+
+  let bytes_len = s.write_utf8_uninit(
     scope,
-    // SAFETY: we're essentially providing the raw internal slice/buffer owned by the Vec
-    // which fulfills all of from_raw_parts_mut's safety requirements besides "initialization"
-    // and since we're operating on a [u8] not [T] we can safely assume the slice's values
-    // are sufficiently "initialized" for writes
-    unsafe { std::slice::from_raw_parts_mut(data, capacity) },
+    buf.spare_capacity_mut(),
     None,
     v8::WriteOptions::NO_NULL_TERMINATION
       | v8::WriteOptions::REPLACE_INVALID_UTF8,
   );
-  // SAFETY: write_utf8 guarantees `length` bytes are initialized & valid utf8
+
+  // SAFETY: write_utf8_uninit guarantees `bytes_len` bytes are initialized & valid utf8
   unsafe {
-    buf.set_len(length);
+    buf.set_len(bytes_len);
     String::from_utf8_unchecked(buf)
   }
 }

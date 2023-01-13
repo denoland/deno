@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -12,8 +12,8 @@
   const core = window.Deno.core;
   const { InterruptedPrototype, ops } = core;
   const webidl = window.__bootstrap.webidl;
-  const { setEventTargetData } = window.__bootstrap.eventTarget;
-  const { defineEventHandler } = window.__bootstrap.event;
+  const { EventTarget, setEventTargetData } = window.__bootstrap.eventTarget;
+  const { MessageEvent, defineEventHandler } = window.__bootstrap.event;
   const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayBufferPrototype,
@@ -26,9 +26,6 @@
     SymbolFor,
     SymbolIterator,
     TypeError,
-    WeakSet,
-    WeakSetPrototypeAdd,
-    WeakSetPrototypeHas,
   } = window.__bootstrap.primordials;
 
   class MessageChannel {
@@ -207,7 +204,8 @@
     const arrayBufferIdsInTransferables = [];
     const transferredArrayBuffers = [];
 
-    for (const transferable of messageData.transferables) {
+    for (let i = 0; i < messageData.transferables.length; ++i) {
+      const transferable = messageData.transferables[i];
       switch (transferable.kind) {
         case "messagePort": {
           const port = createMessagePort(transferable.data);
@@ -217,8 +215,8 @@
         }
         case "arrayBuffer": {
           ArrayPrototypePush(transferredArrayBuffers, transferable.data);
-          const i = ArrayPrototypePush(transferables, null);
-          ArrayPrototypePush(arrayBufferIdsInTransferables, i);
+          const index = ArrayPrototypePush(transferables, null);
+          ArrayPrototypePush(arrayBufferIdsInTransferables, index);
           break;
         }
         default:
@@ -231,7 +229,7 @@
       transferredArrayBuffers,
     });
 
-    for (const i in arrayBufferIdsInTransferables) {
+    for (let i = 0; i < arrayBufferIdsInTransferables.length; ++i) {
       const id = arrayBufferIdsInTransferables[i];
       transferables[id] = transferredArrayBuffers[i];
     }
@@ -239,30 +237,25 @@
     return [data, transferables];
   }
 
-  const detachedArrayBuffers = new WeakSet();
-
   /**
    * @param {any} data
    * @param {object[]} transferables
    * @returns {globalThis.__bootstrap.messagePort.MessageData}
    */
   function serializeJsMessageData(data, transferables) {
-    const transferredArrayBuffers = ArrayPrototypeFilter(
-      transferables,
-      (a) => ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, a),
-    );
-
-    for (const arrayBuffer of transferredArrayBuffers) {
-      // This is hacky with both false positives and false negatives for
-      // detecting detached array buffers. V8  needs to add a way to tell if a
-      // buffer is detached or not.
-      if (WeakSetPrototypeHas(detachedArrayBuffers, arrayBuffer)) {
-        throw new DOMException(
-          "Can not transfer detached ArrayBuffer",
-          "DataCloneError",
-        );
+    const transferredArrayBuffers = [];
+    for (let i = 0, j = 0; i < transferables.length; i++) {
+      const ab = transferables[i];
+      if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, ab)) {
+        if (ab.byteLength === 0 && core.ops.op_arraybuffer_was_detached(ab)) {
+          throw new DOMException(
+            `ArrayBuffer at index ${j} is already detached`,
+            "DataCloneError",
+          );
+        }
+        j++;
+        transferredArrayBuffers.push(ab);
       }
-      WeakSetPrototypeAdd(detachedArrayBuffers, arrayBuffer);
     }
 
     const serializedData = core.serialize(data, {
@@ -279,7 +272,8 @@
     const serializedTransferables = [];
 
     let arrayBufferI = 0;
-    for (const transferable of transferables) {
+    for (let i = 0; i < transferables.length; ++i) {
+      const transferable = transferables[i];
       if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, transferable)) {
         webidl.assertBranded(transferable, MessagePortPrototype);
         const id = transferable[_id];

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::fs::File;
 use std::process::Command;
@@ -151,7 +151,6 @@ fn standalone_error_module_with_imports() {
     .wait_with_output()
     .unwrap();
   assert!(!output.status.success());
-  println!("{:#?}", &output);
   assert_eq!(output.stdout, b"hello\n");
   let stderr = String::from_utf8(output.stderr).unwrap();
   let stderr = util::strip_ansi_codes(&stderr).to_string();
@@ -427,6 +426,40 @@ fn standalone_import_map() {
     .arg("--allow-read")
     .arg("--import-map")
     .arg("compile/standalone_import_map.json")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./compile/standalone_import_map.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
+
+#[test]
+fn standalone_import_map_config_file() {
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("import_map.exe")
+  } else {
+    dir.path().join("import_map")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--config")
+    .arg("compile/standalone_import_map_config.json")
     .arg("--output")
     .arg(&exe)
     .arg("./compile/standalone_import_map.ts")

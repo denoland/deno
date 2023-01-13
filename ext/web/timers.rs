@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! This module helps deno implement timers and performance APIs.
 
@@ -51,7 +51,7 @@ where
     // SAFETY: buffer is at least 8 bytes long.
     unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as _, 2) };
   buf[0] = seconds as u32;
-  buf[1] = subsec_nanos as u32;
+  buf[1] = subsec_nanos;
 }
 
 pub struct TimerHandle(Rc<CancelHandle>);
@@ -77,15 +77,17 @@ pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
 
 /// Waits asynchronously until either `millis` milliseconds have passed or the
 /// [`TimerHandle`] resource given by `rid` has been canceled.
+///
+/// If the timer is canceled, this returns `false`. Otherwise, it returns `true`.
 #[op(deferred)]
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
   millis: u64,
   rid: ResourceId,
-) -> Result<(), AnyError> {
+) -> Result<bool, AnyError> {
   let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
-  tokio::time::sleep(Duration::from_millis(millis))
+  let res = tokio::time::sleep(Duration::from_millis(millis))
     .or_cancel(handle.0.clone())
-    .await?;
-  Ok(())
+    .await;
+  Ok(res.is_ok())
 }

@@ -65,6 +65,14 @@ impl ParsedSourceCache {
     }
   }
 
+  pub fn reset_for_file_watcher(&self) -> Self {
+    Self {
+      db_cache_path: self.db_cache_path.clone(),
+      cli_version: self.cli_version.clone(),
+      sources: Default::default(),
+    }
+  }
+
   pub fn get_parsed_source_from_module(
     &self,
     module: &deno_graph::Module,
@@ -143,6 +151,7 @@ impl ParsedSourceCacheModuleAnalyzer {
     cli_version: String,
     sources: ParsedSourceCacheSources,
   ) -> Result<Self, AnyError> {
+    log::debug!("Loading cached module analyzer.");
     let conn = match db_file_path {
       Some(path) => Connection::open(path)?,
       None => Connection::open_in_memory()?,

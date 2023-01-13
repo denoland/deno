@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 // @ts-check
@@ -6,9 +6,11 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  const { setIsTrusted, defineEventHandler } = window.__bootstrap.event;
-  const { listenerCount } = window.__bootstrap.eventTarget;
+  const { Event, setIsTrusted, defineEventHandler } = window.__bootstrap.event;
+  const { EventTarget, listenerCount } = window.__bootstrap.eventTarget;
   const {
+    SafeArrayIterator,
+    SafeSetIterator,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
@@ -76,7 +78,7 @@
       }
       this[abortReason] = reason;
       if (this[abortAlgos] !== null) {
-        for (const algorithm of this[abortAlgos]) {
+        for (const algorithm of new SafeSetIterator(this[abortAlgos])) {
           algorithm();
         }
         this[abortAlgos] = null;
@@ -124,14 +126,14 @@
     // only be used by Deno internals, which use it to essentially cancel async
     // ops which would block the event loop.
     addEventListener(...args) {
-      super.addEventListener(...args);
+      super.addEventListener(...new SafeArrayIterator(args));
       if (this[timerId] !== null && listenerCount(this, "abort") > 0) {
         refTimer(this[timerId]);
       }
     }
 
     removeEventListener(...args) {
-      super.removeEventListener(...args);
+      super.removeEventListener(...new SafeArrayIterator(args));
       if (this[timerId] !== null && listenerCount(this, "abort") === 0) {
         unrefTimer(this[timerId]);
       }
@@ -185,9 +187,9 @@
     }
   }
 
-  window.AbortSignal = AbortSignal;
-  window.AbortController = AbortController;
   window.__bootstrap.abortSignal = {
+    AbortSignal,
+    AbortController,
     AbortSignalPrototype,
     add,
     signalAbort,

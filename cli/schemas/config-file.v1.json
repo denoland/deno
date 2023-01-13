@@ -87,6 +87,12 @@
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
         },
+        "noErrorTruncation": {
+          "description": "Do not truncate error messages.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Do not truncate error messages.\n\nSee more: https://www.typescriptlang.org/tsconfig#noErrorTruncation"
+        },
         "noFallthroughCasesInSwitch": {
           "description": "Enable error reporting for fallthrough cases in switch statements.",
           "type": "boolean",
@@ -232,7 +238,7 @@
             },
             "exclude": {
               "type": "array",
-              "description": "List of rule names that will be excluded from configured tag sets. If the same rule is in `include` it be run.",
+              "description": "List of rule names that will be excluded from configured tag sets. If the same rule is in `include` it will be run.",
               "items": {
                 "type": "string"
               },
@@ -249,6 +255,15 @@
               "uniqueItems": true
             }
           }
+        },
+        "report": {
+          "default": "pretty",
+          "enum": [
+            "pretty",
+            "json",
+            "compact"
+          ],
+          "description": "The default report format to use when linting"
         }
       }
     },
@@ -346,6 +361,36 @@
           }
         }
       }
+    },
+    "bench": {
+      "description": "Configuration for deno bench",
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "object",
+          "properties": {
+            "include": {
+              "type": "array",
+              "description": "List of files or directories that will be searched for benchmarks.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exclude": {
+              "type": "array",
+              "description": "List of files or directories that will not be searched for benchmarks.",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "lock": {
+      "description": "Whether to use a lock file or the path to use for the lock file. Can be overridden by CLI arguments.",
+      "type": ["string", "boolean"],
+      "default": true
     }
   }
 }

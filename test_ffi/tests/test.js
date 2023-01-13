@@ -1,9 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
 // Run using cargo test or `--v8-options=--allow-natives-syntax`
 
-import { assertEquals } from "https://deno.land/std@0.149.0/testing/asserts.ts";
+import { assertEquals, assertInstanceOf, assertNotEquals } from "https://deno.land/std@0.149.0/testing/asserts.ts";
 import {
   assertThrows,
   assert,
@@ -37,6 +37,12 @@ assertThrows(
   "Failed to register symbol non_existent_symbol",
 );
 
+const Point = ["f64", "f64"];
+const Size = ["f64", "f64"];
+const Rect = ["f64", "f64", "f64", "f64"];
+const RectNested = [{ struct: Point }, { struct: Size }];
+const Mixed = ["u8", "f32", { struct: Rect }, "usize", { struct: ["u32", "u32"] }];
+
 const dylib = Deno.dlopen(libPath, {
   "printSomething": {
     name: "print_something",
@@ -50,7 +56,8 @@ const dylib = Deno.dlopen(libPath, {
     result: "void",
   },
   "return_buffer": { parameters: [], result: "buffer" },
-  "is_null_ptr": { parameters: ["pointer"], result: "u8" },
+  "is_null_ptr": { parameters: ["pointer"], result: "bool" },
+  "is_null_buf": { name: "is_null_ptr", parameters: ["buffer"], result: "bool" },
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "add_i32": { parameters: ["i32", "i32"], result: "i32" },
   "add_u64": { parameters: ["u64", "u64"], result: "u64" },
@@ -209,6 +216,34 @@ const dylib = Deno.dlopen(libPath, {
     type: "pointer",
   },
   "hash": { parameters: ["buffer", "u32"], result: "u32" },
+  make_rect: {
+    parameters: ["f64", "f64", "f64", "f64"],
+    result: { struct: Rect },
+  },
+  make_rect_async: {
+    name: "make_rect",
+    nonblocking: true,
+    parameters: ["f64", "f64", "f64", "f64"],
+    result: { struct: RectNested },
+  },
+  print_rect: {
+    parameters: [{ struct: Rect }],
+    result: "void",
+  },
+  print_rect_async: {
+    name: "print_rect",
+    nonblocking: true,
+    parameters: [{ struct: Rect }],
+    result: "void",
+  },
+  create_mixed: {
+    parameters: ["u8", "f32", { struct: Rect }, "pointer", "buffer"],
+    result: { struct: Mixed }
+  },
+  print_mixed: {
+    parameters: [{ struct: Mixed }],
+    result: "void",
+  },
 });
 const { symbols } = dylib;
 
@@ -251,13 +286,56 @@ const stringPtr = Deno.UnsafePointer.of(string);
 const stringPtrview = new Deno.UnsafePointerView(stringPtr);
 console.log(stringPtrview.getCString());
 console.log(stringPtrview.getCString(11));
-console.log(Boolean(dylib.symbols.is_null_ptr(ptr0)));
-console.log(Boolean(dylib.symbols.is_null_ptr(null)));
-console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
-const emptyBuffer = new BigUint64Array(0);
-console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer))));
+console.log(dylib.symbols.is_null_ptr(ptr0));
+console.log(dylib.symbols.is_null_ptr(null));
+console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into)));
+const emptyBuffer = new Uint8Array(0);
+console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer)));
 const emptySlice = into.subarray(6);
-console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice))));
+console.log(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice)));
+
+const { is_null_buf } = symbols;
+function isNullBuffer(buffer) { return is_null_buf(buffer); };
+function isNullBufferDeopt(buffer) { return is_null_buf(buffer); };
+%PrepareFunctionForOptimization(isNullBuffer);
+isNullBuffer(emptyBuffer);
+%NeverOptimizeFunction(isNullBufferDeopt);
+%OptimizeFunctionOnNextCall(isNullBuffer);
+isNullBuffer(emptyBuffer);
+assertIsOptimized(isNullBuffer);
+
+// ==== ZERO LENGTH BUFFER TESTS ====
+assertEquals(isNullBuffer(emptyBuffer), true, "isNullBuffer(emptyBuffer) !== true");
+assertEquals(isNullBufferDeopt(emptyBuffer), true, "isNullBufferDeopt(emptyBuffer) !== true");
+assertEquals(isNullBuffer(emptySlice), false, "isNullBuffer(emptySlice) !== false");
+assertEquals(isNullBufferDeopt(emptySlice), false, "isNullBufferDeopt(emptySlice) !== false");
+assertEquals(isNullBufferDeopt(new Uint8Array()), true, "isNullBufferDeopt(new Uint8Array()) !== true");
+
+// ==== V8 ZERO LENGTH BUFFER ANOMALIES ====
+
+// V8 bug: inline Uint8Array creation to fast call sees non-null pointer
+// https://bugs.chromium.org/p/v8/issues/detail?id=13489
+assertEquals(isNullBuffer(new Uint8Array()), false, "isNullBuffer(new Uint8Array()) !== false");
+
+// Externally backed ArrayBuffer has a non-null data pointer, even though its length is zero.
+const externalZeroBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(ptr0, 0));
+// However: V8 Fast calls get null pointers for zero-sized buffers.
+assertEquals(isNullBuffer(externalZeroBuffer), true, "isNullBuffer(externalZeroBuffer) !== true");
+// Also: V8's `Local<ArrayBuffer>->Data()` method returns null pointers for zero-sized buffers.
+// Using `Local<ArrayBuffer>->GetBackingStore()->Data()` would give the original pointer.
+assertEquals(isNullBufferDeopt(externalZeroBuffer), true, "isNullBufferDeopt(externalZeroBuffer) !== true");
+
+// The same pointer with a non-zero byte length for the buffer will return non-null pointers in
+// both Fast call and V8 API calls.
+const externalOneBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(ptr0, 1));
+assertEquals(isNullBuffer(externalOneBuffer), false, "isNullBuffer(externalOneBuffer) !== false");
+assertEquals(isNullBufferDeopt(externalOneBuffer), false, "isNullBufferDeopt(externalOneBuffer) !== false");
+
+// Due to ops macro using `Local<ArrayBuffer>->Data()` to get the pointer for the slice that is then used to get
+// the pointer of an ArrayBuffer / TypedArray, the same effect can be seen where a zero byte length buffer returns
+// a null pointer as its pointer value.
+assertEquals(Deno.UnsafePointer.of(externalZeroBuffer), 0, "Deno.UnsafePointer.of(externalZeroBuffer) !== 0");
+assertNotEquals(Deno.UnsafePointer.of(externalOneBuffer), 0, "Deno.UnsafePointer.of(externalOneBuffer) !== 0");
 
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
 const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
@@ -477,7 +555,7 @@ testOptimized(castU32U8Fast, () => castU32U8Fast(256));
 
 // Generally the trampoline tail-calls into the FFI function, but in certain cases (e.g. when returning 8 or 16 bit integers)
 // the tail call is not possible and a new stack frame must be created. We need enough parameters to have some on the stack
-function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) { 
+function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) {
   return symbols.add_many_u16(a, b, c, d, e, f, g, h, i, j, k, l, m);
 };
 // N.B. V8 does not currently follow Aarch64 Apple's calling convention.
@@ -515,6 +593,7 @@ logCallback.unref();
 console.log("Thread safe call counter:", counter);
 returnU8Callback.ref();
 await dylib.symbols.call_fn_ptr_return_u8_thread_safe(returnU8Callback.pointer);
+// Purposefully do not unref returnU8Callback: Instead use it to test close() unrefing.
 
 // Test statics
 console.log("Static u32:", dylib.symbols.static_u32);
@@ -525,6 +604,46 @@ console.log(
 );
 const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
 console.log("Static ptr value:", view.getUint32());
+
+// Test struct returning
+const rect_sync = dylib.symbols.make_rect(10, 20, 100, 200);
+assertInstanceOf(rect_sync, Uint8Array);
+assertEquals(rect_sync.length, 4 * 8);
+assertEquals(Array.from(new Float64Array(rect_sync.buffer)), [10, 20, 100, 200]);
+// Test struct passing
+dylib.symbols.print_rect(rect_sync);
+// Test struct passing asynchronously
+await dylib.symbols.print_rect_async(rect_sync);
+dylib.symbols.print_rect(new Float64Array([20, 20, 100, 200]));
+// Test struct returning asynchronously
+const rect_async = await dylib.symbols.make_rect_async(10, 20, 100, 200);
+assertInstanceOf(rect_async, Uint8Array);
+assertEquals(rect_async.length, 4 * 8);
+assertEquals(Array.from(new Float64Array(rect_async.buffer)), [10, 20, 100, 200]);
+
+// Test complex, mixed struct returning and passing
+const mixedStruct = dylib.symbols.create_mixed(3, 12.515000343322754, rect_async, 12456789, new Uint32Array([8, 32]));
+assertEquals(mixedStruct.length, 56);
+assertEquals(Array.from(mixedStruct.subarray(0, 4)), [3, 0, 0, 0]);
+assertEquals(new Float32Array(mixedStruct.buffer, 4, 1)[0], 12.515000343322754);
+assertEquals(new Float64Array(mixedStruct.buffer, 8, 4), new Float64Array(rect_async.buffer));
+assertEquals(new BigUint64Array(mixedStruct.buffer, 40, 1)[0], 12456789n);
+assertEquals(new Uint32Array(mixedStruct.buffer, 48, 2), new Uint32Array([8, 32]));
+dylib.symbols.print_mixed(mixedStruct);
+
+const cb = new Deno.UnsafeCallback({
+  parameters: [{ struct: Rect }],
+  result: { struct: Rect },
+}, (innerRect) => {
+  innerRect = new Float64Array(innerRect.buffer);
+  return new Float64Array([innerRect[0] + 10, innerRect[1] + 10, innerRect[2] + 10, innerRect[3] + 10]);
+});
+
+const cbFfi = new Deno.UnsafeFnPointer(cb.pointer, cb.definition);
+const cbResult = new Float64Array(cbFfi.call(rect_async).buffer);
+assertEquals(Array.from(cbResult), [20, 30, 110, 210]);
+
+cb.close();
 
 const arrayBuffer = view.getArrayBuffer(4);
 const uint32Array = new Uint32Array(arrayBuffer);
@@ -585,7 +704,7 @@ After: ${postStr}`,
 })();
 
 function assertIsOptimized(fn) {
-  const status = % GetOptimizationStatus(fn);
+  const status = %GetOptimizationStatus(fn);
   assert(status & (1 << 4), `expected ${fn.name} to be optimized, but wasn't`);
 }
 

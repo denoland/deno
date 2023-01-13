@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -13,6 +13,7 @@
     ArrayPrototypeSlice,
     TypeError,
     ObjectEntries,
+    SafeArrayIterator,
     String,
   } = window.__bootstrap.primordials;
 
@@ -20,7 +21,7 @@
     ops.op_kill(pid, signo, apiName);
   }
 
-  function kill(pid, signo) {
+  function kill(pid, signo = "SIGTERM") {
     opKill(pid, signo, "Deno.kill()");
   }
 
@@ -94,7 +95,7 @@
       core.close(this.rid);
     }
 
-    kill(signo) {
+    kill(signo = "SIGTERM") {
       opKill(this.pid, signo, "Deno.Process.kill()");
     }
   }
@@ -111,7 +112,10 @@
     stdin = "inherit",
   }) {
     if (cmd[0] != null) {
-      cmd = [pathFromURL(cmd[0]), ...ArrayPrototypeSlice(cmd, 1)];
+      cmd = [
+        pathFromURL(cmd[0]),
+        ...new SafeArrayIterator(ArrayPrototypeSlice(cmd, 1)),
+      ];
     }
     const res = opRun({
       cmd: ArrayPrototypeMap(cmd, String),

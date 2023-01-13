@@ -1,6 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-
-use crate::itest;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // Most of the tests for this are in deno_task_shell.
 // These tests are intended to only test integration.
@@ -19,6 +17,23 @@ itest!(task_cwd {
   exit_code: 0,
 });
 
+itest!(task_init_cwd {
+  args: "task -q --config task/deno.json --cwd .. echo_init_cwd",
+  output: "task/task_init_cwd.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  exit_code: 0,
+});
+
+itest!(task_init_cwd_already_set {
+  args: "task -q --config task/deno.json echo_init_cwd",
+  output: "task/task_init_cwd_already_set.out",
+  envs: vec![
+    ("NO_COLOR".to_string(), "1".to_string()),
+    ("INIT_CWD".to_string(), "HELLO".to_string())
+  ],
+  exit_code: 0,
+});
+
 itest!(task_cwd_resolves_config_from_specified_dir {
   args: "task -q --cwd task",
   output: "task/task_no_args.out",
@@ -32,6 +47,14 @@ itest!(task_non_existent {
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
   exit_code: 1,
 });
+
+#[test]
+fn task_emoji() {
+  // this bug only appears when using a pty/tty
+  let args = "task --config task/deno.json echo_emoji";
+  use test_util::PtyData::*;
+  test_util::test_pty2(args, vec![Output("Task echo_emoji echo 🔥\r\n🔥")]);
+}
 
 itest!(task_boolean_logic {
   args: "task -q --config task/deno.json boolean_logic",

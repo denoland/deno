@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -6,38 +6,31 @@
   const ops = core.ops;
   const __bootstrap = window.__bootstrap;
   const {
-    BigInt,
-    ObjectDefineProperty,
     ArrayPrototypeMap,
+    ArrayPrototypeJoin,
+    ObjectDefineProperty,
+    ObjectPrototypeHasOwnProperty,
+    ObjectPrototypeIsPrototypeOf,
     Number,
     NumberIsSafeInteger,
-    ArrayPrototypeJoin,
-    ObjectPrototypeIsPrototypeOf,
-    PromisePrototypeThen,
     TypeError,
+    Uint8Array,
     Int32Array,
     Uint32Array,
     BigInt64Array,
+    BigUint64Array,
     Function,
+    ReflectHas,
+    PromisePrototypeThen,
+    MathMax,
+    MathCeil,
+    Map,
+    SafeArrayIterator,
   } = window.__bootstrap.primordials;
 
-  function unpackU64(returnValue) {
-    if (typeof returnValue === "number") {
-      return returnValue;
-    }
-    const [hi, lo] = returnValue;
-    return BigInt(hi) << 32n | BigInt(lo);
-  }
-
-  function unpackI64(returnValue) {
-    if (typeof returnValue === "number") {
-      return returnValue;
-    }
-    const [hi, lo] = returnValue;
-    const u64 = unpackU64([hi, lo]);
-    return u64 >> 63n ? u64 - 0x10000000000000000n : u64;
-  }
-
+  const U32_BUFFER = new Uint32Array(2);
+  const U64_BUFFER = new BigUint64Array(U32_BUFFER.buffer);
+  const I64_BUFFER = new BigInt64Array(U32_BUFFER.buffer);
   class UnsafePointerView {
     pointer;
 
@@ -47,99 +40,119 @@
 
     getBool(offset = 0) {
       return ops.op_ffi_read_bool(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getUint8(offset = 0) {
       return ops.op_ffi_read_u8(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getInt8(offset = 0) {
       return ops.op_ffi_read_i8(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getUint16(offset = 0) {
       return ops.op_ffi_read_u16(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getInt16(offset = 0) {
       return ops.op_ffi_read_i16(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getUint32(offset = 0) {
       return ops.op_ffi_read_u32(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getInt32(offset = 0) {
       return ops.op_ffi_read_i32(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getBigUint64(offset = 0) {
-      return ops.op_ffi_read_u64(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+      ops.op_ffi_read_u64(
+        this.pointer,
+        offset,
+        U32_BUFFER,
       );
+      return U64_BUFFER[0];
     }
 
     getBigInt64(offset = 0) {
-      return ops.op_ffi_read_i64(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+      ops.op_ffi_read_i64(
+        this.pointer,
+        offset,
+        U32_BUFFER,
       );
+      return I64_BUFFER[0];
     }
 
     getFloat32(offset = 0) {
       return ops.op_ffi_read_f32(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getFloat64(offset = 0) {
       return ops.op_ffi_read_f64(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getCString(offset = 0) {
       return ops.op_ffi_cstr_read(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     static getCString(pointer, offset = 0) {
       return ops.op_ffi_cstr_read(
-        offset ? BigInt(pointer) + BigInt(offset) : pointer,
+        pointer,
+        offset,
       );
     }
 
     getArrayBuffer(byteLength, offset = 0) {
       return ops.op_ffi_get_buf(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
         byteLength,
       );
     }
 
     static getArrayBuffer(pointer, byteLength, offset = 0) {
       return ops.op_ffi_get_buf(
-        offset ? BigInt(pointer) + BigInt(offset) : pointer,
+        pointer,
+        offset,
         byteLength,
       );
     }
 
     copyInto(destination, offset = 0) {
       ops.op_ffi_buf_copy_into(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
         destination,
         destination.byteLength,
       );
@@ -147,87 +160,89 @@
 
     static copyInto(pointer, destination, offset = 0) {
       ops.op_ffi_buf_copy_into(
-        offset ? BigInt(pointer) + BigInt(offset) : pointer,
+        pointer,
+        offset,
         destination,
         destination.byteLength,
       );
     }
   }
 
+  const OUT_BUFFER = new Uint32Array(2);
+  const OUT_BUFFER_64 = new BigInt64Array(OUT_BUFFER.buffer);
   class UnsafePointer {
     static of(value) {
       if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
         return value.pointer;
       }
-      return ops.op_ffi_ptr_of(value);
-    }
-  }
-
-  function unpackNonblockingReturnValue(type, result) {
-    if (
-      typeof type === "object" && type !== null && "function" in type ||
-      type === "pointer"
-    ) {
-      return unpackU64(result);
-    }
-    switch (type) {
-      case "isize":
-      case "i64":
-        return unpackI64(result);
-      case "usize":
-      case "u64":
-        return unpackU64(result);
-      default:
+      ops.op_ffi_ptr_of(value, OUT_BUFFER);
+      const result = OUT_BUFFER[0] + 2 ** 32 * OUT_BUFFER[1];
+      if (NumberIsSafeInteger(result)) {
         return result;
+      }
+      return OUT_BUFFER_64[0];
     }
   }
 
   class UnsafeFnPointer {
     pointer;
     definition;
+    #structSize;
 
     constructor(pointer, definition) {
       this.pointer = pointer;
       this.definition = definition;
+      this.#structSize = isStruct(definition.result)
+        ? getTypeSizeAndAlignment(definition.result)[0]
+        : null;
     }
 
     call(...parameters) {
-      const resultType = this.definition.result;
       if (this.definition.nonblocking) {
-        const promise = core.opAsync(
-          "op_ffi_call_ptr_nonblocking",
-          this.pointer,
-          this.definition,
-          parameters,
-        );
-
-        if (
-          isReturnedAsBigInt(resultType)
-        ) {
+        if (this.#structSize === null) {
+          return core.opAsync(
+            "op_ffi_call_ptr_nonblocking",
+            this.pointer,
+            this.definition,
+            parameters,
+          );
+        } else {
+          const buffer = new Uint8Array(this.#structSize);
           return PromisePrototypeThen(
-            promise,
-            (result) => unpackNonblockingReturnValue(resultType, result),
+            core.opAsync(
+              "op_ffi_call_ptr_nonblocking",
+              this.pointer,
+              this.definition,
+              parameters,
+              buffer,
+            ),
+            () => buffer,
           );
         }
-
-        return promise;
       } else {
-        return ops.op_ffi_call_ptr(
-          this.pointer,
-          this.definition,
-          parameters,
-        );
+        if (this.#structSize === null) {
+          return ops.op_ffi_call_ptr(
+            this.pointer,
+            this.definition,
+            parameters,
+          );
+        } else {
+          const buffer = new Uint8Array(this.#structSize);
+          ops.op_ffi_call_ptr(
+            this.pointer,
+            this.definition,
+            parameters,
+            buffer,
+          );
+          return buffer;
+        }
       }
     }
   }
 
-  function isPointerType(type) {
-    return type === "buffer" || type === "pointer" ||
-      typeof type === "object" && type !== null && "function" in type;
-  }
-
   function isReturnedAsBigInt(type) {
-    return isPointerType(type) || type === "u64" || type === "i64" ||
+    return type === "buffer" || type === "pointer" || type === "function" ||
+      type === "u64" || type === "i64" ||
       type === "usize" || type === "isize";
   }
 
@@ -235,8 +250,64 @@
     return type === "i64" || type === "isize";
   }
 
+  function isStruct(type) {
+    return typeof type === "object" && type !== null &&
+      typeof type.struct === "object";
+  }
+
+  function getTypeSizeAndAlignment(type, cache = new Map()) {
+    if (isStruct(type)) {
+      const cached = cache.get(type);
+      if (cached !== undefined) {
+        if (cached === null) {
+          throw new TypeError("Recursive struct definition");
+        }
+        return cached;
+      }
+      cache.set(type, null);
+      let size = 0;
+      let alignment = 1;
+      for (const field of new SafeArrayIterator(type.struct)) {
+        const [fieldSize, fieldAlign] = getTypeSizeAndAlignment(field, cache);
+        alignment = MathMax(alignment, fieldAlign);
+        size = MathCeil(size / fieldAlign) * fieldAlign;
+        size += fieldSize;
+      }
+      size = MathCeil(size / alignment) * alignment;
+      cache.set(type, size);
+      return [size, alignment];
+    }
+
+    switch (type) {
+      case "bool":
+      case "u8":
+      case "i8":
+        return [1, 1];
+      case "u16":
+      case "i16":
+        return [2, 2];
+      case "u32":
+      case "i32":
+      case "f32":
+        return [4, 4];
+      case "u64":
+      case "i64":
+      case "f64":
+      case "pointer":
+      case "buffer":
+      case "function":
+      case "usize":
+      case "isize":
+        return [8, 8];
+      default:
+        throw new TypeError(`Unsupported type: ${type}`);
+    }
+  }
+
   class UnsafeCallback {
     #refcount;
+    // Internal promise only meant to keep Deno from exiting
+    #refpromise;
     #rid;
     definition;
     callback;
@@ -261,23 +332,25 @@
 
     ref() {
       if (this.#refcount++ === 0) {
-        ops.op_ffi_unsafe_callback_ref(true);
+        this.#refpromise = core.opAsync(
+          "op_ffi_unsafe_callback_ref",
+          this.#rid,
+        );
       }
+      return this.#refcount;
     }
 
     unref() {
       // Only decrement refcount if it is positive, and only
       // unref the callback if refcount reaches zero.
       if (this.#refcount > 0 && --this.#refcount === 0) {
-        ops.op_ffi_unsafe_callback_ref(false);
+        ops.op_ffi_unsafe_callback_unref(this.#rid);
       }
+      return this.#refcount;
     }
 
     close() {
-      if (this.#refcount) {
-        this.#refcount = 0;
-        ops.op_ffi_unsafe_callback_ref(false);
-      }
+      this.#refcount = 0;
       core.close(this.#rid);
     }
   }
@@ -291,7 +364,11 @@
     constructor(path, symbols) {
       [this.#rid, this.symbols] = ops.op_ffi_load({ path, symbols });
       for (const symbol in symbols) {
-        if ("type" in symbols[symbol]) {
+        if (!ObjectPrototypeHasOwnProperty(symbols, symbol)) {
+          continue;
+        }
+
+        if (ReflectHas(symbols[symbol], "type")) {
           const type = symbols[symbol].type;
           if (type === "void") {
             throw new TypeError(
@@ -318,6 +395,10 @@
           continue;
         }
         const resultType = symbols[symbol].result;
+        const isStructResult = isStruct(resultType);
+        const structSize = isStructResult
+          ? getTypeSizeAndAlignment(resultType)[0]
+          : 0;
         const needsUnpacking = isReturnedAsBigInt(resultType);
 
         const isNonBlocking = symbols[symbol].nonblocking;
@@ -329,22 +410,27 @@
               configurable: false,
               enumerable: true,
               value: (...parameters) => {
-                const promise = core.opAsync(
-                  "op_ffi_call_nonblocking",
-                  this.#rid,
-                  symbol,
-                  parameters,
-                );
-
-                if (needsUnpacking) {
+                if (isStructResult) {
+                  const buffer = new Uint8Array(structSize);
+                  const ret = core.opAsync(
+                    "op_ffi_call_nonblocking",
+                    this.#rid,
+                    symbol,
+                    parameters,
+                    buffer,
+                  );
                   return PromisePrototypeThen(
-                    promise,
-                    (result) =>
-                      unpackNonblockingReturnValue(resultType, result),
+                    ret,
+                    () => buffer,
+                  );
+                } else {
+                  return core.opAsync(
+                    "op_ffi_call_nonblocking",
+                    this.#rid,
+                    symbol,
+                    parameters,
                   );
                 }
-
-                return promise;
               },
               writable: false,
             },
@@ -381,6 +467,21 @@
             return b[0];
           }`,
           )(vi, vui, b, call, NumberIsSafeInteger, Number);
+        } else if (isStructResult && !isNonBlocking) {
+          const call = this.symbols[symbol];
+          const parameters = symbols[symbol].parameters;
+          const params = ArrayPrototypeJoin(
+            ArrayPrototypeMap(parameters, (_, index) => `p${index}`),
+            ", ",
+          );
+          this.symbols[symbol] = new Function(
+            "call",
+            `return function (${params}) {
+            const buffer = new Uint8Array(${structSize});
+            call(${params}${parameters.length > 0 ? ", " : ""}buffer);
+            return buffer;
+          }`,
+          )(call);
         }
       }
     }

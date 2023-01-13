@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::process::{Command, Stdio};
 use test_util as util;
@@ -120,7 +120,7 @@ fn upgrade_with_out_in_tmpdir() {
     .arg("--version")
     .arg("1.11.5")
     .arg("--output")
-    .arg(&new_exe_path.to_str().unwrap())
+    .arg(new_exe_path.to_str().unwrap())
     .spawn()
     .unwrap()
     .wait()

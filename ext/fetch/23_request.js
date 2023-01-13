@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -158,14 +158,14 @@
    * @param {boolean} flash
    * @returns {InnerRequest}
    */
-  function cloneInnerRequest(request, flash) {
-    const headerList = ArrayPrototypeMap(request.headerList, (x) => [
-      x[0],
-      x[1],
-    ]);
+  function cloneInnerRequest(request, skipBody = false, flash = false) {
+    const headerList = ArrayPrototypeMap(
+      request.headerList,
+      (x) => [x[0], x[1]],
+    );
 
     let body = null;
-    if (request.body !== null) {
+    if (request.body !== null && !skipBody) {
       body = request.body.clone();
     }
 
@@ -332,12 +332,14 @@
         if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
           throw new TypeError("Unreachable");
         }
-        request = input[_request];
+        const originalReq = input[_request];
+        // fold in of step 12 from below
+        request = cloneInnerRequest(originalReq, true);
+        request.redirectCount = 0; // reset to 0 - cloneInnerRequest copies the value
         signal = input[_signal];
       }
 
-      // 12.
-      // TODO(lucacasonato): create a copy of `request`
+      // 12. is folded into the else statement of step 6 above.
 
       // 22.
       if (init.redirect !== undefined) {
@@ -501,9 +503,9 @@
       }
       let newReq;
       if (this[_flash]) {
-        newReq = cloneInnerRequest(this[_flash], true);
+        newReq = cloneInnerRequest(this[_flash], false, true);
       } else {
-        newReq = cloneInnerRequest(this[_request], false);
+        newReq = cloneInnerRequest(this[_request]);
       }
 
       const newSignal = abortSignal.newSignal();

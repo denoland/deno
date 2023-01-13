@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -7,12 +7,6 @@
 
 declare namespace Deno {
   namespace core {
-    /** Call an op in Rust, and synchronously receive the result. */
-    function opSync(
-      opName: string,
-      ...args: any[]
-    ): any;
-
     /** Call an op in Rust, and asynchronously receive the result. */
     function opAsync(
       opName: string,
@@ -60,6 +54,11 @@ declare namespace Deno {
      * Write to a (stream) resource that implements write()
      */
     function write(rid: number, buf: Uint8Array): Promise<number>;
+
+    /**
+     * Write to a (stream) resource that implements write()
+     */
+    function writeAll(rid: number, buf: Uint8Array): Promise<void>;
 
     /**
      * Print a message to stdout or stderr
