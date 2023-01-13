@@ -185,7 +185,7 @@ fn import_map_output_dir() {
   assert!(wildcard_match(
     &format!(
       concat!(
-        "Config file found at '[WILDCARD]'\n"
+        "Config file found at '[WILDCARD]'\n",
         "Ignoring import map. Specifying an import map file ({}) in the deno ",
         "vendor output directory is not supported. If you wish to use an ",
         "import map while vendoring, please specify one located outside this ",
