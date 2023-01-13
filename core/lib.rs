@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 mod async_cancel;
 mod async_cell;
 mod bindings;
@@ -18,6 +18,7 @@ mod ops_builtin_v8;
 mod ops_metrics;
 mod resources;
 mod runtime;
+pub mod snapshot_util;
 mod source_map;
 
 // Re-exports
@@ -76,6 +77,7 @@ pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::ModuleType;
 pub use crate::modules::NoopModuleLoader;
+pub use crate::modules::ResolutionKind;
 pub use crate::normalize_path::normalize_path;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
@@ -121,7 +123,9 @@ pub mod _ops {
   pub use super::error_codes::get_error_code;
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;
+  pub use super::ops::OpResult;
   pub use super::runtime::queue_async_op;
+  pub use super::runtime::queue_fast_async_op;
   pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
   pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
 }

@@ -1,23 +1,25 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides feature to upgrade deno executable
 
+use crate::args::Flags;
 use crate::args::UpgradeFlags;
 use crate::colors;
+use crate::http_util::HttpClient;
+use crate::proc_state::ProcState;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
 
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
-use deno_core::futures::StreamExt;
-use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_fetch::reqwest::Client;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
 use std::fs;
-use std::io::Write;
 use std::ops::Sub;
 use std::path::Path;
 use std::path::PathBuf;
@@ -31,7 +33,6 @@ const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 
 // How often query server for new version. In hours.
 const UPGRADE_CHECK_INTERVAL: i64 = 24;
-const UPGRADE_CHECK_FILE_NAME: &str = "latest.txt";
 
 const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
 
@@ -47,14 +48,16 @@ trait UpdateCheckerEnvironment: Clone + Send + Sync {
 
 #[derive(Clone)]
 struct RealUpdateCheckerEnvironment {
-  cache_dir: PathBuf,
+  http_client: HttpClient,
+  cache_file_path: PathBuf,
   current_time: chrono::DateTime<chrono::Utc>,
 }
 
 impl RealUpdateCheckerEnvironment {
-  pub fn new(cache_dir: PathBuf) -> Self {
+  pub fn new(http_client: HttpClient, cache_file_path: PathBuf) -> Self {
     Self {
-      cache_dir,
+      http_client,
+      cache_file_path,
       // cache the current time
       current_time: chrono::Utc::now(),
     }
@@ -63,12 +66,12 @@ impl RealUpdateCheckerEnvironment {
 
 impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
   fn latest_version(&self) -> BoxFuture<'static, Result<String, AnyError>> {
-    async {
-      let client = build_http_client(None)?;
+    let http_client = self.http_client.clone();
+    async move {
       if version::is_canary() {
-        get_latest_canary_version(&client).await
+        get_latest_canary_version(&http_client).await
       } else {
-        get_latest_release_version(&client).await
+        get_latest_release_version(&http_client).await
       }
     }
     .boxed()
@@ -79,12 +82,11 @@ impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
   }
 
   fn read_check_file(&self) -> String {
-    std::fs::read_to_string(self.cache_dir.join(UPGRADE_CHECK_FILE_NAME))
-      .unwrap_or_default()
+    std::fs::read_to_string(&self.cache_file_path).unwrap_or_default()
   }
 
   fn write_check_file(&self, text: &str) {
-    let _ = std::fs::write(self.cache_dir.join(UPGRADE_CHECK_FILE_NAME), text);
+    let _ = std::fs::write(&self.cache_file_path, text);
   }
 
   fn current_time(&self) -> chrono::DateTime<chrono::Utc> {
@@ -119,6 +121,14 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
   /// Returns the version if a new one is available and it should be prompted about.
   pub fn should_prompt(&self) -> Option<String> {
     let file = self.maybe_file.as_ref()?;
+    // If the current version saved is not the actualy current version of the binary
+    // It means
+    // - We already check for a new vesion today
+    // - The user have probably upgraded today
+    // So we should not prompt and wait for tomorrow for the latest version to be updated again
+    if file.current_version != self.env.current_version() {
+      return None;
+    }
     if file.latest_version == self.env.current_version() {
       return None;
     }
@@ -152,12 +162,12 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
   }
 }
 
-pub fn check_for_upgrades(cache_dir: PathBuf) {
+pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
   if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
     return;
   }
 
-  let env = RealUpdateCheckerEnvironment::new(cache_dir);
+  let env = RealUpdateCheckerEnvironment::new(http_client, cache_file_path);
   let update_checker = UpdateChecker::new(env);
 
   if update_checker.should_check_for_new_version() {
@@ -180,6 +190,10 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
           "{} ",
           colors::green("A new canary release of Deno is available.")
         );
+        eprintln!(
+          "{}",
+          colors::italic_gray("Run `deno upgrade --canary` to install it.")
+        );
       } else {
         eprint!(
           "{} {} → {} ",
@@ -187,11 +201,11 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
           colors::cyan(version::deno()),
           colors::cyan(upgrade_version)
         );
+        eprintln!(
+          "{}",
+          colors::italic_gray("Run `deno upgrade` to install it.")
+        );
       }
-      eprintln!(
-        "{}",
-        colors::italic_gray("Run `deno upgrade` to install it.")
-      );
 
       update_checker.store_prompted();
     }
@@ -216,21 +230,26 @@ async fn fetch_and_store_latest_version<
         .current_time()
         .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
       last_checked: env.current_time(),
+      current_version: env.current_version().to_string(),
       latest_version,
     }
     .serialize(),
   );
 }
 
-pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
-  let old_exe_path = std::env::current_exe()?;
-  let metadata = fs::metadata(&old_exe_path)?;
+pub async fn upgrade(
+  flags: Flags,
+  upgrade_flags: UpgradeFlags,
+) -> Result<(), AnyError> {
+  let ps = ProcState::build(flags).await?;
+  let current_exe_path = std::env::current_exe()?;
+  let metadata = fs::metadata(&current_exe_path)?;
   let permissions = metadata.permissions();
 
   if permissions.readonly() {
     bail!(
       "You do not have write permission to {}",
-      old_exe_path.display()
+      current_exe_path.display()
     );
   }
   #[cfg(unix)]
@@ -241,10 +260,10 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
       "You don't have write permission to {} because it's owned by root.\n",
       "Consider updating deno through your package manager if its installed from it.\n",
       "Otherwise run `deno upgrade` as root.",
-    ), old_exe_path.display());
+    ), current_exe_path.display());
   }
 
-  let client = build_http_client(upgrade_flags.ca_file)?;
+  let client = ps.http_client.clone();
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
@@ -270,7 +289,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
         && upgrade_flags.output.is_none()
         && current_is_passed
       {
-        println!("Version {} is already installed", crate::version::deno());
+        log::info!("Version {} is already installed", crate::version::deno());
         return Ok(());
       } else {
         passed_version
@@ -278,10 +297,10 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
     }
     None => {
       let latest_version = if upgrade_flags.canary {
-        println!("Looking up latest canary version");
+        log::info!("Looking up latest canary version");
         get_latest_canary_version(&client).await?
       } else {
-        println!("Looking up latest version");
+        log::info!("Looking up latest version");
         get_latest_release_version(&client).await?
       };
 
@@ -300,13 +319,17 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
         && upgrade_flags.output.is_none()
         && current_is_most_recent
       {
-        println!(
+        log::info!(
           "Local deno version {} is the most recent release",
-          crate::version::deno()
+          if upgrade_flags.canary {
+            crate::version::GIT_COMMIT_HASH.to_string()
+          } else {
+            crate::version::deno()
+          }
         );
         return Ok(());
       } else {
-        println!("Found latest version {}", latest_version);
+        log::info!("Found latest version {}", latest_version);
         latest_version
       }
     }
@@ -328,119 +351,95 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
     )
   };
 
-  let archive_data = download_package(client, &download_url).await?;
+  let archive_data = download_package(&client, &download_url)
+    .await
+    .with_context(|| format!("Failed downloading {}", download_url))?;
 
-  println!("Deno is upgrading to version {}", &install_version);
+  log::info!("Deno is upgrading to version {}", &install_version);
 
   let new_exe_path = unpack(archive_data, cfg!(windows))?;
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
-  if !upgrade_flags.dry_run {
-    match upgrade_flags.output {
-      Some(path) => {
-        fs::rename(&new_exe_path, &path)
-          .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))?;
+  if upgrade_flags.dry_run {
+    fs::remove_file(&new_exe_path)?;
+    log::info!("Upgraded successfully (dry run)");
+  } else {
+    let output_exe_path =
+      upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
+    let output_result = if *output_exe_path == current_exe_path {
+      replace_exe(&new_exe_path, output_exe_path)
+    } else {
+      fs::rename(&new_exe_path, output_exe_path)
+        .or_else(|_| fs::copy(&new_exe_path, output_exe_path).map(|_| ()))
+    };
+    if let Err(err) = output_result {
+      const WIN_ERROR_ACCESS_DENIED: i32 = 5;
+      if cfg!(windows) && err.raw_os_error() == Some(WIN_ERROR_ACCESS_DENIED) {
+        return Err(err).with_context(|| {
+          format!(
+            concat!(
+              "Could not replace the deno executable. This may be because an ",
+              "existing deno process is running. Please ensure there are no ",
+              "running deno processes (ex. Stop-Process -Name deno ; deno {}), ",
+              "close any editors before upgrading, and ensure you have ",
+              "sufficient permission to '{}'."
+            ),
+            // skip the first argument, which is the executable path
+            std::env::args().skip(1).collect::<Vec<_>>().join(" "),
+            output_exe_path.display(),
+          )
+        });
+      } else {
+        return Err(err.into());
       }
-      None => replace_exe(&new_exe_path, &old_exe_path)?,
     }
+    log::info!("Upgraded successfully");
   }
-
-  println!("Upgraded successfully");
 
   Ok(())
 }
 
-fn build_http_client(
-  ca_file: Option<String>,
-) -> Result<reqwest::Client, AnyError> {
-  let mut client_builder =
-    Client::builder().user_agent(version::get_user_agent());
-
-  // If we have been provided a CA Certificate, add it into the HTTP client
-  let ca_file = ca_file.or_else(|| env::var("DENO_CERT").ok());
-  if let Some(ca_file) = ca_file {
-    let buf = std::fs::read(ca_file)?;
-    let cert = reqwest::Certificate::from_pem(&buf)?;
-    client_builder = client_builder.add_root_certificate(cert);
-  }
-
-  let client = client_builder.build()?;
-
-  Ok(client)
-}
-
 async fn get_latest_release_version(
-  client: &Client,
+  client: &HttpClient,
 ) -> Result<String, AnyError> {
-  let res = client
-    .get("https://dl.deno.land/release-latest.txt")
-    .send()
+  let text = client
+    .download_text("https://dl.deno.land/release-latest.txt")
     .await?;
-  let version = res.text().await?.trim().to_string();
+  let version = text.trim().to_string();
   Ok(version.replace('v', ""))
 }
 
 async fn get_latest_canary_version(
-  client: &Client,
+  client: &HttpClient,
 ) -> Result<String, AnyError> {
-  let res = client
-    .get("https://dl.deno.land/canary-latest.txt")
-    .send()
+  let text = client
+    .download_text("https://dl.deno.land/canary-latest.txt")
     .await?;
-  let version = res.text().await?.trim().to_string();
+  let version = text.trim().to_string();
   Ok(version)
 }
 
 async fn download_package(
-  client: Client,
+  client: &HttpClient,
   download_url: &str,
 ) -> Result<Vec<u8>, AnyError> {
-  println!("Checking {}", &download_url);
-
-  let res = client.get(download_url).send().await?;
-
-  if res.status().is_success() {
-    let total_size = res.content_length().unwrap() as f64;
-    let mut current_size = 0.0;
-    let mut data = Vec::with_capacity(total_size as usize);
-    let mut stream = res.bytes_stream();
-    let mut skip_print = 0;
-    let is_tty = atty::is(atty::Stream::Stdout);
-    const MEBIBYTE: f64 = 1024.0 * 1024.0;
-    while let Some(item) = stream.next().await {
-      let bytes = item?;
-      current_size += bytes.len() as f64;
-      data.extend_from_slice(&bytes);
-      if skip_print == 0 {
-        if is_tty {
-          print!("\u{001b}[1G\u{001b}[2K");
-        }
-        print!(
-          "{:>4.1} MiB / {:.1} MiB ({:^5.1}%)",
-          current_size / MEBIBYTE,
-          total_size / MEBIBYTE,
-          (current_size / total_size) * 100.0,
-        );
-        std::io::stdout().flush()?;
-        skip_print = 10;
-      } else {
-        skip_print -= 1;
-      }
+  log::info!("Downloading {}", &download_url);
+  let maybe_bytes = {
+    let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
+    // provide an empty string here in order to prefer the downloading
+    // text above which will stay alive after the progress bars are complete
+    let progress = progress_bar.update("");
+    client
+      .download_with_progress(download_url, &progress)
+      .await?
+  };
+  match maybe_bytes {
+    Some(bytes) => Ok(bytes),
+    None => {
+      log::info!("Download could not be found, aborting");
+      std::process::exit(1)
     }
-    if is_tty {
-      print!("\u{001b}[1G\u{001b}[2K");
-    }
-    println!(
-      "{:.1} MiB / {:.1} MiB (100.0%)",
-      current_size / MEBIBYTE,
-      total_size / MEBIBYTE
-    );
-
-    Ok(data)
-  } else {
-    println!("Download could not be found, aborting");
-    std::process::exit(1)
   }
 }
 
@@ -492,7 +491,7 @@ pub fn unpack(
       fs::write(&archive_path, &archive_data)?;
       Command::new("unzip")
         .current_dir(&temp_dir)
-        .arg(archive_path)
+        .arg(&archive_path)
         .spawn()
         .map_err(|err| {
           if err.kind() == std::io::ErrorKind::NotFound {
@@ -510,20 +509,21 @@ pub fn unpack(
   };
   assert!(unpack_status.success());
   assert!(exe_path.exists());
+  fs::remove_file(&archive_path)?;
   Ok(exe_path)
 }
 
-fn replace_exe(new: &Path, old: &Path) -> Result<(), std::io::Error> {
+fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
   if cfg!(windows) {
     // On windows you cannot replace the currently running executable.
     // so first we rename it to deno.old.exe
-    fs::rename(old, old.with_extension("old.exe"))?;
+    fs::rename(to, to.with_extension("old.exe"))?;
   } else {
-    fs::remove_file(old)?;
+    fs::remove_file(to)?;
   }
   // Windows cannot rename files across device boundaries, so if rename fails,
   // we try again with copy.
-  fs::rename(new, old).or_else(|_| fs::copy(new, old).map(|_| ()))?;
+  fs::rename(from, to).or_else(|_| fs::copy(from, to).map(|_| ()))?;
   Ok(())
 }
 
@@ -540,6 +540,7 @@ fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
 struct CheckVersionFile {
   pub last_prompt: chrono::DateTime<chrono::Utc>,
   pub last_checked: chrono::DateTime<chrono::Utc>,
+  pub current_version: String,
   pub latest_version: String,
 }
 
@@ -547,12 +548,16 @@ impl CheckVersionFile {
   pub fn parse(content: String) -> Option<Self> {
     let split_content = content.split('!').collect::<Vec<_>>();
 
-    if split_content.len() != 3 {
+    if split_content.len() != 4 {
       return None;
     }
 
     let latest_version = split_content[2].trim().to_owned();
     if latest_version.is_empty() {
+      return None;
+    }
+    let current_version = split_content[3].trim().to_owned();
+    if current_version.is_empty() {
       return None;
     }
 
@@ -566,16 +571,18 @@ impl CheckVersionFile {
     Some(CheckVersionFile {
       last_prompt,
       last_checked,
+      current_version,
       latest_version,
     })
   }
 
   fn serialize(&self) -> String {
     format!(
-      "{}!{}!{}",
+      "{}!{}!{}!{}",
       self.last_prompt.to_rfc3339(),
       self.last_checked.to_rfc3339(),
-      self.latest_version
+      self.latest_version,
+      self.current_version,
     )
   }
 
@@ -598,7 +605,8 @@ mod test {
   #[test]
   fn test_parse_upgrade_check_file() {
     let file = CheckVersionFile::parse(
-      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3".to_string(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2"
+        .to_string(),
     )
     .unwrap();
     assert_eq!(
@@ -610,6 +618,7 @@ mod test {
       "2020-01-01T00:00:00+00:00".to_string()
     );
     assert_eq!(file.latest_version, "1.2.3".to_string());
+    assert_eq!(file.current_version, "1.2.2".to_string());
 
     let result =
       CheckVersionFile::parse("2020-01-01T00:00:00+00:00!".to_string());
@@ -634,10 +643,11 @@ mod test {
       .unwrap()
       .with_timezone(&chrono::Utc),
       latest_version: "1.2.3".to_string(),
+      current_version: "1.2.2".to_string(),
     };
     assert_eq!(
       file.serialize(),
-      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3"
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2"
     );
   }
 
@@ -788,6 +798,7 @@ mod test {
         .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
       last_checked: env.current_time(),
       latest_version: "1.26.2".to_string(),
+      current_version: "1.27.0".to_string(),
     }
     .serialize();
     env.write_check_file(&file_content);
@@ -797,6 +808,25 @@ mod test {
 
     // since currently running version is newer than latest available (eg. CDN
     // propagation might be delated) we should not prompt
+    assert_eq!(checker.should_prompt(), None);
+  }
+
+  #[tokio::test]
+  async fn test_should_not_prompt_if_current_cli_version_has_changed() {
+    let env = TestUpdateCheckerEnvironment::new();
+    let file_content = CheckVersionFile {
+      last_prompt: env
+        .current_time()
+        .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
+      last_checked: env.current_time(),
+      latest_version: "1.26.2".to_string(),
+      current_version: "1.25.0".to_string(),
+    }
+    .serialize();
+    env.write_check_file(&file_content);
+    // simulate an upgrade done to a canary version
+    env.set_current_version("61fbfabe440f1cfffa7b8d17426ffdece4d430d0");
+    let checker = UpdateChecker::new(env);
     assert_eq!(checker.should_prompt(), None);
   }
 }

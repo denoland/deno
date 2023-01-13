@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::ModuleSpecifier;
 use deno_core::serde::de::DeserializeOwned;
@@ -11,7 +11,10 @@ use deno_core::url::Url;
 use pretty_assertions::assert_eq;
 use std::collections::HashSet;
 use std::fs;
+use std::process::Stdio;
+use test_util::deno_cmd_with_deno_dir;
 use test_util::deno_exe_path;
+use test_util::env_vars_for_npm_tests;
 use test_util::http_server;
 use test_util::lsp::LspClient;
 use test_util::testdata_path;
@@ -1421,7 +1424,7 @@ fn lsp_workspace_enable_paths() {
           "language": "typescript",
           "value": "(method) DateConstructor.now(): number",
         },
-        ""
+        "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
       ],
       "range": {
         "start": {
@@ -1459,7 +1462,7 @@ fn lsp_workspace_enable_paths() {
           "language": "typescript",
           "value": "(method) DateConstructor.now(): number",
         },
-        ""
+        "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
       ],
       "range": {
         "start": {
@@ -3319,13 +3322,13 @@ fn lsp_code_actions() {
 fn lsp_code_actions_deno_cache() {
   let mut session = TestSession::from_file("initialize_params.json");
   let diagnostics = session.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "import * as a from \"https://deno.land/x/a/mod.ts\";\n\nconsole.log(a);\n"
-    }
-  }));
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"https://deno.land/x/a/mod.ts\";\n\nconsole.log(a);\n"
+      }
+    }));
   assert_eq!(
     diagnostics.with_source("deno"),
     load_fixture_as("diagnostics_deno_deps.json")
@@ -3381,19 +3384,48 @@ fn lsp_code_actions_deno_cache_npm() {
 fn lsp_code_actions_imports() {
   let mut session = TestSession::from_file("initialize_params.json");
   session.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file00.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "export const abc = \"abc\";\nexport const def = \"def\";\n"
-    }
-  }));
+      "textDocument": {
+        "uri": "file:///a/file00.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"export interface MallardDuckConfigOptions extends DuckConfigOptions {
+  kind: "mallard";
+}
+
+export class MallardDuckConfig extends DuckConfig {
+  constructor(options: MallardDuckConfigOptions) {
+    super(options);
+  }
+}
+"#
+      }
+    }));
   session.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file01.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "\nconsole.log(abc);\nconsole.log(def)\n"
+      "text": r#"import { DuckConfigOptions } from "./file02.ts";
+
+export class DuckConfig {
+  readonly kind;
+  constructor(options: DuckConfigOptions) {
+    this.kind = options.kind;
+  }
+}
+"#
+    }
+  }));
+  session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file02.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"export interface DuckConfigOptions {
+  kind: string;
+  quacks: boolean;
+}
+"#
     }
   }));
 
@@ -3705,6 +3737,49 @@ fn lsp_completions() {
 }
 
 #[test]
+fn lsp_completions_private_fields() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"class Foo { #myProperty = "value"; constructor() { this.# } }"#
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 57
+        },
+        "context": {
+          "triggerKind": 1
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert_eq!(list.items.len(), 1);
+    let item = &list.items[0];
+    assert_eq!(item.label, "#myProperty");
+    assert!(!list.is_incomplete);
+  } else {
+    panic!("unexpected response");
+  }
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_completions_optional() {
   let mut client = init("initialize_params.json");
   did_open(
@@ -3881,12 +3956,6 @@ fn lsp_completions_auto_import() {
           },
           "newText": "import { foo } from \"./b.ts\";\n\n"
         }
-      ],
-      "commitCharacters": [
-        ".",
-        ",",
-        ";",
-        "("
       ]
     }))
   );
@@ -4000,13 +4069,7 @@ fn lsp_completions_snippet() {
       "sortText": "11",
       "filterText": "type=\"$1\"",
       "insertText": "type=\"$1\"",
-      "insertTextFormat": 2,
-      "commitCharacters": [
-        ".",
-        ",",
-        ";",
-        "("
-      ]
+      "insertTextFormat": 2
     }))
   );
 }
@@ -4238,6 +4301,110 @@ fn lsp_completions_npm() {
   }
 
   shutdown(&mut client);
+}
+
+#[test]
+fn lsp_npm_specifier_unopened_file() {
+  let _g = http_server();
+  let mut client = init("initialize_params.json");
+
+  // create other.ts, which re-exports an npm specifier
+  client.deno_dir().write(
+    "other.ts",
+    "export { default as chalk } from 'npm:chalk@5';",
+  );
+
+  // cache the other.ts file to the DENO_DIR
+  let deno = deno_cmd_with_deno_dir(client.deno_dir())
+    .current_dir(client.deno_dir().path())
+    .arg("cache")
+    .arg("--quiet")
+    .arg("other.ts")
+    .envs(env_vars_for_npm_tests())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.status.code(), Some(0));
+
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  assert!(stdout.is_empty());
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.is_empty());
+
+  // open main.ts, which imports other.ts (unopened)
+  let main_url =
+    ModuleSpecifier::from_file_path(client.deno_dir().path().join("main.ts"))
+      .unwrap();
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": main_url,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import { chalk } from './other.ts';\n\n",
+      }
+    }),
+  );
+
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": main_url,
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 0
+              },
+              "end": {
+                "line": 2,
+                "character": 0
+              }
+            },
+            "text": "chalk."
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  read_diagnostics(&mut client);
+
+  // now ensure completions work
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": main_url
+        },
+        "position": {
+          "line": 2,
+          "character": 6
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "."
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert_eq!(list.items.len(), 63);
+    assert!(list.items.iter().any(|i| i.label == "ansi256"));
+  } else {
+    panic!("unexpected response");
+  }
 }
 
 #[test]
@@ -5224,7 +5391,9 @@ fn lsp_format_json() {
       "textDocument/didOpen",
       json!({
         "textDocument": {
-          "uri": "file:///a/file.json",
+          // Also test out using a non-json file extension here.
+          // What should matter is the language identifier.
+          "uri": "file:///a/file.lock",
           "languageId": "json",
           "version": 1,
           "text": "{\"key\":\"value\"}"
@@ -5238,7 +5407,7 @@ fn lsp_format_json() {
       "textDocument/formatting",
       json!({
           "textDocument": {
-            "uri": "file:///a/file.json"
+            "uri": "file:///a/file.lock"
           },
           "options": {
             "tabSize": 2,
@@ -6077,7 +6246,7 @@ Deno.test({
   }
 });
 "#;
-  fs::write(&module_path, &contents).unwrap();
+  fs::write(&module_path, contents).unwrap();
   fs::write(temp_dir.path().join("./deno.jsonc"), r#"{}"#).unwrap();
 
   params.root_uri = Some(root_specifier);

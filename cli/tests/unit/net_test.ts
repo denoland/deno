@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -8,6 +8,7 @@ import {
   deferred,
   delay,
   execCode,
+  execCode2,
 } from "./test_util.ts";
 import { join } from "../../../test_util/std/path/mod.ts";
 
@@ -853,25 +854,23 @@ Deno.test(
 Deno.test(
   { permissions: { read: true, run: true, net: true } },
   async function netListenUnrefAndRef() {
-    const p = execCode(`
+    const p = execCode2(`
       async function main() {
         const listener = Deno.listen({ port: 3500 });
         listener.unref();
         listener.ref(); // This restores 'ref' state of listener
+        console.log("started");
         await listener.accept();
         console.log("accepted")
       }
       main();
     `);
-    // TODO(kt3k): This is racy. Find a correct way to
-    // wait for the server to be ready
-    setTimeout(async () => {
-      const conn = await Deno.connect({ port: 3500 });
-      conn.close();
-    }, 200);
-    const [statusCode, output] = await p;
+    await p.waitStdoutText("started");
+    const conn = await Deno.connect({ port: 3500 });
+    conn.close();
+    const [statusCode, output] = await p.finished();
     assertEquals(statusCode, 0);
-    assertEquals(output.trim(), "accepted");
+    assertEquals(output.trim(), "started\naccepted");
   },
 );
 
@@ -906,6 +905,55 @@ Deno.test({
   );
   listener.close();
 });
+
+Deno.test(
+  { permissions: { net: true, read: true, run: true } },
+  async function netConnUnref() {
+    const listener = Deno.listen({ port: 3500 });
+    const intervalId = setInterval(() => {}); // This keeps event loop alive.
+
+    const program = execCode(`
+      async function main() {
+        const conn = await Deno.connect({ port: 3500 });
+        conn.unref();
+        await conn.read(new Uint8Array(10)); // The program exits here
+        throw new Error(); // The program doesn't reach here
+      }
+      main();
+    `);
+    const conn = await listener.accept();
+    const [statusCode, _output] = await program;
+    conn.close();
+    listener.close();
+    clearInterval(intervalId);
+    assertEquals(statusCode, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true, run: true } },
+  async function netConnUnrefReadable() {
+    const listener = Deno.listen({ port: 3500 });
+    const intervalId = setInterval(() => {}); // This keeps event loop alive.
+
+    const program = execCode(`
+      async function main() {
+        const conn = await Deno.connect({ port: 3500 });
+        conn.unref();
+        const reader = conn.readable.getReader();
+        await reader.read(); // The program exits here
+        throw new Error(); // The program doesn't reach here
+      }
+      main();
+    `);
+    const conn = await listener.accept();
+    const [statusCode, _output] = await program;
+    conn.close();
+    listener.close();
+    clearInterval(intervalId);
+    assertEquals(statusCode, 0);
+  },
+);
 
 Deno.test({ permissions: { net: true } }, async function netTcpReuseAddr() {
   const listener1 = Deno.listen({

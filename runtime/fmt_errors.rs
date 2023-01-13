@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
 use crate::colors::cyan;
 use crate::colors::italic_bold;
@@ -195,7 +195,7 @@ fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
     {
       return Some(ErrorReference {
         from: current_error,
-        to: *seen,
+        to: seen,
       });
     } else {
       current_error = cause;

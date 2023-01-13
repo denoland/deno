@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // The logic of this module is heavily influenced by path-to-regexp at:
 // https://github.com/pillarjs/path-to-regexp/ which is licensed as follows:
@@ -877,7 +877,7 @@ mod tests {
     assert!(result.is_ok(), "Could not parse path: \"{}\"", path);
     let (re, _) = result.unwrap();
     for (fixture, expected) in fixtures {
-      let result = re.find(*fixture);
+      let result = re.find(fixture);
       assert!(
         result.is_ok(),
         "Find failure for path \"{}\" and fixture \"{}\"",

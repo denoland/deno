@@ -1311,7 +1311,10 @@
       "respond-after-enqueue.any.worker.html": true
     },
     "readable-streams": {
-      "async-iterator.any.html": false,
+      "async-iterator.any.html": [
+        "next() that succeeds; return()",
+        "next() that succeeds; return() [no awaiting]"
+      ],
       "bad-strategies.any.html": true,
       "bad-strategies.any.worker.html": true,
       "bad-underlying-sources.any.html": true,
@@ -2555,13 +2558,9 @@
         "request-consume.any.html": true,
         "request-consume.any.worker.html": true,
         "request-disturbed.any.html": [
-          "Request construction failure should not set \"bodyUsed\"",
-          "Input request used for creating new request became disturbed",
           "Input request used for creating new request became disturbed even if body is not used"
         ],
         "request-disturbed.any.worker.html": [
-          "Request construction failure should not set \"bodyUsed\"",
-          "Input request used for creating new request became disturbed",
           "Input request used for creating new request became disturbed even if body is not used"
         ],
         "request-error.any.html": [
@@ -3185,9 +3184,6 @@
         "Request interface: new Request('about:blank') must inherit property \"isReloadNavigation\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"isHistoryNavigation\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"duplex\" with the proper type",
-        "Response interface: operation error()",
-        "Response interface: operation redirect(USVString, optional unsigned short)",
-        "Response interface: operation json(any, optional ResponseInit)",
         "Response interface: attribute body",
         "Response interface: attribute bodyUsed",
         "Response interface: calling redirect(USVString, optional unsigned short) on new Response() with too few arguments must throw TypeError",
@@ -3218,9 +3214,6 @@
         "Request interface: new Request('about:blank') must inherit property \"isReloadNavigation\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"isHistoryNavigation\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"duplex\" with the proper type",
-        "Response interface: operation error()",
-        "Response interface: operation redirect(USVString, optional unsigned short)",
-        "Response interface: operation json(any, optional ResponseInit)",
         "Response interface: attribute body",
         "Response interface: attribute bodyUsed",
         "Response interface: calling redirect(USVString, optional unsigned short) on new Response() with too few arguments must throw TypeError",

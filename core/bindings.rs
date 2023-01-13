@@ -1,4 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::option::Option;
+use std::os::raw::c_void;
+
+use log::debug;
+use v8::fast_api::FastFunction;
+use v8::MapFnTo;
 
 use crate::error::is_instance_of_error;
 use crate::modules::get_asserted_module_type_from_assertions;
@@ -6,14 +13,10 @@ use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
+use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
 use crate::runtime::SnapshotOptions;
 use crate::JsRuntime;
-use log::debug;
-use std::option::Option;
-use std::os::raw::c_void;
-use v8::fast_api::FastFunction;
-use v8::MapFnTo;
 
 pub fn external_references(
   ops: &[OpCtx],
@@ -110,7 +113,7 @@ pub fn initialize_context<'s>(
   // extensions may provide ops that aren't part of the snapshot.
   if snapshot_options.loaded() {
     // Grab the Deno.core.ops object & init it
-    let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
+    let ops_obj = JsRuntime::eval::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
     initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
     if snapshot_options != SnapshotOptions::CreateFromExisting {
@@ -120,13 +123,28 @@ pub fn initialize_context<'s>(
   }
 
   // global.Deno = { core: { } };
-  let core_val = JsRuntime::ensure_objs(scope, global, "Deno.core").unwrap();
+  let deno_obj = v8::Object::new(scope);
+  let deno_str = v8::String::new(scope, "Deno").unwrap();
+  global.set(scope, deno_str.into(), deno_obj.into());
+
+  let core_obj = v8::Object::new(scope);
+  let core_str = v8::String::new(scope, "core").unwrap();
+  deno_obj.set(scope, core_str.into(), core_obj.into());
 
   // Bind functions to Deno.core.*
-  set_func(scope, core_val, "callConsole", call_console);
+  set_func(scope, core_obj, "callConsole", call_console);
+
+  // Bind v8 console object to Deno.core.console
+  let extra_binding_obj = context.get_extras_binding_object(scope);
+  let console_str = v8::String::new(scope, "console").unwrap();
+  let console_obj = extra_binding_obj.get(scope, console_str.into()).unwrap();
+  core_obj.set(scope, console_str.into(), console_obj);
 
   // Bind functions to Deno.core.ops.*
-  let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
+  let ops_obj = v8::Object::new(scope);
+  let ops_str = v8::String::new(scope, "ops").unwrap();
+  core_obj.set(scope, ops_str.into(), ops_obj.into());
+
   if !snapshot_options.will_snapshot() {
     initialize_async_ops_info(scope, ops_obj, op_ctxs);
   }
@@ -354,7 +372,14 @@ fn import_meta_resolve(
     let module_map = module_map_rc.borrow();
     module_map.loader.clone()
   };
-  match loader.resolve(&specifier.to_rust_string_lossy(scope), &referrer, false)
+  let specifier_str = specifier.to_rust_string_lossy(scope);
+
+  if specifier_str.starts_with("npm:") {
+    throw_type_error(scope, "\"npm:\" specifiers are currently not supported in import.meta.resolve()");
+    return;
+  }
+
+  match loader.resolve(&specifier_str, &referrer, ResolutionKind::DynamicImport)
   {
     Ok(resolved) => {
       let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();

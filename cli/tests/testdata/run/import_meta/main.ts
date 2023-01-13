@@ -32,3 +32,8 @@ assertThrows(() => {
 assertThrows(() => {
   import.meta.resolve("://malformed/url?asdf");
 }, TypeError);
+try {
+  import.meta.resolve("npm:cowsay");
+} catch (e) {
+  console.log(e);
+}

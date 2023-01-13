@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod common;
 mod global;
@@ -6,10 +6,13 @@ mod local;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_runtime::deno_node::NodePermissions;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use global::GlobalNpmPackageResolver;
@@ -21,16 +24,16 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::fs_util;
-use crate::lockfile::Lockfile;
+use crate::args::Lockfile;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 use super::NpmCache;
 use super::NpmPackageId;
 use super::NpmPackageReq;
-use super::NpmRegistryApi;
 use super::NpmResolutionSnapshot;
+use super::RealNpmRegistryApi;
 
 const RESOLUTION_STATE_ENV_VAR_NAME: &str =
   "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
@@ -67,11 +70,10 @@ impl NpmProcessState {
 
 #[derive(Clone)]
 pub struct NpmPackageResolver {
-  unstable: bool,
   no_npm: bool,
   inner: Arc<dyn InnerNpmPackageResolver>,
   local_node_modules_path: Option<PathBuf>,
-  api: NpmRegistryApi,
+  api: RealNpmRegistryApi,
   cache: NpmCache,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
@@ -79,7 +81,6 @@ pub struct NpmPackageResolver {
 impl std::fmt::Debug for NpmPackageResolver {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("NpmPackageResolver")
-      .field("unstable", &self.unstable)
       .field("no_npm", &self.no_npm)
       .field("inner", &"<omitted>")
       .field("local_node_modules_path", &self.local_node_modules_path)
@@ -90,15 +91,13 @@ impl std::fmt::Debug for NpmPackageResolver {
 impl NpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: NpmRegistryApi,
-    unstable: bool,
+    api: RealNpmRegistryApi,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
   ) -> Self {
     Self::new_with_maybe_snapshot(
       cache,
       api,
-      unstable,
       no_npm,
       local_node_modules_path,
       None,
@@ -107,13 +106,25 @@ impl NpmPackageResolver {
 
   /// This function will replace current resolver with a new one built from a
   /// snapshot created out of the lockfile.
-  pub async fn add_lockfile(
+  pub async fn add_lockfile_and_maybe_regenerate_snapshot(
     &mut self,
     lockfile: Arc<Mutex<Lockfile>>,
   ) -> Result<(), AnyError> {
+    self.maybe_lockfile = Some(lockfile.clone());
+
+    if lockfile.lock().overwrite {
+      return Ok(());
+    }
+
     let snapshot =
-      NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &self.api).await?;
-    self.maybe_lockfile = Some(lockfile);
+      NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &self.api)
+        .await
+        .with_context(|| {
+          format!(
+            "failed reading lockfile '{}'",
+            lockfile.lock().filename.display()
+          )
+        })?;
     if let Some(node_modules_folder) = &self.local_node_modules_path {
       self.inner = Arc::new(LocalNpmPackageResolver::new(
         self.cache.clone(),
@@ -133,8 +144,7 @@ impl NpmPackageResolver {
 
   fn new_with_maybe_snapshot(
     cache: NpmCache,
-    api: NpmRegistryApi,
-    unstable: bool,
+    api: RealNpmRegistryApi,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
     initial_snapshot: Option<NpmResolutionSnapshot>,
@@ -162,7 +172,6 @@ impl NpmPackageResolver {
       )),
     };
     Self {
-      unstable,
       no_npm,
       inner,
       local_node_modules_path,
@@ -180,8 +189,12 @@ impl NpmPackageResolver {
     let path = self
       .inner
       .resolve_package_folder_from_deno_module(pkg_req)?;
-    let path = fs_util::canonicalize_path_maybe_not_exists(&path)?;
-    log::debug!("Resolved {} to {}", pkg_req, path.display());
+    let path = canonicalize_path_maybe_not_exists(&path)?;
+    log::debug!(
+      "Resolved package folder of {} to {}",
+      pkg_req,
+      path.display()
+    );
     Ok(path)
   }
 
@@ -190,11 +203,11 @@ impl NpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let path = self
       .inner
-      .resolve_package_folder_from_package(name, referrer, conditions)?;
+      .resolve_package_folder_from_package(name, referrer, mode)?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
     Ok(path)
   }
@@ -209,7 +222,11 @@ impl NpmPackageResolver {
     let path = self
       .inner
       .resolve_package_folder_from_specifier(specifier)?;
-    log::debug!("Resolved {} to {}", specifier, path.display());
+    log::debug!(
+      "Resolved package folder of {} to {}",
+      specifier,
+      path.display()
+    );
     Ok(path)
   }
 
@@ -242,14 +259,10 @@ impl NpmPackageResolver {
       return Ok(());
     }
 
-    if !self.unstable {
-      bail!(
-        "Unstable use of npm specifiers. The --unstable flag must be provided."
-      )
-    }
-
     if self.no_npm {
       let fmt_reqs = packages
+        .iter()
+        .collect::<HashSet<_>>() // prevent duplicates
         .iter()
         .map(|p| format!("\"{}\"", p))
         .collect::<Vec<_>>()
@@ -264,6 +277,7 @@ impl NpmPackageResolver {
     }
 
     self.inner.add_package_reqs(packages).await?;
+    self.inner.cache_packages().await?;
 
     // If there's a lock file, update it with all discovered npm packages
     if let Some(lockfile_mutex) = &self.maybe_lockfile {
@@ -275,6 +289,8 @@ impl NpmPackageResolver {
   }
 
   /// Sets package requirements to the resolver, removing old requirements and adding new ones.
+  ///
+  /// This will retrieve and resolve package information, but not cache any package files.
   pub async fn set_package_reqs(
     &self,
     packages: HashSet<NpmPackageReq>,
@@ -307,7 +323,6 @@ impl NpmPackageResolver {
     Self::new_with_maybe_snapshot(
       self.cache.clone(),
       self.api.clone(),
-      self.unstable,
       self.no_npm,
       self.local_node_modules_path.clone(),
       Some(self.snapshot()),
@@ -328,10 +343,10 @@ impl RequireNpmResolver for NpmPackageResolver {
     &self,
     specifier: &str,
     referrer: &std::path::Path,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let referrer = path_to_specifier(referrer)?;
-    self.resolve_package_folder_from_package(specifier, &referrer, conditions)
+    self.resolve_package_folder_from_package(specifier, &referrer, mode)
   }
 
   fn resolve_package_folder_from_path(
@@ -344,7 +359,7 @@ impl RequireNpmResolver for NpmPackageResolver {
 
   fn in_npm_package(&self, path: &Path) -> bool {
     let specifier =
-      match ModuleSpecifier::from_file_path(&path.to_path_buf().clean()) {
+      match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
         Ok(p) => p,
         Err(_) => return false,
       };
@@ -353,13 +368,17 @@ impl RequireNpmResolver for NpmPackageResolver {
       .is_ok()
   }
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
-    self.inner.ensure_read_permission(path)
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    self.inner.ensure_read_permission(permissions, path)
   }
 }
 
 fn path_to_specifier(path: &Path) -> Result<ModuleSpecifier, AnyError> {
-  match ModuleSpecifier::from_file_path(&path.to_path_buf().clean()) {
+  match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
     Ok(specifier) => Ok(specifier),
     Err(()) => bail!("Could not convert '{}' to url.", path.display()),
   }
