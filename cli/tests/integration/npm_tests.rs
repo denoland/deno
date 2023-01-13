@@ -3,6 +3,7 @@
 use pretty_assertions::assert_eq;
 use std::process::Stdio;
 use test_util as util;
+use test_util::wildcard_match;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
 use util::env_vars_for_npm_tests_no_sync_download;
@@ -1399,7 +1400,10 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let expected_output =
     std::fs::read_to_string(test_folder_path.join("main.out")).unwrap();
 
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output);
+  assert!(wildcard_match(
+    &expected_output,
+    &String::from_utf8(output.stderr).unwrap()
+  ));
 
   assert!(temp_dir.path().join("deno.lock").exists());
   let grandchild_path = deno_dir
@@ -1425,7 +1429,10 @@ fn peer_deps_with_copied_folders_and_lockfile() {
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
+  assert!(wildcard_match(
+    "Config file found at '[WILDCARD]deno.json'\n1\n2\n",
+    &String::from_utf8(output.stderr).unwrap()
+  ));
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -1440,7 +1447,10 @@ fn peer_deps_with_copied_folders_and_lockfile() {
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output);
+  assert!(wildcard_match(
+    &expected_output,
+    &String::from_utf8(output.stderr).unwrap()
+  ));
   assert!(output.status.success());
 
   // now run with local node modules
@@ -1456,7 +1466,10 @@ fn peer_deps_with_copied_folders_and_lockfile() {
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
+  assert!(wildcard_match(
+    "Config file found at '[WILDCARD]deno.json'\n1\n2\n",
+    &String::from_utf8(output.stderr).unwrap()
+  ));
   assert!(output.status.success());
 
   let deno_folder = temp_dir.path().join("node_modules").join(".deno");
@@ -1481,7 +1494,10 @@ fn peer_deps_with_copied_folders_and_lockfile() {
     .unwrap();
   let output = deno.wait_with_output().unwrap();
   assert!(output.status.success());
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
+  assert!(wildcard_match(
+    "Config file found at '[WILDCARD]deno.json'\n1\n2\n",
+    &String::from_utf8(output.stderr).unwrap()
+  ));
 
   // now ensure it works with reloading
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -1498,7 +1514,10 @@ fn peer_deps_with_copied_folders_and_lockfile() {
     .unwrap();
   let output = deno.wait_with_output().unwrap();
   assert!(output.status.success());
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output);
+  assert!(wildcard_match(
+    &expected_output,
+    &String::from_utf8(output.stderr).unwrap()
+  ));
 
   // now ensure it works with reloading and no lockfile
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -1515,7 +1534,10 @@ fn peer_deps_with_copied_folders_and_lockfile() {
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output,);
+  assert!(wildcard_match(
+    &expected_output,
+    &String::from_utf8(output.stderr).unwrap()
+  ));
   assert!(output.status.success());
 }
 
