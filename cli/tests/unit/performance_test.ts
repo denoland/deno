@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -139,4 +139,17 @@ Deno.test(function performanceMeasureIllegalConstructor() {
     TypeError,
     "Illegal constructor",
   );
+});
+
+Deno.test(function performanceIsEventTarget() {
+  assert(performance instanceof EventTarget);
+
+  return new Promise((resolve) => {
+    const handler = () => {
+      resolve();
+    };
+
+    performance.addEventListener("test", handler, { once: true });
+    performance.dispatchEvent(new Event("test"));
+  });
 });

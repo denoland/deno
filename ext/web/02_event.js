@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // This module follows most of the WHATWG Living Standard for the DOM logic.
 // Many parts of the DOM are not implemented in Deno, but the logic for those
@@ -8,6 +8,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
   const consoleInternal = window.__bootstrap.console;
@@ -138,6 +139,8 @@
   const _dispatched = Symbol("[[dispatched]]");
   const _isTrusted = Symbol("[[isTrusted]]");
   const _path = Symbol("[[path]]");
+  // internal.
+  const _skipInternalInit = Symbol("[[skipSlowInit]]");
 
   class Event {
     constructor(type, eventInitDict = {}) {
@@ -151,29 +154,47 @@
       this[_isTrusted] = false;
       this[_path] = [];
 
-      webidl.requiredArguments(arguments.length, 1, {
-        prefix: "Failed to construct 'Event'",
-      });
-      type = webidl.converters.DOMString(type, {
-        prefix: "Failed to construct 'Event'",
-        context: "Argument 1",
-      });
-      const eventInit = eventInitConverter(eventInitDict, {
-        prefix: "Failed to construct 'Event'",
-        context: "Argument 2",
-      });
-      this[_attributes] = {
-        type,
-        ...eventInit,
-        currentTarget: null,
-        eventPhase: Event.NONE,
-        target: null,
-        timeStamp: DateNow(),
-      };
-      ReflectDefineProperty(this, "isTrusted", {
-        enumerable: true,
-        get: isTrusted,
-      });
+      if (!eventInitDict[_skipInternalInit]) {
+        webidl.requiredArguments(arguments.length, 1, {
+          prefix: "Failed to construct 'Event'",
+        });
+        type = webidl.converters.DOMString(type, {
+          prefix: "Failed to construct 'Event'",
+          context: "Argument 1",
+        });
+        const eventInit = eventInitConverter(eventInitDict, {
+          prefix: "Failed to construct 'Event'",
+          context: "Argument 2",
+        });
+        this[_attributes] = {
+          type,
+          ...eventInit,
+          currentTarget: null,
+          eventPhase: Event.NONE,
+          target: null,
+          timeStamp: DateNow(),
+        };
+        // [LegacyUnforgeable]
+        ReflectDefineProperty(this, "isTrusted", {
+          enumerable: true,
+          get: isTrusted,
+        });
+      } else {
+        this[_attributes] = {
+          type,
+          data: eventInitDict.data ?? null,
+          bubbles: eventInitDict.bubbles ?? false,
+          cancelable: eventInitDict.cancelable ?? false,
+          composed: eventInitDict.composed ?? false,
+          currentTarget: null,
+          eventPhase: Event.NONE,
+          target: null,
+          timeStamp: DateNow(),
+        };
+        // TODO(@littledivy): Not spec compliant but performance is hurt badly
+        // for users of `_skipInternalInit`.
+        this.isTrusted = false;
+      }
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -407,7 +428,8 @@
     Ctor,
     props,
   ) {
-    for (const prop of props) {
+    for (let i = 0; i < props.length; ++i) {
+      const prop = props[i];
       ReflectDefineProperty(Ctor.prototype, prop, { enumerable: true });
     }
   }
@@ -917,6 +939,7 @@
   class EventTarget {
     constructor() {
       this[eventTargetData] = getDefaultTargetData();
+      this[webidl.brand] = webidl.brand;
     }
 
     addEventListener(
@@ -924,6 +947,8 @@
       callback,
       options,
     ) {
+      const self = this ?? globalThis;
+      webidl.assertBranded(self, EventTargetPrototype);
       const prefix = "Failed to execute 'addEventListener' on 'EventTarget'";
 
       webidl.requiredArguments(arguments.length, 2, {
@@ -939,13 +964,15 @@
         return;
       }
 
-      const { listeners } = (this ?? globalThis)[eventTargetData];
+      const { listeners } = self[eventTargetData];
 
       if (!(ReflectHas(listeners, type))) {
         listeners[type] = [];
       }
 
-      for (const listener of listeners[type]) {
+      const listenerList = listeners[type];
+      for (let i = 0; i < listenerList.length; ++i) {
+        const listener = listenerList[i];
         if (
           ((typeof listener.options === "boolean" &&
             listener.options === options.capture) ||
@@ -965,7 +992,7 @@
           // If listener’s signal is not null, then add the following abort
           // abort steps to it: Remove an event listener.
           signal.addEventListener("abort", () => {
-            this.removeEventListener(type, callback, options);
+            self.removeEventListener(type, callback, options);
           });
         }
       }
@@ -978,11 +1005,13 @@
       callback,
       options,
     ) {
+      const self = this ?? globalThis;
+      webidl.assertBranded(self, EventTargetPrototype);
       webidl.requiredArguments(arguments.length, 2, {
         prefix: "Failed to execute 'removeEventListener' on 'EventTarget'",
       });
 
-      const { listeners } = (this ?? globalThis)[eventTargetData];
+      const { listeners } = self[eventTargetData];
       if (callback !== null && ReflectHas(listeners, type)) {
         listeners[type] = ArrayPrototypeFilter(
           listeners[type],
@@ -1010,14 +1039,15 @@
     }
 
     dispatchEvent(event) {
-      webidl.requiredArguments(arguments.length, 1, {
-        prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
-      });
       // If `this` is not present, then fallback to global scope. We don't use
       // `globalThis` directly here, because it could be deleted by user.
       // Instead use saved reference to global scope when the script was
       // executed.
       const self = this ?? window;
+      webidl.assertBranded(self, EventTargetPrototype);
+      webidl.requiredArguments(arguments.length, 1, {
+        prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
+      });
 
       const { listeners } = self[eventTargetData];
       if (!ReflectHas(listeners, event.type)) {
@@ -1042,6 +1072,7 @@
   }
 
   webidl.configurePrototype(EventTarget);
+  const EventTargetPrototype = EventTarget.prototype;
 
   defineEnumerableProps(EventTarget, [
     "addEventListener",
@@ -1082,7 +1113,7 @@
         filename = "",
         lineno = 0,
         colno = 0,
-        error = null,
+        error,
       } = {},
     ) {
       super(type, {
@@ -1183,6 +1214,7 @@
         bubbles: eventInitDict?.bubbles ?? false,
         cancelable: eventInitDict?.cancelable ?? false,
         composed: eventInitDict?.composed ?? false,
+        [_skipInternalInit]: eventInitDict?.[_skipInternalInit],
       });
 
       this.data = eventInitDict?.data ?? null;
@@ -1270,6 +1302,61 @@
     // TODO(lucacasonato): remove when this interface is spec aligned
     [SymbolToStringTag] = "ProgressEvent";
   }
+
+  class PromiseRejectionEvent extends Event {
+    #promise = null;
+    #reason = null;
+
+    get promise() {
+      return this.#promise;
+    }
+    get reason() {
+      return this.#reason;
+    }
+
+    constructor(
+      type,
+      {
+        bubbles,
+        cancelable,
+        composed,
+        promise,
+        reason,
+      } = {},
+    ) {
+      super(type, {
+        bubbles: bubbles,
+        cancelable: cancelable,
+        composed: composed,
+      });
+
+      this.#promise = promise;
+      this.#reason = reason;
+    }
+
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          PromiseRejectionEvent.prototype,
+          this,
+        ),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "promise",
+          "reason",
+        ],
+      }));
+    }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "PromiseRejectionEvent";
+  }
+
+  defineEnumerableProps(PromiseRejectionEvent, [
+    "promise",
+    "reason",
+  ]);
 
   const _eventHandlers = Symbol("eventHandlers");
 
@@ -1370,7 +1457,9 @@
       colno = jsError.frames[0].columnNumber;
     } else {
       const jsError = core.destructureError(new Error());
-      for (const frame of jsError.frames) {
+      const frames = jsError.frames;
+      for (let i = 0; i < frames.length; ++i) {
+        const frame = frames[i];
         if (
           typeof frame.fileName == "string" &&
           !StringPrototypeStartsWith(frame.fileName, "deno:")
@@ -1392,7 +1481,7 @@
     });
     // Avoid recursing `reportException()` via error handlers more than once.
     if (reportExceptionStackedCalls > 1 || window.dispatchEvent(event)) {
-      core.terminate(error);
+      ops.op_dispatch_exception(error);
     }
     reportExceptionStackedCalls--;
   }
@@ -1411,17 +1500,6 @@
     reportException(error);
   }
 
-  window.Event = Event;
-  window.EventTarget = EventTarget;
-  window.ErrorEvent = ErrorEvent;
-  window.CloseEvent = CloseEvent;
-  window.MessageEvent = MessageEvent;
-  window.CustomEvent = CustomEvent;
-  window.ProgressEvent = ProgressEvent;
-  window.dispatchEvent = EventTarget.prototype.dispatchEvent;
-  window.addEventListener = EventTarget.prototype.addEventListener;
-  window.removeEventListener = EventTarget.prototype.removeEventListener;
-  window.reportError = reportError;
   window.__bootstrap.eventTarget = {
     EventTarget,
     setEventTargetData,
@@ -1432,5 +1510,14 @@
     setIsTrusted,
     setTarget,
     defineEventHandler,
+    _skipInternalInit,
+    Event,
+    ErrorEvent,
+    CloseEvent,
+    MessageEvent,
+    CustomEvent,
+    ProgressEvent,
+    PromiseRejectionEvent,
+    reportError,
   };
 })(this);

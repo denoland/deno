@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -9,7 +9,7 @@ import {
 } from "./test_util.ts";
 
 Deno.test({ permissions: { read: true } }, function realPathSyncSuccess() {
-  const relative = "cli/tests/testdata/fixture.json";
+  const relative = "cli/tests/testdata/assets/fixture.json";
   const realPath = Deno.realPathSync(relative);
   if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
@@ -21,7 +21,7 @@ Deno.test({ permissions: { read: true } }, function realPathSyncSuccess() {
 });
 
 Deno.test({ permissions: { read: true } }, function realPathSyncUrl() {
-  const relative = "cli/tests/testdata/fixture.json";
+  const relative = "cli/tests/testdata/assets/fixture.json";
   const url = pathToAbsoluteFileUrl(relative);
   assertEquals(Deno.realPathSync(relative), Deno.realPathSync(url));
 });
@@ -60,7 +60,7 @@ Deno.test({ permissions: { read: true } }, function realPathSyncNotFound() {
 });
 
 Deno.test({ permissions: { read: true } }, async function realPathSuccess() {
-  const relativePath = "cli/tests/testdata/fixture.json";
+  const relativePath = "cli/tests/testdata/assets/fixture.json";
   const realPath = await Deno.realPath(relativePath);
   if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
@@ -74,7 +74,7 @@ Deno.test({ permissions: { read: true } }, async function realPathSuccess() {
 Deno.test(
   { permissions: { read: true } },
   async function realPathUrl() {
-    const relative = "cli/tests/testdata/fixture.json";
+    const relative = "cli/tests/testdata/assets/fixture.json";
     const url = pathToAbsoluteFileUrl(relative);
     assertEquals(await Deno.realPath(relative), await Deno.realPath(url));
   },

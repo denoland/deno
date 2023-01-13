@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -10,10 +10,10 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { InterruptedPrototype } = core;
+  const { InterruptedPrototype, ops } = core;
   const webidl = window.__bootstrap.webidl;
-  const { setEventTargetData } = window.__bootstrap.eventTarget;
-  const { defineEventHandler } = window.__bootstrap.event;
+  const { EventTarget, setEventTargetData } = window.__bootstrap.eventTarget;
+  const { MessageEvent, defineEventHandler } = window.__bootstrap.event;
   const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayBufferPrototype,
@@ -26,9 +26,6 @@
     SymbolFor,
     SymbolIterator,
     TypeError,
-    WeakSet,
-    WeakSetPrototypeAdd,
-    WeakSetPrototypeHas,
   } = window.__bootstrap.primordials;
 
   class MessageChannel {
@@ -128,7 +125,7 @@
       }
       const data = serializeJsMessageData(message, transfer);
       if (this[_id] === null) return;
-      core.opSync("op_message_port_post_message", this[_id], data);
+      ops.op_message_port_post_message(this[_id], data);
     }
 
     start() {
@@ -193,7 +190,7 @@
    * @returns {[number, number]}
    */
   function opCreateEntangledMessagePort() {
-    return core.opSync("op_message_port_create_entangled");
+    return ops.op_message_port_create_entangled();
   }
 
   /**
@@ -205,9 +202,10 @@
     const transferables = [];
     const hostObjects = [];
     const arrayBufferIdsInTransferables = [];
-    const transferedArrayBuffers = [];
+    const transferredArrayBuffers = [];
 
-    for (const transferable of messageData.transferables) {
+    for (let i = 0; i < messageData.transferables.length; ++i) {
+      const transferable = messageData.transferables[i];
       switch (transferable.kind) {
         case "messagePort": {
           const port = createMessagePort(transferable.data);
@@ -216,9 +214,9 @@
           break;
         }
         case "arrayBuffer": {
-          ArrayPrototypePush(transferedArrayBuffers, transferable.data);
-          const i = ArrayPrototypePush(transferables, null);
-          ArrayPrototypePush(arrayBufferIdsInTransferables, i);
+          ArrayPrototypePush(transferredArrayBuffers, transferable.data);
+          const index = ArrayPrototypePush(transferables, null);
+          ArrayPrototypePush(arrayBufferIdsInTransferables, index);
           break;
         }
         default:
@@ -228,18 +226,16 @@
 
     const data = core.deserialize(messageData.data, {
       hostObjects,
-      transferedArrayBuffers,
+      transferredArrayBuffers,
     });
 
-    for (const i in arrayBufferIdsInTransferables) {
+    for (let i = 0; i < arrayBufferIdsInTransferables.length; ++i) {
       const id = arrayBufferIdsInTransferables[i];
-      transferables[id] = transferedArrayBuffers[i];
+      transferables[id] = transferredArrayBuffers[i];
     }
 
     return [data, transferables];
   }
-
-  const detachedArrayBuffers = new WeakSet();
 
   /**
    * @param {any} data
@@ -247,42 +243,37 @@
    * @returns {globalThis.__bootstrap.messagePort.MessageData}
    */
   function serializeJsMessageData(data, transferables) {
-    const transferedArrayBuffers = ArrayPrototypeFilter(
-      transferables,
-      (a) => ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, a),
-    );
-
-    for (const arrayBuffer of transferedArrayBuffers) {
-      // This is hacky with both false positives and false negatives for
-      // detecting detached array buffers. V8  needs to add a way to tell if a
-      // buffer is detached or not.
-      if (WeakSetPrototypeHas(detachedArrayBuffers, arrayBuffer)) {
-        throw new DOMException(
-          "Can not transfer detached ArrayBuffer",
-          "DataCloneError",
-        );
+    const transferredArrayBuffers = [];
+    for (let i = 0, j = 0; i < transferables.length; i++) {
+      const ab = transferables[i];
+      if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, ab)) {
+        if (ab.byteLength === 0 && core.ops.op_arraybuffer_was_detached(ab)) {
+          throw new DOMException(
+            `ArrayBuffer at index ${j} is already detached`,
+            "DataCloneError",
+          );
+        }
+        j++;
+        transferredArrayBuffers.push(ab);
       }
-      WeakSetPrototypeAdd(detachedArrayBuffers, arrayBuffer);
     }
 
-    let serializedData;
-    try {
-      serializedData = core.serialize(data, {
-        hostObjects: ArrayPrototypeFilter(
-          transferables,
-          (a) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, a),
-        ),
-        transferedArrayBuffers,
-      });
-    } catch (err) {
-      throw new DOMException(err.message, "DataCloneError");
-    }
+    const serializedData = core.serialize(data, {
+      hostObjects: ArrayPrototypeFilter(
+        transferables,
+        (a) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, a),
+      ),
+      transferredArrayBuffers,
+    }, (err) => {
+      throw new DOMException(err, "DataCloneError");
+    });
 
     /** @type {globalThis.__bootstrap.messagePort.Transferable[]} */
     const serializedTransferables = [];
 
     let arrayBufferI = 0;
-    for (const transferable of transferables) {
+    for (let i = 0; i < transferables.length; ++i) {
+      const transferable = transferables[i];
       if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, transferable)) {
         webidl.assertBranded(transferable, MessagePortPrototype);
         const id = transferable[_id];
@@ -302,7 +293,7 @@
       ) {
         ArrayPrototypePush(serializedTransferables, {
           kind: "arrayBuffer",
-          data: transferedArrayBuffers[arrayBufferI],
+          data: transferredArrayBuffers[arrayBufferI],
         });
         arrayBufferI++;
       } else {

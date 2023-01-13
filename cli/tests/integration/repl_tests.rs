@@ -1,6 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
+use test_util::assert_contains;
+use test_util::assert_ends_with;
+use test_util::assert_not_contains;
 
 #[test]
 fn pty_multiline() {
@@ -19,17 +22,17 @@ fn pty_multiline() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output.contains('3'));
-    assert!(output.contains("{ foo: \"foo\" }"));
-    assert!(output.contains("\"\\nfoo\\n\""));
-    assert!(output.contains("\"\\n`\\n\""));
-    assert!(output.contains("\"{\""));
-    assert!(output.contains("\"(\""));
-    assert!(output.contains("\"[\""));
-    assert!(output.contains("/{/"));
-    assert!(output.contains("/\\(/"));
-    assert!(output.contains("/\\[/"));
-    assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
+    assert_contains!(output, '3');
+    assert_contains!(output, "{ foo: \"foo\" }");
+    assert_contains!(output, "\"\\nfoo\\n\"");
+    assert_contains!(output, "\"\\n`\\n\"");
+    assert_contains!(output, "\"{\"");
+    assert_contains!(output, "\"(\"");
+    assert_contains!(output, "\"[\"");
+    assert_contains!(output, "/{/");
+    assert_contains!(output, "/\\(/");
+    assert_contains!(output, "/\\[/");
+    assert_contains!(output, "[ \"{test1}\", \"test1\" ]");
   });
 }
 
@@ -40,23 +43,21 @@ fn pty_null() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output.contains("null"));
+    assert_contains!(output, "null");
   });
 }
 
 #[test]
 fn pty_unpaired_braces() {
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line(")");
-    console.write_line("]");
-    console.write_line("}");
-    console.write_line("close();");
+  for right_brace in &[")", "]", "}"] {
+    util::with_pty(&["repl"], |mut console| {
+      console.write_line(right_brace);
+      console.write_line("close();");
 
-    let output = console.read_all_output();
-    assert!(output.contains("Unexpected token `)`"));
-    assert!(output.contains("Unexpected token `]`"));
-    assert!(output.contains("Unexpected token `}`"));
-  });
+      let output = console.read_all_output();
+      assert_contains!(output, "Expression expected");
+    });
+  }
 }
 
 #[test]
@@ -66,7 +67,7 @@ fn pty_bad_input() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output.contains("Unterminated string literal"));
+    assert_contains!(output, "Unterminated string literal");
   });
 }
 
@@ -79,10 +80,12 @@ fn pty_syntax_error_input() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output
-      .contains("Bad character escape sequence, expected 4 hex characters"));
-    assert!(output.contains("Unterminated string constant"));
-    assert!(output.contains("Expected a semicolon"));
+    assert_contains!(
+      output,
+      "Bad character escape sequence, expected 4 hex characters"
+    );
+    assert_contains!(output, "Unterminated string constant");
+    assert_contains!(output, "Expected a semicolon");
   });
 }
 
@@ -93,7 +96,7 @@ fn pty_complete_symbol() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output.contains("Symbol(Symbol.iterator)"));
+    assert_contains!(output, "Symbol(Symbol.iterator)");
   });
 }
 
@@ -107,8 +110,8 @@ fn pty_complete_declarations() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output.contains("> MyClass"));
-    assert!(output.contains("> myVar"));
+    assert_contains!(output, "> MyClass");
+    assert_contains!(output, "> myVar");
   });
 }
 
@@ -126,11 +129,11 @@ fn pty_complete_primitives() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output.contains("> func.apply"));
-    assert!(output.contains("> str.length"));
-    assert!(output.contains("> 5n.valueOf"));
-    assert!(output.contains("> false.valueOf"));
-    assert!(output.contains("> num.toString"));
+    assert_contains!(output, "> func.apply");
+    assert_contains!(output, "> str.length");
+    assert_contains!(output, "> 5n.valueOf");
+    assert_contains!(output, "> false.valueOf");
+    assert_contains!(output, "> num.toString");
   });
 }
 
@@ -142,42 +145,53 @@ fn pty_complete_expression() {
     console.write_line("");
     console.write_line("close();");
     let output = console.read_all_output();
-    assert!(output.contains("Display all"));
-    assert!(output.contains("core"));
-    assert!(output.contains("args"));
-    assert!(output.contains("exit"));
-    assert!(output.contains("symlink"));
-    assert!(output.contains("permissions"));
+    assert_contains!(output, "Display all");
+    assert_contains!(output, "core");
+    assert_contains!(output, "args");
+    assert_contains!(output, "exit");
+    assert_contains!(output, "symlink");
+    assert_contains!(output, "permissions");
   });
 }
 
 #[test]
 fn pty_complete_imports() {
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty(&["repl", "-A"], |mut console| {
     // single quotes
-    console.write_line("import './001_hel\t'");
+    console.write_line("import './run/001_hel\t'");
     // double quotes
-    console.write_line("import { output } from \"./045_out\t\"");
+    console.write_line("import { output } from \"./run/045_out\t\"");
     console.write_line("output('testing output');");
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output.contains("Hello World"));
-    if cfg!(windows) {
-      assert!(output.contains("testing output\u{1b}"));
-    } else {
-      assert!(output.contains("\ntesting output"));
-    }
+    assert_contains!(output, "Hello World");
+    assert_contains!(
+      output,
+      // on windows, could any (it's flaky)
+      "\ntesting output",
+      "testing output\u{1b}",
+      "\r\n\u{1b}[?25htesting output",
+    );
   });
 
   // ensure when the directory changes that the suggestions come from the cwd
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty(&["repl", "-A"], |mut console| {
     console.write_line("Deno.chdir('./subdir');");
-    console.write_line("import '../001_hel\t'");
+    console.write_line("import '../run/001_hel\t'");
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output.contains("Hello World"));
+    assert_contains!(output, "Hello World");
+  });
+}
+
+#[test]
+fn pty_complete_imports_no_panic_empty_specifier() {
+  // does not panic when tabbing when empty
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("import '\t';");
+    console.write_line("close();");
   });
 }
 
@@ -188,9 +202,10 @@ fn pty_ignore_symbols() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(output.contains("undefined"));
-    assert!(
-      !output.contains("Uncaught TypeError: Array.Symbol is not a function")
+    assert_contains!(output, "undefined");
+    assert_not_contains!(
+      output,
+      "Uncaught TypeError: Array.Symbol is not a function"
     );
   });
 }
@@ -202,7 +217,7 @@ fn pty_assign_global_this() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    assert!(!output.contains("panicked"));
+    assert_not_contains!(output, "panicked");
   });
 }
 
@@ -210,13 +225,13 @@ fn pty_assign_global_this() {
 fn pty_emoji() {
   // windows was having issues displaying this
   util::with_pty(&["repl"], |mut console| {
-    console.write_line("console.log('🦕');");
+    console.write_line(r#"console.log('\u{1F995}');"#);
     console.write_line("close();");
 
     let output = console.read_all_output();
-    // one for input, one for output
+    // only one for the output (since input is escaped)
     let emoji_count = output.chars().filter(|c| *c == '🦕').count();
-    assert_eq!(emoji_count, 2);
+    assert_eq!(emoji_count, 1);
   });
 }
 
@@ -229,7 +244,7 @@ fn console_log() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("hello\nundefined\n\"world\"\n"));
+  assert_ends_with!(out, "hello\nundefined\n\"world\"\n");
   assert!(err.is_empty());
 }
 
@@ -242,7 +257,7 @@ fn object_literal() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("{}\n{ foo: \"bar\" }\n"));
+  assert_ends_with!(out, "{}\n{ foo: \"bar\" }\n");
   assert!(err.is_empty());
 }
 
@@ -255,7 +270,7 @@ fn block_expression() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("undefined\n\"\"\n"));
+  assert_ends_with!(out, "undefined\n\"\"\n");
   assert!(err.is_empty());
 }
 
@@ -268,7 +283,7 @@ fn await_resolve() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("\"done\"\n"));
+  assert_ends_with!(out, "\"done\"\n");
   assert!(err.is_empty());
 }
 
@@ -281,7 +296,7 @@ fn await_timeout() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("\"done\"\n"));
+  assert_ends_with!(out, "\"done\"\n");
   assert!(err.is_empty());
 }
 
@@ -294,7 +309,7 @@ fn let_redeclaration() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("undefined\n0\nundefined\n1\n"));
+  assert_ends_with!(out, "undefined\n0\nundefined\n1\n");
   assert!(err.is_empty());
 }
 
@@ -323,7 +338,7 @@ fn typescript() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("undefined\nundefined\n3\n"));
+  assert_ends_with!(out, "undefined\nundefined\n3\n");
   assert!(err.is_empty());
 }
 
@@ -343,10 +358,7 @@ fn typescript_declarations() {
     false,
   );
   let expected_end_text = "undefined\n0\n2\nundefined\nundefined\n";
-  assert_eq!(
-    &out[out.len() - expected_end_text.len()..],
-    expected_end_text
-  );
+  assert_ends_with!(out, expected_end_text);
   assert!(err.is_empty());
 }
 
@@ -363,7 +375,7 @@ fn typescript_decorators() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("undefined\n[Function: Test]\n2\n"));
+  assert_ends_with!(out, "undefined\n[Function: Test]\n2\n");
   assert!(err.is_empty());
 }
 
@@ -376,7 +388,7 @@ fn eof() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("3\n"));
+  assert_ends_with!(out, "3\n");
   assert!(err.is_empty());
 }
 
@@ -393,9 +405,10 @@ fn strict() {
     None,
     false,
   );
-  assert!(out.contains(
+  assert_contains!(
+    out,
     "Uncaught TypeError: Cannot add property c, object is not extensible"
-  ));
+  );
   assert!(err.is_empty());
 }
 
@@ -409,7 +422,7 @@ fn close_command() {
     false,
   );
 
-  assert!(!out.contains("ignored"));
+  assert_not_contains!(out, "ignored");
   assert!(err.is_empty());
 }
 
@@ -422,7 +435,7 @@ fn function() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("[Function: writeFileSync]\n"));
+  assert_ends_with!(out, "[Function: writeFileSync]\n");
   assert!(err.is_empty());
 }
 
@@ -436,32 +449,32 @@ fn multiline() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("3\n"));
+  assert_ends_with!(out, "3\n");
   assert!(err.is_empty());
 }
 
 #[test]
 fn import() {
-  let (out, _) = util::run_and_collect_output(
+  let (out, _) = util::run_and_collect_output_with_args(
     true,
-    "repl",
+    vec![],
     Some(vec!["import('./subdir/auto_print_hello.ts')"]),
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.contains("hello!\n"));
+  assert_contains!(out, "hello!\n");
 }
 
 #[test]
 fn import_declarations() {
-  let (out, _) = util::run_and_collect_output(
+  let (out, _) = util::run_and_collect_output_with_args(
     true,
-    "repl",
+    vec!["repl", "--allow-read"],
     Some(vec!["import './subdir/auto_print_hello.ts';"]),
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.contains("hello!\n"));
+  assert_contains!(out, "hello!\n");
 }
 
 #[test]
@@ -473,7 +486,7 @@ fn exports_stripped() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.contains("5\n"));
+  assert_contains!(out, "5\n");
   assert!(err.is_empty());
 }
 
@@ -486,7 +499,7 @@ fn call_eval_unterminated() {
     None,
     false,
   );
-  assert!(out.contains("Unexpected end of input"));
+  assert_contains!(out, "Unexpected end of input");
   assert!(err.is_empty());
 }
 
@@ -500,7 +513,7 @@ fn unpaired_braces() {
       None,
       false,
     );
-    assert!(out.contains("Unexpected token"));
+    assert_contains!(out, "Expression expected");
     assert!(err.is_empty());
   }
 }
@@ -514,7 +527,7 @@ fn reference_error() {
     None,
     false,
   );
-  assert!(out.contains("not_a_variable is not defined"));
+  assert_contains!(out, "not_a_variable is not defined");
   assert!(err.is_empty());
 }
 
@@ -530,7 +543,7 @@ fn syntax_error() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("parse error: Expected ';', '}' or <eof> at 1:8\n2\n"));
+  assert_ends_with!(out, "parse error: Expected ';', '}' or <eof> at 1:8\n2\n");
   assert!(err.is_empty());
 }
 
@@ -544,7 +557,7 @@ fn syntax_error_jsx() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.contains("Unexpected token `>`"));
+  assert_contains!(out, "Expression expected");
   assert!(err.is_empty());
 }
 
@@ -557,7 +570,7 @@ fn type_error() {
     None,
     false,
   );
-  assert!(out.contains("console is not a function"));
+  assert_contains!(out, "console is not a function");
   assert!(err.is_empty());
 }
 
@@ -570,7 +583,7 @@ fn variable() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("undefined\n123\n"));
+  assert_ends_with!(out, "undefined\n123\n");
   assert!(err.is_empty());
 }
 
@@ -583,7 +596,7 @@ fn lexical_scoped_variable() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("undefined\n123\n"));
+  assert_ends_with!(out, "undefined\n123\n");
   assert!(err.is_empty());
 }
 
@@ -604,7 +617,7 @@ fn missing_deno_dir() {
   );
   assert!(read_dir(&test_deno_dir).is_ok());
   remove_dir_all(&test_deno_dir).unwrap();
-  assert!(out.ends_with("1\n"));
+  assert_ends_with!(out, "1\n");
   assert!(err.is_empty());
 }
 
@@ -617,7 +630,7 @@ fn save_last_eval() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("1\n1\n"));
+  assert_ends_with!(out, "1\n1\n");
   assert!(err.is_empty());
 }
 
@@ -630,7 +643,7 @@ fn save_last_thrown() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("Uncaught 1\n1\n"));
+  assert_ends_with!(out, "Uncaught 1\n1\n");
   assert!(err.is_empty());
 }
 
@@ -643,8 +656,9 @@ fn assign_underscore() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(
-    out.ends_with("Last evaluation result is no longer saved to _.\n1\n2\n1\n")
+  assert_ends_with!(
+    out,
+    "Last evaluation result is no longer saved to _.\n1\n2\n1\n"
   );
   assert!(err.is_empty());
 }
@@ -659,9 +673,10 @@ fn assign_underscore_error() {
     false,
   );
   println!("{}", out);
-  assert!(out.ends_with(
+  assert_ends_with!(
+    out,
     "Last thrown error is no longer saved to _error.\n1\nUncaught 2\n1\n"
-  ));
+  );
   assert!(err.is_empty());
 }
 
@@ -682,7 +697,7 @@ fn custom_inspect() {
     false,
   );
 
-  assert!(out.contains("Oops custom inspect error"));
+  assert_contains!(out, "Oops custom inspect error");
   assert!(err.is_empty());
 }
 
@@ -695,7 +710,7 @@ fn eval_flag_valid_input() {
     None,
     false,
   );
-  assert!(out.contains("5000"));
+  assert_contains!(out, "5000");
   assert!(err.is_empty());
 }
 
@@ -708,9 +723,11 @@ fn eval_flag_parse_error() {
     None,
     false,
   );
-  assert!(test_util::strip_ansi_codes(&out)
-    .contains("error in --eval flag. parse error: Unexpected token `%`."));
-  assert!(out.contains("2500")); // should not prevent input
+  assert_contains!(
+    test_util::strip_ansi_codes(&out),
+    "Error in --eval flag: parse error: Unexpected token `%`."
+  );
+  assert_contains!(out, "2500"); // should not prevent input
   assert!(err.is_empty());
 }
 
@@ -723,8 +740,8 @@ fn eval_flag_runtime_error() {
     None,
     false,
   );
-  assert!(out.contains("error in --eval flag. Uncaught Error: Testing"));
-  assert!(out.contains("2500")); // should not prevent input
+  assert_contains!(out, "Error in --eval flag: Uncaught Error: Testing");
+  assert_contains!(out, "2500"); // should not prevent input
   assert!(err.is_empty());
 }
 
@@ -732,12 +749,12 @@ fn eval_flag_runtime_error() {
 fn eval_file_flag_valid_input() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
-    vec!["repl", "--eval-file=./001_hello.js"],
+    vec!["repl", "--eval-file=./run/001_hello.js"],
     None,
     None,
     false,
   );
-  assert!(out.contains("Hello World"));
+  assert_contains!(out, "Hello World");
   assert!(err.is_empty());
 }
 
@@ -750,7 +767,7 @@ fn eval_file_flag_call_defined_function() {
     None,
     false,
   );
-  assert!(out.contains("hello"));
+  assert_contains!(out, "hello");
   assert!(err.is_empty());
 }
 
@@ -763,7 +780,7 @@ fn eval_file_flag_http_input() {
     None,
     true,
   );
-  assert!(out.contains("hello"));
+  assert_contains!(out, "hello");
   assert!(err.contains("Download"));
 }
 
@@ -771,13 +788,13 @@ fn eval_file_flag_http_input() {
 fn eval_file_flag_multiple_files() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
-    vec!["repl", "--eval-file=http://127.0.0.1:4545/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
+    vec!["repl", "--allow-read", "--eval-file=http://127.0.0.1:4545/repl/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
     Some(vec!["b.method1=v4", "b.method1()+foo.toUpperCase()"]),
     None,
     true,
   );
-  assert!(out.contains("helloFOO"));
-  assert!(err.contains("Download"));
+  assert_contains!(out, "helloFOO");
+  assert_contains!(err, "Download");
 }
 
 #[test]
@@ -794,13 +811,149 @@ fn pty_clear_function() {
       // Windows will overwrite what's in the console buffer before
       // we read from it. It contains this string repeated many times
       // to clear the screen.
-      assert!(output.contains("\r\n\u{1b}[K\r\n\u{1b}[K\r\n\u{1b}[K"));
+      assert_contains!(output, "\r\n\u{1b}[K\r\n\u{1b}[K\r\n\u{1b}[K");
     } else {
-      assert!(output.contains("hello"));
-      assert!(output.contains("[1;1H"));
+      assert_contains!(output, "hello");
+      assert_contains!(output, "[1;1H");
     }
-    assert!(output.contains("undefined"));
-    assert!(output.contains("const clear = 1234 + 2000;"));
-    assert!(output.contains("3234"));
+    assert_contains!(output, "undefined");
+    assert_contains!(output, "const clear = 1234 + 2000;");
+    assert_contains!(output, "3234");
   });
+}
+
+#[test]
+fn pty_tab_handler() {
+  // If the last character is **not** whitespace, we show the completions
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("a\t\t");
+    console.write_line("close();");
+    let output = console.read_all_output();
+    assert_contains!(output, "addEventListener");
+    assert_contains!(output, "alert");
+    assert_contains!(output, "atob");
+  });
+  // If the last character is whitespace, we just insert a tab
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("a; \t\t"); // last character is whitespace
+    console.write_line("close();");
+    let output = console.read_all_output();
+    assert_not_contains!(output, "addEventListener");
+    assert_not_contains!(output, "alert");
+    assert_not_contains!(output, "atob");
+  });
+}
+
+#[test]
+fn repl_report_error() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec![
+      r#"console.log(1); reportError(new Error("foo")); console.log(2);"#,
+    ]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+
+  // TODO(nayeemrmn): The REPL should report event errors and rejections.
+  assert_contains!(out, "1\n2\nundefined\n");
+  assert!(err.is_empty());
+}
+
+#[test]
+fn pty_aggregate_error() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["await Promise.any([])"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+
+  assert_contains!(out, "AggregateError");
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_with_quiet_flag() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--quiet"],
+    Some(vec!["await Promise.resolve('done')"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(!out.contains("Deno"));
+  assert!(!out.contains("exit using ctrl+d, ctrl+c, or close()"));
+  assert_ends_with!(out, "\"done\"\n");
+  assert!(err.is_empty());
+}
+
+#[test]
+fn npm_packages() {
+  let mut env_vars = util::env_vars_for_npm_tests();
+  env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
+
+  {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+      Some(vec![
+        r#"import chalk from "npm:chalk";"#,
+        "chalk.red('hel' + 'lo')",
+      ]),
+      Some(env_vars.clone()),
+      true,
+    );
+
+    assert_contains!(out, "hello");
+    assert!(err.is_empty());
+  }
+
+  {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+      Some(vec![
+        r#"const chalk = await import("npm:chalk");"#,
+        "chalk.default.red('hel' + 'lo')",
+      ]),
+      Some(env_vars.clone()),
+      true,
+    );
+
+    assert_contains!(out, "hello");
+    assert!(err.is_empty());
+  }
+
+  {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+      Some(vec![r#"export {} from "npm:chalk";"#]),
+      Some(env_vars.clone()),
+      true,
+    );
+
+    assert_contains!(out, "Module {");
+    assert_contains!(out, "Chalk: [Function: Chalk],");
+    assert!(err.is_empty());
+  }
+
+  {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+      Some(vec![r#"import foo from "npm:asdfawe52345asdf""#]),
+      Some(env_vars),
+      true,
+    );
+
+    assert_contains!(
+      out,
+      "error: npm package 'asdfawe52345asdf' does not exist"
+    );
+    assert!(err.is_empty());
+  }
 }

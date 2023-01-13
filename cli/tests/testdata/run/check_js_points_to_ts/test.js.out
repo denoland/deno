@@ -1,0 +1,4 @@
+error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+  return 42;
+  ~~~~~~~~~~
+    at [WILDCARD]

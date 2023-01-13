@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -11,6 +11,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayPrototypeMap,
@@ -68,9 +69,11 @@
         });
       }
 
-      const components = core.opSync("op_urlpattern_parse", input, baseURL);
+      const components = ops.op_urlpattern_parse(input, baseURL);
 
-      for (const key of ObjectKeys(components)) {
+      const keys = ObjectKeys(components);
+      for (let i = 0; i < keys.length; ++i) {
+        const key = keys[i];
         try {
           components[key].regexp = new RegExp(
             components[key].regexpString,
@@ -144,8 +147,7 @@
         });
       }
 
-      const res = core.opSync(
-        "op_urlpattern_process_match_input",
+      const res = ops.op_urlpattern_process_match_input(
         input,
         baseURL,
       );
@@ -155,7 +157,9 @@
 
       const [values] = res;
 
-      for (const key of ObjectKeys(values)) {
+      const keys = ObjectKeys(values);
+      for (let i = 0; i < keys.length; ++i) {
+        const key = keys[i];
         if (!RegExpPrototypeTest(this[_components][key].regexp, values[key])) {
           return false;
         }
@@ -184,8 +188,7 @@
         });
       }
 
-      const res = core.opSync(
-        "op_urlpattern_process_match_input",
+      const res = ops.op_urlpattern_process_match_input(
         input,
         baseURL,
       );
@@ -201,8 +204,9 @@
       /** @type {URLPatternResult} */
       const result = { inputs };
 
-      /** @type {string} */
-      for (const key of ObjectKeys(values)) {
+      const keys = ObjectKeys(values);
+      for (let i = 0; i < keys.length; ++i) {
+        const key = keys[i];
         /** @type {Component} */
         const component = this[_components][key];
         const input = values[key];

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -56,9 +56,11 @@
     RegExpPrototypeTest,
     RegExpPrototypeToString,
     SafeArrayIterator,
+    SafeStringIterator,
     SafeSet,
     SetPrototype,
     SetPrototypeEntries,
+    SetPrototypeGetSize,
     Symbol,
     SymbolPrototype,
     SymbolPrototypeToString,
@@ -90,6 +92,7 @@
     MapPrototypeDelete,
     MapPrototypeEntries,
     MapPrototypeForEach,
+    MapPrototypeGetSize,
     Error,
     ErrorPrototype,
     ErrorCaptureStackTrace,
@@ -110,6 +113,7 @@
     ReflectGetOwnPropertyDescriptor,
     ReflectGetPrototypeOf,
     ReflectHas,
+    TypedArrayPrototypeGetLength,
     WeakMapPrototype,
     WeakSetPrototype,
   } = window.__bootstrap.primordials;
@@ -203,7 +207,7 @@
     str = StringPrototypeNormalize(colors.stripColor(str), "NFC");
     let width = 0;
 
-    for (const ch of str) {
+    for (const ch of new SafeStringIterator(str)) {
       width += isFullWidthCodePoint(StringPrototypeCodePointAt(ch, 0)) ? 2 : 1;
     }
 
@@ -273,7 +277,8 @@
       }` +
       `${tableChars.rightMiddle}\n`;
 
-    for (const row of rows) {
+    for (let i = 0; i < rows.length; ++i) {
+      const row = rows[i];
       result += `${renderRow(row, columnWidths, columnRightAlign)}\n`;
     }
 
@@ -329,13 +334,13 @@
     return inspectOptions.colors ? fn : (s) => s;
   }
 
-  function inspectFunction(value, level, inspectOptions) {
+  function inspectFunction(value, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
     if (
       ReflectHas(value, customInspect) &&
       typeof value[customInspect] === "function"
     ) {
-      return String(value[customInspect](inspect));
+      return String(value[customInspect](inspect, inspectOptions));
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
     let cstrName = ObjectGetPrototypeOf(value)?.constructor?.name;
@@ -357,7 +362,6 @@
     ) {
       const [propString, refIndex] = inspectRawObject(
         value,
-        level,
         inspectOptions,
       );
       refStr = refIndex;
@@ -380,31 +384,34 @@
 
   function inspectIterable(
     value,
-    level,
     options,
     inspectOptions,
   ) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    if (level >= inspectOptions.depth) {
+    if (inspectOptions.indentLevel >= inspectOptions.depth) {
       return cyan(`[${options.typeName}]`);
     }
 
     const entries = [];
     let iter;
     let valueIsTypedArray = false;
+    let entriesLength;
 
     switch (options.typeName) {
       case "Map":
         iter = MapPrototypeEntries(value);
+        entriesLength = MapPrototypeGetSize(value);
         break;
       case "Set":
         iter = SetPrototypeEntries(value);
+        entriesLength = SetPrototypeGetSize(value);
         break;
       case "Array":
-        iter = ArrayPrototypeEntries(value);
+        entriesLength = value.length;
         break;
       default:
         if (isTypedArray(value)) {
+          entriesLength = TypedArrayPrototypeGetLength(value);
           iter = ArrayPrototypeEntries(value);
           valueIsTypedArray = true;
         } else {
@@ -412,53 +419,77 @@
         }
     }
 
-    let entriesLength = 0;
-    const next = () => {
-      return iter.next();
-    };
-    while (true) {
-      let el;
-      try {
-        const res = iter.next();
-        if (res.done) {
-          break;
-        }
-        el = res.value;
-      } catch (err) {
-        if (valueIsTypedArray) {
-          // TypedArray.prototype.entries doesn't throw, unless the ArrayBuffer
-          // is detached. We don't want to show the exception in that case, so
-          // we catch it here and pretend the ArrayBuffer has no entries (like
-          // Chrome DevTools does).
-          break;
-        }
-        throw err;
-      }
-      if (entriesLength < inspectOptions.iterableLimit) {
-        ArrayPrototypePush(
-          entries,
-          options.entryHandler(
-            el,
-            level + 1,
-            inspectOptions,
-            FunctionPrototypeBind(next, iter),
-          ),
+    let entriesLengthWithoutEmptyItems = entriesLength;
+    if (options.typeName === "Array") {
+      for (
+        let i = 0, j = 0;
+        i < entriesLength && j < inspectOptions.iterableLimit;
+        i++, j++
+      ) {
+        inspectOptions.indentLevel++;
+        const { entry, skipTo } = options.entryHandler(
+          [i, value[i]],
+          inspectOptions,
         );
+        ArrayPrototypePush(entries, entry);
+        inspectOptions.indentLevel--;
+
+        if (skipTo) {
+          // subtract skipped (empty) items
+          entriesLengthWithoutEmptyItems -= skipTo - i;
+          i = skipTo;
+        }
       }
-      entriesLength++;
+    } else {
+      let i = 0;
+      while (true) {
+        let el;
+        try {
+          const res = iter.next();
+          if (res.done) {
+            break;
+          }
+          el = res.value;
+        } catch (err) {
+          if (valueIsTypedArray) {
+            // TypedArray.prototype.entries doesn't throw, unless the ArrayBuffer
+            // is detached. We don't want to show the exception in that case, so
+            // we catch it here and pretend the ArrayBuffer has no entries (like
+            // Chrome DevTools does).
+            break;
+          }
+          throw err;
+        }
+        if (i < inspectOptions.iterableLimit) {
+          inspectOptions.indentLevel++;
+          ArrayPrototypePush(
+            entries,
+            options.entryHandler(
+              el,
+              inspectOptions,
+            ),
+          );
+          inspectOptions.indentLevel--;
+        } else {
+          break;
+        }
+        i++;
+      }
     }
 
     if (options.sort) {
       ArrayPrototypeSort(entries);
     }
 
-    if (entriesLength > inspectOptions.iterableLimit) {
-      const nmore = entriesLength - inspectOptions.iterableLimit;
+    if (entriesLengthWithoutEmptyItems > inspectOptions.iterableLimit) {
+      const nmore = entriesLengthWithoutEmptyItems -
+        inspectOptions.iterableLimit;
       ArrayPrototypePush(entries, `... ${nmore} more items`);
     }
 
     const iPrefix = `${options.displayName ? options.displayName + " " : ""}`;
 
+    const level = inspectOptions.indentLevel;
     const initIndentation = `\n${
       StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
     }`;
@@ -630,12 +661,11 @@
 
   function _inspectValue(
     value,
-    level,
     inspectOptions,
   ) {
     const proxyDetails = core.getProxyDetails(value);
     if (proxyDetails != null && inspectOptions.showProxy) {
-      return inspectProxy(proxyDetails, level, inspectOptions);
+      return inspectProxy(proxyDetails, inspectOptions);
     }
 
     const green = maybeColor(colors.green, inspectOptions);
@@ -665,7 +695,7 @@
           return handleCircular(value, cyan);
         }
 
-        return inspectFunction(value, level, inspectOptions);
+        return inspectFunction(value, inspectOptions);
       case "object": // null is bold
         if (value === null) {
           return bold("null");
@@ -675,7 +705,11 @@
           return handleCircular(value, cyan);
         }
 
-        return inspectObject(value, level, inspectOptions, proxyDetails);
+        return inspectObject(
+          value,
+          inspectOptions,
+          proxyDetails,
+        );
       default:
         // Not implemented is red
         return red("[Not Implemented]");
@@ -684,13 +718,12 @@
 
   function inspectValue(
     value,
-    level,
     inspectOptions,
   ) {
     ArrayPrototypePush(CTX_STACK, value);
     let x;
     try {
-      x = _inspectValue(value, level, inspectOptions);
+      x = _inspectValue(value, inspectOptions);
     } finally {
       ArrayPrototypePop(CTX_STACK);
     }
@@ -722,27 +755,20 @@
 
   // Replace escape sequences that can modify output.
   function replaceEscapeSequences(string) {
+    const escapeMap = {
+      "\b": "\\b",
+      "\f": "\\f",
+      "\n": "\\n",
+      "\r": "\\r",
+      "\t": "\\t",
+      "\v": "\\v",
+    };
+
     return StringPrototypeReplace(
       StringPrototypeReplace(
-        StringPrototypeReplace(
-          StringPrototypeReplace(
-            StringPrototypeReplace(
-              StringPrototypeReplace(
-                StringPrototypeReplace(string, /[\b]/g, "\\b"),
-                /\f/g,
-                "\\f",
-              ),
-              /\n/g,
-              "\\n",
-            ),
-            /\r/g,
-            "\\r",
-          ),
-          /\t/g,
-          "\\t",
-        ),
-        /\v/g,
-        "\\v",
+        string,
+        /([\b\f\n\r\t\v])/g,
+        (c) => escapeMap[c],
       ),
       // deno-lint-ignore no-control-regex
       /[\x00-\x1f\x7f-\x9f]/g,
@@ -790,7 +816,6 @@
   // Print strings when they are inside of arrays or objects with quotes
   function inspectValueWithQuotes(
     value,
-    level,
     inspectOptions,
   ) {
     const abbreviateSize =
@@ -806,46 +831,65 @@
         return green(quoteString(trunc)); // Quoted strings are green
       }
       default:
-        return inspectValue(value, level, inspectOptions);
+        return inspectValue(value, inspectOptions);
     }
   }
 
   function inspectArray(
     value,
-    level,
     inspectOptions,
   ) {
     const gray = maybeColor(colors.gray, inspectOptions);
+    let lastValidIndex = 0;
+    let keys;
     const options = {
       typeName: "Array",
       displayName: "",
       delims: ["[", "]"],
-      entryHandler: (entry, level, inspectOptions, next) => {
+      entryHandler: (entry, inspectOptions) => {
         const [index, val] = entry;
         let i = index;
+        lastValidIndex = index;
         if (!ObjectPrototypeHasOwnProperty(value, i)) {
-          i++;
-          while (!ObjectPrototypeHasOwnProperty(value, i) && i < value.length) {
-            next();
-            i++;
+          let skipTo;
+          keys = keys || ObjectKeys(value);
+          i = value.length;
+          if (keys.length === 0) {
+            // fast path, all items are empty
+            skipTo = i;
+          } else {
+            // Not all indexes are empty or there's a non-index property
+            // Find first non-empty array index
+            while (keys.length) {
+              const key = ArrayPrototypeShift(keys);
+              // check if it's a valid array index
+              if (key > lastValidIndex && key < 2 ** 32 - 1) {
+                i = Number(key);
+                break;
+              }
+            }
+
+            skipTo = i - 1;
           }
           const emptyItems = i - index;
           const ending = emptyItems > 1 ? "s" : "";
-          return gray(`<${emptyItems} empty item${ending}>`);
+          return {
+            entry: gray(`<${emptyItems} empty item${ending}>`),
+            skipTo,
+          };
         } else {
-          return inspectValueWithQuotes(val, level, inspectOptions);
+          return { entry: inspectValueWithQuotes(val, inspectOptions) };
         }
       },
       group: inspectOptions.compact,
       sort: false,
     };
-    return inspectIterable(value, level, options, inspectOptions);
+    return inspectIterable(value, options, inspectOptions);
   }
 
   function inspectTypedArray(
     typedArrayName,
     value,
-    level,
     inspectOptions,
   ) {
     const valueLength = value.length;
@@ -853,60 +897,62 @@
       typeName: typedArrayName,
       displayName: `${typedArrayName}(${valueLength})`,
       delims: ["[", "]"],
-      entryHandler: (entry, level, inspectOptions) => {
+      entryHandler: (entry, inspectOptions) => {
         const val = entry[1];
-        return inspectValueWithQuotes(val, level + 1, inspectOptions);
+        inspectOptions.indentLevel++;
+        const inspectedValue = inspectValueWithQuotes(val, inspectOptions);
+        inspectOptions.indentLevel--;
+        return inspectedValue;
       },
       group: inspectOptions.compact,
       sort: false,
     };
-    return inspectIterable(value, level, options, inspectOptions);
+    return inspectIterable(value, options, inspectOptions);
   }
 
   function inspectSet(
     value,
-    level,
     inspectOptions,
   ) {
     const options = {
       typeName: "Set",
       displayName: "Set",
       delims: ["{", "}"],
-      entryHandler: (entry, level, inspectOptions) => {
+      entryHandler: (entry, inspectOptions) => {
         const val = entry[1];
-        return inspectValueWithQuotes(val, level + 1, inspectOptions);
+        inspectOptions.indentLevel++;
+        const inspectedValue = inspectValueWithQuotes(val, inspectOptions);
+        inspectOptions.indentLevel--;
+        return inspectedValue;
       },
       group: false,
       sort: inspectOptions.sorted,
     };
-    return inspectIterable(value, level, options, inspectOptions);
+    return inspectIterable(value, options, inspectOptions);
   }
 
   function inspectMap(
     value,
-    level,
     inspectOptions,
   ) {
     const options = {
       typeName: "Map",
       displayName: "Map",
       delims: ["{", "}"],
-      entryHandler: (entry, level, inspectOptions) => {
+      entryHandler: (entry, inspectOptions) => {
         const [key, val] = entry;
-        return `${
-          inspectValueWithQuotes(
-            key,
-            level + 1,
-            inspectOptions,
-          )
-        } => ${inspectValueWithQuotes(val, level + 1, inspectOptions)}`;
+        inspectOptions.indentLevel++;
+        const inspectedValue = `${
+          inspectValueWithQuotes(key, inspectOptions)
+        } => ${inspectValueWithQuotes(val, inspectOptions)}`;
+        inspectOptions.indentLevel--;
+        return inspectedValue;
       },
       group: false,
       sort: inspectOptions.sorted,
     };
     return inspectIterable(
       value,
-      level,
       options,
       inspectOptions,
     );
@@ -950,7 +996,8 @@
     }
 
     const refMap = new Map();
-    for (const cause of causes) {
+    for (let i = 0; i < causes.length; ++i) {
+      const cause = causes[i];
       if (circular !== undefined) {
         const index = MapPrototypeGet(circular, cause);
         if (index !== undefined) {
@@ -960,7 +1007,7 @@
     }
     ArrayPrototypeShift(causes);
 
-    let finalMessage = (MapPrototypeGet(refMap, value) ?? "");
+    let finalMessage = MapPrototypeGet(refMap, value) ?? "";
 
     if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
       const stackLines = StringPrototypeSplit(value.stack, "\n");
@@ -968,6 +1015,8 @@
         const line = ArrayPrototypeShift(stackLines);
         if (RegExpPrototypeTest(/\s+at/, line)) {
           ArrayPrototypeUnshift(stackLines, line);
+          break;
+        } else if (typeof line === "undefined") {
           break;
         }
 
@@ -1046,7 +1095,6 @@
 
   function inspectPromise(
     value,
-    level,
     inspectOptions,
   ) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
@@ -1062,17 +1110,13 @@
       ? ""
       : `${red("<rejected>")} `;
 
-    const str = `${prefix}${
-      inspectValueWithQuotes(
-        result,
-        level + 1,
-        inspectOptions,
-      )
-    }`;
+    inspectOptions.indentLevel++;
+    const str = `${prefix}${inspectValueWithQuotes(result, inspectOptions)}`;
+    inspectOptions.indentLevel--;
 
     if (str.length + PROMISE_STRING_BASE_LENGTH > LINE_BREAKING_LENGTH) {
       return `Promise {\n${
-        StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
+        StringPrototypeRepeat(DEFAULT_INDENT, inspectOptions.indentLevel + 1)
       }${str}\n}`;
     }
 
@@ -1081,20 +1125,18 @@
 
   function inspectProxy(
     targetAndHandler,
-    level,
     inspectOptions,
   ) {
-    return `Proxy ${inspectArray(targetAndHandler, level, inspectOptions)}`;
+    return `Proxy ${inspectArray(targetAndHandler, inspectOptions)}`;
   }
 
   function inspectRawObject(
     value,
-    level,
     inspectOptions,
   ) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
 
-    if (level >= inspectOptions.depth) {
+    if (inspectOptions.indentLevel >= inspectOptions.depth) {
       return [cyan("[Object]"), ""]; // wrappers are in cyan
     }
 
@@ -1130,7 +1172,10 @@
 
     const red = maybeColor(colors.red, inspectOptions);
 
-    for (const key of stringKeys) {
+    inspectOptions.indentLevel++;
+
+    for (let i = 0; i < stringKeys.length; ++i) {
+      const key = stringKeys[i];
       if (inspectOptions.getters) {
         let propertyValue;
         let error = null;
@@ -1140,11 +1185,7 @@
           error = error_;
         }
         const inspectedValue = error == null
-          ? inspectValueWithQuotes(
-            propertyValue,
-            level + 1,
-            inspectOptions,
-          )
+          ? inspectValueWithQuotes(propertyValue, inspectOptions)
           : red(`[Thrown ${error.name}: ${error.message}]`);
         ArrayPrototypePush(
           entries,
@@ -1163,14 +1204,15 @@
           ArrayPrototypePush(
             entries,
             `${maybeQuoteString(key)}: ${
-              inspectValueWithQuotes(value[key], level + 1, inspectOptions)
+              inspectValueWithQuotes(value[key], inspectOptions)
             }`,
           );
         }
       }
     }
 
-    for (const key of symbolKeys) {
+    for (let i = 0; i < symbolKeys.length; ++i) {
+      const key = symbolKeys[i];
       if (
         !inspectOptions.showHidden &&
         !propertyIsEnumerable(value, key)
@@ -1187,11 +1229,7 @@
           error = error_;
         }
         const inspectedValue = error == null
-          ? inspectValueWithQuotes(
-            propertyValue,
-            level + 1,
-            inspectOptions,
-          )
+          ? inspectValueWithQuotes(propertyValue, inspectOptions)
           : red(`Thrown ${error.name}: ${error.message}`);
         ArrayPrototypePush(
           entries,
@@ -1210,22 +1248,30 @@
           ArrayPrototypePush(
             entries,
             `[${maybeQuoteSymbol(key)}]: ${
-              inspectValueWithQuotes(value[key], level + 1, inspectOptions)
+              inspectValueWithQuotes(value[key], inspectOptions)
             }`,
           );
         }
       }
     }
 
+    inspectOptions.indentLevel--;
+
     // Making sure color codes are ignored when calculating the total length
-    const totalLength = entries.length + level +
+    const totalLength = entries.length + inspectOptions.indentLevel +
       colors.stripColor(ArrayPrototypeJoin(entries, "")).length;
 
     if (entries.length === 0) {
       baseString = "{}";
     } else if (totalLength > LINE_BREAKING_LENGTH || !inspectOptions.compact) {
-      const entryIndent = StringPrototypeRepeat(DEFAULT_INDENT, level + 1);
-      const closingIndent = StringPrototypeRepeat(DEFAULT_INDENT, level);
+      const entryIndent = StringPrototypeRepeat(
+        DEFAULT_INDENT,
+        inspectOptions.indentLevel + 1,
+      );
+      const closingIndent = StringPrototypeRepeat(
+        DEFAULT_INDENT,
+        inspectOptions.indentLevel,
+      );
       baseString = `{\n${entryIndent}${
         ArrayPrototypeJoin(entries, `,\n${entryIndent}`)
       }${inspectOptions.trailingComma ? "," : ""}\n${closingIndent}}`;
@@ -1248,17 +1294,12 @@
     return [baseString, refIndex];
   }
 
-  function inspectObject(
-    value,
-    level,
-    inspectOptions,
-    proxyDetails,
-  ) {
+  function inspectObject(value, inspectOptions, proxyDetails) {
     if (
       ReflectHas(value, customInspect) &&
       typeof value[customInspect] === "function"
     ) {
-      return String(value[customInspect](inspect));
+      return String(value[customInspect](inspect, inspectOptions));
     }
     // This non-unique symbol is used to support op_crates, ie.
     // in extensions/web we don't want to depend on public
@@ -1273,12 +1314,14 @@
       // inspect implementations in `extensions` need it, but may not have access
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
-      return String(value[privateCustomInspect](inspect));
+      return String(
+        value[privateCustomInspect](inspect, inspectOptions),
+      );
     }
     if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
       return inspectError(value, maybeColor(colors.cyan, inspectOptions));
     } else if (ArrayIsArray(value)) {
-      return inspectArray(value, level, inspectOptions);
+      return inspectArray(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(NumberPrototype, value)) {
       return inspectNumberObject(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(BigIntPrototype, value)) {
@@ -1290,21 +1333,22 @@
     } else if (ObjectPrototypeIsPrototypeOf(SymbolPrototype, value)) {
       return inspectSymbolObject(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(PromisePrototype, value)) {
-      return inspectPromise(value, level, inspectOptions);
+      return inspectPromise(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) {
       return inspectRegExp(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
-      return inspectDate(value, inspectOptions);
+      return inspectDate(
+        proxyDetails ? proxyDetails[0] : value,
+        inspectOptions,
+      );
     } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
       return inspectSet(
         proxyDetails ? proxyDetails[0] : value,
-        level,
         inspectOptions,
       );
     } else if (ObjectPrototypeIsPrototypeOf(MapPrototype, value)) {
       return inspectMap(
         proxyDetails ? proxyDetails[0] : value,
-        level,
         inspectOptions,
       );
     } else if (ObjectPrototypeIsPrototypeOf(WeakSetPrototype, value)) {
@@ -1315,12 +1359,11 @@
       return inspectTypedArray(
         ObjectGetPrototypeOf(value).constructor.name,
         value,
-        level,
         inspectOptions,
       );
     } else {
       // Otherwise, default object formatting
-      let [insp, refIndex] = inspectRawObject(value, level, inspectOptions);
+      let [insp, refIndex] = inspectRawObject(value, inspectOptions);
       insp = refIndex + insp;
       return insp;
     }
@@ -1601,7 +1644,8 @@
       currentPart = "";
     }
 
-    for (const [key, value] of rawEntries) {
+    for (let i = 0; i < rawEntries.length; ++i) {
+      const [key, value] = rawEntries[i];
       if (key == "background-color") {
         if (value != null) {
           css.backgroundColor = value;
@@ -1622,7 +1666,9 @@
         }
       } else if (key == "text-decoration-line") {
         css.textDecorationLine = [];
-        for (const lineType of StringPrototypeSplit(value, /\s+/g)) {
+        const lineTypes = StringPrototypeSplit(value, /\s+/g);
+        for (let i = 0; i < lineTypes.length; ++i) {
+          const lineType = lineTypes[i];
           if (
             ArrayPrototypeIncludes(
               ["line-through", "overline", "underline"],
@@ -1640,7 +1686,9 @@
       } else if (key == "text-decoration") {
         css.textDecorationColor = null;
         css.textDecorationLine = [];
-        for (const arg of StringPrototypeSplit(value, /\s+/g)) {
+        const args = StringPrototypeSplit(value, /\s+/g);
+        for (let i = 0; i < args.length; ++i) {
+          const arg = args[i];
           const maybeColor = parseCssColor(arg);
           if (maybeColor != null) {
             css.textDecorationColor = maybeColor;
@@ -1834,11 +1882,7 @@
               }
             } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
               // Format as an object.
-              formattedArg = inspectValue(
-                args[a++],
-                0,
-                rInspectOptions,
-              );
+              formattedArg = inspectValue(args[a++], rInspectOptions);
             } else if (char == "c") {
               const value = args[a++];
               if (!noColor) {
@@ -1879,7 +1923,7 @@
         string += args[a];
       } else {
         // Use default maximum depth for null or undefined arguments.
-        string += inspectValue(args[a], 0, rInspectOptions);
+        string += inspectValue(args[a], rInspectOptions);
       }
     }
 
@@ -2050,7 +2094,7 @@
       }
 
       const stringifyValue = (value) =>
-        inspectValueWithQuotes(value, 0, {
+        inspectValueWithQuotes(value, {
           ...DEFAULT_INSPECT_OPTIONS,
           depth: 1,
         });
@@ -2101,7 +2145,8 @@
         } else {
           const valueObj = value || {};
           const keys = properties || ObjectKeys(valueObj);
-          for (const k of keys) {
+          for (let i = 0; i < keys.length; ++i) {
+            const k = keys[i];
             if (!primitive && ReflectHas(valueObj, k)) {
               if (!(ReflectHas(objectValues, k))) {
                 objectValues[k] = ArrayPrototypeFill(new Array(numRows), "");
@@ -2160,7 +2205,7 @@
       label = String(label);
 
       if (!MapPrototypeHas(timerMap, label)) {
-        this.warn(`Timer '${label}' does not exists`);
+        this.warn(`Timer '${label}' does not exist`);
         return;
       }
 
@@ -2205,6 +2250,12 @@
       this.error(err.stack);
     };
 
+    // These methods are noops, but when the inspector is connected, they
+    // call into V8.
+    profile = (_label) => {};
+    profileEnd = (_label) => {};
+    timeStamp = (_label) => {};
+
     static [SymbolHasInstance](instance) {
       return instance[isConsoleInstance];
     }
@@ -2217,11 +2268,9 @@
     inspectOptions = {},
   ) {
     circular = undefined;
-    return inspectValue(value, 0, {
+    return inspectValue(value, {
       ...DEFAULT_INSPECT_OPTIONS,
       ...inspectOptions,
-      // TODO(nayeemrmn): Indent level is not supported.
-      indentLevel: 0,
     });
   }
 
@@ -2292,7 +2341,9 @@
   function wrapConsole(consoleFromDeno, consoleFromV8) {
     const callConsole = core.callConsole;
 
-    for (const key of ObjectKeys(consoleFromV8)) {
+    const keys = ObjectKeys(consoleFromV8);
+    for (let i = 0; i < keys.length; ++i) {
+      const key = keys[i];
       if (ObjectPrototypeHasOwnProperty(consoleFromDeno, key)) {
         consoleFromDeno[key] = FunctionPrototypeBind(
           callConsole,
@@ -2300,6 +2351,9 @@
           consoleFromV8[key],
           consoleFromDeno[key],
         );
+      } else {
+        // Add additional console APIs from the inspector
+        consoleFromDeno[key] = consoleFromV8[key];
       }
     }
   }
@@ -2322,5 +2376,6 @@
     inspect,
     wrapConsole,
     createFilteredInspectProxy,
+    quoteString,
   };
 })(this);

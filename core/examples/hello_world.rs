@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 //!  This example shows you how to define ops in Rust and then call them from
 //!  JavaScript.
 
@@ -22,7 +22,7 @@ fn op_sum(nums: Vec<f64>) -> Result<f64, deno_core::error::AnyError> {
 
 fn main() {
   // Build a deno_core::Extension providing custom ops
-  let ext = Extension::builder()
+  let ext = Extension::builder("my_ext")
     .ops(vec![
       // An op for summing an array of numbers
       // The op-layer automatically deserializes inputs
@@ -53,11 +53,11 @@ const arr = [1, 2, 3];
 print("The sum of");
 print(arr);
 print("is");
-print(Deno.core.opSync('op_sum', arr));
+print(Deno.core.ops.op_sum(arr));
 
 // And incorrect usage
 try {
-  print(Deno.core.opSync('op_sum', 0));
+  print(Deno.core.ops.op_sum(0));
 } catch(e) {
   print('Exception:');
   print(e);

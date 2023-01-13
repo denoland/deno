@@ -1,13 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::io::StdFileResource;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::ResourceId;
-use serde::Deserialize;
-use serde::Serialize;
 use std::io::Error;
 
 #[cfg(unix)]
@@ -19,10 +16,6 @@ use deno_core::error::custom_error;
 use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
 use winapi::um::wincon;
-#[cfg(windows)]
-const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
-  | wincon::ENABLE_ECHO_INPUT
-  | wincon::ENABLE_PROCESSED_INPUT;
 
 #[cfg(windows)]
 fn get_windows_handle(
@@ -41,35 +34,22 @@ fn get_windows_handle(
 }
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_tty")
     .ops(vec![
-      op_set_raw::decl(),
+      op_stdin_set_raw::decl(),
       op_isatty::decl(),
       op_console_size::decl(),
     ])
     .build()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetRawOptions {
+#[op(fast)]
+fn op_stdin_set_raw(
+  state: &mut OpState,
+  is_raw: bool,
   cbreak: bool,
-}
-
-#[derive(Deserialize)]
-pub struct SetRawArgs {
-  rid: ResourceId,
-  mode: bool,
-  options: SetRawOptions,
-}
-
-#[op]
-fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.setRaw");
-
-  let rid = args.rid;
-  let is_raw = args.mode;
-  let cbreak = args.options.cbreak;
+) -> Result<(), AnyError> {
+  let rid = 0; // stdin is always rid=0
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
@@ -82,88 +62,104 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let resource = state.resource_table.get::<StdFileResource>(rid)?;
-
     if cbreak {
       return Err(deno_core::error::not_supported());
     }
 
-    let std_file = resource.std_file();
-    let std_file = std_file.lock(); // hold the lock
-    let handle = std_file.as_raw_handle();
+    StdFileResource::with_file(state, rid, move |std_file| {
+      let handle = std_file.as_raw_handle();
 
-    if handle == handleapi::INVALID_HANDLE_VALUE {
-      return Err(Error::last_os_error().into());
-    } else if handle.is_null() {
-      return Err(custom_error("ReferenceError", "null handle"));
-    }
-    let mut original_mode: DWORD = 0;
-    if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
-      == FALSE
-    {
-      return Err(Error::last_os_error().into());
-    }
-    let new_mode = if is_raw {
-      original_mode & !RAW_MODE_MASK
-    } else {
-      original_mode | RAW_MODE_MASK
-    };
-    if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
-      return Err(Error::last_os_error().into());
-    }
+      if handle == handleapi::INVALID_HANDLE_VALUE {
+        return Err(Error::last_os_error().into());
+      } else if handle.is_null() {
+        return Err(custom_error("ReferenceError", "null handle"));
+      }
+      let mut original_mode: DWORD = 0;
+      // SAFETY: winapi call
+      if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
+        == FALSE
+      {
+        return Err(Error::last_os_error().into());
+      }
 
-    Ok(())
+      const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
+        | wincon::ENABLE_ECHO_INPUT
+        | wincon::ENABLE_PROCESSED_INPUT;
+      let new_mode = if is_raw {
+        original_mode & !RAW_MODE_MASK | wincon::ENABLE_VIRTUAL_TERMINAL_INPUT
+      } else {
+        original_mode | RAW_MODE_MASK & !wincon::ENABLE_VIRTUAL_TERMINAL_INPUT
+      };
+
+      // SAFETY: winapi call
+      if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
+        return Err(Error::last_os_error().into());
+      }
+
+      Ok(())
+    })
   }
   #[cfg(unix)]
   {
     use std::os::unix::io::AsRawFd;
 
-    let resource = state.resource_table.get::<StdFileResource>(rid)?;
-    let std_file = resource.std_file();
-    let raw_fd = std_file.lock().as_raw_fd();
-    let mut meta_data = resource.metadata_mut();
-    let maybe_tty_mode = &mut meta_data.tty.mode;
+    StdFileResource::with_file_and_metadata(
+      state,
+      rid,
+      move |std_file, meta_data| {
+        let raw_fd = std_file.as_raw_fd();
 
-    if is_raw {
-      if maybe_tty_mode.is_none() {
-        // Save original mode.
-        let original_mode = termios::tcgetattr(raw_fd)?;
-        maybe_tty_mode.replace(original_mode);
-      }
+        if is_raw {
+          let mut raw = {
+            let mut meta_data = meta_data.lock();
+            let maybe_tty_mode = &mut meta_data.tty.mode;
+            if maybe_tty_mode.is_none() {
+              // Save original mode.
+              let original_mode = termios::tcgetattr(raw_fd)?;
+              maybe_tty_mode.replace(original_mode);
+            }
+            maybe_tty_mode.clone().unwrap()
+          };
 
-      let mut raw = maybe_tty_mode.clone().unwrap();
+          raw.input_flags &= !(termios::InputFlags::BRKINT
+            | termios::InputFlags::ICRNL
+            | termios::InputFlags::INPCK
+            | termios::InputFlags::ISTRIP
+            | termios::InputFlags::IXON);
 
-      raw.input_flags &= !(termios::InputFlags::BRKINT
-        | termios::InputFlags::ICRNL
-        | termios::InputFlags::INPCK
-        | termios::InputFlags::ISTRIP
-        | termios::InputFlags::IXON);
+          raw.control_flags |= termios::ControlFlags::CS8;
 
-      raw.control_flags |= termios::ControlFlags::CS8;
+          raw.local_flags &= !(termios::LocalFlags::ECHO
+            | termios::LocalFlags::ICANON
+            | termios::LocalFlags::IEXTEN);
+          if !cbreak {
+            raw.local_flags &= !(termios::LocalFlags::ISIG);
+          }
+          raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] =
+            1;
+          raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] =
+            0;
+          termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
+        } else {
+          // Try restore saved mode.
+          if let Some(mode) = meta_data.lock().tty.mode.take() {
+            termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
+          }
+        }
 
-      raw.local_flags &= !(termios::LocalFlags::ECHO
-        | termios::LocalFlags::ICANON
-        | termios::LocalFlags::IEXTEN);
-      if !cbreak {
-        raw.local_flags &= !(termios::LocalFlags::ISIG);
-      }
-      raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
-      raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
-      termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
-    } else {
-      // Try restore saved mode.
-      if let Some(mode) = maybe_tty_mode.take() {
-        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
-      }
-    }
-
-    Ok(())
+        Ok(())
+      },
+    )
   }
 }
 
-#[op]
-fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
-  let isatty: bool = StdFileResource::with_file(state, rid, move |std_file| {
+#[op(fast)]
+fn op_isatty(
+  state: &mut OpState,
+  rid: u32,
+  out: &mut [u8],
+) -> Result<(), AnyError> {
+  StdFileResource::with_file(state, rid, move |std_file| {
     #[cfg(windows)]
     {
       use winapi::shared::minwindef::FALSE;
@@ -172,73 +168,105 @@ fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
       let handle = get_windows_handle(std_file)?;
       let mut test_mode: DWORD = 0;
       // If I cannot get mode out of console, it is not a console.
-      Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE })
+      // TODO(bartlomieju):
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      {
+        out[0] = unsafe {
+          consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE
+        } as u8;
+      }
     }
     #[cfg(unix)]
     {
       use std::os::unix::io::AsRawFd;
       let raw_fd = std_file.as_raw_fd();
-      Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+      // TODO(bartlomieju):
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      {
+        out[0] = unsafe { libc::isatty(raw_fd as libc::c_int) == 1 } as u8;
+      }
     }
-  })?;
-  Ok(isatty)
+    Ok(())
+  })
 }
 
-#[derive(Serialize)]
-struct ConsoleSize {
-  columns: u32,
-  rows: u32,
-}
-
-#[op]
+#[op(fast)]
 fn op_console_size(
   state: &mut OpState,
-  rid: ResourceId,
-) -> Result<ConsoleSize, AnyError> {
-  super::check_unstable(state, "Deno.consoleSize");
+  result: &mut [u32],
+) -> Result<(), AnyError> {
+  fn check_console_size(
+    state: &mut OpState,
+    result: &mut [u32],
+    rid: u32,
+  ) -> Result<(), AnyError> {
+    StdFileResource::with_file(state, rid, move |std_file| {
+      let size = console_size(std_file)?;
+      result[0] = size.cols;
+      result[1] = size.rows;
+      Ok(())
+    })
+  }
 
-  let size = StdFileResource::with_file(state, rid, move |std_file| {
-    #[cfg(windows)]
-    {
-      use std::os::windows::io::AsRawHandle;
-      let handle = std_file.as_raw_handle();
-
-      unsafe {
-        let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
-          std::mem::zeroed();
-
-        if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
-          == 0
-        {
-          return Err(Error::last_os_error().into());
-        }
-
-        Ok(ConsoleSize {
-          columns: bufinfo.dwSize.X as u32,
-          rows: bufinfo.dwSize.Y as u32,
-        })
-      }
+  let mut last_result = Ok(());
+  // Since stdio might be piped we try to get the size of the console for all
+  // of them and return the first one that succeeds.
+  for rid in [0, 1, 2] {
+    last_result = check_console_size(state, result, rid);
+    if last_result.is_ok() {
+      return last_result;
     }
+  }
 
-    #[cfg(unix)]
-    {
-      use std::os::unix::io::AsRawFd;
+  last_result
+}
 
-      let fd = std_file.as_raw_fd();
-      unsafe {
-        let mut size: libc::winsize = std::mem::zeroed();
-        if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-          return Err(Error::last_os_error().into());
-        }
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct ConsoleSize {
+  pub cols: u32,
+  pub rows: u32,
+}
 
-        // TODO (caspervonb) return a tuple instead
-        Ok(ConsoleSize {
-          columns: size.ws_col as u32,
-          rows: size.ws_row as u32,
-        })
+pub fn console_size(
+  std_file: &std::fs::File,
+) -> Result<ConsoleSize, std::io::Error> {
+  #[cfg(windows)]
+  {
+    use std::os::windows::io::AsRawHandle;
+    let handle = std_file.as_raw_handle();
+
+    // SAFETY: winapi calls
+    unsafe {
+      let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+        std::mem::zeroed();
+
+      if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
+        == 0
+      {
+        return Err(Error::last_os_error());
       }
+      Ok(ConsoleSize {
+        cols: bufinfo.dwSize.X as u32,
+        rows: bufinfo.dwSize.Y as u32,
+      })
     }
-  })?;
+  }
 
-  Ok(size)
+  #[cfg(unix)]
+  {
+    use std::os::unix::io::AsRawFd;
+
+    let fd = std_file.as_raw_fd();
+    // SAFETY: libc calls
+    unsafe {
+      let mut size: libc::winsize = std::mem::zeroed();
+      if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
+        return Err(Error::last_os_error());
+      }
+      Ok(ConsoleSize {
+        cols: size.ws_col as u32,
+        rows: size.ws_row as u32,
+      })
+    }
+  }
 }

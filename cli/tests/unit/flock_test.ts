@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "./test_util.ts";
 
 Deno.test(
@@ -108,7 +108,7 @@ async function checkFirstBlocksSecond(opts: {
 }
 
 function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
-  const path = "cli/tests/testdata/fixture.json";
+  const path = "cli/tests/testdata/assets/fixture.json";
   const scriptText = `
     const { rid } = Deno.openSync("${path}");
 
@@ -136,7 +136,7 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
     // the lock so that the enter time of the next process doesn't
     // occur at the same time as this exit time
     const exitTime = new Date().getTime();
-    Deno.sleepSync(100);
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     // release the lock
     ${opts.sync ? "Deno.funlockSync(rid);" : "await Deno.funlock(rid);"}
@@ -148,10 +148,12 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
     console.log(JSON.stringify({ enterTime, exitTime }));
 `;
 
-  const process = Deno.spawnChild(Deno.execPath(), {
+  const process = new Deno.Command(Deno.execPath(), {
     args: ["eval", "--unstable", scriptText],
     stdin: "piped",
-  });
+    stdout: "piped",
+    stderr: "null",
+  }).spawn();
 
   const waitSignal = async () => {
     const reader = process.stdout.getReader({ mode: "byob" });

@@ -1,1 +1,1 @@
-error: Uncaught SyntaxError: Unexpected token # in JSON at position 0
+error: Uncaught SyntaxError: Unexpected token '#', "#!/usr/env"... is not valid JSON

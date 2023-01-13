@@ -1,13 +1,17 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub use deno_broadcast_channel;
+pub use deno_cache;
 pub use deno_console;
 pub use deno_core;
 pub use deno_crypto;
 pub use deno_fetch;
 pub use deno_ffi;
+pub use deno_flash;
 pub use deno_http;
+pub use deno_napi;
 pub use deno_net;
+pub use deno_node;
 pub use deno_tls;
 pub use deno_url;
 pub use deno_web;
@@ -18,6 +22,7 @@ pub use deno_webstorage;
 
 pub mod colors;
 pub mod errors;
+pub mod fmt_errors;
 pub mod fs_util;
 pub mod inspector_server;
 pub mod js;

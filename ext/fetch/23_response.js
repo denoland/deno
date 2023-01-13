@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -15,6 +15,9 @@
   const { isProxy } = Deno.core;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
+  const {
+    byteLowerCase,
+  } = window.__bootstrap.infra;
   const { HTTP_TAB_OR_SPACE, regexMatcher, serializeJSValueToJSONString } =
     window.__bootstrap.infra;
   const { extractBody, mixinBody } = window.__bootstrap.fetchBody;
@@ -31,6 +34,7 @@
   const {
     ArrayPrototypeMap,
     ArrayPrototypePush,
+    ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
     RangeError,
     RegExp,
@@ -94,11 +98,11 @@
    */
   function cloneInnerResponse(response) {
     const urlList = [...new SafeArrayIterator(response.urlList)];
-    const headerList = [
-      ...new SafeArrayIterator(
-        ArrayPrototypeMap(response.headerList, (x) => [x[0], x[1]]),
-      ),
-    ];
+    const headerList = ArrayPrototypeMap(
+      response.headerList,
+      (x) => [x[0], x[1]],
+    );
+
     let body = null;
     if (response.body !== null) {
       body = response.body.clone();
@@ -185,7 +189,6 @@
 
     // 4.
     response[_response].statusMessage = init.statusText;
-
     // 5.
     /** @type {__bootstrap.headers.Headers} */
     const headers = response[_headers];
@@ -200,10 +203,22 @@
           "Response with null body status cannot have body",
         );
       }
+
       const { body, contentType } = bodyWithType;
       response[_response].body = body;
-      if (contentType !== null && !headers.has("content-type")) {
-        headers.append("Content-Type", contentType);
+
+      if (contentType !== null) {
+        let hasContentType = false;
+        const list = headerListFromHeaders(headers);
+        for (let i = 0; i < list.length; i++) {
+          if (byteLowerCase(list[i][0]) === "content-type") {
+            hasContentType = true;
+            break;
+          }
+        }
+        if (!hasContentType) {
+          ArrayPrototypePush(list, ["Content-Type", contentType]);
+        }
       }
     }
   }
@@ -273,7 +288,7 @@
      * @param {ResponseInit} init
      * @returns {Response}
      */
-    static json(data, init = {}) {
+    static json(data = undefined, init = {}) {
       const prefix = "Failed to call 'Response.json'";
       data = webidl.converters.any(data);
       init = webidl.converters["ResponseInit_fast"](init, {
@@ -298,7 +313,7 @@
      * @param {BodyInit | null} body
      * @param {ResponseInit} init
      */
-    constructor(body = null, init = {}) {
+    constructor(body = null, init = undefined) {
       const prefix = "Failed to construct 'Response'";
       body = webidl.converters["BodyInit_DOMString?"](body, {
         prefix,
@@ -421,6 +436,11 @@
   }
 
   webidl.configurePrototype(Response);
+  ObjectDefineProperties(Response, {
+    json: { enumerable: true },
+    redirect: { enumerable: true },
+    error: { enumerable: true },
+  });
   const ResponsePrototype = Response.prototype;
   mixinBody(ResponsePrototype, _body, _mimeType);
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -9,7 +9,6 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
-use deno_core::ZeroCopyBuf;
 use socket2::SockRef;
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -69,22 +68,16 @@ where
 
   pub async fn read(
     self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+    data: &mut [u8],
+  ) -> Result<usize, AnyError> {
     let mut rd = self.rd_borrow_mut().await;
-    let nread = rd
-      .read(&mut buf)
-      .try_or_cancel(self.cancel_handle())
-      .await?;
-    Ok((nread, buf))
+    let nread = rd.read(data).try_or_cancel(self.cancel_handle()).await?;
+    Ok(nread)
   }
 
-  pub async fn write(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  pub async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
     let mut wr = self.wr_borrow_mut().await;
-    let nwritten = wr.write(&buf).await?;
+    let nwritten = wr.write(data).await?;
     Ok(nwritten)
   }
 
@@ -99,19 +92,11 @@ pub type TcpStreamResource =
   FullDuplexResource<tcp::OwnedReadHalf, tcp::OwnedWriteHalf>;
 
 impl Resource for TcpStreamResource {
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+
   fn name(&self) -> Cow<str> {
     "tcpStream".into()
-  }
-
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
-  }
-
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
@@ -136,6 +121,7 @@ impl TcpStreamResource {
       .map_socket(Box::new(move |socket| Ok(socket.set_keepalive(keepalive)?)))
   }
 
+  #[allow(clippy::type_complexity)]
   fn map_socket(
     self: Rc<Self>,
     map: Box<dyn FnOnce(SockRef) -> Result<(), AnyError>>,
@@ -160,16 +146,10 @@ pub struct UnixStreamResource;
 
 #[cfg(not(unix))]
 impl UnixStreamResource {
-  pub async fn read(
-    self: Rc<Self>,
-    _buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+  fn read(self: Rc<Self>, _data: &mut [u8]) -> AsyncResult<usize> {
     unreachable!()
   }
-  pub async fn write(
-    self: Rc<Self>,
-    _buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  fn write(self: Rc<Self>, _data: &[u8]) -> AsyncResult<usize> {
     unreachable!()
   }
   pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
@@ -181,19 +161,11 @@ impl UnixStreamResource {
 }
 
 impl Resource for UnixStreamResource {
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+
   fn name(&self) -> Cow<str> {
     "unixStream".into()
-  }
-
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
-  }
-
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {

@@ -1,9 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops::TestingFeaturesEnabled;
 use crate::permissions::create_child_permissions;
 use crate::permissions::ChildPermissionsArg;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
@@ -15,7 +15,6 @@ use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalFutureObj;
 use deno_core::op;
-
 use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -27,24 +26,22 @@ use log::debug;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::atomic::AtomicI32;
 use std::sync::Arc;
 
 pub struct CreateWebWorkerArgs {
   pub name: String,
   pub worker_id: WorkerId,
-  pub parent_permissions: Permissions,
-  pub permissions: Permissions,
+  pub parent_permissions: PermissionsContainer,
+  pub permissions: PermissionsContainer,
   pub main_module: ModuleSpecifier,
   pub worker_type: WebWorkerType,
-  pub maybe_exit_code: Option<Arc<AtomicI32>>,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
   + Sync
   + Send;
 
-pub type PreloadModuleCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<WebWorker, AnyError>>
+pub type WorkerEventCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<WebWorker, AnyError>>
   + Sync
   + Send;
 
@@ -53,17 +50,16 @@ pub type PreloadModuleCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<W
 /// because `GothamState` used in `OpState` overrides
 /// value if type aliases have the same underlying type
 #[derive(Clone)]
-pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
+struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 
 #[derive(Clone)]
-pub struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
+struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
 
-/// A holder for callback that can used to preload some modules into a WebWorker
-/// before actual worker code is executed. It's a struct instead of a type
-/// because `GothamState` used in `OpState` overrides
-/// value if type aliases have the same underlying type
 #[derive(Clone)]
-pub struct PreloadModuleCbHolder(Arc<PreloadModuleCb>);
+struct PreloadModuleCbHolder(Arc<WorkerEventCb>);
+
+#[derive(Clone)]
+struct PreExecuteModuleCbHolder(Arc<WorkerEventCb>);
 
 pub struct WorkerThread {
   worker_handle: WebWorkerHandle,
@@ -94,10 +90,11 @@ pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
 
 pub fn init(
   create_web_worker_cb: Arc<CreateWebWorkerCb>,
-  preload_module_cb: Arc<PreloadModuleCb>,
+  preload_module_cb: Arc<WorkerEventCb>,
+  pre_execute_module_cb: Arc<WorkerEventCb>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder("deno_worker_host")
     .state(move |state| {
       state.put::<WorkersTable>(WorkersTable::default());
       state.put::<WorkerId>(WorkerId::default());
@@ -108,6 +105,9 @@ pub fn init(
       let preload_module_cb_holder =
         PreloadModuleCbHolder(preload_module_cb.clone());
       state.put::<PreloadModuleCbHolder>(preload_module_cb_holder);
+      let pre_execute_module_cb_holder =
+        PreExecuteModuleCbHolder(pre_execute_module_cb.clone());
+      state.put::<PreExecuteModuleCbHolder>(pre_execute_module_cb_holder);
       let format_js_error_fn_holder =
         FormatJsErrorFnHolder(format_js_error_fn.clone());
       state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
@@ -163,30 +163,30 @@ fn op_create_worker(
   if args.permissions.is_some() {
     super::check_unstable(state, "Worker.deno.permissions");
   }
-  let parent_permissions = state.borrow_mut::<Permissions>();
+  let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
-    create_child_permissions(parent_permissions, child_permissions_arg)?
+    let mut parent_permissions = parent_permissions.0.lock();
+    let perms =
+      create_child_permissions(&mut parent_permissions, child_permissions_arg)?;
+    PermissionsContainer::new(perms)
   } else {
     parent_permissions.clone()
   };
   let parent_permissions = parent_permissions.clone();
-  // `try_borrow` here, because worker might have been started without
-  // access to `Deno` namespace.
-  // TODO(bartlomieju): can a situation happen when parent doesn't
-  // have access to `exit_code` but the child does?
-  let maybe_exit_code = state.try_borrow::<Arc<AtomicI32>>().cloned();
   let worker_id = state.take::<WorkerId>();
   let create_web_worker_cb = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb.clone());
   let preload_module_cb = state.take::<PreloadModuleCbHolder>();
   state.put::<PreloadModuleCbHolder>(preload_module_cb.clone());
+  let pre_execute_module_cb = state.take::<PreExecuteModuleCbHolder>();
+  state.put::<PreExecuteModuleCbHolder>(pre_execute_module_cb.clone());
   let format_js_error_fn = state.take::<FormatJsErrorFnHolder>();
   state.put::<FormatJsErrorFnHolder>(format_js_error_fn.clone());
   state.put::<WorkerId>(worker_id.next().unwrap());
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
-  let worker_name = args_name.unwrap_or_else(|| "".to_string());
+  let worker_name = args_name.unwrap_or_default();
 
   let (handle_sender, handle_receiver) = std::sync::mpsc::sync_channel::<
     Result<SendableWebWorkerHandle, AnyError>,
@@ -211,7 +211,6 @@ fn op_create_worker(
         permissions: worker_permissions,
         main_module: module_specifier.clone(),
         worker_type,
-        maybe_exit_code,
       });
 
     // Send thread safe handle from newly created worker to host thread
@@ -227,6 +226,7 @@ fn op_create_worker(
       module_specifier,
       maybe_source_code,
       preload_module_cb.0,
+      pre_execute_module_cb.0,
       format_js_error_fn.0,
     )
   })?;

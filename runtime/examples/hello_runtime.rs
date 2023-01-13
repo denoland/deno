@@ -1,10 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::FsModuleLoader;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
@@ -22,7 +22,7 @@ async fn main() -> Result<(), AnyError> {
   let create_web_worker_cb = Arc::new(|_| {
     todo!("Web workers are not supported in the example");
   });
-  let web_worker_preload_module_cb = Arc::new(|_| {
+  let web_worker_event_cb = Arc::new(|_| {
     todo!("Web workers are not supported in the example");
   });
 
@@ -32,6 +32,7 @@ async fn main() -> Result<(), AnyError> {
       cpu_count: 1,
       debug_flag: false,
       enable_testing_features: false,
+      locale: deno_core::v8::icu::get_language_tag(),
       location: None,
       no_color: false,
       is_tty: false,
@@ -39,19 +40,26 @@ async fn main() -> Result<(), AnyError> {
       ts_version: "x".to_string(),
       unstable: false,
       user_agent: "hello_runtime".to_string(),
+      inspect: false,
     },
     extensions: vec![],
+    extensions_with_js: vec![],
+    startup_snapshot: None,
     unsafely_ignore_certificate_errors: None,
     root_cert_store: None,
     seed: None,
     source_map_getter: None,
     format_js_error_fn: None,
-    web_worker_preload_module_cb,
+    web_worker_preload_module_cb: web_worker_event_cb.clone(),
+    web_worker_pre_execute_module_cb: web_worker_event_cb,
     create_web_worker_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
+    should_wait_for_inspector_session: false,
     module_loader,
+    npm_resolver: None,
     get_error_class_fn: Some(&get_error_class_name),
+    cache_storage_dir: None,
     origin_storage_dir: None,
     blob_store: BlobStore::default(),
     broadcast_channel: InMemoryBroadcastChannel::default(),
@@ -63,7 +71,7 @@ async fn main() -> Result<(), AnyError> {
   let js_path =
     Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/hello_runtime.js");
   let main_module = deno_core::resolve_path(&js_path.to_string_lossy())?;
-  let permissions = Permissions::allow_all();
+  let permissions = PermissionsContainer::allow_all();
 
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),

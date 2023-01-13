@@ -1,15 +1,17 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
+/** @category Broadcast Channel */
 interface BroadcastChannelEventMap {
   "message": MessageEvent;
   "messageerror": MessageEvent;
 }
 
+/** @category Broadcast Channel */
 interface BroadcastChannel extends EventTarget {
   /**
    * Returns the channel name (as passed to the constructor).
@@ -49,6 +51,7 @@ interface BroadcastChannel extends EventTarget {
   ): void;
 }
 
+/** @category Broadcast Channel */
 declare var BroadcastChannel: {
   prototype: BroadcastChannel;
   new (name: string): BroadcastChannel;

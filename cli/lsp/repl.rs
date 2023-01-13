@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 
@@ -74,6 +74,7 @@ impl ReplLanguageServer {
           window: None,
           general: None,
           experimental: None,
+          offset_encoding: None,
         },
         trace: None,
         workspace_folders: None,
@@ -145,11 +146,18 @@ impl ReplLanguageServer {
       .ok()
       .unwrap_or_default();
 
-    let items = match response {
+    let mut items = match response {
       Some(CompletionResponse::Array(items)) => items,
       Some(CompletionResponse::List(list)) => list.items,
       None => Vec::new(),
     };
+    items.sort_by_key(|item| {
+      if let Some(sort_text) = &item.sort_text {
+        sort_text.clone()
+      } else {
+        item.label.clone()
+      }
+    });
     items
       .into_iter()
       .filter_map(|item| {
@@ -280,6 +288,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     cache: None,
     import_map: None,
     code_lens: Default::default(),
+    inlay_hints: Default::default(),
     internal_debug: false,
     lint: false,
     tls_certificate: None,

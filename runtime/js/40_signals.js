@@ -1,16 +1,19 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const {
+    SafeSetIterator,
     Set,
+    SetPrototypeDelete,
     SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
 
   function bindSignal(signo) {
-    return core.opSync("op_signal_bind", signo);
+    return ops.op_signal_bind(signo);
   }
 
   function pollSignal(rid) {
@@ -20,7 +23,7 @@
   }
 
   function unbindSignal(rid) {
-    core.opSync("op_signal_unbind", rid);
+    ops.op_signal_unbind(rid);
   }
 
   // Stores signal listeners and resource data. This has type of
@@ -59,7 +62,7 @@
     checkSignalListenerType(listener);
 
     const sigData = getSignalData(signo);
-    sigData.listeners.delete(listener);
+    SetPrototypeDelete(sigData.listeners, listener);
 
     if (sigData.listeners.size === 0 && sigData.rid) {
       unbindSignal(sigData.rid);
@@ -72,7 +75,7 @@
       if (await pollSignal(sigData.rid)) {
         return;
       }
-      for (const listener of sigData.listeners) {
+      for (const listener of new SafeSetIterator(sigData.listeners)) {
         listener();
       }
     }

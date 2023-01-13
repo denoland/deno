@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Error;
 use deno_core::op;
@@ -18,9 +18,10 @@ use deno_core::*;
 type Task = Box<dyn FnOnce()>;
 
 fn main() {
-  let my_ext = Extension::builder()
+  let my_ext = Extension::builder("my_ext")
     .ops(vec![op_schedule_task::decl()])
-    .event_loop_middleware(|state, cx| {
+    .event_loop_middleware(|state_rc, cx| {
+      let mut state = state_rc.borrow_mut();
       let recv = state.borrow_mut::<mpsc::UnboundedReceiver<Task>>();
       let mut ref_loop = false;
       while let Poll::Ready(Some(call)) = recv.poll_next_unpin(cx) {
@@ -51,11 +52,11 @@ fn main() {
   let future = async move {
     // Schedule 10 tasks.
     js_runtime
-    .execute_script(
-      "<usage>", 
-      r#"for (let i = 1; i <= 10; i++) Deno.core.opSync("op_schedule_task", i);"#
-    )
-    .unwrap();
+      .execute_script(
+        "<usage>",
+        r#"for (let i = 1; i <= 10; i++) Deno.core.ops.op_schedule_task(i);"#,
+      )
+      .unwrap();
     js_runtime.run_event_loop(false).await
   };
   runtime.block_on(future).unwrap();

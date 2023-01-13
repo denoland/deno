@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   buildMode,
   getPrebuiltToolPath,
@@ -18,15 +18,19 @@ async function dlint() {
     "*.ts",
     ":!:.github/mtime_cache/action.js",
     ":!:cli/tests/testdata/swc_syntax_error.ts",
-    ":!:cli/tests/testdata/038_checkjs.js",
     ":!:cli/tests/testdata/error_008_checkjs.js",
-    ":!:cli/bench/node*.js",
+    ":!:cli/bench/http/node*.js",
+    ":!:cli/bench/testdata/npm/*",
     ":!:cli/bench/testdata/express-router.js",
+    ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
-    ":!:cli/dts/**",
+    ":!:cli/tsc/dts/**",
     ":!:cli/tests/testdata/encoding/**",
     ":!:cli/tests/testdata/error_syntax.js",
+    ":!:cli/tests/testdata/fmt/**",
+    ":!:cli/tests/testdata/npm/**",
     ":!:cli/tests/testdata/lint/**",
+    ":!:cli/tests/testdata/run/**",
     ":!:cli/tests/testdata/tsc/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
@@ -39,12 +43,14 @@ async function dlint() {
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
-    const { status } = await Deno.spawn(execPath, {
+    const cmd = new Deno.Command(execPath, {
       args: ["run", "--config=" + configFile, ...chunk],
       stdout: "inherit",
       stderr: "inherit",
     });
-    if (!status.success) {
+    const { code } = await cmd.output();
+
+    if (code > 0) {
       throw new Error("dlint failed");
     }
   }
@@ -70,12 +76,14 @@ async function dlintPreferPrimordials() {
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
-    const { status } = await Deno.spawn(execPath, {
+    const cmd = new Deno.Command(execPath, {
       args: ["run", "--rule", "prefer-primordials", ...chunk],
       stdout: "inherit",
       stderr: "inherit",
     });
-    if (!status.success) {
+    const { code } = await cmd.output();
+
+    if (code > 0) {
       throw new Error("prefer-primordials failed");
     }
   }
@@ -107,19 +115,19 @@ async function clippy() {
     cmd.push("--release");
   }
 
-  const { status } = await Deno.spawn("cargo", {
+  const cargoCmd = new Deno.Command("cargo", {
     args: [
       ...cmd,
       "--",
       "-D",
-      "clippy::all",
-      "-D",
-      "clippy::await_holding_refcell_ref",
+      "warnings",
     ],
     stdout: "inherit",
     stderr: "inherit",
   });
-  if (!status.success) {
+  const { code } = await cargoCmd.output();
+
+  if (code > 0) {
     throw new Error("clippy failed");
   }
 }

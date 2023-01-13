@@ -48,4 +48,4 @@ run => ./test/allow_none.ts:[WILDCARD]
 ffi => ./test/allow_none.ts:[WILDCARD]
 hrtime => ./test/allow_none.ts:[WILDCARD]
 
-test result: FAILED. 0 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+FAILED | 0 passed | 7 failed [WILDCARD]

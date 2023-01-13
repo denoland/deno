@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -52,6 +52,8 @@ fn main() {
     println!("x = {}", x);
   }
 
+  // SAFETY: all isolates have been destroyed, so we can now safely let V8 clean
+  // up its resources.
   unsafe {
     v8::V8::dispose();
   }

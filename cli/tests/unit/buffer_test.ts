@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
@@ -445,4 +445,17 @@ Deno.test(function testBufferBytesCopyFalseGrowExactBytes() {
 
   assertEquals(actualBytes.byteLength, bufSize);
   assertEquals(actualBytes.buffer.byteLength, actualBytes.byteLength);
+});
+
+Deno.test(function testThrowsErrorWhenBufferExceedsMaxLength() {
+  const kStringMaxLengthPlusOne = 536870888 + 1;
+  const bytes = new Uint8Array(kStringMaxLengthPlusOne);
+
+  assertThrows(
+    () => {
+      new TextDecoder().decode(bytes);
+    },
+    TypeError,
+    "buffer exceeds maximum length",
+  );
 });

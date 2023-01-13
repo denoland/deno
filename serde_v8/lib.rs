@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 mod de;
 mod error;
 mod keys;
@@ -16,6 +16,7 @@ pub use magic::bytestring::ByteString;
 pub use magic::detached_buffer::DetachedBuffer;
 pub use magic::string_or_buffer::StringOrBuffer;
 pub use magic::u16string::U16String;
+pub use magic::Global;
 pub use magic::Value;
 pub use ser::{to_v8, Serializer};
 pub use serializable::{Serializable, SerializablePkg};

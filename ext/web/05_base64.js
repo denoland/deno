@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -10,9 +10,13 @@
 
 ((window) => {
   const core = Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
-  const { TypeError } = window.__bootstrap.primordials;
+  const {
+    ObjectPrototypeIsPrototypeOf,
+    TypeErrorPrototype,
+  } = window.__bootstrap.primordials;
 
   /**
    * @param {string} data
@@ -26,9 +30,9 @@
       context: "Argument 1",
     });
     try {
-      return core.opSync("op_base64_atob", data);
+      return ops.op_base64_atob(data);
     } catch (e) {
-      if (e instanceof TypeError) {
+      if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
         throw new DOMException(
           "Failed to decode base64: invalid character",
           "InvalidCharacterError",
@@ -50,9 +54,9 @@
       context: "Argument 1",
     });
     try {
-      return core.opSync("op_base64_btoa", data);
+      return ops.op_base64_btoa(data);
     } catch (e) {
-      if (e instanceof TypeError) {
+      if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
         throw new DOMException(
           "The string to be encoded contains characters outside of the Latin1 range.",
           "InvalidCharacterError",

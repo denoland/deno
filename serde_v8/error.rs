@@ -1,11 +1,12 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use std::fmt::{self, Display};
 
 use serde::{de, ser};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum Error {
   Message(String),
 

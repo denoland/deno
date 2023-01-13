@@ -1,9 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 

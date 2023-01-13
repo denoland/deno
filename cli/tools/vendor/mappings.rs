@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -13,7 +13,8 @@ use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_graph::Resolved;
 
-use crate::fs_util::path_with_stem_suffix;
+use crate::util::path::path_with_stem_suffix;
+use crate::util::path::relative_specifier;
 
 use super::specifiers::dir_name_for_root;
 use super::specifiers::get_unique_path;
@@ -28,7 +29,6 @@ pub struct ProxiedModule {
 
 /// Constructs and holds the remote specifier to local path mappings.
 pub struct Mappings {
-  output_dir: ModuleSpecifier,
   mappings: HashMap<ModuleSpecifier, PathBuf>,
   base_specifiers: Vec<ModuleSpecifier>,
   proxies: HashMap<ModuleSpecifier, ProxiedModule>,
@@ -104,15 +104,10 @@ impl Mappings {
     }
 
     Ok(Self {
-      output_dir: ModuleSpecifier::from_directory_path(output_dir).unwrap(),
       mappings,
       base_specifiers,
       proxies,
     })
-  }
-
-  pub fn output_dir(&self) -> &ModuleSpecifier {
-    &self.output_dir
   }
 
   pub fn local_uri(&self, specifier: &ModuleSpecifier) -> ModuleSpecifier {
@@ -138,7 +133,6 @@ impl Mappings {
       self
         .mappings
         .get(specifier)
-        .as_ref()
         .unwrap_or_else(|| {
           panic!("Could not find local path for {}", specifier)
         })
@@ -146,43 +140,14 @@ impl Mappings {
     }
   }
 
-  pub fn relative_path(
-    &self,
-    from: &ModuleSpecifier,
-    to: &ModuleSpecifier,
-  ) -> String {
-    let mut from = self.local_uri(from);
-    let to = self.local_uri(to);
-
-    // workaround using parent directory until https://github.com/servo/rust-url/pull/754 is merged
-    if !from.path().ends_with('/') {
-      let local_path = self.local_path(&from);
-      from = ModuleSpecifier::from_directory_path(local_path.parent().unwrap())
-        .unwrap();
-    }
-
-    // workaround for url crate not adding a trailing slash for a directory
-    // it seems to be fixed once a version greater than 2.2.2 is released
-    let is_dir = to.path().ends_with('/');
-    let mut text = from.make_relative(&to).unwrap();
-    if is_dir && !text.ends_with('/') && to.query().is_none() {
-      text.push('/');
-    }
-    text
-  }
-
   pub fn relative_specifier_text(
     &self,
     from: &ModuleSpecifier,
     to: &ModuleSpecifier,
   ) -> String {
-    let relative_path = self.relative_path(from, to);
-
-    if relative_path.starts_with("../") || relative_path.starts_with("./") {
-      relative_path
-    } else {
-      format!("./{}", relative_path)
-    }
+    let from = self.local_uri(from);
+    let to = self.local_uri(to);
+    relative_specifier(&from, &to).unwrap()
   }
 
   pub fn base_specifiers(&self) -> &Vec<ModuleSpecifier> {

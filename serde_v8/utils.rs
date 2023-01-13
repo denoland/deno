@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use std::sync::Once;
 
 pub fn js_exec<'s>(
@@ -17,6 +17,7 @@ pub fn v8_init() {
 }
 
 pub fn v8_shutdown() {
+  // SAFETY: this is safe, because all isolates have been shut down already.
   unsafe {
     v8::V8::dispose();
   }

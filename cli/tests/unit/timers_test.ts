@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -82,6 +82,27 @@ Deno.test(async function timeoutEvalNoScopeLeak() {
   const error = await global.globalPromise;
   assertEquals(error.name, "ReferenceError");
   Reflect.deleteProperty(global, "globalPromise");
+});
+
+Deno.test(async function evalPrimordial() {
+  const global = globalThis as unknown as {
+    globalPromise: ReturnType<typeof deferred>;
+  };
+  global.globalPromise = deferred();
+  const originalEval = globalThis.eval;
+  let wasCalled = false;
+  globalThis.eval = (argument) => {
+    wasCalled = true;
+    return originalEval(argument);
+  };
+  setTimeout(
+    "globalThis.globalPromise.resolve();" as unknown as () => void,
+    0,
+  );
+  await global.globalPromise;
+  assert(!wasCalled);
+  Reflect.deleteProperty(global, "globalPromise");
+  globalThis.eval = originalEval;
 });
 
 Deno.test(async function timeoutArgs() {
@@ -215,7 +236,7 @@ Deno.test(async function callbackTakesLongerThanInterval() {
   const interval = setInterval(() => {
     if (timeEndOfFirstCallback === undefined) {
       // First callback
-      Deno.sleepSync(300);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
       timeEndOfFirstCallback = Date.now();
     } else {
       // Second callback
@@ -237,7 +258,7 @@ Deno.test(async function clearTimeoutAfterNextTimerIsDue1() {
   }, 300);
 
   const interval = setInterval(() => {
-    Deno.sleepSync(400);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400);
     // Both the interval and the timeout's due times are now in the past.
     clearInterval(interval);
   }, 100);
@@ -255,7 +276,7 @@ Deno.test(async function clearTimeoutAfterNextTimerIsDue2() {
     promise.resolve();
   }, 200);
 
-  Deno.sleepSync(300);
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
   // Both of the timeouts' due times are now in the past.
   clearTimeout(timeout1);
 
@@ -530,52 +551,6 @@ Deno.test(async function timerIgnoresDateOverride() {
   }
   assertEquals(hasThrown, 1);
 });
-
-Deno.test({ permissions: { hrtime: true } }, function sleepSync() {
-  const start = performance.now();
-  Deno.sleepSync(10);
-  const after = performance.now();
-  assert(after - start >= 10);
-});
-
-Deno.test(
-  { permissions: { hrtime: true } },
-  async function sleepSyncShorterPromise() {
-    const perf = performance;
-    const short = 5;
-    const long = 10;
-
-    const start = perf.now();
-    const p = delay(short).then(() => {
-      const after = perf.now();
-      // pending promises should resolve after the main thread comes out of sleep
-      assert(after - start >= long);
-    });
-    Deno.sleepSync(long);
-
-    await p;
-  },
-);
-
-Deno.test(
-  { permissions: { hrtime: true } },
-  async function sleepSyncLongerPromise() {
-    const perf = performance;
-    const short = 5;
-    const long = 10;
-
-    const start = perf.now();
-    const p = delay(long).then(() => {
-      const after = perf.now();
-      // sleeping for less than the duration of a promise should have no impact
-      // on the resolution of that promise
-      assert(after - start >= long);
-    });
-    Deno.sleepSync(short);
-
-    await p;
-  },
-);
 
 Deno.test({
   name: "unrefTimer",

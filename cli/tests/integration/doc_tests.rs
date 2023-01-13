@@ -1,16 +1,36 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
+use test_util as util;
+use test_util::TempDir;
+use util::assert_contains;
 
 itest!(deno_doc_builtin {
   args: "doc",
-  output: "deno_doc_builtin.out",
+  output: "doc/deno_doc_builtin.out",
 });
 
-itest!(deno_doc {
-  args: "doc deno_doc.ts",
-  output: "deno_doc.out",
-});
+#[test]
+fn deno_doc() {
+  let dir = TempDir::new();
+  // try this twice to ensure it works with the cache
+  for _ in 0..2 {
+    let output = util::deno_cmd_with_deno_dir(&dir)
+      .current_dir(util::testdata_path())
+      .arg("doc")
+      .arg("doc/deno_doc.ts")
+      .env("NO_COLOR", "1")
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    assert_contains!(
+      std::str::from_utf8(&output.stdout).unwrap(),
+      "function foo"
+    );
+  }
+}
 
 itest!(deno_doc_import_map {
   args: "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
@@ -34,8 +54,9 @@ itest!(deno_doc_types_header {
 });
 
 itest!(_060_deno_doc_displays_all_overloads_in_details_view {
-  args: "doc 060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
-  output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
+  args:
+    "doc doc/060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
+  output: "doc/060_deno_doc_displays_all_overloads_in_details_view.ts.out",
 });
 
 itest!(deno_doc_types_header_direct {

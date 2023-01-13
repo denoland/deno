@@ -1,5 +1,5 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-use serde::Deserialize;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use serde::{Deserialize, Deserializer};
 
 use serde_v8::utils::{js_exec, v8_do};
 use serde_v8::ByteString;
@@ -90,8 +90,10 @@ detest!(de_option_undefined, Option<bool>, "undefined", None);
 detest!(de_unit_null, (), "null", ());
 detest!(de_unit_undefined, (), "undefined", ());
 detest!(de_bool, bool, "true", true);
+detest!(de_char, char, "'é'", 'é');
 detest!(de_u64, u64, "32", 32);
 detest!(de_string, String, "'Hello'", "Hello".to_owned());
+detest!(de_vec_empty, Vec<u64>, "[]", vec![0; 0]);
 detest!(de_vec_u64, Vec<u64>, "[1,2,3,4,5]", vec![1, 2, 3, 4, 5]);
 detest!(
   de_vec_str,
@@ -104,6 +106,18 @@ detest!(
   (u64, bool, ()),
   "[123, true, null]",
   (123, true, ())
+);
+defail!(
+  de_tuple_wrong_len_short,
+  (u64, bool, ()),
+  "[123, true]",
+  |e| e == Err(Error::LengthMismatch)
+);
+defail!(
+  de_tuple_wrong_len_long,
+  (u64, bool, ()),
+  "[123, true, null, 'extra']",
+  |e| e == Err(Error::LengthMismatch)
 );
 detest!(
   de_mathop,
@@ -118,8 +132,11 @@ detest!(
 
 // Unit enums
 detest!(de_enum_unit_a, EnumUnit, "'A'", EnumUnit::A);
+detest!(de_enum_unit_so_a, EnumUnit, "new String('A')", EnumUnit::A);
 detest!(de_enum_unit_b, EnumUnit, "'B'", EnumUnit::B);
+detest!(de_enum_unit_so_b, EnumUnit, "new String('B')", EnumUnit::B);
 detest!(de_enum_unit_c, EnumUnit, "'C'", EnumUnit::C);
+detest!(de_enum_unit_so_c, EnumUnit, "new String('C')", EnumUnit::C);
 
 // Enums with payloads (tuples & struct)
 detest!(
@@ -175,6 +192,29 @@ fn de_map() {
 }
 
 #[test]
+fn de_obj_with_numeric_keys() {
+  dedo(
+    r#"({
+  lines: {
+    100: {
+      unit: "m"
+    },
+    200: {
+      unit: "cm"
+    }
+  }
+})"#,
+    |scope, v| {
+      let json: serde_json::Value = serde_v8::from_v8(scope, v).unwrap();
+      assert_eq!(
+        json.to_string(),
+        r#"{"lines":{"100":{"unit":"m"},"200":{"unit":"cm"}}}"#
+      );
+    },
+  )
+}
+
+#[test]
 fn de_string_or_buffer() {
   dedo("'hello'", |scope, v| {
     let sob: serde_v8::StringOrBuffer = serde_v8::from_v8(scope, v).unwrap();
@@ -221,6 +261,63 @@ fn de_buffers() {
       assert_eq!(&*buf, &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
     },
   );
+}
+
+// Structs
+#[derive(Debug, PartialEq, Deserialize)]
+struct StructUnit;
+
+#[derive(Debug, PartialEq)]
+struct StructPayload {
+  a: u64,
+  b: u64,
+}
+
+struct StructVisitor;
+
+impl<'de> serde::de::Visitor<'de> for StructVisitor {
+  type Value = StructPayload;
+  fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    formatter.write_str("struct StructPayload")
+  }
+  fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+  where
+    A: serde::de::MapAccess<'de>,
+  {
+    let mut payload = StructPayload { a: 0, b: 0 };
+    while let Some(key) = map.next_key::<String>()? {
+      match key.as_ref() {
+        "a" => payload.a = map.next_value()?,
+        "b" => payload.b = map.next_value()?,
+        f => panic!("Unknown field {}", f),
+      }
+    }
+    Ok(payload)
+  }
+}
+
+detest!(de_unit_struct, StructUnit, "'StructUnit'", StructUnit);
+
+#[test]
+fn de_struct() {
+  dedo("({ a: 1, b: 2 })", |scope, v| {
+    let mut de = serde_v8::Deserializer::new(scope, v, None);
+    let payload = de
+      .deserialize_struct("StructPayload", &[], StructVisitor)
+      .unwrap();
+    assert_eq!(payload, StructPayload { a: 1, b: 2 })
+  })
+}
+
+#[test]
+fn de_struct_hint() {
+  dedo("({ a: 1, b: 2 })", |scope, v| {
+    let mut de = serde_v8::Deserializer::new(scope, v, None);
+    let payload = de
+      .deserialize_struct("StructPayload", &["a", "b"], StructVisitor)
+      .unwrap();
+    assert_eq!(payload, StructPayload { a: 1, b: 2 })
+  })
 }
 
 ////
@@ -281,29 +378,35 @@ detest!(
   de_json_object,
   serde_json::Value,
   "({a: 1, b: 'hello', c: true})",
-  serde_json::Value::Object(
-    vec![
-      (
-        "a".to_string(),
-        serde_json::Value::Number(serde_json::Number::from(1)),
-      ),
-      (
-        "b".to_string(),
-        serde_json::Value::String("hello".to_string()),
-      ),
-      ("c".to_string(), serde_json::Value::Bool(true),),
-    ]
-    .drain(..)
-    .collect()
-  )
+  serde_json::json!({
+    "a": 1,
+    "b": "hello",
+    "c": true,
+  })
 );
-detest!(de_bigint_u64, u64, "BigInt(2**59)", 1 << 59);
-detest!(de_bigint_i64, i64, "BigInt(-(2**59))", -(1 << 59));
+detest!(
+  de_json_object_from_map,
+  serde_json::Value,
+  "(new Map([['a', 1], ['b', 'hello'], ['c', true]]))",
+  serde_json::json!({
+    "a": 1,
+    "b": "hello",
+    "c": true,
+  })
+);
+// TODO: this is not optimal, ideally we'd get an array of [1,2,3] instead.
+// Fixing that will require exposing Set::AsArray in the v8 bindings.
+detest!(
+  de_json_object_from_set,
+  serde_json::Value,
+  "(new Set([1, 2, 3]))",
+  serde_json::json!({})
+);
 
 defail!(defail_struct, MathOp, "123", |e| e
   == Err(Error::ExpectedObject));
 
-#[derive(PartialEq, Debug, Deserialize)]
+#[derive(Eq, PartialEq, Debug, Deserialize)]
 pub struct SomeThing {
   pub a: String,
   #[serde(default)]
@@ -323,6 +426,25 @@ detest!(de_bstr, ByteString, "'hello'", "hello".into());
 defail!(defail_bstr, ByteString, "'👋bye'", |e| e
   == Err(Error::ExpectedLatin1));
 
+#[derive(Eq, PartialEq, Debug, Deserialize)]
+pub struct StructWithBytes {
+  #[serde(with = "serde_bytes")]
+  a: Vec<u8>,
+  #[serde(with = "serde_bytes")]
+  b: Vec<u8>,
+  #[serde(with = "serde_bytes")]
+  c: Vec<u8>,
+}
+detest!(
+  de_struct_with_bytes,
+  StructWithBytes,
+  "({ a: new Uint8Array([1, 2]), b: (new Uint8Array([3 , 4])).buffer, c: (new Uint32Array([0])).buffer})",
+  StructWithBytes {
+    a: vec![1, 2],
+    b: vec![3, 4],
+    c: vec![0, 0, 0, 0],
+  }
+);
 detest!(
   de_u16str,
   U16String,

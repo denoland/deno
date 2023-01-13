@@ -1,8 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::fs;
 use std::process::Command;
 use test_util as util;
+use test_util::assert_contains;
+use test_util::assert_ends_with;
 use test_util::TempDir;
 
 #[test]
@@ -11,9 +13,13 @@ fn install_basic() {
   let temp_dir = TempDir::new();
   let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
 
+  // ensure a lockfile doesn't get created or updated locally
+  temp_dir.write("deno.json", "{}");
+
   let status = util::deno_cmd()
     .current_dir(temp_dir.path())
     .arg("install")
+    .arg("--check")
     .arg("--name")
     .arg("echo_test")
     .arg("http://localhost:4545/echo.ts")
@@ -28,6 +34,9 @@ fn install_basic() {
     .unwrap();
   assert!(status.success());
 
+  // no lockfile should be created locally
+  assert!(!temp_dir.path().join("deno.lock").exists());
+
   let mut file_path = temp_dir.path().join(".deno/bin/echo_test");
   assert!(file_path.exists());
 
@@ -35,18 +44,43 @@ fn install_basic() {
     file_path = file_path.with_extension("cmd");
   }
 
-  let content = fs::read_to_string(file_path).unwrap();
+  let content = fs::read_to_string(&file_path).unwrap();
   // ensure there's a trailing newline so the shell script can be
   // more versatile.
   assert_eq!(content.chars().last().unwrap(), '\n');
 
   if cfg!(windows) {
-    assert!(
-      content.contains(r#""run" "--check" "http://localhost:4545/echo.ts""#)
+    assert_contains!(
+      content,
+      r#""run" "--check" "--no-config" "http://localhost:4545/echo.ts""#
     );
   } else {
-    assert!(content.contains(r#"run --check 'http://localhost:4545/echo.ts'"#));
+    assert_contains!(
+      content,
+      r#"run --check --no-config 'http://localhost:4545/echo.ts'"#
+    );
   }
+
+  // now uninstall
+  let status = util::deno_cmd()
+    .current_dir(temp_dir.path())
+    .arg("uninstall")
+    .arg("echo_test")
+    .envs([
+      ("HOME", temp_dir_str.as_str()),
+      ("USERPROFILE", temp_dir_str.as_str()),
+      ("DENO_INSTALL_ROOT", ""),
+    ])
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+
+  // ensure local lockfile still doesn't exist
+  assert!(!temp_dir.path().join("deno.lock").exists());
+  // ensure uninstall occurred
+  assert!(!file_path.exists());
 }
 
 #[test]
@@ -58,6 +92,7 @@ fn install_custom_dir_env_var() {
   let status = util::deno_cmd()
     .current_dir(util::root_path()) // different cwd
     .arg("install")
+    .arg("--check")
     .arg("--name")
     .arg("echo_test")
     .arg("http://localhost:4545/echo.ts")
@@ -81,11 +116,15 @@ fn install_custom_dir_env_var() {
 
   let content = fs::read_to_string(file_path).unwrap();
   if cfg!(windows) {
-    assert!(
-      content.contains(r#""run" "--check" "http://localhost:4545/echo.ts""#)
+    assert_contains!(
+      content,
+      r#""run" "--check" "--no-config" "http://localhost:4545/echo.ts""#
     );
   } else {
-    assert!(content.contains(r#"run --check 'http://localhost:4545/echo.ts'"#));
+    assert_contains!(
+      content,
+      r#"run --check --no-config 'http://localhost:4545/echo.ts'"#
+    );
   }
 }
 
@@ -122,7 +161,7 @@ fn installer_test_local_module_run() {
     .output()
     .unwrap();
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
-  assert!(stdout_str.ends_with("hello, foo"));
+  assert_ends_with!(stdout_str, "hello, foo");
 }
 
 #[test]
@@ -156,10 +195,10 @@ fn installer_test_remote_module_run() {
     .env("PATH", util::target_dir())
     .output()
     .unwrap();
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("hello, foo"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "hello, foo",
+  );
 }
 
 #[test]
@@ -188,7 +227,7 @@ fn check_local_by_default2() {
   let temp_dir = TempDir::new();
   let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
 
-  let output = util::deno_cmd()
+  let status = util::deno_cmd()
     .current_dir(temp_dir.path())
     .arg("install")
     .arg(util::testdata_path().join("./install/check_local_by_default2.ts"))
@@ -198,13 +237,7 @@ fn check_local_by_default2() {
       ("USERPROFILE", temp_dir_str.as_str()),
       ("DENO_INSTALL_ROOT", ""),
     ])
-    .output()
+    .status()
     .unwrap();
-  assert!(!output.status.success());
-  let stdout = String::from_utf8(output.stdout).unwrap();
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(stdout.is_empty());
-  assert!(stderr.contains(
-    r#"error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'."#
-  ));
+  assert!(status.success());
 }

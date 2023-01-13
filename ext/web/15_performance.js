@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -18,6 +18,7 @@
 
   const { webidl, structuredClone } = window.__bootstrap;
   const consoleInternal = window.__bootstrap.console;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { opNow } = window.__bootstrap.timers;
   const { DOMException } = window.__bootstrap.domException;
 
@@ -327,9 +328,14 @@
   }
   webidl.configurePrototype(PerformanceMeasure);
   const PerformanceMeasurePrototype = PerformanceMeasure.prototype;
-  class Performance {
-    constructor() {
-      webidl.illegalConstructor();
+  class Performance extends EventTarget {
+    constructor(key = null) {
+      if (key != illegalConstructorKey) {
+        webidl.illegalConstructor();
+      }
+
+      super();
+      this[webidl.brand] = webidl.brand;
     }
 
     get timeOrigin() {
@@ -572,12 +578,17 @@
   webidl.configurePrototype(Performance);
   const PerformancePrototype = Performance.prototype;
 
+  webidl.converters["Performance"] = webidl.createInterfaceConverter(
+    "Performance",
+    PerformancePrototype,
+  );
+
   window.__bootstrap.performance = {
     PerformanceEntry,
     PerformanceMark,
     PerformanceMeasure,
     Performance,
-    performance: webidl.createBranded(Performance),
+    performance: new Performance(illegalConstructorKey),
     setTimeOrigin,
   };
 })(this);

@@ -1,50 +1,50 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-
-use crate::itest;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 itest!(_036_import_map_fetch {
   args:
     "cache --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
-  output: "036_import_map_fetch.out",
-});
+    output: "cache/036_import_map_fetch.out",
+  });
 
 itest!(_037_fetch_multiple {
-  args: "cache --reload fetch/test.ts fetch/other.ts",
+  args: "cache --reload --check=all run/fetch/test.ts run/fetch/other.ts",
   http_server: true,
-  output: "037_fetch_multiple.out",
+  output: "cache/037_fetch_multiple.out",
 });
 
 itest!(_095_cache_with_bare_import {
-  args: "cache 095_cache_with_bare_import.ts",
-  output: "095_cache_with_bare_import.ts.out",
+  args: "cache cache/095_cache_with_bare_import.ts",
+  output: "cache/095_cache_with_bare_import.ts.out",
   exit_code: 1,
 });
 
 itest!(cache_extensionless {
-  args: "cache --reload http://localhost:4545/subdir/no_js_ext",
-  output: "cache_extensionless.out",
+  args: "cache --reload --check=all http://localhost:4545/subdir/no_js_ext",
+  output: "cache/cache_extensionless.out",
   http_server: true,
 });
 
 itest!(cache_random_extension {
-  args: "cache --reload http://localhost:4545/subdir/no_js_ext@1.0.0",
-  output: "cache_random_extension.out",
+  args:
+    "cache --reload --check=all http://localhost:4545/subdir/no_js_ext@1.0.0",
+  output: "cache/cache_random_extension.out",
   http_server: true,
 });
 
 itest!(performance_stats {
-  args: "cache --reload --log-level debug 002_hello.ts",
-  output: "performance_stats.out",
+  args: "cache --reload --check=all --log-level debug run/002_hello.ts",
+  output: "cache/performance_stats.out",
 });
 
 itest!(redirect_cache {
   http_server: true,
-  args: "cache --reload http://localhost:4548/subdir/redirects/a.ts",
-  output: "redirect_cache.out",
+  args:
+    "cache --reload --check=all http://localhost:4548/subdir/redirects/a.ts",
+  output: "cache/redirect_cache.out",
 });
 
 itest!(ignore_require {
-  args: "cache --reload --no-check ignore_require.js",
+  args: "cache --reload --no-check cache/ignore_require.js",
   output_str: Some(""),
   exit_code: 0,
 });
@@ -69,7 +69,7 @@ fn relative_home_dir() {
     .arg("cache")
     .arg("--reload")
     .arg("--no-check")
-    .arg("002_hello.ts")
+    .arg("run/002_hello.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -89,5 +89,9 @@ itest!(check_local_by_default2 {
   args: "cache --quiet cache/check_local_by_default2.ts",
   output: "cache/check_local_by_default2.out",
   http_server: true,
-  exit_code: 1,
+});
+
+itest!(json_import {
+  // should not error
+  args: "cache --quiet cache/json_import/main.ts",
 });

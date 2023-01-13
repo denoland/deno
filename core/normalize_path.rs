@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Component;
 use std::path::Path;
@@ -9,6 +9,7 @@ use std::path::PathBuf;
 ///
 /// Taken from Cargo
 /// <https://github.com/rust-lang/cargo/blob/af307a38c20a753ec60f0ad18be5abed3db3c9ac/src/cargo/util/paths.rs#L60-L85>
+#[inline]
 pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
   let mut components = path.as_ref().components().peekable();
   let mut ret =

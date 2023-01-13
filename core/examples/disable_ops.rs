@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 //!  This example shows you how to define ops in Rust and then call them from
 //!  JavaScript.
 
@@ -7,7 +7,7 @@ use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 
 fn main() {
-  let my_ext = Extension::builder()
+  let my_ext = Extension::builder("my_ext")
     .middleware(|op| match op.name {
       "op_print" => op.disable(),
       _ => op,

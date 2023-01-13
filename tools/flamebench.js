@@ -1,16 +1,16 @@
 #!/usr/bin/env -S deno run --unstable --allow-read --allow-run
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { join, ROOT_PATH as ROOT } from "./util.js";
 
 async function bashOut(subcmd) {
-  const { status, stdout } = await Deno.spawn("bash", {
+  const { success, stdout } = await new Deno.Command("bash", {
     args: ["-c", subcmd],
     stdout: "piped",
     stderr: "null",
-  });
+  }).output();
 
   // Check for failure
-  if (!status.success) {
+  if (!success) {
     throw new Error("subcmd failed");
   }
   // Gather output
@@ -20,16 +20,16 @@ async function bashOut(subcmd) {
 }
 
 async function bashThrough(subcmd, opts = {}) {
-  const { status } = await Deno.spawn("bash", {
+  const { success, code } = await new Deno.Command("bash", {
     ...opts,
     args: ["-c", subcmd],
     stdout: "inherit",
     stderr: "inherit",
-  });
+  }).output();
 
   // Exit process on failure
-  if (!status.success) {
-    Deno.exit(status.code);
+  if (!success) {
+    Deno.exit(code);
   }
 }
 

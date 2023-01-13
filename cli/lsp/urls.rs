@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::file_fetcher::map_content_type;
 
@@ -56,7 +56,7 @@ fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
     file_name_str.push('?');
     file_name_str.push_str(query);
   }
-  crate::checksum::gen(&[file_name_str.as_bytes()])
+  crate::util::checksum::gen(&[file_name_str.as_bytes()])
 }
 
 #[derive(Debug, Default)]
@@ -101,7 +101,7 @@ impl LspUrlMap {
         specifier.clone()
       } else {
         let specifier_str = if specifier.scheme() == "asset" {
-          format!("deno:asset{}", specifier.path())
+          format!("deno:/asset{}", specifier.path())
         } else if specifier.scheme() == "data" {
           let data_url = DataUrl::process(specifier.as_str())
             .map_err(|e| uri_error(format!("{:?}", e)))?;

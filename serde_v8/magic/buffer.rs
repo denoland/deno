@@ -1,9 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::sync::Mutex;
 
 use super::transl8::FromV8;
 use super::transl8::ToV8;
@@ -14,7 +13,7 @@ use crate::magic::transl8::impl_magic;
 // allowing us to use a single type for familiarity
 pub enum ZeroCopyBuf {
   FromV8(V8Slice),
-  ToV8(Mutex<Option<Box<[u8]>>>),
+  ToV8(Option<Box<[u8]>>),
   // Variant of the ZeroCopyBuf than is never exposed to the JS.
   // Generally used to pass Vec<u8> backed buffers to resource methods.
   Temp(Vec<u8>),
@@ -30,7 +29,7 @@ impl Debug for ZeroCopyBuf {
 
 impl ZeroCopyBuf {
   pub fn empty() -> Self {
-    ZeroCopyBuf::ToV8(Mutex::new(Some(vec![0_u8; 0].into_boxed_slice())))
+    ZeroCopyBuf::ToV8(Some(vec![0_u8; 0].into_boxed_slice()))
   }
 
   pub fn new_temp(vec: Vec<u8>) -> Self {
@@ -58,7 +57,7 @@ impl Clone for ZeroCopyBuf {
 
 impl AsRef<[u8]> for ZeroCopyBuf {
   fn as_ref(&self) -> &[u8] {
-    &*self
+    self
   }
 }
 
@@ -72,8 +71,8 @@ impl Deref for ZeroCopyBuf {
   type Target = [u8];
   fn deref(&self) -> &[u8] {
     match self {
-      Self::FromV8(buf) => &*buf,
-      Self::Temp(vec) => &*vec,
+      Self::FromV8(buf) => buf,
+      Self::Temp(vec) => vec,
       Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
     }
   }
@@ -91,7 +90,7 @@ impl DerefMut for ZeroCopyBuf {
 
 impl From<Box<[u8]>> for ZeroCopyBuf {
   fn from(buf: Box<[u8]>) -> Self {
-    ZeroCopyBuf::ToV8(Mutex::new(Some(buf)))
+    ZeroCopyBuf::ToV8(Some(buf))
   }
 }
 
@@ -103,7 +102,7 @@ impl From<Vec<u8>> for ZeroCopyBuf {
 
 impl ToV8 for ZeroCopyBuf {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     let buf: Box<[u8]> = match self {
@@ -112,7 +111,7 @@ impl ToV8 for ZeroCopyBuf {
         value.into()
       }
       Self::Temp(_) => unreachable!(),
-      Self::ToV8(x) => x.lock().unwrap().take().expect("ZeroCopyBuf was empty"),
+      Self::ToV8(ref mut x) => x.take().expect("ZeroCopyBuf was empty"),
     };
 
     if buf.is_empty() {
@@ -149,13 +148,9 @@ impl From<ZeroCopyBuf> for bytes::Bytes {
   fn from(zbuf: ZeroCopyBuf) -> bytes::Bytes {
     match zbuf {
       ZeroCopyBuf::FromV8(v) => v.into(),
-      // WARNING(AaronO): potential footgun, but will disappear in future ZeroCopyBuf refactor
-      ZeroCopyBuf::ToV8(v) => v
-        .lock()
-        .unwrap()
-        .take()
-        .expect("ZeroCopyBuf was empty")
-        .into(),
+      ZeroCopyBuf::ToV8(mut v) => {
+        v.take().expect("ZeroCopyBuf was empty").into()
+      }
       ZeroCopyBuf::Temp(v) => v.into(),
     }
   }

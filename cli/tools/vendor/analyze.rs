@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::swc::ast::ExportDefaultDecl;
 use deno_ast::swc::ast::ExportSpecifier;
@@ -25,7 +25,7 @@ struct DefaultExportFinder {
   has_default_export: bool,
 }
 
-impl<'a> Visit for DefaultExportFinder {
+impl Visit for DefaultExportFinder {
   noop_visit_type!();
 
   fn visit_export_default_decl(&mut self, _: &ExportDefaultDecl) {

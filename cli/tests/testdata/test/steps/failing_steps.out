@@ -9,8 +9,8 @@ nested failure ...
           at [WILDCARD]/failing_steps.ts:[WILDCARD]
           [WILDCARD]
     inner 2 ... ok ([WILDCARD])
-  FAILED ([WILDCARD])
-FAILED ([WILDCARD])
+  step 1 ... FAILED ([WILDCARD])
+nested failure ... FAILED ([WILDCARD])
 multiple test step failures ...
   step 1 ... FAILED ([WILDCARD])
     error: Error: Fail.
@@ -23,7 +23,7 @@ multiple test step failures ...
                                                   ^
         at [WILDCARD]/failing_steps.ts:[WILDCARD]
         [WILDCARD]
-FAILED ([WILDCARD])
+multiple test step failures ... FAILED ([WILDCARD])
 failing step in failing test ...
   step 1 ... FAILED ([WILDCARD])
     error: Error: Fail.
@@ -31,19 +31,19 @@ failing step in failing test ...
               ^
         at [WILDCARD]/failing_steps.ts:[WILDCARD]
         at [WILDCARD]
-FAILED ([WILDCARD])
+failing step in failing test ... FAILED ([WILDCARD])
 
  ERRORS 
 
 nested failure => ./test/steps/failing_steps.ts:[WILDCARD]
 error: Error: 1 test step failed.
-    at runTest (deno:runtime/js/40_testing.js:[WILDCARD])
-    at async Object.runTests (deno:runtime/js/40_testing.js:[WILDCARD])
+    at runTest (deno:cli/js/40_testing.js:[WILDCARD])
+    at async runTests (deno:cli/js/40_testing.js:[WILDCARD])
 
 multiple test step failures => ./test/steps/failing_steps.ts:[WILDCARD]
 error: Error: 2 test steps failed.
-    at runTest (deno:runtime/js/40_testing.js:[WILDCARD])
-    at async Object.runTests (deno:runtime/js/40_testing.js:[WILDCARD])
+    at runTest (deno:cli/js/40_testing.js:[WILDCARD])
+    at async runTests (deno:cli/js/40_testing.js:[WILDCARD])
 
 failing step in failing test => ./test/steps/failing_steps.ts:[WILDCARD]
 error: Error: Fail test.
@@ -57,6 +57,6 @@ nested failure => ./test/steps/failing_steps.ts:[WILDCARD]
 multiple test step failures => ./test/steps/failing_steps.ts:[WILDCARD]
 failing step in failing test => ./test/steps/failing_steps.ts:[WILDCARD]
 
-test result: FAILED. 0 passed (1 step); 3 failed (5 steps); 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+FAILED | 0 passed (1 step) | 3 failed (5 steps) ([WILDCARD])
 
 error: Test failed

@@ -1,0 +1,15 @@
+log from nest_imported script
+log from imported script
+log from main
+got load event in event handler (nest_imported)
+got load event in event handler (imported)
+got load event in event handler (main)
+got load event in onload function
+got beforeunload event in event handler (nest_imported)
+got beforeunload event in event handler (imported)
+got beforeunload event in event handler (main)
+got beforeunload event in onbeforeunload function
+got unload event in event handler (nest_imported)
+got unload event in event handler (imported)
+got unload event in event handler (main)
+got unload event in onunload function

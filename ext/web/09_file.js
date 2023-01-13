@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference no-default-lib="true" />
@@ -13,6 +13,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayBufferPrototype,
@@ -93,8 +94,8 @@
 
   /** @param {(BlobReference | Blob)[]} parts */
   async function* toIterator(parts) {
-    for (const part of parts) {
-      yield* part.stream();
+    for (let i = 0; i < parts.length; ++i) {
+      yield* parts[i].stream();
     }
   }
 
@@ -109,7 +110,8 @@
     /** @type {(BlobReference|Blob)[]} */
     const processedParts = [];
     let size = 0;
-    for (const element of parts) {
+    for (let i = 0; i < parts.length; ++i) {
+      const element = parts[i];
       if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, element)) {
         const chunk = new Uint8Array(ArrayBufferPrototypeSlice(element, 0));
         ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
@@ -157,7 +159,9 @@
    * @returns {string[]}
    */
   function getParts(blob, bag = []) {
-    for (const part of blob[_parts]) {
+    const parts = blob[_parts];
+    for (let i = 0; i < parts.length; ++i) {
+      const part = parts[i];
       if (ObjectPrototypeIsPrototypeOf(BlobPrototype, part)) {
         getParts(part, bag);
       } else {
@@ -274,7 +278,9 @@
       const blobParts = [];
       let added = 0;
 
-      for (const part of this[_parts]) {
+      const parts = this[_parts];
+      for (let i = 0; i < parts.length; ++i) {
+        const part = parts[i];
         // don't add the overflow to new blobParts
         if (added >= span) {
           // Could maybe be possible to remove variable `added`
@@ -348,6 +354,7 @@
       const bytes = new Uint8Array(size);
       const partIterator = toIterator(this[_parts]);
       let offset = 0;
+      // deno-lint-ignore prefer-primordials
       for await (const chunk of partIterator) {
         const byteLength = chunk.byteLength;
         if (byteLength > 0) {
@@ -505,7 +512,7 @@
   // A finalization registry to deallocate a blob part when its JS reference is
   // garbage collected.
   const registry = new FinalizationRegistry((uuid) => {
-    core.opSync("op_blob_remove_part", uuid);
+    ops.op_blob_remove_part(uuid);
   });
 
   // TODO(lucacasonato): get a better stream from Rust in BlobReference#stream
@@ -533,7 +540,7 @@
      * @returns {BlobReference}
      */
     static fromUint8Array(data) {
-      const id = core.opSync("op_blob_create_part", data);
+      const id = ops.op_blob_create_part(data);
       return new BlobReference(id, data.byteLength);
     }
 
@@ -548,7 +555,7 @@
      */
     slice(start, end) {
       const size = end - start;
-      const id = core.opSync("op_blob_slice_part", this._id, {
+      const id = ops.op_blob_slice_part(this._id, {
         start,
         len: size,
       });
@@ -588,7 +595,7 @@
    * @returns {Blob | null}
    */
   function blobFromObjectUrl(url) {
-    const blobData = core.opSync("op_blob_from_object_url", url);
+    const blobData = ops.op_blob_from_object_url(url);
     if (blobData === null) {
       return null;
     }
@@ -597,7 +604,8 @@
     const parts = [];
     let totalSize = 0;
 
-    for (const { uuid, size } of blobData.parts) {
+    for (let i = 0; i < blobData.parts.length; ++i) {
+      const { uuid, size } = blobData.parts[i];
       ArrayPrototypePush(parts, new BlobReference(uuid, size));
       totalSize += size;
     }
