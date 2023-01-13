@@ -971,6 +971,17 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/dynamic_module.ts") => {
+      let mut res = Response::new(Body::from(format!(
+        r#"export const time = {};"#,
+        std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+      )));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
     (_, "/echo_accept") => {
       let accept = req.headers().get("accept").map(|v| v.to_str().unwrap());
       let res = Response::new(Body::from(

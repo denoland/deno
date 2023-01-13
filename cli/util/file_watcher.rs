@@ -322,13 +322,13 @@ where
         continue;
       },
       _ = operation_future => {
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
         // TODO(bartlomieju): print exit code here?
         info!(
           "{} {} finished. Restarting on file change...",
           colors::intense_blue("Watcher"),
           job_name,
         );
-        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
       },
     };
 
