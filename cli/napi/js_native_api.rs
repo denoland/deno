@@ -34,7 +34,7 @@ macro_rules! return_status_if_false {
   ($env: expr, $condition: expr, $status: ident) => {
     if !$condition {
       return Err(
-        crate::napi::js_native_api::napi_set_last_error(
+        $crate::napi::js_native_api::napi_set_last_error(
           $env,
           $status,
           0,
@@ -54,7 +54,7 @@ macro_rules! check_new_from_utf8_len {
       ($len == NAPI_AUTO_LENGTH) || $len <= INT_MAX as _,
       napi_invalid_arg
     );
-    return_status_if_false!($env, $str != std::ptr::null(), napi_invalid_arg);
+    return_status_if_false!($env, !$str.is_null(), napi_invalid_arg);
     let string = if $len == NAPI_AUTO_LENGTH {
       let result = std::ffi::CStr::from_ptr($str as *const _).to_str();
       return_status_if_false!($env, result.is_ok(), napi_generic_failure);
@@ -99,13 +99,13 @@ macro_rules! status_call {
 #[macro_export]
 macro_rules! check_arg {
   ($env: expr, $ptr: expr) => {
-    crate::return_status_if_false!($env, !$ptr.is_null(), napi_invalid_arg);
+    $crate::return_status_if_false!($env, !$ptr.is_null(), napi_invalid_arg);
   };
 }
 
 macro_rules! check_arg_option {
   ($env: expr, $opt: expr) => {
-    crate::return_status_if_false!($env, $opt.is_some(), napi_invalid_arg);
+    $crate::return_status_if_false!($env, $opt.is_some(), napi_invalid_arg);
   };
 }
 
