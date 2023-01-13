@@ -129,6 +129,7 @@
     Crypto: util.nonEnumerable(crypto.Crypto),
     SubtleCrypto: util.nonEnumerable(crypto.SubtleCrypto),
     fetch: util.writable(fetch.fetch),
+    EventSource: util.writable(fetch.EventSource),
     performance: util.writable(performance.performance),
     reportError: util.writable(event.reportError),
     setInterval: util.writable(timers.setInterval),
