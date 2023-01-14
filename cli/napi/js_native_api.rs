@@ -44,42 +44,41 @@ macro_rules! return_status_if_false {
   };
 }
 
-#[macro_export]
-macro_rules! check_new_from_utf8_len {
-  ($env: expr, $result: expr, $str: expr, $len: expr) => {
-    return_status_if_false!(
-      $env,
-      ($len == NAPI_AUTO_LENGTH) || $len <= INT_MAX as _,
-      napi_invalid_arg
-    );
-    return_status_if_false!($env, !$str.is_null(), napi_invalid_arg);
-    let string = if $len == NAPI_AUTO_LENGTH {
-      let result = std::ffi::CStr::from_ptr($str as *const _).to_str();
-      return_status_if_false!($env, result.is_ok(), napi_generic_failure);
-      result.unwrap()
-    } else {
-      let string = std::slice::from_raw_parts($str, $len);
-      let result = std::str::from_utf8(string);
-      return_status_if_false!($env, result.is_ok(), napi_generic_failure);
-      result.unwrap()
-    };
-    let env = unsafe { &mut *$env };
-    let result = v8::String::new(&mut env.scope(), string);
-    return_status_if_false!($env, result.is_some(), napi_generic_failure);
-    $result = result.unwrap();
+fn check_new_from_utf8_len<'s>(
+  env: *mut Env,
+  str_: *const c_char,
+  len: usize,
+) -> std::result::Result<v8::Local<'s, v8::String>, Error> {
+  return_status_if_false!(
+    env,
+    (len == NAPI_AUTO_LENGTH) || len <= INT_MAX as _,
+    napi_invalid_arg
+  );
+  return_status_if_false!(env, !str_.is_null(), napi_invalid_arg);
+  let string = if len == NAPI_AUTO_LENGTH {
+    let result = unsafe { std::ffi::CStr::from_ptr(str_ as *const _) }.to_str();
+    return_status_if_false!(env, result.is_ok(), napi_generic_failure);
+    result.unwrap()
+  } else {
+    let string = unsafe { std::slice::from_raw_parts(str_ as *const u8, len) };
+    let result = std::str::from_utf8(string);
+    return_status_if_false!(env, result.is_ok(), napi_generic_failure);
+    result.unwrap()
   };
+  let result = {
+    let env = unsafe { &mut *env };
+    v8::String::new(&mut env.scope(), string)
+  };
+  return_status_if_false!(env, result.is_some(), napi_generic_failure);
+  Ok(result.unwrap())
 }
 
-#[macro_export]
-macro_rules! check_new_from_utf8 {
-  ($env: expr, $str: expr) => {
-    $crate::check_new_from_utf8_len!(
-      $env,
-      $result,
-      $str as *const u8,
-      NAPI_AUTO_LENGTH
-    );
-  };
+#[inline]
+fn check_new_from_utf8<'s>(
+  env: *mut Env,
+  str_: *const c_char,
+) -> std::result::Result<v8::Local<'s, v8::String>, Error> {
+  check_new_from_utf8_len(env, str_, NAPI_AUTO_LENGTH)
 }
 
 #[macro_export]
@@ -395,39 +394,39 @@ fn napi_create_double(
 }
 
 fn set_error_code(
-  scope: &mut v8::HandleScope,
+  env: *mut Env,
   error: v8::Local<v8::Value>,
   code: napi_value,
   code_cstring: *const c_char,
-) -> napi_status {
+) -> Result {
   if code.is_some() || !code_cstring.is_null() {
     let err_object: v8::Local<v8::Object> = error.try_into().unwrap();
 
     let code_value: v8::Local<v8::Value> = if code.is_some() {
-      let mut code_value = napi_value_unchecked(code);
-
-      if !code_value.is_string() {
-        return napi_string_expected;
-      }
-
+      let mut code_value = unsafe { napi_value_unchecked(code) };
+      return_status_if_false!(
+        env,
+        code_value.is_string(),
+        napi_string_expected
+      );
       code_value
     } else {
-      // FIXME(bartlomieju): unsafe unwrap
-      let code_string =
-        unsafe { CStr::from_ptr(code_cstring).to_str().unwrap() };
-      // FIXME(bartlomieju): unsafe unwrap
-      let name = v8::String::new(scope, code_string).unwrap();
+      let name = check_new_from_utf8(env, code_cstring)?;
       name.into()
     };
 
-    let code_key = v8::String::new(scope, "code").unwrap();
+    let mut scope = unsafe { &mut *env }.scope();
+    let code_key = v8::String::new(&mut scope, "code").unwrap();
 
-    if err_object.set(scope, code_key.into(), code_value).is_none() {
-      return napi_generic_failure;
+    if err_object
+      .set(&mut scope, code_key.into(), code_value)
+      .is_none()
+    {
+      return Err(napi_generic_failure.into());
     }
   }
 
-  napi_ok
+  Ok(())
 }
 
 #[napi_sym::napi_sym]
@@ -450,10 +449,11 @@ fn napi_create_error(
       napi_string_expected
     );
 
-    let scope = &mut env.scope();
-    let error_obj =
-      v8::Exception::error(scope, message_value.try_into().unwrap());
-    status_call!(set_error_code(scope, error_obj, code, std::ptr::null()));
+    let error_obj = {
+      let scope = &mut env.scope();
+      v8::Exception::error(scope, message_value.try_into().unwrap())
+    };
+    set_error_code(env, error_obj, code, std::ptr::null())?;
     *result = error_obj.into();
   }
   napi_clear_last_error(env);
@@ -479,10 +479,11 @@ fn napi_create_type_error(
       message_value.is_string(),
       napi_string_expected
     );
-    let scope = &mut env.scope();
-    let error_obj =
-      v8::Exception::type_error(scope, message_value.try_into().unwrap());
-    status_call!(set_error_code(scope, error_obj, code, std::ptr::null()));
+    let error_obj = {
+      let scope = &mut env.scope();
+      v8::Exception::type_error(scope, message_value.try_into().unwrap())
+    };
+    set_error_code(env, error_obj, code, std::ptr::null())?;
     *result = error_obj.into();
   }
   napi_clear_last_error(env);
@@ -508,10 +509,11 @@ fn napi_create_range_error(
       message_value.is_string(),
       napi_string_expected
     );
-    let scope = &mut env.scope();
-    let error_obj =
-      v8::Exception::range_error(scope, message_value.try_into().unwrap());
-    status_call!(set_error_code(scope, error_obj, code, std::ptr::null()));
+    let error_obj = {
+      let scope = &mut env.scope();
+      v8::Exception::range_error(scope, message_value.try_into().unwrap())
+    };
+    set_error_code(env, error_obj, code, std::ptr::null())?;
     *result = error_obj.into();
   }
   napi_clear_last_error(env);
@@ -2463,20 +2465,21 @@ fn napi_throw_error(
 
   {
     check_env!(env);
-    let str_: v8::Local<v8::String>;
-    check_new_from_utf8!(env, str_, msg);
+    let str_ = check_new_from_utf8(env, msg)?;
 
-    let env = unsafe { &mut *env };
-    let scope = &mut env.scope();
-    let error = v8::Exception::error(scope, str_);
-    status_call!(set_error_code(
-      scope,
+    let error = {
+      let env = unsafe { &mut *env };
+      let scope = &mut env.scope();
+      v8::Exception::error(scope, str_)
+    };
+    set_error_code(
+      env,
       error,
       transmute::<*mut (), napi_value>(std::ptr::null_mut()),
       code,
-    ));
+    )?;
 
-    scope.throw_exception(error);
+    unsafe { &mut *env }.scope().throw_exception(error);
   }
   napi_clear_last_error(env);
   Ok(())
@@ -2492,18 +2495,19 @@ fn napi_throw_range_error(
 
   {
     check_env!(env);
-    let str_: v8::Local<v8::String>;
-    check_new_from_utf8!(env, str_, msg);
-    let env = unsafe { &mut *env };
-    let scope = &mut env.scope();
-    let error = v8::Exception::range_error(scope, str_);
-    status_call!(set_error_code(
-      scope,
+    let str_ = check_new_from_utf8(env, msg)?;
+    let error = {
+      let env = unsafe { &mut *env };
+      let scope = &mut env.scope();
+      v8::Exception::range_error(scope, str_)
+    };
+    set_error_code(
+      env,
       error,
       transmute::<*mut (), napi_value>(std::ptr::null_mut()),
       code,
-    ));
-    scope.throw_exception(error);
+    )?;
+    unsafe { &mut *env }.scope().throw_exception(error);
   }
   napi_clear_last_error(env);
   Ok(())
@@ -2519,18 +2523,19 @@ fn napi_throw_type_error(
 
   {
     check_env!(env);
-    let str_: v8::Local<v8::String>;
-    check_new_from_utf8!(env, str_, msg);
-    let env = unsafe { &mut *env };
-    let scope = &mut env.scope();
-    let error = v8::Exception::type_error(scope, str_);
-    status_call!(set_error_code(
-      scope,
+    let str_ = check_new_from_utf8(env, msg)?;
+    let error = {
+      let env = unsafe { &mut *env };
+      let scope = &mut env.scope();
+      v8::Exception::type_error(scope, str_)
+    };
+    set_error_code(
+      env,
       error,
       transmute::<*mut (), napi_value>(std::ptr::null_mut()),
       code,
-    ));
-    scope.throw_exception(error);
+    )?;
+    unsafe { &mut *env }.scope().throw_exception(error);
   }
   napi_clear_last_error(env);
   Ok(())
