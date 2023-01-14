@@ -7,7 +7,8 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::process::Stdio;
 use test_util as util;
-use test_util::{wildcard_match, TempDir};
+use test_util::wildcard_match;
+use test_util::TempDir;
 use util::http_server;
 use util::new_deno_dir;
 
@@ -196,7 +197,7 @@ fn import_map_output_dir() {
       PathBuf::from("vendor").join("import_map.json").display(),
       success_text_updated_deno_json("1 module", "vendor/"),
     ),
-    &String::from_utf8_lossy(&output.stderr).trim()
+    String::from_utf8_lossy(&output.stderr).trim()
   ));
   assert!(output.status.success());
 }
@@ -504,7 +505,7 @@ fn update_existing_config_test() {
   assert!(wildcard_match(&format!(
     "Config file found at '[WILDCARD]'\nDownload http://localhost:4545/vendor/logger.ts\n{}",
     success_text_updated_deno_json("1 module", "vendor2",)
-  ), &String::from_utf8_lossy(&output.stderr).trim()));
+  ), String::from_utf8_lossy(&output.stderr).trim()));
   assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "");
   assert!(output.status.success());
 
