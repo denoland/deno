@@ -93,7 +93,7 @@ Deno.test(
     queueMicrotask(() => ac.abort());
     const error = await assertRejects(
       async () => {
-        await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+        await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
           signal: ac.signal,
         });
       },
@@ -111,7 +111,7 @@ Deno.test(
     queueMicrotask(() => ac.abort(abortReason));
     const error = await assertRejects(
       async () => {
-        await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+        await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
           signal: ac.signal,
         });
       },
@@ -126,7 +126,7 @@ Deno.test(
     const ac = new AbortController();
     queueMicrotask(() => ac.abort("Some string"));
     try {
-      await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+      await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
         signal: ac.signal,
       });
       unreachable();
@@ -135,6 +135,17 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readTextFileWithAbortSignalWithoutAborting() {
+    const ac = new AbortController();
+    await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
+      signal: ac.signal,
+    });
+  },
+);
+
 
 Deno.test(
   { permissions: { read: true }, ignore: Deno.build.os !== "linux" },

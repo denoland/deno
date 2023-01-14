@@ -55,6 +55,7 @@
 
         // always throw the abort error when aborted
         options.signal.throwIfAborted();
+        core.tryClose(cancelRid);
       }
     }
   }
