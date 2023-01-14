@@ -1588,7 +1588,9 @@ fn napi_get_arraybuffer_info(
   if !data.is_null() {
     *data = get_array_buffer_ptr(buf);
   }
-  *length = buf.byte_length();
+  if !length.is_null() {
+    *length = buf.byte_length();
+  }
   Ok(())
 }
 
@@ -1624,7 +1626,9 @@ fn napi_get_buffer_info(
   if !data.is_null() {
     *data = get_array_buffer_ptr(abuf);
   }
-  *length = abuf.byte_length();
+  if !length.is_null() {
+    *length = abuf.byte_length();
+  }
   Ok(())
 }
 
@@ -1871,23 +1875,60 @@ fn napi_get_reference_value(
 #[napi_sym::napi_sym]
 fn napi_get_typedarray_info(
   env: *mut Env,
-  value: napi_value,
-  data: *mut *mut u8,
+  typedarray: napi_value,
+  type_: *mut napi_typedarray_type,
   length: *mut usize,
+  data: *mut *mut c_void,
+  arraybuffer: *mut napi_value,
+  byte_offset: *mut usize,
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
-  let value = napi_to_v8!(value);
-  let buf = v8::Local::<v8::TypedArray>::try_from(value).unwrap();
-  let buffer_name = v8::String::new(&mut env.scope(), "buffer").unwrap();
-  let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
-    buf.get(&mut env.scope(), buffer_name.into()).unwrap(),
-  )
-  .unwrap();
-  if !data.is_null() {
-    *data = get_array_buffer_ptr(abuf);
+  let value = napi_to_v8!(typedarray);
+  let array = v8::Local::<v8::TypedArray>::try_from(value)
+    .ok()
+    .ok_or(Error::InvalidArg)?;
+
+  if !type_.is_null() {
+    if value.is_int8_array() {
+      *type_ = napi_int8_array;
+    } else if value.is_uint8_array() {
+      *type_ = napi_uint8_array;
+    } else if value.is_uint8_clamped_array() {
+      *type_ = napi_uint8_clamped_array;
+    } else if value.is_int16_array() {
+      *type_ = napi_int16_array;
+    } else if value.is_uint16_array() {
+      *type_ = napi_uint16_array;
+    } else if value.is_int32_array() {
+      *type_ = napi_int32_array;
+    } else if value.is_uint32_array() {
+      *type_ = napi_uint32_array;
+    } else if value.is_float32_array() {
+      *type_ = napi_float32_array;
+    } else if value.is_float64_array() {
+      *type_ = napi_float64_array;
+    }
   }
-  *length = abuf.byte_length();
+
+  if !length.is_null() {
+    *length = array.length();
+  }
+
+  if !data.is_null() || !arraybuffer.is_null() {
+    let buf = array.buffer(&mut env.scope()).unwrap();
+    if !data.is_null() {
+      *data = get_array_buffer_ptr(buf) as *mut c_void;
+    }
+    if !arraybuffer.is_null() {
+      *arraybuffer = buf.into();
+    }
+  }
+
+  if !byte_offset.is_null() {
+    *byte_offset = array.byte_offset();
+  }
+
   Ok(())
 }
 

@@ -141,15 +141,14 @@ fn napi_module_register(module: *const NapiModule) -> Result {
 
 #[napi_sym::napi_sym]
 fn napi_get_uv_event_loop(_env: *mut Env, uv_loop: *mut *mut ()) -> Result {
-  // Don't error out because addons may pass this to
-  // our libuv _polyfills_.
+  // There is no uv_loop in Deno
   *uv_loop = std::ptr::null_mut();
   Ok(())
 }
 
 const NODE_VERSION: napi_node_version = napi_node_version {
-  major: 17,
-  minor: 4,
+  major: 18,
+  minor: 13,
   patch: 0,
   release: "Deno\0".as_ptr() as *const c_char,
 };

@@ -881,6 +881,8 @@ fn op_copy_file_sync(
     use libc::unlink;
     use std::ffi::CString;
     use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::fs::PermissionsExt;
 
     let from = CString::new(from).unwrap();
     let to = CString::new(to).unwrap();
@@ -909,8 +911,23 @@ fn op_copy_file_sync(
         let mut buf = [0u8; 128 * 1024];
         let mut from_file =
           std::fs::File::open(&from_path).map_err(err_mapper)?;
-        let mut to_file =
-          std::fs::File::create(&to_path).map_err(err_mapper)?;
+        let perm = from_file.metadata().map_err(err_mapper)?.permissions();
+
+        let mut to_file = std::fs::OpenOptions::new()
+          // create the file with the correct mode right away
+          .mode(perm.mode())
+          .write(true)
+          .create(true)
+          .truncate(true)
+          .open(&to_path)
+          .map_err(err_mapper)?;
+        let writer_metadata = to_file.metadata()?;
+        if writer_metadata.is_file() {
+          // Set the correct file permissions, in case the file already existed.
+          // Don't set the permissions on already existing non-files like
+          // pipes/FIFOs or device nodes.
+          to_file.set_permissions(perm)?;
+        }
         loop {
           let nread = from_file.read(&mut buf).map_err(err_mapper)?;
           if nread == 0 {
