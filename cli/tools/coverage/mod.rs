@@ -747,8 +747,6 @@ pub async fn cover_files(
     .map(|output| output.branches_hit as f32)
     .sum::<f32>();
 
-  let avg_branch_coverage = total_branches_hit / total_branches_found * 100.0;
-
   let total_lines_found = report_outputs
     .iter()
     .map(|output| output.lines_found as f32)
@@ -758,11 +756,11 @@ pub async fn cover_files(
     .map(|output| output.lines_hit as f32)
     .sum::<f32>();
 
-  let avg_line_coverage = total_lines_hit / total_lines_found * 100.0;
+  let aggregate = (total_lines_hit + total_branches_hit)
+    / (total_lines_found + total_branches_found)
+    * 100.0;
 
-  let weighted_coverage = 0.2 * avg_branch_coverage + 0.8 * avg_line_coverage;
-
-  if weighted_coverage < coverage_flags.threshold as f32 {
+  if aggregate < coverage_flags.threshold as f32 {
     return Err(generic_error(format!(
       "Coverage did not surpass {}% threshold",
       coverage_flags.threshold
