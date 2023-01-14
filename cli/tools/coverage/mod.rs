@@ -383,8 +383,8 @@ trait CoverageReporter {
 struct ReportStats {
   branches_found: usize,
   branches_hit: usize,
-  lines_hit: usize,
   lines_found: usize,
+  lines_hit: usize,
 }
 
 struct LcovCoverageReporter {}
@@ -752,7 +752,7 @@ pub async fn cover_files(
   let avg_line_coverage = total_lines_hit / total_lines_found * 100.0;
 
   let weighted_coverage = 0.2 * avg_branch_coverage + 0.8 * avg_line_coverage;
-  //println!("{:?}", weighted_coverage);
+
   if weighted_coverage < coverage_flags.threshold as f32 {
     return Err(generic_error(format!(
       "Coverage did not surpass {}% threshold",
