@@ -375,12 +375,12 @@ trait CoverageReporter {
     &mut self,
     coverage_report: &CoverageReport,
     file_text: &str,
-  ) -> Result<ReportStats, AnyError>;
+  ) -> Result<ReportOutput, AnyError>;
 
   fn done(&mut self);
 }
 
-struct ReportStats {
+struct ReportOutput {
   branches_found: usize,
   branches_hit: usize,
   lines_found: usize,
@@ -400,7 +400,7 @@ impl CoverageReporter for LcovCoverageReporter {
     &mut self,
     coverage_report: &CoverageReport,
     _file_text: &str,
-  ) -> Result<ReportStats, AnyError> {
+  ) -> Result<ReportOutput, AnyError> {
     // pipes output to stdout if no file is specified
     let out_mode: Result<Box<dyn Write>, Error> = match coverage_report.output {
       // only append to the file as the file should be created already
@@ -483,7 +483,7 @@ impl CoverageReporter for LcovCoverageReporter {
     writeln!(out_writer, "LF:{}", lines_found)?;
 
     writeln!(out_writer, "end_of_record")?;
-    Ok(ReportStats {
+    Ok(ReportOutput {
       branches_found,
       branches_hit,
       lines_found,
@@ -507,7 +507,7 @@ impl CoverageReporter for PrettyCoverageReporter {
     &mut self,
     coverage_report: &CoverageReport,
     file_text: &str,
-  ) -> Result<ReportStats, AnyError> {
+  ) -> Result<ReportOutput, AnyError> {
     let lines = file_text.split('\n').collect::<Vec<_>>();
     print!("cover {} ... ", coverage_report.url);
 
@@ -565,7 +565,7 @@ impl CoverageReporter for PrettyCoverageReporter {
 
       last_line = Some(line_index);
     }
-    Ok(ReportStats {
+    Ok(ReportOutput {
       branches_found,
       branches_hit,
       lines_found,
@@ -673,7 +673,7 @@ pub async fn cover_files(
     None => None,
   };
 
-  let mut stats: Vec<ReportStats> = vec![];
+  let mut report_outputs: Vec<ReportOutput> = vec![];
   for script_coverage in &script_coverages {
     let module_specifier =
       deno_core::resolve_url_or_path(&script_coverage.url)?;
@@ -733,21 +733,30 @@ pub async fn cover_files(
     );
 
     if !coverage_report.found_lines.is_empty() {
-      let report_stats = reporter.report(&coverage_report, original_source)?;
-      stats.push(report_stats);
+      let report_output = reporter.report(&coverage_report, original_source)?;
+      report_outputs.push(report_output);
     }
   }
 
-  let total_branches_found =
-    stats.iter().map(|r| r.branches_found as f32).sum::<f32>();
-  let total_branches_hit =
-    stats.iter().map(|r| r.branches_hit as f32).sum::<f32>();
+  let total_branches_found = report_outputs
+    .iter()
+    .map(|output| output.branches_found as f32)
+    .sum::<f32>();
+  let total_branches_hit = report_outputs
+    .iter()
+    .map(|output| output.branches_hit as f32)
+    .sum::<f32>();
 
   let avg_branch_coverage = total_branches_hit / total_branches_found * 100.0;
 
-  let total_lines_found =
-    stats.iter().map(|r| r.lines_found as f32).sum::<f32>();
-  let total_lines_hit = stats.iter().map(|r| r.lines_hit as f32).sum::<f32>();
+  let total_lines_found = report_outputs
+    .iter()
+    .map(|output| output.lines_found as f32)
+    .sum::<f32>();
+  let total_lines_hit = report_outputs
+    .iter()
+    .map(|output| output.lines_hit as f32)
+    .sum::<f32>();
 
   let avg_line_coverage = total_lines_hit / total_lines_found * 100.0;
 
