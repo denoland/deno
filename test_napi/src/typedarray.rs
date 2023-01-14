@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::assert_napi_ok;
+use crate::napi_get_callback_info;
 use crate::napi_new_property;
 use core::ffi::c_void;
 use napi_sys::Status::napi_ok;
@@ -14,11 +15,11 @@ extern "C" fn test_multiply(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (args, argc, _) = crate::get_callback_info!(env, info, 2);
+  let (args, argc, _) = napi_get_callback_info!(env, info, 2);
   assert_eq!(argc, 2);
 
   let mut ty = -1;
-  assert!(unsafe { napi_typeof(env, args[0], &mut ty) } == napi_ok);
+  assert_napi_ok!(napi_typeof(env, args[0], &mut ty));
   assert_eq!(ty, napi_object);
 
   let input_array = args[0];
@@ -29,68 +30,55 @@ extern "C" fn test_multiply(
   );
 
   let mut ty = -1;
-  assert!(unsafe { napi_typeof(env, args[1], &mut ty) } == napi_ok);
+  assert_napi_ok!(napi_typeof(env, args[1], &mut ty));
   assert_eq!(ty, napi_number);
 
   let mut multiplier: f64 = 0.0;
-  assert!(
-    unsafe { napi_get_value_double(env, args[1], &mut multiplier) } == napi_ok
-  );
+  assert_napi_ok!(napi_get_value_double(env, args[1], &mut multiplier));
 
   let mut ty = -1;
   let mut input_buffer = ptr::null_mut();
   let mut byte_offset = 0;
   let mut length = 0;
 
-  assert!(
-    unsafe {
-      napi_get_typedarray_info(
-        env,
-        input_array,
-        &mut ty,
-        &mut length,
-        ptr::null_mut(),
-        &mut input_buffer,
-        &mut byte_offset,
-      )
-    } == napi_ok
-  );
+  assert_napi_ok!(napi_get_typedarray_info(
+    env,
+    input_array,
+    &mut ty,
+    &mut length,
+    ptr::null_mut(),
+    &mut input_buffer,
+    &mut byte_offset,
+  ));
 
   let mut data = ptr::null_mut();
   let mut byte_length = 0;
 
-  assert!(
-    unsafe {
-      napi_get_arraybuffer_info(env, input_buffer, &mut data, &mut byte_length)
-    } == napi_ok
-  );
+  assert_napi_ok!(napi_get_arraybuffer_info(
+    env,
+    input_buffer,
+    &mut data,
+    &mut byte_length
+  ));
 
   let mut output_buffer = ptr::null_mut();
   let mut output_ptr = ptr::null_mut();
-  assert!(
-    unsafe {
-      napi_create_arraybuffer(
-        env,
-        byte_length,
-        &mut output_ptr,
-        &mut output_buffer,
-      )
-    } == napi_ok
-  );
+  assert_napi_ok!(napi_create_arraybuffer(
+    env,
+    byte_length,
+    &mut output_ptr,
+    &mut output_buffer,
+  ));
 
   let mut output_array: napi_value = ptr::null_mut();
-  assert!(
-    unsafe {
-      napi_create_typedarray(
-        env,
-        ty,
-        length,
-        output_buffer,
-        byte_offset,
-        &mut output_array,
-      )
-    } == napi_ok
-  );
+  assert_napi_ok!(napi_create_typedarray(
+    env,
+    ty,
+    length,
+    output_buffer,
+    byte_offset,
+    &mut output_array,
+  ));
 
   if ty == TypedarrayType::uint8_array {
     let input_bytes = unsafe { (data as *mut u8).offset(byte_offset as isize) };
@@ -112,13 +100,11 @@ extern "C" fn test_multiply(
       }
     }
   } else {
-    unsafe {
-      napi_throw_error(
-        env,
-        ptr::null(),
-        "Typed array was of a type not expected by test.".as_ptr() as *const i8,
-      );
-    }
+    assert_napi_ok!(napi_throw_error(
+      env,
+      ptr::null(),
+      "Typed array was of a type not expected by test.".as_ptr() as *const i8,
+    ));
     return ptr::null_mut();
   }
 
