@@ -13,6 +13,7 @@ use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
+use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
 use crate::runtime::SnapshotOptions;
 use crate::JsRuntime;
@@ -378,7 +379,8 @@ fn import_meta_resolve(
     return;
   }
 
-  match loader.resolve(&specifier_str, &referrer, false) {
+  match loader.resolve(&specifier_str, &referrer, ResolutionKind::DynamicImport)
+  {
     Ok(resolved) => {
       let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();
       rv.set(resolved_val);

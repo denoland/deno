@@ -42,7 +42,7 @@ use deno_core::error::generic_error;
 use deno_core::error::not_supported;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_fs")
     .ops(vec![
       op_open_sync::decl(),
       op_open_async::decl(),
