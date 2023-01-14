@@ -152,7 +152,8 @@ mod ts {
       build_libs.push(op_lib.to_owned());
     }
 
-    // write out this file for use
+    // used in the tests to verify that after snapshotting it has the same number
+    // of lib files loaded and hasn't included any ones lazily loaded from Rust
     std::fs::write(
       PathBuf::from(env::var_os("OUT_DIR").unwrap())
         .join("lib_file_names.json"),
