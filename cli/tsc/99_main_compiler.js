@@ -431,6 +431,9 @@ delete Object.prototype.__proto__;
     noEmit: true,
     strict: true,
     target: ts.ScriptTarget.ESNext,
+    lib: [
+      "lib.deno.window.d.ts",
+    ],
   };
 
   // todo(dsherret): can we remove this and just use ts.OperationCanceledException?

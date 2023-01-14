@@ -206,7 +206,7 @@ mod ts {
       // we need a basic file to send to tsc to warm it up.
       if args.specifier == build_specifier {
         Ok(json!({
-          "data": r#"Math.max(1, 2);"#,
+          "data": r#"Deno.writeTextFile("hello.txt", "hello deno!");"#,
           "version": "1",
           // this corresponds to `ts.ScriptKind.TypeScript`
           "scriptKind": 3
