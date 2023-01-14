@@ -208,7 +208,7 @@ impl AssetDocument {
 type AssetsMap = HashMap<ModuleSpecifier, AssetDocument>;
 
 fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
-  let assets = tsc::STATIC_ASSETS
+  let assets = tsc::LAZILY_LOADED_STATIC_ASSETS
     .iter()
     .map(|(k, v)| {
       let url_str = format!("asset:///{}", k);

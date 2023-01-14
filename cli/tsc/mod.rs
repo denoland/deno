@@ -132,40 +132,44 @@ macro_rules! inc {
 }
 
 /// Contains static assets that are not preloaded in the compiler snapshot.
-pub static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
-  Lazy::new(|| {
-    ([
-      (
-        "lib.dom.asynciterable.d.ts",
-        inc!("lib.dom.asynciterable.d.ts"),
-      ),
-      ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
-      ("lib.dom.extras.d.ts", inc!("lib.dom.extras.d.ts")),
-      ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
-      ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
-      ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
-      ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
-      ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
-      ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
-      ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
-      ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
-      ("lib.es2022.full.d.ts", inc!("lib.es2022.full.d.ts")),
-      ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
-      ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
-      ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
-      (
-        "lib.webworker.importscripts.d.ts",
-        inc!("lib.webworker.importscripts.d.ts"),
-      ),
-      (
-        "lib.webworker.iterable.d.ts",
-        inc!("lib.webworker.iterable.d.ts"),
-      ),
-    ])
-    .iter()
-    .cloned()
-    .collect()
-  });
+///
+/// We lazily load these because putting them in the compiler snapshot will
+/// increase memory usage when not used (last time checked by about 0.5MB).
+pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
+  HashMap<&'static str, &'static str>,
+> = Lazy::new(|| {
+  ([
+    (
+      "lib.dom.asynciterable.d.ts",
+      inc!("lib.dom.asynciterable.d.ts"),
+    ),
+    ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
+    ("lib.dom.extras.d.ts", inc!("lib.dom.extras.d.ts")),
+    ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
+    ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
+    ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
+    ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
+    ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
+    ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
+    ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
+    ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
+    ("lib.es2022.full.d.ts", inc!("lib.es2022.full.d.ts")),
+    ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
+    ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
+    ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
+    (
+      "lib.webworker.importscripts.d.ts",
+      inc!("lib.webworker.importscripts.d.ts"),
+    ),
+    (
+      "lib.webworker.iterable.d.ts",
+      inc!("lib.webworker.iterable.d.ts"),
+    ),
+  ])
+  .iter()
+  .cloned()
+  .collect()
+});
 
 /// A structure representing stats from a type check operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -210,8 +214,8 @@ pub struct AssetText {
 }
 
 /// Retrieve a static asset that are included in the binary.
-pub fn get_asset(asset: &str) -> Option<&'static str> {
-  STATIC_ASSETS.get(asset).map(|s| s.to_owned())
+fn get_lazily_loaded_asset(asset: &str) -> Option<&'static str> {
+  LAZILY_LOADED_STATIC_ASSETS.get(asset).map(|s| s.to_owned())
 }
 
 fn get_maybe_hash(
@@ -517,9 +521,8 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     hash = Some("1".to_string());
     media_type = MediaType::Dts;
     Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
-  } else if v.specifier.starts_with("asset:///") {
-    let name = v.specifier.replace("asset:///", "");
-    let maybe_source = get_asset(&name);
+  } else if let Some(name) = v.specifier.strip_prefix("asset:///") {
+    let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, &state.hash_data);
     media_type = MediaType::from(&v.specifier);
     maybe_source.map(Cow::Borrowed)
@@ -1109,7 +1112,7 @@ mod tests {
     .expect("should have invoked op");
     let actual: LoadResponse =
       serde_json::from_value(value).expect("failed to deserialize");
-    let expected = get_asset("lib.dom.d.ts").unwrap();
+    let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
     assert_eq!(actual.data, expected);
     assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
