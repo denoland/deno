@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CaData;
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::cache::DenoDir;
@@ -158,10 +159,11 @@ async fn create_standalone_binary(
 ) -> Result<Vec<u8>, AnyError> {
   let mut eszip_archive = eszip.into_bytes();
 
-  let ca_data = match ps.options.ca_file() {
-    Some(ca_file) => {
+  let ca_data = match ps.options.ca_data() {
+    Some(CaData::File(ca_file)) => {
       Some(fs::read(ca_file).with_context(|| format!("Reading: {}", ca_file))?)
     }
+    Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
     None => None,
   };
   let maybe_import_map: Option<(Url, String)> =

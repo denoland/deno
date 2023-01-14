@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::resolve_no_prompt;
+use crate::args::CaData;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
@@ -325,7 +326,7 @@ fn resolve_shim_data(
     executable_args.push("--location".to_string());
     executable_args.push(url.to_string());
   }
-  if let Some(ca_file) = &flags.ca_file {
+  if let Some(CaData::File(ca_file)) = &flags.ca_data {
     executable_args.push("--cert".to_string());
     executable_args.push(ca_file.to_owned())
   }
