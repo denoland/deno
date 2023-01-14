@@ -516,8 +516,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     )?;
     // Some packages may resolves to themselves as a dependency. If this occurs,
     // just ignore adding these as dependencies because this is likely a mistake
-    // in the package. We can add better handling for this if we find a package
-    // that actually depends on this behavior.
+    // in the package.
     if id != *parent_id {
       self.graph.set_child_parent(
         &entry.bare_specifier,
