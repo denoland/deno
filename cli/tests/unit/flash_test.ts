@@ -6,7 +6,7 @@ import {
   Buffer,
   BufReader,
   BufWriter,
-} from "../../../test_util/std/io/buffer.ts";
+} from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
