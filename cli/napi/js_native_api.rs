@@ -436,26 +436,17 @@ fn napi_create_error(
   msg: napi_value,
   result: *mut napi_value,
 ) -> Result {
-  {
-    check_env!(env);
-    check_arg_option!(env, msg);
-    check_arg!(env, result);
-    let env = unsafe { &mut *env };
-
-    let mut message_value = napi_value_unchecked(msg);
-    return_status_if_false!(
-      env,
-      message_value.is_string(),
-      napi_string_expected
-    );
-
-    let error_obj = {
-      let scope = &mut env.scope();
-      v8::Exception::error(scope, message_value.try_into().unwrap())
-    };
-    set_error_code(env, error_obj, code, std::ptr::null())?;
-    *result = error_obj.into();
-  }
+  check_env!(env);
+  check_arg_option!(env, msg);
+  check_arg!(env, result);
+  let mut message_value = napi_value_unchecked(msg);
+  return_status_if_false!(env, message_value.is_string(), napi_string_expected);
+  let error_obj = v8::Exception::error(
+    &mut unsafe { &mut *env }.scope(),
+    message_value.try_into().unwrap(),
+  );
+  set_error_code(env, error_obj, code, std::ptr::null())?;
+  *result = error_obj.into();
   napi_clear_last_error(env);
   Ok(())
 }
@@ -467,25 +458,17 @@ fn napi_create_type_error(
   msg: napi_value,
   result: *mut napi_value,
 ) -> Result {
-  {
-    check_env!(env);
-    check_arg_option!(env, msg);
-    check_arg!(env, result);
-    let env = unsafe { &mut *env };
-
-    let mut message_value = napi_value_unchecked(msg);
-    return_status_if_false!(
-      env,
-      message_value.is_string(),
-      napi_string_expected
-    );
-    let error_obj = {
-      let scope = &mut env.scope();
-      v8::Exception::type_error(scope, message_value.try_into().unwrap())
-    };
-    set_error_code(env, error_obj, code, std::ptr::null())?;
-    *result = error_obj.into();
-  }
+  check_env!(env);
+  check_arg_option!(env, msg);
+  check_arg!(env, result);
+  let mut message_value = napi_value_unchecked(msg);
+  return_status_if_false!(env, message_value.is_string(), napi_string_expected);
+  let error_obj = v8::Exception::type_error(
+    &mut unsafe { &mut *env }.scope(),
+    message_value.try_into().unwrap(),
+  );
+  set_error_code(env, error_obj, code, std::ptr::null())?;
+  *result = error_obj.into();
   napi_clear_last_error(env);
   Ok(())
 }
@@ -497,25 +480,17 @@ fn napi_create_range_error(
   msg: napi_value,
   result: *mut napi_value,
 ) -> Result {
-  {
-    check_env!(env);
-    check_arg_option!(env, msg);
-    check_arg!(env, result);
-    let env = unsafe { &mut *env };
-
-    let mut message_value = napi_value_unchecked(msg);
-    return_status_if_false!(
-      env,
-      message_value.is_string(),
-      napi_string_expected
-    );
-    let error_obj = {
-      let scope = &mut env.scope();
-      v8::Exception::range_error(scope, message_value.try_into().unwrap())
-    };
-    set_error_code(env, error_obj, code, std::ptr::null())?;
-    *result = error_obj.into();
-  }
+  check_env!(env);
+  check_arg_option!(env, msg);
+  check_arg!(env, result);
+  let mut message_value = napi_value_unchecked(msg);
+  return_status_if_false!(env, message_value.is_string(), napi_string_expected);
+  let error_obj = v8::Exception::range_error(
+    &mut unsafe { &mut *env }.scope(),
+    message_value.try_into().unwrap(),
+  );
+  set_error_code(env, error_obj, code, std::ptr::null())?;
+  *result = error_obj.into();
   napi_clear_last_error(env);
   Ok(())
 }
