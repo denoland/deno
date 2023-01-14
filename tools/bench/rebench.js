@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 export function benchSync(name, n, innerLoop) {
   const t1 = Date.now();
   for (let i = 0; i < n; i++) {

@@ -2,12 +2,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import * as yaml from "https://deno.land/std@0.171.0/encoding/yaml.ts";
 
+const windowsRunnerCondition =
+  "github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022'";
 const Runners = {
   linux:
     "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
   macos: "macos-12",
-  windows:
-    "${{ github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022' }}",
+  windows: `\${{ ${windowsRunnerCondition} }}`,
 };
 
 const installPkgsCommand =
@@ -200,11 +201,7 @@ const ci = {
   jobs: {
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
-      if: [
-        "github.event_name == 'push' ||",
-        "!startsWith(github.event.pull_request.head.label, 'denoland:')",
-      ].join("\n"),
-      "runs-on": "${{ matrix.os }}",
+      "runs-on": "${{ matrix.runner || matrix.os }}",
       "timeout-minutes": 120,
       strategy: {
         matrix: {
@@ -227,6 +224,9 @@ const ci = {
             },
             {
               os: Runners.windows,
+              // use a free runner on PRs since this will be skipped
+              runner:
+                `\${{ github.event_name == 'pull_request' && 'windows-2022' || (${windowsRunnerCondition}) }}`,
               job: "test",
               profile: "release",
               skip_pr: true,
