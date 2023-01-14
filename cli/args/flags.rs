@@ -2465,7 +2465,7 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
         DocSourceFileFlag::Path(value.to_string())
       }
     })
-    .unwrap_or(DocSourceFileFlag::Builtin);
+    .unwrap_or_default();
   let private = matches.is_present("private");
   let json = matches.is_present("json");
   let filter = matches.value_of("filter").map(String::from);
