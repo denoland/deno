@@ -1,0 +1,4 @@
+cover [WILDCARD]/threshold/mod.js ... 72.727% (8/11)
+   6 |   if (b) {
+   7 |     return 0;
+   8 |   }

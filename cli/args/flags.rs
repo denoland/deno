@@ -92,6 +92,7 @@ pub struct CoverageFlags {
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub lcov: bool,
+  pub threshold: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -972,6 +973,13 @@ Generate html reports from lcov:
         .takes_value(true)
         .require_equals(true)
         .value_hint(ValueHint::FilePath),
+    )
+    .arg(
+      Arg::new("threshold")
+        .long("threshold")
+        .takes_value(true)
+        .require_equals(true)
+        .help("Set a coverage threshold"),
     )
     .arg(
       Arg::new("files")
@@ -2426,6 +2434,10 @@ fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
   };
+  let threshold = match matches.value_of("threshold") {
+    Some(f) => f.parse::<u64>().unwrap(),
+    None => 0,
+  };
   let lcov = matches.is_present("lcov");
   let output = matches.value_of("output").map(PathBuf::from);
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
@@ -2437,6 +2449,7 @@ fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     include,
     exclude,
     lcov,
+    threshold,
   });
 }
 
@@ -6109,6 +6122,7 @@ mod tests {
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           lcov: false,
+          threshold: 0,
         }),
         ..Flags::default()
       }
@@ -6136,6 +6150,7 @@ mod tests {
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           lcov: true,
           output: Some(PathBuf::from("foo.lcov")),
+          threshold: 0,
         }),
         ..Flags::default()
       }

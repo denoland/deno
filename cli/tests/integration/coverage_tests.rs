@@ -245,6 +245,87 @@ fn multifile_coverage() {
   assert!(output.status.success());
 }
 
+#[test]
+fn coverage_threshold() {
+  let deno_dir = TempDir::new();
+  let tempdir = TempDir::new();
+  let tempdir = tempdir.path().join("cov");
+
+  let status = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("test")
+    .arg("--quiet")
+    .arg("--unstable")
+    .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
+    .arg("coverage/threshold/")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::inherit())
+    .status()
+    .unwrap();
+
+  assert!(status.success());
+
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("coverage")
+    .arg("--threshold=80")
+    .arg("--unstable")
+    .arg(format!("{}/", tempdir.to_str().unwrap()))
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .output()
+    .unwrap();
+
+  // Verify there's no "Check" being printed
+  assert!(!output.stderr.is_empty());
+
+  let actual =
+    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
+      .to_string();
+
+  let expected = fs::read_to_string(
+    util::testdata_path().join("coverage/threshold/expected.out"),
+  )
+  .unwrap();
+
+  if !util::wildcard_match(&expected, &actual) {
+    println!("OUTPUT\n{}\nOUTPUT", actual);
+    println!("EXPECTED\n{}\nEXPECTED", expected);
+    panic!("pattern match failed");
+  }
+
+  assert!(output.status.code().unwrap() == 1);
+
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("coverage")
+    .arg("--quiet")
+    .arg("--unstable")
+    .arg("--lcov")
+    .arg(format!("{}/", tempdir.to_str().unwrap()))
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::inherit())
+    .output()
+    .unwrap();
+
+  let actual =
+    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
+      .to_string();
+
+  let expected = fs::read_to_string(
+    util::testdata_path().join("coverage/threshold/expected.lcov"),
+  )
+  .unwrap();
+
+  if !util::wildcard_match(&expected, &actual) {
+    println!("OUTPUT\n{}\nOUTPUT", actual);
+    println!("EXPECTED\n{}\nEXPECTED", expected);
+    panic!("pattern match failed");
+  }
+
+  assert!(output.status.success());
+}
+
 fn no_snaps_included(test_name: &str, extension: &str) {
   let deno_dir = TempDir::new();
   let tempdir = TempDir::new();

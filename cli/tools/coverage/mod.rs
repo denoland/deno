@@ -375,9 +375,16 @@ trait CoverageReporter {
     &mut self,
     coverage_report: &CoverageReport,
     file_text: &str,
-  ) -> Result<(), AnyError>;
+  ) -> Result<ReportStats, AnyError>;
 
   fn done(&mut self);
+}
+
+struct ReportStats {
+  branches_found: usize,
+  branches_hit: usize,
+  lines_hit: usize,
+  lines_found: usize,
 }
 
 struct LcovCoverageReporter {}
@@ -393,7 +400,7 @@ impl CoverageReporter for LcovCoverageReporter {
     &mut self,
     coverage_report: &CoverageReport,
     _file_text: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<ReportStats, AnyError> {
     // pipes output to stdout if no file is specified
     let out_mode: Result<Box<dyn Write>, Error> = match coverage_report.output {
       // only append to the file as the file should be created already
@@ -476,7 +483,12 @@ impl CoverageReporter for LcovCoverageReporter {
     writeln!(out_writer, "LF:{}", lines_found)?;
 
     writeln!(out_writer, "end_of_record")?;
-    Ok(())
+    Ok(ReportStats {
+      branches_found,
+      branches_hit,
+      lines_found,
+      lines_hit,
+    })
   }
 
   fn done(&mut self) {}
@@ -495,9 +507,13 @@ impl CoverageReporter for PrettyCoverageReporter {
     &mut self,
     coverage_report: &CoverageReport,
     file_text: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<ReportStats, AnyError> {
     let lines = file_text.split('\n').collect::<Vec<_>>();
     print!("cover {} ... ", coverage_report.url);
+
+    let branches_found = coverage_report.branches.len();
+    let branches_hit =
+      coverage_report.branches.iter().filter(|b| b.is_hit).count();
 
     let hit_lines = coverage_report
       .found_lines
@@ -549,7 +565,12 @@ impl CoverageReporter for PrettyCoverageReporter {
 
       last_line = Some(line_index);
     }
-    Ok(())
+    Ok(ReportStats {
+      branches_found,
+      branches_hit,
+      lines_found,
+      lines_hit,
+    })
   }
 
   fn done(&mut self) {}
@@ -652,7 +673,8 @@ pub async fn cover_files(
     None => None,
   };
 
-  for script_coverage in script_coverages {
+  let mut stats: Vec<ReportStats> = vec![];
+  for script_coverage in &script_coverages {
     let module_specifier =
       deno_core::resolve_url_or_path(&script_coverage.url)?;
 
@@ -704,15 +726,38 @@ pub async fn cover_files(
     };
 
     let coverage_report = generate_coverage_report(
-      &script_coverage,
+      script_coverage,
       &transpiled_code,
       &source_map_from_code(&transpiled_code),
       &out_mode,
     );
 
     if !coverage_report.found_lines.is_empty() {
-      reporter.report(&coverage_report, original_source)?;
+      let report_stats = reporter.report(&coverage_report, original_source)?;
+      stats.push(report_stats);
     }
+  }
+
+  let total_branches_found =
+    stats.iter().map(|r| r.branches_found as f32).sum::<f32>();
+  let total_branches_hit =
+    stats.iter().map(|r| r.branches_hit as f32).sum::<f32>();
+
+  let avg_branch_coverage = total_branches_hit / total_branches_found * 100.0;
+
+  let total_lines_found =
+    stats.iter().map(|r| r.lines_found as f32).sum::<f32>();
+  let total_lines_hit = stats.iter().map(|r| r.lines_hit as f32).sum::<f32>();
+
+  let avg_line_coverage = total_lines_hit / total_lines_found * 100.0;
+
+  let weighted_coverage = 0.2 * avg_branch_coverage + 0.8 * avg_line_coverage;
+  //println!("{:?}", weighted_coverage);
+  if weighted_coverage < coverage_flags.threshold as f32 {
+    return Err(generic_error(format!(
+      "Coverage did not surpass {}% threshold",
+      coverage_flags.threshold
+    )));
   }
 
   reporter.done();
