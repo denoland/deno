@@ -3,7 +3,6 @@
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::TaskFlags;
-use crate::colors;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::specifier_parent;
 use crate::util::path::specifier_to_file_path;
@@ -19,7 +18,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-use log::info;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -528,11 +526,7 @@ impl ConfigFile {
           let f = ancestor.join(config_filename);
           match ConfigFile::read(&f) {
             Ok(cf) => {
-              info!(
-                "{} found at '{}'",
-                colors::intense_blue("Config file"),
-                f.display()
-              );
+              log::debug!("Config file found at '{}'", f.display());
               return Ok(Some(cf));
             }
             Err(e) => {

@@ -1,4 +1,3 @@
-Config file found at '[WILDCARD]deno.json'
 Download http://localhost:4545/npm/registry/@denotest/peer-dep-test-child
 Download http://localhost:4545/npm/registry/@denotest/peer-dep-test-grandchild
 Download http://localhost:4545/npm/registry/@denotest/peer-dep-test-peer
