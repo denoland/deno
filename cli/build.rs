@@ -19,7 +19,6 @@ mod ts {
   use deno_core::OpState;
   use regex::Regex;
   use serde::Deserialize;
-  use serde::Serialize;
   use serde_json::json;
   use serde_json::Value;
   use std::collections::HashMap;
@@ -30,32 +29,6 @@ mod ts {
   struct LoadArgs {
     /// The fully qualified specifier that should be loaded.
     specifier: String,
-  }
-
-  #[derive(Clone, Serialize)]
-  #[serde(rename_all = "camelCase")]
-  struct LibFile {
-    should_snapshot_parse: bool,
-    name: String,
-  }
-
-  impl LibFile {
-    /// Lib file that should be parsed in the snapshot.
-    pub fn snapshot_parse(name: &str) -> Self {
-      Self {
-        should_snapshot_parse: true,
-        name: name.to_string(),
-      }
-    }
-
-    /// Lib file whose text should only exist in the snapshot
-    /// and be parsed on demand.
-    pub fn lazy_parse(name: &str) -> Self {
-      Self {
-        should_snapshot_parse: false,
-        name: name.to_string(),
-      }
-    }
   }
 
   pub fn create_compiler_snapshot(
@@ -88,95 +61,75 @@ mod ts {
     // libs that should be loaded into the isolate before snapshotting.
     let libs = vec![
       // Deno custom type libraries
-      LibFile::snapshot_parse("deno.window"),
-      LibFile::snapshot_parse("deno.worker"),
-      LibFile::snapshot_parse("deno.shared_globals"),
-      LibFile::snapshot_parse("deno.ns"),
-      LibFile::snapshot_parse("deno.unstable"),
+      "deno.window",
+      "deno.worker",
+      "deno.shared_globals",
+      "deno.ns",
+      "deno.unstable",
       // Deno built-in type libraries
-      LibFile::snapshot_parse("es5"),
-      LibFile::snapshot_parse("es6"),
-      LibFile::snapshot_parse("es2015.collection"),
-      LibFile::snapshot_parse("es2015.core"),
-      LibFile::snapshot_parse("es2015"),
-      LibFile::snapshot_parse("es2015.generator"),
-      LibFile::snapshot_parse("es2015.iterable"),
-      LibFile::snapshot_parse("es2015.promise"),
-      LibFile::snapshot_parse("es2015.proxy"),
-      LibFile::snapshot_parse("es2015.reflect"),
-      LibFile::snapshot_parse("es2015.symbol"),
-      LibFile::snapshot_parse("es2015.symbol.wellknown"),
-      LibFile::snapshot_parse("es2016.array.include"),
-      LibFile::snapshot_parse("es2016"),
-      LibFile::snapshot_parse("es2017"),
-      LibFile::snapshot_parse("es2017.intl"),
-      LibFile::snapshot_parse("es2017.object"),
-      LibFile::snapshot_parse("es2017.sharedmemory"),
-      LibFile::snapshot_parse("es2017.string"),
-      LibFile::snapshot_parse("es2017.typedarrays"),
-      LibFile::snapshot_parse("es2018.asyncgenerator"),
-      LibFile::snapshot_parse("es2018.asynciterable"),
-      LibFile::snapshot_parse("es2018"),
-      LibFile::snapshot_parse("es2018.intl"),
-      LibFile::snapshot_parse("es2018.promise"),
-      LibFile::snapshot_parse("es2018.regexp"),
-      LibFile::snapshot_parse("es2019.array"),
-      LibFile::snapshot_parse("es2019"),
-      LibFile::snapshot_parse("es2019.intl"),
-      LibFile::snapshot_parse("es2019.object"),
-      LibFile::snapshot_parse("es2019.string"),
-      LibFile::snapshot_parse("es2019.symbol"),
-      LibFile::snapshot_parse("es2020.bigint"),
-      LibFile::snapshot_parse("es2020"),
-      LibFile::snapshot_parse("es2020.date"),
-      LibFile::snapshot_parse("es2020.intl"),
-      LibFile::snapshot_parse("es2020.number"),
-      LibFile::snapshot_parse("es2020.promise"),
-      LibFile::snapshot_parse("es2020.sharedmemory"),
-      LibFile::snapshot_parse("es2020.string"),
-      LibFile::snapshot_parse("es2020.symbol.wellknown"),
-      LibFile::snapshot_parse("es2021"),
-      LibFile::snapshot_parse("es2021.intl"),
-      LibFile::snapshot_parse("es2021.promise"),
-      LibFile::snapshot_parse("es2021.string"),
-      LibFile::snapshot_parse("es2021.weakref"),
-      LibFile::snapshot_parse("es2022"),
-      LibFile::snapshot_parse("es2022.array"),
-      LibFile::snapshot_parse("es2022.error"),
-      LibFile::snapshot_parse("es2022.intl"),
-      LibFile::snapshot_parse("es2022.object"),
-      LibFile::snapshot_parse("es2022.sharedmemory"),
-      LibFile::snapshot_parse("es2022.string"),
-      LibFile::snapshot_parse("esnext"),
-      LibFile::snapshot_parse("esnext.array"),
-      LibFile::snapshot_parse("esnext.full"),
-      LibFile::snapshot_parse("esnext.intl"),
-      // Libraries that should be parsed on demand
-      LibFile::lazy_parse("dom.asynciterable"),
-      LibFile::lazy_parse("dom"),
-      LibFile::lazy_parse("dom.extras"),
-      LibFile::lazy_parse("dom.iterable"),
-      LibFile::lazy_parse("es6"),
-      LibFile::lazy_parse("es2016.full"),
-      LibFile::lazy_parse("es2017.full"),
-      LibFile::lazy_parse("es2018.full"),
-      LibFile::lazy_parse("es2019.full"),
-      LibFile::lazy_parse("es2020.full"),
-      LibFile::lazy_parse("es2021.full"),
-      LibFile::lazy_parse("es2022.full"),
-      LibFile::lazy_parse("esnext.full"),
-      LibFile::lazy_parse("scripthost"),
-      LibFile::lazy_parse("webworker"),
-      LibFile::lazy_parse("webworker.importscripts"),
-      LibFile::lazy_parse("webworker.iterable"),
+      "es5",
+      "es2015.collection",
+      "es2015.core",
+      "es2015",
+      "es2015.generator",
+      "es2015.iterable",
+      "es2015.promise",
+      "es2015.proxy",
+      "es2015.reflect",
+      "es2015.symbol",
+      "es2015.symbol.wellknown",
+      "es2016.array.include",
+      "es2016",
+      "es2017",
+      "es2017.intl",
+      "es2017.object",
+      "es2017.sharedmemory",
+      "es2017.string",
+      "es2017.typedarrays",
+      "es2018.asyncgenerator",
+      "es2018.asynciterable",
+      "es2018",
+      "es2018.intl",
+      "es2018.promise",
+      "es2018.regexp",
+      "es2019.array",
+      "es2019",
+      "es2019.intl",
+      "es2019.object",
+      "es2019.string",
+      "es2019.symbol",
+      "es2020.bigint",
+      "es2020",
+      "es2020.date",
+      "es2020.intl",
+      "es2020.number",
+      "es2020.promise",
+      "es2020.sharedmemory",
+      "es2020.string",
+      "es2020.symbol.wellknown",
+      "es2021",
+      "es2021.intl",
+      "es2021.promise",
+      "es2021.string",
+      "es2021.weakref",
+      "es2022",
+      "es2022.array",
+      "es2022.error",
+      "es2022.intl",
+      "es2022.object",
+      "es2022.sharedmemory",
+      "es2022.string",
+      "esnext",
+      "esnext.array",
+      "esnext.intl",
     ];
 
     let path_dts = cwd.join("tsc/dts");
     // ensure we invalidate the build properly.
-    for lib in libs.iter() {
+    for name in libs.iter() {
       println!(
         "cargo:rerun-if-changed={}",
-        path_dts.join(format!("lib.{}.d.ts", lib.name)).display()
+        path_dts.join(format!("lib.{}.d.ts", name)).display()
       );
     }
     println!(
@@ -194,15 +147,15 @@ mod ts {
 
     // create a copy of the vector that includes any op crate libs to be passed
     // to the JavaScript compiler to build into the snapshot
-    let mut build_libs = libs;
-    for (op_lib_name, _) in op_crate_libs.iter() {
-      build_libs.push(LibFile::snapshot_parse(op_lib_name));
+    let mut build_libs = libs.clone();
+    for (op_lib, _) in op_crate_libs.iter() {
+      build_libs.push(op_lib.to_owned());
     }
 
     #[op]
     fn op_build_info(state: &mut OpState) -> Value {
       let build_specifier = "asset:///bootstrap.ts";
-      let build_libs = state.borrow::<Vec<LibFile>>();
+      let build_libs = state.borrow::<Vec<&str>>();
       json!({
         "buildSpecifier": build_specifier,
         "libs": build_libs,

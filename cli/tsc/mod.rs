@@ -125,6 +125,48 @@ pub fn compiler_snapshot() -> Snapshot {
   Snapshot::Static(&COMPILER_SNAPSHOT)
 }
 
+macro_rules! inc {
+  ($e:expr) => {
+    include_str!(concat!("./dts/", $e))
+  };
+}
+
+/// Contains static assets that are not preloaded in the compiler snapshot.
+pub static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
+  Lazy::new(|| {
+    ([
+      (
+        "lib.dom.asynciterable.d.ts",
+        inc!("lib.dom.asynciterable.d.ts"),
+      ),
+      ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
+      ("lib.dom.extras.d.ts", inc!("lib.dom.extras.d.ts")),
+      ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
+      ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
+      ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
+      ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
+      ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
+      ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
+      ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
+      ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
+      ("lib.es2022.full.d.ts", inc!("lib.es2022.full.d.ts")),
+      ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
+      ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
+      ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
+      (
+        "lib.webworker.importscripts.d.ts",
+        inc!("lib.webworker.importscripts.d.ts"),
+      ),
+      (
+        "lib.webworker.iterable.d.ts",
+        inc!("lib.webworker.iterable.d.ts"),
+      ),
+    ])
+    .iter()
+    .cloned()
+    .collect()
+  });
+
 /// A structure representing stats from a type check operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Stats(pub Vec<(String, u32)>);
@@ -165,6 +207,11 @@ pub struct AssetText {
   pub specifier: String,
   pub text: String,
   pub parsed: bool,
+}
+
+/// Retrieve a static asset that are included in the binary.
+pub fn get_asset(asset: &str) -> Option<&'static str> {
+  STATIC_ASSETS.get(asset).map(|s| s.to_owned())
 }
 
 fn get_maybe_hash(
@@ -470,6 +517,12 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     hash = Some("1".to_string());
     media_type = MediaType::Dts;
     Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
+  } else if v.specifier.starts_with("asset:///") {
+    let name = v.specifier.replace("asset:///", "");
+    let maybe_source = get_asset(&name);
+    hash = get_maybe_hash(maybe_source, &state.hash_data);
+    media_type = MediaType::from(&v.specifier);
+    maybe_source.map(Cow::Borrowed)
   } else {
     let specifier = if let Some(remapped_specifier) =
       state.remapped_specifiers.get(&v.specifier)
@@ -1031,6 +1084,35 @@ mod tests {
         "scriptKind": 3,
       })
     );
+  }
+
+  #[derive(Debug, Deserialize)]
+  #[serde(rename_all = "camelCase")]
+  struct LoadResponse {
+    data: String,
+    version: Option<String>,
+    script_kind: i64,
+  }
+
+  #[tokio::test]
+  async fn test_load_asset() {
+    let mut state = setup(
+      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      None,
+      Some("some content".to_string()),
+    )
+    .await;
+    let value = op_load::call(
+      &mut state,
+      json!({ "specifier": "asset:///lib.dom.d.ts" }),
+    )
+    .expect("should have invoked op");
+    let actual: LoadResponse =
+      serde_json::from_value(value).expect("failed to deserialize");
+    let expected = get_asset("lib.dom.d.ts").unwrap();
+    assert_eq!(actual.data, expected);
+    assert!(actual.version.is_some());
+    assert_eq!(actual.script_kind, 3);
   }
 
   #[tokio::test]

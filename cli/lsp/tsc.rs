@@ -207,9 +207,28 @@ impl AssetDocument {
 
 type AssetsMap = HashMap<ModuleSpecifier, AssetDocument>;
 
+fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
+  let assets = tsc::STATIC_ASSETS
+    .iter()
+    .map(|(k, v)| {
+      let url_str = format!("asset:///{}", k);
+      let specifier = resolve_url(&url_str).unwrap();
+      let asset = AssetDocument::new(specifier.clone(), v);
+      (specifier, asset)
+    })
+    .collect();
+  Arc::new(Mutex::new(assets))
+}
+
 /// Snapshot of Assets.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct AssetsSnapshot(Arc<Mutex<AssetsMap>>);
+
+impl Default for AssetsSnapshot {
+  fn default() -> Self {
+    Self(new_assets_map())
+  }
+}
 
 impl AssetsSnapshot {
   pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
@@ -233,7 +252,7 @@ impl Assets {
   pub fn new(ts_server: Arc<TsServer>) -> Self {
     Self {
       ts_server,
-      assets: Default::default(),
+      assets: new_assets_map(),
     }
   }
 
