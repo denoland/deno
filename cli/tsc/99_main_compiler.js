@@ -150,6 +150,10 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
+  // These are assets that should be parsed lazily.
+  /** @type {Map<string, OpLoadReponse>} */
+  const lazyAssetsCache = new Map();
+
   /** @type {string[]=} */
   let scriptFileNamesCache;
 
@@ -160,6 +164,23 @@ delete Object.prototype.__proto__;
   const isNodeSourceFileCache = new Map();
 
   const isCjsCache = new SpecifierIsCjsCache();
+
+  /** @typedef {{ data: string; scriptKind: ts.ScriptKind; version: string; }} OpLoadReponse */
+
+  /**
+   * Loads a specifier taking into account the lazy assets cache.
+   * @param {string} specifier
+   * @returns {OpLoadReponse}
+   */
+  function loadSpecifier(specifier) {
+    if (specifier.startsWith("asset:")) {
+      const data = lazyAssetsCache.get(specifier);
+      if (data != null) {
+        return data;
+      }
+    }
+    return ops.op_load({ specifier });
+  }
 
   /**
    * @param {ts.CompilerOptions | ts.MinimalResolutionCacheHost} settingsOrHost
@@ -385,7 +406,7 @@ delete Object.prototype.__proto__;
   // paths must be either relative or absolute. Since
   // analysis in Rust operates on fully resolved URLs,
   // it makes sense to use the same scheme here.
-  const ASSETS = "asset:///";
+  const ASSETS_URL_PREFIX = "asset:///";
 
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
@@ -490,7 +511,7 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.readFile("${specifier}")`);
       }
-      return ops.op_load({ specifier }).data;
+      return loadSpecifier(specifier).data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
@@ -519,10 +540,7 @@ delete Object.prototype.__proto__;
         return sourceFile;
       }
 
-      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
-      const { data, scriptKind, version } = ops.op_load(
-        { specifier },
-      );
+      const { data, scriptKind, version } = loadSpecifier(specifier);
       assert(
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
@@ -546,10 +564,10 @@ delete Object.prototype.__proto__;
       return sourceFile;
     },
     getDefaultLibFileName() {
-      return `${ASSETS}/lib.esnext.d.ts`;
+      return `${ASSETS_URL_PREFIX}lib.esnext.d.ts`;
     },
     getDefaultLibLocation() {
-      return ASSETS;
+      return ASSETS_URL_PREFIX;
     },
     writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
       if (logDebug) {
@@ -710,9 +728,7 @@ delete Object.prototype.__proto__;
         };
       }
 
-      const fileInfo = ops.op_load(
-        { specifier },
-      );
+      const fileInfo = loadSpecifier(specifier);
       if (fileInfo) {
         scriptVersionCache.set(specifier, fileInfo.version);
         return ts.ScriptSnapshot.fromString(fileInfo.data);
@@ -935,12 +951,25 @@ delete Object.prototype.__proto__;
         );
       }
       case "getAssets": {
+        /** @type {{ specifier: string; text: string; parsed: boolean }[]} */
         const assets = [];
         for (const sourceFile of sourceFileCache.values()) {
-          if (sourceFile.fileName.startsWith(ASSETS)) {
+          if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
             assets.push({
               specifier: sourceFile.fileName,
               text: sourceFile.text,
+              // this is used in the tests to ensure all the assets
+              // that should be parsed after snapshotting are snapshotted
+              parsed: true,
+            });
+          }
+        }
+        for (const [specifier, fileData] of lazyAssetsCache) {
+          if (!sourceFileCache.has(specifier)) {
+            assets.push({
+              specifier,
+              text: fileData.data,
+              parsed: false,
             });
           }
         }
@@ -1267,22 +1296,30 @@ delete Object.prototype.__proto__;
 
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.
-  /** @type {{ buildSpecifier: string; libs: string[] }} */
+  /** @type {{ buildSpecifier: string; libs: { shouldSnapshotParse: boolean, name: string }[] }} */
 
   const { buildSpecifier, libs } = ops.op_build_info();
   for (const lib of libs) {
-    const specifier = `lib.${lib}.d.ts`;
+    assert(typeof lib.shouldSnapshotParse === "boolean");
+    assert(typeof lib.name === "string");
+    const specifier = `${ASSETS_URL_PREFIX}lib.${lib.name}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into
     // tsc, so things like `"lib": [ "deno.ns" ]` are supported.
-    if (!ts.libs.includes(lib)) {
-      ts.libs.push(lib);
-      ts.libMap.set(lib, `lib.${lib}.d.ts`);
+    if (!ts.libs.includes(lib.name)) {
+      ts.libs.push(lib.name);
+      ts.libMap.set(lib.name, `lib.${lib.name}.d.ts`);
     }
-    // we are caching in memory common type libraries that will be re-used by
-    // tsc on when the snapshot is restored
-    assert(
-      host.getSourceFile(`${ASSETS}${specifier}`, ts.ScriptTarget.ESNext),
-    );
+    if (lib.shouldSnapshotParse) {
+      // we are caching in memory common type libraries that will be re-used by
+      // tsc on when the snapshot is restored
+      assert(
+        host.getSourceFile(specifier, ts.ScriptTarget.ESNext),
+      );
+    } else {
+      const data = loadSpecifier(specifier);
+      assert(data);
+      lazyAssetsCache.set(specifier, data);
+    }
   }
   // this helps ensure as much as possible is in memory that is re-usable
   // before the snapshotting is done, which helps unsure fast "startup" for

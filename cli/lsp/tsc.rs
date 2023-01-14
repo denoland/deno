@@ -207,28 +207,9 @@ impl AssetDocument {
 
 type AssetsMap = HashMap<ModuleSpecifier, AssetDocument>;
 
-fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
-  let assets = tsc::STATIC_ASSETS
-    .iter()
-    .map(|(k, v)| {
-      let url_str = format!("asset:///{}", k);
-      let specifier = resolve_url(&url_str).unwrap();
-      let asset = AssetDocument::new(specifier.clone(), v);
-      (specifier, asset)
-    })
-    .collect();
-  Arc::new(Mutex::new(assets))
-}
-
 /// Snapshot of Assets.
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct AssetsSnapshot(Arc<Mutex<AssetsMap>>);
-
-impl Default for AssetsSnapshot {
-  fn default() -> Self {
-    Self(new_assets_map())
-  }
-}
 
 impl AssetsSnapshot {
   pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
@@ -252,7 +233,7 @@ impl Assets {
   pub fn new(ts_server: Arc<TsServer>) -> Self {
     Self {
       ts_server,
-      assets: new_assets_map(),
+      assets: Default::default(),
     }
   }
 
@@ -3914,10 +3895,24 @@ mod tests {
     )
     .unwrap();
     let assets = result.as_array().unwrap();
+    let parsed_assets_count = assets
+      .iter()
+      .filter(|asset| {
+        let obj = match asset {
+          Value::Object(obj) => obj,
+          _ => unreachable!(),
+        };
+        obj.get("parsed").unwrap().as_bool().unwrap()
+      })
+      .count();
 
     // You might have found this assertion starts failing after upgrading TypeScript.
     // Just update the new number of assets (declaration files) for this number.
-    assert_eq!(assets.len(), 72);
+    assert_eq!(assets.len(), 89);
+    // If this number goes up or down that means you need to adjust the snapshotting
+    // in build.rs to ensure that all the files that should be parsed during snapshotting
+    // are indeed parsed.
+    assert_eq!(parsed_assets_count, 74);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;
