@@ -472,51 +472,6 @@ fn main() {
   println!("cargo:rustc-env=TS_VERSION={}", ts::version());
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 
-  println!(
-    "cargo:rustc-env=DENO_CONSOLE_LIB_PATH={}",
-    deno_console::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_URL_LIB_PATH={}",
-    deno_url::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_WEB_LIB_PATH={}",
-    deno_web::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_FETCH_LIB_PATH={}",
-    deno_fetch::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_WEBGPU_LIB_PATH={}",
-    deno_webgpu_get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_WEBSOCKET_LIB_PATH={}",
-    deno_websocket::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_WEBSTORAGE_LIB_PATH={}",
-    deno_webstorage::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_CACHE_LIB_PATH={}",
-    deno_cache::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_CRYPTO_LIB_PATH={}",
-    deno_crypto::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_BROADCAST_CHANNEL_LIB_PATH={}",
-    deno_broadcast_channel::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_NET_LIB_PATH={}",
-    deno_net::get_declaration().display()
-  );
-
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
 

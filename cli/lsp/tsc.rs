@@ -3436,6 +3436,7 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::text::LineIndex;
+  use crate::tsc::AssetText;
   use std::path::Path;
   use std::path::PathBuf;
   use test_util::TempDir;
@@ -3894,17 +3895,8 @@ mod tests {
       Default::default(),
     )
     .unwrap();
-    let assets = result.as_array().unwrap();
-    let parsed_assets_count = assets
-      .iter()
-      .filter(|asset| {
-        let obj = match asset {
-          Value::Object(obj) => obj,
-          _ => unreachable!(),
-        };
-        obj.get("parsed").unwrap().as_bool().unwrap()
-      })
-      .count();
+    let assets: Vec<AssetText> = serde_json::from_value(result).unwrap();
+    let parsed_assets_count = assets.iter().filter(|a| a.parsed).count();
 
     // You might have found this assertion starts failing after upgrading TypeScript.
     // Just update the new number of assets (declaration files) for this number.
@@ -3917,9 +3909,7 @@ mod tests {
     // get some notification when the size of the assets grows
     let mut total_size = 0;
     for asset in assets {
-      let obj = asset.as_object().unwrap();
-      let text = obj.get("text").unwrap().as_str().unwrap();
-      total_size += text.len();
+      total_size += asset.text.len();
     }
     assert!(total_size > 0);
     assert!(total_size < 2_000_000); // currently as of TS 4.6, it's 0.7MB

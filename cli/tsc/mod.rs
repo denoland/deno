@@ -25,6 +25,7 @@ use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_v8;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
@@ -49,28 +50,6 @@ pub use self::diagnostics::DiagnosticMessageChain;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
 
-// Declaration files
-
-pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
-pub static DENO_CONSOLE_LIB: &str = include_str!(env!("DENO_CONSOLE_LIB_PATH"));
-pub static DENO_URL_LIB: &str = include_str!(env!("DENO_URL_LIB_PATH"));
-pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
-pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
-pub static DENO_WEBGPU_LIB: &str = include_str!(env!("DENO_WEBGPU_LIB_PATH"));
-pub static DENO_WEBSOCKET_LIB: &str =
-  include_str!(env!("DENO_WEBSOCKET_LIB_PATH"));
-pub static DENO_WEBSTORAGE_LIB: &str =
-  include_str!(env!("DENO_WEBSTORAGE_LIB_PATH"));
-pub static DENO_CACHE_LIB: &str = include_str!(env!("DENO_CACHE_LIB_PATH"));
-pub static DENO_CRYPTO_LIB: &str = include_str!(env!("DENO_CRYPTO_LIB_PATH"));
-pub static DENO_BROADCAST_CHANNEL_LIB: &str =
-  include_str!(env!("DENO_BROADCAST_CHANNEL_LIB_PATH"));
-pub static DENO_NET_LIB: &str = include_str!(env!("DENO_NET_LIB_PATH"));
-pub static SHARED_GLOBALS_LIB: &str =
-  include_str!("dts/lib.deno.shared_globals.d.ts");
-pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
-pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
-
 pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   #[cold]
   #[inline(never)]
@@ -88,29 +67,69 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   },
 );
 
-pub fn get_types_declaration_file_text(unstable: bool) -> String {
-  let mut types = vec![
-    DENO_NS_LIB,
-    DENO_CONSOLE_LIB,
-    DENO_URL_LIB,
-    DENO_WEB_LIB,
-    DENO_FETCH_LIB,
-    DENO_WEBGPU_LIB,
-    DENO_WEBSOCKET_LIB,
-    DENO_WEBSTORAGE_LIB,
-    DENO_CRYPTO_LIB,
-    DENO_BROADCAST_CHANNEL_LIB,
-    DENO_NET_LIB,
-    SHARED_GLOBALS_LIB,
-    DENO_CACHE_LIB,
-    WINDOW_LIB,
+pub fn get_types_declaration_file_text(
+  unstable: bool,
+) -> Result<String, AnyError> {
+  let mut assets = get_asset_texts_from_new_runtime()?
+    .into_iter()
+    .map(|a| (a.specifier, a.text))
+    .collect::<HashMap<_, _>>();
+
+  let mut lib_names = vec![
+    "deno.ns",
+    "deno.console",
+    "deno.url",
+    "deno.web",
+    "deno.fetch",
+    "deno.webgpu",
+    "deno.websocket",
+    "deno.webstorage",
+    "deno.crypto",
+    "deno.broadcast_channel",
+    "deno.net",
+    "deno.shared_globals",
+    "deno.cache",
+    "deno.window",
   ];
 
   if unstable {
-    types.push(UNSTABLE_NS_LIB);
+    lib_names.push("deno.unstable");
   }
 
-  types.join("\n")
+  for asset in &assets {
+    eprintln!("Asset: {:?}", asset.0);
+  }
+
+  Ok(
+    lib_names
+      .into_iter()
+      .map(|name| {
+        let asset_url = format!("asset:///lib.{}.d.ts", name);
+        assets.remove(&asset_url).unwrap()
+      })
+      .collect::<Vec<_>>()
+      .join("\n"),
+  )
+}
+
+fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
+  // the assets are stored within the typescript isolate, so take them out of there
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(compiler_snapshot()),
+    extensions: vec![Extension::builder("deno_cli_tsc")
+      .ops(get_tsc_ops())
+      .build()],
+    ..Default::default()
+  });
+  let global =
+    runtime.execute_script("get_assets.js", "globalThis.getAssets()")?;
+  let scope = &mut runtime.handle_scope();
+  let local = deno_core::v8::Local::new(scope, global);
+  let deserialized_value = serde_v8::from_v8::<Vec<AssetText>>(scope, local);
+  match deserialized_value {
+    Ok(value) => Ok(value),
+    Err(err) => Err(anyhow!("Cannot deserialize serde_v8 value: {:?}", err)),
+  }
 }
 
 pub fn compiler_snapshot() -> Snapshot {
@@ -149,6 +168,14 @@ impl fmt::Display for Stats {
 
     Ok(())
   }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetText {
+  pub specifier: String,
+  pub text: String,
+  pub parsed: bool,
 }
 
 fn get_maybe_hash(
@@ -721,16 +748,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
     extensions: vec![Extension::builder("deno_cli_tsc")
-      .ops(vec![
-        op_cwd::decl(),
-        op_create_hash::decl(),
-        op_emit::decl(),
-        op_exists::decl(),
-        op_is_node_file::decl(),
-        op_load::decl(),
-        op_resolve::decl(),
-        op_respond::decl(),
-      ])
+      .ops(get_tsc_ops())
       .state(move |state| {
         state.put(State::new(
           request.graph_data.clone(),
@@ -778,6 +796,19 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   } else {
     Err(anyhow!("The response for the exec request was not set."))
   }
+}
+
+fn get_tsc_ops() -> Vec<deno_core::OpDecl> {
+  vec![
+    op_cwd::decl(),
+    op_create_hash::decl(),
+    op_emit::decl(),
+    op_exists::decl(),
+    op_is_node_file::decl(),
+    op_load::decl(),
+    op_resolve::decl(),
+    op_respond::decl(),
+  ]
 }
 
 #[cfg(test)]

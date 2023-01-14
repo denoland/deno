@@ -187,7 +187,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       Ok(0)
     }
     DenoSubcommand::Types => {
-      let types = tsc::get_types_declaration_file_text(flags.unstable);
+      let types = tsc::get_types_declaration_file_text(flags.unstable)?;
       display::write_to_stdout_ignore_sigpipe(types.as_bytes())?;
       Ok(0)
     }

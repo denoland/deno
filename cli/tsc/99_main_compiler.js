@@ -903,6 +903,32 @@ delete Object.prototype.__proto__;
     debug("<<< exec stop");
   }
 
+  function getAssets() {
+    /** @type {{ specifier: string; text: string; parsed: boolean }[]} */
+    const assets = [];
+    for (const sourceFile of sourceFileCache.values()) {
+      if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
+        assets.push({
+          specifier: sourceFile.fileName,
+          text: sourceFile.text,
+          // this is used in the tests to ensure all the assets
+          // that should be parsed after snapshotting are snapshotted
+          parsed: true,
+        });
+      }
+    }
+    for (const [specifier, fileData] of lazyAssetsCache) {
+      if (!sourceFileCache.has(specifier)) {
+        assets.push({
+          specifier,
+          text: fileData.data,
+          parsed: false,
+        });
+      }
+    }
+    return assets;
+  }
+
   /**
    * @param {number} id
    * @param {any} data
@@ -951,29 +977,7 @@ delete Object.prototype.__proto__;
         );
       }
       case "getAssets": {
-        /** @type {{ specifier: string; text: string; parsed: boolean }[]} */
-        const assets = [];
-        for (const sourceFile of sourceFileCache.values()) {
-          if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
-            assets.push({
-              specifier: sourceFile.fileName,
-              text: sourceFile.text,
-              // this is used in the tests to ensure all the assets
-              // that should be parsed after snapshotting are snapshotted
-              parsed: true,
-            });
-          }
-        }
-        for (const [specifier, fileData] of lazyAssetsCache) {
-          if (!sourceFileCache.has(specifier)) {
-            assets.push({
-              specifier,
-              text: fileData.data,
-              parsed: false,
-            });
-          }
-        }
-        return respond(id, assets);
+        return respond(id, getAssets());
       }
       case "getApplicableRefactors": {
         return respond(
@@ -1335,6 +1339,7 @@ delete Object.prototype.__proto__;
   // checking TypeScript.
   globalThis.startup = startup;
   globalThis.exec = exec;
+  globalThis.getAssets = getAssets;
 
   // exposes the functions that are called when the compiler is used as a
   // language service.
