@@ -223,7 +223,10 @@ function copyFileSyncMode(content: string): void {
 }
 
 Deno.test(
-  { permissions: { read: true, write: true } },
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
   function copyFileSyncChmod() {
     // this Tests different optimization paths on MacOS:
     //
