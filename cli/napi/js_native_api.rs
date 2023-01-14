@@ -1689,7 +1689,7 @@ fn napi_get_typedarray_info(
   }
 
   if !length.is_null() {
-    *length = array.length() as usize;
+    *length = array.length();
   }
 
   if !data.is_null() || !arraybuffer.is_null() {
@@ -1703,7 +1703,7 @@ fn napi_get_typedarray_info(
   }
 
   if !byte_offset.is_null() {
-    *byte_offset = array.byte_offset() as usize;
+    *byte_offset = array.byte_offset();
   }
 
   Ok(())
