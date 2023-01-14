@@ -888,16 +888,13 @@ delete Object.prototype.__proto__;
   }
 
   function getAssets() {
-    /** @type {{ specifier: string; text: string; parsed: boolean }[]} */
+    /** @type {{ specifier: string; text: string; }[]} */
     const assets = [];
     for (const sourceFile of sourceFileCache.values()) {
       if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
         assets.push({
           specifier: sourceFile.fileName,
           text: sourceFile.text,
-          // this is used in the tests to ensure all the assets
-          // that should be parsed after snapshotting are snapshotted
-          parsed: true,
         });
       }
     }
@@ -1303,7 +1300,10 @@ delete Object.prototype.__proto__;
     options: SNAPSHOT_COMPILE_OPTIONS,
     host,
   });
-  ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM);
+  assert(ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0);
+
+  // remove this now that we don't need it anymore for warming up tsc
+  sourceFileCache.delete(buildSpecifier);
 
   // exposes the two functions that are called by `tsc::exec()` when type
   // checking TypeScript.

@@ -210,7 +210,6 @@ impl fmt::Display for Stats {
 pub struct AssetText {
   pub specifier: String,
   pub text: String,
-  pub parsed: bool,
 }
 
 /// Retrieve a static asset that are included in the binary.

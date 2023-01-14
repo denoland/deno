@@ -152,6 +152,14 @@ mod ts {
       build_libs.push(op_lib.to_owned());
     }
 
+    // write out this file for use
+    std::fs::write(
+      PathBuf::from(env::var_os("OUT_DIR").unwrap())
+        .join("lib_file_names.json"),
+      serde_json::to_string(&build_libs).unwrap(),
+    )
+    .unwrap();
+
     #[op]
     fn op_build_info(state: &mut OpState) -> Value {
       let build_specifier = "asset:///bootstrap.ts";
@@ -198,7 +206,7 @@ mod ts {
       // we need a basic file to send to tsc to warm it up.
       if args.specifier == build_specifier {
         Ok(json!({
-          "data": r#"console.log("hello deno!");"#,
+          "data": r#"Math.max(1, 2);"#,
           "version": "1",
           // this corresponds to `ts.ScriptKind.TypeScript`
           "scriptKind": 3

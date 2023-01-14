@@ -3456,6 +3456,7 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::text::LineIndex;
   use crate::tsc::AssetText;
+  use pretty_assertions::assert_eq;
   use std::path::Path;
   use std::path::PathBuf;
   use test_util::TempDir;
@@ -3915,15 +3916,25 @@ mod tests {
     )
     .unwrap();
     let assets: Vec<AssetText> = serde_json::from_value(result).unwrap();
-    let parsed_assets_count = assets.iter().filter(|a| a.parsed).count();
+    let mut asset_names = assets
+      .iter()
+      .map(|a| {
+        a.specifier
+          .replace("asset:///lib.", "")
+          .replace(".d.ts", "")
+      })
+      .collect::<Vec<_>>();
+    let mut expected_asset_names: Vec<String> = serde_json::from_str(
+      include_str!(concat!(env!("OUT_DIR"), "/lib_file_names.json")),
+    )
+    .unwrap();
+
+    asset_names.sort();
+    expected_asset_names.sort();
 
     // You might have found this assertion starts failing after upgrading TypeScript.
-    // Just update the new number of assets (declaration files) for this number.
-    assert_eq!(assets.len(), 89);
-    // If this number goes up or down that means you need to adjust the snapshotting
-    // in build.rs to ensure that all the files that should be parsed during snapshotting
-    // are indeed parsed.
-    assert_eq!(parsed_assets_count, 74);
+    // Ensure build.rs is updated so these match.
+    assert_eq!(asset_names, expected_asset_names);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;
