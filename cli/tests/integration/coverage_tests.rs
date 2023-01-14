@@ -265,10 +265,11 @@ fn coverage_threshold() {
 
   assert!(status.success());
 
+  let test_threshold = "80";
   let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("coverage")
-    .arg("--threshold=80")
+    .arg(format!("--threshold={}", test_threshold))
     .arg("--unstable")
     .arg(format!("{}/", tempdir.to_str().unwrap()))
     .stdout(std::process::Stdio::piped())
@@ -276,8 +277,17 @@ fn coverage_threshold() {
     .output()
     .unwrap();
 
-  // Verify there's no "Check" being printed
-  assert!(!output.stderr.is_empty());
+  let err_content =
+    util::strip_ansi_codes(std::str::from_utf8(&output.stderr).unwrap())
+      .to_string();
+
+  assert_eq!(
+    err_content,
+    format!(
+      "error: Coverage did not surpass {}% threshold\n",
+      test_threshold
+    )
+  );
 
   let actual =
     util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
