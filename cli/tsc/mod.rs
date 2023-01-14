@@ -67,10 +67,9 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   },
 );
 
-pub fn get_types_declaration_file_text(
-  unstable: bool,
-) -> Result<String, AnyError> {
-  let mut assets = get_asset_texts_from_new_runtime()?
+pub fn get_types_declaration_file_text(unstable: bool) -> String {
+  let mut assets = get_asset_texts_from_new_runtime()
+    .unwrap()
     .into_iter()
     .map(|a| (a.specifier, a.text))
     .collect::<HashMap<_, _>>();
@@ -96,20 +95,14 @@ pub fn get_types_declaration_file_text(
     lib_names.push("deno.unstable");
   }
 
-  for asset in &assets {
-    eprintln!("Asset: {:?}", asset.0);
-  }
-
-  Ok(
-    lib_names
-      .into_iter()
-      .map(|name| {
-        let asset_url = format!("asset:///lib.{}.d.ts", name);
-        assets.remove(&asset_url).unwrap()
-      })
-      .collect::<Vec<_>>()
-      .join("\n"),
-  )
+  lib_names
+    .into_iter()
+    .map(|name| {
+      let asset_url = format!("asset:///lib.{}.d.ts", name);
+      assets.remove(&asset_url).unwrap()
+    })
+    .collect::<Vec<_>>()
+    .join("\n")
 }
 
 fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
@@ -125,11 +118,7 @@ fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
     runtime.execute_script("get_assets.js", "globalThis.getAssets()")?;
   let scope = &mut runtime.handle_scope();
   let local = deno_core::v8::Local::new(scope, global);
-  let deserialized_value = serde_v8::from_v8::<Vec<AssetText>>(scope, local);
-  match deserialized_value {
-    Ok(value) => Ok(value),
-    Err(err) => Err(anyhow!("Cannot deserialize serde_v8 value: {:?}", err)),
-  }
+  Ok(serde_v8::from_v8::<Vec<AssetText>>(scope, local)?)
 }
 
 pub fn compiler_snapshot() -> Snapshot {

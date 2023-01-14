@@ -29,7 +29,7 @@ pub async fn print_docs(
   let mut doc_nodes = if source_file == "--builtin" {
     let source_file_specifier =
       ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
-    let content = get_types_declaration_file_text(ps.options.unstable())?;
+    let content = get_types_declaration_file_text(ps.options.unstable());
     let mut loader = deno_graph::source::MemoryLoader::new(
       vec![(
         source_file_specifier.to_string(),
