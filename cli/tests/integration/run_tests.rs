@@ -558,10 +558,10 @@ fn _090_run_permissions_request() {
 }
 
 #[test]
-  fn _090_run_permissions_request_sync() {
-    let args = "run --quiet run/090_run_permissions_request_sync.ts";
-    use util::PtyData::*;
-    util::test_pty2(args, vec![
+fn _090_run_permissions_request_sync() {
+  let args = "run --quiet run/090_run_permissions_request_sync.ts";
+  use util::PtyData::*;
+  util::test_pty2(args, vec![
     Output("⚠️  ️Deno requests run access to \"ls\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
     Input("y\n"),
     Output("⚠️  ️Deno requests run access to \"cat\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
@@ -570,7 +570,7 @@ fn _090_run_permissions_request() {
     Output("prompt\r\n"),
     Output("denied\r\n"),
   ]);
-  }
+}
 
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
@@ -2343,8 +2343,7 @@ mod permissions {
   });
 
   itest!(_064_permissions_revoke_global_sync {
-    args:
-      "run --allow-read=foo,bar run/064_permissions_revoke_global_sync.ts",
+    args: "run --allow-read=foo,bar run/064_permissions_revoke_global_sync.ts",
     output: "run/064_permissions_revoke_global.ts.out",
   });
 
