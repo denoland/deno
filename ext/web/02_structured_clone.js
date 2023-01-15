@@ -15,8 +15,8 @@
     ArrayBuffer,
     ArrayBufferPrototype,
     ArrayBufferIsView,
-    DataViewPrototype,
     ObjectPrototypeIsPrototypeOf,
+    TypedArrayPrototypeGetSymbolToStringTag,
     TypedArrayPrototypeSlice,
     TypeErrorPrototype,
     WeakMap,
@@ -56,12 +56,10 @@
     }
     if (ArrayBufferIsView(value)) {
       const clonedBuffer = structuredClone(value.buffer);
-      // Use DataViewConstructor type purely for type-checking, can be a
-      // DataView or TypedArray.  They use the same constructor signature,
-      // only DataView has a length in bytes and TypedArrays use a length in
+      // Only DataView has a length in bytes and TypedArrays use a length in
       // terms of elements, so we adjust for that.
       let length;
-      if (ObjectPrototypeIsPrototypeOf(DataViewPrototype, value)) {
+      if (TypedArrayPrototypeGetSymbolToStringTag(value) === undefined) {
         length = value.byteLength;
       } else {
         length = value.length;

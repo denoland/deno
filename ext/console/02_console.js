@@ -8,11 +8,9 @@
   const core = window.Deno.core;
   const colors = window.__bootstrap.colors;
   const {
-    ArrayBufferIsView,
     AggregateErrorPrototype,
     ArrayPrototypeUnshift,
     isNaN,
-    DataViewPrototype,
     DatePrototype,
     DateNow,
     DatePrototypeGetTime,
@@ -114,6 +112,7 @@
     ReflectGetPrototypeOf,
     ReflectHas,
     TypedArrayPrototypeGetLength,
+    TypedArrayPrototypeGetSymbolToStringTag,
     WeakMapPrototype,
     WeakSetPrototype,
   } = window.__bootstrap.primordials;
@@ -144,8 +143,7 @@
   // Forked from Node's lib/internal/cli_table.js
 
   function isTypedArray(x) {
-    return ArrayBufferIsView(x) &&
-      !ObjectPrototypeIsPrototypeOf(DataViewPrototype, x);
+    return TypedArrayPrototypeGetSymbolToStringTag(x) !== undefined;
   }
 
   const tableChars = {
