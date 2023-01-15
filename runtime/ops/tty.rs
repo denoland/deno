@@ -60,7 +60,8 @@ fn op_stdin_set_raw(
   {
     use std::os::windows::io::AsRawHandle;
     use winapi::shared::minwindef::FALSE;
-    use winapi::um::{consoleapi, handleapi};
+    use winapi::um::consoleapi;
+    use winapi::um::handleapi;
 
     if cbreak {
       return Err(deno_core::error::not_supported());

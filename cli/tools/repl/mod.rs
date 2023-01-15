@@ -84,7 +84,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
   let mut worker = create_main_worker(
     &ps,
-    main_module.clone(),
+    main_module,
     PermissionsContainer::new(Permissions::from_options(
       &ps.options.permissions_options(),
     )?),

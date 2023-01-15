@@ -131,6 +131,7 @@
   function getterOnly(getter) {
     return {
       get: getter,
+      set() {},
       enumerable: true,
       configurable: true,
     };

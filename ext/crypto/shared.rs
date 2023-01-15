@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::borrow::Cow;
 
 use deno_core::error::custom_error;

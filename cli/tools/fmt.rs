@@ -92,8 +92,7 @@ pub async fn format(
       }
     }
   };
-  let deno_dir = cli_options.resolve_deno_dir()?;
-  let deno_dir = &deno_dir;
+  let deno_dir = &cli_options.resolve_deno_dir()?;
   let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async move {
     let incremental_cache = Arc::new(IncrementalCache::new(
       &deno_dir.fmt_incremental_cache_db_file_path(),
