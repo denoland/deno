@@ -1,4 +1,4 @@
-// Copyright 2019-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2019-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_ops::op;
 
