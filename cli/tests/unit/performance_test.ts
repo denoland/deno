@@ -67,6 +67,15 @@ Deno.test(function performanceMarkDetailArrayBuffer() {
   assertNotStrictEquals(mark.detail, detail);
 });
 
+Deno.test(function performanceMarkDetailSubTypedArray() {
+  class SubUint8Array extends Uint8Array {}
+  const detail = new SubUint8Array([1, 2]);
+  const mark = performance.mark("test", { detail });
+  assert(mark instanceof PerformanceMark);
+  assertEquals(mark.detail, new Uint8Array([1, 2]));
+  assertNotStrictEquals(mark.detail, detail);
+});
+
 Deno.test(function performanceMeasure() {
   const markName1 = "mark1";
   const measureName1 = "measure1";

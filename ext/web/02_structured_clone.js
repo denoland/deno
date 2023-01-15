@@ -14,13 +14,30 @@
   const {
     ArrayBuffer,
     ArrayBufferPrototype,
+    ArrayBufferPrototypeGetByteLength,
     ArrayBufferPrototypeSlice,
     ArrayBufferIsView,
+    DataView,
+    DataViewPrototypeGetByteLength,
+    DataViewPrototypeGetByteOffset,
     ObjectPrototypeIsPrototypeOf,
+    TypedArrayPrototypeGetByteOffset,
+    TypedArrayPrototypeGetLength,
     TypedArrayPrototypeGetSymbolToStringTag,
     TypeErrorPrototype,
     WeakMap,
     WeakMapPrototypeSet,
+    Int8Array,
+    Int16Array,
+    Int32Array,
+    BigInt64Array,
+    Uint8Array,
+    Uint8ClampedArray,
+    Uint16Array,
+    Uint32Array,
+    BigUint64Array,
+    Float32Array,
+    Float64Array,
   } = window.__bootstrap.primordials;
 
   const objectCloneMemo = new WeakMap();
@@ -39,7 +56,8 @@
     );
   }
 
-  /** Clone a value in a similar way to structured cloning.  It is similar to a
+  // TODO(petamoriken): Resizable ArrayBuffer support in the future
+  /** Clone a value in a similar way to structured cloning. It is similar to a
    * StructureDeserialize(StructuredSerialize(...)). */
   function structuredClone(value) {
     // Performance optimization for buffers, otherwise
@@ -48,26 +66,67 @@
       const cloned = cloneArrayBuffer(
         value,
         0,
-        value.byteLength,
+        ArrayBufferPrototypeGetByteLength(value),
         ArrayBuffer,
       );
       WeakMapPrototypeSet(objectCloneMemo, value, cloned);
       return cloned;
     }
+
     if (ArrayBufferIsView(value)) {
       const clonedBuffer = structuredClone(value.buffer);
-      // Only DataView has a length in bytes and TypedArrays use a length in
-      // terms of elements, so we adjust for that.
-      let length;
-      if (TypedArrayPrototypeGetSymbolToStringTag(value) === undefined) {
-        length = value.byteLength;
-      } else {
-        length = value.length;
+      const tag = TypedArrayPrototypeGetSymbolToStringTag(value);
+
+      // DataView
+      if (tag === undefined) {
+        return new DataView(
+          clonedBuffer,
+          DataViewPrototypeGetByteOffset(value),
+          DataViewPrototypeGetByteLength(value),
+        );
       }
-      return new (value.constructor)(
+
+      // TypedArray
+      let Constructor;
+      switch (TypedArrayPrototypeGetSymbolToStringTag(value)) {
+        case "Int8Array":
+          Constructor = Int8Array;
+          break;
+        case "Int16Array":
+          Constructor = Int16Array;
+          break;
+        case "Int32Array":
+          Constructor = Int32Array;
+          break;
+        case "BigInt64Array":
+          Constructor = BigInt64Array;
+          break;
+        case "Uint8Array":
+          Constructor = Uint8Array;
+          break;
+        case "Uint8ClampedArray":
+          Constructor = Uint8ClampedArray;
+          break;
+        case "Uint16Array":
+          Constructor = Uint16Array;
+          break;
+        case "Uint32Array":
+          Constructor = Uint32Array;
+          break;
+        case "BigUint64Array":
+          Constructor = BigUint64Array;
+          break;
+        case "Float32Array":
+          Constructor = Float32Array;
+          break;
+        case "Float64Array":
+          Constructor = Float64Array;
+          break;
+      }
+      return new Constructor(
         clonedBuffer,
-        value.byteOffset,
-        length,
+        TypedArrayPrototypeGetByteOffset(value),
+        TypedArrayPrototypeGetLength(value),
       );
     }
 
