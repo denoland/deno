@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::anyhow::Error;
 use deno_core::op;
 use deno_core::AsyncRefCell;
@@ -117,7 +117,7 @@ impl From<tokio::net::TcpStream> for TcpStream {
 }
 
 fn create_js_runtime() -> JsRuntime {
-  let ext = deno_core::Extension::builder()
+  let ext = deno_core::Extension::builder("my_ext")
     .ops(vec![op_listen::decl(), op_accept::decl()])
     .build();
 
@@ -131,7 +131,7 @@ fn create_js_runtime() -> JsRuntime {
 fn op_listen(state: &mut OpState) -> Result<ResourceId, Error> {
   log::debug!("listen");
   let addr = "127.0.0.1:4570".parse::<SocketAddr>().unwrap();
-  let std_listener = std::net::TcpListener::bind(&addr)?;
+  let std_listener = std::net::TcpListener::bind(addr)?;
   std_listener.set_nonblocking(true)?;
   let listener = TcpListener::try_from(std_listener)?;
   let rid = state.resource_table.add(listener);

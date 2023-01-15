@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use aes_kw::KekAes128;
 use aes_kw::KekAes192;
@@ -73,7 +73,8 @@ use crate::key::HkdfOutput;
 use crate::shared::RawKeyData;
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl", "deno_web"])
     .js(include_js_files!(
       prefix "deno:ext/crypto",
       "00_crypto.js",
@@ -198,14 +199,14 @@ pub async fn op_crypto_sign_key(
 
   let signature = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
-      let private_key = RsaPrivateKey::from_pkcs1_der(&*args.key.data)?;
+      let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
       let (padding, hashed) = match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
           let mut hasher = Sha1::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::PKCS1v15Sign {
               hash: Some(rsa::hash::Hash::SHA1),
@@ -215,7 +216,7 @@ pub async fn op_crypto_sign_key(
         }
         CryptoHash::Sha256 => {
           let mut hasher = Sha256::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::PKCS1v15Sign {
               hash: Some(rsa::hash::Hash::SHA2_256),
@@ -225,7 +226,7 @@ pub async fn op_crypto_sign_key(
         }
         CryptoHash::Sha384 => {
           let mut hasher = Sha384::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::PKCS1v15Sign {
               hash: Some(rsa::hash::Hash::SHA2_384),
@@ -235,7 +236,7 @@ pub async fn op_crypto_sign_key(
         }
         CryptoHash::Sha512 => {
           let mut hasher = Sha512::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::PKCS1v15Sign {
               hash: Some(rsa::hash::Hash::SHA2_512),
@@ -248,7 +249,7 @@ pub async fn op_crypto_sign_key(
       private_key.sign(padding, &hashed)?
     }
     Algorithm::RsaPss => {
-      let private_key = RsaPrivateKey::from_pkcs1_der(&*args.key.data)?;
+      let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
 
       let salt_len = args
         .salt_length
@@ -262,7 +263,7 @@ pub async fn op_crypto_sign_key(
       {
         CryptoHash::Sha1 => {
           let mut hasher = Sha1::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len),
             hasher.finalize()[..].to_vec(),
@@ -270,7 +271,7 @@ pub async fn op_crypto_sign_key(
         }
         CryptoHash::Sha256 => {
           let mut hasher = Sha256::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::new_pss_with_salt::<Sha256, _>(rng, salt_len),
             hasher.finalize()[..].to_vec(),
@@ -278,7 +279,7 @@ pub async fn op_crypto_sign_key(
         }
         CryptoHash::Sha384 => {
           let mut hasher = Sha384::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::new_pss_with_salt::<Sha384, _>(rng, salt_len),
             hasher.finalize()[..].to_vec(),
@@ -286,7 +287,7 @@ pub async fn op_crypto_sign_key(
         }
         CryptoHash::Sha512 => {
           let mut hasher = Sha512::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::new_pss_with_salt::<Sha512, _>(rng, salt_len),
             hasher.finalize()[..].to_vec(),
@@ -301,7 +302,7 @@ pub async fn op_crypto_sign_key(
       let curve: &EcdsaSigningAlgorithm =
         args.named_curve.ok_or_else(not_supported)?.try_into()?;
 
-      let key_pair = EcdsaKeyPair::from_pkcs8(curve, &*args.key.data)?;
+      let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data)?;
       // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
       // https://briansmith.org/rustdoc/ring/signature/index.html#statics
       if let Some(hash) = args.hash {
@@ -320,7 +321,7 @@ pub async fn op_crypto_sign_key(
     Algorithm::Hmac => {
       let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
 
-      let key = HmacKey::new(hash, &*args.key.data);
+      let key = HmacKey::new(hash, &args.key.data);
 
       let signature = ring::hmac::sign(&key, data);
       signature.as_ref().to_vec()
@@ -359,7 +360,7 @@ pub async fn op_crypto_verify_key(
       {
         CryptoHash::Sha1 => {
           let mut hasher = Sha1::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::PKCS1v15Sign {
               hash: Some(rsa::hash::Hash::SHA1),
@@ -369,7 +370,7 @@ pub async fn op_crypto_verify_key(
         }
         CryptoHash::Sha256 => {
           let mut hasher = Sha256::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::PKCS1v15Sign {
               hash: Some(rsa::hash::Hash::SHA2_256),
@@ -379,7 +380,7 @@ pub async fn op_crypto_verify_key(
         }
         CryptoHash::Sha384 => {
           let mut hasher = Sha384::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::PKCS1v15Sign {
               hash: Some(rsa::hash::Hash::SHA2_384),
@@ -389,7 +390,7 @@ pub async fn op_crypto_verify_key(
         }
         CryptoHash::Sha512 => {
           let mut hasher = Sha512::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::PKCS1v15Sign {
               hash: Some(rsa::hash::Hash::SHA2_512),
@@ -399,9 +400,7 @@ pub async fn op_crypto_verify_key(
         }
       };
 
-      public_key
-        .verify(padding, &hashed, &*args.signature)
-        .is_ok()
+      public_key.verify(padding, &hashed, &args.signature).is_ok()
     }
     Algorithm::RsaPss => {
       let salt_len = args
@@ -417,7 +416,7 @@ pub async fn op_crypto_verify_key(
       {
         CryptoHash::Sha1 => {
           let mut hasher = Sha1::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len),
             hasher.finalize()[..].to_vec(),
@@ -425,7 +424,7 @@ pub async fn op_crypto_verify_key(
         }
         CryptoHash::Sha256 => {
           let mut hasher = Sha256::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::new_pss_with_salt::<Sha256, _>(rng, salt_len),
             hasher.finalize()[..].to_vec(),
@@ -433,7 +432,7 @@ pub async fn op_crypto_verify_key(
         }
         CryptoHash::Sha384 => {
           let mut hasher = Sha384::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::new_pss_with_salt::<Sha384, _>(rng, salt_len),
             hasher.finalize()[..].to_vec(),
@@ -441,7 +440,7 @@ pub async fn op_crypto_verify_key(
         }
         CryptoHash::Sha512 => {
           let mut hasher = Sha512::new();
-          hasher.update(&data);
+          hasher.update(data);
           (
             PaddingScheme::new_pss_with_salt::<Sha512, _>(rng, salt_len),
             hasher.finalize()[..].to_vec(),
@@ -449,14 +448,12 @@ pub async fn op_crypto_verify_key(
         }
       };
 
-      public_key
-        .verify(padding, &hashed, &*args.signature)
-        .is_ok()
+      public_key.verify(padding, &hashed, &args.signature).is_ok()
     }
     Algorithm::Hmac => {
       let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
-      let key = HmacKey::new(hash, &*args.key.data);
-      ring::hmac::verify(&key, data, &*args.signature).is_ok()
+      let key = HmacKey::new(hash, &args.key.data);
+      ring::hmac::verify(&key, data, &args.signature).is_ok()
     }
     Algorithm::Ecdsa => {
       let signing_alg: &EcdsaSigningAlgorithm =
@@ -468,7 +465,7 @@ pub async fn op_crypto_verify_key(
 
       let public_key_bytes = match args.key.r#type {
         KeyType::Private => {
-          private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &*args.key.data)?;
+          private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data)?;
 
           private_key.public_key().as_ref()
         }
@@ -479,7 +476,7 @@ pub async fn op_crypto_verify_key(
       let public_key =
         ring::signature::UnparsedPublicKey::new(verify_alg, public_key_bytes);
 
-      public_key.verify(data, &*args.signature).is_ok()
+      public_key.verify(data, &args.signature).is_ok()
     }
     _ => return Err(type_error("Unsupported algorithm".to_string())),
   };
@@ -659,9 +656,9 @@ pub async fn op_crypto_derive_bits(
 fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, AnyError> {
   let public_key = match key_data.r#type {
     KeyType::Private => {
-      RsaPrivateKey::from_pkcs1_der(&*key_data.data)?.to_public_key()
+      RsaPrivateKey::from_pkcs1_der(&key_data.data)?.to_public_key()
     }
-    KeyType::Public => RsaPublicKey::from_pkcs1_der(&*key_data.data)?,
+    KeyType::Public => RsaPublicKey::from_pkcs1_der(&key_data.data)?,
     KeyType::Secret => unreachable!("unexpected KeyType::Secret"),
   };
   Ok(public_key)

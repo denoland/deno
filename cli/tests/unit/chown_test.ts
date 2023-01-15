@@ -1,16 +1,16 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 // chown on Windows is noop for now, so ignore its testing on Windows
 
 async function getUidAndGid(): Promise<{ uid: number; gid: number }> {
   // get the user ID and group ID of the current process
-  const uidProc = await Deno.spawn("id", {
+  const uidProc = await new Deno.Command("id", {
     args: ["-u"],
-  });
-  const gidProc = await Deno.spawn("id", {
+  }).output();
+  const gidProc = await new Deno.Command("id", {
     args: ["-g"],
-  });
+  }).output();
 
   assertEquals(uidProc.code, 0);
   assertEquals(gidProc.code, 0);

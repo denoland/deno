@@ -1,10 +1,12 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::cdp;
 use crate::colors;
 use deno_ast::swc::parser::error::SyntaxError;
+use deno_ast::swc::parser::token::BinOpToken;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
+use deno_ast::view::AssignOp;
+use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -16,19 +18,26 @@ use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
 use rustyline::Cmd;
 use rustyline::CompletionType;
+use rustyline::ConditionalEventHandler;
 use rustyline::Config;
 use rustyline::Context;
 use rustyline::Editor;
+use rustyline::Event;
+use rustyline::EventContext;
 use rustyline::EventHandler;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
-use rustyline::{ConditionalEventHandler, Event, EventContext, RepeatCount};
-use rustyline_derive::{Helper, Hinter};
+use rustyline::RepeatCount;
+use rustyline_derive::Helper;
+use rustyline_derive::Hinter;
 use std::borrow::Cow;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
+use super::cdp;
 use super::channel::RustylineSyncMessageSender;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
@@ -232,6 +241,12 @@ impl Validator for EditorHelper {
     for item in deno_ast::lex(ctx.input(), deno_ast::MediaType::TypeScript) {
       if let deno_ast::TokenOrComment::Token(token) = item.inner {
         match token {
+          Token::BinOp(BinOpToken::Div)
+          | Token::AssignOp(AssignOp::DivAssign) => {
+            // it's too complicated to write code to detect regular expression literals
+            // which are no longer tokenized, so if a `/` or `/=` happens, then we bail
+            return Ok(ValidationResult::Valid(None));
+          }
           Token::BackQuote => in_template = !in_template,
           Token::LParen
           | Token::LBracket
@@ -368,10 +383,15 @@ impl Highlighter for EditorHelper {
 pub struct ReplEditor {
   inner: Arc<Mutex<Editor<EditorHelper>>>,
   history_file_path: PathBuf,
+  errored_on_history_save: Arc<AtomicBool>,
+  should_exit_on_interrupt: Arc<AtomicBool>,
 }
 
 impl ReplEditor {
-  pub fn new(helper: EditorHelper, history_file_path: PathBuf) -> Self {
+  pub fn new(
+    helper: EditorHelper,
+    history_file_path: PathBuf,
+  ) -> Result<Self, AnyError> {
     let editor_config = Config::builder()
       .completion_type(CompletionType::List)
       .build();
@@ -388,26 +408,69 @@ impl ReplEditor {
       KeyEvent(KeyCode::Tab, Modifiers::NONE),
       EventHandler::Conditional(Box::new(TabEventHandler)),
     );
+    let should_exit_on_interrupt = Arc::new(AtomicBool::new(false));
+    editor.bind_sequence(
+      KeyEvent(KeyCode::Char('r'), Modifiers::CTRL),
+      EventHandler::Conditional(Box::new(ReverseSearchHistoryEventHandler {
+        should_exit_on_interrupt: should_exit_on_interrupt.clone(),
+      })),
+    );
 
-    ReplEditor {
+    let history_file_dir = history_file_path.parent().unwrap();
+    std::fs::create_dir_all(history_file_dir).with_context(|| {
+      format!(
+        "Unable to create directory for the history file: {}",
+        history_file_dir.display()
+      )
+    })?;
+
+    Ok(ReplEditor {
       inner: Arc::new(Mutex::new(editor)),
       history_file_path,
-    }
+      errored_on_history_save: Arc::new(AtomicBool::new(false)),
+      should_exit_on_interrupt,
+    })
   }
 
   pub fn readline(&self) -> Result<String, ReadlineError> {
     self.inner.lock().readline("> ")
   }
 
-  pub fn add_history_entry(&self, entry: String) {
+  pub fn update_history(&self, entry: String) {
     self.inner.lock().add_history_entry(entry);
+    if let Err(e) = self.inner.lock().append_history(&self.history_file_path) {
+      if self.errored_on_history_save.load(Relaxed) {
+        return;
+      }
+
+      self.errored_on_history_save.store(true, Relaxed);
+      eprintln!("Unable to save history file: {}", e);
+    }
   }
 
-  pub fn save_history(&self) -> Result<(), AnyError> {
-    std::fs::create_dir_all(self.history_file_path.parent().unwrap())?;
+  pub fn should_exit_on_interrupt(&self) -> bool {
+    self.should_exit_on_interrupt.load(Relaxed)
+  }
 
-    self.inner.lock().save_history(&self.history_file_path)?;
-    Ok(())
+  pub fn set_should_exit_on_interrupt(&self, yes: bool) {
+    self.should_exit_on_interrupt.store(yes, Relaxed);
+  }
+}
+
+/// Command to reverse search history , same as rustyline default C-R but that resets repl should_exit flag to false
+struct ReverseSearchHistoryEventHandler {
+  should_exit_on_interrupt: Arc<AtomicBool>,
+}
+impl ConditionalEventHandler for ReverseSearchHistoryEventHandler {
+  fn handle(
+    &self,
+    _: &Event,
+    _: RepeatCount,
+    _: bool,
+    _: &EventContext,
+  ) -> Option<Cmd> {
+    self.should_exit_on_interrupt.store(false, Relaxed);
+    Some(Cmd::ReverseSearchHistory)
   }
 }
 

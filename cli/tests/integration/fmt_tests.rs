@@ -1,6 +1,5 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
 use test_util as util;
 use test_util::TempDir;
 
@@ -13,20 +12,20 @@ fn fmt_test() {
     testdata_fmt_dir.join("badly_formatted.mjs");
   let badly_formatted_js = t.path().join("badly_formatted.js");
   let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();
-  std::fs::copy(&badly_formatted_original_js, &badly_formatted_js).unwrap();
+  std::fs::copy(badly_formatted_original_js, &badly_formatted_js).unwrap();
 
   let fixed_md = testdata_fmt_dir.join("badly_formatted_fixed.md");
   let badly_formatted_original_md = testdata_fmt_dir.join("badly_formatted.md");
   let badly_formatted_md = t.path().join("badly_formatted.md");
   let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
-  std::fs::copy(&badly_formatted_original_md, &badly_formatted_md).unwrap();
+  std::fs::copy(badly_formatted_original_md, &badly_formatted_md).unwrap();
 
   let fixed_json = testdata_fmt_dir.join("badly_formatted_fixed.json");
   let badly_formatted_original_json =
     testdata_fmt_dir.join("badly_formatted.json");
   let badly_formatted_json = t.path().join("badly_formatted.json");
   let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
-  std::fs::copy(&badly_formatted_original_json, &badly_formatted_json).unwrap();
+  std::fs::copy(badly_formatted_original_json, &badly_formatted_json).unwrap();
   // First, check formatting by ignoring the badly formatted file.
   let status = util::deno_cmd()
     .current_dir(&testdata_fmt_dir)
@@ -127,7 +126,8 @@ fn fmt_ignore_unexplicit_files() {
 
 #[test]
 fn fmt_auto_ignore_git_and_node_modules() {
-  use std::fs::{create_dir_all, File};
+  use std::fs::create_dir_all;
+  use std::fs::File;
   use std::io::Write;
   use std::path::PathBuf;
   fn create_bad_json(t: PathBuf) {
@@ -172,10 +172,10 @@ itest!(fmt_quiet_check_fmt_dir {
 });
 
 itest!(fmt_check_formatted_files {
-    args: "fmt --check fmt/regular/formatted1.js fmt/regular/formatted2.ts fmt/regular/formatted3.markdown fmt/regular/formatted4.jsonc",
-    output: "fmt/expected_fmt_check_formatted_files.out",
-    exit_code: 0,
-  });
+  args: "fmt --check fmt/regular/formatted1.js fmt/regular/formatted2.ts fmt/regular/formatted3.markdown fmt/regular/formatted4.jsonc",
+  output: "fmt/expected_fmt_check_formatted_files.out",
+  exit_code: 0,
+});
 
 itest!(fmt_check_ignore {
   args: "fmt --check --ignore=fmt/regular/formatted1.js fmt/regular/",

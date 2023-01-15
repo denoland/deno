@@ -1,15 +1,16 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_bench_util::bench_js_sync;
 use deno_bench_util::bench_or_profile;
-use deno_bench_util::bencher::{benchmark_group, Bencher};
+use deno_bench_util::bencher::benchmark_group;
+use deno_bench_util::bencher::Bencher;
 
 use deno_core::Extension;
 
 fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::init(),
-    Extension::builder()
+    Extension::builder("deno_webidl_bench")
       .js(vec![("setup", include_str!("dict.js"))])
       .build(),
   ]

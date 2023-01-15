@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -13,7 +13,7 @@ use deno_core::parking_lot::Mutex;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::lockfile::Lockfile;
+use crate::args::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::registry::NpmPackageVersionDistInfo;
@@ -275,11 +275,7 @@ impl NpmResolutionSnapshot {
           id: package_id.clone(),
           copy_index: copy_index_resolver.resolve(&package_id),
           // temporary dummy value
-          dist: NpmPackageVersionDistInfo {
-            tarball: "foobar".to_string(),
-            shasum: "foobar".to_string(),
-            integrity: Some("foobar".to_string()),
-          },
+          dist: NpmPackageVersionDistInfo::default(),
           dependencies,
         };
 

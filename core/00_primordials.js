@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // Based on https://github.com/nodejs/node/blob/889ad35d3d41e376870f785b0c1b669cb732013d/lib/internal/per_context/primordials.js
 // Copyright Joyent, Inc. and other Node contributors.
@@ -260,10 +260,27 @@
       },
     },
     {
+      name: "SetIterator",
+      original: {
+        prototype: Reflect.getPrototypeOf(new Set()[Symbol.iterator]()),
+      },
+    },
+    {
+      name: "MapIterator",
+      original: {
+        prototype: Reflect.getPrototypeOf(new Map()[Symbol.iterator]()),
+      },
+    },
+    {
       name: "StringIterator",
       original: {
         prototype: Reflect.getPrototypeOf(String.prototype[Symbol.iterator]()),
       },
+    },
+    { name: "Generator", original: Reflect.getPrototypeOf(function* () {}) },
+    {
+      name: "AsyncGenerator",
+      original: Reflect.getPrototypeOf(async function* () {}),
     },
   ].forEach(({ name, original }) => {
     primordials[name] = original;
@@ -277,7 +294,6 @@
     ArrayPrototypeForEach,
     ArrayPrototypeMap,
     FunctionPrototypeCall,
-    Map,
     ObjectDefineProperty,
     ObjectFreeze,
     ObjectPrototypeIsPrototypeOf,
@@ -285,10 +301,7 @@
     Promise,
     PromisePrototype,
     PromisePrototypeThen,
-    Set,
     SymbolIterator,
-    WeakMap,
-    WeakSet,
   } = primordials;
 
   // Because these functions are used by `makeSafe`, which is exposed
@@ -315,6 +328,14 @@
   primordials.SafeArrayIterator = createSafeIterator(
     primordials.ArrayPrototypeSymbolIterator,
     primordials.ArrayIteratorPrototypeNext,
+  );
+  primordials.SafeSetIterator = createSafeIterator(
+    primordials.SetPrototypeSymbolIterator,
+    primordials.SetIteratorPrototypeNext,
+  );
+  primordials.SafeMapIterator = createSafeIterator(
+    primordials.MapPrototypeSymbolIterator,
+    primordials.MapIteratorPrototypeNext,
   );
   primordials.SafeStringIterator = createSafeIterator(
     primordials.StringPrototypeSymbolIterator,

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="./compiler.d.ts" />
@@ -385,7 +385,7 @@ delete Object.prototype.__proto__;
   // paths must be either relative or absolute. Since
   // analysis in Rust operates on fully resolved URLs,
   // it makes sense to use the same scheme here.
-  const ASSETS = "asset:///";
+  const ASSETS_URL_PREFIX = "asset:///";
 
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
@@ -431,6 +431,7 @@ delete Object.prototype.__proto__;
     noEmit: true,
     strict: true,
     target: ts.ScriptTarget.ESNext,
+    lib: ["lib.deno.window.d.ts"],
   };
 
   // todo(dsherret): can we remove this and just use ts.OperationCanceledException?
@@ -480,12 +481,16 @@ delete Object.prototype.__proto__;
    * @type {ts.CompilerHost & ts.LanguageServiceHost} */
   const host = {
     fileExists(specifier) {
-      debug(`host.fileExists("${specifier}")`);
+      if (logDebug) {
+        debug(`host.fileExists("${specifier}")`);
+      }
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
       return ops.op_exists({ specifier });
     },
     readFile(specifier) {
-      debug(`host.readFile("${specifier}")`);
+      if (logDebug) {
+        debug(`host.readFile("${specifier}")`);
+      }
       return ops.op_load({ specifier }).data;
     },
     getCancellationToken() {
@@ -499,11 +504,13 @@ delete Object.prototype.__proto__;
       _shouldCreateNewSourceFile,
     ) {
       const createOptions = getCreateSourceFileOptions(languageVersion);
-      debug(
-        `host.getSourceFile("${specifier}", ${
-          ts.ScriptTarget[createOptions.languageVersion]
-        })`,
-      );
+      if (logDebug) {
+        debug(
+          `host.getSourceFile("${specifier}", ${
+            ts.ScriptTarget[createOptions.languageVersion]
+          })`,
+        );
+      }
 
       // Needs the original specifier
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
@@ -540,19 +547,23 @@ delete Object.prototype.__proto__;
       return sourceFile;
     },
     getDefaultLibFileName() {
-      return `${ASSETS}/lib.esnext.d.ts`;
+      return `${ASSETS_URL_PREFIX}lib.esnext.d.ts`;
     },
     getDefaultLibLocation() {
-      return ASSETS;
+      return ASSETS_URL_PREFIX;
     },
     writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
-      debug(`host.writeFile("${fileName}")`);
+      if (logDebug) {
+        debug(`host.writeFile("${fileName}")`);
+      }
       return ops.op_emit(
         { fileName, data },
       );
     },
     getCurrentDirectory() {
-      debug(`host.getCurrentDirectory()`);
+      if (logDebug) {
+        debug(`host.getCurrentDirectory()`);
+      }
       return cwd ?? ops.op_cwd();
     },
     getCanonicalFileName(fileName) {
@@ -609,9 +620,11 @@ delete Object.prototype.__proto__;
       });
     },
     resolveModuleNames(specifiers, base) {
-      debug(`host.resolveModuleNames()`);
-      debug(`  base: ${base}`);
-      debug(`  specifiers: ${specifiers.join(", ")}`);
+      if (logDebug) {
+        debug(`host.resolveModuleNames()`);
+        debug(`  base: ${base}`);
+        debug(`  specifiers: ${specifiers.join(", ")}`);
+      }
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve({
         specifiers,
@@ -646,11 +659,15 @@ delete Object.prototype.__proto__;
 
     // LanguageServiceHost
     getCompilationSettings() {
-      debug("host.getCompilationSettings()");
+      if (logDebug) {
+        debug("host.getCompilationSettings()");
+      }
       return compilationSettings;
     },
     getScriptFileNames() {
-      debug("host.getScriptFileNames()");
+      if (logDebug) {
+        debug("host.getScriptFileNames()");
+      }
       // tsc requests the script file names multiple times even though it can't
       // possibly have changed, so we will memoize it on a per request basis.
       if (scriptFileNamesCache) {
@@ -659,7 +676,9 @@ delete Object.prototype.__proto__;
       return scriptFileNamesCache = ops.op_script_names();
     },
     getScriptVersion(specifier) {
-      debug(`host.getScriptVersion("${specifier}")`);
+      if (logDebug) {
+        debug(`host.getScriptVersion("${specifier}")`);
+      }
       const sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
         return sourceFile.version ?? "1";
@@ -674,7 +693,9 @@ delete Object.prototype.__proto__;
       return scriptVersion;
     },
     getScriptSnapshot(specifier) {
-      debug(`host.getScriptSnapshot("${specifier}")`);
+      if (logDebug) {
+        debug(`host.getScriptSnapshot("${specifier}")`);
+      }
       const sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
         return {
@@ -807,8 +828,10 @@ delete Object.prototype.__proto__;
 
     setLogDebug(debugFlag, "TS");
     performanceStart();
-    debug(">>> exec start", { rootNames });
-    debug(config);
+    if (logDebug) {
+      debug(">>> exec start", { rootNames });
+      debug(config);
+    }
 
     rootNames.forEach(checkNormalizedPath);
 
@@ -865,6 +888,20 @@ delete Object.prototype.__proto__;
     debug("<<< exec stop");
   }
 
+  function getAssets() {
+    /** @type {{ specifier: string; text: string; }[]} */
+    const assets = [];
+    for (const sourceFile of sourceFileCache.values()) {
+      if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
+        assets.push({
+          specifier: sourceFile.fileName,
+          text: sourceFile.text,
+        });
+      }
+    }
+    return assets;
+  }
+
   /**
    * @param {number} id
    * @param {any} data
@@ -877,7 +914,9 @@ delete Object.prototype.__proto__;
    * @param {LanguageServerRequest} request
    */
   function serverRequest({ id, ...request }) {
-    debug(`serverRequest()`, { id, ...request });
+    if (logDebug) {
+      debug(`serverRequest()`, { id, ...request });
+    }
 
     // reset all memoized source files names
     scriptFileNamesCache = undefined;
@@ -911,16 +950,7 @@ delete Object.prototype.__proto__;
         );
       }
       case "getAssets": {
-        const assets = [];
-        for (const sourceFile of sourceFileCache.values()) {
-          if (sourceFile.fileName.startsWith(ASSETS)) {
-            assets.push({
-              specifier: sourceFile.fileName,
-              text: sourceFile.text,
-            });
-          }
-        }
-        return respond(id, assets);
+        return respond(id, getAssets());
       }
       case "getApplicableRefactors": {
         return respond(
@@ -1000,7 +1030,9 @@ delete Object.prototype.__proto__;
         );
       }
       case "getCompletionDetails": {
-        debug("request", request);
+        if (logDebug) {
+          debug("request", request);
+        }
         return respond(
           id,
           languageService.getCompletionEntryDetails(
@@ -1255,7 +1287,10 @@ delete Object.prototype.__proto__;
     // we are caching in memory common type libraries that will be re-used by
     // tsc on when the snapshot is restored
     assert(
-      host.getSourceFile(`${ASSETS}${specifier}`, ts.ScriptTarget.ESNext),
+      host.getSourceFile(
+        `${ASSETS_URL_PREFIX}${specifier}`,
+        ts.ScriptTarget.ESNext,
+      ),
     );
   }
   // this helps ensure as much as possible is in memory that is re-usable
@@ -1266,12 +1301,16 @@ delete Object.prototype.__proto__;
     options: SNAPSHOT_COMPILE_OPTIONS,
     host,
   });
-  ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM);
+  assert(ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0);
+
+  // remove this now that we don't need it anymore for warming up tsc
+  sourceFileCache.delete(buildSpecifier);
 
   // exposes the two functions that are called by `tsc::exec()` when type
   // checking TypeScript.
   globalThis.startup = startup;
   globalThis.exec = exec;
+  globalThis.getAssets = getAssets;
 
   // exposes the functions that are called when the compiler is used as a
   // language service.

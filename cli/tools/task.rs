@@ -1,10 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
-use crate::fs_util;
 use crate::proc_state::ProcState;
+use crate::util::fs::canonicalize_path;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -40,7 +40,7 @@ pub async fn execute_script(
   }
 
   let cwd = match task_flags.cwd {
-    Some(path) => fs_util::canonicalize_path(&PathBuf::from(path))?,
+    Some(path) => canonicalize_path(&PathBuf::from(path))?,
     None => config_file_path.parent().unwrap().to_owned(),
   };
   let task_name = task_flags.task;

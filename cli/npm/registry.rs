@@ -1,7 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::PathBuf;
@@ -18,13 +20,13 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::colors;
-use deno_runtime::deno_fetch::reqwest;
 use serde::Serialize;
 
-use crate::file_fetcher::CacheSetting;
-use crate::fs_util;
-use crate::http_cache::CACHE_PERM;
-use crate::progress_bar::ProgressBar;
+use crate::args::CacheSetting;
+use crate::cache::CACHE_PERM;
+use crate::http_util::HttpClient;
+use crate::util::fs::atomic_write_file;
+use crate::util::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
 use super::resolution::NpmVersionMatcher;
@@ -177,20 +179,43 @@ impl NpmPackageVersionInfo {
 pub struct NpmPackageVersionDistInfo {
   /// URL to the tarball.
   pub tarball: String,
-  pub shasum: String,
-  pub integrity: Option<String>,
+  shasum: String,
+  integrity: Option<String>,
+}
+
+impl NpmPackageVersionDistInfo {
+  #[cfg(test)]
+  pub fn new(
+    tarball: String,
+    shasum: String,
+    integrity: Option<String>,
+  ) -> Self {
+    Self {
+      tarball,
+      shasum,
+      integrity,
+    }
+  }
+
+  pub fn integrity(&self) -> Cow<String> {
+    self
+      .integrity
+      .as_ref()
+      .map(Cow::Borrowed)
+      .unwrap_or_else(|| Cow::Owned(format!("sha1-{}", self.shasum)))
+  }
 }
 
 pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
   fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<NpmPackageInfo>, AnyError>>;
+  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>>;
 
   fn package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<NpmPackageInfo, AnyError>> {
+  ) -> BoxFuture<'static, Result<Arc<NpmPackageInfo>, AnyError>> {
     let api = self.clone();
     let name = name.to_string();
     async move {
@@ -212,13 +237,14 @@ pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
     let name = name.to_string();
     let version = version.to_string();
     async move {
-      // todo(dsherret): this could be optimized to not clone the
-      // entire package info in the case of the RealNpmRegistryApi
-      let mut package_info = api.package_info(&name).await?;
-      Ok(package_info.versions.remove(&version))
+      let package_info = api.package_info(&name).await?;
+      Ok(package_info.versions.get(&version).cloned())
     }
     .boxed()
   }
+
+  /// Clears the internal memory cache.
+  fn clear_memory_cache(&self);
 }
 
 #[derive(Clone)]
@@ -226,35 +252,51 @@ pub struct RealNpmRegistryApi(Arc<RealNpmRegistryApiInner>);
 
 impl RealNpmRegistryApi {
   pub fn default_url() -> Url {
-    let env_var_name = "DENO_NPM_REGISTRY";
-    if let Ok(registry_url) = std::env::var(env_var_name) {
-      // ensure there is a trailing slash for the directory
-      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-      match Url::parse(&registry_url) {
-        Ok(url) => url,
-        Err(err) => {
-          eprintln!("{}: Invalid {} environment variable. Please provide a valid url.\n\n{:#}",
-          colors::red_bold("error"),
-          env_var_name, err);
-          std::process::exit(1);
+    // todo(dsherret): remove DENO_NPM_REGISTRY in the future (maybe May 2023)
+    let env_var_names = ["NPM_CONFIG_REGISTRY", "DENO_NPM_REGISTRY"];
+    for env_var_name in env_var_names {
+      if let Ok(registry_url) = std::env::var(env_var_name) {
+        // ensure there is a trailing slash for the directory
+        let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+        match Url::parse(&registry_url) {
+          Ok(url) => {
+            if env_var_name == "DENO_NPM_REGISTRY" {
+              log::warn!(
+                "{}",
+                colors::yellow(concat!(
+                  "DENO_NPM_REGISTRY was intended for internal testing purposes only. ",
+                  "Please update to NPM_CONFIG_REGISTRY instead.",
+                )),
+              );
+            }
+            return url;
+          }
+          Err(err) => {
+            log::debug!(
+              "Invalid {} environment variable: {:#}",
+              env_var_name,
+              err,
+            );
+          }
         }
       }
-    } else {
-      Url::parse("https://registry.npmjs.org").unwrap()
     }
+
+    Url::parse("https://registry.npmjs.org").unwrap()
   }
 
   pub fn new(
     base_url: Url,
     cache: NpmCache,
-    cache_setting: CacheSetting,
+    http_client: HttpClient,
     progress_bar: ProgressBar,
   ) -> Self {
     Self(Arc::new(RealNpmRegistryApiInner {
       base_url,
       cache,
       mem_cache: Default::default(),
-      cache_setting,
+      previously_reloaded_packages: Default::default(),
+      http_client,
       progress_bar,
     }))
   }
@@ -268,18 +310,23 @@ impl NpmRegistryApi for RealNpmRegistryApi {
   fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<NpmPackageInfo>, AnyError>> {
+  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
     let api = self.clone();
     let name = name.to_string();
     async move { api.0.maybe_package_info(&name).await }.boxed()
+  }
+
+  fn clear_memory_cache(&self) {
+    self.0.mem_cache.lock().clear();
   }
 }
 
 struct RealNpmRegistryApiInner {
   base_url: Url,
   cache: NpmCache,
-  mem_cache: Mutex<HashMap<String, Option<NpmPackageInfo>>>,
-  cache_setting: CacheSetting,
+  mem_cache: Mutex<HashMap<String, Option<Arc<NpmPackageInfo>>>>,
+  previously_reloaded_packages: Mutex<HashSet<String>>,
+  http_client: HttpClient,
   progress_bar: ProgressBar,
 }
 
@@ -287,13 +334,17 @@ impl RealNpmRegistryApiInner {
   pub async fn maybe_package_info(
     &self,
     name: &str,
-  ) -> Result<Option<NpmPackageInfo>, AnyError> {
-    let maybe_info = self.mem_cache.lock().get(name).cloned();
-    if let Some(info) = maybe_info {
-      Ok(info)
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
+    let maybe_maybe_info = self.mem_cache.lock().get(name).cloned();
+    if let Some(maybe_info) = maybe_maybe_info {
+      Ok(maybe_info)
     } else {
       let mut maybe_package_info = None;
-      if self.cache_setting.should_use_for_npm_package(name) {
+      if self.cache.cache_setting().should_use_for_npm_package(name)
+        // if this has been previously reloaded, then try loading from the
+        // file system cache
+        || !self.previously_reloaded_packages.lock().insert(name.to_string())
+      {
         // attempt to load from the file cache
         maybe_package_info = self.load_file_cached_package_info(name);
       }
@@ -306,6 +357,7 @@ impl RealNpmRegistryApiInner {
           format!("Error getting response at {}", self.get_package_url(name))
         })?;
       }
+      let maybe_package_info = maybe_package_info.map(Arc::new);
 
       // Not worth the complexity to ensure multiple in-flight requests
       // for the same package only request once because with how this is
@@ -391,8 +443,8 @@ impl RealNpmRegistryApiInner {
   ) -> Result<(), AnyError> {
     let file_cache_path = self.get_package_file_cache_path(name);
     let file_text = serde_json::to_string(&package_info)?;
-    std::fs::create_dir_all(&file_cache_path.parent().unwrap())?;
-    fs_util::atomic_write_file(&file_cache_path, file_text, CACHE_PERM)?;
+    std::fs::create_dir_all(file_cache_path.parent().unwrap())?;
+    atomic_write_file(&file_cache_path, file_text, CACHE_PERM)?;
     Ok(())
   }
 
@@ -400,50 +452,30 @@ impl RealNpmRegistryApiInner {
     &self,
     name: &str,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
-    if self.cache_setting == CacheSetting::Only {
+    if *self.cache.cache_setting() == CacheSetting::Only {
       return Err(custom_error(
         "NotCached",
         format!(
           "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
           name
         )
-      )
-      );
+      ));
     }
 
     let package_url = self.get_package_url(name);
-    let _guard = self.progress_bar.update(package_url.as_str());
+    let guard = self.progress_bar.update(package_url.as_str());
 
-    let response = match reqwest::get(package_url).await {
-      Ok(response) => response,
-      Err(err) => {
-        // attempt to use the local cache
-        if let Some(info) = self.load_file_cached_package_info(name) {
-          return Ok(Some(info));
-        } else {
-          return Err(err.into());
-        }
+    let maybe_bytes = self
+      .http_client
+      .download_with_progress(package_url, &guard)
+      .await?;
+    match maybe_bytes {
+      Some(bytes) => {
+        let package_info = serde_json::from_slice(&bytes)?;
+        self.save_package_info_to_file_cache(name, &package_info);
+        Ok(Some(package_info))
       }
-    };
-
-    if response.status() == 404 {
-      Ok(None)
-    } else if !response.status().is_success() {
-      let status = response.status();
-      let maybe_response_text = response.text().await.ok();
-      bail!(
-        "Bad response: {:?}{}",
-        status,
-        match maybe_response_text {
-          Some(text) => format!("\n\n{}", text),
-          None => String::new(),
-        }
-      );
-    } else {
-      let bytes = response.bytes().await?;
-      let package_info = serde_json::from_slice(&bytes)?;
-      self.save_package_info_to_file_cache(name, &package_info);
-      Ok(Some(package_info))
+      None => Ok(None),
     }
   }
 
@@ -512,6 +544,12 @@ impl TestNpmRegistryApi {
       .insert(package_to.0.to_string(), package_to.1.to_string());
   }
 
+  pub fn add_dist_tag(&self, package_name: &str, tag: &str, version: &str) {
+    let mut infos = self.package_infos.lock();
+    let info = infos.get_mut(package_name).unwrap();
+    info.dist_tags.insert(tag.to_string(), version.to_string());
+  }
+
   pub fn add_peer_dependency(
     &self,
     package_from: (&str, &str),
@@ -548,8 +586,12 @@ impl NpmRegistryApi for TestNpmRegistryApi {
   fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<NpmPackageInfo>, AnyError>> {
+  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
     let result = self.package_infos.lock().get(name).cloned();
-    Box::pin(deno_core::futures::future::ready(Ok(result)))
+    Box::pin(deno_core::futures::future::ready(Ok(result.map(Arc::new))))
+  }
+
+  fn clear_memory_cache(&self) {
+    // do nothing for the test api
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -343,7 +343,7 @@ fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
 
   for (name, args, return_code) in EXEC_TIME_BENCHMARKS {
     let proc = Command::new("time")
-      .args(&["-v", deno_exe.to_str().unwrap()])
+      .args(["-v", deno_exe.to_str().unwrap()])
       .args(args.iter())
       .stdout(Stdio::null())
       .stderr(Stdio::piped())
@@ -433,7 +433,7 @@ async fn main() -> Result<()> {
 
   let target_dir = test_util::target_dir();
   let deno_exe = test_util::deno_exe_path();
-  env::set_current_dir(&test_util::root_path())?;
+  env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
     created_at: chrono::Utc::now()
@@ -501,7 +501,7 @@ async fn main() -> Result<()> {
       let mut file = secure_tempfile::NamedTempFile::new()?;
 
       let exit_status = Command::new("strace")
-        .args(&[
+        .args([
           "-c",
           "-f",
           "-o",

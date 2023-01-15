@@ -1,10 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::io::ChildStderrResource;
 use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use super::io::StdFileResource;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::op;
 
@@ -27,7 +27,7 @@ use tokio::process::Command;
 use std::os::unix::process::ExitStatusExt;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_process")
     .ops(vec![op_run::decl(), op_run_status::decl(), op_kill::decl()])
     .build()
 }
@@ -145,9 +145,8 @@ struct RunInfo {
 fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
   state
-    .borrow_mut::<Permissions>()
-    .run
-    .check(&args[0], Some("Deno.run()"))?;
+    .borrow_mut::<PermissionsContainer>()
+    .check_run(&args[0], "Deno.run()")?;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -295,7 +294,8 @@ async fn op_run_status(
 #[cfg(unix)]
 pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   let signo = super::signal::signal_str_to_int(signal)?;
-  use nix::sys::signal::{kill as unix_kill, Signal};
+  use nix::sys::signal::kill as unix_kill;
+  use nix::sys::signal::Signal;
   use nix::unistd::Pid;
   let sig = Signal::try_from(signo)?;
   unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(AnyError::from)
@@ -354,9 +354,8 @@ fn op_kill(
   api_name: String,
 ) -> Result<(), AnyError> {
   state
-    .borrow_mut::<Permissions>()
-    .run
-    .check_all(Some(&api_name))?;
+    .borrow_mut::<PermissionsContainer>()
+    .check_run_all(&api_name)?;
   kill(pid, &signal)?;
   Ok(())
 }
