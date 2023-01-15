@@ -32,11 +32,21 @@ fn handwritten_baseline_object(b: &mut Bencher) {
   bench_js_sync(b, r#"handwrittenConverter({})"#, setup);
 }
 
+fn converter_object_with_fields(b: &mut Bencher) {
+  bench_js_sync(b, r#"TextDecodeOptions({ stream:false });"#, setup);
+}
+
+fn handwritten_baseline_object_with_fields(b: &mut Bencher) {
+  bench_js_sync(b, r#"handwrittenConverter({ stream:false })"#, setup);
+}
+
 benchmark_group!(
   benches,
   converter_undefined,
   handwritten_baseline_undefined,
   converter_object,
   handwritten_baseline_object,
+  converter_object_with_fields,
+  handwritten_baseline_object_with_fields
 );
 bench_or_profile!(benches);
