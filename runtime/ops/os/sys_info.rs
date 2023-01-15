@@ -275,6 +275,8 @@ pub fn mem_info() -> Option<MemInfo> {
     use std::mem;
     use winapi::shared::minwindef;
     use winapi::um::sysinfoapi;
+    use winapi::um::psapi::PERFORMANCE_INFORMATION;
+    use winapi::um::psapi::GetPerformanceInfo;
 
     let mut mem_status =
       mem::MaybeUninit::<sysinfoapi::MEMORYSTATUSEX>::uninit();
@@ -297,13 +299,13 @@ pub fn mem_info() -> Option<MemInfo> {
       // and https://github.com/GuillaumeGomez/sysinfo/issues/534
 
       let mut perf_info =
-        mem::MaybeUninit::<sysinfoapi::PERFORMANCE_INFORMATION>::uninit();
-      let result = sysinfoapi::GetPerformanceInfo(
+        mem::MaybeUninit::<PERFORMANCE_INFORMATION>::uninit();
+      let result = GetPerformanceInfo(
         perf_info.as_mut_ptr(),
-        mem::size_of::<sysinfoapi::PERFORMANCE_INFORMATION>()
+        mem::size_of::<PERFORMANCE_INFORMATION>()
           as minwindef::DWORD,
       );
-      if result == winapi::shared::minwindef::TRUE {
+      if result == minwindef::TRUE {
         let perf_info = perf_info.assume_init();
         let swap_total = perf_info.PageSize
           * perf_info
