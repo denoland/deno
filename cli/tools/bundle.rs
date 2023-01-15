@@ -27,10 +27,10 @@ pub async fn bundle(
   let cli_options = Arc::new(CliOptions::from_flags(flags)?);
   let resolver = |_| {
     let cli_options = cli_options.clone();
-    let source_file1 = bundle_flags.source_file.clone();
-    let source_file2 = bundle_flags.source_file.clone();
+    let source_file1 = &bundle_flags.source_file;
+    let source_file2 = &bundle_flags.source_file;
     async move {
-      let module_specifier = resolve_url_or_path(&source_file1)?;
+      let module_specifier = resolve_url_or_path(source_file1)?;
 
       log::debug!(">>>>> bundle START");
       let ps = ProcState::from_options(cli_options).await?;
@@ -38,9 +38,7 @@ pub async fn bundle(
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()
-        .filter_map(|(_, r)| {
-          r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
-        })
+        .filter_map(|(_, r)| r.ok().and_then(|(s, _, _)| s.to_file_path().ok()))
         .collect();
 
       if let Ok(Some(import_map_path)) = ps
@@ -66,7 +64,7 @@ pub async fn bundle(
   };
 
   let operation = |(ps, graph): (ProcState, Arc<deno_graph::ModuleGraph>)| {
-    let out_file = bundle_flags.out_file.clone();
+    let out_file = &bundle_flags.out_file;
     async move {
       // at the moment, we don't support npm specifiers in deno bundle, so show an error
       error_for_any_npm_specifier(&graph)?;
@@ -74,7 +72,7 @@ pub async fn bundle(
       let bundle_output = bundle_module_graph(graph.as_ref(), &ps)?;
       log::debug!(">>>>> bundle END");
 
-      if let Some(out_file) = out_file.as_ref() {
+      if let Some(out_file) = out_file {
         let output_bytes = bundle_output.code.as_bytes();
         let output_len = output_bytes.len();
         util::fs::write_file(out_file, output_bytes, 0o644)?;

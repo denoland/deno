@@ -225,7 +225,7 @@ impl VendorTestBuilder {
     let graph = build_test_graph(
       roots,
       self.original_import_map.clone(),
-      loader.clone(),
+      loader,
       &*analyzer,
     )
     .await;
