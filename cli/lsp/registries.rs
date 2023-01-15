@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::completions::IMPORT_COMMIT_CHARS;
 use super::logging::lsp_log;
@@ -12,11 +12,11 @@ use super::path_to_regex::StringOrNumber;
 use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
 
-use crate::deno_dir;
-use crate::file_fetcher::get_root_cert_store;
-use crate::file_fetcher::CacheSetting;
+use crate::args::CacheSetting;
+use crate::cache::DenoDir;
+use crate::cache::HttpCache;
 use crate::file_fetcher::FileFetcher;
-use crate::http_cache::HttpCache;
+use crate::http_util::HttpClient;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -30,13 +30,12 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
-use std::path::PathBuf;
 use tower_lsp::lsp_types as lsp;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
@@ -409,14 +408,6 @@ enum VariableItems {
   List(VariableItemsList),
 }
 
-#[derive(Debug, Default)]
-pub struct ModuleRegistryOptions {
-  pub maybe_root_path: Option<PathBuf>,
-  pub maybe_ca_stores: Option<Vec<String>>,
-  pub maybe_ca_file: Option<String>,
-  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-}
-
 /// A structure which holds the information about currently configured module
 /// registries and can provide completion information for URLs that match
 /// one of the enabled registries.
@@ -431,30 +422,25 @@ impl Default for ModuleRegistry {
     // This only gets used when creating the tsc runtime and for testing, and so
     // it shouldn't ever actually access the DenoDir, so it doesn't support a
     // custom root.
-    let dir = deno_dir::DenoDir::new(None).unwrap();
-    let location = dir.root.join("registries");
-    Self::new(&location, ModuleRegistryOptions::default()).unwrap()
+    let dir = DenoDir::new(None).unwrap();
+    let location = dir.registries_folder_path();
+    let http_client = HttpClient::new(None, None).unwrap();
+    Self::new(&location, http_client).unwrap()
   }
 }
 
 impl ModuleRegistry {
   pub fn new(
     location: &Path,
-    options: ModuleRegistryOptions,
+    http_client: HttpClient,
   ) -> Result<Self, AnyError> {
     let http_cache = HttpCache::new(location);
-    let root_cert_store = Some(get_root_cert_store(
-      options.maybe_root_path,
-      options.maybe_ca_stores,
-      options.maybe_ca_file,
-    )?);
     let mut file_fetcher = FileFetcher::new(
       http_cache,
       CacheSetting::RespectHeaders,
       true,
-      root_cert_store,
+      http_client,
       BlobStore::default(),
-      options.unsafely_ignore_certificate_errors,
       None,
     )?;
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
@@ -533,7 +519,7 @@ impl ModuleRegistry {
       .file_fetcher
       .fetch_with_accept(
         specifier,
-        &mut Permissions::allow_all(),
+        PermissionsContainer::allow_all(),
         Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
       )
       .await;
@@ -631,7 +617,7 @@ impl ModuleRegistry {
         .ok()?;
         let file = self
           .file_fetcher
-          .fetch(&endpoint, &mut Permissions::allow_all())
+          .fetch(&endpoint, PermissionsContainer::allow_all())
           .await
           .ok()?;
         let documentation: lsp::Documentation =
@@ -969,7 +955,7 @@ impl ModuleRegistry {
             None
           } else {
             Some(lsp::CompletionList {
-              items: completions.into_iter().map(|(_, i)| i).collect(),
+              items: completions.into_values().collect(),
               is_incomplete,
             })
           };
@@ -987,7 +973,7 @@ impl ModuleRegistry {
     let specifier = Url::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .ok()?;
     serde_json::from_str(&file.source).ok()
@@ -1044,7 +1030,7 @@ impl ModuleRegistry {
     let specifier = ModuleSpecifier::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(
@@ -1080,7 +1066,7 @@ impl ModuleRegistry {
         .ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(
@@ -1262,7 +1248,8 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
-      ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
+      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
+        .unwrap();
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1323,7 +1310,8 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
-      ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
+      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
+        .unwrap();
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1546,7 +1534,8 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
-      ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
+      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
+        .unwrap();
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
@@ -1616,7 +1605,8 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
-      ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
+      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
+        .unwrap();
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
@@ -1667,7 +1657,8 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let module_registry =
-      ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
+      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
+        .unwrap();
     let result = module_registry.check_origin("http://localhost:4545").await;
     assert!(result.is_ok());
   }
@@ -1678,7 +1669,8 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let module_registry =
-      ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
+      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
+        .unwrap();
     let result = module_registry.check_origin("https://deno.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();

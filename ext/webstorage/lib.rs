@@ -1,6 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
+
+use std::fmt;
+use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
@@ -10,8 +13,6 @@ use deno_core::OpState;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
-use std::fmt;
-use std::path::PathBuf;
 
 pub use rusqlite;
 
@@ -21,7 +22,8 @@ struct OriginStorageDir(PathBuf);
 const MAX_STORAGE_BYTES: u32 = 10 * 1024 * 1024;
 
 pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl"])
     .js(include_js_files!(
       prefix "deno:ext/webstorage",
       "01_webstorage.js",

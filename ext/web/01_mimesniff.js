@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -16,6 +16,7 @@
     MapPrototypeHas,
     MapPrototypeSet,
     RegExpPrototypeTest,
+    SafeMapIterator,
     StringPrototypeReplaceAll,
     StringPrototypeToLowerCase,
   } = window.__bootstrap.primordials;
@@ -195,7 +196,7 @@
    */
   function serializeMimeType(mimeType) {
     let serialization = essence(mimeType);
-    for (const param of mimeType.parameters) {
+    for (const param of new SafeMapIterator(mimeType.parameters)) {
       serialization += `;${param[0]}=`;
       let value = param[1];
       if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, value)) {
@@ -221,7 +222,8 @@
     let charset = null;
     let essence_ = null;
     let mimeType = null;
-    for (const value of headerValues) {
+    for (let i = 0; i < headerValues.length; ++i) {
+      const value = headerValues[i];
       const temporaryMimeType = parseMimeType(value);
       if (
         temporaryMimeType === null ||

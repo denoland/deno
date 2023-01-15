@@ -1,0 +1,5 @@
+Download http://127.0.0.1:4545/run/003_relative_import.ts
+Download http://127.0.0.1:4545/subdir/print_hello.ts
+Hello
+[Function: a]
+[Function: b]

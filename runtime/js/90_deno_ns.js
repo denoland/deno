@@ -1,13 +1,12 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const __bootstrap = window.__bootstrap;
+
   __bootstrap.denoNs = {
     metrics: core.metrics,
-    test: __bootstrap.testing.test,
-    bench: __bootstrap.testing.bench,
     Process: __bootstrap.process.Process,
     run: __bootstrap.process.run,
     isatty: __bootstrap.tty.isatty,
@@ -30,7 +29,7 @@
     makeTempDir: __bootstrap.fs.makeTempDir,
     makeTempFileSync: __bootstrap.fs.makeTempFileSync,
     makeTempFile: __bootstrap.fs.makeTempFile,
-    memoryUsage: core.memoryUsage,
+    memoryUsage: () => core.ops.op_runtime_memory_usage(),
     mkdirSync: __bootstrap.fs.mkdirSync,
     mkdir: __bootstrap.fs.mkdir,
     chdir: __bootstrap.fs.chdir,
@@ -55,6 +54,8 @@
     truncate: __bootstrap.fs.truncate,
     ftruncateSync: __bootstrap.fs.ftruncateSync,
     ftruncate: __bootstrap.fs.ftruncate,
+    futime: __bootstrap.fs.futime,
+    futimeSync: __bootstrap.fs.futimeSync,
     errors: __bootstrap.errors.errors,
     // TODO(kt3k): Remove this export at v2
     // See https://github.com/denoland/deno/issues/9294
@@ -89,6 +90,7 @@
     seekSync: __bootstrap.files.seekSync,
     connect: __bootstrap.net.connect,
     listen: __bootstrap.net.listen,
+    loadavg: __bootstrap.os.loadavg,
     connectTls: __bootstrap.tls.connectTls,
     listenTls: __bootstrap.tls.listenTls,
     startTls: __bootstrap.tls.startTls,
@@ -109,31 +111,27 @@
     serveHttp: __bootstrap.http.serveHttp,
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
+    utime: __bootstrap.fs.utime,
+    utimeSync: __bootstrap.fs.utimeSync,
     kill: __bootstrap.process.kill,
     addSignalListener: __bootstrap.signals.addSignalListener,
     removeSignalListener: __bootstrap.signals.removeSignalListener,
+    refTimer: __bootstrap.timers.refTimer,
+    unrefTimer: __bootstrap.timers.unrefTimer,
+    osRelease: __bootstrap.os.osRelease,
+    osUptime: __bootstrap.os.osUptime,
+    hostname: __bootstrap.os.hostname,
+    systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
+    networkInterfaces: __bootstrap.os.networkInterfaces,
+    consoleSize: __bootstrap.tty.consoleSize,
+    gid: __bootstrap.os.gid,
+    uid: __bootstrap.os.uid,
   };
 
   __bootstrap.denoNsUnstable = {
-    setRaw: __bootstrap.tty.setRaw,
-    consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
-    loadavg: __bootstrap.os.loadavg,
-    hostname: __bootstrap.os.hostname,
-    osRelease: __bootstrap.os.osRelease,
-    systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
-    networkInterfaces: __bootstrap.os.networkInterfaces,
-    getGid: __bootstrap.os.getGid,
-    getUid: __bootstrap.os.getUid,
-    listen: __bootstrap.netUnstable.listen,
-    connect: __bootstrap.netUnstable.connect,
-    listenDatagram: __bootstrap.netUnstable.listenDatagram,
-    Listener: __bootstrap.netUnstable.Listener,
+    listenDatagram: __bootstrap.net.listenDatagram,
     umask: __bootstrap.fs.umask,
-    futime: __bootstrap.fs.futime,
-    futimeSync: __bootstrap.fs.futimeSync,
-    utime: __bootstrap.fs.utime,
-    utimeSync: __bootstrap.fs.utimeSync,
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
     http: __bootstrap.http,
@@ -146,12 +144,12 @@
     flockSync: __bootstrap.fs.flockSync,
     funlock: __bootstrap.fs.funlock,
     funlockSync: __bootstrap.fs.funlockSync,
-    refTimer: __bootstrap.timers.refTimer,
-    unrefTimer: __bootstrap.timers.unrefTimer,
     Child: __bootstrap.spawn.Child,
+    ChildProcess: __bootstrap.spawn.ChildProcess,
     spawnChild: __bootstrap.spawn.spawnChild,
     spawn: __bootstrap.spawn.spawn,
     spawnSync: __bootstrap.spawn.spawnSync,
+    Command: __bootstrap.spawn.Command,
     serve: __bootstrap.flash.serve,
     upgradeHttp: __bootstrap.http.upgradeHttp,
     upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,

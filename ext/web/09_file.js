@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference no-default-lib="true" />
@@ -20,6 +20,7 @@
     ArrayBufferPrototypeSlice,
     ArrayBufferIsView,
     ArrayPrototypePush,
+    AsyncGeneratorPrototypeNext,
     Date,
     DatePrototypeGetTime,
     MathMax,
@@ -94,8 +95,8 @@
 
   /** @param {(BlobReference | Blob)[]} parts */
   async function* toIterator(parts) {
-    for (const part of parts) {
-      yield* part.stream();
+    for (let i = 0; i < parts.length; ++i) {
+      yield* parts[i].stream();
     }
   }
 
@@ -110,7 +111,8 @@
     /** @type {(BlobReference|Blob)[]} */
     const processedParts = [];
     let size = 0;
-    for (const element of parts) {
+    for (let i = 0; i < parts.length; ++i) {
+      const element = parts[i];
       if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, element)) {
         const chunk = new Uint8Array(ArrayBufferPrototypeSlice(element, 0));
         ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
@@ -158,7 +160,9 @@
    * @returns {string[]}
    */
   function getParts(blob, bag = []) {
-    for (const part of blob[_parts]) {
+    const parts = blob[_parts];
+    for (let i = 0; i < parts.length; ++i) {
+      const part = parts[i];
       if (ObjectPrototypeIsPrototypeOf(BlobPrototype, part)) {
         getParts(part, bag);
       } else {
@@ -275,7 +279,9 @@
       const blobParts = [];
       let added = 0;
 
-      for (const part of this[_parts]) {
+      const parts = this[_parts];
+      for (let i = 0; i < parts.length; ++i) {
+        const part = parts[i];
         // don't add the overflow to new blobParts
         if (added >= span) {
           // Could maybe be possible to remove variable `added`
@@ -325,7 +331,9 @@
         /** @param {ReadableByteStreamController} controller */
         async pull(controller) {
           while (true) {
-            const { value, done } = await partIterator.next();
+            const { value, done } = await AsyncGeneratorPrototypeNext(
+              partIterator,
+            );
             if (done) return controller.close();
             if (value.byteLength > 0) {
               return controller.enqueue(value);
@@ -349,10 +357,14 @@
       const bytes = new Uint8Array(size);
       const partIterator = toIterator(this[_parts]);
       let offset = 0;
-      for await (const chunk of partIterator) {
-        const byteLength = chunk.byteLength;
+      while (true) {
+        const { value, done } = await AsyncGeneratorPrototypeNext(
+          partIterator,
+        );
+        if (done) break;
+        const byteLength = value.byteLength;
         if (byteLength > 0) {
-          TypedArrayPrototypeSet(bytes, chunk, offset);
+          TypedArrayPrototypeSet(bytes, value, offset);
           offset += byteLength;
         }
       }
@@ -598,7 +610,8 @@
     const parts = [];
     let totalSize = 0;
 
-    for (const { uuid, size } of blobData.parts) {
+    for (let i = 0; i < blobData.parts.length; ++i) {
+      const { uuid, size } = blobData.parts[i];
       ArrayPrototypePush(parts, new BlobReference(uuid, size));
       totalSize += size;
     }

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -7,10 +7,11 @@
   const { fromFlashRequest, toInnerResponse, _flash } =
     window.__bootstrap.fetch;
   const core = window.Deno.core;
+  const { Event } = window.__bootstrap.event;
   const {
     ReadableStream,
     ReadableStreamPrototype,
-    getReadableStreamRid,
+    getReadableStreamResourceBacking,
     readableStreamClose,
     _state,
   } = window.__bootstrap.streams;
@@ -26,13 +27,14 @@
   } = window.__bootstrap.webSocket;
   const { _ws } = window.__bootstrap.http;
   const {
-    Function,
     ObjectPrototypeIsPrototypeOf,
-    PromiseAll,
+    PromisePrototype,
+    PromisePrototypeCatch,
+    PromisePrototypeThen,
+    SafePromiseAll,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
-    Promise,
     Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
@@ -137,7 +139,8 @@
     // status-line = HTTP-version SP status-code SP reason-phrase CRLF
     // Date header: https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.2
     let str = `HTTP/1.1 ${status} ${statusCodes[status]}\r\nDate: ${date}\r\n`;
-    for (const [name, value] of headerList) {
+    for (let i = 0; i < headerList.length; ++i) {
+      const [name, value] = headerList[i];
       // header-field   = field-name ":" OWS field-value OWS
       str += `${name}: ${value}\r\n`;
     }
@@ -152,7 +155,8 @@
     }
 
     // MUST NOT send Content-Length or Transfer-Encoding if status code is 1xx or 204.
-    if (status == 204 && status <= 100) {
+    if (status === 204 || status < 200) {
+      str += "\r\n";
       return str;
     }
 
@@ -185,7 +189,7 @@
   }
 
   function prepareFastCalls() {
-    return core.opSync("op_flash_make_request");
+    return core.ops.op_flash_make_request();
   }
 
   function hostnameForDisplay(hostname) {
@@ -239,6 +243,7 @@
     i,
     respondFast,
     respondChunked,
+    tryRespondChunked,
   ) {
     // there might've been an HTTP upgrade.
     if (resp === undefined) {
@@ -322,7 +327,7 @@
       );
     }
 
-    (async () => {
+    return (async () => {
       if (!ws) {
         if (hasBody && body[_state] !== "closed") {
           // TODO(@littledivy): Optimize by draining in a single op.
@@ -333,36 +338,43 @@
       }
 
       if (isStreamingResponseBody === true) {
-        const resourceRid = getReadableStreamRid(respBody);
-        if (resourceRid) {
+        const resourceBacking = getReadableStreamResourceBacking(respBody);
+        if (resourceBacking) {
           if (respBody.locked) {
             throw new TypeError("ReadableStream is locked.");
           }
           const reader = respBody.getReader(); // Aquire JS lock.
           try {
-            core.opAsync(
-              "op_flash_write_resource",
-              http1Response(
-                method,
-                innerResp.status ?? 200,
-                innerResp.headerList,
-                0, // Content-Length will be set by the op.
-                null,
-                true,
+            PromisePrototypeThen(
+              core.opAsync(
+                "op_flash_write_resource",
+                http1Response(
+                  method,
+                  innerResp.status ?? 200,
+                  innerResp.headerList,
+                  0, // Content-Length will be set by the op.
+                  null,
+                  true,
+                ),
+                serverId,
+                i,
+                resourceBacking.rid,
+                resourceBacking.autoClose,
               ),
-              serverId,
-              i,
-              resourceRid,
-            ).then(() => {
-              // Release JS lock.
-              readableStreamClose(respBody);
-            });
+              () => {
+                // Release JS lock.
+                readableStreamClose(respBody);
+              },
+            );
           } catch (error) {
             await reader.cancel(error);
             throw error;
           }
         } else {
           const reader = respBody.getReader();
+
+          // Best case: sends headers + first chunk in a single go.
+          const { value, done } = await reader.read();
           writeFixedResponse(
             serverId,
             i,
@@ -377,14 +389,23 @@
             false,
             respondFast,
           );
-          while (true) {
-            const { value, done } = await reader.read();
-            await respondChunked(
-              i,
-              value,
-              done,
-            );
-            if (done) break;
+
+          await tryRespondChunked(
+            i,
+            value,
+            done,
+          );
+
+          if (!done) {
+            while (true) {
+              const chunk = await reader.read();
+              await respondChunked(
+                i,
+                chunk.value,
+                chunk.done,
+              );
+              if (chunk.done) break;
+            }
           }
         }
       }
@@ -414,135 +435,177 @@
     })();
   }
 
-  async function serve(arg1, arg2) {
-    let options = undefined;
-    let handler = undefined;
-    if (arg1 instanceof Function) {
-      handler = arg1;
-      options = arg2;
-    } else if (arg2 instanceof Function) {
-      handler = arg2;
-      options = arg1;
-    } else {
-      options = arg1;
-    }
-    if (handler === undefined) {
-      if (options === undefined) {
-        throw new TypeError(
-          "No handler was provided, so an options bag is mandatory.",
-        );
+  function createServe(opFn) {
+    return async function serve(arg1, arg2) {
+      let options = undefined;
+      let handler = undefined;
+      if (typeof arg1 === "function") {
+        handler = arg1;
+        options = arg2;
+      } else if (typeof arg2 === "function") {
+        handler = arg2;
+        options = arg1;
+      } else {
+        options = arg1;
       }
-      handler = options.handler;
-    }
-    if (!(handler instanceof Function)) {
-      throw new TypeError("A handler function must be provided.");
-    }
-    if (options === undefined) {
-      options = {};
-    }
-
-    const signal = options.signal;
-
-    const onError = options.onError ?? function (error) {
-      console.error(error);
-      return new Response("Internal Server Error", { status: 500 });
-    };
-
-    const onListen = options.onListen ?? function ({ port }) {
-      console.log(
-        `Listening on http://${
-          hostnameForDisplay(listenOpts.hostname)
-        }:${port}/`,
-      );
-    };
-
-    const listenOpts = {
-      hostname: options.hostname ?? "127.0.0.1",
-      port: options.port ?? 9000,
-    };
-    if (options.cert || options.key) {
-      if (!options.cert || !options.key) {
-        throw new TypeError(
-          "Both cert and key must be provided to enable HTTPS.",
-        );
-      }
-      listenOpts.cert = options.cert;
-      listenOpts.key = options.key;
-    }
-
-    const serverId = core.ops.op_flash_serve(listenOpts);
-    const serverPromise = core.opAsync("op_flash_drive_server", serverId);
-
-    core.opAsync("op_flash_wait_for_listening", serverId).then((port) => {
-      onListen({ hostname: listenOpts.hostname, port });
-    }).catch(() => {});
-    const finishedPromise = serverPromise.catch(() => {});
-
-    const server = {
-      id: serverId,
-      transport: listenOpts.cert && listenOpts.key ? "https" : "http",
-      hostname: listenOpts.hostname,
-      port: listenOpts.port,
-      closed: false,
-      finished: finishedPromise,
-      async close() {
-        if (server.closed) {
-          return;
+      if (handler === undefined) {
+        if (options === undefined) {
+          throw new TypeError(
+            "No handler was provided, so an options bag is mandatory.",
+          );
         }
-        server.closed = true;
-        await core.opAsync("op_flash_close_server", serverId);
-        await server.finished;
-      },
-      async serve() {
-        let offset = 0;
-        while (true) {
-          if (server.closed) {
-            break;
-          }
+        handler = options.handler;
+      }
+      if (typeof handler !== "function") {
+        throw new TypeError("A handler function must be provided.");
+      }
+      if (options === undefined) {
+        options = {};
+      }
 
-          let tokens = nextRequestSync();
-          if (tokens === 0) {
-            tokens = await core.opAsync("op_flash_next_async", serverId);
+      const signal = options.signal;
+
+      const onError = options.onError ?? function (error) {
+        console.error(error);
+        return new Response("Internal Server Error", { status: 500 });
+      };
+
+      const onListen = options.onListen ?? function ({ port }) {
+        console.log(
+          `Listening on http://${
+            hostnameForDisplay(listenOpts.hostname)
+          }:${port}/`,
+        );
+      };
+
+      const listenOpts = {
+        hostname: options.hostname ?? "127.0.0.1",
+        port: options.port ?? 9000,
+        reuseport: options.reusePort ?? false,
+      };
+      if (options.cert || options.key) {
+        if (!options.cert || !options.key) {
+          throw new TypeError(
+            "Both cert and key must be provided to enable HTTPS.",
+          );
+        }
+        listenOpts.cert = options.cert;
+        listenOpts.key = options.key;
+      }
+
+      const serverId = opFn(listenOpts);
+      const serverPromise = core.opAsync("op_flash_drive_server", serverId);
+
+      PromisePrototypeCatch(
+        PromisePrototypeThen(
+          core.opAsync("op_flash_wait_for_listening", serverId),
+          (port) => {
+            onListen({ hostname: listenOpts.hostname, port });
+          },
+        ),
+        () => {},
+      );
+      const finishedPromise = PromisePrototypeCatch(serverPromise, () => {});
+
+      const server = {
+        id: serverId,
+        transport: listenOpts.cert && listenOpts.key ? "https" : "http",
+        hostname: listenOpts.hostname,
+        port: listenOpts.port,
+        closed: false,
+        finished: finishedPromise,
+        async close() {
+          if (server.closed) {
+            return;
+          }
+          server.closed = true;
+          await core.opAsync("op_flash_close_server", serverId);
+          await server.finished;
+        },
+        async serve() {
+          let offset = 0;
+          while (true) {
             if (server.closed) {
               break;
             }
-          }
 
-          for (let i = offset; i < offset + tokens; i++) {
-            let body = null;
-            // There might be a body, but we don't expose it for GET/HEAD requests.
-            // It will be closed automatically once the request has been handled and
-            // the response has been sent.
-            const method = getMethodSync(i);
-            let hasBody = method > 2; // Not GET/HEAD/CONNECT
-            if (hasBody) {
-              body = createRequestBodyStream(serverId, i);
-              if (body === null) {
-                hasBody = false;
+            let tokens = nextRequestSync();
+            if (tokens === 0) {
+              tokens = await core.opAsync("op_flash_next_async", serverId);
+              if (server.closed) {
+                break;
               }
             }
 
-            const req = fromFlashRequest(
-              serverId,
-              /* streamRid */
-              i,
-              body,
-              /* methodCb */
-              () => methods[method],
-              /* urlCb */
-              () => {
-                const path = core.ops.op_flash_path(serverId, i);
-                return `${server.transport}://${server.hostname}:${server.port}${path}`;
-              },
-              /* headersCb */
-              () => core.ops.op_flash_headers(serverId, i),
-            );
+            for (let i = offset; i < offset + tokens; i++) {
+              let body = null;
+              // There might be a body, but we don't expose it for GET/HEAD requests.
+              // It will be closed automatically once the request has been handled and
+              // the response has been sent.
+              const method = getMethodSync(i);
+              let hasBody = method > 2; // Not GET/HEAD/CONNECT
+              if (hasBody) {
+                body = createRequestBodyStream(serverId, i);
+                if (body === null) {
+                  hasBody = false;
+                }
+              }
 
-            let resp;
-            try {
-              resp = handler(req);
-              if (resp instanceof Promise || typeof resp?.then === "function") {
-                resp.then((resp) =>
+              const req = fromFlashRequest(
+                serverId,
+                /* streamRid */
+                i,
+                body,
+                /* methodCb */
+                () => methods[method],
+                /* urlCb */
+                () => {
+                  const path = core.ops.op_flash_path(serverId, i);
+                  return `${server.transport}://${server.hostname}:${server.port}${path}`;
+                },
+                /* headersCb */
+                () => core.ops.op_flash_headers(serverId, i),
+              );
+
+              let resp;
+              try {
+                resp = handler(req);
+                if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
+                  PromisePrototypeCatch(
+                    PromisePrototypeThen(
+                      resp,
+                      (resp) =>
+                        handleResponse(
+                          req,
+                          resp,
+                          body,
+                          hasBody,
+                          method,
+                          serverId,
+                          i,
+                          respondFast,
+                          respondChunked,
+                          tryRespondChunked,
+                        ),
+                    ),
+                    onError,
+                  );
+                } else if (typeof resp?.then === "function") {
+                  resp.then((resp) =>
+                    handleResponse(
+                      req,
+                      resp,
+                      body,
+                      hasBody,
+                      method,
+                      serverId,
+                      i,
+                      respondFast,
+                      respondChunked,
+                      tryRespondChunked,
+                    )
+                  ).catch(onError);
+                } else {
                   handleResponse(
                     req,
                     resp,
@@ -553,73 +616,80 @@
                     i,
                     respondFast,
                     respondChunked,
-                  )
-                ).catch(onError);
-                continue;
+                    tryRespondChunked,
+                  ).catch(onError);
+                }
+              } catch (e) {
+                resp = await onError(e);
               }
-            } catch (e) {
-              resp = await onError(e);
             }
 
-            handleResponse(
-              req,
-              resp,
-              body,
-              hasBody,
-              method,
-              serverId,
-              i,
-              respondFast,
-              respondChunked,
-            );
+            offset += tokens;
           }
+          await server.finished;
+        },
+      };
 
-          offset += tokens;
+      signal?.addEventListener("abort", () => {
+        clearInterval(dateInterval);
+        PromisePrototypeThen(server.close(), () => {}, () => {});
+      }, {
+        once: true,
+      });
+
+      function tryRespondChunked(token, chunk, shutdown) {
+        const nwritten = core.ops.op_try_flash_respond_chunked(
+          serverId,
+          token,
+          chunk ?? new Uint8Array(),
+          shutdown,
+        );
+        if (nwritten > 0) {
+          return core.opAsync(
+            "op_flash_respond_chunked",
+            serverId,
+            token,
+            chunk,
+            shutdown,
+            nwritten,
+          );
         }
-        await server.finished;
-      },
-    };
+      }
 
-    signal?.addEventListener("abort", () => {
-      clearInterval(dateInterval);
-      server.close().then(() => {}, () => {});
-    }, {
-      once: true,
-    });
+      function respondChunked(token, chunk, shutdown) {
+        return core.opAsync(
+          "op_flash_respond_chunked",
+          serverId,
+          token,
+          chunk,
+          shutdown,
+        );
+      }
 
-    function respondChunked(token, chunk, shutdown) {
-      return core.opAsync(
-        "op_flash_respond_chuncked",
-        serverId,
-        token,
-        chunk,
-        shutdown,
-      );
-    }
+      const fastOp = prepareFastCalls();
+      let nextRequestSync = () => fastOp.nextRequest();
+      let getMethodSync = (token) => fastOp.getMethod(token);
+      let respondFast = (token, response, shutdown) =>
+        fastOp.respond(token, response, shutdown);
+      if (serverId > 0) {
+        nextRequestSync = () => core.ops.op_flash_next_server(serverId);
+        getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
+        respondFast = (token, response, shutdown) =>
+          core.ops.op_flash_respond(serverId, token, response, null, shutdown);
+      }
 
-    const fastOp = prepareFastCalls();
-    let nextRequestSync = () => fastOp.nextRequest();
-    let getMethodSync = (token) => fastOp.getMethod(token);
-    let respondFast = (token, response, shutdown) =>
-      fastOp.respond(token, response, shutdown);
-    if (serverId > 0) {
-      nextRequestSync = () => core.ops.op_flash_next_server(serverId);
-      getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
-      respondFast = (token, response, shutdown) =>
-        core.ops.op_flash_respond(serverId, token, response, null, shutdown);
-    }
-
-    if (!dateInterval) {
-      date = new Date().toUTCString();
-      dateInterval = setInterval(() => {
+      if (!dateInterval) {
         date = new Date().toUTCString();
-      }, 1000);
-    }
+        dateInterval = setInterval(() => {
+          date = new Date().toUTCString();
+        }, 1000);
+      }
 
-    await PromiseAll([
-      server.serve().catch(console.error),
-      serverPromise,
-    ]);
+      await SafePromiseAll([
+        PromisePrototypeCatch(server.serve(), console.error),
+        serverPromise,
+      ]);
+    };
   }
 
   function createRequestBodyStream(serverId, token) {
@@ -687,7 +757,7 @@
   }
 
   window.__bootstrap.flash = {
-    serve,
+    createServe,
     upgradeHttpRaw,
   };
 })(this);

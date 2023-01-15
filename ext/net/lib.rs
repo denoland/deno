@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub mod io;
 pub mod ops;
@@ -21,9 +21,11 @@ pub trait NetPermissions {
   fn check_net<T: AsRef<str>>(
     &mut self,
     _host: &(T, Option<u16>),
+    _api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
-  fn check_write(&mut self, _p: &Path) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path, _api_name: &str) -> Result<(), AnyError>;
+  fn check_write(&mut self, _p: &Path, _api_name: &str)
+    -> Result<(), AnyError>;
 }
 
 /// `UnstableChecker` is a struct so it can be placed inside `GothamState`;
@@ -83,12 +85,12 @@ pub fn init<P: NetPermissions + 'static>(
 ) -> Extension {
   let mut ops = ops::init::<P>();
   ops.extend(ops_tls::init::<P>());
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_web"])
     .js(include_js_files!(
       prefix "deno:ext/net",
       "01_net.js",
       "02_tls.js",
-      "04_net_unstable.js",
     ))
     .ops(ops)
     .state(move |state| {

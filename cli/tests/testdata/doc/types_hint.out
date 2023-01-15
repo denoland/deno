@@ -1,4 +1,4 @@
-Defined in [WILDCARD]/type_definitions/foo.d.ts:2:0
+Defined in [WILDCARD]/type_definitions/foo.d.ts:2:13
 
 const foo: string
   An exported value.

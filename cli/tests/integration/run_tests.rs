@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
@@ -609,12 +609,6 @@ itest!(private_field_presence_no_check {
   output: "run/private_field_presence.ts.out",
 });
 
-itest!(lock_write_requires_lock {
-  args: "run --lock-write some_file.ts",
-  output: "run/lock_write_requires_lock.out",
-  exit_code: 1,
-});
-
 // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(lock_write_fetch {
   args:
@@ -655,6 +649,59 @@ itest!(lock_check_err2 {
   args: "run --lock=run/lock_check_err2.json run/019_media_types.ts",
   output: "run/lock_check_err2.out",
   exit_code: 10,
+  http_server: true,
+});
+
+itest!(config_file_lock_path {
+  args: "run --config=run/config_file_lock_path.json run/019_media_types.ts",
+  output: "run/config_file_lock_path.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_flag_overrides_config_file_lock_path {
+     args: "run --lock=run/lock_check_ok2.json --config=run/config_file_lock_path.json run/019_media_types.ts",
+    output: "run/019_media_types.ts.out",
+    http_server: true,
+  });
+
+itest!(lock_v2_check_ok {
+  args:
+    "run --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+  output: "run/003_relative_import.ts.out",
+  http_server: true,
+});
+
+itest!(lock_v2_check_ok2 {
+  args: "run --lock=run/lock_v2_check_ok2.json run/019_media_types.ts",
+  output: "run/019_media_types.ts.out",
+  http_server: true,
+});
+
+itest!(lock_v2_dynamic_imports {
+  args: "run --lock=run/lock_v2_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/run/013_dynamic_import.ts",
+  output: "run/lock_v2_dynamic_imports.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_v2_check_err {
+  args: "run --lock=run/lock_v2_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
+  output: "run/lock_v2_check_err.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_v2_check_err2 {
+  args: "run --lock=run/lock_v2_check_err2.json run/019_media_types.ts",
+  output: "run/lock_v2_check_err2.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_only_http_and_https {
+  args: "run --lock=run/lock_only_http_and_https/deno.lock run/lock_only_http_and_https/main.ts",
+  output: "run/lock_only_http_and_https/main.out",
   http_server: true,
 });
 
@@ -1255,11 +1302,6 @@ itest!(fix_emittable_skipped {
   output: "run/fix_emittable_skipped.ts.out",
 });
 
-itest!(fix_exotic_specifiers {
-  args: "run --quiet --reload run/fix_exotic_specifiers.ts",
-  output: "run/fix_exotic_specifiers.ts.out",
-});
-
 itest!(fix_js_import_js {
   args: "run --quiet --reload run/fix_js_import_js.ts",
   output: "run/fix_js_import_js.ts.out",
@@ -1309,27 +1351,27 @@ itest!(jsx_import_source_pragma {
 
 itest!(jsx_import_source_pragma_with_config {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc run/jsx_import_source_pragma.tsx",
+    "run --reload --config jsx/deno-jsx.jsonc --no-lock run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_with_dev_config {
   args:
-    "run --reload --config jsx/deno-jsxdev.jsonc run/jsx_import_source_pragma.tsx",
+    "run --reload --config jsx/deno-jsxdev.jsonc --no-lock run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc run/jsx_import_source_no_pragma.tsx",
+    "run --reload --config jsx/deno-jsx.jsonc --no-lock run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma_dev {
-  args: "run --reload --config jsx/deno-jsxdev.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --config jsx/deno-jsxdev.jsonc --no-lock run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_dev.out",
   http_server: true,
 });
@@ -1347,25 +1389,25 @@ itest!(jsx_import_source_pragma_import_map_dev {
 });
 
 itest!(jsx_import_source_import_map {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_dev {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_scoped {
-  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_scoped_dev {
-  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
@@ -1377,14 +1419,14 @@ itest!(jsx_import_source_pragma_no_check {
 });
 
 itest!(jsx_import_source_pragma_with_config_no_check {
-  args: "run --reload --config jsx/deno-jsx.jsonc --no-check run/jsx_import_source_pragma.tsx",
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma_no_check {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
+    "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
 });
@@ -1396,7 +1438,7 @@ itest!(jsx_import_source_pragma_import_map_no_check {
 });
 
 itest!(jsx_import_source_import_map_no_check {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
+  args: "run --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
   output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
@@ -1674,8 +1716,7 @@ fn exec_path() {
     .unwrap();
   assert!(output.status.success());
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
-  let actual =
-    std::fs::canonicalize(&std::path::Path::new(stdout_str)).unwrap();
+  let actual = std::fs::canonicalize(std::path::Path::new(stdout_str)).unwrap();
   let expected = std::fs::canonicalize(util::deno_exe_path()).unwrap();
   assert_eq!(expected, actual);
 }
@@ -2382,6 +2423,59 @@ itest!(eval_context_throw_dom_exception {
   output: "run/eval_context_throw_dom_exception.js.out",
 });
 
+#[test]
+#[cfg(unix)]
+fn navigator_language_unix() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_language.ts",
+    None,
+    Some(vec![("LC_ALL".to_owned(), "pl_PL".to_owned())]),
+    false,
+  );
+  assert_eq!(res, "pl-PL\n")
+}
+
+#[test]
+fn navigator_language() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_language.ts",
+    None,
+    None,
+    false,
+  );
+  assert!(!res.is_empty())
+}
+
+#[test]
+#[cfg(unix)]
+fn navigator_languages_unix() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_languages.ts",
+    None,
+    Some(vec![
+      ("LC_ALL".to_owned(), "pl_PL".to_owned()),
+      ("NO_COLOR".to_owned(), "1".to_owned()),
+    ]),
+    false,
+  );
+  assert_eq!(res, "[ \"pl-PL\" ]\n")
+}
+
+#[test]
+fn navigator_languages() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_languages.ts",
+    None,
+    None,
+    false,
+  );
+  assert!(!res.is_empty())
+}
+
 /// Regression test for https://github.com/denoland/deno/issues/12740.
 #[test]
 fn issue12740() {
@@ -2402,7 +2496,7 @@ fn issue12740() {
     .unwrap();
   assert!(status.success());
   std::fs::write(&mod1_path, "export { foo } from \"./mod2.ts\";").unwrap();
-  std::fs::write(&mod2_path, "(").unwrap();
+  std::fs::write(mod2_path, "(").unwrap();
   let status = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -2425,7 +2519,7 @@ fn issue12807() {
   let mut deno_cmd = util::deno_cmd();
   // With a fresh `DENO_DIR`, run a module with a dependency and a type error.
   std::fs::write(&mod1_path, "import './mod2.ts'; Deno.exit('0');").unwrap();
-  std::fs::write(&mod2_path, "console.log('Hello, world!');").unwrap();
+  std::fs::write(mod2_path, "console.log('Hello, world!');").unwrap();
   let status = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -2676,6 +2770,13 @@ itest!(complex_error {
   exit_code: 1,
 });
 
+// Regression test for https://github.com/denoland/deno/issues/16340.
+itest!(error_with_errors_prop {
+  args: "run --quiet run/error_with_errors_prop.js",
+  output: "run/error_with_errors_prop.js.out",
+  exit_code: 1,
+});
+
 // Regression test for https://github.com/denoland/deno/issues/12143.
 itest!(js_root_with_ts_check {
   args: "run --quiet --check run/js_root_with_ts_check.js",
@@ -2830,21 +2931,28 @@ itest!(unhandled_rejection_sync_error {
   output: "run/unhandled_rejection_sync_error.ts.out",
 });
 
+// Regression test for https://github.com/denoland/deno/issues/15661
+itest!(unhandled_rejection_dynamic_import {
+  args: "run --allow-read run/unhandled_rejection_dynamic_import/main.ts",
+  output: "run/unhandled_rejection_dynamic_import/main.ts.out",
+  exit_code: 1,
+});
+
+// Regression test for https://github.com/denoland/deno/issues/16909
+itest!(unhandled_rejection_dynamic_import2 {
+  args: "run --allow-read run/unhandled_rejection_dynamic_import2/main.ts",
+  output: "run/unhandled_rejection_dynamic_import2/main.ts.out",
+});
+
 itest!(nested_error {
   args: "run run/nested_error.ts",
   output: "run/nested_error.ts.out",
   exit_code: 1,
 });
 
-itest!(node_env_var_allowlist_with_unstable_flag {
+itest!(node_env_var_allowlist {
   args: "run --unstable --no-prompt run/node_env_var_allowlist.ts",
-  output: "run/node_env_var_allowlist_with_unstable_flag.ts.out",
-  exit_code: 1,
-});
-
-itest!(node_env_var_allowlist_without_unstable_flag {
-  args: "run --no-prompt run/node_env_var_allowlist.ts",
-  output: "run/node_env_var_allowlist_without_unstable_flag.ts.out",
+  output: "run/node_env_var_allowlist.ts.out",
   exit_code: 1,
 });
 
@@ -2867,7 +2975,7 @@ fn cache_test() {
   assert!(output.status.success());
 
   let prg = util::deno_exe_path();
-  let output = Command::new(&prg)
+  let output = Command::new(prg)
     .env("DENO_DIR", deno_dir.path())
     .env("HTTP_PROXY", "http://nil")
     .env("NO_COLOR", "1")
@@ -3302,8 +3410,7 @@ async fn http2_request_url() {
 fn set_raw_should_not_panic_on_no_tty() {
   let output = util::deno_cmd()
     .arg("eval")
-    .arg("--unstable")
-    .arg("Deno.setRaw(Deno.stdin.rid, true)")
+    .arg("Deno.stdin.setRaw(true)")
     // stdin set to piped so it certainly does not refer to TTY
     .stdin(std::process::Stdio::piped())
     // stderr is piped so we can capture output.
@@ -3376,6 +3483,18 @@ fn broken_stdout() {
 itest!(error_cause {
   args: "run run/error_cause.ts",
   output: "run/error_cause.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_cause_recursive_aggregate {
+  args: "run error_cause_recursive_aggregate.ts",
+  output: "error_cause_recursive_aggregate.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_cause_recursive_tail {
+  args: "run error_cause_recursive_tail.ts",
+  output: "error_cause_recursive_tail.ts.out",
   exit_code: 1,
 });
 
@@ -3540,4 +3659,87 @@ fn websocket_server_idletimeout() {
       .unwrap();
 
   assert!(child.wait().unwrap().success());
+}
+
+itest!(auto_discover_lockfile {
+  args: "run run/auto_discover_lockfile/main.ts",
+  output: "run/auto_discover_lockfile/main.out",
+  http_server: true,
+  exit_code: 10,
+});
+
+itest!(no_lock_flag {
+  args: "run --no-lock run/no_lock_flag/main.ts",
+  output: "run/no_lock_flag/main.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+itest!(config_file_lock_false {
+  args: "run --config=run/config_file_lock_boolean/false.json run/config_file_lock_boolean/main.ts",
+  output: "run/config_file_lock_boolean/false.main.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+itest!(config_file_lock_true {
+  args: "run --config=run/config_file_lock_boolean/true.json run/config_file_lock_boolean/main.ts",
+  output: "run/config_file_lock_boolean/true.main.out",
+  http_server: true,
+  exit_code: 10,
+});
+
+// TODO(bartlomieju): this test is flaky on CI, reenable it after debugging
+// // Check https://github.com/denoland/deno_std/issues/2882
+// itest!(flash_shutdown {
+//   args: "run --unstable --allow-net run/flash_shutdown/main.ts",
+//   exit_code: 0,
+// });
+
+itest!(permission_args {
+  args: "run run/001_hello.js --allow-net",
+  output: "run/permission_args.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(permission_args_quiet {
+  args: "run --quiet run/001_hello.js --allow-net",
+  output: "run/001_hello.js.out",
+});
+
+// Regression test for https://github.com/denoland/deno/issues/16772
+#[test]
+fn file_fetcher_preserves_permissions() {
+  let _guard = util::http_server();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_text(
+      "const a = import('http://127.0.0.1:4545/run/019_media_types.ts');",
+    );
+    console.write_text("y");
+    console.write_line("");
+    console.write_line("close();");
+    let output = console.read_all_output();
+    assert_contains!(output, "success");
+    assert_contains!(output, "true");
+  });
+}
+
+#[test]
+fn stdio_streams_are_locked_in_permission_prompt() {
+  let _guard = util::http_server();
+  util::with_pty(&[
+    "repl",
+    "--allow-read=run/stdio_streams_are_locked_in_permission_prompt/worker.js,run/stdio_streams_are_locked_in_permission_prompt/text.txt"
+    ], |mut console| {
+    console.write_line(
+      r#"new Worker(`${Deno.cwd()}/run/stdio_streams_are_locked_in_permissions_prompt/worker.js`, { type: "module" });
+      await Deno.writeTextFile("./run/stdio_streams_are_locked_in_permissions_prompt/text.txt", "some code");"#,
+    );
+    console.write_line("y");
+    console.write_line("close();");
+    let output = console.read_all_output();
+
+    let expected_output = r#"\x1b[1;1H\x1b[0JAre you sure you want to continue?"#;
+    assert_eq!(output, expected_output);
+  });
 }

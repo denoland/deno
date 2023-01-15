@@ -1,15 +1,17 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const ops = core.ops;
+  const { Event } = window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const {
     Error,
     SymbolFor,
   } = window.__bootstrap.primordials;
 
-  const windowDispatchEvent = window.dispatchEvent.bind(window);
+  const windowDispatchEvent = EventTarget.prototype.dispatchEvent.bind(window);
 
   function loadavg() {
     return ops.op_loadavg();
@@ -23,6 +25,12 @@
     return ops.op_os_release();
   }
 
+  function createOsUptime(opFn) {
+    return function osUptime() {
+      return opFn();
+    };
+  }
+
   function systemMemoryInfo() {
     return ops.op_system_memory_info();
   }
@@ -31,12 +39,12 @@
     return ops.op_network_interfaces();
   }
 
-  function getGid() {
-    return ops.op_getgid();
+  function gid() {
+    return ops.op_gid();
   }
 
-  function getUid() {
-    return ops.op_getuid();
+  function uid() {
+    return ops.op_uid();
   }
 
   // This is an internal only method used by the test harness to override the
@@ -88,6 +96,9 @@
       return ops.op_env();
     },
     set: setEnv,
+    has(key) {
+      return getEnv(key) !== undefined;
+    },
     delete: deleteEnv,
   };
 
@@ -99,13 +110,14 @@
     env,
     execPath,
     exit,
-    getGid,
-    getUid,
+    gid,
     hostname,
     loadavg,
     networkInterfaces,
     osRelease,
+    createOsUptime,
     setExitHandler,
     systemMemoryInfo,
+    uid,
   };
 })(this);

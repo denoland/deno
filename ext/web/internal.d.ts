@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-var
 
@@ -68,6 +68,17 @@ declare namespace globalThis {
 
     declare var eventTarget: {
       EventTarget: typeof EventTarget;
+    };
+
+    declare var event: {
+      Event: typeof event;
+      ErrorEvent: typeof ErrorEvent;
+      CloseEvent: typeof CloseEvent;
+      MessageEvent: typeof MessageEvent;
+      CustomEvent: typeof CustomEvent;
+      ProgressEvent: typeof ProgressEvent;
+      PromiseRejectionEvent: typeof PromiseRejectionEvent;
+      reportError: typeof reportError;
     };
 
     declare var location: {

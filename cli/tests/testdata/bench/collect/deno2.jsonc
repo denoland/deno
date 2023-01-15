@@ -1,0 +1,8 @@
+{
+    "bench": {
+      "files": {
+        "include": ["./include/"],
+        "exclude": ["./ignore", "./include/2_bench.ts"]
+      }
+    }
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
@@ -12,7 +12,8 @@ use deno_fetch::reqwest;
 use deno_web::BlobStore;
 use deno_websocket::DomExceptionNetworkError;
 use hyper::body::Bytes;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::task::JoinHandle;
 
 // TODO(andreubotella) Properly parse the MIME type
@@ -57,8 +58,7 @@ pub fn op_worker_sync_fetch(
     let runtime = tokio::runtime::Builder::new_current_thread()
       .enable_io()
       .enable_time()
-      .build()
-      .unwrap();
+      .build()?;
 
     let handles: Vec<_> = scripts
       .into_iter()
@@ -107,7 +107,7 @@ pub fn op_worker_sync_fetch(
             }
             "blob" => {
               let blob =
-                blob_store.get_object_url(script_url)?.ok_or_else(|| {
+                blob_store.get_object_url(script_url).ok_or_else(|| {
                   type_error("Blob for the given URL not found.")
                 })?;
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 /// <reference path="../../core/internal.d.ts" />
@@ -133,6 +133,7 @@
       }
 
       const cancelRid = ops.op_ws_check_permission_and_cancel_handle(
+        "WebSocketStream.abort()",
         this[_url],
         true,
       );
@@ -150,6 +151,7 @@
         PromisePrototypeThen(
           core.opAsync(
             "op_ws_create",
+            "new WebSocketStream()",
             this[_url],
             options.protocols
               ? ArrayPrototypeJoin(options.protocols, ", ")

@@ -1,14 +1,16 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::ops;
 use crate::ops::io::Stdio;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::CreateCache;
+use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -30,6 +32,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
@@ -240,7 +243,8 @@ impl WebWorkerHandle {
   /// This function will set the termination signal, close the message channel,
   /// and schedule to terminate the isolate after two seconds.
   pub fn terminate(self) {
-    use std::thread::{sleep, spawn};
+    use std::thread::sleep;
+    use std::thread::spawn;
     use std::time::Duration;
 
     let schedule_termination =
@@ -320,6 +324,7 @@ pub struct WebWorker {
 pub struct WebWorkerOptions {
   pub bootstrap: BootstrapOptions,
   pub extensions: Vec<Extension>,
+  pub startup_snapshot: Option<Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
@@ -337,13 +342,14 @@ pub struct WebWorkerOptions {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
 }
 
 impl WebWorker {
   pub fn bootstrap_from_options(
     name: String,
-    permissions: Permissions,
+    permissions: PermissionsContainer,
     main_module: ModuleSpecifier,
     worker_id: WorkerId,
     options: WebWorkerOptions,
@@ -357,7 +363,7 @@ impl WebWorker {
 
   pub fn from_options(
     name: String,
-    permissions: Permissions,
+    permissions: PermissionsContainer,
     main_module: ModuleSpecifier,
     worker_id: WorkerId,
     mut options: WebWorkerOptions,
@@ -365,25 +371,29 @@ impl WebWorker {
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let perm_ext = Extension::builder()
+    let perm_ext = Extension::builder("deno_permissions_web_worker")
       .state(move |state| {
-        state.put::<Permissions>(permissions.clone());
+        state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
         Ok(())
       })
       .build();
+    let create_cache = options.cache_storage_dir.map(|storage_dir| {
+      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
+      CreateCache(Arc::new(create_cache_fn))
+    });
 
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init::<Permissions>(
+      deno_web::init::<PermissionsContainer>(
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
-      deno_fetch::init::<Permissions>(deno_fetch::Options {
+      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
@@ -392,7 +402,8 @@ impl WebWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_websocket::init::<Permissions>(
+      deno_cache::init::<SqliteBackedCache>(create_cache),
+      deno_websocket::init::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
@@ -402,7 +413,7 @@ impl WebWorker {
       deno_crypto::init(options.seed),
       deno_webgpu::init(unstable),
       // ffi
-      deno_ffi::init::<Permissions>(unstable),
+      deno_ffi::init::<PermissionsContainer>(unstable),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),
@@ -418,12 +429,13 @@ impl WebWorker {
       ops::io::init(),
       ops::io::init_stdio(options.stdio),
       deno_tls::init(),
-      deno_net::init::<Permissions>(
+      deno_net::init::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_node::init::<Permissions>(unstable, options.npm_resolver),
+      deno_napi::init::<PermissionsContainer>(unstable),
+      deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),
       ops::process::init(),
@@ -431,7 +443,7 @@ impl WebWorker {
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
-      deno_flash::init::<Permissions>(unstable),
+      deno_flash::init::<PermissionsContainer>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
@@ -442,12 +454,17 @@ impl WebWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(js::deno_isolate_init()),
+      startup_snapshot: Some(
+        options
+          .startup_snapshot
+          .unwrap_or_else(js::deno_isolate_init),
+      ),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      inspector: options.maybe_inspector_server.is_some(),
       ..Default::default()
     });
 
@@ -457,6 +474,12 @@ impl WebWorker {
         &mut js_runtime,
         false,
       );
+
+      // Put inspector handle into the op state so we can put a breakpoint when
+      // executing a CJS entrypoint.
+      let op_state = js_runtime.op_state();
+      let inspector = js_runtime.inspector();
+      op_state.borrow_mut().put(inspector);
     }
 
     let (internal_handle, external_handle) = {

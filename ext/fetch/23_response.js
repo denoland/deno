@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -34,6 +34,7 @@
   const {
     ArrayPrototypeMap,
     ArrayPrototypePush,
+    ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
     RangeError,
     RegExp,
@@ -97,11 +98,11 @@
    */
   function cloneInnerResponse(response) {
     const urlList = [...new SafeArrayIterator(response.urlList)];
-    const headerList = [
-      ...new SafeArrayIterator(
-        ArrayPrototypeMap(response.headerList, (x) => [x[0], x[1]]),
-      ),
-    ];
+    const headerList = ArrayPrototypeMap(
+      response.headerList,
+      (x) => [x[0], x[1]],
+    );
+
     let body = null;
     if (response.body !== null) {
       body = response.body.clone();
@@ -287,7 +288,7 @@
      * @param {ResponseInit} init
      * @returns {Response}
      */
-    static json(data, init = {}) {
+    static json(data = undefined, init = {}) {
       const prefix = "Failed to call 'Response.json'";
       data = webidl.converters.any(data);
       init = webidl.converters["ResponseInit_fast"](init, {
@@ -435,6 +436,11 @@
   }
 
   webidl.configurePrototype(Response);
+  ObjectDefineProperties(Response, {
+    json: { enumerable: true },
+    redirect: { enumerable: true },
+    error: { enumerable: true },
+  });
   const ResponsePrototype = Response.prototype;
   mixinBody(ResponsePrototype, _body, _mimeType);
 

@@ -7,3 +7,5 @@ Resolving without a value from import map https://example.com/PASS-undefined
 Resolving 1 from import map https://example.com/PASS-1
 Resolving null from import map https://example.com/PASS-null
 Resolving object from import map https://example.com/PASS-object
+TypeError: "npm:" specifiers are currently not supported in import.meta.resolve()
+    at file:///[WILDCARD]testdata/run/import_meta/main.ts:36:15

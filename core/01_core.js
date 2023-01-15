@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -12,6 +12,7 @@
     Map,
     Array,
     ArrayPrototypeFill,
+    ArrayPrototypePush,
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
     Promise,
@@ -27,7 +28,7 @@
     SymbolFor,
     setQueueMicrotask,
   } = window.__bootstrap.primordials;
-  const ops = window.Deno.core.ops;
+  const { ops } = window.Deno.core;
 
   const errorMap = {};
   // Builtin v8 / JS errors
@@ -128,7 +129,14 @@
   }
 
   function buildCustomError(className, message, code) {
-    const error = errorMap[className]?.(message);
+    let error;
+    try {
+      error = errorMap[className]?.(message);
+    } catch (e) {
+      throw new Error(
+        `Unsable to build custom error for "${className}"\n  ${e.message}`,
+      );
+    }
     // Strip buildCustomError() calls from stack trace
     if (typeof error == "object") {
       ErrorCaptureStackTrace(error, buildCustomError);
@@ -158,34 +166,75 @@
     return res;
   }
 
-  function opAsync(opName, ...args) {
-    const promiseId = nextPromiseId++;
-    let p = setPromise(promiseId);
-    try {
-      ops[opName](promiseId, ...args);
-    } catch (err) {
-      // Cleanup the just-created promise
-      getPromise(promiseId);
-      // Rethrow the error
-      throw err;
+  function rollPromiseId() {
+    return nextPromiseId++;
+  }
+
+  // Generate async op wrappers. See core/bindings.rs
+  function initializeAsyncOps() {
+    function genAsyncOp(op, name, args) {
+      return new Function(
+        "setPromise",
+        "getPromise",
+        "promiseIdSymbol",
+        "rollPromiseId",
+        "handleOpCallTracing",
+        "op",
+        "unwrapOpResult",
+        "PromisePrototypeThen",
+        `
+        return function ${name}(${args}) {
+          const id = rollPromiseId();
+          let promise = PromisePrototypeThen(setPromise(id), unwrapOpResult);
+          try {
+            op(id, ${args});
+          } catch (err) {
+            // Cleanup the just-created promise
+            getPromise(id);
+            // Rethrow the error
+            throw err;
+          }
+          promise = handleOpCallTracing("${name}", id, promise);
+          promise[promiseIdSymbol] = id;
+          return promise;
+        }
+      `,
+      )(
+        setPromise,
+        getPromise,
+        promiseIdSymbol,
+        rollPromiseId,
+        handleOpCallTracing,
+        op,
+        unwrapOpResult,
+        PromisePrototypeThen,
+      );
     }
-    p = PromisePrototypeThen(p, unwrapOpResult);
+
+    // { <name>: <argc>, ... }
+    for (const ele of Object.entries(ops.asyncOpsInfo())) {
+      if (!ele) continue;
+      const [name, argc] = ele;
+      const op = ops[name];
+      const args = Array.from({ length: argc }, (_, i) => `arg${i}`).join(", ");
+      ops[name] = genAsyncOp(op, name, args);
+    }
+  }
+
+  function handleOpCallTracing(opName, promiseId, p) {
     if (opCallTracingEnabled) {
-      // Capture a stack trace by creating a new `Error` object. We remove the
-      // first 6 characters (the `Error\n` prefix) to get just the stack trace.
       const stack = StringPrototypeSlice(new Error().stack, 6);
       MapPrototypeSet(opCallTraces, promiseId, { opName, stack });
-      p = PromisePrototypeFinally(
+      return PromisePrototypeFinally(
         p,
         () => MapPrototypeDelete(opCallTraces, promiseId),
       );
+    } else {
+      return p;
     }
-    // Save the id on the promise so it can later be ref'ed or unref'ed
-    p[promiseIdSymbol] = promiseId;
-    return p;
   }
 
-  function opSync(opName, ...args) {
+  function opAsync(opName, ...args) {
     return ops[opName](...args);
   }
 
@@ -266,10 +315,47 @@
   }
   const InterruptedPrototype = Interrupted.prototype;
 
+  const promiseHooks = {
+    init: [],
+    before: [],
+    after: [],
+    resolve: [],
+    hasBeenSet: false,
+  };
+
+  function setPromiseHooks(init, before, after, resolve) {
+    if (init) ArrayPrototypePush(promiseHooks.init, init);
+    if (before) ArrayPrototypePush(promiseHooks.before, before);
+    if (after) ArrayPrototypePush(promiseHooks.after, after);
+    if (resolve) ArrayPrototypePush(promiseHooks.resolve, resolve);
+
+    if (!promiseHooks.hasBeenSet) {
+      promiseHooks.hasBeenSet = true;
+
+      ops.op_set_promise_hooks((promise, parentPromise) => {
+        for (let i = 0; i < promiseHooks.init.length; ++i) {
+          promiseHooks.init[i](promise, parentPromise);
+        }
+      }, (promise) => {
+        for (let i = 0; i < promiseHooks.before.length; ++i) {
+          promiseHooks.before[i](promise);
+        }
+      }, (promise) => {
+        for (let i = 0; i < promiseHooks.after.length; ++i) {
+          promiseHooks.after[i](promise);
+        }
+      }, (promise) => {
+        for (let i = 0; i < promiseHooks.resolve.length; ++i) {
+          promiseHooks.resolve[i](promise);
+        }
+      });
+    }
+  }
+
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
-    opSync,
+    initializeAsyncOps,
     resources,
     metrics,
     registerErrorBuilder,
@@ -286,11 +372,14 @@
     refOp,
     unrefOp,
     setReportExceptionCallback,
+    setPromiseHooks,
     close: (rid) => ops.op_close(rid),
     tryClose: (rid) => ops.op_try_close(rid),
-    read: opAsync.bind(null, "op_read"),
-    write: opAsync.bind(null, "op_write"),
-    shutdown: opAsync.bind(null, "op_shutdown"),
+    read: (rid, buffer) => ops.op_read(rid, buffer),
+    readAll: (rid) => ops.op_read_all(rid),
+    write: (rid, buffer) => ops.op_write(rid, buffer),
+    writeAll: (rid, buffer) => ops.op_write_all(rid, buffer),
+    shutdown: (rid) => ops.op_shutdown(rid),
     print: (msg, isErr) => ops.op_print(msg, isErr),
     setMacrotaskCallback: (fn) => ops.op_set_macrotask_callback(fn),
     setNextTickCallback: (fn) => ops.op_set_next_tick_callback(fn),

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -56,9 +56,11 @@
     RegExpPrototypeTest,
     RegExpPrototypeToString,
     SafeArrayIterator,
+    SafeStringIterator,
     SafeSet,
     SetPrototype,
     SetPrototypeEntries,
+    SetPrototypeGetSize,
     Symbol,
     SymbolPrototype,
     SymbolPrototypeToString,
@@ -90,6 +92,7 @@
     MapPrototypeDelete,
     MapPrototypeEntries,
     MapPrototypeForEach,
+    MapPrototypeGetSize,
     Error,
     ErrorPrototype,
     ErrorCaptureStackTrace,
@@ -110,6 +113,7 @@
     ReflectGetOwnPropertyDescriptor,
     ReflectGetPrototypeOf,
     ReflectHas,
+    TypedArrayPrototypeGetLength,
     WeakMapPrototype,
     WeakSetPrototype,
   } = window.__bootstrap.primordials;
@@ -203,7 +207,7 @@
     str = StringPrototypeNormalize(colors.stripColor(str), "NFC");
     let width = 0;
 
-    for (const ch of str) {
+    for (const ch of new SafeStringIterator(str)) {
       width += isFullWidthCodePoint(StringPrototypeCodePointAt(ch, 0)) ? 2 : 1;
     }
 
@@ -273,7 +277,8 @@
       }` +
       `${tableChars.rightMiddle}\n`;
 
-    for (const row of rows) {
+    for (let i = 0; i < rows.length; ++i) {
+      const row = rows[i];
       result += `${renderRow(row, columnWidths, columnRightAlign)}\n`;
     }
 
@@ -390,19 +395,23 @@
     const entries = [];
     let iter;
     let valueIsTypedArray = false;
+    let entriesLength;
 
     switch (options.typeName) {
       case "Map":
         iter = MapPrototypeEntries(value);
+        entriesLength = MapPrototypeGetSize(value);
         break;
       case "Set":
         iter = SetPrototypeEntries(value);
+        entriesLength = SetPrototypeGetSize(value);
         break;
       case "Array":
-        iter = ArrayPrototypeEntries(value);
+        entriesLength = value.length;
         break;
       default:
         if (isTypedArray(value)) {
+          entriesLength = TypedArrayPrototypeGetLength(value);
           iter = ArrayPrototypeEntries(value);
           valueIsTypedArray = true;
         } else {
@@ -410,49 +419,71 @@
         }
     }
 
-    let entriesLength = 0;
-    const next = () => {
-      return iter.next();
-    };
-    while (true) {
-      let el;
-      try {
-        const res = iter.next();
-        if (res.done) {
-          break;
-        }
-        el = res.value;
-      } catch (err) {
-        if (valueIsTypedArray) {
-          // TypedArray.prototype.entries doesn't throw, unless the ArrayBuffer
-          // is detached. We don't want to show the exception in that case, so
-          // we catch it here and pretend the ArrayBuffer has no entries (like
-          // Chrome DevTools does).
-          break;
-        }
-        throw err;
-      }
-      if (entriesLength < inspectOptions.iterableLimit) {
+    let entriesLengthWithoutEmptyItems = entriesLength;
+    if (options.typeName === "Array") {
+      for (
+        let i = 0, j = 0;
+        i < entriesLength && j < inspectOptions.iterableLimit;
+        i++, j++
+      ) {
         inspectOptions.indentLevel++;
-        ArrayPrototypePush(
-          entries,
-          options.entryHandler(
-            el,
-            inspectOptions,
-            FunctionPrototypeBind(next, iter),
-          ),
+        const { entry, skipTo } = options.entryHandler(
+          [i, value[i]],
+          inspectOptions,
         );
+        ArrayPrototypePush(entries, entry);
         inspectOptions.indentLevel--;
+
+        if (skipTo) {
+          // subtract skipped (empty) items
+          entriesLengthWithoutEmptyItems -= skipTo - i;
+          i = skipTo;
+        }
       }
-      entriesLength++;
+    } else {
+      let i = 0;
+      while (true) {
+        let el;
+        try {
+          const res = iter.next();
+          if (res.done) {
+            break;
+          }
+          el = res.value;
+        } catch (err) {
+          if (valueIsTypedArray) {
+            // TypedArray.prototype.entries doesn't throw, unless the ArrayBuffer
+            // is detached. We don't want to show the exception in that case, so
+            // we catch it here and pretend the ArrayBuffer has no entries (like
+            // Chrome DevTools does).
+            break;
+          }
+          throw err;
+        }
+        if (i < inspectOptions.iterableLimit) {
+          inspectOptions.indentLevel++;
+          ArrayPrototypePush(
+            entries,
+            options.entryHandler(
+              el,
+              inspectOptions,
+            ),
+          );
+          inspectOptions.indentLevel--;
+        } else {
+          break;
+        }
+        i++;
+      }
     }
 
     if (options.sort) {
       ArrayPrototypeSort(entries);
     }
 
-    if (entriesLength > inspectOptions.iterableLimit) {
-      const nmore = entriesLength - inspectOptions.iterableLimit;
+    if (entriesLengthWithoutEmptyItems > inspectOptions.iterableLimit) {
+      const nmore = entriesLengthWithoutEmptyItems -
+        inspectOptions.iterableLimit;
       ArrayPrototypePush(entries, `... ${nmore} more items`);
     }
 
@@ -674,7 +705,11 @@
           return handleCircular(value, cyan);
         }
 
-        return inspectObject(value, inspectOptions, proxyDetails);
+        return inspectObject(
+          value,
+          inspectOptions,
+          proxyDetails,
+        );
       default:
         // Not implemented is red
         return red("[Not Implemented]");
@@ -805,24 +840,45 @@
     inspectOptions,
   ) {
     const gray = maybeColor(colors.gray, inspectOptions);
+    let lastValidIndex = 0;
+    let keys;
     const options = {
       typeName: "Array",
       displayName: "",
       delims: ["[", "]"],
-      entryHandler: (entry, inspectOptions, next) => {
+      entryHandler: (entry, inspectOptions) => {
         const [index, val] = entry;
         let i = index;
+        lastValidIndex = index;
         if (!ObjectPrototypeHasOwnProperty(value, i)) {
-          i++;
-          while (!ObjectPrototypeHasOwnProperty(value, i) && i < value.length) {
-            next();
-            i++;
+          let skipTo;
+          keys = keys || ObjectKeys(value);
+          i = value.length;
+          if (keys.length === 0) {
+            // fast path, all items are empty
+            skipTo = i;
+          } else {
+            // Not all indexes are empty or there's a non-index property
+            // Find first non-empty array index
+            while (keys.length) {
+              const key = ArrayPrototypeShift(keys);
+              // check if it's a valid array index
+              if (key > lastValidIndex && key < 2 ** 32 - 1) {
+                i = Number(key);
+                break;
+              }
+            }
+
+            skipTo = i - 1;
           }
           const emptyItems = i - index;
           const ending = emptyItems > 1 ? "s" : "";
-          return gray(`<${emptyItems} empty item${ending}>`);
+          return {
+            entry: gray(`<${emptyItems} empty item${ending}>`),
+            skipTo,
+          };
         } else {
-          return inspectValueWithQuotes(val, inspectOptions);
+          return { entry: inspectValueWithQuotes(val, inspectOptions) };
         }
       },
       group: inspectOptions.compact,
@@ -940,7 +996,8 @@
     }
 
     const refMap = new Map();
-    for (const cause of causes) {
+    for (let i = 0; i < causes.length; ++i) {
+      const cause = causes[i];
       if (circular !== undefined) {
         const index = MapPrototypeGet(circular, cause);
         if (index !== undefined) {
@@ -950,7 +1007,7 @@
     }
     ArrayPrototypeShift(causes);
 
-    let finalMessage = (MapPrototypeGet(refMap, value) ?? "");
+    let finalMessage = MapPrototypeGet(refMap, value) ?? "";
 
     if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
       const stackLines = StringPrototypeSplit(value.stack, "\n");
@@ -1117,7 +1174,8 @@
 
     inspectOptions.indentLevel++;
 
-    for (const key of stringKeys) {
+    for (let i = 0; i < stringKeys.length; ++i) {
+      const key = stringKeys[i];
       if (inspectOptions.getters) {
         let propertyValue;
         let error = null;
@@ -1153,7 +1211,8 @@
       }
     }
 
-    for (const key of symbolKeys) {
+    for (let i = 0; i < symbolKeys.length; ++i) {
+      const key = symbolKeys[i];
       if (
         !inspectOptions.showHidden &&
         !propertyIsEnumerable(value, key)
@@ -1235,11 +1294,7 @@
     return [baseString, refIndex];
   }
 
-  function inspectObject(
-    value,
-    inspectOptions,
-    proxyDetails,
-  ) {
+  function inspectObject(value, inspectOptions, proxyDetails) {
     if (
       ReflectHas(value, customInspect) &&
       typeof value[customInspect] === "function"
@@ -1282,7 +1337,10 @@
     } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) {
       return inspectRegExp(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
-      return inspectDate(value, inspectOptions);
+      return inspectDate(
+        proxyDetails ? proxyDetails[0] : value,
+        inspectOptions,
+      );
     } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
       return inspectSet(
         proxyDetails ? proxyDetails[0] : value,
@@ -1586,7 +1644,8 @@
       currentPart = "";
     }
 
-    for (const [key, value] of rawEntries) {
+    for (let i = 0; i < rawEntries.length; ++i) {
+      const [key, value] = rawEntries[i];
       if (key == "background-color") {
         if (value != null) {
           css.backgroundColor = value;
@@ -1607,7 +1666,9 @@
         }
       } else if (key == "text-decoration-line") {
         css.textDecorationLine = [];
-        for (const lineType of StringPrototypeSplit(value, /\s+/g)) {
+        const lineTypes = StringPrototypeSplit(value, /\s+/g);
+        for (let i = 0; i < lineTypes.length; ++i) {
+          const lineType = lineTypes[i];
           if (
             ArrayPrototypeIncludes(
               ["line-through", "overline", "underline"],
@@ -1625,7 +1686,9 @@
       } else if (key == "text-decoration") {
         css.textDecorationColor = null;
         css.textDecorationLine = [];
-        for (const arg of StringPrototypeSplit(value, /\s+/g)) {
+        const args = StringPrototypeSplit(value, /\s+/g);
+        for (let i = 0; i < args.length; ++i) {
+          const arg = args[i];
           const maybeColor = parseCssColor(arg);
           if (maybeColor != null) {
             css.textDecorationColor = maybeColor;
@@ -2082,7 +2145,8 @@
         } else {
           const valueObj = value || {};
           const keys = properties || ObjectKeys(valueObj);
-          for (const k of keys) {
+          for (let i = 0; i < keys.length; ++i) {
+            const k = keys[i];
             if (!primitive && ReflectHas(valueObj, k)) {
               if (!(ReflectHas(objectValues, k))) {
                 objectValues[k] = ArrayPrototypeFill(new Array(numRows), "");
@@ -2186,6 +2250,12 @@
       this.error(err.stack);
     };
 
+    // These methods are noops, but when the inspector is connected, they
+    // call into V8.
+    profile = (_label) => {};
+    profileEnd = (_label) => {};
+    timeStamp = (_label) => {};
+
     static [SymbolHasInstance](instance) {
       return instance[isConsoleInstance];
     }
@@ -2271,7 +2341,9 @@
   function wrapConsole(consoleFromDeno, consoleFromV8) {
     const callConsole = core.callConsole;
 
-    for (const key of ObjectKeys(consoleFromV8)) {
+    const keys = ObjectKeys(consoleFromV8);
+    for (let i = 0; i < keys.length; ++i) {
+      const key = keys[i];
       if (ObjectPrototypeHasOwnProperty(consoleFromDeno, key)) {
         consoleFromDeno[key] = FunctionPrototypeBind(
           callConsole,
@@ -2279,6 +2351,9 @@
           consoleFromV8[key],
           consoleFromDeno[key],
         );
+      } else {
+        // Add additional console APIs from the inspector
+        consoleFromDeno[key] = consoleFromV8[key];
       }
     }
   }

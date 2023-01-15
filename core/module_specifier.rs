@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::normalize_path;
 use std::env::current_dir;
@@ -141,8 +141,8 @@ pub fn resolve_path(
   let path = current_dir()
     .map_err(|_| ModuleResolutionError::InvalidPath(path_str.into()))?
     .join(path_str);
-  let path = normalize_path(&path);
-  Url::from_file_path(path.clone())
+  let path = normalize_path(path);
+  Url::from_file_path(&path)
     .map_err(|()| ModuleResolutionError::InvalidPath(path))
 }
 

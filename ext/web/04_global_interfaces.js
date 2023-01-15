@@ -1,11 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
 ((window) => {
-  const { EventTarget } = window;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const {
     Symbol,
     SymbolToStringTag,

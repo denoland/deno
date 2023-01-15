@@ -1,14 +1,12 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
-  const {
-    Event,
-    EventTarget,
-    Deno: { core: { ops } },
-    __bootstrap: { webUtil: { illegalConstructorKey } },
-  } = window;
+  const { ops } = Deno.core;
+  const { Event } = window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { pathFromURL } = window.__bootstrap.util;
+  const { illegalConstructorKey } = window.__bootstrap.webUtil;
   const {
     ArrayIsArray,
     ArrayPrototypeIncludes,
@@ -22,6 +20,7 @@
     PromiseResolve,
     PromiseReject,
     ReflectHas,
+    SafeArrayIterator,
     SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -32,12 +31,13 @@
    * @property {PermissionStatus} status
    */
 
-  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "run" | "ffi" | "hrtime">} */
+  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "hrtime">} */
   const permissionNames = [
     "read",
     "write",
     "net",
     "env",
+    "sys",
     "run",
     "ffi",
     "hrtime",
@@ -132,6 +132,8 @@
       key += `-${desc.command}&`;
     } else if (desc.name === "env" && desc.variable) {
       key += `-${desc.variable}&`;
+    } else if (desc.name === "sys" && desc.kind) {
+      key += `-${desc.kind}&`;
     } else {
       key += "$";
     }
@@ -159,6 +161,20 @@
       ArrayPrototypeIncludes(permissionNames, desc.name);
   }
 
+  /**
+   * @param {Deno.PermissionDescriptor} desc
+   * @returns {desc is Deno.PermissionDescriptor}
+   */
+  function formDescriptor(desc) {
+    if (
+      desc.name === "read" || desc.name === "write" || desc.name === "ffi"
+    ) {
+      desc.path = pathFromURL(desc.path);
+    } else if (desc.name === "run") {
+      desc.command = pathFromURL(desc.command);
+    }
+  }
+
   class Permissions {
     constructor(key = null) {
       if (key != illegalConstructorKey) {
@@ -175,13 +191,7 @@
         );
       }
 
-      if (
-        desc.name === "read" || desc.name === "write" || desc.name === "ffi"
-      ) {
-        desc.path = pathFromURL(desc.path);
-      } else if (desc.name === "run") {
-        desc.command = pathFromURL(desc.command);
-      }
+      formDescriptor(desc);
 
       const state = opQuery(desc);
       return PromiseResolve(cache(desc, state));
@@ -196,11 +206,7 @@
         );
       }
 
-      if (desc.name === "read" || desc.name === "write") {
-        desc.path = pathFromURL(desc.path);
-      } else if (desc.name === "run") {
-        desc.command = pathFromURL(desc.command);
-      }
+      formDescriptor(desc);
 
       const state = opRevoke(desc);
       return PromiseResolve(cache(desc, state));
@@ -215,11 +221,7 @@
         );
       }
 
-      if (desc.name === "read" || desc.name === "write") {
-        desc.path = pathFromURL(desc.path);
-      } else if (desc.name === "run") {
-        desc.command = pathFromURL(desc.command);
-      }
+      formDescriptor(desc);
 
       const state = opRequest(desc);
       return PromiseResolve(cache(desc, state));
@@ -232,7 +234,9 @@
   function serializePermissions(permissions) {
     if (typeof permissions == "object" && permissions != null) {
       const serializedPermissions = {};
-      for (const key of ["read", "write", "run", "ffi"]) {
+      for (
+        const key of new SafeArrayIterator(["read", "write", "run", "ffi"])
+      ) {
         if (ArrayIsArray(permissions[key])) {
           serializedPermissions[key] = ArrayPrototypeMap(
             permissions[key],
@@ -242,7 +246,9 @@
           serializedPermissions[key] = permissions[key];
         }
       }
-      for (const key of ["env", "hrtime", "net"]) {
+      for (
+        const key of new SafeArrayIterator(["env", "hrtime", "net", "sys"])
+      ) {
         if (ArrayIsArray(permissions[key])) {
           serializedPermissions[key] = ArrayPrototypeSlice(permissions[key]);
         } else {
