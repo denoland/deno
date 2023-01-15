@@ -40,8 +40,7 @@ pub async fn compile(
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
-  let ps =
-    ProcState::build_with_main(flags.clone(), module_specifier.clone()).await?;
+  let ps = ProcState::build_with_main(flags, module_specifier.clone()).await?;
   let deno_dir = &ps.dir;
 
   let output_path = resolve_compile_executable_output_path(&compile_flags)?;
@@ -73,7 +72,7 @@ pub async fn compile(
   let final_bin = create_standalone_binary(
     original_binary,
     eszip,
-    module_specifier.clone(),
+    module_specifier,
     &compile_flags,
     ps,
   )

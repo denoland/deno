@@ -10,6 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
 use crate::args::Lockfile;
@@ -54,7 +55,11 @@ pub trait InnerNpmPackageResolver: Send + Sync {
 
   fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>>;
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError>;
 
   fn snapshot(&self) -> NpmResolutionSnapshot;
 
@@ -103,6 +108,7 @@ pub async fn cache_packages(
 }
 
 pub fn ensure_registry_read_permission(
+  permissions: &mut dyn NodePermissions,
   registry_path: &Path,
   path: &Path,
 ) -> Result<(), AnyError> {
@@ -126,10 +132,7 @@ pub fn ensure_registry_read_permission(
     }
   }
 
-  Err(deno_core::error::custom_error(
-    "PermissionDenied",
-    format!("Reading {} is not allowed", path.display()),
-  ))
+  permissions.check_read(path)
 }
 
 /// Gets the corresponding @types package for the provided package name.

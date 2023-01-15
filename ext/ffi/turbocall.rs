@@ -1917,7 +1917,8 @@ mod tests {
   mod x64_windows {
     use std::ops::Deref;
 
-    use dynasmrt::{dynasm, DynasmApi};
+    use dynasmrt::dynasm;
+    use dynasmrt::DynasmApi;
 
     use super::super::Win64;
     use super::symbol;

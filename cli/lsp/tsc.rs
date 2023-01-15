@@ -208,7 +208,7 @@ impl AssetDocument {
 type AssetsMap = HashMap<ModuleSpecifier, AssetDocument>;
 
 fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
-  let assets = tsc::STATIC_ASSETS
+  let assets = tsc::LAZILY_LOADED_STATIC_ASSETS
     .iter()
     .map(|(k, v)| {
       let url_str = format!("asset:///{}", k);
@@ -3455,6 +3455,8 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::text::LineIndex;
+  use crate::tsc::AssetText;
+  use pretty_assertions::assert_eq;
   use std::path::Path;
   use std::path::PathBuf;
   use test_util::TempDir;
@@ -3913,18 +3915,31 @@ mod tests {
       Default::default(),
     )
     .unwrap();
-    let assets = result.as_array().unwrap();
+    let assets: Vec<AssetText> = serde_json::from_value(result).unwrap();
+    let mut asset_names = assets
+      .iter()
+      .map(|a| {
+        a.specifier
+          .replace("asset:///lib.", "")
+          .replace(".d.ts", "")
+      })
+      .collect::<Vec<_>>();
+    let mut expected_asset_names: Vec<String> = serde_json::from_str(
+      include_str!(concat!(env!("OUT_DIR"), "/lib_file_names.json")),
+    )
+    .unwrap();
+
+    asset_names.sort();
+    expected_asset_names.sort();
 
     // You might have found this assertion starts failing after upgrading TypeScript.
-    // Just update the new number of assets (declaration files) for this number.
-    assert_eq!(assets.len(), 72);
+    // Ensure build.rs is updated so these match.
+    assert_eq!(asset_names, expected_asset_names);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;
     for asset in assets {
-      let obj = asset.as_object().unwrap();
-      let text = obj.get("text").unwrap().as_str().unwrap();
-      total_size += text.len();
+      total_size += asset.text.len();
     }
     assert!(total_size > 0);
     assert!(total_size < 2_000_000); // currently as of TS 4.6, it's 0.7MB

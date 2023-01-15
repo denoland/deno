@@ -52,13 +52,11 @@ pub struct FetchCacher {
 impl FetchCacher {
   pub fn new(
     emit_cache: EmitCache,
-    file_fetcher: FileFetcher,
+    file_fetcher: Arc<FileFetcher>,
     file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
   ) -> Self {
-    let file_fetcher = Arc::new(file_fetcher);
-
     Self {
       emit_cache,
       dynamic_permissions,

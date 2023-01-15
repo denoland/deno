@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import { dirname, fromFileUrl, join } from "../../test_util/std/path/mod.ts";
 import { expandGlobSync } from "../../test_util/std/fs/mod.ts";
 
