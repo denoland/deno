@@ -14,10 +14,10 @@
   const {
     ArrayBuffer,
     ArrayBufferPrototype,
+    ArrayBufferPrototypeSlice,
     ArrayBufferIsView,
     ObjectPrototypeIsPrototypeOf,
     TypedArrayPrototypeGetSymbolToStringTag,
-    TypedArrayPrototypeSlice,
     TypeErrorPrototype,
     WeakMap,
     WeakMapPrototypeSet,
@@ -32,7 +32,7 @@
     _cloneConstructor,
   ) {
     // this function fudges the return type but SharedArrayBuffer is disabled for a while anyway
-    return TypedArrayPrototypeSlice(
+    return ArrayBufferPrototypeSlice(
       srcBuffer,
       srcByteOffset,
       srcByteOffset + srcLength,
