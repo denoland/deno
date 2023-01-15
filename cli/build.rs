@@ -219,7 +219,7 @@ mod ts {
           // if it comes from an op crate, we were supplied with the path to the
           // file.
           let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
-            PathBuf::from(op_crate_lib).canonicalize().unwrap()
+            PathBuf::from(op_crate_lib).canonicalize()?
             // otherwise we are will generate the path ourself
           } else {
             path_dts.join(format!("lib.{}.d.ts", lib))

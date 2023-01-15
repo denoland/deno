@@ -1,8 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-mod sqlite;
-use deno_core::ByteString;
-pub use sqlite::SqliteBackedCache;
+use std::cell::RefCell;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
@@ -10,15 +11,13 @@ use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use deno_core::ByteString;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-
-use std::cell::RefCell;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
+mod sqlite;
+pub use sqlite::SqliteBackedCache;
 
 #[derive(Clone)]
 pub struct CreateCache<C: Cache + 'static>(pub Arc<dyn Fn() -> C>);
