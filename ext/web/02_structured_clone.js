@@ -61,7 +61,7 @@
       // only DataView has a length in bytes and TypedArrays use a length in
       // terms of elements, so we adjust for that.
       let length;
-      if (ObjectPrototypeIsPrototypeOf(DataViewPrototype, view)) {
+      if (ObjectPrototypeIsPrototypeOf(DataViewPrototype, value)) {
         length = value.byteLength;
       } else {
         length = value.length;
