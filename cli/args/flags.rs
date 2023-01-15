@@ -2389,7 +2389,10 @@ fn completions_parse(
   mut app: clap::Command,
 ) {
   use clap_complete::generate;
-  use clap_complete::shells::{Bash, Fish, PowerShell, Zsh};
+  use clap_complete::shells::Bash;
+  use clap_complete::shells::Fish;
+  use clap_complete::shells::PowerShell;
+  use clap_complete::shells::Zsh;
   use clap_complete_fig::Fig;
 
   let mut buf: Vec<u8> = vec![];

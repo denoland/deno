@@ -2,9 +2,11 @@
 
 use std::cell::UnsafeCell;
 use std::future::Future;
-use std::io::{Read, Write};
+use std::io::Read;
+use std::io::Write;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use deno_core::error::AnyError;
 use mio::net::TcpStream;

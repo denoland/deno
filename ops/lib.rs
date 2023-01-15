@@ -2,15 +2,24 @@
 
 use attrs::Attributes;
 use once_cell::sync::Lazy;
-use optimizer::{BailoutReason, Optimizer};
+use optimizer::BailoutReason;
+use optimizer::Optimizer;
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
+use proc_macro2::Span;
+use proc_macro2::TokenStream as TokenStream2;
+use quote::quote;
+use quote::ToTokens;
 use regex::Regex;
-use syn::{
-  parse, parse_macro_input, punctuated::Punctuated, token::Comma, FnArg,
-  GenericParam, Ident, ItemFn, Lifetime, LifetimeDef,
-};
+use syn::parse;
+use syn::parse_macro_input;
+use syn::punctuated::Punctuated;
+use syn::token::Comma;
+use syn::FnArg;
+use syn::GenericParam;
+use syn::Ident;
+use syn::ItemFn;
+use syn::Lifetime;
+use syn::LifetimeDef;
 
 mod attrs;
 mod deno;
@@ -747,7 +756,8 @@ fn exclude_lifetime_params(
 
 #[cfg(test)]
 mod tests {
-  use crate::{Attributes, Op};
+  use crate::Attributes;
+  use crate::Op;
   use std::path::PathBuf;
 
   #[testing_macros::fixture("optimizer_tests/**/*.rs")]

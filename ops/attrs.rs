@@ -1,9 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use syn::{
-  parse::{Parse, ParseStream},
-  punctuated::Punctuated,
-  Error, Ident, Result, Token,
-};
+use syn::parse::Parse;
+use syn::parse::ParseStream;
+use syn::punctuated::Punctuated;
+use syn::Error;
+use syn::Ident;
+use syn::Result;
+use syn::Token;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Attributes {
