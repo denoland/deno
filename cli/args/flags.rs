@@ -87,19 +87,30 @@ pub struct CompletionsFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoverageFlags {
-  pub files: Vec<PathBuf>,
+  pub files: FileFlags,
   pub output: Option<PathBuf>,
-  pub ignore: Vec<PathBuf>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub lcov: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DocSourceFileFlag {
+  Builtin,
+  Path(String),
+}
+
+impl Default for DocSourceFileFlag {
+  fn default() -> Self {
+    Self::Builtin
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocFlags {
   pub private: bool,
   pub json: bool,
-  pub source_file: Option<String>,
+  pub source_file: DocSourceFileFlag,
   pub filter: Option<String>,
 }
 
@@ -2430,9 +2441,11 @@ fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let lcov = matches.is_present("lcov");
   let output = matches.value_of("output").map(PathBuf::from);
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
-    files,
+    files: FileFlags {
+      include: files,
+      ignore,
+    },
     output,
-    ignore,
     include,
     exclude,
     lcov,
@@ -2443,7 +2456,16 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
 
-  let source_file = matches.value_of("source_file").map(String::from);
+  let source_file = matches
+    .value_of("source_file")
+    .map(|value| {
+      if value == "--builtin" {
+        DocSourceFileFlag::Builtin
+      } else {
+        DocSourceFileFlag::Path(value.to_string())
+      }
+    })
+    .unwrap_or_default();
   let private = matches.is_present("private");
   let json = matches.is_present("json");
   let filter = matches.value_of("filter").map(String::from);
@@ -4915,7 +4937,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Doc(DocFlags {
-          source_file: Some("script.ts".to_owned()),
+          source_file: DocSourceFileFlag::Path("script.ts".to_owned()),
           private: false,
           json: false,
           filter: None,
@@ -5921,7 +5943,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: true,
-          source_file: Some("path/to/module.ts".to_string()),
+          source_file: DocSourceFileFlag::Path("path/to/module.ts".to_string()),
           filter: None,
         }),
         ..Flags::default()
@@ -5940,7 +5962,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
-          source_file: Some("path/to/module.ts".to_string()),
+          source_file: DocSourceFileFlag::Path("path/to/module.ts".to_string()),
           filter: Some("SomeClass.someField".to_string()),
         }),
         ..Flags::default()
@@ -5954,7 +5976,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
-          source_file: None,
+          source_file: Default::default(),
           filter: None,
         }),
         ..Flags::default()
@@ -5968,7 +5990,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
-          source_file: Some("--builtin".to_string()),
+          source_file: DocSourceFileFlag::Builtin,
           filter: Some("Deno.Listener".to_string()),
         }),
         ..Flags::default()
@@ -5983,7 +6005,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: true,
           json: false,
-          source_file: Some("path/to/module.js".to_string()),
+          source_file: DocSourceFileFlag::Path("path/to/module.js".to_string()),
           filter: None,
         }),
         ..Flags::default()
@@ -6100,9 +6122,11 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
-          files: vec![PathBuf::from("foo.json")],
+          files: FileFlags {
+            include: vec![PathBuf::from("foo.json")],
+            ignore: vec![],
+          },
           output: None,
-          ignore: vec![],
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           lcov: false,
@@ -6125,8 +6149,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
-          files: vec![PathBuf::from("foo.json")],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![PathBuf::from("foo.json")],
+            ignore: vec![],
+          },
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           lcov: true,
