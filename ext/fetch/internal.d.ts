@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -83,6 +83,8 @@ declare namespace globalThis {
           | "request-no-cors"
           | "response"
           | "none",
+        skipBody: boolean,
+        flash: boolean,
       ): Request;
       function redirectStatus(status: number): boolean;
       function nullBodyStatus(status: number): boolean;

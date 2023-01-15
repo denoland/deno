@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use console_static_text::ConsoleStaticText;
 use deno_core::parking_lot::Mutex;
@@ -30,7 +30,6 @@ impl Drop for DrawThreadGuard {
 
 #[derive(Debug, Clone)]
 struct InternalEntry {
-  priority: u8,
   id: u16,
   renderer: Arc<dyn DrawThreadRenderer>,
 }
@@ -69,6 +68,13 @@ static INTERNAL_STATE: Lazy<Arc<Mutex<InternalState>>> = Lazy::new(|| {
   }))
 });
 
+static IS_TTY_WITH_CONSOLE_SIZE: Lazy<bool> = Lazy::new(|| {
+  atty::is(atty::Stream::Stderr)
+    && console_size()
+      .map(|s| s.cols > 0 && s.rows > 0)
+      .unwrap_or(false)
+});
+
 /// The draw thread is responsible for rendering multiple active
 /// `DrawThreadRenderer`s to stderr. It is global because the
 /// concept of stderr in the process is also a global concept.
@@ -78,31 +84,17 @@ pub struct DrawThread;
 impl DrawThread {
   /// Is using a draw thread supported.
   pub fn is_supported() -> bool {
-    atty::is(atty::Stream::Stderr)
-      && log::log_enabled!(log::Level::Info)
-      && console_size()
-        .map(|s| s.cols > 0 && s.rows > 0)
-        .unwrap_or(false)
+    // don't put the log level in the lazy because the
+    // log level may change as the application runs
+    log::log_enabled!(log::Level::Info) && *IS_TTY_WITH_CONSOLE_SIZE
   }
 
-  /// Adds a renderer to the draw thread with a given priority.
-  /// Renderers are sorted by priority with higher priority
-  /// entries appearing at the bottom of the screen.
-  pub fn add_entry(
-    priority: u8,
-    renderer: Arc<dyn DrawThreadRenderer>,
-  ) -> DrawThreadGuard {
+  /// Adds a renderer to the draw thread.
+  pub fn add_entry(renderer: Arc<dyn DrawThreadRenderer>) -> DrawThreadGuard {
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
     let id = internal_state.next_entry_id;
-    internal_state.entries.push(InternalEntry {
-      id,
-      priority,
-      renderer,
-    });
-    internal_state
-      .entries
-      .sort_by(|a, b| a.priority.cmp(&b.priority));
+    internal_state.entries.push(InternalEntry { id, renderer });
 
     if internal_state.next_entry_id == u16::MAX {
       internal_state.next_entry_id = 0;
@@ -116,16 +108,15 @@ impl DrawThread {
   }
 
   /// Hides the draw thread.
-  #[allow(dead_code)]
   pub fn hide() {
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
     internal_state.hide = true;
+
     Self::clear_and_stop_draw_thread(&mut internal_state);
   }
 
   /// Shows the draw thread if it was previously hidden.
-  #[allow(dead_code)]
   pub fn show() {
     let internal_state = &*INTERNAL_STATE;
     let mut internal_state = internal_state.lock();
@@ -159,7 +150,11 @@ impl DrawThread {
   }
 
   fn maybe_start_draw_thread(internal_state: &mut InternalState) {
-    if internal_state.has_draw_thread || internal_state.hide {
+    if internal_state.has_draw_thread
+      || internal_state.hide
+      || internal_state.entries.is_empty()
+      || !DrawThread::is_supported()
+    {
       return;
     }
 
@@ -168,7 +163,7 @@ impl DrawThread {
 
     let drawer_id = internal_state.drawer_id;
     tokio::task::spawn_blocking(move || {
-      let mut previous_size = console_size().unwrap();
+      let mut previous_size = console_size();
       loop {
         let mut delay_ms = 120;
         {
@@ -182,6 +177,10 @@ impl DrawThread {
             internal_state.entries.clone()
           };
 
+          // this should always be set, but have the code handle
+          // it not being for some reason
+          let size = console_size();
+
           // Call into the renderers outside the lock to prevent a potential
           // deadlock between our internal state lock and the renderers
           // internal state lock.
@@ -194,13 +193,12 @@ impl DrawThread {
           //    which attempts to acquire the other thread's Render's internal
           //    lock causing a deadlock
           let mut text = String::new();
-          let size = console_size().unwrap();
           if size != previous_size {
             // means the user is actively resizing the console...
             // wait a little bit until they stop resizing
             previous_size = size;
             delay_ms = 200;
-          } else {
+          } else if let Some(size) = size {
             let mut should_new_line_next = false;
             for entry in entries {
               let new_text = entry.renderer.render(&size);
@@ -210,23 +208,23 @@ impl DrawThread {
               should_new_line_next = !new_text.is_empty();
               text.push_str(&new_text);
             }
-          }
 
-          // now reacquire the lock, ensure we should still be drawing, then
-          // output the text
-          {
-            let internal_state = &*INTERNAL_STATE;
-            let mut internal_state = internal_state.lock();
-            if internal_state.should_exit_draw_thread(drawer_id) {
-              break;
+            // now reacquire the lock, ensure we should still be drawing, then
+            // output the text
+            {
+              let internal_state = &*INTERNAL_STATE;
+              let mut internal_state = internal_state.lock();
+              if internal_state.should_exit_draw_thread(drawer_id) {
+                break;
+              }
+              internal_state.static_text.eprint_with_size(
+                &text,
+                console_static_text::ConsoleSize {
+                  cols: Some(size.cols as u16),
+                  rows: Some(size.rows as u16),
+                },
+              );
             }
-            internal_state.static_text.eprint_with_size(
-              &text,
-              console_static_text::ConsoleSize {
-                cols: Some(size.cols as u16),
-                rows: Some(size.rows as u16),
-              },
-            );
           }
         }
 

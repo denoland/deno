@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
 pub const TYPESCRIPT: &str = env!("TS_VERSION");

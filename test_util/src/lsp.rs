@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::npm_registry_url;
 use crate::std_file_url;
@@ -14,8 +14,9 @@ use regex::Regex;
 use serde::de;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::json;
+use serde_json::to_value;
 use serde_json::Value;
-use serde_json::{json, to_value};
 use std::io;
 use std::io::Write;
 use std::path::Path;

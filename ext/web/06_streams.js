@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -19,6 +19,7 @@
     ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeShift,
+    AsyncGeneratorPrototype,
     BigInt64ArrayPrototype,
     BigUint64ArrayPrototype,
     DataView,
@@ -32,6 +33,7 @@
     ObjectDefineProperties,
     ObjectDefineProperty,
     ObjectGetPrototypeOf,
+    ObjectPrototype,
     ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     Promise,
@@ -769,7 +771,7 @@
   }
 
   function readableStreamIsUnrefable(stream) {
-    return _isUnref in stream;
+    return ReflectHas(stream, _isUnref);
   }
 
   function readableStreamForRidUnrefableRef(stream) {
@@ -857,10 +859,11 @@
     }
 
     const finalBuffer = new Uint8Array(totalLength);
-    let i = 0;
-    for (const chunk of chunks) {
-      TypedArrayPrototypeSet(finalBuffer, chunk, i);
-      i += chunk.byteLength;
+    let offset = 0;
+    for (let i = 0; i < chunks.length; ++i) {
+      const chunk = chunks[i];
+      TypedArrayPrototypeSet(finalBuffer, chunk, offset);
+      offset += chunk.byteLength;
     }
     return finalBuffer;
   }
@@ -1345,7 +1348,8 @@
     if (reader !== undefined && isReadableStreamBYOBReader(reader)) {
       const readIntoRequests = reader[_readIntoRequests];
       reader[_readIntoRequests] = [];
-      for (const readIntoRequest of readIntoRequests) {
+      for (let i = 0; i < readIntoRequests.length; ++i) {
+        const readIntoRequest = readIntoRequests[i];
         readIntoRequest.closeSteps(undefined);
       }
     }
@@ -1371,7 +1375,8 @@
       /** @type {Array<ReadRequest<R>>} */
       const readRequests = reader[_readRequests];
       reader[_readRequests] = [];
-      for (const readRequest of readRequests) {
+      for (let i = 0; i < readRequests.length; ++i) {
+        const readRequest = readRequests[i];
         readRequest.closeSteps();
       }
     }
@@ -1593,7 +1598,8 @@
   function readableStreamDefaultReaderErrorReadRequests(reader, e) {
     const readRequests = reader[_readRequests];
     reader[_readRequests] = [];
-    for (const readRequest of readRequests) {
+    for (let i = 0; i < readRequests.length; ++i) {
+      const readRequest = readRequests[i];
       readRequest.errorSteps(e);
     }
   }
@@ -2613,7 +2619,8 @@
   function readableStreamBYOBReaderErrorReadIntoRequests(reader, e) {
     const readIntoRequests = reader[_readIntoRequests];
     reader[_readIntoRequests] = [];
-    for (const readIntoRequest of readIntoRequests) {
+    for (let i = 0; i < readIntoRequests.length; ++i) {
+      const readIntoRequest = readIntoRequests[i];
       readIntoRequest.errorSteps(e);
     }
   }
@@ -4237,7 +4244,9 @@
     stream[_state] = "errored";
     stream[_controller][_errorSteps]();
     const storedError = stream[_storedError];
-    for (const writeRequest of stream[_writeRequests]) {
+    const writeRequests = stream[_writeRequests];
+    for (let i = 0; i < writeRequests.length; ++i) {
+      const writeRequest = writeRequests[i];
       writeRequest.reject(storedError);
     }
     stream[_writeRequests] = [];
@@ -4417,7 +4426,7 @@
    * @returns {IteratorResult<T>}
    */
   function createIteratorResult(value, done) {
-    const result = ObjectCreate(null);
+    const result = ObjectCreate(ObjectPrototype);
     ObjectDefineProperties(result, {
       value: { value, writable: true, enumerable: true, configurable: true },
       done: {
@@ -4431,9 +4440,10 @@
   }
 
   /** @type {AsyncIterator<unknown, unknown>} */
-  const asyncIteratorPrototype = ObjectGetPrototypeOf(
-    ObjectGetPrototypeOf(async function* () {}).prototype,
-  );
+  const asyncIteratorPrototype = ObjectGetPrototypeOf(AsyncGeneratorPrototype);
+
+  const _iteratorNext = Symbol("[[iteratorNext]]");
+  const _iteratorFinished = Symbol("[[iteratorFinished]]");
 
   /** @type {AsyncIterator<unknown>} */
   const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
@@ -4441,51 +4451,90 @@
     next() {
       /** @type {ReadableStreamDefaultReader} */
       const reader = this[_reader];
-      if (reader[_stream] === undefined) {
-        return PromiseReject(
-          new TypeError(
-            "Cannot get the next iteration result once the reader has been released.",
-          ),
-        );
+      function nextSteps() {
+        if (reader[_iteratorFinished]) {
+          return PromiseResolve(createIteratorResult(undefined, true));
+        }
+
+        if (reader[_stream] === undefined) {
+          return PromiseReject(
+            new TypeError(
+              "Cannot get the next iteration result once the reader has been released.",
+            ),
+          );
+        }
+
+        /** @type {Deferred<IteratorResult<any>>} */
+        const promise = new Deferred();
+        /** @type {ReadRequest} */
+        const readRequest = {
+          chunkSteps(chunk) {
+            promise.resolve(createIteratorResult(chunk, false));
+          },
+          closeSteps() {
+            readableStreamDefaultReaderRelease(reader);
+            promise.resolve(createIteratorResult(undefined, true));
+          },
+          errorSteps(e) {
+            readableStreamDefaultReaderRelease(reader);
+            promise.reject(e);
+          },
+        };
+
+        readableStreamDefaultReaderRead(reader, readRequest);
+        return PromisePrototypeThen(promise.promise, (result) => {
+          reader[_iteratorNext] = null;
+          if (result.done === true) {
+            reader[_iteratorFinished] = true;
+            return createIteratorResult(undefined, true);
+          }
+          return result;
+        }, (reason) => {
+          reader[_iteratorNext] = null;
+          reader[_iteratorFinished] = true;
+          throw reason;
+        });
       }
-      /** @type {Deferred<IteratorResult<any>>} */
-      const promise = new Deferred();
-      /** @type {ReadRequest} */
-      const readRequest = {
-        chunkSteps(chunk) {
-          promise.resolve(createIteratorResult(chunk, false));
-        },
-        closeSteps() {
-          readableStreamDefaultReaderRelease(reader);
-          promise.resolve(createIteratorResult(undefined, true));
-        },
-        errorSteps(e) {
-          readableStreamDefaultReaderRelease(reader);
-          promise.reject(e);
-        },
-      };
-      readableStreamDefaultReaderRead(reader, readRequest);
-      return promise.promise;
+
+      reader[_iteratorNext] = reader[_iteratorNext]
+        ? PromisePrototypeThen(reader[_iteratorNext], nextSteps, nextSteps)
+        : nextSteps();
+
+      return reader[_iteratorNext];
     },
     /**
      * @param {unknown} arg
      * @returns {Promise<IteratorResult<unknown>>}
      */
-    async return(arg) {
+    return(arg) {
       /** @type {ReadableStreamDefaultReader} */
       const reader = this[_reader];
-      if (reader[_stream] === undefined) {
-        return createIteratorResult(undefined, true);
-      }
-      assert(reader[_readRequests].length === 0);
-      if (this[_preventCancel] === false) {
-        const result = readableStreamReaderGenericCancel(reader, arg);
+      const returnSteps = () => {
+        if (reader[_iteratorFinished]) {
+          return PromiseResolve(createIteratorResult(arg, true));
+        }
+        reader[_iteratorFinished] = true;
+
+        if (reader[_stream] === undefined) {
+          return PromiseResolve(createIteratorResult(undefined, true));
+        }
+        assert(reader[_readRequests].length === 0);
+        if (this[_preventCancel] === false) {
+          const result = readableStreamReaderGenericCancel(reader, arg);
+          readableStreamDefaultReaderRelease(reader);
+          return result;
+        }
         readableStreamDefaultReaderRelease(reader);
-        await result;
-        return createIteratorResult(arg, true);
-      }
-      readableStreamDefaultReaderRelease(reader);
-      return createIteratorResult(undefined, true);
+        return PromiseResolve(createIteratorResult(undefined, true));
+      };
+
+      const returnPromise = reader[_iteratorNext]
+        ? PromisePrototypeThen(reader[_iteratorNext], returnSteps, returnSteps)
+        : returnSteps();
+      return PromisePrototypeThen(
+        returnPromise,
+        () => createIteratorResult(arg, true),
+      );
     },
   }, asyncIteratorPrototype);
 

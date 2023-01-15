@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -114,7 +114,8 @@
       const varyHeader = getHeader(innerResponse.headerList, "vary");
       if (varyHeader) {
         const fieldValues = varyHeader.split(",");
-        for (const field of fieldValues) {
+        for (let i = 0; i < fieldValues.length; ++i) {
+          const field = fieldValues[i];
           if (field.trim() === "*") {
             throw new TypeError("Vary header must not contain '*'");
           }

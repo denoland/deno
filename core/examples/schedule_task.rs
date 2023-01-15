@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Error;
 use deno_core::op;
@@ -18,7 +18,7 @@ use deno_core::*;
 type Task = Box<dyn FnOnce()>;
 
 fn main() {
-  let my_ext = Extension::builder()
+  let my_ext = Extension::builder("my_ext")
     .ops(vec![op_schedule_task::decl()])
     .event_loop_middleware(|state_rc, cx| {
       let mut state = state_rc.borrow_mut();

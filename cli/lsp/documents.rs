@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
 use super::text::LineIndex;
@@ -33,6 +33,7 @@ use deno_core::ModuleSpecifier;
 use deno_graph::GraphImport;
 use deno_graph::Resolved;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -80,7 +81,7 @@ static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     .collect()
 });
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LanguageId {
   JavaScript,
   Jsx,
@@ -93,6 +94,31 @@ pub enum LanguageId {
 }
 
 impl LanguageId {
+  pub fn as_media_type(&self) -> MediaType {
+    match self {
+      LanguageId::JavaScript => MediaType::JavaScript,
+      LanguageId::Jsx => MediaType::Jsx,
+      LanguageId::TypeScript => MediaType::TypeScript,
+      LanguageId::Tsx => MediaType::Tsx,
+      LanguageId::Json => MediaType::Json,
+      LanguageId::JsonC => MediaType::Json,
+      LanguageId::Markdown | LanguageId::Unknown => MediaType::Unknown,
+    }
+  }
+
+  pub fn as_extension(&self) -> Option<&'static str> {
+    match self {
+      LanguageId::JavaScript => Some("js"),
+      LanguageId::Jsx => Some("jsx"),
+      LanguageId::TypeScript => Some("ts"),
+      LanguageId::Tsx => Some("tsx"),
+      LanguageId::Json => Some("json"),
+      LanguageId::JsonC => Some("jsonc"),
+      LanguageId::Markdown => Some("md"),
+      LanguageId::Unknown => None,
+    }
+  }
+
   fn as_headers(&self) -> Option<&HashMap<String, String>> {
     match self {
       Self::JavaScript => Some(&JS_HEADERS),
@@ -244,16 +270,18 @@ type MaybeModuleResult =
 type MaybeParsedSourceResult =
   Option<Result<ParsedSource, deno_ast::Diagnostic>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct DocumentInner {
-  /// contains the last-known-good set of dependencies from parsing the module
+  /// Contains the last-known-good set of dependencies from parsing the module.
   dependencies: Arc<DocumentDependencies>,
   fs_version: String,
   line_index: Arc<LineIndex>,
   maybe_language_id: Option<LanguageId>,
   maybe_lsp_version: Option<i32>,
   maybe_module: MaybeModuleResult,
-  maybe_navigation_tree: Option<Arc<tsc::NavigationTree>>,
+  // this is a lazily constructed value based on the state of the document,
+  // so having a mutex to hold it is ok
+  maybe_navigation_tree: Mutex<Option<Arc<tsc::NavigationTree>>>,
   maybe_parsed_source: MaybeParsedSourceResult,
   specifier: ModuleSpecifier,
   text_info: SourceTextInfo,
@@ -291,7 +319,7 @@ impl Document {
       maybe_language_id: None,
       maybe_lsp_version: None,
       maybe_module,
-      maybe_navigation_tree: None,
+      maybe_navigation_tree: Mutex::new(None),
       maybe_parsed_source,
       text_info,
       specifier,
@@ -327,7 +355,7 @@ impl Document {
       maybe_language_id: Some(language_id),
       maybe_lsp_version: Some(version),
       maybe_module,
-      maybe_navigation_tree: None,
+      maybe_navigation_tree: Mutex::new(None),
       maybe_parsed_source,
       text_info: source,
       specifier,
@@ -390,25 +418,17 @@ impl Document {
       Arc::new(LineIndex::new(text_info.text_str()))
     };
     Ok(Document(Arc::new(DocumentInner {
+      specifier: self.0.specifier.clone(),
+      fs_version: self.0.fs_version.clone(),
+      maybe_language_id: self.0.maybe_language_id,
       dependencies,
       text_info,
       line_index,
       maybe_module,
       maybe_parsed_source,
       maybe_lsp_version: Some(version),
-      maybe_navigation_tree: None,
-      ..(*self.0).clone()
+      maybe_navigation_tree: Mutex::new(None),
     })))
-  }
-
-  fn with_navigation_tree(
-    &self,
-    navigation_tree: Arc<tsc::NavigationTree>,
-  ) -> Document {
-    Document(Arc::new(DocumentInner {
-      maybe_navigation_tree: Some(navigation_tree),
-      ..(*self.0).clone()
-    }))
   }
 
   pub fn specifier(&self) -> &ModuleSpecifier {
@@ -470,10 +490,22 @@ impl Document {
 
   pub fn media_type(&self) -> MediaType {
     if let Some(Ok(module)) = &self.0.maybe_module {
-      module.media_type
-    } else {
-      MediaType::from(&self.0.specifier)
+      return module.media_type;
     }
+    let specifier_media_type = MediaType::from(&self.0.specifier);
+    if specifier_media_type != MediaType::Unknown {
+      return specifier_media_type;
+    }
+
+    self
+      .0
+      .maybe_language_id
+      .map(|id| id.as_media_type())
+      .unwrap_or(MediaType::Unknown)
+  }
+
+  pub fn maybe_language_id(&self) -> Option<LanguageId> {
+    self.0.maybe_language_id
   }
 
   /// Returns the current language server client version if any.
@@ -494,7 +526,21 @@ impl Document {
   }
 
   pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
-    self.0.maybe_navigation_tree.clone()
+    self.0.maybe_navigation_tree.lock().clone()
+  }
+
+  pub fn update_navigation_tree_if_version(
+    &self,
+    tree: Arc<tsc::NavigationTree>,
+    script_version: &str,
+  ) {
+    // Ensure we are updating the same document that the navigation tree was
+    // created for. Note: this should not be racy between the version check
+    // and setting the navigation tree, because the document is immutable
+    // and this is enforced by it being wrapped in an Arc.
+    if self.script_version() == script_version {
+      *self.0.maybe_navigation_tree.lock() = Some(tree);
+    }
   }
 
   pub fn dependencies(&self) -> &BTreeMap<String, deno_graph::Dependency> {
@@ -959,6 +1005,7 @@ impl Documents {
               referrer,
               NodeResolutionMode::Types,
               npm_resolver,
+              &mut PermissionsContainer::allow_all(),
             )
             .ok()
             .flatten(),
@@ -995,6 +1042,7 @@ impl Documents {
               &npm_ref,
               NodeResolutionMode::Types,
               npm_resolver,
+              &mut PermissionsContainer::allow_all(),
             )
             .ok()
             .flatten(),
@@ -1018,23 +1066,17 @@ impl Documents {
   /// Tries to cache a navigation tree that is associated with the provided specifier
   /// if the document stored has the same script version.
   pub fn try_cache_navigation_tree(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     script_version: &str,
     navigation_tree: Arc<tsc::NavigationTree>,
   ) -> Result<(), AnyError> {
-    if let Some(doc) = self.open_docs.get_mut(specifier) {
-      if doc.script_version() == script_version {
-        *doc = doc.with_navigation_tree(navigation_tree);
-      }
+    if let Some(doc) = self.open_docs.get(specifier) {
+      doc.update_navigation_tree_if_version(navigation_tree, script_version)
     } else {
       let mut file_system_docs = self.file_system_docs.lock();
       if let Some(doc) = file_system_docs.docs.get_mut(specifier) {
-        // ensure we are updating the same document
-        // that the navigation tree was created for
-        if doc.script_version() == script_version {
-          *doc = doc.with_navigation_tree(navigation_tree);
-        }
+        doc.update_navigation_tree_if_version(navigation_tree, script_version);
       } else {
         return Err(custom_error(
           "NotFound",
@@ -1169,6 +1211,7 @@ impl Documents {
             &npm_ref,
             NodeResolutionMode::Types,
             npm_resolver,
+            &mut PermissionsContainer::allow_all(),
           )
           .ok()
           .flatten(),

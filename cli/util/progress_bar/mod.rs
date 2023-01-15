@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -23,6 +23,7 @@ mod renderer;
 // Inspired by Indicatif, but this custom implementation allows
 // for more control over what's going on under the hood.
 
+#[derive(Debug)]
 pub struct UpdateGuard {
   maybe_entry: Option<ProgressBarEntry>,
 }
@@ -183,7 +184,7 @@ impl ProgressBarInner {
     {
       internal_state.start_time = SystemTime::now();
       internal_state.draw_thread_guard =
-        Some(DrawThread::add_entry(0, Arc::new(self.clone())));
+        Some(DrawThread::add_entry(Arc::new(self.clone())));
     }
   }
 }

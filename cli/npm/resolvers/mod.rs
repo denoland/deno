@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod common;
 mod global;
@@ -11,6 +11,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
@@ -276,6 +277,7 @@ impl NpmPackageResolver {
     }
 
     self.inner.add_package_reqs(packages).await?;
+    self.inner.cache_packages().await?;
 
     // If there's a lock file, update it with all discovered npm packages
     if let Some(lockfile_mutex) = &self.maybe_lockfile {
@@ -287,6 +289,8 @@ impl NpmPackageResolver {
   }
 
   /// Sets package requirements to the resolver, removing old requirements and adding new ones.
+  ///
+  /// This will retrieve and resolve package information, but not cache any package files.
   pub async fn set_package_reqs(
     &self,
     packages: HashSet<NpmPackageReq>,
@@ -364,8 +368,12 @@ impl RequireNpmResolver for NpmPackageResolver {
       .is_ok()
   }
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
-    self.inner.ensure_read_permission(path)
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    self.inner.ensure_read_permission(permissions, path)
   }
 }
 

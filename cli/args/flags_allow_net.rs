@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::url::Url;
 use std::net::IpAddr;
@@ -64,7 +64,8 @@ pub fn parse(paths: Vec<String>) -> clap::Result<Vec<String>> {
 
 #[cfg(test)]
 mod bare_port_tests {
-  use super::{BarePort, ParsePortError};
+  use super::BarePort;
+  use super::ParsePortError;
 
   #[test]
   fn bare_port_parsed() {

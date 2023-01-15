@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -1231,6 +1231,19 @@ declare namespace Deno {
      */
     delete(key: string): void;
 
+    /** Check whether an environment variable is present or not.
+     *
+     * ```ts
+     * Deno.env.set("SOME_VAR", "Value");
+     * Deno.env.has("SOME_VAR");  // outputs true
+     * ```
+     *
+     * Requires `allow-env` permission.
+     *
+     * @tags allow-env
+     */
+    has(key: string): boolean;
+
     /** Returns a snapshot of the environment variables at invocation as a
      * simple object of keys and values.
      *
@@ -1572,7 +1585,7 @@ declare namespace Deno {
    * ```ts
    * const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
    * // Do work with file
-   * Deno.close(file.rid);
+   * file.close();
    * ```
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on
@@ -1594,7 +1607,7 @@ declare namespace Deno {
    * ```ts
    * const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
    * // Do work with file
-   * Deno.close(file.rid);
+   * file.close();
    * ```
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on
@@ -3351,7 +3364,7 @@ declare namespace Deno {
    */
   export function writeFile(
     path: string | URL,
-    data: Uint8Array,
+    data: Uint8Array | ReadableStream<Uint8Array>,
     options?: WriteFileOptions,
   ): Promise<void>;
 
@@ -3394,7 +3407,7 @@ declare namespace Deno {
    */
   export function writeTextFile(
     path: string | URL,
-    data: string,
+    data: string | ReadableStream<string>,
     options?: WriteFileOptions,
   ): Promise<void>;
 
@@ -4120,6 +4133,7 @@ declare namespace Deno {
       | "systemMemoryInfo"
       | "networkInterfaces"
       | "osRelease"
+      | "osUptime"
       | "uid"
       | "gid";
   }

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-read --allow-write --allow-run
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import { join, ROOT_PATH } from "./util.js";
 

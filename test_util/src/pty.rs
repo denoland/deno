@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
@@ -24,7 +26,7 @@ pub fn create_pty(
   cwd: impl AsRef<Path>,
   env_vars: Option<HashMap<String, String>>,
 ) -> Box<dyn Pty> {
-  let fork = pty::fork::Fork::from_ptmx().unwrap();
+  let fork = pty2::fork::Fork::from_ptmx().unwrap();
   if fork.is_parent().is_ok() {
     Box::new(unix::UnixPty { fork })
   } else {
@@ -48,7 +50,7 @@ mod unix {
   use super::Pty;
 
   pub struct UnixPty {
-    pub fork: pty::fork::Fork,
+    pub fork: pty2::fork::Fork,
   }
 
   impl Drop for UnixPty {

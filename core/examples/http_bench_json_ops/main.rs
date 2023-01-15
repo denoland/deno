@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::anyhow::Error;
 use deno_core::op;
 use deno_core::AsyncRefCell;
@@ -6,6 +6,7 @@ use deno_core::AsyncResult;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::Resource;
+use deno_core::ZeroCopyBuf;
 use deno_core::ResourceId;
 use std::cell::RefCell;
 use std::env;
@@ -93,7 +94,7 @@ impl From<tokio::net::TcpStream> for TcpStream {
 }
 
 fn create_js_runtime() -> JsRuntime {
-  let ext = deno_core::Extension::builder()
+  let ext = deno_core::Extension::builder("my_ext")
     .ops(vec![
       op_listen::decl(),
       op_accept::decl(),
@@ -109,14 +110,14 @@ fn create_js_runtime() -> JsRuntime {
   })
 }
 
-#[op(fast)]
+#[op]
 async fn op_read_socket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: &mut [u8],
+  mut data: ZeroCopyBuf,
 ) -> Result<u32, Error> {
   let resource = state.borrow_mut().resource_table.get::<TcpStream>(rid)?;
-  let nread = resource.read(data).await?;
+  let nread = resource.read(&mut data).await?;
   Ok(nread as u32)
 }
 
