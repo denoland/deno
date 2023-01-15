@@ -1,11 +1,16 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::sync::atomic::{AtomicU16, Ordering};
-use std::{collections::HashMap, path::Path, process::Command, time::Duration};
+use std::collections::HashMap;
+use std::path::Path;
+use std::process::Command;
+use std::sync::atomic::AtomicU16;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use super::Result;
 
-pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
+pub use test_util::parse_wrk_output;
+pub use test_util::WrkOutput as HttpBenchmarkResult;
 // Some of the benchmarks in this file have been renamed. In case the history
 // somehow gets messed up:
 //   "node_http" was once called "node"

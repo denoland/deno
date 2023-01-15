@@ -311,7 +311,7 @@ pub struct napi_extended_error_info {
   pub error_message: *const c_char,
   pub engine_reserved: *mut c_void,
   pub engine_error_code: i32,
-  pub status_code: napi_status,
+  pub error_code: napi_status,
 }
 
 #[repr(C)]
@@ -343,11 +343,32 @@ pub struct NapiState {
 
 impl Drop for NapiState {
   fn drop(&mut self) {
-    let mut hooks = self.env_cleanup_hooks.borrow_mut();
+    let hooks = {
+      let h = self.env_cleanup_hooks.borrow_mut();
+      h.clone()
+    };
+
     // Hooks are supposed to be run in LIFO order
-    let hooks = hooks.drain(..).rev();
-    for (fn_ptr, data) in hooks {
-      (fn_ptr)(data);
+    let hooks_to_run = hooks.into_iter().rev();
+
+    for hook in hooks_to_run {
+      // This hook might have been removed by a previous hook, in such case skip it here.
+      if !self
+        .env_cleanup_hooks
+        .borrow()
+        .iter()
+        .any(|pair| pair.0 == hook.0 && pair.1 == hook.1)
+      {
+        continue;
+      }
+
+      (hook.0)(hook.1);
+      {
+        self
+          .env_cleanup_hooks
+          .borrow_mut()
+          .retain(|pair| !(pair.0 == hook.0 && pair.1 == hook.1));
+      }
     }
   }
 }
@@ -395,6 +416,7 @@ pub struct Env {
   pub cleanup_hooks:
     Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
   pub tsfn_ref_counters: Rc<RefCell<ThreadsafeFunctionRefCounters>>,
+  pub last_error: napi_extended_error_info,
 }
 
 unsafe impl Send for Env {}
@@ -429,6 +451,12 @@ impl Env {
       threadsafe_function_sender,
       cleanup_hooks,
       tsfn_ref_counters,
+      last_error: napi_extended_error_info {
+        error_message: std::ptr::null(),
+        engine_reserved: std::ptr::null_mut(),
+        engine_error_code: 0,
+        error_code: napi_ok,
+      },
     }
   }
 
