@@ -44,12 +44,14 @@ pub fn ppid() -> i64 {
     // - MIT license
     use std::mem;
     use winapi::shared::minwindef::DWORD;
-    use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
+    use winapi::um::handleapi::CloseHandle;
+    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
     use winapi::um::processthreadsapi::GetCurrentProcessId;
-    use winapi::um::tlhelp32::{
-      CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
-      TH32CS_SNAPPROCESS,
-    };
+    use winapi::um::tlhelp32::CreateToolhelp32Snapshot;
+    use winapi::um::tlhelp32::Process32First;
+    use winapi::um::tlhelp32::Process32Next;
+    use winapi::um::tlhelp32::PROCESSENTRY32;
+    use winapi::um::tlhelp32::TH32CS_SNAPPROCESS;
     // SAFETY: winapi calls
     unsafe {
       // Take a snapshot of system processes, one of which is ours

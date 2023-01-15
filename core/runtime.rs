@@ -2593,7 +2593,8 @@ pub mod tests {
   use std::ops::FnOnce;
   use std::pin::Pin;
   use std::rc::Rc;
-  use std::sync::atomic::{AtomicUsize, Ordering};
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
   use std::sync::Arc;
   // deno_ops macros generate code assuming deno_core in scope.
   mod deno_core {
