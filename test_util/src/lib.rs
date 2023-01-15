@@ -1610,7 +1610,8 @@ impl HttpServerCount {
         .spawn()
         .expect("failed to execute test_server");
       let stdout = test_server.stdout.as_mut().unwrap();
-      use std::io::{BufRead, BufReader};
+      use std::io::BufRead;
+      use std::io::BufReader;
       let lines = BufReader::new(stdout).lines();
 
       // Wait for all the servers to report being ready.

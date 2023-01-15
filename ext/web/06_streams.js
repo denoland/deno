@@ -19,6 +19,7 @@
     ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeShift,
+    AsyncGeneratorPrototype,
     BigInt64ArrayPrototype,
     BigUint64ArrayPrototype,
     DataView,
@@ -4439,9 +4440,7 @@
   }
 
   /** @type {AsyncIterator<unknown, unknown>} */
-  const asyncIteratorPrototype = ObjectGetPrototypeOf(
-    ObjectGetPrototypeOf(async function* () {}).prototype,
-  );
+  const asyncIteratorPrototype = ObjectGetPrototypeOf(AsyncGeneratorPrototype);
 
   const _iteratorNext = Symbol("[[iteratorNext]]");
   const _iteratorFinished = Symbol("[[iteratorFinished]]");
