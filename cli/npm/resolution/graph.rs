@@ -303,6 +303,7 @@ impl Graph {
     parent_id: &NpmPackageId,
   ) {
     let mut child = (*child).lock();
+    assert_ne!(child.id, *parent_id);
     let mut parent = (**self.packages.get(parent_id).unwrap_or_else(|| {
       panic!(
         "could not find {} in list of packages when setting child {}",
@@ -311,7 +312,6 @@ impl Graph {
       )
     }))
     .lock();
-    assert_ne!(parent.id, child.id);
     parent
       .children
       .insert(specifier.to_string(), child.id.clone());
@@ -476,7 +476,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     package_req: &NpmPackageReq,
     package_info: &NpmPackageInfo,
   ) -> Result<(), AnyError> {
-    let node = self.resolve_node_from_info(
+    let (_, node) = self.resolve_node_from_info(
       &package_req.name,
       package_req,
       package_info,
@@ -498,7 +498,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     parent_id: &NpmPackageId,
     visited_versions: &Arc<VisitedVersionsPath>,
   ) -> Result<Arc<Mutex<Node>>, AnyError> {
-    let node = self.resolve_node_from_info(
+    let (id, node) = self.resolve_node_from_info(
       &entry.name,
       match entry.kind {
         NpmDependencyEntryKind::Dep => &entry.version_req,
@@ -514,12 +514,17 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       package_info,
       Some(parent_id),
     )?;
-    self.graph.set_child_parent(
-      &entry.bare_specifier,
-      &node,
-      &NodeParent::Node(parent_id.clone()),
-    );
-    self.try_add_pending_unresolved_node(Some(visited_versions), &node);
+    // Some packages may resolves to themselves as a dependency. If this occurs,
+    // just ignore adding these as dependencies because this is likely a mistake
+    // in the package.
+    if id != *parent_id {
+      self.graph.set_child_parent(
+        &entry.bare_specifier,
+        &node,
+        &NodeParent::Node(parent_id.clone()),
+      );
+      self.try_add_pending_unresolved_node(Some(visited_versions), &node);
+    }
     Ok(node)
   }
 
@@ -555,7 +560,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     version_matcher: &impl NpmVersionMatcher,
     package_info: &NpmPackageInfo,
     parent_id: Option<&NpmPackageId>,
-  ) -> Result<Arc<Mutex<Node>>, AnyError> {
+  ) -> Result<(NpmPackageId, Arc<Mutex<Node>>), AnyError> {
     let version_and_info = self
       .resolve_best_package_version_and_info(version_matcher, package_info)?;
     let id = NpmPackageId {
@@ -587,7 +592,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       node.no_peers = node.deps.is_empty();
     }
 
-    Ok(node)
+    Ok((id, node))
   }
 
   pub async fn resolve_pending(&mut self) -> Result<(), AnyError> {
@@ -2652,6 +2657,65 @@ mod test {
         "package-a@1.0".to_string(),
         "package-a@1.0.0_package-d@1.0.0".to_string()
       ),]
+    );
+  }
+
+  #[tokio::test]
+  async fn package_has_self_as_dependency() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-a", "1"));
+
+    let (packages, package_reqs) =
+      run_resolver_and_get_output(api, vec!["npm:package-a@1.0"]).await;
+    assert_eq!(
+      packages,
+      vec![NpmResolutionPackage {
+        id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+        copy_index: 0,
+        // in this case, we just ignore that the package did this
+        dependencies: Default::default(),
+        dist: Default::default(),
+      }]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1.0".to_string(), "package-a@1.0.0".to_string())]
+    );
+  }
+
+  #[tokio::test]
+  async fn package_has_self_but_different_version_as_dependency() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-a", "0.5.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-a", "^0.5"));
+
+    let (packages, package_reqs) =
+      run_resolver_and_get_output(api, vec!["npm:package-a@1.0"]).await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-a@0.5.0").unwrap(),
+          copy_index: 0,
+          dependencies: Default::default(),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-a".to_string(),
+            NpmPackageId::from_serialized("package-a@0.5.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1.0".to_string(), "package-a@1.0.0".to_string())]
     );
   }
 

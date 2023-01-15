@@ -40,9 +40,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 struct BenchSpecifierOptions {
-  filter: Option<String>,
+  filter: TestFilter,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
@@ -354,12 +354,12 @@ async fn bench_specifier(
   channel: UnboundedSender<BenchEvent>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let filter = TestFilter::from_flag(&options.filter);
+  let filter = options.filter;
   let mut worker = create_main_worker_for_test_or_bench(
     &ps,
-    specifier.clone(),
+    specifier,
     PermissionsContainer::new(permissions),
-    vec![ops::bench::init(channel.clone(), filter)],
+    vec![ops::bench::init(channel, filter)],
     Default::default(),
   )
   .await?;
@@ -369,8 +369,8 @@ async fn bench_specifier(
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn bench_specifiers(
-  ps: ProcState,
-  permissions: Permissions,
+  ps: &ProcState,
+  permissions: &Permissions,
   specifiers: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
@@ -378,10 +378,10 @@ async fn bench_specifiers(
 
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
 
-  let join_handles = specifiers.iter().map(move |specifier| {
+  let join_handles = specifiers.into_iter().map(move |specifier| {
     let ps = ps.clone();
     let permissions = permissions.clone();
-    let specifier = specifier.clone();
+    let specifier = specifier;
     let sender = sender.clone();
     let options = options.clone();
 
@@ -506,11 +506,11 @@ pub async fn run_benchmarks(
   check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
   bench_specifiers(
-    ps,
-    permissions,
+    &ps,
+    &permissions,
     specifiers,
     BenchSpecifierOptions {
-      filter: bench_options.filter,
+      filter: TestFilter::from_flag(&bench_options.filter),
     },
   )
   .await?;
@@ -529,27 +529,20 @@ pub async fn run_benchmarks_with_watch(
   // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
-
-  let paths_to_watch: Vec<_> = bench_options
-    .files
-    .include
-    .iter()
-    .map(PathBuf::from)
-    .collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let ps = RefCell::new(ps);
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
-    let paths_to_watch = paths_to_watch.clone();
+    let paths_to_watch = bench_options.files.include.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
-
     let files_changed = changed.is_some();
-    let files = bench_options.files.clone();
-    let ps = ps.borrow().clone();
+    let bench_options = &bench_options;
+    let ps = ps.borrow();
 
     async move {
-      let bench_modules = collect_specifiers(&files, is_supported_bench_path)?;
+      let bench_modules =
+        collect_specifiers(&bench_options.files, is_supported_bench_path)?;
 
       let mut paths_to_watch = paths_to_watch_clone;
       let mut modules_to_reload = if files_changed {
@@ -657,26 +650,28 @@ pub async fn run_benchmarks_with_watch(
   };
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let permissions = permissions.clone();
+    let permissions = &permissions;
     ps.borrow_mut().reset_for_file_watcher();
-    let ps = ps.borrow().clone();
-    let filter = bench_options.filter.clone();
-    let files = bench_options.files.clone();
+    let ps = ps.borrow();
+    let bench_options = &bench_options;
 
     async move {
-      let specifiers = collect_specifiers(&files, is_supported_bench_path)?
-        .iter()
-        .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
-        .cloned()
-        .collect::<Vec<ModuleSpecifier>>();
+      let specifiers =
+        collect_specifiers(&bench_options.files, is_supported_bench_path)?
+          .iter()
+          .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
+          .cloned()
+          .collect::<Vec<ModuleSpecifier>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
       bench_specifiers(
-        ps,
-        permissions.clone(),
+        &ps,
+        permissions,
         specifiers,
-        BenchSpecifierOptions { filter },
+        BenchSpecifierOptions {
+          filter: TestFilter::from_flag(&bench_options.filter),
+        },
       )
       .await?;
 

@@ -1,10 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
+use serde::Deserializer;
 
-use serde_v8::utils::{js_exec, v8_do};
+use serde_v8::utils::js_exec;
+use serde_v8::utils::v8_do;
 use serde_v8::ByteString;
 use serde_v8::Error;
-use serde_v8::{U16String, ZeroCopyBuf};
+use serde_v8::U16String;
+use serde_v8::ZeroCopyBuf;
 
 #[derive(Debug, Deserialize, PartialEq)]
 struct MathOp {

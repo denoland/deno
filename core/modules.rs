@@ -1190,7 +1190,8 @@ mod tests {
   use std::future::Future;
   use std::io;
   use std::path::PathBuf;
-  use std::sync::atomic::{AtomicUsize, Ordering};
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
   use std::sync::Arc;
   // deno_ops macros generate code assuming deno_core in scope.
   mod deno_core {
