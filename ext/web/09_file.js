@@ -20,6 +20,7 @@
     ArrayBufferPrototypeSlice,
     ArrayBufferIsView,
     ArrayPrototypePush,
+    AsyncGeneratorPrototypeNext,
     Date,
     DatePrototypeGetTime,
     MathMax,
@@ -330,7 +331,9 @@
         /** @param {ReadableByteStreamController} controller */
         async pull(controller) {
           while (true) {
-            const { value, done } = await partIterator.next();
+            const { value, done } = await AsyncGeneratorPrototypeNext(
+              partIterator,
+            );
             if (done) return controller.close();
             if (value.byteLength > 0) {
               return controller.enqueue(value);
@@ -354,11 +357,14 @@
       const bytes = new Uint8Array(size);
       const partIterator = toIterator(this[_parts]);
       let offset = 0;
-      // deno-lint-ignore prefer-primordials
-      for await (const chunk of partIterator) {
-        const byteLength = chunk.byteLength;
+      while (true) {
+        const { value, done } = await AsyncGeneratorPrototypeNext(
+          partIterator,
+        );
+        if (done) break;
+        const byteLength = value.byteLength;
         if (byteLength > 0) {
-          TypedArrayPrototypeSet(bytes, chunk, offset);
+          TypedArrayPrototypeSet(bytes, value, offset);
           offset += byteLength;
         }
       }
