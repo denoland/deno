@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -16,7 +18,7 @@ use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -410,7 +412,7 @@ impl CliMainWorker {
 pub async fn create_main_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
-  permissions: Permissions,
+  permissions: PermissionsContainer,
 ) -> Result<CliMainWorker, AnyError> {
   create_main_worker_internal(
     ps,
@@ -426,7 +428,7 @@ pub async fn create_main_worker(
 pub async fn create_main_worker_for_test_or_bench(
   ps: &ProcState,
   main_module: ModuleSpecifier,
-  permissions: Permissions,
+  permissions: PermissionsContainer,
   custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
 ) -> Result<CliMainWorker, AnyError> {
@@ -444,7 +446,7 @@ pub async fn create_main_worker_for_test_or_bench(
 async fn create_main_worker_internal(
   ps: &ProcState,
   main_module: ModuleSpecifier,
-  permissions: Permissions,
+  permissions: PermissionsContainer,
   mut custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
   bench_or_test: bool,
@@ -459,6 +461,7 @@ async fn create_main_worker_internal(
       &package_ref.req,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
+      &mut PermissionsContainer::allow_all(),
     )?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
@@ -473,7 +476,11 @@ async fn create_main_worker_internal(
     (main_module, false)
   };
 
-  let module_loader = CliModuleLoader::new(ps.clone());
+  let module_loader = CliModuleLoader::new(
+    ps.clone(),
+    PermissionsContainer::allow_all(),
+    permissions.clone(),
+  );
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
 
@@ -649,6 +656,7 @@ fn create_web_worker_callback(
     let module_loader = CliModuleLoader::new_for_worker(
       ps.clone(),
       args.parent_permissions.clone(),
+      args.permissions.clone(),
     );
     let create_web_worker_cb =
       create_web_worker_callback(ps.clone(), stdio.clone());
@@ -731,10 +739,11 @@ mod tests {
   use deno_core::{resolve_url_or_path, FsModuleLoader};
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_runtime::deno_web::BlobStore;
+  use deno_runtime::permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
     let main_module = resolve_url_or_path("./hello.js").unwrap();
-    let permissions = Permissions::default();
+    let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {

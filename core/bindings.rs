@@ -13,6 +13,7 @@ use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
+use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
 use crate::runtime::SnapshotOptions;
 use crate::JsRuntime;
@@ -132,6 +133,12 @@ pub fn initialize_context<'s>(
 
   // Bind functions to Deno.core.*
   set_func(scope, core_obj, "callConsole", call_console);
+
+  // Bind v8 console object to Deno.core.console
+  let extra_binding_obj = context.get_extras_binding_object(scope);
+  let console_str = v8::String::new(scope, "console").unwrap();
+  let console_obj = extra_binding_obj.get(scope, console_str.into()).unwrap();
+  core_obj.set(scope, console_str.into(), console_obj);
 
   // Bind functions to Deno.core.ops.*
   let ops_obj = v8::Object::new(scope);
@@ -372,7 +379,8 @@ fn import_meta_resolve(
     return;
   }
 
-  match loader.resolve(&specifier_str, &referrer, false) {
+  match loader.resolve(&specifier_str, &referrer, ResolutionKind::DynamicImport)
+  {
     Ok(resolved) => {
       let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();
       rv.set(resolved_val);

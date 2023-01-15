@@ -29,3 +29,4 @@ alias   CNAME   cname
 _service._tcp           SRV 0 100 1234 srv
 @   IN  NAPTR  10 0 "s" "SIPS+D2T" "" _sips._tcp.example.com.
 @   IN  NAPTR  10 0 "s" RELAY:turn.udp "" _turn._udp.example.com.
+@   IN	SSHFP  1 1 436C6F7564666C

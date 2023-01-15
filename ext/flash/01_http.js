@@ -31,7 +31,6 @@
     PromisePrototype,
     PromisePrototypeCatch,
     PromisePrototypeThen,
-    SafeArrayIterator,
     SafePromiseAll,
     TypedArrayPrototypeSubarray,
     TypeError,
@@ -140,7 +139,8 @@
     // status-line = HTTP-version SP status-code SP reason-phrase CRLF
     // Date header: https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.2
     let str = `HTTP/1.1 ${status} ${statusCodes[status]}\r\nDate: ${date}\r\n`;
-    for (const [name, value] of new SafeArrayIterator(headerList)) {
+    for (let i = 0; i < headerList.length; ++i) {
+      const [name, value] = headerList[i];
       // header-field   = field-name ":" OWS field-value OWS
       str += `${name}: ${value}\r\n`;
     }
@@ -327,7 +327,7 @@
       );
     }
 
-    (async () => {
+    return (async () => {
       if (!ws) {
         if (hasBody && body[_state] !== "closed") {
           // TODO(@littledivy): Optimize by draining in a single op.
@@ -590,7 +590,6 @@
                     ),
                     onError,
                   );
-                  continue;
                 } else if (typeof resp?.then === "function") {
                   resp.then((resp) =>
                     handleResponse(
@@ -606,24 +605,23 @@
                       tryRespondChunked,
                     )
                   ).catch(onError);
-                  continue;
+                } else {
+                  handleResponse(
+                    req,
+                    resp,
+                    body,
+                    hasBody,
+                    method,
+                    serverId,
+                    i,
+                    respondFast,
+                    respondChunked,
+                    tryRespondChunked,
+                  ).catch(onError);
                 }
               } catch (e) {
                 resp = await onError(e);
               }
-
-              handleResponse(
-                req,
-                resp,
-                body,
-                hasBody,
-                method,
-                serverId,
-                i,
-                respondFast,
-                respondChunked,
-                tryRespondChunked,
-              );
             }
 
             offset += tokens;

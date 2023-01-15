@@ -22,7 +22,7 @@ fn op_sum(nums: Vec<f64>) -> Result<f64, deno_core::error::AnyError> {
 
 fn main() {
   // Build a deno_core::Extension providing custom ops
-  let ext = Extension::builder()
+  let ext = Extension::builder("my_ext")
     .ops(vec![
       // An op for summing an array of numbers
       // The op-layer automatically deserializes inputs

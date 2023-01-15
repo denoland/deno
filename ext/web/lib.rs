@@ -62,7 +62,8 @@ pub fn init<P: TimersPermission + 'static>(
   blob_store: BlobStore,
   maybe_location: Option<Url>,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl", "deno_console", "deno_url"])
     .js(include_js_files!(
       prefix "deno:ext/web",
       "00_infra.js",
