@@ -117,7 +117,7 @@ impl From<tokio::net::TcpStream> for TcpStream {
 }
 
 fn create_js_runtime() -> JsRuntime {
-  let ext = deno_core::Extension::builder()
+  let ext = deno_core::Extension::builder("my_ext")
     .ops(vec![op_listen::decl(), op_accept::decl()])
     .build();
 

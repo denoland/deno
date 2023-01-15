@@ -21,7 +21,7 @@ use tokio::signal::unix::{signal, Signal, SignalKind};
 use tokio::signal::windows::{ctrl_break, ctrl_c, CtrlBreak, CtrlC};
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_signal")
     .ops(vec![
       op_signal_bind::decl(),
       op_signal_unbind::decl(),

@@ -755,7 +755,7 @@ checksum = "8d7439c3735f405729d52c3fbbe4de140eaf938a1fe47d227c27f8254d4302a5"
 
 [[package]]
 name = "deno"
-version = "1.29.2"
+version = "1.29.3"
 dependencies = [
  "atty",
  "base32",
@@ -871,7 +871,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.77.0"
+version = "0.78.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -881,7 +881,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.77.0"
+version = "0.78.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -891,7 +891,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -903,14 +903,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.83.0"
+version = "0.84.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.165.0"
+version = "0.166.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -935,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.97.0"
+version = "0.98.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1002,7 +1002,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.107.0"
+version = "0.108.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -1019,7 +1019,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.70.0"
+version = "0.71.0"
 dependencies = [
  "deno_core",
  "dlopen",
@@ -1032,7 +1032,7 @@ dependencies = [
 
 [[package]]
 name = "deno_flash"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1070,7 +1070,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.78.0"
+version = "0.79.0"
 dependencies = [
  "async-compression",
  "base64",
@@ -1112,7 +1112,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "deno_core",
  "libloading",
@@ -1120,7 +1120,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.75.0"
+version = "0.76.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1134,7 +1134,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1145,7 +1145,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "once_cell",
  "pmutil",
@@ -1161,7 +1161,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.91.0"
+version = "0.92.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
@@ -1227,7 +1227,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.70.0"
+version = "0.71.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1241,7 +1241,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.83.0"
+version = "0.84.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1253,11 +1253,12 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.114.0"
+version = "0.115.0"
 dependencies = [
  "async-trait",
  "base64-simd",
  "deno_bench_util",
+ "deno_console",
  "deno_core",
  "deno_url",
  "deno_webidl",
@@ -1270,7 +1271,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.84.0"
+version = "0.85.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -1281,14 +1282,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.83.0"
+version = "0.84.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.88.0"
+version = "0.89.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1302,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.78.0"
+version = "0.79.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -1433,9 +1434,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.15.1"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0aec6d8d6d9a3a4c1a260893677d24c8feb03ce5f4ee5f6522c9da5e00e5597d"
+checksum = "5095e6471bc71892fd4fe3f74205a6d2e22bd3be9b09758fd23bff67b5ec15fd"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -2557,9 +2558,9 @@ checksum = "349d5a591cd28b49e1d1037471617a32ddcda5731b99419008085f72d5a53836"
 
 [[package]]
 name = "libffi"
-version = "3.0.1"
+version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e454b3efb16fba3b17810ae5e41df02b649e564ab3c5a34b3b93ed07ad287e6"
+checksum = "6cb06d5b4c428f3cd682943741c39ed4157ae989fffe1094a08eaf7c4014cf60"
 dependencies = [
  "libc",
  "libffi-sys",
@@ -2567,9 +2568,9 @@ dependencies = [
 
 [[package]]
 name = "libffi-sys"
-version = "2.0.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab4106b7f09d7b87d021334d5618fac1dfcfb824d4c5fe111ff0074dfd242e15"
+checksum = "11c6f11e063a27ffe040a9d15f0b661bf41edc2383b7ae0e0ad5a7e7d53d9da3"
 dependencies = [
  "cc",
 ]
@@ -2803,7 +2804,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "proc-macro2 1.0.47",
  "quote 1.0.21",
@@ -3936,7 +3937,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.76.0"
+version = "0.77.0"
 dependencies = [
  "bencher",
  "bytes",
@@ -5327,9 +5328,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.60.0"
+version = "0.60.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5867543c19b87c45ed3f2bc49eb6135474ed6a1803cac40c278620b53e9865ef"
+checksum = "07fd5b3ed559897ff02c0f62bc0a5f300bfe79bb4c77a50031b8df771701c628"
 dependencies = [
  "bitflags",
  "fslock",

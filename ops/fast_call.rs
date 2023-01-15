@@ -1,6 +1,6 @@
-/// Code generation for V8 fast calls.
-use crate::optimizer::FastValue;
-use crate::optimizer::Optimizer;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+//! Code generation for V8 fast calls.
+
 use pmutil::{q, Quote, ToTokensExt};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -8,6 +8,9 @@ use syn::{
   parse_quote, punctuated::Punctuated, token::Comma, GenericParam, Generics,
   Ident, ItemFn, ItemImpl, Path, PathArguments, PathSegment, Type, TypePath,
 };
+
+use crate::optimizer::FastValue;
+use crate::optimizer::Optimizer;
 
 pub(crate) struct FastImplItems {
   pub(crate) impl_and_fn: TokenStream,
@@ -262,10 +265,12 @@ pub(crate) fn generate(
 
     let queue_future = if optimizer.returns_result {
       q!({
+        let realm_idx = __ctx.realm_idx;
         let __get_class = __state.get_error_class_fn;
         let result = _ops::queue_fast_async_op(__ctx, async move {
           let result = result.await;
           (
+            realm_idx,
             __promise_id,
             __op_id,
             _ops::to_op_result(__get_class, result),
@@ -274,9 +279,15 @@ pub(crate) fn generate(
       })
     } else {
       q!({
+        let realm_idx = __ctx.realm_idx;
         let result = _ops::queue_fast_async_op(__ctx, async move {
           let result = result.await;
-          (__promise_id, __op_id, _ops::OpResult::Ok(result.into()))
+          (
+            realm_idx,
+            __promise_id,
+            __op_id,
+            _ops::OpResult::Ok(result.into()),
+          )
         });
       })
     };
