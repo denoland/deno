@@ -1212,8 +1212,8 @@ fn run_watch_dynamic_imports() {
     &mut stdout_lines,
   );
 
-  wait_contains("finished", &mut stderr_lines);
   wait_for_watcher("imported2.js", &mut stderr_lines);
+  wait_contains("finished", &mut stderr_lines);
 
   write(
     &file_to_watch3,
