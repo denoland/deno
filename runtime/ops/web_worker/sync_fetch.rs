@@ -12,7 +12,8 @@ use deno_fetch::reqwest;
 use deno_web::BlobStore;
 use deno_websocket::DomExceptionNetworkError;
 use hyper::body::Bytes;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::task::JoinHandle;
 
 // TODO(andreubotella) Properly parse the MIME type

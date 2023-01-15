@@ -16,9 +16,19 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(unix)]
-use tokio::signal::unix::{signal, Signal, SignalKind};
+use tokio::signal::unix::signal;
+#[cfg(unix)]
+use tokio::signal::unix::Signal;
+#[cfg(unix)]
+use tokio::signal::unix::SignalKind;
 #[cfg(windows)]
-use tokio::signal::windows::{ctrl_break, ctrl_c, CtrlBreak, CtrlC};
+use tokio::signal::windows::ctrl_break;
+#[cfg(windows)]
+use tokio::signal::windows::ctrl_c;
+#[cfg(windows)]
+use tokio::signal::windows::CtrlBreak;
+#[cfg(windows)]
+use tokio::signal::windows::CtrlC;
 
 pub fn init() -> Extension {
   Extension::builder("deno_signal")
