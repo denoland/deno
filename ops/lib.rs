@@ -209,7 +209,7 @@ fn codegen_v8_async(
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
-  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 1);
+  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 1, true);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let (pre_result, mut result_fut) = match asyncness {
@@ -330,7 +330,7 @@ fn codegen_v8_sync(
     .collect::<Vec<_>>();
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
-  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 0);
+  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 0, false);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
@@ -380,6 +380,7 @@ fn codegen_args(
   f: &syn::ItemFn,
   rust_i0: usize, // Index of first generic arg in rust
   v8_i0: usize,   // Index of first generic arg in v8/js
+  asyncness: bool,
 ) -> ArgumentDecl {
   let inputs = &f.sig.inputs.iter().skip(rust_i0).enumerate();
   let ident_seq: TokenStream2 = inputs
@@ -392,7 +393,7 @@ fn codegen_args(
   let decls: TokenStream2 = inputs
     .clone()
     .map(|(i, arg)| {
-      codegen_arg(core, arg, format!("arg_{i}").as_ref(), v8_i0 + i)
+      codegen_arg(core, arg, format!("arg_{i}").as_ref(), v8_i0 + i, asyncness)
     })
     .collect();
   (decls, ident_seq, inputs.len())
@@ -403,6 +404,7 @@ fn codegen_arg(
   arg: &syn::FnArg,
   name: &str,
   idx: usize,
+  asyncness: bool,
 ) -> TokenStream2 {
   let ident = quote::format_ident!("{name}");
   let (pat, ty) = match arg {
@@ -444,12 +446,14 @@ fn codegen_arg(
   match is_ref_slice(&**ty) {
     None => {}
     Some(SliceType::U32Mut) => {
+      assert!(!asyncness, "Memory slices are not allowed in async ops");
       let blck = codegen_u32_mut_slice(core, idx);
       return quote! {
         let #ident = #blck;
       };
     }
     Some(_) => {
+      assert!(!asyncness, "Memory slices are not allowed in async ops");
       let blck = codegen_u8_slice(core, idx);
       return quote! {
         let #ident = #blck;

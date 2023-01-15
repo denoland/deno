@@ -1,7 +1,6 @@
-async fn op_read(
+async fn op_async_result(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: &mut [u8],
 ) -> Result<u32, Error> {
   // @test-attr:fast
 }
