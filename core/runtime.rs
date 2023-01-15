@@ -169,7 +169,7 @@ pub struct JsRuntimeState {
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
-  pub(crate) pending_promise_exceptions:
+  pub(crate) pending_promise_rejections:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
   pub(crate) pending_mod_evaluate: Option<ModEvaluate>,
@@ -187,7 +187,7 @@ pub struct JsRuntimeState {
   /// It will be retrieved by `exception_to_err_result` and used as an error
   /// instead of any other exceptions.
   // TODO(nayeemrmn): This is polled in `exception_to_err_result()` which is
-  // flimsy. Try to poll it similarly to `pending_promise_exceptions`.
+  // flimsy. Try to poll it similarly to `pending_promise_rejections`.
   pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
   pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
@@ -384,7 +384,7 @@ impl JsRuntime {
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
     let state_rc = Rc::new(RefCell::new(JsRuntimeState {
-      pending_promise_exceptions: HashMap::new(),
+      pending_promise_rejections: HashMap::new(),
       pending_dyn_mod_evaluate: vec![],
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
@@ -1688,7 +1688,7 @@ impl JsRuntime {
           .handled_promise_rejections
           .contains(&promise_global);
         if !pending_rejection_was_already_handled {
-          state.pending_promise_exceptions.remove(&promise_global);
+          state.pending_promise_rejections.remove(&promise_global);
         }
       }
       let promise_global = v8::Global::new(tc_scope, promise);
@@ -2129,19 +2129,19 @@ impl JsRuntime {
   fn check_promise_exceptions(&mut self) -> Result<(), Error> {
     let mut state = self.state.borrow_mut();
 
-    if state.pending_promise_exceptions.is_empty() {
+    if state.pending_promise_rejections.is_empty() {
       return Ok(());
     }
 
     let key = {
       state
-        .pending_promise_exceptions
+        .pending_promise_rejections
         .keys()
         .next()
         .unwrap()
         .clone()
     };
-    let handle = state.pending_promise_exceptions.remove(&key).unwrap();
+    let handle = state.pending_promise_rejections.remove(&key).unwrap();
     drop(state);
 
     let scope = &mut self.handle_scope();
@@ -4046,7 +4046,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           if (reason.message !== "reject") {
             throw Error("unexpected reason: " + reason);
           }
-          Deno.core.ops.op_store_pending_promise_exception(promise);
+          Deno.core.ops.op_store_pending_promise_rejection(promise);
           Deno.core.ops.op_promise_reject();
         });
         new Promise((_, reject) => reject(Error("reject")));
