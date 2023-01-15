@@ -158,8 +158,8 @@ fn napi_get_node_version(
   env: *mut Env,
   result: *mut *const napi_node_version,
 ) -> Result {
-  let _: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  crate::check_arg!(result);
+  crate::check_env!(env);
+  crate::check_arg!(env, result);
 
   *result = &NODE_VERSION as *const napi_node_version;
   Ok(())
