@@ -1,0 +1,10 @@
+Error: Error with errors prop.
+    at [WILDCARD]/error_with_errors_prop.js:1:15
+
+Error: Error with errors prop.
+    at [WILDCARD]/error_with_errors_prop.js:1:15
+
+error: Uncaught Error: Error with errors prop.
+const error = new Error("Error with errors prop.");
+              ^
+    at [WILDCARD]/error_with_errors_prop.js:1:15

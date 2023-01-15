@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::callback::PtrSymbol;
 use crate::check_unstable2;
@@ -22,11 +22,28 @@ use std::ffi::c_void;
 use std::future::Future;
 use std::rc::Rc;
 
+// SAFETY: Makes an FFI call
+unsafe fn ffi_call_rtype_struct(
+  cif: &libffi::middle::Cif,
+  fn_ptr: &libffi::middle::CodePtr,
+  call_args: Vec<Arg>,
+  out_buffer: *mut u8,
+) -> NativeValue {
+  libffi::raw::ffi_call(
+    cif.as_raw_ptr(),
+    Some(*fn_ptr.as_safe_fun()),
+    out_buffer as *mut c_void,
+    call_args.as_ptr() as *mut *mut c_void,
+  );
+  NativeValue { void_value: () }
+}
+
 // A one-off synchronous FFI call.
 pub(crate) fn ffi_call_sync<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   args: v8::FunctionCallbackArguments,
   symbol: &Symbol,
+  out_buffer: Option<OutBuffer>,
 ) -> Result<NativeValue, AnyError>
 where
   'scope: 'scope,
@@ -86,6 +103,9 @@ where
       NativeType::Buffer => {
         ffi_args.push(ffi_parse_buffer_arg(scope, value)?);
       }
+      NativeType::Struct(_) => {
+        ffi_args.push(ffi_parse_struct_arg(scope, value)?);
+      }
       NativeType::Pointer => {
         ffi_args.push(ffi_parse_pointer_arg(scope, value)?);
       }
@@ -97,7 +117,12 @@ where
       }
     }
   }
-  let call_args: Vec<Arg> = ffi_args.iter().map(Arg::new).collect();
+  let call_args: Vec<Arg> = ffi_args
+    .iter()
+    .enumerate()
+    // SAFETY: Creating a `Arg` from a `NativeValue` is pretty safe.
+    .map(|(i, v)| unsafe { v.as_arg(parameter_types.get(i).unwrap()) })
+    .collect();
   // SAFETY: types in the `Cif` match the actual calling convention and
   // types of symbol.
   unsafe {
@@ -149,6 +174,12 @@ where
           pointer: cif.call::<*mut c_void>(*fun_ptr, &call_args),
         }
       }
+      NativeType::Struct(_) => ffi_call_rtype_struct(
+        &symbol.cif,
+        &symbol.ptr,
+        call_args,
+        out_buffer.unwrap().0,
+      ),
     })
   }
 }
@@ -159,13 +190,14 @@ fn ffi_call(
   fun_ptr: libffi::middle::CodePtr,
   parameter_types: &[NativeType],
   result_type: NativeType,
+  out_buffer: Option<OutBuffer>,
 ) -> Result<NativeValue, AnyError> {
   let call_args: Vec<Arg> = call_args
     .iter()
     .enumerate()
     .map(|(index, ffi_arg)| {
       // SAFETY: the union field is initialized
-      unsafe { ffi_arg.as_arg(*parameter_types.get(index).unwrap()) }
+      unsafe { ffi_arg.as_arg(parameter_types.get(index).unwrap()) }
     })
     .collect();
 
@@ -220,6 +252,9 @@ fn ffi_call(
           pointer: cif.call::<*mut c_void>(fun_ptr, &call_args),
         }
       }
+      NativeType::Struct(_) => {
+        ffi_call_rtype_struct(cif, &fun_ptr, call_args, out_buffer.unwrap().0)
+      }
     })
   }
 }
@@ -231,6 +266,7 @@ pub fn op_ffi_call_ptr_nonblocking<'scope, FP>(
   pointer: usize,
   def: ForeignFunction,
   parameters: serde_v8::Value<'scope>,
+  out_buffer: Option<serde_v8::Value<'scope>>,
 ) -> Result<impl Future<Output = Result<Value, AnyError>>, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -244,10 +280,22 @@ where
 
   let symbol = PtrSymbol::new(pointer, &def);
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
+  let def_result = def.result.clone();
+
+  let out_buffer = out_buffer
+    .map(|v| v8::Local::<v8::TypedArray>::try_from(v.v8_value).unwrap());
+  let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
 
   let join_handle = tokio::task::spawn_blocking(move || {
     let PtrSymbol { cif, ptr } = symbol.clone();
-    ffi_call(call_args, &cif, ptr, &def.parameters, def.result)
+    ffi_call(
+      call_args,
+      &cif,
+      ptr,
+      &def.parameters,
+      def.result,
+      out_buffer_ptr,
+    )
   });
 
   Ok(async move {
@@ -255,7 +303,7 @@ where
       .await
       .map_err(|err| anyhow!("Nonblocking FFI call failed: {}", err))??;
     // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-    Ok(unsafe { result.to_value(def.result) })
+    Ok(unsafe { result.to_value(def_result) })
   })
 }
 
@@ -267,6 +315,7 @@ pub fn op_ffi_call_nonblocking<'scope>(
   rid: ResourceId,
   symbol: String,
   parameters: serde_v8::Value<'scope>,
+  out_buffer: Option<serde_v8::Value<'scope>>,
 ) -> Result<impl Future<Output = Result<Value, AnyError>> + 'static, AnyError> {
   let symbol = {
     let state = state.borrow();
@@ -279,8 +328,11 @@ pub fn op_ffi_call_nonblocking<'scope>(
   };
 
   let call_args = ffi_parse_args(scope, parameters, &symbol.parameter_types)?;
+  let out_buffer = out_buffer
+    .map(|v| v8::Local::<v8::TypedArray>::try_from(v.v8_value).unwrap());
+  let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
 
-  let result_type = symbol.result_type;
+  let result_type = symbol.result_type.clone();
   let join_handle = tokio::task::spawn_blocking(move || {
     let Symbol {
       cif,
@@ -289,7 +341,14 @@ pub fn op_ffi_call_nonblocking<'scope>(
       result_type,
       ..
     } = symbol.clone();
-    ffi_call(call_args, &cif, ptr, &parameter_types, result_type)
+    ffi_call(
+      call_args,
+      &cif,
+      ptr,
+      &parameter_types,
+      result_type,
+      out_buffer_ptr,
+    )
   });
 
   Ok(async move {
@@ -308,6 +367,7 @@ pub fn op_ffi_call_ptr<FP, 'scope>(
   pointer: usize,
   def: ForeignFunction,
   parameters: serde_v8::Value<'scope>,
+  out_buffer: Option<serde_v8::Value<'scope>>,
 ) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -322,12 +382,17 @@ where
   let symbol = PtrSymbol::new(pointer, &def);
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
 
+  let out_buffer = out_buffer
+    .map(|v| v8::Local::<v8::TypedArray>::try_from(v.v8_value).unwrap());
+  let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
+
   let result = ffi_call(
     call_args,
     &symbol.cif,
     symbol.ptr,
     &def.parameters,
-    def.result,
+    def.result.clone(),
+    out_buffer_ptr,
   )?;
   // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
   let result = unsafe { result.to_v8(scope, def.result) };

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::http_cache::url_to_filename;
 use super::CACHE_PERM;
@@ -136,7 +136,7 @@ impl DiskCache {
 
   pub fn get(&self, filename: &Path) -> std::io::Result<Vec<u8>> {
     let path = self.location.join(filename);
-    fs::read(&path)
+    fs::read(path)
   }
 
   pub fn set(&self, filename: &Path, data: &[u8]) -> std::io::Result<()> {

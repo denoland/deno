@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -905,6 +905,55 @@ Deno.test({
   );
   listener.close();
 });
+
+Deno.test(
+  { permissions: { net: true, read: true, run: true } },
+  async function netConnUnref() {
+    const listener = Deno.listen({ port: 3500 });
+    const intervalId = setInterval(() => {}); // This keeps event loop alive.
+
+    const program = execCode(`
+      async function main() {
+        const conn = await Deno.connect({ port: 3500 });
+        conn.unref();
+        await conn.read(new Uint8Array(10)); // The program exits here
+        throw new Error(); // The program doesn't reach here
+      }
+      main();
+    `);
+    const conn = await listener.accept();
+    const [statusCode, _output] = await program;
+    conn.close();
+    listener.close();
+    clearInterval(intervalId);
+    assertEquals(statusCode, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true, run: true } },
+  async function netConnUnrefReadable() {
+    const listener = Deno.listen({ port: 3500 });
+    const intervalId = setInterval(() => {}); // This keeps event loop alive.
+
+    const program = execCode(`
+      async function main() {
+        const conn = await Deno.connect({ port: 3500 });
+        conn.unref();
+        const reader = conn.readable.getReader();
+        await reader.read(); // The program exits here
+        throw new Error(); // The program doesn't reach here
+      }
+      main();
+    `);
+    const conn = await listener.accept();
+    const [statusCode, _output] = await program;
+    conn.close();
+    listener.close();
+    clearInterval(intervalId);
+    assertEquals(statusCode, 0);
+  },
+);
 
 Deno.test({ permissions: { net: true } }, async function netTcpReuseAddr() {
   const listener1 = Deno.listen({

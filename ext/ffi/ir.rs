@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::symbol::NativeType;
 use crate::MAX_SAFE_INTEGER;
@@ -11,6 +11,29 @@ use deno_core::v8;
 use libffi::middle::Arg;
 use std::ffi::c_void;
 use std::ptr;
+
+pub struct OutBuffer(pub *mut u8, pub usize);
+
+// SAFETY: OutBuffer is allocated by us in 00_ffi.js and is guaranteed to be
+// only used for the purpose of writing return value of structs.
+unsafe impl Send for OutBuffer {}
+// SAFETY: See above
+unsafe impl Sync for OutBuffer {}
+
+pub fn out_buffer_as_ptr(
+  scope: &mut v8::HandleScope,
+  out_buffer: Option<v8::Local<v8::TypedArray>>,
+) -> Option<OutBuffer> {
+  match out_buffer {
+    Some(out_buffer) => {
+      let ab = out_buffer.buffer(scope).unwrap();
+      let len = ab.byte_length();
+      ab.data()
+        .map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8, len))
+    }
+    None => None,
+  }
+}
 
 /// Intermediate format for easy translation from NativeType + V8 value
 /// to libffi argument types.
@@ -34,7 +57,7 @@ pub union NativeValue {
 }
 
 impl NativeValue {
-  pub unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
+  pub unsafe fn as_arg(&self, native_type: &NativeType) -> Arg {
     match native_type {
       NativeType::Void => unreachable!(),
       NativeType::Bool => Arg::new(&self.bool_value),
@@ -53,6 +76,7 @@ impl NativeValue {
       NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
         Arg::new(&self.pointer)
       }
+      NativeType::Struct(_) => Arg::new(&*self.pointer),
     }
   }
 
@@ -75,6 +99,10 @@ impl NativeValue {
       NativeType::F64 => Value::from(self.f64_value),
       NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
         Value::from(self.pointer as usize)
+      }
+      NativeType::Struct(_) => {
+        // Return value is written to out_buffer
+        Value::Null
       }
     }
   }
@@ -187,6 +215,10 @@ impl NativeValue {
           };
         local_value.into()
       }
+      NativeType::Struct(_) => {
+        let local_value: v8::Local<v8::Value> = v8::null(scope).into();
+        local_value.into()
+      }
     }
   }
 }
@@ -250,7 +282,7 @@ pub fn ffi_parse_u32_arg(
 ) -> Result<NativeValue, AnyError> {
   let u32_value = v8::Local::<v8::Uint32>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI u32 type, expected unsigned integer"))?
-    .value() as u32;
+    .value();
   Ok(NativeValue { u32_value })
 }
 
@@ -260,7 +292,7 @@ pub fn ffi_parse_i32_arg(
 ) -> Result<NativeValue, AnyError> {
   let i32_value = v8::Local::<v8::Int32>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI i32 type, expected integer"))?
-    .value() as i32;
+    .value();
   Ok(NativeValue { i32_value })
 }
 
@@ -297,7 +329,7 @@ pub fn ffi_parse_i64_arg(
   {
     value.i64_value().0
   } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
-    value.integer_value(scope).unwrap() as i64
+    value.integer_value(scope).unwrap()
   } else {
     return Err(type_error("Invalid FFI i64 type, expected integer"));
   };
@@ -358,7 +390,7 @@ pub fn ffi_parse_f64_arg(
 ) -> Result<NativeValue, AnyError> {
   let f64_value = v8::Local::<v8::Number>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI f64 type, expected number"))?
-    .value() as f64;
+    .value();
   Ok(NativeValue { f64_value })
 }
 
@@ -421,6 +453,48 @@ pub fn ffi_parse_buffer_arg(
   } else {
     return Err(type_error(
       "Invalid FFI buffer type, expected null, ArrayBuffer, or ArrayBufferView",
+    ));
+  };
+  Ok(NativeValue { pointer })
+}
+
+#[inline]
+pub fn ffi_parse_struct_arg(
+  scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  // Order of checking:
+  // 1. ArrayBuffer: Fairly common and not supported by Fast API, optimise this case.
+  // 2. ArrayBufferView: Common and supported by Fast API
+
+  let pointer = if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
+    if let Some(non_null) = value.data() {
+      non_null.as_ptr()
+    } else {
+      return Err(type_error(
+        "Invalid FFI ArrayBuffer, expected data in buffer",
+      ));
+    }
+  } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg) {
+    let byte_offset = value.byte_offset();
+    let pointer = value
+      .buffer(scope)
+      .ok_or_else(|| {
+        type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
+      })?
+      .data();
+    if let Some(non_null) = pointer {
+      // SAFETY: Pointer is non-null, and V8 guarantees that the byte_offset
+      // is within the buffer backing store.
+      unsafe { non_null.as_ptr().add(byte_offset) }
+    } else {
+      return Err(type_error(
+        "Invalid FFI ArrayBufferView, expected data in buffer",
+      ));
+    }
+  } else {
+    return Err(type_error(
+      "Invalid FFI struct type, expected ArrayBuffer, or ArrayBufferView",
     ));
   };
   Ok(NativeValue { pointer })
@@ -510,6 +584,9 @@ where
       }
       NativeType::Buffer => {
         ffi_args.push(ffi_parse_buffer_arg(scope, value)?);
+      }
+      NativeType::Struct(_) => {
+        ffi_args.push(ffi_parse_struct_arg(scope, value)?);
       }
       NativeType::Pointer => {
         ffi_args.push(ffi_parse_pointer_arg(scope, value)?);

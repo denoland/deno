@@ -1,11 +1,13 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::inspector_server::InspectorServer;
-use crate::js;
-use crate::ops;
-use crate::ops::io::Stdio;
-use crate::permissions::Permissions;
-use crate::BootstrapOptions;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering::Relaxed;
+use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
+
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
@@ -13,6 +15,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
+use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::FsModuleLoader;
@@ -30,13 +33,13 @@ use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering::Relaxed;
-use std::sync::Arc;
-use std::task::Context;
-use std::task::Poll;
+
+use crate::inspector_server::InspectorServer;
+use crate::js;
+use crate::ops;
+use crate::ops::io::Stdio;
+use crate::permissions::PermissionsContainer;
+use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
@@ -68,11 +71,35 @@ pub struct MainWorker {
 
 pub struct WorkerOptions {
   pub bootstrap: BootstrapOptions,
+
+  /// JsRuntime extensions, not to be confused with ES modules.
+  /// Only ops registered by extensions will be initialized. If you need
+  /// to execute JS code from extensions, use `extensions_with_js` options
+  /// instead.
   pub extensions: Vec<Extension>,
+
+  /// JsRuntime extensions, not to be confused with ES modules.
+  /// Ops registered by extensions will be initialized and JS code will be
+  /// executed. If you don't need to execute JS code from extensions, use
+  /// `extensions` option instead.
+  ///
+  /// This is useful when creating snapshots, in such case you would pass
+  /// extensions using `extensions_with_js`, later when creating a runtime
+  /// from the snapshot, you would pass these extensions using `extensions`
+  /// option.
+  pub extensions_with_js: Vec<Extension>,
+
+  /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
+
+  /// Implementation of `ModuleLoader` which will be
+  /// called when V8 requests to load ES modules.
+  ///
+  /// If not provided runtime will error if code being
+  /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
   pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
@@ -80,6 +107,8 @@ pub struct WorkerOptions {
   pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub web_worker_pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
+
+  /// Source map reference for errors.
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   // If true, the worker will wait for inspector session and break on first
@@ -89,12 +118,28 @@ pub struct WorkerOptions {
   // If true, the worker will wait for inspector session before executing
   // user code.
   pub should_wait_for_inspector_session: bool,
+
+  /// Allows to map error type to a string "class" used to represent
+  /// error in JavaScript.
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
+
+  /// The store to use for transferring SharedArrayBuffers between isolates.
+  /// If multiple isolates should have the possibility of sharing
+  /// SharedArrayBuffers, they should use the same [SharedArrayBufferStore]. If
+  /// no [SharedArrayBufferStore] is specified, SharedArrayBuffer can not be
+  /// serialized.
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+
+  /// The store to use for transferring `WebAssembly.Module` objects between
+  /// isolates.
+  /// If multiple isolates should have the possibility of sharing
+  /// `WebAssembly.Module` objects, they should use the same
+  /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
+  /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
 }
@@ -129,6 +174,7 @@ impl Default for WorkerOptions {
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
+      extensions_with_js: Default::default(),
       startup_snapshot: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
@@ -139,7 +185,7 @@ impl Default for WorkerOptions {
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
-    permissions: Permissions,
+    permissions: PermissionsContainer,
     options: WorkerOptions,
   ) -> Self {
     let bootstrap_options = options.bootstrap.clone();
@@ -150,15 +196,15 @@ impl MainWorker {
 
   pub fn from_options(
     main_module: ModuleSpecifier,
-    permissions: Permissions,
+    permissions: PermissionsContainer,
     mut options: WorkerOptions,
   ) -> Self {
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let perm_ext = Extension::builder()
+    let perm_ext = Extension::builder("deno_permissions_worker")
       .state(move |state| {
-        state.put::<Permissions>(permissions.clone());
+        state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
         Ok(())
@@ -176,11 +222,11 @@ impl MainWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init::<Permissions>(
+      deno_web::init::<PermissionsContainer>(
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
-      deno_fetch::init::<Permissions>(deno_fetch::Options {
+      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
@@ -190,7 +236,7 @@ impl MainWorker {
         ..Default::default()
       }),
       deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<Permissions>(
+      deno_websocket::init::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
@@ -200,7 +246,7 @@ impl MainWorker {
       deno_crypto::init(options.seed),
       deno_webgpu::init(unstable),
       // ffi
-      deno_ffi::init::<Permissions>(unstable),
+      deno_ffi::init::<PermissionsContainer>(unstable),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
@@ -215,20 +261,20 @@ impl MainWorker {
       ops::io::init(),
       ops::io::init_stdio(options.stdio),
       deno_tls::init(),
-      deno_net::init::<Permissions>(
+      deno_net::init::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init::<Permissions>(unstable),
-      deno_node::init::<Permissions>(options.npm_resolver),
+      deno_napi::init::<PermissionsContainer>(unstable),
+      deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
-      deno_flash::init::<Permissions>(unstable),
+      deno_flash::init::<PermissionsContainer>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
@@ -247,6 +293,7 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      extensions_with_js: options.extensions_with_js,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       ..Default::default()
@@ -288,9 +335,8 @@ impl MainWorker {
     &mut self,
     script_name: &str,
     source_code: &str,
-  ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(script_name, source_code)?;
-    Ok(())
+  ) -> Result<v8::Global<v8::Value>, AnyError> {
+    self.js_runtime.execute_script(script_name, source_code)
   }
 
   /// Loads and instantiates specified JavaScript module as "main" module.
@@ -414,7 +460,7 @@ impl MainWorker {
 
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
-  pub fn get_exit_code(&self) -> i32 {
+  pub fn exit_code(&self) -> i32 {
     self.exit_code.get()
   }
 
@@ -431,7 +477,8 @@ impl MainWorker {
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
       "dispatchEvent(new Event('load'))",
-    )
+    )?;
+    Ok(())
   }
 
   /// Dispatches "unload" event to the JavaScript runtime.
@@ -447,7 +494,8 @@ impl MainWorker {
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
       "dispatchEvent(new Event('unload'))",
-    )
+    )?;
+    Ok(())
   }
 
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean

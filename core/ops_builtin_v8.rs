@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::bindings::script_origin;
 use crate::error::custom_error;
 use crate::error::is_instance_of_error;
@@ -9,6 +9,7 @@ use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url_or_path;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map as apply_source_map_;
+use crate::JsRealm;
 use crate::JsRuntime;
 use crate::OpDecl;
 use crate::ZeroCopyBuf;
@@ -75,14 +76,14 @@ fn to_v8_local_fn(
 
 #[op(v8)]
 fn op_ref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  let state_rc = JsRuntime::state(scope);
-  state_rc.borrow_mut().unrefed_ops.remove(&promise_id);
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state.borrow_mut().unrefed_ops.remove(&promise_id);
 }
 
 #[op(v8)]
 fn op_unref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  let state_rc = JsRuntime::state(scope);
-  state_rc.borrow_mut().unrefed_ops.insert(promise_id);
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state.borrow_mut().unrefed_ops.insert(promise_id);
 }
 
 #[op(v8)]
@@ -654,7 +655,7 @@ fn op_get_proxy_details<'a>(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MemoryUsage {
-  rss: usize,
+  physical_total: usize,
   heap_total: usize,
   heap_used: usize,
   external: usize,
@@ -668,7 +669,7 @@ fn op_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
   let mut s = v8::HeapStatistics::default();
   scope.get_heap_statistics(&mut s);
   MemoryUsage {
-    rss: s.total_physical_size(),
+    physical_total: s.total_physical_size(),
     heap_total: s.total_heap_size(),
     heap_used: s.used_heap_size(),
     external: s.external_memory(),
@@ -782,7 +783,7 @@ fn op_dispatch_exception(
 
 #[op(v8)]
 fn op_op_names(scope: &mut v8::HandleScope) -> Vec<String> {
-  let state_rc = JsRuntime::state(scope);
+  let state_rc = JsRealm::state_from_scope(scope);
   let state = state_rc.borrow();
   state
     .op_ctxs

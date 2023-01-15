@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
@@ -84,7 +84,7 @@ pub(crate) struct FfiState {
 }
 
 pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
     .js(include_js_files!(
       prefix "deno:ext/ffi",
       "00_ffi.js",

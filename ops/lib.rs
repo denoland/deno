@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use attrs::Attributes;
 use once_cell::sync::Lazy;
@@ -221,7 +221,7 @@ fn codegen_v8_async(
         quote! {
           let result = match result {
             Ok(fut) => fut.await,
-            Err(e) => return (promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
+            Err(e) => return (realm_idx, promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
           };
         }
       } else {
@@ -240,6 +240,7 @@ fn codegen_v8_async(
         as *const #core::_ops::OpCtx)
       };
       let op_id = ctx.id;
+      let realm_idx = ctx.realm_idx;
 
       let promise_id = args.get(0);
       let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
@@ -267,7 +268,7 @@ fn codegen_v8_async(
       #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
         let result = #result_fut
         #result_wrapper
-        (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
+        (realm_idx, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
       });
     },
     argc,

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -21,7 +21,7 @@ use tokio::signal::unix::{signal, Signal, SignalKind};
 use tokio::signal::windows::{ctrl_break, ctrl_c, CtrlBreak, CtrlC};
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_signal")
     .ops(vec![
       op_signal_bind::decl(),
       op_signal_unbind::decl(),

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::OpState;
 use anyhow::Error;
 use std::{cell::RefCell, rc::Rc, task::Context};
@@ -42,13 +42,39 @@ pub struct Extension {
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   initialized: bool,
   enabled: bool,
+  name: &'static str,
+  deps: Option<Vec<&'static str>>,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
 // for the initial iteration, it will likely become a trait in the future
 impl Extension {
-  pub fn builder() -> ExtensionBuilder {
-    Default::default()
+  pub fn builder(name: &'static str) -> ExtensionBuilder {
+    ExtensionBuilder {
+      name,
+      ..Default::default()
+    }
+  }
+
+  /// Check if dependencies have been loaded, and errors if either:
+  /// - The extension is depending on itself or an extension with the same name.
+  /// - A dependency hasn't been loaded yet.
+  pub fn check_dependencies(&self, previous_exts: &[&mut Extension]) {
+    if let Some(deps) = &self.deps {
+      'dep_loop: for dep in deps {
+        if dep == &self.name {
+          panic!("Extension '{}' is either depending on itself or there is another extension with the same name", self.name);
+        }
+
+        for ext in previous_exts {
+          if dep == &ext.name {
+            continue 'dep_loop;
+          }
+        }
+
+        panic!("Extension '{}' is missing dependency '{dep}'", self.name);
+      }
+    }
   }
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
@@ -121,9 +147,16 @@ pub struct ExtensionBuilder {
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
+  name: &'static str,
+  deps: Vec<&'static str>,
 }
 
 impl ExtensionBuilder {
+  pub fn dependencies(&mut self, dependencies: Vec<&'static str>) -> &mut Self {
+    self.deps.extend(dependencies);
+    self
+  }
+
   pub fn js(&mut self, js_files: Vec<SourcePair>) -> &mut Self {
     self.js.extend(js_files);
     self
@@ -161,6 +194,7 @@ impl ExtensionBuilder {
   pub fn build(&mut self) -> Extension {
     let js_files = Some(std::mem::take(&mut self.js));
     let ops = Some(std::mem::take(&mut self.ops));
+    let deps = Some(std::mem::take(&mut self.deps));
     Extension {
       js_files,
       ops,
@@ -169,6 +203,8 @@ impl ExtensionBuilder {
       event_loop_middleware: self.event_loop_middleware.take(),
       initialized: false,
       enabled: true,
+      name: self.name,
+      deps,
     }
   }
 }

@@ -1,9 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use deno_ast::swc::parser::error::SyntaxError;
+use deno_ast::swc::parser::token::BinOpToken;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
+use deno_ast::view::AssignOp;
 use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -235,6 +237,12 @@ impl Validator for EditorHelper {
     for item in deno_ast::lex(ctx.input(), deno_ast::MediaType::TypeScript) {
       if let deno_ast::TokenOrComment::Token(token) = item.inner {
         match token {
+          Token::BinOp(BinOpToken::Div)
+          | Token::AssignOp(AssignOp::DivAssign) => {
+            // it's too complicated to write code to detect regular expression literals
+            // which are no longer tokenized, so if a `/` or `/=` happens, then we bail
+            return Ok(ValidationResult::Valid(None));
+          }
           Token::BackQuote => in_template = !in_template,
           Token::LParen
           | Token::LBracket

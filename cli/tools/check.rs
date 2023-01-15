@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::sync::Arc;
 
@@ -58,7 +58,7 @@ pub fn check(
   roots: &[(ModuleSpecifier, ModuleKind)],
   graph_data: Arc<RwLock<GraphData>>,
   cache: &TypeCheckCache,
-  npm_resolver: NpmPackageResolver,
+  npm_resolver: &NpmPackageResolver,
   options: CheckOptions,
 ) -> Result<CheckResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
@@ -79,10 +79,10 @@ pub fn check(
   let root_names = get_tsc_roots(&segment_graph_data, check_js);
   if options.log_checks {
     for (root, _) in roots {
-      let root_str = root.to_string();
+      let root_str = root.as_str();
       // `$deno` specifiers are internal, don't print them.
       if !root_str.contains("$deno") {
-        log::info!("{} {}", colors::green("Check"), root);
+        log::info!("{} {}", colors::green("Check"), root_str);
       }
     }
   }
@@ -116,12 +116,20 @@ pub fn check(
   let diagnostics = if options.type_check_mode == TypeCheckMode::Local {
     response.diagnostics.filter(|d| {
       if let Some(file_name) = &d.file_name {
-        !file_name.starts_with("http")
-          && ModuleSpecifier::parse(file_name)
+        if !file_name.starts_with("http") {
+          if ModuleSpecifier::parse(file_name)
             .map(|specifier| !npm_resolver.in_npm_package(&specifier))
             .unwrap_or(true)
+          {
+            Some(d.clone())
+          } else {
+            None
+          }
+        } else {
+          None
+        }
       } else {
-        true
+        Some(d.clone())
       }
     })
   } else {

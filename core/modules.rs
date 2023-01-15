@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
 use crate::error::generic_error;
@@ -202,6 +202,20 @@ pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, Error>>;
 type ModuleLoadFuture =
   dyn Future<Output = Result<(ModuleRequest, ModuleSource), Error>>;
 
+pub enum ResolutionKind {
+  /// This kind is used in only one situation: when a module is loaded via
+  /// `JsRuntime::load_main_module` and is the top-level module, ie. the one
+  /// passed as an argument to `JsRuntime::load_main_module`.
+  MainModule,
+  /// This kind is returned for all other modules during module load, that are
+  /// static imports.
+  Import,
+  /// This kind is returned for all modules that are loaded as a result of a
+  /// call to `import()` API (ie. top-level module as well as all its
+  /// dependencies, and any other `import()` calls from that load).
+  DynamicImport,
+}
+
 pub trait ModuleLoader {
   /// Returns an absolute URL.
   /// When implementing an spec-complaint VM, this should be exactly the
@@ -210,11 +224,14 @@ pub trait ModuleLoader {
   ///
   /// `is_main` can be used to resolve from current working directory or
   /// apply import map for child imports.
+  ///
+  /// `is_dyn_import` can be used to check permissions or deny
+  /// dynamic imports altogether.
   fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
-    _is_main: bool,
+    kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error>;
 
   /// Given ModuleSpecifier, load its source code.
@@ -256,7 +273,7 @@ impl ModuleLoader for NoopModuleLoader {
     &self,
     _specifier: &str,
     _referrer: &str,
-    _is_main: bool,
+    _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
     Err(generic_error("Module loading is not supported"))
   }
@@ -284,7 +301,7 @@ impl ModuleLoader for FsModuleLoader {
     &self,
     specifier: &str,
     referrer: &str,
-    _is_main: bool,
+    _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
     Ok(resolve_import(specifier, referrer)?)
   }
@@ -446,14 +463,16 @@ impl RecursiveModuleLoad {
   fn resolve_root(&self) -> Result<ModuleSpecifier, Error> {
     match self.init {
       LoadInit::Main(ref specifier) => {
-        self.loader.resolve(specifier, ".", true)
+        self
+          .loader
+          .resolve(specifier, ".", ResolutionKind::MainModule)
       }
       LoadInit::Side(ref specifier) => {
-        self.loader.resolve(specifier, ".", false)
+        self.loader.resolve(specifier, ".", ResolutionKind::Import)
       }
-      LoadInit::DynamicImport(ref specifier, ref referrer, _) => {
-        self.loader.resolve(specifier, referrer, false)
-      }
+      LoadInit::DynamicImport(ref specifier, ref referrer, _) => self
+        .loader
+        .resolve(specifier, referrer, ResolutionKind::DynamicImport),
     }
   }
 
@@ -461,15 +480,25 @@ impl RecursiveModuleLoad {
     let op_state = self.op_state.clone();
     let (module_specifier, maybe_referrer) = match self.init {
       LoadInit::Main(ref specifier) => {
-        let spec = self.loader.resolve(specifier, ".", true)?;
+        let spec =
+          self
+            .loader
+            .resolve(specifier, ".", ResolutionKind::MainModule)?;
         (spec, None)
       }
       LoadInit::Side(ref specifier) => {
-        let spec = self.loader.resolve(specifier, ".", false)?;
+        let spec =
+          self
+            .loader
+            .resolve(specifier, ".", ResolutionKind::Import)?;
         (spec, None)
       }
       LoadInit::DynamicImport(ref specifier, ref referrer, _) => {
-        let spec = self.loader.resolve(specifier, referrer, false)?;
+        let spec = self.loader.resolve(
+          specifier,
+          referrer,
+          ResolutionKind::DynamicImport,
+        )?;
         (spec, Some(referrer.to_string()))
       }
     };
@@ -537,6 +566,7 @@ impl RecursiveModuleLoad {
             self.is_currently_loading_main_module(),
             &module_source.module_url_found,
             &module_source.code,
+            self.is_dynamic_import(),
           )?
         }
         ModuleType::Json => self.module_map_rc.borrow_mut().new_json_module(
@@ -868,6 +898,7 @@ impl ModuleMap {
     main: bool,
     name: &str,
     source: &[u8],
+    is_dynamic_import: bool,
   ) -> Result<ModuleId, ModuleError> {
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str =
@@ -918,11 +949,18 @@ impl ModuleMap {
         return Err(ModuleError::Exception(exception));
       }
 
-      let module_specifier =
-        match self.loader.resolve(&import_specifier, name, false) {
-          Ok(s) => s,
-          Err(e) => return Err(ModuleError::Other(e)),
-        };
+      let module_specifier = match self.loader.resolve(
+        &import_specifier,
+        name,
+        if is_dynamic_import {
+          ResolutionKind::DynamicImport
+        } else {
+          ResolutionKind::Import
+        },
+      ) {
+        Ok(s) => s,
+        Err(e) => return Err(ModuleError::Other(e)),
+      };
       let asserted_module_type =
         get_asserted_module_type_from_assertions(&assertions);
       let request = ModuleRequest {
@@ -1082,10 +1120,11 @@ impl ModuleMap {
       .borrow_mut()
       .dynamic_import_map
       .insert(load.id, resolver_handle);
-    let resolve_result = module_map_rc
-      .borrow()
-      .loader
-      .resolve(specifier, referrer, false);
+    let resolve_result = module_map_rc.borrow().loader.resolve(
+      specifier,
+      referrer,
+      ResolutionKind::DynamicImport,
+    );
     let fut = match resolve_result {
       Ok(module_specifier) => {
         if module_map_rc
@@ -1121,7 +1160,7 @@ impl ModuleMap {
   ) -> Option<v8::Local<'s, v8::Module>> {
     let resolved_specifier = self
       .loader
-      .resolve(specifier, referrer, false)
+      .resolve(specifier, referrer, ResolutionKind::Import)
       .expect("Module should have been already resolved");
 
     let module_type =
@@ -1332,7 +1371,7 @@ import "/a.js";
       &self,
       specifier: &str,
       referrer: &str,
-      _is_root: bool,
+      _kind: ResolutionKind,
     ) -> Result<ModuleSpecifier, Error> {
       let referrer = if referrer == "." {
         "file:///"
@@ -1448,7 +1487,7 @@ import "/a.js";
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.js");
@@ -1479,7 +1518,9 @@ import "/a.js";
       43
     }
 
-    let ext = Extension::builder().ops(vec![op_test::decl()]).build();
+    let ext = Extension::builder("test_ext")
+      .ops(vec![op_test::decl()])
+      .build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],
@@ -1519,6 +1560,7 @@ import "/a.js";
           let control = 42;
           Deno.core.ops.op_test(control);
         "#,
+          false,
         )
         .unwrap();
 
@@ -1538,6 +1580,7 @@ import "/a.js";
           false,
           "file:///b.js",
           b"export function b() { return 'b' }",
+          false,
         )
         .unwrap();
       let imports = module_map.get_requested_modules(mod_b).unwrap();
@@ -1568,7 +1611,7 @@ import "/a.js";
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.json");
@@ -1625,6 +1668,7 @@ import "/a.js";
             assert(jsonData.a == "b");
             assert(jsonData.c.d == 10);
           "#,
+          false,
         )
         .unwrap();
 
@@ -1671,7 +1715,7 @@ import "/a.js";
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "/foo.js");
@@ -1731,7 +1775,7 @@ import "/a.js";
       &self,
       specifier: &str,
       referrer: &str,
-      _is_main: bool,
+      _kind: ResolutionKind,
     ) -> Result<ModuleSpecifier, Error> {
       let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
       assert!(c < 7);
@@ -1864,7 +1908,7 @@ import "/a.js";
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         self.resolve_count.fetch_add(1, Ordering::Relaxed);
         let s = resolve_import(specifier, referrer).unwrap();
@@ -2240,7 +2284,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         let s = resolve_import(specifier, referrer).unwrap();
         Ok(s)

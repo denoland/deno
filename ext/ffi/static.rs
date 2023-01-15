@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::dlfcn::DynamicLibraryResource;
 use crate::symbol::NativeType;
@@ -141,6 +141,9 @@ pub fn op_ffi_get_static<'scope>(
         v8::Number::new(scope, result as f64).into()
       };
       integer.into()
+    }
+    NativeType::Struct(_) => {
+      return Err(type_error("Invalid FFI static type 'struct'"));
     }
   })
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
@@ -971,6 +971,17 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/dynamic_module.ts") => {
+      let mut res = Response::new(Body::from(format!(
+        r#"export const time = {};"#,
+        std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+      )));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
     (_, "/echo_accept") => {
       let accept = req.headers().get("accept").map(|v| v.to_str().unwrap());
       let res = Response::new(Body::from(
@@ -1930,7 +1941,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       testdata_dir.as_path()
     };
     println!("deno_exe args {}", args.join(" "));
-    println!("deno_exe cwd {:?}", &testdata_dir);
+    println!("deno_exe cwd {:?}", &cwd);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();

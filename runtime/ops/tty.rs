@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::io::StdFileResource;
 use deno_core::error::AnyError;
@@ -34,7 +34,7 @@ fn get_windows_handle(
 }
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_tty")
     .ops(vec![
       op_stdin_set_raw::decl(),
       op_isatty::decl(),
