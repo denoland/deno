@@ -10,7 +10,7 @@ use deno_core::Extension;
 fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::init(),
-    Extension::builder()
+    Extension::builder("deno_webidl_bench")
       .js(vec![("setup", include_str!("dict.js"))])
       .build(),
   ]
