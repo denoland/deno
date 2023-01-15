@@ -427,7 +427,7 @@ impl UnaryPermission<ReadDescriptor> {
       self.prompt,
     );
     if prompted {
-      let resolved_path = resolve_from_cwd(path).unwrap();
+      let resolved_path = resolve_from_cwd(path)?;
       if result.is_ok() {
         self.granted_list.insert(ReadDescriptor(resolved_path));
       } else {
@@ -446,7 +446,7 @@ impl UnaryPermission<ReadDescriptor> {
     display: &str,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    let resolved_path = resolve_from_cwd(path).unwrap();
+    let resolved_path = resolve_from_cwd(path)?;
     let (result, prompted) = self.query(Some(&resolved_path)).check(
       self.name,
       Some(api_name),
@@ -600,7 +600,7 @@ impl UnaryPermission<WriteDescriptor> {
       self.prompt,
     );
     if prompted {
-      let resolved_path = resolve_from_cwd(path).unwrap();
+      let resolved_path = resolve_from_cwd(path)?;
       if result.is_ok() {
         self.granted_list.insert(WriteDescriptor(resolved_path));
       } else {

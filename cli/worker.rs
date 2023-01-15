@@ -184,14 +184,10 @@ impl CliMainWorker {
     // Enable op call tracing in core to enable better debugging of op sanitizer
     // failures.
     if self.ps.options.trace_ops() {
-      self
-        .worker
-        .js_runtime
-        .execute_script(
-          &located_script_name!(),
-          "Deno.core.enableOpCallTracing();",
-        )
-        .unwrap();
+      self.worker.js_runtime.execute_script(
+        &located_script_name!(),
+        "Deno.core.enableOpCallTracing();",
+      )?;
     }
 
     let mut maybe_coverage_collector =
@@ -233,13 +229,10 @@ impl CliMainWorker {
   ) -> Result<(), AnyError> {
     self.enable_test();
 
-    self
-      .worker
-      .execute_script(
-        &located_script_name!(),
-        "Deno.core.enableOpCallTracing();",
-      )
-      .unwrap();
+    self.worker.execute_script(
+      &located_script_name!(),
+      "Deno.core.enableOpCallTracing();",
+    )?;
 
     if mode != TestMode::Documentation {
       // We execute the module module as a side module so that import.meta.main is not set.

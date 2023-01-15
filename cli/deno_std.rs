@@ -8,4 +8,4 @@ use once_cell::sync::Lazy;
 static CURRENT_STD_URL_STR: &str = "https://deno.land/std@0.172.0/";
 
 pub static CURRENT_STD_URL: Lazy<Url> =
-  Lazy::new(|| Url::parse(CURRENT_STD_URL_STR).unwrap());
+  Lazy::new(|| Url::parse(CURRENT_STD_URL_STR).expect("invalid std url"));
