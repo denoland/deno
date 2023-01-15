@@ -107,7 +107,7 @@ fn op_flash_respond(
 }
 
 #[op(fast)]
-fn op_try_flash_respond_chuncked(
+fn op_try_flash_respond_chunked(
   op_state: &mut OpState,
   server_id: u32,
   token: u32,
@@ -184,7 +184,7 @@ async fn op_flash_respond_async(
 }
 
 #[op]
-async fn op_flash_respond_chuncked(
+async fn op_flash_respond_chunked(
   op_state: Rc<RefCell<OpState>>,
   server_id: u32,
   token: u32,
@@ -1522,7 +1522,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
       op_node_unstable_flash_serve::decl::<P>(),
       op_flash_respond::decl(),
       op_flash_respond_async::decl(),
-      op_flash_respond_chuncked::decl(),
+      op_flash_respond_chunked::decl(),
       op_flash_method::decl(),
       op_flash_path::decl(),
       op_flash_headers::decl(),
@@ -1538,7 +1538,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
       op_flash_close_server::decl(),
       op_flash_make_request::decl(),
       op_flash_write_resource::decl(),
-      op_try_flash_respond_chuncked::decl(),
+      op_try_flash_respond_chunked::decl(),
     ])
     .state(move |op_state| {
       op_state.put(Unstable(unstable));
