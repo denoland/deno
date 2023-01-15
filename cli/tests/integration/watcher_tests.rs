@@ -812,7 +812,7 @@ fn run_watch_with_ext_flag() {
   // Make sure the watcher actually restarts and works fine with the proper language
   wait_for_watcher("file_to_watch", &mut stderr_lines);
   wait_contains("Process finished", &mut stderr_lines);
-  
+
   write(
     &file_to_watch,
     "type Bear = 'polar' | 'grizzly'; console.log(123);",
