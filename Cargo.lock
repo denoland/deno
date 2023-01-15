@@ -1284,6 +1284,7 @@ dependencies = [
 name = "deno_webidl"
 version = "0.84.0"
 dependencies = [
+ "deno_bench_util",
  "deno_core",
 ]
 
