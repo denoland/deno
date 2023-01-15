@@ -12,6 +12,7 @@ pub mod r#async;
 pub mod callback;
 pub mod coerce;
 pub mod date;
+pub mod error;
 pub mod numbers;
 pub mod object_wrap;
 pub mod primitives;
@@ -20,6 +21,13 @@ pub mod properties;
 pub mod strings;
 pub mod tsfn;
 pub mod typedarray;
+
+#[macro_export]
+macro_rules! cstr {
+  ($s: literal) => {{
+    std::ffi::CString::new($s).unwrap().as_ptr()
+  }};
+}
 
 #[macro_export]
 macro_rules! assert_napi_ok {
@@ -127,6 +135,7 @@ unsafe extern "C" fn napi_register_module_v1(
   typedarray::init(env, exports);
   arraybuffer::init(env, exports);
   array::init(env, exports);
+  error::init(env, exports);
   primitives::init(env, exports);
   properties::init(env, exports);
   promise::init(env, exports);

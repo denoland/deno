@@ -126,7 +126,8 @@ fn fmt_ignore_unexplicit_files() {
 
 #[test]
 fn fmt_auto_ignore_git_and_node_modules() {
-  use std::fs::{create_dir_all, File};
+  use std::fs::create_dir_all;
+  use std::fs::File;
   use std::io::Write;
   use std::path::PathBuf;
   fn create_bad_json(t: PathBuf) {
