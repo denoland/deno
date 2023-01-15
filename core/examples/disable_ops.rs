@@ -7,7 +7,7 @@ use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 
 fn main() {
-  let my_ext = Extension::builder()
+  let my_ext = Extension::builder("my_ext")
     .middleware(|op| match op.name {
       "op_print" => op.disable(),
       _ => op,

@@ -34,7 +34,7 @@ fn get_windows_handle(
 }
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_tty")
     .ops(vec![
       op_stdin_set_raw::decl(),
       op_isatty::decl(),
@@ -60,7 +60,8 @@ fn op_stdin_set_raw(
   {
     use std::os::windows::io::AsRawHandle;
     use winapi::shared::minwindef::FALSE;
-    use winapi::um::{consoleapi, handleapi};
+    use winapi::um::consoleapi;
+    use winapi::um::handleapi;
 
     if cbreak {
       return Err(deno_core::error::not_supported());

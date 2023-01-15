@@ -239,7 +239,7 @@ impl NpmResolution {
     package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
-    let _permit = self.update_semaphore.acquire().await.unwrap();
+    let _permit = self.update_semaphore.acquire().await?;
     let snapshot = self.snapshot.read().clone();
 
     let snapshot = self
@@ -255,7 +255,7 @@ impl NpmResolution {
     package_reqs: HashSet<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
-    let _permit = self.update_semaphore.acquire().await.unwrap();
+    let _permit = self.update_semaphore.acquire().await?;
     let snapshot = self.snapshot.read().clone();
 
     let has_removed_package = !snapshot

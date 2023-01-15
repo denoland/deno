@@ -76,14 +76,14 @@ fn to_v8_local_fn(
 
 #[op(v8)]
 fn op_ref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  let state_rc = JsRuntime::state(scope);
-  state_rc.borrow_mut().unrefed_ops.remove(&promise_id);
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state.borrow_mut().unrefed_ops.remove(&promise_id);
 }
 
 #[op(v8)]
 fn op_unref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  let state_rc = JsRuntime::state(scope);
-  state_rc.borrow_mut().unrefed_ops.insert(promise_id);
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state.borrow_mut().unrefed_ops.insert(promise_id);
 }
 
 #[op(v8)]
@@ -114,8 +114,11 @@ fn op_set_promise_reject_callback<'a>(
   cb: serde_v8::Value,
 ) -> Result<Option<serde_v8::Value<'a>>, Error> {
   let cb = to_v8_fn(scope, cb)?;
-  let state_rc = JsRuntime::state(scope);
-  let old = state_rc.borrow_mut().js_promise_reject_cb.replace(cb);
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let old = context_state_rc
+    .borrow_mut()
+    .js_promise_reject_cb
+    .replace(cb);
   let old = old.map(|v| v8::Local::new(scope, v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
 }
@@ -682,22 +685,28 @@ fn op_set_wasm_streaming_callback(
   cb: serde_v8::Value,
 ) -> Result<(), Error> {
   let cb = to_v8_fn(scope, cb)?;
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let mut context_state = context_state_rc.borrow_mut();
   // The callback to pass to the v8 API has to be a unit type, so it can't
   // borrow or move any local variables. Therefore, we're storing the JS
   // callback in a JsRuntimeState slot.
-  if state.js_wasm_streaming_cb.is_some() {
+  if context_state.js_wasm_streaming_cb.is_some() {
     return Err(type_error("op_set_wasm_streaming_callback already called"));
   }
-  state.js_wasm_streaming_cb = Some(cb);
+  context_state.js_wasm_streaming_cb = Some(cb);
 
   scope.set_wasm_streaming_callback(|scope, arg, wasm_streaming| {
     let (cb_handle, streaming_rid) = {
+      let context_state_rc = JsRealm::state_from_scope(scope);
+      let cb_handle = context_state_rc
+        .borrow()
+        .js_wasm_streaming_cb
+        .as_ref()
+        .unwrap()
+        .clone();
       let state_rc = JsRuntime::state(scope);
-      let state = state_rc.borrow();
-      let cb_handle = state.js_wasm_streaming_cb.as_ref().unwrap().clone();
-      let streaming_rid = state
+      let streaming_rid = state_rc
+        .borrow()
         .op_state
         .borrow_mut()
         .resource_table
@@ -835,8 +844,11 @@ fn op_set_format_exception_callback<'a>(
   cb: serde_v8::Value<'a>,
 ) -> Result<Option<serde_v8::Value<'a>>, Error> {
   let cb = to_v8_fn(scope, cb)?;
-  let state_rc = JsRuntime::state(scope);
-  let old = state_rc.borrow_mut().js_format_exception_cb.replace(cb);
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let old = context_state_rc
+    .borrow_mut()
+    .js_format_exception_cb
+    .replace(cb);
   let old = old.map(|v| v8::Local::new(scope, v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
 }

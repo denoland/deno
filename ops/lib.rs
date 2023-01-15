@@ -2,15 +2,24 @@
 
 use attrs::Attributes;
 use once_cell::sync::Lazy;
-use optimizer::{BailoutReason, Optimizer};
+use optimizer::BailoutReason;
+use optimizer::Optimizer;
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
+use proc_macro2::Span;
+use proc_macro2::TokenStream as TokenStream2;
+use quote::quote;
+use quote::ToTokens;
 use regex::Regex;
-use syn::{
-  parse, parse_macro_input, punctuated::Punctuated, token::Comma, FnArg,
-  GenericParam, Ident, ItemFn, Lifetime, LifetimeDef,
-};
+use syn::parse;
+use syn::parse_macro_input;
+use syn::punctuated::Punctuated;
+use syn::token::Comma;
+use syn::FnArg;
+use syn::GenericParam;
+use syn::Ident;
+use syn::ItemFn;
+use syn::Lifetime;
+use syn::LifetimeDef;
 
 mod attrs;
 mod deno;
@@ -221,7 +230,7 @@ fn codegen_v8_async(
         quote! {
           let result = match result {
             Ok(fut) => fut.await,
-            Err(e) => return (promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
+            Err(e) => return (realm_idx, promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
           };
         }
       } else {
@@ -240,6 +249,7 @@ fn codegen_v8_async(
         as *const #core::_ops::OpCtx)
       };
       let op_id = ctx.id;
+      let realm_idx = ctx.realm_idx;
 
       let promise_id = args.get(0);
       let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
@@ -267,7 +277,7 @@ fn codegen_v8_async(
       #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
         let result = #result_fut
         #result_wrapper
-        (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
+        (realm_idx, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
       });
     },
     argc,
@@ -746,7 +756,8 @@ fn exclude_lifetime_params(
 
 #[cfg(test)]
 mod tests {
-  use crate::{Attributes, Op};
+  use crate::Attributes;
+  use crate::Op;
   use std::path::PathBuf;
 
   #[testing_macros::fixture("optimizer_tests/**/*.rs")]

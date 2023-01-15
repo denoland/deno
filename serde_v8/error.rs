@@ -1,7 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use std::fmt::{self, Display};
+use std::fmt::Display;
+use std::fmt::{self};
 
-use serde::{de, ser};
+use serde::de;
+use serde::ser;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

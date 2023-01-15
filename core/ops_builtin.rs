@@ -13,11 +13,13 @@ use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
 use std::cell::RefCell;
-use std::io::{stderr, stdout, Write};
+use std::io::stderr;
+use std::io::stdout;
+use std::io::Write;
 use std::rc::Rc;
 
 pub(crate) fn init_builtins() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_builtins")
     .js(include_js_files!(
       prefix "deno:core",
       "00_primordials.js",

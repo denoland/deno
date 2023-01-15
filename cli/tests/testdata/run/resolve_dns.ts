@@ -62,3 +62,10 @@ try {
     } thrown for not-found-example.com`,
   );
 }
+
+try {
+  // @ts-ignore testing invalid overloads
+  await Deno.resolveDns("example.com", "SSHFP", nameServer);
+} catch (e) {
+  console.log(e.message);
+}
