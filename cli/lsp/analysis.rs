@@ -5,9 +5,7 @@ use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
-use crate::args::LintConfig;
 use crate::tools::lint::create_linter;
-use crate::tools::lint::get_configured_rules;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
@@ -18,10 +16,12 @@ use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_lint::rules::LintRule;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
@@ -127,9 +127,8 @@ fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
 
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
-  maybe_lint_config: Option<&LintConfig>,
+  lint_rules: Vec<Arc<dyn LintRule>>,
 ) -> Result<Vec<Reference>, AnyError> {
-  let lint_rules = get_configured_rules(maybe_lint_config, None, None, None)?;
   let linter = create_linter(parsed_source.media_type(), lint_rules);
   let lint_diagnostics = linter.lint_with_ast(parsed_source);
 

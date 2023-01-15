@@ -10,12 +10,18 @@ jobs:
     runs-on: ubuntu-20.04
     if: github.repository == 'denoland/deno'
     steps:
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v0
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v1
         with:
           project_id: denoland
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
-          export_default_credentials: true
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          export_environment_variables: true
+          create_credentials_file: true
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: denoland
 
       - name: Upload version file to dl.deno.land
         run: |
