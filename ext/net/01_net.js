@@ -1,33 +1,27 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-  const { WritableStream, readableStreamForRid } = window.__bootstrap.streams;
+  const {
+    readableStreamForRidUnrefable,
+    readableStreamForRidUnrefableRef,
+    readableStreamForRidUnrefableUnref,
+    writableStreamForRid,
+  } = window.__bootstrap.streams;
   const {
     Error,
     ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
-    Symbol,
     SymbolAsyncIterator,
     SymbolFor,
     TypedArrayPrototypeSubarray,
+    TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
-
-  async function read(
-    rid,
-    buffer,
-  ) {
-    if (buffer.length === 0) {
-      return 0;
-    }
-    const nread = await core.read(rid, buffer);
-    return nread === 0 ? null : nread;
-  }
 
   async function write(rid, data) {
     return await core.write(rid, data);
@@ -37,71 +31,16 @@
     return core.shutdown(rid);
   }
 
-  function opAccept(rid, transport) {
-    return core.opAsync("op_net_accept", { rid, transport });
-  }
-
-  function opListen(args) {
-    return ops.op_net_listen(args);
-  }
-
-  function opConnect(args) {
-    return core.opAsync("op_net_connect", args);
-  }
-
-  function opReceive(rid, transport, zeroCopy) {
-    return core.opAsync(
-      "op_dgram_recv",
-      { rid, transport },
-      zeroCopy,
-    );
-  }
-
-  function opSend(args, zeroCopy) {
-    return core.opAsync("op_dgram_send", args, zeroCopy);
-  }
-
   function resolveDns(query, recordType, options) {
     return core.opAsync("op_dns_resolve", { query, recordType, options });
-  }
-
-  function tryClose(rid) {
-    try {
-      core.close(rid);
-    } catch {
-      // Ignore errors
-    }
-  }
-
-  function writableStreamForRid(rid) {
-    return new WritableStream({
-      async write(chunk, controller) {
-        try {
-          let nwritten = 0;
-          while (nwritten < chunk.length) {
-            nwritten += await write(
-              rid,
-              TypedArrayPrototypeSubarray(chunk, nwritten),
-            );
-          }
-        } catch (e) {
-          controller.error(e);
-          tryClose(rid);
-        }
-      },
-      close() {
-        tryClose(rid);
-      },
-      abort() {
-        tryClose(rid);
-      },
-    });
   }
 
   class Conn {
     #rid = 0;
     #remoteAddr = null;
     #localAddr = null;
+    #unref = false;
+    #pendingReadPromiseIds = [];
 
     #readable;
     #writable;
@@ -128,8 +67,25 @@
       return write(this.rid, p);
     }
 
-    read(p) {
-      return read(this.rid, p);
+    async read(buffer) {
+      if (buffer.length === 0) {
+        return 0;
+      }
+      const promise = core.read(this.rid, buffer);
+      const promiseId = promise[promiseIdSymbol];
+      if (this.#unref) core.unrefOp(promiseId);
+      this.#pendingReadPromiseIds.push(promiseId);
+      let nread;
+      try {
+        nread = await promise;
+      } catch (e) {
+        throw e;
+      } finally {
+        this.#pendingReadPromiseIds = this.#pendingReadPromiseIds.filter((id) =>
+          id !== promiseId
+        );
+      }
+      return nread === 0 ? null : nread;
     }
 
     close() {
@@ -142,7 +98,10 @@
 
     get readable() {
       if (this.#readable === undefined) {
-        this.#readable = readableStreamForRid(this.rid);
+        this.#readable = readableStreamForRidUnrefable(this.rid);
+        if (this.#unref) {
+          readableStreamForRidUnrefableUnref(this.#readable);
+        }
       }
       return this.#readable;
     }
@@ -153,24 +112,35 @@
       }
       return this.#writable;
     }
+
+    ref() {
+      this.#unref = false;
+      if (this.#readable) {
+        readableStreamForRidUnrefableRef(this.#readable);
+      }
+      this.#pendingReadPromiseIds.forEach((id) => core.refOp(id));
+    }
+
+    unref() {
+      this.#unref = true;
+      if (this.#readable) {
+        readableStreamForRidUnrefableUnref(this.#readable);
+      }
+      this.#pendingReadPromiseIds.forEach((id) => core.unrefOp(id));
+    }
   }
 
   class TcpConn extends Conn {
-    setNoDelay(nodelay = true) {
-      return ops.op_set_nodelay(this.rid, nodelay);
+    setNoDelay(noDelay = true) {
+      return ops.op_set_nodelay(this.rid, noDelay);
     }
 
-    setKeepAlive(keepalive = true) {
-      return ops.op_set_keepalive(this.rid, keepalive);
+    setKeepAlive(keepAlive = true) {
+      return ops.op_set_keepalive(this.rid, keepAlive);
     }
   }
 
   class UnixConn extends Conn {}
-
-  // Use symbols for method names to hide these in stable API.
-  // TODO(kt3k): Remove these symbols when ref/unref become stable.
-  const listenerRef = Symbol("listenerRef");
-  const listenerUnref = Symbol("listenerUnref");
 
   class Listener {
     #rid = 0;
@@ -191,21 +161,35 @@
       return this.#addr;
     }
 
-    accept() {
-      const promise = opAccept(this.rid, this.addr.transport);
-      this.#promiseId = promise[promiseIdSymbol];
-      if (this.#unref) {
-        this.#unrefOpAccept();
+    async accept() {
+      let promise;
+      switch (this.addr.transport) {
+        case "tcp":
+          promise = core.opAsync("op_net_accept_tcp", this.rid);
+          break;
+        case "unix":
+          promise = core.opAsync("op_net_accept_unix", this.rid);
+          break;
+        default:
+          throw new Error(`Unsupported transport: ${this.addr.transport}`);
       }
-      return promise.then((res) => {
-        if (this.addr.transport == "tcp") {
-          return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
-        } else if (this.addr.transport == "unix") {
-          return new UnixConn(res.rid, res.remoteAddr, res.localAddr);
-        } else {
-          throw new Error("unreachable");
-        }
-      });
+      this.#promiseId = promise[promiseIdSymbol];
+      if (this.#unref) core.unrefOp(this.#promiseId);
+      const [rid, localAddr, remoteAddr] = await promise;
+      this.#promiseId = null;
+      if (this.addr.transport == "tcp") {
+        localAddr.transport = "tcp";
+        remoteAddr.transport = "tcp";
+        return new TcpConn(rid, remoteAddr, localAddr);
+      } else if (this.addr.transport == "unix") {
+        return new UnixConn(
+          rid,
+          { transport: "unix", path: remoteAddr },
+          { transport: "unix", path: localAddr },
+        );
+      } else {
+        throw new Error("unreachable");
+      }
     }
 
     async next() {
@@ -237,22 +221,15 @@
       return this;
     }
 
-    [listenerRef]() {
+    ref() {
       this.#unref = false;
-      this.#refOpAccept();
-    }
-
-    [listenerUnref]() {
-      this.#unref = true;
-      this.#unrefOpAccept();
-    }
-
-    #refOpAccept() {
       if (typeof this.#promiseId === "number") {
         core.refOp(this.#promiseId);
       }
     }
-    #unrefOpAccept() {
+
+    unref() {
+      this.#unref = true;
       if (typeof this.#promiseId === "number") {
         core.unrefOp(this.#promiseId);
       }
@@ -279,18 +256,54 @@
 
     async receive(p) {
       const buf = p || new Uint8Array(this.bufSize);
-      const { size, remoteAddr } = await opReceive(
-        this.rid,
-        this.addr.transport,
-        buf,
-      );
-      const sub = TypedArrayPrototypeSubarray(buf, 0, size);
+      let nread;
+      let remoteAddr;
+      switch (this.addr.transport) {
+        case "udp": {
+          [nread, remoteAddr] = await core.opAsync(
+            "op_net_recv_udp",
+            this.rid,
+            buf,
+          );
+          remoteAddr.transport = "udp";
+          break;
+        }
+        case "unixpacket": {
+          let path;
+          [nread, path] = await core.opAsync(
+            "op_net_recv_unixpacket",
+            this.rid,
+            buf,
+          );
+          remoteAddr = { transport: "unixpacket", path };
+          break;
+        }
+        default:
+          throw new Error(`Unsupported transport: ${this.addr.transport}`);
+      }
+      const sub = TypedArrayPrototypeSubarray(buf, 0, nread);
       return [sub, remoteAddr];
     }
 
-    send(p, addr) {
-      const args = { hostname: "127.0.0.1", ...addr, rid: this.rid };
-      return opSend(args, p);
+    async send(p, opts) {
+      switch (this.addr.transport) {
+        case "udp":
+          return await core.opAsync(
+            "op_net_send_udp",
+            this.rid,
+            { hostname: opts.hostname ?? "127.0.0.1", port: opts.port },
+            p,
+          );
+        case "unixpacket":
+          return await core.opAsync(
+            "op_net_send_unixpacket",
+            this.rid,
+            opts.path,
+            p,
+          );
+        default:
+          throw new Error(`Unsupported transport: ${this.addr.transport}`);
+      }
     }
 
     close() {
@@ -314,46 +327,105 @@
     }
   }
 
-  function listen({ hostname, ...options }, constructor = Listener) {
-    const res = opListen({
-      transport: "tcp",
-      hostname: typeof hostname === "undefined" ? "0.0.0.0" : hostname,
-      ...options,
-    });
-
-    return new constructor(res.rid, res.localAddr);
+  function listen(args) {
+    switch (args.transport ?? "tcp") {
+      case "tcp": {
+        const [rid, addr] = ops.op_net_listen_tcp({
+          hostname: args.hostname ?? "0.0.0.0",
+          port: args.port,
+        }, args.reusePort);
+        addr.transport = "tcp";
+        return new Listener(rid, addr);
+      }
+      case "unix": {
+        const [rid, path] = ops.op_net_listen_unix(args.path);
+        const addr = {
+          transport: "unix",
+          path,
+        };
+        return new Listener(rid, addr);
+      }
+      default:
+        throw new TypeError(`Unsupported transport: '${transport}'`);
+    }
   }
 
-  async function connect(options) {
-    if (options.transport === "unix") {
-      const res = await opConnect(options);
-      return new UnixConn(res.rid, res.remoteAddr, res.localAddr);
-    }
+  function createListenDatagram(udpOpFn, unixOpFn) {
+    return function listenDatagram(args) {
+      switch (args.transport) {
+        case "udp": {
+          const [rid, addr] = udpOpFn(
+            {
+              hostname: args.hostname ?? "127.0.0.1",
+              port: args.port,
+            },
+            args.reuseAddress ?? false,
+          );
+          addr.transport = "udp";
+          return new Datagram(rid, addr);
+        }
+        case "unixpacket": {
+          const [rid, path] = unixOpFn(args.path);
+          const addr = {
+            transport: "unixpacket",
+            path,
+          };
+          return new Datagram(rid, addr);
+        }
+        default:
+          throw new TypeError(`Unsupported transport: '${transport}'`);
+      }
+    };
+  }
 
-    const res = await opConnect({
-      transport: "tcp",
-      hostname: "127.0.0.1",
-      ...options,
-    });
-    return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
+  async function connect(args) {
+    switch (args.transport ?? "tcp") {
+      case "tcp": {
+        const [rid, localAddr, remoteAddr] = await core.opAsync(
+          "op_net_connect_tcp",
+          {
+            hostname: args.hostname ?? "127.0.0.1",
+            port: args.port,
+          },
+        );
+        localAddr.transport = "tcp";
+        remoteAddr.transport = "tcp";
+        return new TcpConn(rid, remoteAddr, localAddr);
+      }
+      case "unix": {
+        const [rid, localAddr, remoteAddr] = await core.opAsync(
+          "op_net_connect_unix",
+          args.path,
+        );
+        return new UnixConn(
+          rid,
+          { transport: "unix", path: remoteAddr },
+          { transport: "unix", path: localAddr },
+        );
+      }
+      default:
+        throw new TypeError(`Unsupported transport: '${transport}'`);
+    }
+  }
+
+  function setup(unstable) {
+    if (!unstable) {
+      delete Listener.prototype.ref;
+      delete Listener.prototype.unref;
+    }
   }
 
   window.__bootstrap.net = {
+    setup,
     connect,
     Conn,
     TcpConn,
     UnixConn,
-    opConnect,
     listen,
-    listenerRef,
-    listenerUnref,
-    opListen,
+    createListenDatagram,
     Listener,
     shutdown,
     Datagram,
     resolveDns,
-  };
-  window.__bootstrap.streamUtils = {
-    writableStreamForRid,
   };
 })(this);

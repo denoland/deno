@@ -1,6 +1,5 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls_pemfile;
@@ -20,57 +19,57 @@ itest_flaky!(cafile_url_imports {
 });
 
 itest_flaky!(cafile_ts_fetch {
-  args:
-    "run --quiet --reload --allow-net --cert tls/RootCA.pem cert/cafile_ts_fetch.ts",
-  output: "cert/cafile_ts_fetch.ts.out",
-  http_server: true,
-});
+    args:
+      "run --quiet --reload --allow-net --cert tls/RootCA.pem cert/cafile_ts_fetch.ts",
+    output: "cert/cafile_ts_fetch.ts.out",
+    http_server: true,
+  });
 
 itest_flaky!(cafile_eval {
-  args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cert/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
-  output: "cert/cafile_ts_fetch.ts.out",
-  http_server: true,
-});
+    args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cert/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
+    output: "cert/cafile_ts_fetch.ts.out",
+    http_server: true,
+  });
 
 itest_flaky!(cafile_info {
-  args:
-    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cert/cafile_info.ts",
-  output: "cert/cafile_info.ts.out",
-  http_server: true,
-});
+    args:
+      "info --quiet --cert tls/RootCA.pem https://localhost:5545/cert/cafile_info.ts",
+    output: "cert/cafile_info.ts.out",
+    http_server: true,
+  });
 
 itest_flaky!(cafile_url_imports_unsafe_ssl {
-  args: "run --quiet --reload --unsafely-ignore-certificate-errors=localhost cert/cafile_url_imports.ts",
-  output: "cert/cafile_url_imports_unsafe_ssl.ts.out",
-  http_server: true,
-});
+    args: "run --quiet --reload --unsafely-ignore-certificate-errors=localhost cert/cafile_url_imports.ts",
+    output: "cert/cafile_url_imports_unsafe_ssl.ts.out",
+    http_server: true,
+  });
 
 itest_flaky!(cafile_ts_fetch_unsafe_ssl {
-  args:
-    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors cert/cafile_ts_fetch.ts",
-  output: "cert/cafile_ts_fetch_unsafe_ssl.ts.out",
-  http_server: true,
-});
+    args:
+      "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors cert/cafile_ts_fetch.ts",
+    output: "cert/cafile_ts_fetch_unsafe_ssl.ts.out",
+    http_server: true,
+  });
 
 itest!(deno_land_unsafe_ssl {
-  args:
-    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/deno_land_unsafe_ssl.ts",
-  output: "cert/deno_land_unsafe_ssl.ts.out",
-});
+    args:
+      "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/deno_land_unsafe_ssl.ts",
+    output: "cert/deno_land_unsafe_ssl.ts.out",
+  });
 
 itest!(ip_address_unsafe_ssl {
-  args:
-    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=1.1.1.1 cert/ip_address_unsafe_ssl.ts",
-  output: "cert/ip_address_unsafe_ssl.ts.out",
-});
+    args:
+      "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=1.1.1.1 cert/ip_address_unsafe_ssl.ts",
+    output: "cert/ip_address_unsafe_ssl.ts.out",
+  });
 
 itest!(localhost_unsafe_ssl {
-  args:
-    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/cafile_url_imports.ts",
-  output: "cert/localhost_unsafe_ssl.ts.out",
-  http_server: true,
-  exit_code: 1,
-});
+    args:
+      "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/cafile_url_imports.ts",
+    output: "cert/localhost_unsafe_ssl.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
 
 #[flaky_test::flaky_test]
 fn cafile_env_fetch() {

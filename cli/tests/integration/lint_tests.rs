@@ -1,6 +1,5 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
 use test_util as util;
 
 #[test]
@@ -95,7 +94,19 @@ itest!(lint_with_config {
   exit_code: 1,
 });
 
+itest!(lint_with_report_config {
+  args: "lint --config lint/Deno.compact.format.jsonc lint/with_config/",
+  output: "lint/with_report_config_compact.out",
+  exit_code: 1,
+});
+
 // Check if CLI flags take precedence
+itest!(lint_with_report_config_override {
+  args: "lint --config lint/Deno.compact.format.jsonc lint/with_config/ --json",
+  output: "lint/with_report_config_override.out",
+  exit_code: 1,
+});
+
 itest!(lint_with_config_and_flags {
   args: "lint --config lint/Deno.jsonc --ignore=lint/with_config/a.ts",
   output: "lint/with_config_and_flags.out",

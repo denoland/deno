@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 
@@ -24,6 +24,7 @@ struct CjsAnalysisData {
   pub reexports: Vec<String>,
 }
 
+#[derive(Clone)]
 pub struct NodeAnalysisCache {
   db_file_path: Option<PathBuf>,
   inner: Arc<Mutex<Option<Option<NodeAnalysisCacheInner>>>>,
@@ -142,6 +143,7 @@ impl NodeAnalysisCacheInner {
     db_file_path: Option<&Path>,
     version: String,
   ) -> Result<Self, AnyError> {
+    log::debug!("Opening node analysis cache.");
     let conn = match db_file_path {
       Some(path) => Connection::open(path)?,
       None => Connection::open_in_memory()?,

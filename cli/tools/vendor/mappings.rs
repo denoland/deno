@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -13,8 +13,8 @@ use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_graph::Resolved;
 
-use crate::fs_util::path_with_stem_suffix;
-use crate::fs_util::relative_specifier;
+use crate::util::path::path_with_stem_suffix;
+use crate::util::path::relative_specifier;
 
 use super::specifiers::dir_name_for_root;
 use super::specifiers::get_unique_path;
@@ -133,7 +133,6 @@ impl Mappings {
       self
         .mappings
         .get(specifier)
-        .as_ref()
         .unwrap_or_else(|| {
           panic!("Could not find local path for {}", specifier)
         })

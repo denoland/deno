@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::borrow::Cow;
 
 use deno_core::error::custom_error;
@@ -89,7 +91,7 @@ impl RawKeyData {
     match self {
       RawKeyData::Public(data) => {
         // public_key is a serialized EncodedPoint
-        p256::EncodedPoint::from_bytes(&data)
+        p256::EncodedPoint::from_bytes(data)
           .map_err(|_| type_error("expected valid public EC key"))
       }
       RawKeyData::Private(data) => {
@@ -106,7 +108,7 @@ impl RawKeyData {
     match self {
       RawKeyData::Public(data) => {
         // public_key is a serialized EncodedPoint
-        p384::EncodedPoint::from_bytes(&data)
+        p384::EncodedPoint::from_bytes(data)
           .map_err(|_| type_error("expected valid public EC key"))
       }
       RawKeyData::Private(data) => {

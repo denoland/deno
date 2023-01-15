@@ -3,8 +3,8 @@ import {
   assert,
   assertEquals,
 } from "../../../../test_util/std/testing/asserts.ts";
-import { BufReader, BufWriter } from "../../../../test_util/std/io/bufio.ts";
-import { TextProtoReader } from "../../../../test_util/std/textproto/mod.ts";
+import { BufReader, BufWriter } from "../../../../test_util/std/io/buffer.ts";
+import { TextProtoReader } from "./textproto.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -55,7 +55,7 @@ const [_, proto, status, ok] = m;
 assertEquals(proto, "HTTP/1.1");
 assertEquals(status, "200");
 assertEquals(ok, "OK");
-const headers = await tpr.readMIMEHeader();
+const headers = await tpr.readMimeHeader();
 assert(headers !== null);
 const contentLength = parseInt(headers.get("content-length"));
 const bodyBuf = new Uint8Array(contentLength);

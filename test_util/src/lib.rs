@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
@@ -49,6 +49,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
+use url::Url;
 
 pub mod assertions;
 pub mod lsp;
@@ -93,6 +94,24 @@ lazy_static! {
   static ref GUARD: Mutex<HttpServerCount> = Mutex::new(HttpServerCount::default());
 }
 
+pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
+  vec![
+    ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
+    ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("NO_COLOR".to_string(), "1".to_string()),
+  ]
+}
+
+pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
+  let mut env_vars = env_vars_for_npm_tests_no_sync_download();
+  env_vars.push((
+    // make downloads determinstic
+    "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
+    "1".to_string(),
+  ));
+  env_vars
+}
+
 pub fn root_path() -> PathBuf {
   PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
     .parent()
@@ -120,8 +139,17 @@ pub fn napi_tests_path() -> PathBuf {
   root_path().join("test_napi")
 }
 
+/// Test server registry url.
+pub fn npm_registry_url() -> String {
+  "http://localhost:4545/npm/registry/".to_string()
+}
+
 pub fn std_path() -> PathBuf {
   root_path().join("test_util").join("std")
+}
+
+pub fn std_file_url() -> String {
+  Url::from_directory_path(std_path()).unwrap().to_string()
 }
 
 pub fn target_dir() -> PathBuf {
@@ -943,6 +971,17 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/dynamic_module.ts") => {
+      let mut res = Response::new(Body::from(format!(
+        r#"export const time = {};"#,
+        std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+      )));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
     (_, "/echo_accept") => {
       let accept = req.headers().get("accept").map(|v| v.to_str().unwrap());
       let res = Response::new(Body::from(
@@ -1078,7 +1117,7 @@ async fn download_npm_registry_file(
       .into_bytes()
   };
   std::fs::create_dir_all(file_path.parent().unwrap())?;
-  std::fs::write(&file_path, bytes)?;
+  std::fs::write(file_path, bytes)?;
   Ok(())
 }
 
@@ -1571,7 +1610,8 @@ impl HttpServerCount {
         .spawn()
         .expect("failed to execute test_server");
       let stdout = test_server.stdout.as_mut().unwrap();
-      use std::io::{BufRead, BufReader};
+      use std::io::BufRead;
+      use std::io::BufReader;
       let lines = BufReader::new(stdout).lines();
 
       // Wait for all the servers to report being ready.
@@ -1902,13 +1942,13 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       testdata_dir.as_path()
     };
     println!("deno_exe args {}", args.join(" "));
-    println!("deno_exe cwd {:?}", &testdata_dir);
+    println!("deno_exe cwd {:?}", &cwd);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();
     }
     command.envs(self.envs.clone());
-    command.current_dir(&cwd);
+    command.current_dir(cwd);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();
     command.stderr(writer_clone);
@@ -2153,13 +2193,13 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   let mut latency = None;
 
   for line in output.lines() {
-    if requests == None {
+    if requests.is_none() {
       if let Some(cap) = REQUESTS_RX.captures(line) {
         requests =
           Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
       }
     }
-    if latency == None {
+    if latency.is_none() {
       if let Some(cap) = LATENCY_RX.captures(line) {
         let time = cap.get(1).unwrap();
         let unit = cap.get(2).unwrap();
@@ -2198,9 +2238,12 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
   // Filter out non-relevant lines. See the error log at
   // https://github.com/denoland/deno/pull/3715/checks?check_run_id=397365887
   // This is checked in testdata/strace_summary2.out
-  let mut lines = output
-    .lines()
-    .filter(|line| !line.is_empty() && !line.contains("detached ..."));
+  let mut lines = output.lines().filter(|line| {
+    !line.is_empty()
+      && !line.contains("detached ...")
+      && !line.contains("unfinished ...")
+      && !line.contains("????")
+  });
   let count = lines.clone().count();
 
   if count < 4 {
@@ -2215,7 +2258,6 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
     let syscall_fields = line.split_whitespace().collect::<Vec<_>>();
     let len = syscall_fields.len();
     let syscall_name = syscall_fields.last().unwrap();
-
     if (5..=6).contains(&len) {
       summary.insert(
         syscall_name.to_string(),

@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import {
   assert,
   assertEquals,
@@ -529,7 +531,7 @@ Deno.test(async function rsaExport() {
 });
 
 Deno.test(async function testHkdfDeriveBits() {
-  const rawKey = await crypto.getRandomValues(new Uint8Array(16));
+  const rawKey = crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey(
     "raw",
     rawKey,
@@ -537,8 +539,8 @@ Deno.test(async function testHkdfDeriveBits() {
     false,
     ["deriveBits"],
   );
-  const salt = await crypto.getRandomValues(new Uint8Array(16));
-  const info = await crypto.getRandomValues(new Uint8Array(16));
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const info = crypto.getRandomValues(new Uint8Array(16));
   const result = await crypto.subtle.deriveBits(
     {
       name: "HKDF",
@@ -644,7 +646,7 @@ Deno.test(async function testEcdhDeriveBitsWithNullLength() {
 
 Deno.test(async function testDeriveKey() {
   // Test deriveKey
-  const rawKey = await crypto.getRandomValues(new Uint8Array(16));
+  const rawKey = crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey(
     "raw",
     rawKey,
@@ -653,7 +655,7 @@ Deno.test(async function testDeriveKey() {
     ["deriveKey", "deriveBits"],
   );
 
-  const salt = await crypto.getRandomValues(new Uint8Array(16));
+  const salt = crypto.getRandomValues(new Uint8Array(16));
   const derivedKey = await crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
@@ -675,7 +677,7 @@ Deno.test(async function testDeriveKey() {
   const algorithm = derivedKey.algorithm as HmacKeyAlgorithm;
   assertEquals(algorithm.name, "HMAC");
   assertEquals(algorithm.hash.name, "SHA-256");
-  assertEquals(algorithm.length, 256);
+  assertEquals(algorithm.length, 512);
 });
 
 Deno.test(async function testAesCbcEncryptDecrypt() {
@@ -685,7 +687,7 @@ Deno.test(async function testAesCbcEncryptDecrypt() {
     ["encrypt", "decrypt"],
   );
 
-  const iv = await crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(16));
   const encrypted = await crypto.subtle.encrypt(
     {
       name: "AES-CBC",
@@ -756,7 +758,7 @@ Deno.test(async function testAesCtrEncryptDecrypt() {
 
     // test normal operation
     for (const length of [128 /*, 64, 128 */]) {
-      const counter = await crypto.getRandomValues(new Uint8Array(16));
+      const counter = crypto.getRandomValues(new Uint8Array(16));
 
       await aesCtrRoundTrip(
         key,
@@ -768,7 +770,7 @@ Deno.test(async function testAesCtrEncryptDecrypt() {
 
     // test counter-wrapping
     for (const length of [32, 64, 128]) {
-      const plaintext1 = await crypto.getRandomValues(new Uint8Array(32));
+      const plaintext1 = crypto.getRandomValues(new Uint8Array(32));
       const counter = new Uint8Array(16);
 
       // fixed upper part
@@ -1964,4 +1966,19 @@ Deno.test(async function testECspkiRoundTrip() {
   ]);
   const spki = await crypto.subtle.exportKey("spki", publicKey);
   await crypto.subtle.importKey("spki", spki, alg, true, []);
+});
+
+Deno.test(async function testHmacJwkImport() {
+  await crypto.subtle.importKey(
+    "jwk",
+    {
+      kty: "oct",
+      use: "sig",
+      alg: "HS256",
+      k: "hJtXIZ2uSN5kbQfbtTNWbpdmhkV8FJG-Onbc6mxCcYg",
+    },
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -29,11 +29,13 @@
     JSONStringify,
     MathCeil,
     ObjectAssign,
+    ObjectPrototypeHasOwnProperty,
     ObjectPrototypeIsPrototypeOf,
     StringPrototypeToLowerCase,
     StringPrototypeToUpperCase,
     StringPrototypeCharCodeAt,
     StringFromCharCode,
+    SafeArrayIterator,
     Symbol,
     SymbolFor,
     SyntaxError,
@@ -210,6 +212,9 @@
     // 5.
     let desiredType = undefined;
     for (const key in registeredAlgorithms) {
+      if (!ObjectPrototypeHasOwnProperty(registeredAlgorithms, key)) {
+        continue;
+      }
       if (
         StringPrototypeToUpperCase(key) === StringPrototypeToUpperCase(algName)
       ) {
@@ -241,6 +246,9 @@
     const dict = simpleAlgorithmDictionaries[desiredType];
     // 10.
     for (const member in dict) {
+      if (!ObjectPrototypeHasOwnProperty(dict, member)) {
+        continue;
+      }
       const idlType = dict[member];
       const idlValue = normalizedAlgorithm[member];
       // 3.
@@ -393,16 +401,16 @@
         if (algorithm.length === undefined) {
           switch (algorithm.hash.name) {
             case "SHA-1":
-              length = 160;
+              length = 512;
               break;
             case "SHA-256":
-              length = 256;
+              length = 512;
               break;
             case "SHA-384":
-              length = 384;
+              length = 1024;
               break;
             case "SHA-512":
-              length = 512;
+              length = 1024;
               break;
             default:
               throw new DOMException(
@@ -2880,10 +2888,10 @@
 
         // 7.
         if (
-          keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sign"
+          keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig"
         ) {
           throw new DOMException(
-            "'use' property of JsonWebKey must be 'sign'",
+            "'use' property of JsonWebKey must be 'sig'",
             "DataError",
           );
         }
@@ -4052,7 +4060,7 @@
         }
 
         const pkcs8Der = ops.op_export_pkcs8_ed25519(
-          new Uint8Array([0x04, 0x22, ...innerKey]),
+          new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
         );
         pkcs8Der[15] = 0x20;
         return pkcs8Der.buffer;
@@ -4115,7 +4123,7 @@
         }
 
         const pkcs8Der = ops.op_export_pkcs8_x25519(
-          new Uint8Array([0x04, 0x22, ...innerKey]),
+          new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
         );
         pkcs8Der[15] = 0x20;
         return pkcs8Der.buffer;
@@ -4652,6 +4660,11 @@
       webidl.assertBranded(this, CryptoPrototype);
       const prefix = "Failed to execute 'getRandomValues' on 'Crypto'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
+      // Fast path for Uint8Array
+      if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, arrayBufferView)) {
+        ops.op_crypto_get_random_values(arrayBufferView);
+        return arrayBufferView;
+      }
       arrayBufferView = webidl.converters.ArrayBufferView(arrayBufferView, {
         prefix,
         context: "Argument 1",

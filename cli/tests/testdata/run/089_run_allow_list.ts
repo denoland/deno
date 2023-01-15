@@ -1,12 +1,12 @@
 try {
-  await Deno.spawn("ls");
+  await new Deno.Command("ls").output();
 } catch (e) {
   console.log(e);
 }
 
-const { success } = await Deno.spawn("curl", {
+const { success } = await new Deno.Command("curl", {
   args: ["--help"],
   stdout: "null",
   stderr: "inherit",
-});
+}).output();
 console.log(success);

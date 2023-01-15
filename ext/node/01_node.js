@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
 
@@ -100,6 +100,7 @@
     nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
     nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
     nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
+    nodeGlobals.console = nativeModuleExports["console"];
     nodeGlobals.global = nodeGlobalThis;
     nodeGlobals.process = nativeModuleExports["process"];
     nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;

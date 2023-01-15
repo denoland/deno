@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
 use crate::error::generic_error;
@@ -32,13 +32,13 @@ use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
+use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::ffi::c_void;
-use std::mem::forget;
 use std::option::Option;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -46,9 +46,9 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
+use v8::OwnedIsolate;
 
-type PendingOpFuture =
-  OpCall<(v8::Global<v8::Context>, PromiseId, OpId, OpResult)>;
+type PendingOpFuture = OpCall<(RealmIdx, PromiseId, OpId, OpResult)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -78,15 +78,18 @@ struct IsolateAllocations {
 /// by implementing an async function that takes a serde::Deserialize "control argument"
 /// and an optional zero copy buffer, each async Op is tied to a Promise in JavaScript.
 pub struct JsRuntime {
+  state: Rc<RefCell<JsRuntimeState>>,
+  module_map: Option<Rc<RefCell<ModuleMap>>>,
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
-  snapshot_creator: Option<v8::SnapshotCreator>,
-  has_snapshotted: bool,
-  built_from_snapshot: bool,
+  snapshot_options: SnapshotOptions,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
+  extensions_with_js: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
+  // Marks if this is considered the top-level runtime. Used only be inspector.
+  is_main: bool,
 }
 
 pub(crate) struct DynImportModEvaluate {
@@ -153,11 +156,14 @@ pub(crate) struct ContextState {
   pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) unrefed_ops: HashSet<i32>,
+  // We don't explicitly re-read this prop but need the slice to live alongside
+  // the context
+  pub(crate) op_ctxs: Box<[OpCtx]>,
 }
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
-pub(crate) struct JsRuntimeState {
+pub struct JsRuntimeState {
   global_realm: Option<JsRealm>,
   known_realms: Vec<v8::Weak<v8::Context>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
@@ -175,9 +181,6 @@ pub(crate) struct JsRuntimeState {
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
-  #[allow(dead_code)]
-  // We don't explicitly re-read this prop but need the slice to live alongside the isolate
-  pub(crate) op_ctxs: Box<[OpCtx]>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   /// The error that was passed to an `op_dispatch_exception` call.
@@ -186,30 +189,8 @@ pub(crate) struct JsRuntimeState {
   // TODO(nayeemrmn): This is polled in `exception_to_err_result()` which is
   // flimsy. Try to poll it similarly to `pending_promise_exceptions`.
   pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
-  inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
+  pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
-}
-
-impl Drop for JsRuntime {
-  fn drop(&mut self) {
-    if let Some(creator) = self.snapshot_creator.take() {
-      // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
-      // a `struct OwnedIsolate` which is not actually owned, hence the need
-      // here to leak the `OwnedIsolate` in order to avoid a double free and
-      // the segfault that it causes.
-      let v8_isolate = self.v8_isolate.take().unwrap();
-      forget(v8_isolate);
-
-      // TODO(ry) V8 has a strange assert which prevents a SnapshotCreator from
-      // being deallocated if it hasn't created a snapshot yet.
-      // https://github.com/v8/v8/blob/73212783fbd534fac76cc4b66aac899c13f71fc8/src/api.cc#L603
-      // If that assert is removed, this if guard could be removed.
-      // WARNING: There may be false positive LSAN errors here.
-      if self.has_snapshotted {
-        drop(creator);
-      }
-    }
-  }
 }
 
 fn v8_init(
@@ -223,14 +204,11 @@ fn v8_init(
   v8::icu::set_common_data_71(&ICU_DATA.0).unwrap();
 
   let flags = concat!(
-    " --experimental-wasm-threads",
     " --wasm-test-streaming",
     " --harmony-import-assertions",
     " --no-validate-asm",
     " --turbo_fast_api_calls",
-    // This flag prevents "unresolved external reference" panic during
-    // build, which started happening in V8 10.6
-    " --noexperimental-async-stack-tagging-api",
+    " --harmony-change-array-by-copy",
   );
 
   if predictable {
@@ -267,19 +245,28 @@ pub struct RuntimeOptions {
   /// executed tries to load modules.
   pub module_loader: Option<Rc<dyn ModuleLoader>>,
 
-  /// JsRuntime extensions, not to be confused with ES modules
-  /// these are sets of ops and other JS code to be initialized.
+  /// JsRuntime extensions, not to be confused with ES modules.
+  /// Only ops registered by extensions will be initialized. If you need
+  /// to execute JS code from extensions, use `extensions_with_js` options
+  /// instead.
   pub extensions: Vec<Extension>,
 
-  /// V8 snapshot that should be loaded on startup.
+  /// JsRuntime extensions, not to be confused with ES modules.
+  /// Ops registered by extensions will be initialized and JS code will be
+  /// executed. If you don't need to execute JS code from extensions, use
+  /// `extensions` option instead.
   ///
-  /// Currently can't be used with `will_snapshot`.
+  /// This is useful when creating snapshots, in such case you would pass
+  /// extensions using `extensions_with_js`, later when creating a runtime
+  /// from the snapshot, you would pass these extensions using `extensions`
+  /// option.
+  pub extensions_with_js: Vec<Extension>,
+
+  /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
 
   /// Prepare runtime to take snapshot of loaded code.
   /// The snapshot is determinstic and uses predictable random numbers.
-  ///
-  /// Currently can't be used with `startup_snapshot`.
   pub will_snapshot: bool,
 
   /// Isolate creation parameters.
@@ -303,9 +290,59 @@ pub struct RuntimeOptions {
   /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
   /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+
+  /// Start inspector instance to allow debuggers to connect.
+  pub inspector: bool,
+
+  /// Describe if this is the main runtime instance, used by debuggers in some
+  /// situation - like disconnecting when program finishes running.
+  pub is_main: bool,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum SnapshotOptions {
+  Load,
+  CreateFromExisting,
+  Create,
+  None,
+}
+
+impl SnapshotOptions {
+  pub fn loaded(&self) -> bool {
+    matches!(
+      self,
+      SnapshotOptions::Load | SnapshotOptions::CreateFromExisting
+    )
+  }
+  pub fn will_snapshot(&self) -> bool {
+    matches!(
+      self,
+      SnapshotOptions::Create | SnapshotOptions::CreateFromExisting
+    )
+  }
+
+  fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
+    match (snapshot_loaded, will_snapshot) {
+      (true, true) => SnapshotOptions::CreateFromExisting,
+      (false, true) => SnapshotOptions::Create,
+      (true, false) => SnapshotOptions::Load,
+      (false, false) => SnapshotOptions::None,
+    }
+  }
+}
+
+impl Drop for JsRuntime {
+  fn drop(&mut self) {
+    if let Some(v8_isolate) = self.v8_isolate.as_mut() {
+      Self::drop_state_and_module_map(v8_isolate);
+    }
+  }
 }
 
 impl JsRuntime {
+  const STATE_DATA_OFFSET: u32 = 0;
+  const MODULE_MAP_DATA_OFFSET: u32 = 1;
+
   /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> Self {
     let v8_platform = options.v8_platform.take();
@@ -313,35 +350,27 @@ impl JsRuntime {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(move || v8_init(v8_platform, options.will_snapshot));
 
-    let has_startup_snapshot = options.startup_snapshot.is_some();
-
     // Add builtins extension
-    options
-      .extensions
-      .insert(0, crate::ops_builtin::init_builtins());
+    if options.startup_snapshot.is_none() {
+      options
+        .extensions_with_js
+        .insert(0, crate::ops_builtin::init_builtins());
+    } else {
+      options
+        .extensions
+        .insert(0, crate::ops_builtin::init_builtins());
+    }
 
-    let ops = Self::collect_ops(&mut options.extensions);
+    let ops = Self::collect_ops(
+      &mut options.extensions,
+      &mut options.extensions_with_js,
+    );
     let mut op_state = OpState::new(ops.len());
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
       op_state.get_error_class_fn = get_error_class_fn;
     }
     let op_state = Rc::new(RefCell::new(op_state));
-    let op_ctxs = ops
-      .into_iter()
-      .enumerate()
-      .map(|(id, decl)| OpCtx {
-        id,
-        state: op_state.clone(),
-        decl,
-      })
-      .collect::<Vec<_>>()
-      .into_boxed_slice();
-
-    let refs = bindings::external_references(&op_ctxs, !options.will_snapshot);
-    // V8 takes ownership of external_references.
-    let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
-    let global_context;
 
     let align = std::mem::align_of::<usize>();
     let layout = std::alloc::Layout::from_size_align(
@@ -354,15 +383,82 @@ impl JsRuntime {
       // SAFETY: we just asserted that layout has non-0 size.
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
-    let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
-      // TODO(ry) Support loading snapshots before snapshotting.
-      assert!(options.startup_snapshot.is_none());
-      let mut creator = v8::SnapshotCreator::new(Some(refs));
-      // SAFETY: `get_owned_isolate` is unsafe because it may only be called
-      // once. This is the only place we call this function, so this call is
-      // safe.
-      let isolate = unsafe { creator.get_owned_isolate() };
-      let mut isolate = JsRuntime::setup_isolate(isolate);
+    let state_rc = Rc::new(RefCell::new(JsRuntimeState {
+      pending_promise_exceptions: HashMap::new(),
+      pending_dyn_mod_evaluate: vec![],
+      pending_mod_evaluate: None,
+      dyn_module_evaluate_idle_counter: 0,
+      js_macrotask_cbs: vec![],
+      js_nexttick_cbs: vec![],
+      has_tick_scheduled: false,
+      source_map_getter: options.source_map_getter,
+      source_map_cache: Default::default(),
+      pending_ops: FuturesUnordered::new(),
+      shared_array_buffer_store: options.shared_array_buffer_store,
+      compiled_wasm_module_store: options.compiled_wasm_module_store,
+      op_state: op_state.clone(),
+      waker: AtomicWaker::new(),
+      have_unpolled_ops: false,
+      dispatched_exceptions: Default::default(),
+      // Some fields are initialized later after isolate is created
+      inspector: None,
+      global_realm: None,
+      known_realms: Vec::with_capacity(1),
+    }));
+
+    let weak = Rc::downgrade(&state_rc);
+    let op_ctxs = ops
+      .into_iter()
+      .enumerate()
+      .map(|(id, decl)| OpCtx {
+        id,
+        state: op_state.clone(),
+        runtime_state: weak.clone(),
+        decl: Rc::new(decl),
+        realm_idx: 0,
+      })
+      .collect::<Vec<_>>()
+      .into_boxed_slice();
+
+    let refs = bindings::external_references(&op_ctxs, !options.will_snapshot);
+    // V8 takes ownership of external_references.
+    let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
+    let global_context;
+
+    let (mut isolate, snapshot_options) = if options.will_snapshot {
+      let (snapshot_creator, snapshot_loaded) =
+        if let Some(snapshot) = options.startup_snapshot {
+          (
+            match snapshot {
+              Snapshot::Static(data) => {
+                v8::Isolate::snapshot_creator_from_existing_snapshot(
+                  data,
+                  Some(refs),
+                )
+              }
+              Snapshot::JustCreated(data) => {
+                v8::Isolate::snapshot_creator_from_existing_snapshot(
+                  data,
+                  Some(refs),
+                )
+              }
+              Snapshot::Boxed(data) => {
+                v8::Isolate::snapshot_creator_from_existing_snapshot(
+                  data,
+                  Some(refs),
+                )
+              }
+            },
+            true,
+          )
+        } else {
+          (v8::Isolate::snapshot_creator(Some(refs)), false)
+        };
+
+      let snapshot_options =
+        SnapshotOptions::from_bools(snapshot_loaded, options.will_snapshot);
+
+      let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
         // SAFETY: this is first use of `isolate_ptr` so we are sure we're
         // not overwriting an existing pointer.
@@ -371,11 +467,12 @@ impl JsRuntime {
           isolate_ptr.read()
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(scope, &op_ctxs, false);
+        let context =
+          bindings::initialize_context(scope, &op_ctxs, snapshot_options);
         global_context = v8::Global::new(scope, context);
-        creator.set_default_context(context);
+        scope.set_default_context(context);
       }
-      (isolate, Some(creator))
+      (isolate, snapshot_options)
     } else {
       let mut params = options
         .create_params
@@ -398,6 +495,9 @@ impl JsRuntime {
         false
       };
 
+      let snapshot_options =
+        SnapshotOptions::from_bools(snapshot_loaded, options.will_snapshot);
+
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
@@ -409,71 +509,72 @@ impl JsRuntime {
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
+          bindings::initialize_context(scope, &op_ctxs, snapshot_options);
 
         global_context = v8::Global::new(scope, context);
       }
 
-      (isolate, None)
+      (isolate, snapshot_options)
     };
 
+    global_context.open(&mut isolate).set_slot(
+      &mut isolate,
+      Rc::new(RefCell::new(ContextState {
+        op_ctxs,
+        ..Default::default()
+      })),
+    );
+
     op_state.borrow_mut().put(isolate_ptr);
-    let inspector =
-      JsRuntimeInspector::new(&mut isolate, global_context.clone());
+    let inspector = if options.inspector {
+      Some(JsRuntimeInspector::new(
+        &mut isolate,
+        global_context.clone(),
+        options.is_main,
+      ))
+    } else {
+      None
+    };
 
     let loader = options
       .module_loader
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
+    {
+      let mut state = state_rc.borrow_mut();
+      state.global_realm = Some(JsRealm(global_context.clone()));
+      state.inspector = inspector;
+      state
+        .known_realms
+        .push(v8::Weak::new(&mut isolate, global_context));
+    }
+    isolate.set_data(
+      Self::STATE_DATA_OFFSET,
+      Rc::into_raw(state_rc.clone()) as *mut c_void,
+    );
 
-    let known_realms = vec![v8::Weak::new(&mut isolate, &global_context)];
-    isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
-      global_realm: Some(JsRealm(global_context.clone())),
-      known_realms,
-      pending_promise_exceptions: HashMap::new(),
-      pending_dyn_mod_evaluate: vec![],
-      pending_mod_evaluate: None,
-      dyn_module_evaluate_idle_counter: 0,
-      js_macrotask_cbs: vec![],
-      js_nexttick_cbs: vec![],
-      has_tick_scheduled: false,
-      source_map_getter: options.source_map_getter,
-      source_map_cache: Default::default(),
-      pending_ops: FuturesUnordered::new(),
-      shared_array_buffer_store: options.shared_array_buffer_store,
-      compiled_wasm_module_store: options.compiled_wasm_module_store,
-      op_state: op_state.clone(),
-      op_ctxs,
-      have_unpolled_ops: false,
-      dispatched_exceptions: Default::default(),
-      inspector: Some(inspector),
-      waker: AtomicWaker::new(),
-    })));
-
-    global_context
-      .open(&mut isolate)
-      .set_slot(&mut isolate, Rc::<RefCell<ContextState>>::default());
-
-    let module_map = ModuleMap::new(loader, op_state);
-    isolate.set_slot(Rc::new(RefCell::new(module_map)));
+    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
+    isolate.set_data(
+      Self::MODULE_MAP_DATA_OFFSET,
+      Rc::into_raw(module_map_rc.clone()) as *mut c_void,
+    );
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
-      snapshot_creator: maybe_snapshot_creator,
-      has_snapshotted: false,
-      built_from_snapshot: has_startup_snapshot,
+      snapshot_options,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
+      extensions_with_js: options.extensions_with_js,
+      state: state_rc,
+      module_map: Some(module_map_rc),
+      is_main: options.is_main,
     };
 
-    // TODO(@AaronO): diff extensions inited in snapshot and those provided
-    // for now we assume that snapshot and extensions always match
-    if !has_startup_snapshot {
-      let realm = js_runtime.global_realm();
-      js_runtime.init_extension_js(&realm).unwrap();
-    }
-    // Init extension ops
+    // Init resources and ops before extensions to make sure they are
+    // available during the initialization process.
     js_runtime.init_extension_ops().unwrap();
+    let realm = js_runtime.global_realm();
+    js_runtime.init_extension_js(&realm).unwrap();
     // Init callbacks (opresolve)
     let global_realm = js_runtime.global_realm();
     js_runtime.init_cbs(&global_realm);
@@ -481,58 +582,104 @@ impl JsRuntime {
     js_runtime
   }
 
+  fn drop_state_and_module_map(v8_isolate: &mut OwnedIsolate) {
+    let state_ptr = v8_isolate.get_data(Self::STATE_DATA_OFFSET);
+    let state_rc =
+    // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+    // the runtime.
+    unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    drop(state_rc);
+
+    let module_map_ptr = v8_isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
+    let module_map_rc =
+    // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+    // the runtime.
+    unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+    drop(module_map_rc);
+  }
+
+  #[inline]
+  fn get_module_map(&mut self) -> &Rc<RefCell<ModuleMap>> {
+    self.module_map.as_ref().unwrap()
+  }
+
+  #[inline]
   pub fn global_context(&mut self) -> v8::Global<v8::Context> {
     self.global_realm().0
   }
 
+  #[inline]
   pub fn v8_isolate(&mut self) -> &mut v8::OwnedIsolate {
     self.v8_isolate.as_mut().unwrap()
   }
 
+  #[inline]
   pub fn inspector(&mut self) -> Rc<RefCell<JsRuntimeInspector>> {
-    Self::state(self.v8_isolate()).borrow().inspector()
+    self.state.borrow().inspector()
   }
 
+  #[inline]
   pub fn global_realm(&mut self) -> JsRealm {
-    let state = Self::state(self.v8_isolate());
-    let state = state.borrow();
+    let state = self.state.borrow();
     state.global_realm.clone().unwrap()
   }
 
+  /// Creates a new realm (V8 context) in this JS execution context,
+  /// pre-initialized with all of the extensions that were passed in
+  /// [`RuntimeOptions::extensions_with_js`] when the [`JsRuntime`] was
+  /// constructed.
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
+      let realm_idx = self.state.borrow().known_realms.len();
+
+      let op_ctxs: Box<[OpCtx]> = self
+        .global_realm()
+        .state(self.v8_isolate())
+        .borrow()
+        .op_ctxs
+        .iter()
+        .map(|op_ctx| OpCtx {
+          id: op_ctx.id,
+          state: op_ctx.state.clone(),
+          decl: op_ctx.decl.clone(),
+          runtime_state: op_ctx.runtime_state.clone(),
+          realm_idx,
+        })
+        .collect();
+
       // SAFETY: Having the scope tied to self's lifetime makes it impossible to
-      // reference self.ops while the scope is alive. Here we turn it into an
-      // unbound lifetime, which is sound because 1. it only lives until the end
-      // of this block, and 2. the HandleScope only has access to the isolate,
-      // and nothing else we're accessing from self does.
+      // reference JsRuntimeState::op_ctxs while the scope is alive. Here we
+      // turn it into an unbound lifetime, which is sound because 1. it only
+      // lives until the end of this block, and 2. the HandleScope only has
+      // access to the isolate, and nothing else we're accessing from self does.
       let scope = &mut v8::HandleScope::new(unsafe {
         &mut *(self.v8_isolate() as *mut v8::OwnedIsolate)
       });
-      let context = bindings::initialize_context(
+      let context =
+        bindings::initialize_context(scope, &op_ctxs, self.snapshot_options);
+      context.set_slot(
         scope,
-        &Self::state(self.v8_isolate()).borrow().op_ctxs,
-        self.built_from_snapshot,
+        Rc::new(RefCell::new(ContextState {
+          op_ctxs,
+          ..Default::default()
+        })),
       );
-      context.set_slot(scope, Rc::<RefCell<ContextState>>::default());
 
-      Self::state(scope)
+      self
+        .state
         .borrow_mut()
         .known_realms
-        .push(v8::Weak::new(scope, &context));
+        .push(v8::Weak::new(scope, context));
 
       JsRealm::new(v8::Global::new(scope, context))
     };
 
-    if !self.built_from_snapshot {
-      self.init_extension_js(&realm)?;
-    }
-
+    self.init_extension_js(&realm)?;
     self.init_cbs(&realm);
-
     Ok(realm)
   }
 
+  #[inline]
   pub fn handle_scope(&mut self) -> v8::HandleScope {
     self.global_realm().handle_scope(self.v8_isolate())
   }
@@ -553,36 +700,61 @@ impl JsRuntime {
   }
 
   pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
-    let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
-    s.clone()
+    let state_ptr = isolate.get_data(Self::STATE_DATA_OFFSET);
+    let state_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    let state = state_rc.clone();
+    Rc::into_raw(state_rc);
+    state
   }
 
   pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
-    let module_map = isolate.get_slot::<Rc<RefCell<ModuleMap>>>().unwrap();
-    module_map.clone()
+    let module_map_ptr = isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
+    let module_map_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+    let module_map = module_map_rc.clone();
+    Rc::into_raw(module_map_rc);
+    module_map
   }
 
   /// Initializes JS of provided Extensions in the given realm
   fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
     // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
-    for m in extensions.iter_mut() {
-      let js_files = m.init_js();
+    let extensions = std::mem::take(&mut self.extensions_with_js);
+    for ext in &extensions {
+      let js_files = ext.init_js();
       for (filename, source) in js_files {
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
         realm.execute_script(self.v8_isolate(), filename, source)?;
       }
     }
     // Restore extensions
-    self.extensions = extensions;
+    self.extensions_with_js = extensions;
 
     Ok(())
   }
 
   /// Collects ops from extensions & applies middleware
-  fn collect_ops(extensions: &mut [Extension]) -> Vec<OpDecl> {
+  fn collect_ops(
+    extensions: &mut [Extension],
+    extensions_with_js: &mut [Extension],
+  ) -> Vec<OpDecl> {
+    let mut exts = vec![];
+    exts.extend(extensions);
+    exts.extend(extensions_with_js);
+
+    for (ext, previous_exts) in
+      exts.iter().enumerate().map(|(i, ext)| (ext, &exts[..i]))
+    {
+      ext.check_dependencies(previous_exts);
+    }
+
     // Middleware
-    let middleware: Vec<Box<OpMiddlewareFn>> = extensions
+    let middleware: Vec<Box<OpMiddlewareFn>> = exts
       .iter_mut()
       .filter_map(|e| e.init_middleware())
       .collect();
@@ -591,7 +763,7 @@ impl JsRuntime {
     let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
     // Flatten ops, apply middlware & override disabled ops
-    extensions
+    exts
       .iter_mut()
       .filter_map(|e| e.init_ops())
       .flatten()
@@ -616,73 +788,56 @@ impl JsRuntime {
   fn init_extension_ops(&mut self) -> Result<(), Error> {
     let op_state = self.op_state();
     // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
+    {
+      let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
 
-    // Setup state
-    for e in extensions.iter_mut() {
-      // ops are already registered during in bindings::initialize_context();
-      e.init_state(&mut op_state.borrow_mut())?;
+      // Setup state
+      for e in extensions.iter_mut() {
+        // ops are already registered during in bindings::initialize_context();
+        e.init_state(&mut op_state.borrow_mut())?;
 
-      // Setup event-loop middleware
-      if let Some(middleware) = e.init_event_loop_middleware() {
-        self.event_loop_middlewares.push(middleware);
+        // Setup event-loop middleware
+        if let Some(middleware) = e.init_event_loop_middleware() {
+          self.event_loop_middlewares.push(middleware);
+        }
       }
+
+      // Restore extensions
+      self.extensions = extensions;
     }
+    {
+      let mut extensions: Vec<Extension> =
+        std::mem::take(&mut self.extensions_with_js);
 
-    // Restore extensions
-    self.extensions = extensions;
+      // Setup state
+      for e in extensions.iter_mut() {
+        // ops are already registered during in bindings::initialize_context();
+        e.init_state(&mut op_state.borrow_mut())?;
 
+        // Setup event-loop middleware
+        if let Some(middleware) = e.init_event_loop_middleware() {
+          self.event_loop_middlewares.push(middleware);
+        }
+      }
+
+      // Restore extensions
+      self.extensions_with_js = extensions;
+    }
     Ok(())
   }
 
-  /// Grab a Global handle to a v8 value returned by the expression
-  pub(crate) fn grab<'s, T>(
+  pub fn eval<'s, T>(
     scope: &mut v8::HandleScope<'s>,
-    root: v8::Local<'s, v8::Value>,
-    path: &str,
+    code: &str,
   ) -> Option<v8::Local<'s, T>>
   where
     v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
   {
-    path
-      .split('.')
-      .fold(Some(root), |p, k| {
-        let p = v8::Local::<v8::Object>::try_from(p?).ok()?;
-        let k = v8::String::new(scope, k)?;
-        p.get(scope, k.into())
-      })?
-      .try_into()
-      .ok()
-  }
-
-  pub fn grab_global<'s, T>(
-    scope: &mut v8::HandleScope<'s>,
-    path: &str,
-  ) -> Option<v8::Local<'s, T>>
-  where
-    v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
-  {
-    let context = scope.get_current_context();
-    let global = context.global(scope);
-    Self::grab(scope, global.into(), path)
-  }
-
-  pub(crate) fn ensure_objs<'s>(
-    scope: &mut v8::HandleScope<'s>,
-    root: v8::Local<'s, v8::Object>,
-    path: &str,
-  ) -> Option<v8::Local<'s, v8::Object>> {
-    path.split('.').fold(Some(root), |p, k| {
-      let k = v8::String::new(scope, k)?.into();
-      match p?.get(scope, k) {
-        Some(v) if !v.is_null_or_undefined() => v.try_into().ok(),
-        _ => {
-          let o = v8::Object::new(scope);
-          p?.set(scope, k, o.into());
-          Some(o)
-        }
-      }
-    })
+    let scope = &mut v8::EscapableHandleScope::new(scope);
+    let source = v8::String::new(scope, code).unwrap();
+    let script = v8::Script::compile(scope, source, None).unwrap();
+    let v = script.run(scope)?;
+    scope.escape(v).try_into().ok()
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
@@ -690,20 +845,21 @@ impl JsRuntime {
     let (recv_cb, build_custom_error_cb) = {
       let scope = &mut realm.handle_scope(self.v8_isolate());
       let recv_cb =
-        Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve")
-          .expect("Deno.core.opresolve is undefined in the realm");
-      let recv_cb = v8::Global::new(scope, recv_cb);
+        Self::eval::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
       let build_custom_error_cb =
-        Self::grab_global::<v8::Function>(scope, "Deno.core.buildCustomError")
+        Self::eval::<v8::Function>(scope, "Deno.core.buildCustomError")
           .expect("Deno.core.buildCustomError is undefined in the realm");
-      let build_custom_error_cb = v8::Global::new(scope, build_custom_error_cb);
-      (recv_cb, build_custom_error_cb)
+      (
+        v8::Global::new(scope, recv_cb),
+        v8::Global::new(scope, build_custom_error_cb),
+      )
     };
-    // Put global handle in callback state
-    let state = realm.state(self.v8_isolate());
-    state.borrow_mut().js_recv_cb.replace(recv_cb);
+
+    // Put global handles in the realm's ContextState
+    let state_rc = realm.state(self.v8_isolate());
+    let mut state = state_rc.borrow_mut();
+    state.js_recv_cb.replace(recv_cb);
     state
-      .borrow_mut()
       .js_build_custom_error_cb
       .replace(build_custom_error_cb);
   }
@@ -711,8 +867,7 @@ impl JsRuntime {
   /// Returns the runtime's op state, which can be used to maintain ops
   /// and access resources between op calls.
   pub fn op_state(&mut self) -> Rc<RefCell<OpState>> {
-    let state_rc = Self::state(self.v8_isolate());
-    let state = state_rc.borrow();
+    let state = self.state.borrow();
     state.op_state.clone()
   }
 
@@ -744,14 +899,12 @@ impl JsRuntime {
   /// set to true.
   ///
   /// `Error` can usually be downcast to `JsError`.
-  pub fn snapshot(&mut self) -> v8::StartupData {
-    assert!(self.snapshot_creator.is_some());
-
+  pub fn snapshot(mut self) -> v8::StartupData {
     // Nuke Deno.core.ops.* to avoid ExternalReference snapshotting issues
     // TODO(@AaronO): make ops stable across snapshots
     {
       let scope = &mut self.handle_scope();
-      let o = Self::grab_global::<v8::Object>(scope, "Deno.core.ops").unwrap();
+      let o = Self::eval::<v8::Object>(scope, "Deno.core.ops").unwrap();
       let names = o.get_own_property_names(scope, Default::default()).unwrap();
       for i in 0..names.length() {
         let key = names.get_index(scope, i).unwrap();
@@ -759,49 +912,42 @@ impl JsRuntime {
       }
     }
 
-    let state = Self::state(self.v8_isolate());
+    self.state.borrow_mut().global_realm.take();
+    self.state.borrow_mut().inspector.take();
 
-    state.borrow_mut().global_realm.take();
-
-    state.borrow_mut().inspector.take();
-
-    // Overwrite existing ModuleMap to drop v8::Global handles
-    self
-      .v8_isolate()
-      .set_slot(Rc::new(RefCell::new(ModuleMap::new(
-        Rc::new(NoopModuleLoader),
-        state.borrow().op_state.clone(),
-      ))));
-
+    // Drop existing ModuleMap to drop v8::Global handles
+    {
+      self.module_map.take();
+      let v8_isolate = self.v8_isolate();
+      Self::drop_state_and_module_map(v8_isolate);
+    }
     // Drop other v8::Global handles before snapshotting
     {
-      for weak_context in &state.borrow().known_realms {
-        if let Some(context) = weak_context.to_global(self.v8_isolate()) {
+      for weak_context in &self.state.clone().borrow().known_realms {
+        let v8_isolate = self.v8_isolate();
+        if let Some(context) = weak_context.to_global(v8_isolate) {
           let realm = JsRealm::new(context.clone());
-          let realm_state = realm.state(self.v8_isolate());
-          std::mem::take(&mut realm_state.borrow_mut().js_recv_cb);
-          std::mem::take(
-            &mut realm_state.borrow_mut().js_build_custom_error_cb,
-          );
-          context
-            .open(self.v8_isolate())
-            .clear_all_slots(self.v8_isolate());
+          let realm_state_rc = realm.state(v8_isolate);
+          let mut realm_state = realm_state_rc.borrow_mut();
+          std::mem::take(&mut realm_state.js_recv_cb);
+          std::mem::take(&mut realm_state.js_build_custom_error_cb);
+          std::mem::take(&mut realm_state.js_promise_reject_cb);
+          std::mem::take(&mut realm_state.js_format_exception_cb);
+          std::mem::take(&mut realm_state.js_wasm_streaming_cb);
+          context.open(v8_isolate).clear_all_slots(v8_isolate);
         }
       }
-      let mut state = state.borrow_mut();
-      state.known_realms.clear();
-      // Free up additional global handles before creating the snapshot
+
+      let mut state = self.state.borrow_mut();
       state.js_macrotask_cbs.clear();
       state.js_nexttick_cbs.clear();
+      state.known_realms.clear();
     }
 
-    let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
-    let snapshot = snapshot_creator
+    let snapshot_creator = self.v8_isolate.take().unwrap();
+    snapshot_creator
       .create_blob(v8::FunctionCodeHandling::Keep)
-      .unwrap();
-    self.has_snapshotted = true;
-
-    snapshot
+      .unwrap()
   }
 
   /// Returns the namespace object of a module.
@@ -894,6 +1040,19 @@ impl JsRuntime {
     }
   }
 
+  pub fn maybe_init_inspector(&mut self) {
+    if self.state.borrow().inspector.is_some() {
+      return;
+    }
+
+    let mut state = self.state.borrow_mut();
+    state.inspector = Some(JsRuntimeInspector::new(
+      self.v8_isolate.as_mut().unwrap(),
+      state.global_realm.clone().unwrap().0,
+      self.is_main,
+    ));
+  }
+
   pub fn poll_value(
     &mut self,
     global: &v8::Global<v8::Value>,
@@ -963,24 +1122,23 @@ impl JsRuntime {
     cx: &mut Context,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), Error>> {
-    // We always poll the inspector first
-    let _ = self.inspector().borrow_mut().poll_unpin(cx);
-    let state_rc = Self::state(self.v8_isolate());
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let has_inspector: bool;
+
     {
-      let state = state_rc.borrow();
+      let state = self.state.borrow();
+      has_inspector = state.inspector.is_some();
       state.waker.register(cx.waker());
+    }
+
+    if has_inspector {
+      // We poll the inspector first.
+      let _ = self.inspector().borrow_mut().poll_unpin(cx);
     }
 
     self.pump_v8_message_loop()?;
 
     // Ops
-    {
-      self.resolve_async_ops(cx)?;
-      self.drain_nexttick()?;
-      self.drain_macrotasks()?;
-      self.check_promise_exceptions()?;
-    }
+    self.resolve_async_ops(cx)?;
     // Dynamic module loading - ie. modules loaded using "import()"
     {
       // Run in a loop so that dynamic imports that only depend on another
@@ -1005,14 +1163,18 @@ impl JsRuntime {
           break;
         }
       }
-
-      self.check_promise_exceptions()?;
     }
+    // Run all next tick callbacks and macrotasks callbacks and only then
+    // check for any promise exceptions (`unhandledrejection` handlers are
+    // run in macrotasks callbacks so we need to let them run first).
+    self.drain_nexttick()?;
+    self.drain_macrotasks()?;
+    self.check_promise_exceptions()?;
 
     // Event loop middlewares
     let mut maybe_scheduling = false;
     {
-      let op_state = state_rc.borrow().op_state.clone();
+      let op_state = self.state.borrow().op_state.clone();
       for f in &self.event_loop_middlewares {
         if f(op_state.clone(), cx) {
           maybe_scheduling = true;
@@ -1023,20 +1185,32 @@ impl JsRuntime {
     // Top level module
     self.evaluate_pending_module();
 
-    let pending_state = Self::event_loop_pending_state(self.v8_isolate());
-    let inspector_has_active_sessions =
-      self.inspector().borrow_mut().has_active_sessions();
-
+    let pending_state = self.event_loop_pending_state();
     if !pending_state.is_pending() && !maybe_scheduling {
-      if wait_for_inspector && inspector_has_active_sessions {
-        return Poll::Pending;
+      if has_inspector {
+        let inspector = self.inspector();
+        let has_active_sessions = inspector.borrow().has_active_sessions();
+        let has_blocking_sessions = inspector.borrow().has_blocking_sessions();
+
+        if wait_for_inspector && has_active_sessions {
+          // If there are no blocking sessions (eg. REPL) we can now notify
+          // debugger that the program has finished running and we're ready
+          // to exit the process once debugger disconnects.
+          if !has_blocking_sessions {
+            let context = self.global_context();
+            let scope = &mut self.handle_scope();
+            inspector.borrow_mut().context_destroyed(scope, context);
+            println!("Program finished. Waiting for inspector to disconnect to exit the process...");
+          }
+
+          return Poll::Pending;
+        }
       }
 
       return Poll::Ready(Ok(()));
     }
 
-    let mut state = state_rc.borrow_mut();
-    let module_map = module_map_rc.borrow();
+    let state = self.state.borrow();
 
     // Check if more async ops have been dispatched
     // during this turn of event loop.
@@ -1053,6 +1227,8 @@ impl JsRuntime {
       state.waker.wake();
     }
 
+    drop(state);
+
     if pending_state.has_pending_module_evaluation {
       if pending_state.has_pending_refed_ops
         || pending_state.has_pending_dyn_imports
@@ -1063,8 +1239,16 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else {
-        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promises.";
-        return Poll::Ready(Err(generic_error(msg)));
+        let scope = &mut self.handle_scope();
+        let messages = find_stalled_top_level_await(scope);
+        // We are gonna print only a single message to provide a nice formatting
+        // with source line of offending promise shown. Once user fixed it, then
+        // they will get another error message for the next promise (but this
+        // situation is gonna be very rare, if ever happening).
+        assert!(!messages.is_empty());
+        let msg = v8::Local::new(scope, messages[0].clone());
+        let js_error = JsError::from_v8_message(scope, msg);
+        return Poll::Ready(Err(js_error.into()));
       }
     }
 
@@ -1075,18 +1259,19 @@ impl JsRuntime {
         || pending_state.has_tick_scheduled
       {
         // pass, will be polled again
-      } else if state.dyn_module_evaluate_idle_counter >= 1 {
-        let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promises.
-Pending dynamic modules:\n".to_string();
-        for pending_evaluate in &state.pending_dyn_mod_evaluate {
-          let module_info = module_map
-            .get_info_by_id(&pending_evaluate.module_id)
-            .unwrap();
-          msg.push_str("- ");
-          msg.push_str(module_info.name.as_str());
-        }
-        return Poll::Ready(Err(generic_error(msg)));
+      } else if self.state.borrow().dyn_module_evaluate_idle_counter >= 1 {
+        let scope = &mut self.handle_scope();
+        let messages = find_stalled_top_level_await(scope);
+        // We are gonna print only a single message to provide a nice formatting
+        // with source line of offending promise shown. Once user fixed it, then
+        // they will get another error message for the next promise (but this
+        // situation is gonna be very rare, if ever happening).
+        assert!(!messages.is_empty());
+        let msg = v8::Local::new(scope, messages[0].clone());
+        let js_error = JsError::from_v8_message(scope, msg);
+        return Poll::Ready(Err(js_error.into()));
       } else {
+        let mut state = self.state.borrow_mut();
         // Delay the above error by one spin of the event loop. A dynamic import
         // evaluation may complete during this, in which case the counter will
         // reset.
@@ -1098,18 +1283,97 @@ Pending dynamic modules:\n".to_string();
     Poll::Pending
   }
 
-  pub(crate) fn event_loop_pending_state(
+  fn event_loop_pending_state(&mut self) -> EventLoopPendingState {
+    EventLoopPendingState::new(
+      self.v8_isolate.as_mut().unwrap(),
+      &mut self.state.borrow_mut(),
+      &self.module_map.as_ref().unwrap().borrow(),
+    )
+  }
+
+  pub(crate) fn event_loop_pending_state_from_isolate(
     isolate: &mut v8::Isolate,
   ) -> EventLoopPendingState {
-    let state_rc = Self::state(isolate);
-    let module_map_rc = Self::module_map(isolate);
-    let state = state_rc.borrow_mut();
-    let module_map = module_map_rc.borrow();
+    EventLoopPendingState::new(
+      isolate,
+      &mut Self::state(isolate).borrow_mut(),
+      &Self::module_map(isolate).borrow(),
+    )
+  }
+}
 
+fn get_stalled_top_level_await_message_for_module(
+  scope: &mut v8::HandleScope,
+  module_id: ModuleId,
+) -> Vec<v8::Global<v8::Message>> {
+  let module_map = JsRuntime::module_map(scope);
+  let module_map = module_map.borrow();
+  let module_handle = module_map.handles_by_id.get(&module_id).unwrap();
+
+  let module = v8::Local::new(scope, module_handle);
+  let stalled = module.get_stalled_top_level_await_message(scope);
+  let mut messages = vec![];
+  for (_, message) in stalled {
+    messages.push(v8::Global::new(scope, message));
+  }
+  messages
+}
+
+fn find_stalled_top_level_await(
+  scope: &mut v8::HandleScope,
+) -> Vec<v8::Global<v8::Message>> {
+  let module_map = JsRuntime::module_map(scope);
+  let module_map = module_map.borrow();
+
+  // First check if that's root module
+  let root_module_id = module_map
+    .info
+    .values()
+    .filter(|m| m.main)
+    .map(|m| m.id)
+    .next();
+
+  if let Some(root_module_id) = root_module_id {
+    let messages =
+      get_stalled_top_level_await_message_for_module(scope, root_module_id);
+    if !messages.is_empty() {
+      return messages;
+    }
+  }
+
+  // It wasn't a top module, so iterate over all modules and try to find
+  // any with stalled top level await
+  let module_ids = module_map.handles_by_id.keys().copied().collect::<Vec<_>>();
+  for module_id in module_ids {
+    let messages =
+      get_stalled_top_level_await_message_for_module(scope, module_id);
+    if !messages.is_empty() {
+      return messages;
+    }
+  }
+
+  unreachable!()
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct EventLoopPendingState {
+  has_pending_refed_ops: bool,
+  has_pending_dyn_imports: bool,
+  has_pending_dyn_module_evaluation: bool,
+  has_pending_module_evaluation: bool,
+  has_pending_background_tasks: bool,
+  has_tick_scheduled: bool,
+}
+impl EventLoopPendingState {
+  pub fn new(
+    isolate: &mut v8::Isolate,
+    state: &mut JsRuntimeState,
+    module_map: &ModuleMap,
+  ) -> EventLoopPendingState {
     let mut num_unrefed_ops = 0;
     for weak_context in &state.known_realms {
       if let Some(context) = weak_context.to_global(isolate) {
-        let realm = JsRealm::new(context);
+        let realm = JsRealm(context);
         num_unrefed_ops += realm.state(isolate).borrow().unrefed_ops.len();
       }
     }
@@ -1125,18 +1389,7 @@ Pending dynamic modules:\n".to_string();
       has_tick_scheduled: state.has_tick_scheduled,
     }
   }
-}
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) struct EventLoopPendingState {
-  has_pending_refed_ops: bool,
-  has_pending_dyn_imports: bool,
-  has_pending_dyn_module_evaluation: bool,
-  has_pending_module_evaluation: bool,
-  has_pending_background_tasks: bool,
-  has_tick_scheduled: bool,
-}
-impl EventLoopPendingState {
   pub fn is_pending(&self) -> bool {
     self.has_pending_refed_ops
       || self.has_pending_dyn_imports
@@ -1263,7 +1516,6 @@ impl JsRuntime {
     load_id: ModuleLoadId,
     id: ModuleId,
   ) -> Result<(), Error> {
-    let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
 
     let module_handle = module_map_rc
@@ -1293,7 +1545,9 @@ impl JsRuntime {
     // For more details see:
     // https://github.com/denoland/deno/issues/4908
     // https://v8.dev/features/top-level-await#module-execution-order
-    let scope = &mut self.handle_scope();
+    let global_realm = self.state.borrow_mut().global_realm.clone().unwrap();
+    let scope =
+      &mut global_realm.handle_scope(self.v8_isolate.as_mut().unwrap());
     let tc_scope = &mut v8::TryCatch::new(scope);
     let module = v8::Local::new(tc_scope, &module_handle);
     let maybe_value = module.evaluate(tc_scope);
@@ -1310,7 +1564,6 @@ impl JsRuntime {
         .expect("Expected to get promise as module evaluation result");
       let empty_fn = bindings::create_empty_fn(tc_scope).unwrap();
       promise.catch(tc_scope, empty_fn);
-      let mut state = state_rc.borrow_mut();
       let promise_global = v8::Global::new(tc_scope, promise);
       let module_global = v8::Global::new(tc_scope, module);
 
@@ -1321,7 +1574,11 @@ impl JsRuntime {
         module: module_global,
       };
 
-      state.pending_dyn_mod_evaluate.push(dyn_import_mod_evaluate);
+      self
+        .state
+        .borrow_mut()
+        .pending_dyn_mod_evaluate
+        .push(dyn_import_mod_evaluate);
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
       return Err(
         generic_error("Cannot evaluate dynamically imported module, because JavaScript execution has been terminated.")
@@ -1348,7 +1605,7 @@ impl JsRuntime {
     &mut self,
     id: ModuleId,
   ) -> oneshot::Receiver<Result<(), Error>> {
-    let state_rc = Self::state(self.v8_isolate());
+    let state_rc = self.state.clone();
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -1478,7 +1735,7 @@ impl JsRuntime {
   }
 
   fn dynamic_import_resolve(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
-    let state_rc = Self::state(self.v8_isolate());
+    let state_rc = self.state.clone();
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
@@ -1513,11 +1770,16 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), Error>> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
-
-    if module_map_rc.borrow().preparing_dynamic_imports.is_empty() {
+    if self
+      .get_module_map()
+      .borrow()
+      .preparing_dynamic_imports
+      .is_empty()
+    {
       return Poll::Ready(Ok(()));
     }
+
+    let module_map_rc = self.get_module_map().clone();
 
     loop {
       let poll_result = module_map_rc
@@ -1551,11 +1813,16 @@ impl JsRuntime {
   }
 
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), Error>> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
-
-    if module_map_rc.borrow().pending_dynamic_imports.is_empty() {
+    if self
+      .get_module_map()
+      .borrow()
+      .pending_dynamic_imports
+      .is_empty()
+    {
       return Poll::Ready(Ok(()));
     }
+
+    let module_map_rc = self.get_module_map().clone();
 
     loop {
       let poll_result = module_map_rc
@@ -1642,16 +1909,15 @@ impl JsRuntime {
   /// resolved or rejected the promise. If the promise is still pending
   /// then another turn of event loop must be performed.
   fn evaluate_pending_module(&mut self) {
-    let state_rc = Self::state(self.v8_isolate());
-
     let maybe_module_evaluation =
-      state_rc.borrow_mut().pending_mod_evaluate.take();
+      self.state.borrow_mut().pending_mod_evaluate.take();
 
     if maybe_module_evaluation.is_none() {
       return;
     }
 
     let mut module_evaluation = maybe_module_evaluation.unwrap();
+    let state_rc = self.state.clone();
     let scope = &mut self.handle_scope();
 
     let promise_global = module_evaluation.promise.clone().unwrap();
@@ -1692,11 +1958,13 @@ impl JsRuntime {
 
   // Returns true if some dynamic import was resolved.
   fn evaluate_dyn_imports(&mut self) -> bool {
-    let mut resolved_any = false;
-    let state_rc = Self::state(self.v8_isolate());
-    let mut still_pending = vec![];
     let pending =
-      std::mem::take(&mut state_rc.borrow_mut().pending_dyn_mod_evaluate);
+      std::mem::take(&mut self.state.borrow_mut().pending_dyn_mod_evaluate);
+    if pending.is_empty() {
+      return false;
+    }
+    let mut resolved_any = false;
+    let mut still_pending = vec![];
     for pending_dyn_evaluate in pending {
       let maybe_result = {
         let scope = &mut self.handle_scope();
@@ -1734,7 +2002,7 @@ impl JsRuntime {
         }
       }
     }
-    state_rc.borrow_mut().pending_dyn_mod_evaluate = still_pending;
+    self.state.borrow_mut().pending_dyn_mod_evaluate = still_pending;
     resolved_any
   }
 
@@ -1761,6 +2029,7 @@ impl JsRuntime {
           true,
           specifier.as_str(),
           code.as_bytes(),
+          false,
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -1820,6 +2089,7 @@ impl JsRuntime {
           false,
           specifier.as_str(),
           code.as_bytes(),
+          false,
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -1857,8 +2127,7 @@ impl JsRuntime {
   }
 
   fn check_promise_exceptions(&mut self) -> Result<(), Error> {
-    let state_rc = Self::state(self.v8_isolate());
-    let mut state = state_rc.borrow_mut();
+    let mut state = self.state.borrow_mut();
 
     if state.pending_promise_exceptions.is_empty() {
       return Ok(());
@@ -1882,69 +2151,47 @@ impl JsRuntime {
 
   // Send finished responses to JS
   fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
-    let state_rc = Self::state(self.v8_isolate());
+    // We have a specialized implementation of this method for the common case
+    // where there is only one realm.
+    let num_realms = self.state.borrow().known_realms.len();
+    if num_realms == 1 {
+      return self.resolve_single_realm_async_ops(cx);
+    }
 
-    // We keep a list of promise IDs and OpResults per realm. Since v8::Context
-    // isn't hashable, `results_per_realm` is a vector of (context, list) tuples
-    type ResultList = Vec<(i32, OpResult)>;
-    let mut results_per_realm: Vec<(v8::Global<v8::Context>, ResultList)> = {
-      let known_realms = &mut state_rc.borrow_mut().known_realms;
-      let mut results = Vec::with_capacity(known_realms.len());
-
-      // Avoid calling the method multiple times
-      let isolate = self.v8_isolate();
-
-      // Remove GC'd realms from `known_realms` at the same time as we populate
-      // `results` with those that are still alive.
-      known_realms.retain(|weak| {
-        if !weak.is_empty() {
-          let context = weak.to_global(isolate).unwrap();
-          results.push((context, vec![]));
-          true
-        } else {
-          false
-        }
-      });
-
-      results
-    };
+    // `responses_per_realm[idx]` is a vector containing the promise ID and
+    // response for all promises in realm `self.state.known_realms[idx]`.
+    let mut responses_per_realm: Vec<Vec<(PromiseId, OpResult)>> =
+      (0..num_realms).map(|_| vec![]).collect();
 
     // Now handle actual ops.
     {
-      let mut state = state_rc.borrow_mut();
+      let mut state = self.state.borrow_mut();
       state.have_unpolled_ops = false;
 
       while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
       {
-        let (context, promise_id, op_id, resp) = item;
+        let (realm_idx, promise_id, op_id, resp) = item;
         state.op_state.borrow().tracker.track_async_completed(op_id);
-        for (context2, results) in results_per_realm.iter_mut() {
-          if context == *context2 {
-            results.push((promise_id, resp));
-            break;
-          }
-        }
-        JsRealm::new(context)
-          .state(self.v8_isolate())
-          .borrow_mut()
-          .unrefed_ops
-          .remove(&promise_id);
+        responses_per_realm[realm_idx].push((promise_id, resp));
       }
     }
 
-    for (context, results) in results_per_realm {
-      if results.is_empty() {
+    // Handle responses for each realm.
+    let isolate = self.v8_isolate.as_mut().unwrap();
+    for (realm_idx, responses) in responses_per_realm.into_iter().enumerate() {
+      if responses.is_empty() {
         continue;
       }
 
-      let realm = JsRealm::new(context);
-      let js_recv_cb_handle = realm
-        .state(self.v8_isolate())
-        .borrow()
-        .js_recv_cb
-        .clone()
-        .unwrap();
-      let scope = &mut realm.handle_scope(self.v8_isolate());
+      let realm = {
+        let context = self.state.borrow().known_realms[realm_idx]
+          .to_global(isolate)
+          .unwrap();
+        JsRealm(context)
+      };
+      let context_state_rc = realm.state(isolate);
+      let mut context_state = context_state_rc.borrow_mut();
+      let scope = &mut realm.handle_scope(isolate);
 
       // We return async responses to JS in unbounded batches (may change),
       // each batch is a flat vector of tuples:
@@ -1953,9 +2200,14 @@ impl JsRuntime {
       // which contains a value OR an error, encoded as a tuple.
       // This batch is received in JS via the special `arguments` variable
       // and then each tuple is used to resolve or reject promises
-      let mut args = vec![];
+      //
+      // This can handle 16 promises (32 / 2) futures in a single batch without heap
+      // allocations.
+      let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
+        SmallVec::with_capacity(responses.len() * 2);
 
-      for (promise_id, mut resp) in results.into_iter() {
+      for (promise_id, mut resp) in responses {
+        context_state.unrefed_ops.remove(&promise_id);
         args.push(v8::Integer::new(scope, promise_id).into());
         args.push(match resp.to_v8(scope) {
           Ok(v) => v,
@@ -1965,12 +2217,16 @@ impl JsRuntime {
         });
       }
 
+      let js_recv_cb_handle = context_state.js_recv_cb.clone().unwrap();
       let tc_scope = &mut v8::TryCatch::new(scope);
       let js_recv_cb = js_recv_cb_handle.open(tc_scope);
       let this = v8::undefined(tc_scope).into();
+      drop(context_state);
       js_recv_cb.call(tc_scope, this, args.as_slice());
 
       if let Some(exception) = tc_scope.exception() {
+        // TODO(@andreubotella): Returning here can cause async ops in other
+        // realms to never resolve.
         return exception_to_err_result(tc_scope, exception, false);
       }
     }
@@ -1978,14 +2234,85 @@ impl JsRuntime {
     Ok(())
   }
 
-  fn drain_macrotasks(&mut self) -> Result<(), Error> {
-    let state = Self::state(self.v8_isolate());
+  fn resolve_single_realm_async_ops(
+    &mut self,
+    cx: &mut Context,
+  ) -> Result<(), Error> {
+    let isolate = self.v8_isolate.as_mut().unwrap();
+    let scope = &mut self
+      .state
+      .borrow()
+      .global_realm
+      .as_ref()
+      .unwrap()
+      .handle_scope(isolate);
 
-    if state.borrow().js_macrotask_cbs.is_empty() {
+    // We return async responses to JS in unbounded batches (may change),
+    // each batch is a flat vector of tuples:
+    // `[promise_id1, op_result1, promise_id2, op_result2, ...]`
+    // promise_id is a simple integer, op_result is an ops::OpResult
+    // which contains a value OR an error, encoded as a tuple.
+    // This batch is received in JS via the special `arguments` variable
+    // and then each tuple is used to resolve or reject promises
+    //
+    // This can handle 16 promises (32 / 2) futures in a single batch without heap
+    // allocations.
+    let mut args: SmallVec<[v8::Local<v8::Value>; 32]> = SmallVec::new();
+
+    // Now handle actual ops.
+    {
+      let mut state = self.state.borrow_mut();
+      state.have_unpolled_ops = false;
+
+      let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
+      let mut realm_state = realm_state_rc.borrow_mut();
+
+      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
+      {
+        let (realm_idx, promise_id, op_id, mut resp) = item;
+        debug_assert_eq!(
+          state.known_realms[realm_idx],
+          state.global_realm.as_ref().unwrap().context()
+        );
+        realm_state.unrefed_ops.remove(&promise_id);
+        state.op_state.borrow().tracker.track_async_completed(op_id);
+        args.push(v8::Integer::new(scope, promise_id).into());
+        args.push(match resp.to_v8(scope) {
+          Ok(v) => v,
+          Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
+            .to_v8(scope)
+            .unwrap(),
+        });
+      }
+    }
+
+    if args.is_empty() {
       return Ok(());
     }
 
-    let js_macrotask_cb_handles = state.borrow().js_macrotask_cbs.clone();
+    let js_recv_cb_handle = {
+      let state = self.state.borrow_mut();
+      let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
+      let handle = realm_state_rc.borrow().js_recv_cb.clone().unwrap();
+      handle
+    };
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let js_recv_cb = js_recv_cb_handle.open(tc_scope);
+    let this = v8::undefined(tc_scope).into();
+    js_recv_cb.call(tc_scope, this, args.as_slice());
+
+    match tc_scope.exception() {
+      None => Ok(()),
+      Some(exception) => exception_to_err_result(tc_scope, exception, false),
+    }
+  }
+
+  fn drain_macrotasks(&mut self) -> Result<(), Error> {
+    if self.state.borrow().js_macrotask_cbs.is_empty() {
+      return Ok(());
+    }
+
+    let js_macrotask_cb_handles = self.state.borrow().js_macrotask_cbs.clone();
     let scope = &mut self.handle_scope();
 
     for js_macrotask_cb_handle in js_macrotask_cb_handles {
@@ -2018,12 +2345,11 @@ impl JsRuntime {
   }
 
   fn drain_nexttick(&mut self) -> Result<(), Error> {
-    let state = Self::state(self.v8_isolate());
-
-    if state.borrow().js_nexttick_cbs.is_empty() {
+    if self.state.borrow().js_nexttick_cbs.is_empty() {
       return Ok(());
     }
 
+    let state = self.state.clone();
     if !state.borrow().has_tick_scheduled {
       let scope = &mut self.handle_scope();
       scope.perform_microtask_checkpoint();
@@ -2056,20 +2382,28 @@ impl JsRuntime {
 /// A representation of a JavaScript realm tied to a [`JsRuntime`], that allows
 /// execution in the realm's context.
 ///
-/// A [`JsRealm`] instance does not hold ownership of its corresponding realm,
-/// so they can be created and dropped as needed. And since every operation on
-/// them requires passing a mutable reference to the [`JsRuntime`], multiple
-/// [`JsRealm`] instances won't overlap.
+/// A [`JsRealm`] instance is a reference to an already existing realm, which
+/// does not hold ownership of it, so instances can be created and dropped as
+/// needed. As such, calling [`JsRealm::new`] doesn't create a new realm, and
+/// cloning a [`JsRealm`] only creates a new reference. See
+/// [`JsRuntime::create_realm`] to create new realms instead.
+///
+/// Despite [`JsRealm`] instances being references, multiple instances that
+/// point to the same realm won't overlap because every operation requires
+/// passing a mutable reference to the [`v8::Isolate`]. Therefore, no operation
+/// on two [`JsRealm`] instances tied to the same isolate can be run at the same
+/// time, regardless of whether they point to the same realm.
 ///
 /// # Panics
 ///
-/// Every method of [`JsRealm`] will panic if you call if with a reference to a
+/// Every method of [`JsRealm`] will panic if you call it with a reference to a
 /// [`v8::Isolate`] other than the one that corresponds to the current context.
 ///
 /// # Lifetime of the realm
 ///
-/// A [`JsRealm`] instance will keep the underlying V8 context alive even if it
-/// would have otherwise been garbage collected.
+/// As long as the corresponding isolate is alive, a [`JsRealm`] instance will
+/// keep the underlying V8 context alive even if it would have otherwise been
+/// garbage collected.
 #[derive(Clone)]
 pub struct JsRealm(v8::Global<v8::Context>);
 impl JsRealm {
@@ -2081,10 +2415,7 @@ impl JsRealm {
     &self.0
   }
 
-  pub(crate) fn state(
-    &self,
-    isolate: &mut v8::Isolate,
-  ) -> Rc<RefCell<ContextState>> {
+  fn state(&self, isolate: &mut v8::Isolate) -> Rc<RefCell<ContextState>> {
     self
       .context()
       .open(isolate)
@@ -2169,13 +2500,43 @@ impl JsRealm {
 }
 
 #[inline]
+pub fn queue_fast_async_op(
+  ctx: &OpCtx,
+  op: impl Future<Output = (RealmIdx, PromiseId, OpId, OpResult)> + 'static,
+) {
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // atleast 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
+
+  let mut state = runtime_state.borrow_mut();
+  state.pending_ops.push(OpCall::lazy(op));
+  state.have_unpolled_ops = true;
+}
+
+#[inline]
 pub fn queue_async_op(
-  state: Rc<RefCell<OpState>>,
+  ctx: &OpCtx,
   scope: &mut v8::HandleScope,
   deferred: bool,
-  op: impl Future<Output = (v8::Global<v8::Context>, PromiseId, OpId, OpResult)>
-    + 'static,
+  op: impl Future<Output = (RealmIdx, PromiseId, OpId, OpResult)> + 'static,
 ) {
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // atleast 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
+
+  // An op's realm (as given by `OpCtx::realm_idx`) must match the realm in
+  // which it is invoked. Otherwise, we might have cross-realm object exposure.
+  // deno_core doesn't currently support such exposure, even though embedders
+  // can cause them, so we panic in debug mode (since the check is expensive).
+  debug_assert_eq!(
+    runtime_state.borrow().known_realms[ctx.realm_idx].to_local(scope),
+    Some(scope.get_current_context())
+  );
+
   match OpCall::eager(op) {
     // This calls promise.resolve() before the control goes back to userland JS. It works something
     // along the lines of:
@@ -2186,34 +2547,31 @@ pub fn queue_async_op(
     // const p = setPromise();
     // op.op_async(promiseId, ...); // Calls `opresolve`
     // return p;
-    EagerPollResult::Ready((context, promise_id, op_id, mut resp))
-      if !deferred =>
-    {
+    EagerPollResult::Ready((_, promise_id, op_id, mut resp)) if !deferred => {
+      let context_state_rc = JsRealm::state_from_scope(scope);
+      let context_state = context_state_rc.borrow();
+
       let args = &[
         v8::Integer::new(scope, promise_id).into(),
         resp.to_v8(scope).unwrap(),
       ];
 
-      let realm = JsRealm::new(context);
-      let js_recv_cb_handle =
-        realm.state(scope).borrow().js_recv_cb.clone().unwrap();
-      state.borrow().tracker.track_async_completed(op_id);
+      ctx.state.borrow_mut().tracker.track_async_completed(op_id);
 
       let tc_scope = &mut v8::TryCatch::new(scope);
-      let js_recv_cb = js_recv_cb_handle.open(tc_scope);
+      let js_recv_cb =
+        context_state.js_recv_cb.as_ref().unwrap().open(tc_scope);
       let this = v8::undefined(tc_scope).into();
       js_recv_cb.call(tc_scope, this, args);
     }
     EagerPollResult::Ready(op) => {
       let ready = OpCall::ready(op);
-      let state_rc = JsRuntime::state(scope);
-      let mut state = state_rc.borrow_mut();
+      let mut state = runtime_state.borrow_mut();
       state.pending_ops.push(ready);
       state.have_unpolled_ops = true;
     }
     EagerPollResult::Pending(op) => {
-      let state_rc = JsRuntime::state(scope);
-      let mut state = state_rc.borrow_mut();
+      let mut state = runtime_state.borrow_mut();
       state.pending_ops.push(op);
       state.have_unpolled_ops = true;
     }
@@ -2228,13 +2586,15 @@ pub mod tests {
   use crate::modules::ModuleSource;
   use crate::modules::ModuleSourceFuture;
   use crate::modules::ModuleType;
+  use crate::modules::ResolutionKind;
   use crate::ZeroCopyBuf;
   use deno_ops::op;
   use futures::future::lazy;
   use std::ops::FnOnce;
   use std::pin::Pin;
   use std::rc::Rc;
-  use std::sync::atomic::{AtomicUsize, Ordering};
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
   use std::sync::Arc;
   // deno_ops macros generate code assuming deno_core in scope.
   mod deno_core {
@@ -2251,6 +2611,7 @@ pub mod tests {
   #[derive(Copy, Clone)]
   enum Mode {
     Async,
+    AsyncDeferred,
     AsyncZeroCopy(bool),
   }
 
@@ -2259,17 +2620,25 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  #[op(deferred)]
+  #[op]
   async fn op_test(
     rc_op_state: Rc<RefCell<OpState>>,
     control: u8,
     buf: Option<ZeroCopyBuf>,
   ) -> Result<u8, AnyError> {
+    #![allow(clippy::await_holding_refcell_ref)] // False positive.
     let op_state_ = rc_op_state.borrow();
     let test_state = op_state_.borrow::<TestState>();
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
-    match test_state.mode {
+    let mode = test_state.mode;
+    drop(op_state_);
+    match mode {
       Mode::Async => {
+        assert_eq!(control, 42);
+        Ok(43)
+      }
+      Mode::AsyncDeferred => {
+        tokio::task::yield_now().await;
         assert_eq!(control, 42);
         Ok(43)
       }
@@ -2286,7 +2655,7 @@ pub mod tests {
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count2 = dispatch_count.clone();
-    let ext = Extension::builder()
+    let ext = Extension::builder("test_ext")
       .ops(vec![op_test::decl()])
       .state(move |state| {
         state.put(TestState {
@@ -2322,14 +2691,15 @@ pub mod tests {
 
   #[test]
   fn test_ref_unref_ops() {
-    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    let (mut runtime, _dispatch_count) = setup(Mode::AsyncDeferred);
     runtime
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        var p1 = Deno.core.opAsync("op_test", 42);
-        var p2 = Deno.core.opAsync("op_test", 42);
+        var p1 = Deno.core.ops.op_test(42);
+        var p2 = Deno.core.ops.op_test(42);
         "#,
       )
       .unwrap();
@@ -2382,6 +2752,7 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
+        Deno.core.initializeAsyncOps();
         Deno.core.opAsync("op_test", control);
         async function main() {
           Deno.core.opAsync("op_test", control);
@@ -2400,6 +2771,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         const p = Deno.core.opAsync("op_test", 42);
         if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
           throw new Error("missing id on returned promise");
@@ -2416,6 +2788,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         Deno.core.opAsync("op_test");
         "#,
       )
@@ -2430,6 +2803,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         let zero_copy_a = new Uint8Array([0]);
         Deno.core.opAsync("op_test", null, zero_copy_a);
         "#,
@@ -2703,7 +3077,9 @@ pub mod tests {
     }
 
     run_in_task(|cx| {
-      let ext = Extension::builder().ops(vec![op_err::decl()]).build();
+      let ext = Extension::builder("test_ext")
+        .ops(vec![op_err::decl()])
+        .build();
       let mut runtime = JsRuntime::new(RuntimeOptions {
         extensions: vec![ext],
         get_error_class_fn: Some(&get_error_class_name),
@@ -2741,6 +3117,48 @@ pub mod tests {
       .execute_script("check.js", "if (a != 3) throw Error('x')")
       .unwrap();
   }
+
+  #[test]
+  fn will_snapshot2() {
+    let startup_data = {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
+      runtime.execute_script("a.js", "let a = 1 + 2").unwrap();
+      runtime.snapshot()
+    };
+
+    let snapshot = Snapshot::JustCreated(startup_data);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      will_snapshot: true,
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
+
+    let startup_data = {
+      runtime
+        .execute_script("check_a.js", "if (a != 3) throw Error('x')")
+        .unwrap();
+      runtime.execute_script("b.js", "b = 2 + 3").unwrap();
+      runtime.snapshot()
+    };
+
+    let snapshot = Snapshot::JustCreated(startup_data);
+    {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        startup_snapshot: Some(snapshot),
+        ..Default::default()
+      });
+      runtime
+        .execute_script("check_b.js", "if (b != 5) throw Error('x')")
+        .unwrap();
+      runtime
+        .execute_script("check2.js", "if (!Deno.core) throw Error('x')")
+        .unwrap();
+    }
+  }
+
   #[test]
   fn test_snapshot_callbacks() {
     let snapshot = {
@@ -2786,7 +3204,7 @@ pub mod tests {
         ..Default::default()
       });
       runtime.execute_script("a.js", "a = 1 + 2").unwrap();
-      let snap: &[u8] = &*runtime.snapshot();
+      let snap: &[u8] = &runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 
@@ -2810,7 +3228,7 @@ pub mod tests {
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
@@ -2980,7 +3398,7 @@ pub mod tests {
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
@@ -3029,7 +3447,6 @@ pub mod tests {
 function main() {
   console.log("asdf);
 }
-
 main();
 "#,
     );
@@ -3049,18 +3466,16 @@ function assert(cond) {
     throw Error("assert");
   }
 }
-
 function main() {
   assert(false);
 }
-
 main();
         "#,
     );
     let expected_error = r#"Error: assert
     at assert (error_stack.js:4:11)
-    at main (error_stack.js:9:3)
-    at error_stack.js:12:1"#;
+    at main (error_stack.js:8:3)
+    at error_stack.js:10:1"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
@@ -3078,7 +3493,6 @@ main();
       throw new Error("async");
     });
   })();
-
   try {
     await p;
   } catch (error) {
@@ -3091,7 +3505,7 @@ main();
       let expected_error = r#"Error: async
     at error_async_stack.js:5:13
     at async error_async_stack.js:4:5
-    at async error_async_stack.js:10:5"#;
+    at async error_async_stack.js:9:5"#;
 
       match runtime.poll_event_loop(cx, false) {
         Poll::Ready(Err(e)) => {
@@ -3099,6 +3513,74 @@ main();
         }
         _ => panic!(),
       };
+    })
+  }
+
+  #[test]
+  fn test_error_context() {
+    use anyhow::anyhow;
+
+    #[op]
+    fn op_err_sync() -> Result<(), Error> {
+      Err(anyhow!("original sync error").context("higher-level sync error"))
+    }
+
+    #[op]
+    async fn op_err_async() -> Result<(), Error> {
+      Err(anyhow!("original async error").context("higher-level async error"))
+    }
+
+    run_in_task(|cx| {
+      let ext = Extension::builder("test_ext")
+        .ops(vec![op_err_sync::decl(), op_err_async::decl()])
+        .build();
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        extensions: vec![ext],
+        ..Default::default()
+      });
+
+      runtime
+        .execute_script(
+          "test_error_context_sync.js",
+          r#"
+let errMessage;
+try {
+  Deno.core.ops.op_err_sync();
+} catch (err) {
+  errMessage = err.message;
+}
+if (errMessage !== "higher-level sync error: original sync error") {
+  throw new Error("unexpected error message from op_err_sync: " + errMessage);
+}
+"#,
+        )
+        .unwrap();
+
+      let promise = runtime
+        .execute_script(
+          "test_error_context_async.js",
+          r#"
+Deno.core.initializeAsyncOps();
+(async () => {
+  let errMessage;
+  try {
+    await Deno.core.opAsync("op_err_async");
+  } catch (err) {
+    errMessage = err.message;
+  }
+  if (errMessage !== "higher-level async error: original async error") {
+    throw new Error("unexpected error message from op_err_async: " + errMessage);
+  }
+})()
+"#,
+        )
+        .unwrap();
+
+      match runtime.poll_value(&promise, cx) {
+        Poll::Ready(Ok(_)) => {}
+        Poll::Ready(Err(err)) => panic!("{:?}", err),
+        _ => panic!(),
+      }
     })
   }
 
@@ -3117,7 +3599,6 @@ function assertEquals(a, b) {
 const sab = new SharedArrayBuffer(16);
 const i32a = new Int32Array(sab);
 globalThis.resolved = false;
-
 (function() {
   const result = Atomics.waitAsync(i32a, 0, 0);
   result.value.then(
@@ -3125,7 +3606,6 @@ globalThis.resolved = false;
     () => { assertUnreachable();
   });
 })();
-
 const notify_return_value = Atomics.notify(i32a, 0, 1);
 assertEquals(1, notify_return_value);
 "#,
@@ -3219,7 +3699,7 @@ assertEquals(1, notify_return_value);
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_async_borrow::decl()])
       .state(|state| {
         state.put(InnerState(42));
@@ -3235,7 +3715,7 @@ assertEquals(1, notify_return_value);
     runtime
       .execute_script(
         "op_async_borrow.js",
-        "Deno.core.opAsync('op_async_borrow')",
+        "Deno.core.initializeAsyncOps(); Deno.core.ops.op_async_borrow()",
       )
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
@@ -3254,7 +3734,7 @@ assertEquals(1, notify_return_value);
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_sync_serialize_object_with_numbers_as_keys::decl()])
       .build();
 
@@ -3296,7 +3776,7 @@ Deno.core.ops.op_sync_serialize_object_with_numbers_as_keys({
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_async_serialize_object_with_numbers_as_keys::decl()])
       .build();
 
@@ -3309,7 +3789,8 @@ Deno.core.ops.op_sync_serialize_object_with_numbers_as_keys({
       .execute_script(
         "op_async_serialize_object_with_numbers_as_keys.js",
         r#"
-Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
+Deno.core.initializeAsyncOps();
+Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
   lines: {
     100: {
       unit: "m"
@@ -3334,7 +3815,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_async_sleep::decl()])
       .build();
 
@@ -3347,6 +3828,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       .execute_script(
         "macrotasks_and_nextticks.js",
         r#"
+        Deno.core.initializeAsyncOps();
         (async function () {
           const results = [];
           Deno.core.ops.op_set_macrotask_callback(() => {
@@ -3357,7 +3839,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
             results.push("nextTick");
             Deno.core.ops.op_set_has_tick_scheduled(false);
           });
-
           Deno.core.ops.op_set_has_tick_scheduled(true);
           await Deno.core.opAsync('op_async_sleep');
           if (results[0] != "nextTick") {
@@ -3414,7 +3895,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_macrotask::decl(), op_next_tick::decl()])
       .build();
 
@@ -3484,7 +3965,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
@@ -3544,7 +4025,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_promise_reject::decl()])
       .build();
 
@@ -3568,7 +4049,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
           Deno.core.ops.op_store_pending_promise_exception(promise);
           Deno.core.ops.op_promise_reject();
         });
-
         new Promise((_, reject) => reject(Error("reject")));
         "#,
       )
@@ -3586,7 +4066,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
             prev(...args);
           });
         }
-
         new Promise((_, reject) => reject(Error("reject")));
         "#,
       )
@@ -3617,11 +4096,12 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
           "",
           &format!(
             r#"
+              Deno.core.initializeAsyncOps();
               globalThis.rejectValue = undefined;
               Deno.core.setPromiseRejectCallback((_type, _promise, reason) => {{
                 globalThis.rejectValue = `{realm_name}/${{reason}}`;
               }});
-              Deno.core.opAsync("op_void_async").then(() => Promise.reject({number}));
+              Deno.core.ops.op_void_async().then(() => Promise.reject({number}));
             "#,
             realm_name=realm_name,
             number=number
@@ -3654,7 +4134,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       Ok(())
     }
 
-    let extension = Extension::builder()
+    let extension = Extension::builder("test_ext")
       .ops(vec![op_promise_reject::decl()])
       .build();
 
@@ -3666,7 +4146,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         &self,
         specifier: &str,
         referrer: &str,
-        _is_main: bool,
+        _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
@@ -3684,7 +4164,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         Deno.core.ops.op_set_promise_reject_callback((type, promise, reason) => {
           Deno.core.ops.op_promise_reject();
         });
-
         throw new Error('top level throw');
         "#;
 
@@ -3724,7 +4203,9 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       Ok([(1, 2), (3, 4)].into_iter().collect()) // Maps can't have non-string keys in serde_v8
     }
 
-    let ext = Extension::builder().ops(vec![op_err::decl()]).build();
+    let ext = Extension::builder("test_ext")
+      .ops(vec![op_err::decl()])
+      .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],
       ..Default::default()
@@ -3749,7 +4230,9 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       Ok(x1 + x2 + x3 + x4)
     }
 
-    let ext = Extension::builder().ops(vec![op_add_4::decl()]).build();
+    let ext = Extension::builder("test_ext")
+      .ops(vec![op_add_4::decl()])
+      .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],
       ..Default::default()
@@ -3768,7 +4251,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       Ok(42)
     }
 
-    let ext = Extension::builder()
+    let ext = Extension::builder("test_ext")
       .ops(vec![op_foo::decl().disable()])
       .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -3798,7 +4281,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       Ok(b)
     }
 
-    let ext = Extension::builder()
+    let ext = Extension::builder("test_ext")
       .ops(vec![op_sum_take::decl(), op_boomerang::decl()])
       .build();
 
@@ -3815,8 +4298,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         const a1b = a1.subarray(0, 3);
         const a2 = new Uint8Array([5,10,15]);
         const a2b = a2.subarray(0, 3);
-
-
         if (!(a1.length > 0 && a1b.length > 0)) {
           throw new Error("a1 & a1b should have a length");
         }
@@ -3827,7 +4308,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         if (a1.length > 0 || a1b.length > 0) {
           throw new Error("expecting a1 & a1b to be detached");
         }
-
         const a3 = Deno.core.ops.op_boomerang(a2b);
         if (a3.byteLength != 3) {
           throw new Error(`Expected a3.byteLength === 3, got ${a3.byteLength}`);
@@ -3838,7 +4318,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         if (a2.byteLength > 0 || a2b.byteLength > 0) {
           throw new Error("expecting a2 & a2b to be detached, a3 re-attached");
         }
-
         const wmem = new WebAssembly.Memory({ initial: 1, maximum: 2 });
         const w32 = new Uint32Array(wmem.buffer);
         w32[0] = 1; w32[1] = 2; w32[2] = 3;
@@ -3870,7 +4349,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       Ok(42)
     }
 
-    let ext = Extension::builder()
+    let ext = Extension::builder("test_ext")
       .ops(vec![op_foo::decl(), op_bar::decl()])
       .middleware(|op| if op.is_unstable { op.disable() } else { op })
       .build();
@@ -3922,7 +4401,9 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
     }
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      extensions: vec![Extension::builder("test_ext")
+        .ops(vec![op_test::decl()])
+        .build()],
       ..Default::default()
     });
     let realm = runtime.create_realm().unwrap();
@@ -3937,11 +4418,11 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
   #[test]
   fn js_realm_init_snapshot() {
     let snapshot = {
-      let mut runtime = JsRuntime::new(RuntimeOptions {
+      let runtime = JsRuntime::new(RuntimeOptions {
         will_snapshot: true,
         ..Default::default()
       });
-      let snap: &[u8] = &*runtime.snapshot();
+      let snap: &[u8] = &runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
 
@@ -3952,7 +4433,9 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(Snapshot::Boxed(snapshot)),
-      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      extensions: vec![Extension::builder("test_ext")
+        .ops(vec![op_test::decl()])
+        .build()],
       ..Default::default()
     });
     let realm = runtime.create_realm().unwrap();
@@ -3981,7 +4464,9 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
     }
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      extensions: vec![Extension::builder("test_ext")
+        .ops(vec![op_test::decl()])
+        .build()],
       get_error_class_fn: Some(&|error| {
         crate::error::get_custom_error_class(error).unwrap()
       }),
@@ -3997,7 +4482,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
           "",
           r#"
             const buf = Deno.core.ops.op_test(false);
-            let err;
             try {
               Deno.core.ops.op_test(true);
             } catch(e) {
@@ -4029,7 +4513,9 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
     }
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      extensions: vec![Extension::builder("test_ext")
+        .ops(vec![op_test::decl()])
+        .build()],
       get_error_class_fn: Some(&|error| {
         crate::error::get_custom_error_class(error).unwrap()
       }),
@@ -4048,18 +4534,19 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
           runtime.v8_isolate(),
           "",
           r#"
-              (async function () {
-                const buf = await Deno.core.opAsync("op_test", false);
-                let err;
-                try {
-                  await Deno.core.opAsync("op_test", true);
-                } catch(e) {
-                  err = e;
-                }
-                return buf instanceof Uint8Array && buf.byteLength === 0 &&
-                       err instanceof TypeError && err.message === "Test" ;
-              })();
-            "#,
+            Deno.core.initializeAsyncOps();
+            (async function () {
+              const buf = await Deno.core.ops.op_test(false);
+              let err;
+              try {
+                await Deno.core.ops.op_test(true);
+              } catch(e) {
+                err = e;
+              }
+              return buf instanceof Uint8Array && buf.byteLength === 0 &&
+                      err instanceof TypeError && err.message === "Test" ;
+            })();
+          "#,
         )
         .unwrap();
       rets.push((realm, ret));
@@ -4087,7 +4574,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       }
 
       let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![Extension::builder()
+        extensions: vec![Extension::builder("test_ext")
           .ops(vec![op_pending::decl()])
           .build()],
         ..Default::default()
@@ -4099,14 +4586,20 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         .execute_script(
           runtime.v8_isolate(),
           "",
-          "var promise = Deno.core.opAsync('op_pending');",
+          r#"
+            Deno.core.initializeAsyncOps();
+            var promise = Deno.core.ops.op_pending();
+          "#,
         )
         .unwrap();
       other_realm
         .execute_script(
           runtime.v8_isolate(),
           "",
-          "var promise = Deno.core.opAsync('op_pending');",
+          r#"
+            Deno.core.initializeAsyncOps();
+            var promise = Deno.core.ops.op_pending();
+          "#,
         )
         .unwrap();
       assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
@@ -4116,9 +4609,9 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
           runtime.v8_isolate(),
           "",
           r#"
-        let promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        Deno.core.ops.op_unref_op(promise[promiseIdSymbol]);
-      "#,
+            let promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
+            Deno.core.unrefOp(promise[promiseIdSymbol]);
+          "#,
         )
         .unwrap();
       assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
@@ -4128,9 +4621,9 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
           runtime.v8_isolate(),
           "",
           r#"
-        let promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        Deno.core.ops.op_unref_op(promise[promiseIdSymbol]);
-      "#,
+            let promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
+            Deno.core.unrefOp(promise[promiseIdSymbol]);
+          "#,
         )
         .unwrap();
       assert!(matches!(
@@ -4138,5 +4631,24 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         Poll::Ready(Ok(()))
       ));
     });
+  }
+
+  #[test]
+  fn test_array_by_copy() {
+    // Verify that "array by copy" proposal is enabled (https://github.com/tc39/proposal-change-array-by-copy)
+    let mut runtime = JsRuntime::new(Default::default());
+    assert!(runtime
+      .execute_script(
+        "test_array_by_copy.js",
+        "const a = [1, 2, 3];
+        const b = a.toReversed();
+        if (!(a[0] === 1 && a[1] === 2 && a[2] === 3)) {
+          throw new Error('Expected a to be intact');
+        }
+        if (!(b[0] === 3 && b[1] === 2 && b[2] === 1)) {
+          throw new Error('Expected b to be reversed');
+        }",
+      )
+      .is_ok());
   }
 }

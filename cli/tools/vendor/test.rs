@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -21,7 +21,7 @@ use deno_graph::ModuleKind;
 use import_map::ImportMap;
 
 use crate::cache::ParsedSourceCache;
-use crate::resolver::ImportMapResolver;
+use crate::resolver::CliResolver;
 
 use super::build::VendorEnvironment;
 
@@ -192,7 +192,7 @@ impl VendorTestBuilder {
   }
 
   pub fn new_import_map(&self, base_path: &str) -> ImportMap {
-    let base = ModuleSpecifier::from_file_path(&make_path(base_path)).unwrap();
+    let base = ModuleSpecifier::from_file_path(make_path(base_path)).unwrap();
     ImportMap::new(base)
   }
 
@@ -225,7 +225,7 @@ impl VendorTestBuilder {
     let graph = build_test_graph(
       roots,
       self.original_import_map.clone(),
-      loader.clone(),
+      loader,
       &*analyzer,
     )
     .await;
@@ -234,6 +234,7 @@ impl VendorTestBuilder {
       &parsed_source_cache,
       &output_dir,
       self.original_import_map.as_ref(),
+      None,
       &self.environment,
     )?;
 
@@ -241,7 +242,7 @@ impl VendorTestBuilder {
     let import_map = files.remove(&output_dir.join("import_map.json"));
     let mut files = files
       .iter()
-      .map(|(path, text)| (path_to_string(path), text.clone()))
+      .map(|(path, text)| (path_to_string(path), text.to_string()))
       .collect::<Vec<_>>();
 
     files.sort_by(|a, b| a.0.cmp(&b.0));
@@ -265,16 +266,17 @@ async fn build_test_graph(
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
   let resolver =
-    original_import_map.map(|m| ImportMapResolver::new(Arc::new(m)));
+    original_import_map.map(|m| CliResolver::with_import_map(Arc::new(m)));
   deno_graph::create_graph(
     roots,
-    false,
-    None,
     &mut loader,
-    resolver.as_ref().map(|im| im.as_resolver()),
-    None,
-    Some(analyzer),
-    None,
+    deno_graph::GraphOptions {
+      is_dynamic: false,
+      imports: None,
+      resolver: resolver.as_ref().map(|r| r.as_graph_resolver()),
+      module_analyzer: Some(analyzer),
+      reporter: None,
+    },
   )
   .await
 }
@@ -291,7 +293,11 @@ fn make_path(text: &str) -> PathBuf {
   }
 }
 
-fn path_to_string(path: &Path) -> String {
+fn path_to_string<P>(path: P) -> String
+where
+  P: AsRef<Path>,
+{
+  let path = path.as_ref();
   // inverse of the function above
   let path = path.to_string_lossy();
   if cfg!(windows) {

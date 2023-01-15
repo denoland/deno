@@ -1,7 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! Code for local node_modules resolution.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fs;
@@ -9,6 +10,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::util::fs::symlink_dir;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -17,18 +19,27 @@ use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_runtime::deno_core::futures;
+use deno_runtime::deno_node::NodePermissions;
+use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::PackageJson;
 use tokio::task::JoinHandle;
 
-use crate::fs_util;
+use crate::args::Lockfile;
+use crate::npm::cache::mixed_case_package_name_encode;
+use crate::npm::cache::should_sync_download;
+use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
-use crate::npm::resolvers::common::should_sync_download;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
-use crate::npm::NpmRegistryApi;
+use crate::npm::NpmResolutionPackage;
+use crate::npm::RealNpmRegistryApi;
+use crate::util::fs::copy_dir_recursive;
+use crate::util::fs::hard_link_dir_recursive;
 
 use super::common::ensure_registry_read_permission;
+use super::common::types_package_name;
 use super::common::InnerNpmPackageResolver;
 
 /// Resolver that creates a local node_modules directory
@@ -45,7 +56,7 @@ pub struct LocalNpmPackageResolver {
 impl LocalNpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: NpmRegistryApi,
+    api: RealNpmRegistryApi,
     node_modules_folder: PathBuf,
     initial_snapshot: Option<NpmResolutionSnapshot>,
   ) -> Self {
@@ -98,6 +109,35 @@ impl LocalNpmPackageResolver {
     // it's within the directory, so use it
     specifier.to_file_path().ok()
   }
+
+  fn get_package_id_folder(
+    &self,
+    package_id: &NpmPackageId,
+  ) -> Result<PathBuf, AnyError> {
+    match self.resolution.resolve_package_from_id(package_id) {
+      Some(package) => Ok(self.get_package_id_folder_from_package(&package)),
+      None => bail!(
+        "Could not find package information for '{}'",
+        package_id.as_serialized()
+      ),
+    }
+  }
+
+  fn get_package_id_folder_from_package(
+    &self,
+    package: &NpmResolutionPackage,
+  ) -> PathBuf {
+    // package is stored at:
+    // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
+    self
+      .root_node_modules_path
+      .join(".deno")
+      .join(get_package_folder_id_folder_name(
+        &package.get_package_cache_folder_id(),
+      ))
+      .join("node_modules")
+      .join(&package.id.name)
+  }
 }
 
 impl InnerNpmPackageResolver for LocalNpmPackageResolver {
@@ -105,25 +145,15 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     &self,
     pkg_req: &NpmPackageReq,
   ) -> Result<PathBuf, AnyError> {
-    let resolved_package =
-      self.resolution.resolve_package_from_deno_module(pkg_req)?;
-
-    // it might be at the full path if there are duplicate names
-    let fully_resolved_folder_path = join_package_name(
-      &self.root_node_modules_path,
-      &resolved_package.id.to_string(),
-    );
-    Ok(if fully_resolved_folder_path.exists() {
-      fully_resolved_folder_path
-    } else {
-      join_package_name(&self.root_node_modules_path, &resolved_package.id.name)
-    })
+    let package = self.resolution.resolve_package_from_deno_module(pkg_req)?;
+    Ok(self.get_package_id_folder_from_package(&package))
   }
 
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let local_path = self.resolve_folder_for_specifier(referrer)?;
     let package_root_path = self.resolve_package_root(&local_path);
@@ -132,8 +162,28 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
       current_folder = get_next_node_modules_ancestor(current_folder);
       let sub_dir = join_package_name(current_folder, name);
       if sub_dir.is_dir() {
-        return Ok(sub_dir);
+        // if doing types resolution, only resolve the package if it specifies a types property
+        if mode.is_types() && !name.starts_with("@types/") {
+          let package_json = PackageJson::load_skip_read_permission(
+            sub_dir.join("package.json"),
+          )?;
+          if package_json.types.is_some() {
+            return Ok(sub_dir);
+          }
+        } else {
+          return Ok(sub_dir);
+        }
       }
+
+      // if doing type resolution, check for the existence of a @types package
+      if mode.is_types() && !name.starts_with("@types/") {
+        let sub_dir =
+          join_package_name(current_folder, &types_package_name(name));
+        if sub_dir.is_dir() {
+          return Ok(sub_dir);
+        }
+      }
+
       if current_folder == self.root_node_modules_path {
         bail!(
           "could not find package '{}' from referrer '{}'.",
@@ -153,6 +203,12 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     Ok(package_root_path)
   }
 
+  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
+    let package_folder_path = self.get_package_id_folder(package_id)?;
+
+    Ok(crate::util::fs::dir_size(&package_folder_path)?)
+  }
+
   fn has_packages(&self) -> bool {
     self.resolution.has_packages()
   }
@@ -164,27 +220,63 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let resolver = self.clone();
     async move {
       resolver.resolution.add_package_reqs(packages).await?;
-
-      sync_resolution_with_fs(
-        &resolver.resolution.snapshot(),
-        &resolver.cache,
-        &resolver.registry_url,
-        &resolver.root_node_modules_path,
-      )
-      .await?;
-
       Ok(())
     }
     .boxed()
   }
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
-    ensure_registry_read_permission(&self.root_node_modules_path, path)
+  fn set_package_reqs(
+    &self,
+    packages: HashSet<NpmPackageReq>,
+  ) -> BoxFuture<'static, Result<(), AnyError>> {
+    let resolver = self.clone();
+    async move {
+      resolver.resolution.set_package_reqs(packages).await?;
+      Ok(())
+    }
+    .boxed()
+  }
+
+  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>> {
+    let resolver = self.clone();
+    async move {
+      sync_resolver_with_fs(&resolver).await?;
+      Ok(())
+    }
+    .boxed()
+  }
+
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    ensure_registry_read_permission(
+      permissions,
+      &self.root_node_modules_path,
+      path,
+    )
   }
 
   fn snapshot(&self) -> NpmResolutionSnapshot {
     self.resolution.snapshot()
   }
+
+  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+    self.resolution.lock(lockfile, &self.snapshot())
+  }
+}
+
+async fn sync_resolver_with_fs(
+  resolver: &LocalNpmPackageResolver,
+) -> Result<(), AnyError> {
+  sync_resolution_with_fs(
+    &resolver.resolution.snapshot(),
+    &resolver.cache,
+    &resolver.registry_url,
+    &resolver.root_node_modules_path,
+  )
+  .await
 }
 
 /// Creates a pnpm style folder structure.
@@ -194,10 +286,6 @@ async fn sync_resolution_with_fs(
   registry_url: &Url,
   root_node_modules_dir_path: &Path,
 ) -> Result<(), AnyError> {
-  fn get_package_folder_name(package_id: &NpmPackageId) -> String {
-    package_id.to_string().replace('/', "+")
-  }
-
   let deno_local_registry_dir = root_node_modules_dir_path.join(".deno");
   fs::create_dir_all(&deno_local_registry_dir).with_context(|| {
     format!("Creating '{}'", deno_local_registry_dir.display())
@@ -206,36 +294,49 @@ async fn sync_resolution_with_fs(
   // 1. Write all the packages out the .deno directory.
   //
   // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
-  // node_modules/.deno/<package_id>/node_modules/<package_name>
+  // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
   let sync_download = should_sync_download();
-  let mut all_packages = snapshot.all_packages();
+  let mut package_partitions = snapshot.all_packages_partitioned();
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
-    all_packages.sort_by(|a, b| a.id.cmp(&b.id));
+    package_partitions.packages.sort_by(|a, b| a.id.cmp(&b.id));
   }
   let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
-    Vec::with_capacity(all_packages.len());
-  for package in &all_packages {
-    let folder_name = get_package_folder_name(&package.id);
+    Vec::with_capacity(package_partitions.packages.len());
+  for package in &package_partitions.packages {
+    let folder_name =
+      get_package_folder_id_folder_name(&package.get_package_cache_folder_id());
     let folder_path = deno_local_registry_dir.join(&folder_name);
-    let initialized_file = folder_path.join("deno_initialized");
-    if !initialized_file.exists() {
+    let initialized_file = folder_path.join(".initialized");
+    if !cache
+      .cache_setting()
+      .should_use_for_npm_package(&package.id.name)
+      || !initialized_file.exists()
+    {
       let cache = cache.clone();
       let registry_url = registry_url.clone();
       let package = package.clone();
       let handle = tokio::task::spawn(async move {
         cache
-          .ensure_package(&package.id, &package.dist, &registry_url)
+          .ensure_package(
+            (&package.id.name, &package.id.version),
+            &package.dist,
+            &registry_url,
+          )
           .await?;
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
           join_package_name(&sub_node_modules, &package.id.name);
         fs::create_dir_all(&package_path)
           .with_context(|| format!("Creating '{}'", folder_path.display()))?;
-        let cache_folder = cache.package_folder(&package.id, &registry_url);
+        let cache_folder = cache.package_folder_for_name_and_version(
+          &package.id.name,
+          &package.id.version,
+          &registry_url,
+        );
         // for now copy, but in the future consider hard linking
-        fs_util::copy_dir_recursive(&cache_folder, &package_path)?;
+        copy_dir_recursive(&cache_folder, &package_path)?;
         // write out a file that indicates this folder has been initialized
         fs::write(initialized_file, "")?;
         Ok(())
@@ -253,16 +354,51 @@ async fn sync_resolution_with_fs(
     result??; // surface the first error
   }
 
-  // 2. Symlink all the dependencies into the .deno directory.
+  // 2. Create any "copy" packages, which are used for peer dependencies
+  for package in &package_partitions.copy_packages {
+    let package_cache_folder_id = package.get_package_cache_folder_id();
+    let destination_path = deno_local_registry_dir
+      .join(get_package_folder_id_folder_name(&package_cache_folder_id));
+    let initialized_file = destination_path.join(".initialized");
+    if !initialized_file.exists() {
+      let sub_node_modules = destination_path.join("node_modules");
+      let package_path = join_package_name(&sub_node_modules, &package.id.name);
+      fs::create_dir_all(&package_path).with_context(|| {
+        format!("Creating '{}'", destination_path.display())
+      })?;
+      let source_path = join_package_name(
+        &deno_local_registry_dir
+          .join(get_package_folder_id_folder_name(
+            &package_cache_folder_id.with_no_count(),
+          ))
+          .join("node_modules"),
+        &package.id.name,
+      );
+      hard_link_dir_recursive(&source_path, &package_path)?;
+      // write out a file that indicates this folder has been initialized
+      fs::write(initialized_file, "")?;
+    }
+  }
+
+  let all_packages = package_partitions.into_all();
+
+  // 3. Symlink all the dependencies into the .deno directory.
   //
   // Symlink node_modules/.deno/<package_id>/node_modules/<dep_name> to
   // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
   for package in &all_packages {
     let sub_node_modules = deno_local_registry_dir
-      .join(&get_package_folder_name(&package.id))
+      .join(get_package_folder_id_folder_name(
+        &package.get_package_cache_folder_id(),
+      ))
       .join("node_modules");
     for (name, dep_id) in &package.dependencies {
-      let dep_folder_name = get_package_folder_name(dep_id);
+      let dep_cache_folder_id = snapshot
+        .package_from_id(dep_id)
+        .unwrap()
+        .get_package_cache_folder_id();
+      let dep_folder_name =
+        get_package_folder_id_folder_name(&dep_cache_folder_id);
       let dep_folder_path = join_package_name(
         &deno_local_registry_dir
           .join(dep_folder_name)
@@ -276,7 +412,7 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // 3. Create all the packages in the node_modules folder, which are symlinks.
+  // 4. Create all the packages in the node_modules folder, which are symlinks.
   //
   // Symlink node_modules/<package_name> to
   // node_modules/.deno/<package_id>/node_modules/<package_name>
@@ -292,27 +428,44 @@ async fn sync_resolution_with_fs(
     let root_folder_name = if found_names.insert(package_id.name.clone()) {
       package_id.name.clone()
     } else if is_top_level {
-      package_id.to_string()
+      package_id.display()
     } else {
       continue; // skip, already handled
     };
-    let local_registry_package_path = deno_local_registry_dir
-      .join(&get_package_folder_name(&package_id))
-      .join("node_modules")
-      .join(&package_id.name);
+    let package = snapshot.package_from_id(&package_id).unwrap();
+    let local_registry_package_path = join_package_name(
+      &deno_local_registry_dir
+        .join(get_package_folder_id_folder_name(
+          &package.get_package_cache_folder_id(),
+        ))
+        .join("node_modules"),
+      &package_id.name,
+    );
 
     symlink_package_dir(
       &local_registry_package_path,
       &join_package_name(root_node_modules_dir_path, &root_folder_name),
     )?;
-    if let Some(package) = snapshot.package_from_id(&package_id) {
-      for id in package.dependencies.values() {
-        pending_packages.push_back((id.clone(), false));
-      }
+    for id in package.dependencies.values() {
+      pending_packages.push_back((id.clone(), false));
     }
   }
 
   Ok(())
+}
+
+fn get_package_folder_id_folder_name(id: &NpmPackageCacheFolderId) -> String {
+  let copy_str = if id.copy_index == 0 {
+    "".to_string()
+  } else {
+    format!("_{}", id.copy_index)
+  };
+  let name = if id.name.to_lowercase() == id.name {
+    Cow::Borrowed(&id.name)
+  } else {
+    Cow::Owned(format!("_{}", mixed_case_package_name_encode(&id.name)))
+  };
+  format!("{}@{}{}", name, id.version, copy_str).replace('/', "+")
 }
 
 fn symlink_package_dir(
@@ -332,7 +485,7 @@ fn symlink_package_dir(
   #[cfg(windows)]
   return junction_or_symlink_dir(old_path, new_path);
   #[cfg(not(windows))]
-  fs_util::symlink_dir(old_path, new_path)
+  symlink_dir(old_path, new_path)
 }
 
 #[cfg(windows)]
@@ -342,6 +495,7 @@ fn junction_or_symlink_dir(
 ) -> Result<(), AnyError> {
   // Use junctions because they're supported on ntfs file systems without
   // needing to elevate privileges on Windows
+
   match junction::create(old_path, new_path) {
     Ok(()) => Ok(()),
     Err(junction_err) => {
@@ -351,7 +505,7 @@ fn junction_or_symlink_dir(
         log::warn!("Error creating junction. {:#}", junction_err);
       }
 
-      match fs_util::symlink_dir(old_path, new_path) {
+      match symlink_dir(old_path, new_path) {
         Ok(()) => Ok(()),
         Err(symlink_err) => bail!(
           concat!(

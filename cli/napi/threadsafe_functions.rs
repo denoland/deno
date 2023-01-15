@@ -1,18 +1,32 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::futures::channel::mpsc;
 use deno_runtime::deno_napi::*;
+use once_cell::sync::Lazy;
 use std::mem::forget;
+use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc::channel;
+use std::sync::Arc;
+
+static TS_FN_ID_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
 pub struct TsFn {
+  pub id: usize,
   pub env: *mut Env,
   pub maybe_func: Option<v8::Global<v8::Function>>,
   pub maybe_call_js_cb: Option<napi_threadsafe_function_call_js>,
   pub context: *mut c_void,
   pub thread_counter: usize,
+  pub ref_counter: Arc<AtomicUsize>,
   sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   tsfn_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
+}
+
+impl Drop for TsFn {
+  fn drop(&mut self) {
+    let env = unsafe { self.env.as_mut().unwrap() };
+    env.remove_threadsafe_function_ref_counter(self.id)
+  }
 }
 
 impl TsFn {
@@ -35,6 +49,29 @@ impl TsFn {
     Ok(())
   }
 
+  pub fn ref_(&mut self) -> Result {
+    self
+      .ref_counter
+      .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+  }
+
+  pub fn unref(&mut self) -> Result {
+    let _ = self.ref_counter.fetch_update(
+      std::sync::atomic::Ordering::SeqCst,
+      std::sync::atomic::Ordering::SeqCst,
+      |x| {
+        if x == 0 {
+          None
+        } else {
+          Some(x - 1)
+        }
+      },
+    );
+
+    Ok(())
+  }
+
   pub fn call(&self, data: *mut c_void, is_blocking: bool) {
     let js_func = self.maybe_func.clone();
     let (tx, rx) = channel();
@@ -49,22 +86,12 @@ impl TsFn {
             let func: v8::Local<v8::Value> =
               func.open(scope).to_object(scope).unwrap().into();
             unsafe {
-              call_js_cb(
-                env as *mut c_void,
-                transmute::<v8::Local<v8::Value>, napi_value>(func),
-                context,
-                data,
-              )
+              call_js_cb(env as *mut c_void, func.into(), context, data)
             };
           }
           None => {
             unsafe {
-              call_js_cb(
-                env as *mut c_void,
-                std::ptr::null_mut(),
-                context,
-                data,
-              )
+              call_js_cb(env as *mut c_void, std::mem::zeroed(), context, data)
             };
           }
         }
@@ -110,24 +137,28 @@ fn napi_create_threadsafe_function(
     return Err(Error::InvalidArg);
   }
   let maybe_func = func
-    .as_mut()
-    .map(|func| {
-      let value = transmute::<napi_value, v8::Local<v8::Value>>(func);
+    .map(|value| {
       let func = v8::Local::<v8::Function>::try_from(value)
         .map_err(|_| Error::FunctionExpected)?;
       Ok(v8::Global::new(&mut env_ref.scope(), func))
     })
     .transpose()?;
 
+  let id = TS_FN_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
   let tsfn = TsFn {
+    id,
     maybe_func,
     maybe_call_js_cb,
     context,
     thread_counter: initial_thread_count,
     sender: env_ref.async_work_sender.clone(),
     tsfn_sender: env_ref.threadsafe_function_sender.clone(),
+    ref_counter: Arc::new(AtomicUsize::new(1)),
     env,
   };
+  env_ref
+    .add_threadsafe_function_ref_counter(tsfn.id, tsfn.ref_counter.clone());
 
   env_ref
     .threadsafe_function_sender
@@ -154,7 +185,8 @@ fn napi_unref_threadsafe_function(
   _env: &mut Env,
   tsfn: napi_threadsafe_function,
 ) -> Result {
-  let _tsfn: &TsFn = &*(tsfn as *const TsFn);
+  let tsfn: &mut TsFn = &mut *(tsfn as *mut TsFn);
+  tsfn.unref()?;
 
   Ok(())
 }
@@ -182,8 +214,12 @@ fn napi_call_threadsafe_function(
 }
 
 #[napi_sym::napi_sym]
-fn napi_ref_threadsafe_function() -> Result {
-  // TODO
+fn napi_ref_threadsafe_function(
+  _env: &mut Env,
+  func: napi_threadsafe_function,
+) -> Result {
+  let tsfn: &mut TsFn = &mut *(func as *mut TsFn);
+  tsfn.ref_()?;
   Ok(())
 }
 

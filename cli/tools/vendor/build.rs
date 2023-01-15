@@ -1,20 +1,24 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::fmt::Write as _;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleKind;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 
+use crate::args::Lockfile;
 use crate::cache::ParsedSourceCache;
+use crate::graph_util::graph_lock_or_exit;
 
 use super::analyze::has_default_export;
 use super::import_map::build_import_map;
@@ -57,6 +61,7 @@ pub fn build(
   parsed_source_cache: &ParsedSourceCache,
   output_dir: &Path,
   original_import_map: Option<&ImportMap>,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   environment: &impl VendorEnvironment,
 ) -> Result<usize, AnyError> {
   assert!(output_dir.is_absolute());
@@ -68,18 +73,20 @@ pub fn build(
   }
 
   // build the graph
-  graph.lock()?;
+  if let Some(lockfile) = maybe_lockfile {
+    graph_lock_or_exit(&graph, &mut lockfile.lock());
+  }
 
-  let graph_errors = graph.errors();
-  if !graph_errors.is_empty() {
-    for err in &graph_errors {
+  let mut graph_errors = graph.errors().peekable();
+  if graph_errors.peek().is_some() {
+    for err in graph_errors {
       log::error!("{}", err);
     }
     bail!("failed vendoring");
   }
 
   // figure out how to map remote modules to local
-  let all_modules = graph.modules();
+  let all_modules = graph.modules().collect::<Vec<_>>();
   let remote_modules = all_modules
     .iter()
     .filter(|m| is_remote_specifier(&m.specifier))
@@ -502,7 +509,7 @@ mod test {
     let output = builder
       .with_loader(|loader| {
         loader
-          .add("/mod.ts", &mod_file_text)
+          .add("/mod.ts", mod_file_text)
           .add("https://localhost/mod.ts", "export class Example {}");
       })
       .build()
@@ -806,7 +813,7 @@ mod test {
         loader.add("https://localhost/mod.ts", "console.log(6);");
         loader.add("https://localhost/other.ts", "import './mod.ts';");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .unwrap();
@@ -853,7 +860,7 @@ mod test {
         loader.add("https://remote/mod.ts", "import 'twind';");
         loader.add("https://localhost/twind.ts", "export class Test {}");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .unwrap();
@@ -902,7 +909,7 @@ mod test {
           &[("content-type", "application/typescript")],
         );
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .unwrap();
@@ -947,7 +954,7 @@ mod test {
         loader.add("https://localhost/mod.ts", "import '/logger.ts?test';");
         loader.add("https://localhost/logger.ts?test", "export class Logger {}");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .unwrap();
@@ -989,7 +996,7 @@ mod test {
         loader.add("/vendor/deno.land/std/mod.ts", "export function f() {}");
         loader.add("https://deno.land/std/mod.ts", "export function f() {}");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .err()
@@ -1019,7 +1026,7 @@ mod test {
       .with_loader(|loader| {
         loader.add("/mod.ts", "console.log(5);");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .err()
@@ -1049,7 +1056,7 @@ mod test {
       .with_loader(|loader| {
         loader.add("/mod.ts", "console.log(5);");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .err()
@@ -1061,6 +1068,41 @@ mod test {
         "Providing an existing import map with a scope for the output ",
         "directory is not supported (\"./vendor/\").",
       )
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_http_key() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    original_import_map
+      .imports_mut()
+      .append(
+        "http/".to_string(),
+        "https://deno.land/std/http/".to_string(),
+      )
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'http/mod.ts';");
+        loader.add("https://deno.land/std/http/mod.ts", "console.log(5);");
+      })
+      .set_original_import_map(original_import_map)
+      .build()
+      .await
+      .unwrap();
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "http/mod.ts": "./deno.land/std/http/mod.ts",
+          "https://deno.land/": "./deno.land/",
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[("/vendor/deno.land/std/http/mod.ts", "console.log(5);")]),
     );
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::anyhow::Error;
 use deno_core::op;
 use deno_core::AsyncRefCell;
@@ -10,7 +10,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
 use std::env;
 use std::net::SocketAddr;
@@ -83,37 +82,23 @@ struct TcpStream {
 }
 
 impl TcpStream {
-  async fn read(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), Error> {
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, Error> {
     let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     let cancel = RcRef::map(self, |r| &r.cancel);
-    let nread = rd
-      .read(&mut buf)
-      .try_or_cancel(cancel)
-      .await
-      .map_err(Error::from)?;
-    Ok((nread, buf))
+    let nread = rd.read(data).try_or_cancel(cancel).await?;
+    Ok(nread)
   }
 
-  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, Error> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
     let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
-    wr.write(&buf).await.map_err(Error::from)
+    let nwritten = wr.write(data).await?;
+    Ok(nwritten)
   }
 }
 
 impl Resource for TcpStream {
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
-  }
-
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
-  }
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
 
   fn close(self: Rc<Self>) {
     self.cancel.cancel()
@@ -132,7 +117,7 @@ impl From<tokio::net::TcpStream> for TcpStream {
 }
 
 fn create_js_runtime() -> JsRuntime {
-  let ext = deno_core::Extension::builder()
+  let ext = deno_core::Extension::builder("my_ext")
     .ops(vec![op_listen::decl(), op_accept::decl()])
     .build();
 
@@ -145,8 +130,8 @@ fn create_js_runtime() -> JsRuntime {
 #[op]
 fn op_listen(state: &mut OpState) -> Result<ResourceId, Error> {
   log::debug!("listen");
-  let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
-  let std_listener = std::net::TcpListener::bind(&addr)?;
+  let addr = "127.0.0.1:4570".parse::<SocketAddr>().unwrap();
+  let std_listener = std::net::TcpListener::bind(addr)?;
   std_listener.set_nonblocking(true)?;
   let listener = TcpListener::try_from(std_listener)?;
   let rid = state.resource_table.add(listener);

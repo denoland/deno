@@ -1,7 +1,7 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::parse_sys_kind;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
@@ -13,7 +13,7 @@ use serde::Deserialize;
 use std::path::Path;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_permissions")
     .ops(vec![
       op_query_permission::decl(),
       op_revoke_permission::decl(),
@@ -37,7 +37,7 @@ pub fn op_query_permission(
   state: &mut OpState,
   args: PermissionArgs,
 ) -> Result<String, AnyError> {
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow::<PermissionsContainer>().0.lock();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.read.query(path.map(Path::new)),
@@ -71,7 +71,7 @@ pub fn op_revoke_permission(
   state: &mut OpState,
   args: PermissionArgs,
 ) -> Result<String, AnyError> {
-  let permissions = state.borrow_mut::<Permissions>();
+  let mut permissions = state.borrow_mut::<PermissionsContainer>().0.lock();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.read.revoke(path.map(Path::new)),
@@ -105,7 +105,7 @@ pub fn op_request_permission(
   state: &mut OpState,
   args: PermissionArgs,
 ) -> Result<String, AnyError> {
-  let permissions = state.borrow_mut::<Permissions>();
+  let mut permissions = state.borrow_mut::<PermissionsContainer>().0.lock();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.read.request(path.map(Path::new)),

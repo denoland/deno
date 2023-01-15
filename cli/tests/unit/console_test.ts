@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
@@ -336,6 +336,9 @@ Deno.test(function consoleTestStringifyCircular() {
   groupEnd: [Function: groupEnd],
   clear: [Function: clear],
   trace: [Function: trace],
+  profile: [Function: profile],
+  profileEnd: [Function: profileEnd],
+  timeStamp: [Function: timeStamp],
   indentLevel: 0,
   [Symbol(isConsoleInstance)]: true
 }`,
@@ -768,6 +771,16 @@ Deno.test(function consoleTestStringifyIterable() {
   assertEquals(
     stringify(Array(1)),
     `[ <1 empty item> ]`,
+  );
+
+  assertEquals(
+    stringify([, , 1]),
+    `[ <2 empty items>, 1 ]`,
+  );
+
+  assertEquals(
+    stringify([1, , , 1]),
+    `[ 1, <2 empty items>, 1 ]`,
   );
 
   const withEmptyElAndMoreItems = Array(500);
@@ -2092,4 +2105,10 @@ Deno.test(async function inspectAggregateError() {
       "AggregateError: All promises were rejected",
     );
   }
+});
+
+Deno.test(function inspectorMethods() {
+  console.timeStamp("test");
+  console.profile("test");
+  console.profileEnd("test");
 });

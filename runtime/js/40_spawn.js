@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -10,22 +10,25 @@
   const {
     ArrayPrototypeMap,
     ObjectEntries,
+    ObjectPrototypeIsPrototypeOf,
     String,
     TypeError,
-    Uint8Array,
-    PromiseAll,
+    PromisePrototypeThen,
+    SafePromiseAll,
     SymbolFor,
   } = window.__bootstrap.primordials;
   const {
+    readableStreamCollectIntoUint8Array,
     readableStreamForRidUnrefable,
     readableStreamForRidUnrefableRef,
     readableStreamForRidUnrefableUnref,
+    ReadableStreamPrototype,
+    writableStreamForRid,
   } = window.__bootstrap.streams;
-  const { writableStreamForRid } = window.__bootstrap.streamUtils;
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
-  function spawnChildInner(command, apiName, {
+  function spawnChildInner(opFn, command, apiName, {
     args = [],
     cwd = undefined,
     clearEnv = false,
@@ -36,8 +39,9 @@
     stdout = "piped",
     stderr = "piped",
     signal = undefined,
+    windowsRawArguments = false,
   } = {}) {
-    const child = ops.op_spawn_child({
+    const child = opFn({
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
       cwd: pathFromURL(cwd),
@@ -48,6 +52,7 @@
       stdin,
       stdout,
       stderr,
+      windowsRawArguments,
     }, apiName);
     return new Child(illegalConstructorKey, {
       ...child,
@@ -55,30 +60,20 @@
     });
   }
 
-  function spawnChild(command, options = {}) {
-    return spawnChildInner(command, "Deno.spawnChild()", options);
+  function createSpawnChild(opFn) {
+    return function spawnChild(command, options = {}) {
+      return spawnChildInner(opFn, command, "Deno.Command().spawn()", options);
+    };
   }
 
-  async function collectOutput(readableStream) {
-    if (!(readableStream instanceof ReadableStream)) {
+  function collectOutput(readableStream) {
+    if (
+      !(ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, readableStream))
+    ) {
       return null;
     }
 
-    const bufs = [];
-    let size = 0;
-    for await (const chunk of readableStream) {
-      bufs.push(chunk);
-      size += chunk.byteLength;
-    }
-
-    const buffer = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of bufs) {
-      buffer.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-
-    return buffer;
+    return readableStreamCollectIntoUint8Array(readableStream);
   }
 
   class Child {
@@ -153,7 +148,7 @@
 
       const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
       this.#waitPromiseId = waitPromise[promiseIdSymbol];
-      this.#status = waitPromise.then((res) => {
+      this.#status = PromisePrototypeThen(waitPromise, (res) => {
         this.#rid = null;
         signal?.[remove](onAbort);
         return res;
@@ -177,7 +172,7 @@
         );
       }
 
-      const [status, stdout, stderr] = await PromiseAll([
+      const [status, stdout, stderr] = await SafePromiseAll([
         this.#status,
         collectOutput(this.#stdout),
         collectOutput(this.#stderr),
@@ -224,66 +219,114 @@
     }
   }
 
-  function spawn(command, options) {
-    if (options?.stdin === "piped") {
-      throw new TypeError(
-        "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
-      );
-    }
-    return spawnChildInner(command, "Deno.spawn()", options).output();
+  function createSpawn(opFn) {
+    return function spawn(command, options) {
+      if (options?.stdin === "piped") {
+        throw new TypeError(
+          "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
+        );
+      }
+      return spawnChildInner(opFn, command, "Deno.Command().output()", options)
+        .output();
+    };
   }
 
-  function spawnSync(command, {
-    args = [],
-    cwd = undefined,
-    clearEnv = false,
-    env = {},
-    uid = undefined,
-    gid = undefined,
-    stdin = "null",
-    stdout = "piped",
-    stderr = "piped",
-  } = {}) {
-    if (stdin === "piped") {
-      throw new TypeError(
-        "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
-      );
-    }
-    const result = ops.op_spawn_sync({
-      cmd: pathFromURL(command),
-      args: ArrayPrototypeMap(args, String),
-      cwd: pathFromURL(cwd),
-      clearEnv,
-      env: ObjectEntries(env),
-      uid,
-      gid,
-      stdin,
-      stdout,
-      stderr,
-    });
-    return {
-      success: result.status.success,
-      code: result.status.code,
-      signal: result.status.signal,
-      get stdout() {
-        if (result.stdout == null) {
-          throw new TypeError("stdout is not piped");
+  function createSpawnSync(opFn) {
+    return function spawnSync(command, {
+      args = [],
+      cwd = undefined,
+      clearEnv = false,
+      env = {},
+      uid = undefined,
+      gid = undefined,
+      stdin = "null",
+      stdout = "piped",
+      stderr = "piped",
+      windowsRawArguments = false,
+    } = {}) {
+      if (stdin === "piped") {
+        throw new TypeError(
+          "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
+        );
+      }
+      const result = opFn({
+        cmd: pathFromURL(command),
+        args: ArrayPrototypeMap(args, String),
+        cwd: pathFromURL(cwd),
+        clearEnv,
+        env: ObjectEntries(env),
+        uid,
+        gid,
+        stdin,
+        stdout,
+        stderr,
+        windowsRawArguments,
+      });
+      return {
+        success: result.status.success,
+        code: result.status.code,
+        signal: result.status.signal,
+        get stdout() {
+          if (result.stdout == null) {
+            throw new TypeError("stdout is not piped");
+          }
+          return result.stdout;
+        },
+        get stderr() {
+          if (result.stderr == null) {
+            throw new TypeError("stderr is not piped");
+          }
+          return result.stderr;
+        },
+      };
+    };
+  }
+
+  function createCommand(spawn, spawnSync, spawnChild) {
+    return class Command {
+      #command;
+      #options;
+
+      constructor(command, options) {
+        this.#command = command;
+        this.#options = options;
+      }
+
+      output() {
+        if (this.#options?.stdin === "piped") {
+          throw new TypeError(
+            "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
+          );
         }
-        return result.stdout;
-      },
-      get stderr() {
-        if (result.stderr == null) {
-          throw new TypeError("stderr is not piped");
+        return spawn(this.#command, this.#options);
+      }
+
+      outputSync() {
+        if (this.#options?.stdin === "piped") {
+          throw new TypeError(
+            "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
+          );
         }
-        return result.stderr;
-      },
+        return spawnSync(this.#command, this.#options);
+      }
+
+      spawn() {
+        const options = {
+          ...(this.#options ?? {}),
+          stdout: this.#options?.stdout ?? "inherit",
+          stderr: this.#options?.stderr ?? "inherit",
+        };
+        return spawnChild(this.#command, options);
+      }
     };
   }
 
   window.__bootstrap.spawn = {
     Child,
-    spawnChild,
-    spawn,
-    spawnSync,
+    ChildProcess: Child,
+    createCommand,
+    createSpawn,
+    createSpawnChild,
+    createSpawnSync,
   };
 })(this);

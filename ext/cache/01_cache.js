@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -33,7 +33,9 @@
         context: "Argument 1",
       });
       const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
-      return new Cache(cacheId);
+      const cache = webidl.createBranded(Cache);
+      cache[_id] = cacheId;
+      return cache;
     }
 
     async has(cacheName) {
@@ -59,18 +61,20 @@
     }
   }
 
+  const _matchAll = Symbol("[[matchAll]]");
   const _id = Symbol("id");
 
   class Cache {
     /** @type {number} */
     [_id];
 
-    constructor(cacheId) {
-      this[_id] = cacheId;
+    constructor() {
+      webidl.illegalConstructor();
     }
 
     /** See https://w3c.github.io/ServiceWorker/#dom-cache-put */
     async put(request, response) {
+      webidl.assertBranded(this, CachePrototype);
       const prefix = "Failed to execute 'put' on 'Cache'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       request = webidl.converters["RequestInfo_DOMString"](request, {
@@ -110,7 +114,8 @@
       const varyHeader = getHeader(innerResponse.headerList, "vary");
       if (varyHeader) {
         const fieldValues = varyHeader.split(",");
-        for (const field of fieldValues) {
+        for (let i = 0; i < fieldValues.length; ++i) {
+          const field = fieldValues[i];
           if (field.trim() === "*") {
             throw new TypeError("Vary header must not contain '*'");
           }
@@ -148,7 +153,7 @@
               await core.shutdown(rid);
               break;
             }
-            await core.write(rid, value);
+            await core.writeAll(rid, value);
           }
         } finally {
           core.close(rid);
@@ -159,13 +164,14 @@
 
     /** See https://w3c.github.io/ServiceWorker/#cache-match */
     async match(request, options) {
+      webidl.assertBranded(this, CachePrototype);
       const prefix = "Failed to execute 'match' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       request = webidl.converters["RequestInfo_DOMString"](request, {
         prefix,
         context: "Argument 1",
       });
-      const p = await this.#matchAll(request, options);
+      const p = await this[_matchAll](request, options);
       if (p.length > 0) {
         return p[0];
       } else {
@@ -175,6 +181,7 @@
 
     /** See https://w3c.github.io/ServiceWorker/#cache-delete */
     async delete(request, _options) {
+      webidl.assertBranded(this, CachePrototype);
       const prefix = "Failed to execute 'delete' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       request = webidl.converters["RequestInfo_DOMString"](request, {
@@ -208,7 +215,7 @@
      *
      * The function will return an array of responses.
      */
-    async #matchAll(request, _options) {
+    async [_matchAll](request, _options) {
       // Step 1.
       let r = null;
       // Step 2.
@@ -273,6 +280,7 @@
   webidl.configurePrototype(CacheStorage);
   webidl.configurePrototype(Cache);
   const CacheStoragePrototype = CacheStorage.prototype;
+  const CachePrototype = Cache.prototype;
 
   let cacheStorage;
   window.__bootstrap.caches = {
