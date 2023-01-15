@@ -1,0 +1,10 @@
+error: TS2769 [ERROR]: No overload matches this call.
+  Overload 1 of 3, '(path: PathOrFileDescriptor, options?: { encoding?: null | undefined; flag?: string | undefined; } | null | undefined): Buffer', gave the following error.
+    Type '123' has no properties in common with type '{ encoding?: null | undefined; flag?: string | undefined; }'.  Overload 2 of 3, '(path: PathOrFileDescriptor, options: BufferEncoding | { encoding: BufferEncoding; flag?: string | undefined; }): string', gave the following error.
+    Argument of type '123' is not assignable to parameter of type 'BufferEncoding | { encoding: BufferEncoding; flag?: string | undefined; }'.  Overload 3 of 3, '(path: PathOrFileDescriptor, options?: BufferEncoding | (ObjectEncodingOptions & { flag?: string | undefined; }) | null | undefined): string | Buffer', gave the following error.
+    Argument of type '123' is not assignable to parameter of type 'BufferEncoding | (ObjectEncodingOptions & { flag?: string | undefined; }) | null | undefined'.
+const data = fs.readFileSync("./node_builtin.js", 123);
+                                                  ~~~
+    at file:///[WILDCARD]/node_builtin_modules/mod.js:3:51
+
+
