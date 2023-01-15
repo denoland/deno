@@ -274,9 +274,9 @@ pub fn mem_info() -> Option<MemInfo> {
   unsafe {
     use std::mem;
     use winapi::shared::minwindef;
-    use winapi::um::sysinfoapi;
-    use winapi::um::psapi::PERFORMANCE_INFORMATION;
     use winapi::um::psapi::GetPerformanceInfo;
+    use winapi::um::psapi::PERFORMANCE_INFORMATION;
+    use winapi::um::sysinfoapi;
 
     let mut mem_status =
       mem::MaybeUninit::<sysinfoapi::MEMORYSTATUSEX>::uninit();
@@ -298,12 +298,10 @@ pub fn mem_info() -> Option<MemInfo> {
       // See https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/ns-sysinfoapi-memorystatusex
       // and https://github.com/GuillaumeGomez/sysinfo/issues/534
 
-      let mut perf_info =
-        mem::MaybeUninit::<PERFORMANCE_INFORMATION>::uninit();
+      let mut perf_info = mem::MaybeUninit::<PERFORMANCE_INFORMATION>::uninit();
       let result = GetPerformanceInfo(
         perf_info.as_mut_ptr(),
-        mem::size_of::<PERFORMANCE_INFORMATION>()
-          as minwindef::DWORD,
+        mem::size_of::<PERFORMANCE_INFORMATION>() as minwindef::DWORD,
       );
       if result == minwindef::TRUE {
         let perf_info = perf_info.assume_init();
