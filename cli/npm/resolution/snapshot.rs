@@ -48,10 +48,6 @@ impl NpmPackagesPartitioned {
 pub struct NpmResolutionSnapshot {
   #[serde(with = "map_to_vec")]
   pub(super) package_reqs: HashMap<NpmPackageReq, NpmPackageId>,
-  /// Package requirements injected by the runtime. These are never saved
-  /// or loaded from the lockfile.
-  #[serde(with = "map_to_vec")]
-  pub(super) synthetic_package_reqs: HashMap<NpmPackageReq, NpmPackageId>,
   pub(super) packages_by_name: HashMap<String, Vec<NpmPackageId>>,
   #[serde(with = "map_to_vec")]
   pub(super) packages: HashMap<NpmPackageId, NpmResolutionPackage>,
@@ -102,11 +98,7 @@ impl NpmResolutionSnapshot {
     &self,
     req: &NpmPackageReq,
   ) -> Result<&NpmResolutionPackage, AnyError> {
-    match self
-      .package_reqs
-      .get(req)
-      .or_else(|| self.synthetic_package_reqs.get(req))
-    {
+    match self.package_reqs.get(req) {
       Some(id) => Ok(self.packages.get(id).unwrap()),
       None => bail!("could not find npm package directory for '{}'", req),
     }
@@ -116,10 +108,9 @@ impl NpmResolutionSnapshot {
     self
       .package_reqs
       .values()
-      .chain(self.synthetic_package_reqs.values())
+      .cloned()
       .collect::<HashSet<_>>()
       .into_iter()
-      .cloned()
       .collect::<Vec<_>>()
   }
 
@@ -342,7 +333,6 @@ impl NpmResolutionSnapshot {
 
     Ok(Self {
       package_reqs,
-      synthetic_package_reqs: Default::default(),
       packages_by_name,
       packages,
     })
