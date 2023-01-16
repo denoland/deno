@@ -217,11 +217,6 @@ fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
       (specifier, asset)
     })
     .collect::<AssetsMap>();
-  let node_types_asset = AssetDocument::new(
-    ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
-    "/// <reference types=\"npm:@types/node\" />\n",
-  );
-  assets.insert(node_types_asset.specifier().clone(), node_types_asset);
   Arc::new(Mutex::new(assets))
 }
 

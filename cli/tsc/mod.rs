@@ -165,6 +165,12 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
       "lib.webworker.iterable.d.ts",
       inc!("lib.webworker.iterable.d.ts"),
     ),
+    (
+      // Special file that can be used to inject the @types/node package.
+      // This is used for `node:` specifiers.
+      "node_types.d.ts",
+      "/// <reference types=\"npm:@types/node\" />\n",
+    ),
   ])
   .iter()
   .cloned()
@@ -520,12 +526,6 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     hash = Some("1".to_string());
     media_type = MediaType::Dts;
     Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
-  } else if &v.specifier == "asset:///node_types.d.ts" {
-    hash = Some("1".to_string());
-    media_type = MediaType::Dts;
-    Some(Cow::Borrowed(
-      "/// <reference types=\"npm:@types/node\" />\n",
-    ))
   } else if let Some(name) = v.specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, &state.hash_data);
