@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import { assert, assertEquals } from "./test_util.ts";
 
 let isCI: boolean;
@@ -27,7 +29,7 @@ Deno.test({
   assert(device);
 
   const shaderCode = await Deno.readTextFile(
-    "cli/tests/testdata/webgpu_computepass_shader.wgsl",
+    "cli/tests/testdata/webgpu/computepass_shader.wgsl",
   );
 
   const shaderModule = device.createShaderModule({
@@ -116,7 +118,7 @@ Deno.test({
   assert(device);
 
   const shaderCode = await Deno.readTextFile(
-    "cli/tests/testdata/webgpu_hellotriangle_shader.wgsl",
+    "cli/tests/testdata/webgpu/hellotriangle_shader.wgsl",
   );
 
   const shaderModule = device.createShaderModule({
@@ -202,7 +204,7 @@ Deno.test({
 
   assertEquals(
     data,
-    await Deno.readFile("cli/tests/testdata/webgpu_hellotriangle.out"),
+    await Deno.readFile("cli/tests/testdata/webgpu/hellotriangle.out"),
   );
 
   outputBuffer.unmap();

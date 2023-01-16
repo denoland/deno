@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
 
@@ -13,7 +13,6 @@
     ArrayPrototypePush,
     ArrayPrototypeSlice,
     ArrayPrototypeSplice,
-    FunctionPrototypeBind,
     ObjectGetOwnPropertyDescriptor,
     ObjectGetPrototypeOf,
     ObjectPrototypeHasOwnProperty,
@@ -21,16 +20,23 @@
     ObjectKeys,
     ObjectPrototype,
     ObjectCreate,
+    Proxy,
     SafeMap,
     SafeWeakMap,
+    SafeArrayIterator,
     JSONParse,
+    String,
     StringPrototypeEndsWith,
     StringPrototypeIndexOf,
+    StringPrototypeIncludes,
     StringPrototypeMatch,
     StringPrototypeSlice,
+    StringPrototypeSplit,
     StringPrototypeStartsWith,
     StringPrototypeCharCodeAt,
     RegExpPrototypeTest,
+    Error,
+    TypeError,
   } = window.__bootstrap.primordials;
   const core = window.Deno.core;
   const ops = core.ops;
@@ -63,6 +69,10 @@
   let statCache = null;
   let isPreloading = false;
   let mainModule = null;
+  let hasBrokenOnInspectBrk = false;
+  let hasInspectBrk = false;
+  // Are we running with --node-modules-dir flag?
+  let usesLocalNodeModulesDir = false;
 
   function stat(filename) {
     // TODO: required only on windows
@@ -99,7 +109,11 @@
   }
 
   function tryPackage(requestPath, exts, isMain, originalPath) {
-    const pkg = core.ops.op_require_read_package_scope(requestPath).main;
+    const packageJsonPath = pathResolve(
+      requestPath,
+      "package.json",
+    );
+    const pkg = core.ops.op_require_read_package_scope(packageJsonPath)?.main;
     if (!pkg) {
       return tryExtensions(
         pathResolve(requestPath, "index"),
@@ -136,12 +150,8 @@
         err.requestPath = originalPath;
         throw err;
       } else {
-        const jsonPath = pathResolve(
-          requestPath,
-          "package.json",
-        );
         node.globalThis.process.emitWarning(
-          `Invalid 'main' field in '${jsonPath}' of '${pkg}'. ` +
+          `Invalid 'main' field in '${packageJsonPath}' of '${pkg}'. ` +
             "Please either fix that or report it to the module author",
           "DeprecationWarning",
           "DEP0128",
@@ -255,9 +265,9 @@
 
   Module.builtinModules = node.builtinModules;
 
-  Module._extensions = Object.create(null);
-  Module._cache = Object.create(null);
-  Module._pathCache = Object.create(null);
+  Module._extensions = ObjectCreate(null);
+  Module._cache = ObjectCreate(null);
+  Module._pathCache = ObjectCreate(null);
   let modulePaths = [];
   Module.globalPaths = modulePaths;
 
@@ -293,7 +303,12 @@
   // 1. name/.*
   // 2. @scope/name/.*
   const EXPORTS_PATTERN = /^((?:@[^/\\%]+\/)?[^./\\%][^/\\%]*)(\/.*)?$/;
-  function resolveExports(modulesPath, request, parentPath) {
+  function resolveExports(
+    modulesPath,
+    request,
+    parentPath,
+    usesLocalNodeModulesDir,
+  ) {
     // The implementation's behavior is meant to mirror resolution in ESM.
     const [, name, expansion = ""] =
       StringPrototypeMatch(request, EXPORTS_PATTERN) || [];
@@ -302,6 +317,7 @@
     }
 
     return core.ops.op_require_resolve_exports(
+      usesLocalNodeModulesDir,
       modulesPath,
       request,
       name,
@@ -339,23 +355,27 @@
       if (curPath && stat(curPath) < 1) continue;
 
       if (!absoluteRequest) {
-        const exportsResolved = resolveExports(curPath, request, parentPath);
+        const exportsResolved = resolveExports(
+          curPath,
+          request,
+          parentPath,
+          usesLocalNodeModulesDir,
+        );
         if (exportsResolved) {
           return exportsResolved;
         }
       }
 
-      const isDenoDirPackage = Deno.core.opSync(
-        "op_require_is_deno_dir_package",
+      const isDenoDirPackage = core.ops.op_require_is_deno_dir_package(
         curPath,
       );
       const isRelative = ops.op_require_is_request_relative(
         request,
       );
-      // TODO(bartlomieju): could be a single op
-      const basePath = (isDenoDirPackage && !isRelative)
-        ? pathResolve(curPath, packageSpecifierSubPath(request))
-        : pathResolve(curPath, request);
+      const basePath =
+        (isDenoDirPackage && !isRelative && !usesLocalNodeModulesDir)
+          ? pathResolve(curPath, packageSpecifierSubPath(request))
+          : pathResolve(curPath, request);
       let filename;
 
       const rc = stat(basePath);
@@ -396,14 +416,22 @@
 
   Module._resolveLookupPaths = function (request, parent) {
     const paths = [];
+
+    if (core.ops.op_require_is_request_relative(request) && parent?.filename) {
+      ArrayPrototypePush(
+        paths,
+        core.ops.op_require_path_dirname(parent.filename),
+      );
+      return paths;
+    }
+
     if (parent?.filename && parent.filename.length > 0) {
-      const denoDirPath = core.opSync(
-        "op_require_resolve_deno_dir",
+      const denoDirPath = core.ops.op_require_resolve_deno_dir(
         request,
         parent.filename,
       );
       if (denoDirPath) {
-        paths.push(denoDirPath);
+        ArrayPrototypePush(paths, denoDirPath);
       }
     }
     const lookupPathsResult = ops.op_require_resolve_lookup_paths(
@@ -412,7 +440,7 @@
       parent?.filename ?? "",
     );
     if (lookupPathsResult) {
-      paths.push(...lookupPathsResult);
+      ArrayPrototypePush(paths, ...new SafeArrayIterator(lookupPathsResult));
     }
     return paths;
   };
@@ -658,7 +686,7 @@
   Module.wrapper = [
     // We provide the non-standard APIs in the CommonJS wrapper
     // to avoid exposing them in global namespace.
-    "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout} = globalThis; (function () {",
+    "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout} = globalThis; var window = undefined; (function () {",
     "\n}).call(this); })",
   ];
   Module.wrap = function (script) {
@@ -669,10 +697,11 @@
   function enrichCJSError(error) {
     if (error instanceof SyntaxError) {
       if (
-        error.message.includes(
+        StringPrototypeIncludes(
+          error.message,
           "Cannot use import statement outside a module",
         ) ||
-        error.message.includes("Unexpected token 'export'")
+        StringPrototypeIncludes(error.message, "Unexpected token 'export'")
       ) {
         console.error(
           'To load an ES module, set "type": "module" in the package.json or use ' +
@@ -709,6 +738,12 @@
     if (requireDepth === 0) {
       statCache = new SafeMap();
     }
+
+    if (hasInspectBrk && !hasBrokenOnInspectBrk) {
+      hasBrokenOnInspectBrk = true;
+      core.ops.op_require_break_on_next_statement();
+    }
+
     const result = compiledWrapper.call(
       thisValue,
       exports,
@@ -746,8 +781,8 @@
   };
 
   function stripBOM(content) {
-    if (content.charCodeAt(0) === 0xfeff) {
-      content = content.slice(1);
+    if (StringPrototypeCharCodeAt(content, 0) === 0xfeff) {
+      content = StringPrototypeSlice(content, 1);
     }
     return content;
   }
@@ -766,7 +801,10 @@
 
   // Native extension for .node
   Module._extensions[".node"] = function (module, filename) {
-    throw new Error("not implemented loading .node files");
+    if (filename.endsWith("fsevents.node")) {
+      throw new Error("Using fsevents module is currently not supported");
+    }
+    module.exports = ops.op_napi_open(filename);
   };
 
   function createRequireFromPath(filename) {
@@ -801,9 +839,39 @@
     return require;
   }
 
+  // Matches to:
+  // - /foo/...
+  // - \foo\...
+  // - C:/foo/...
+  // - C:\foo\...
+  const RE_START_OF_ABS_PATH = /^([/\\]|[a-zA-Z]:[/\\])/;
+
+  function isAbsolute(filenameOrUrl) {
+    return RE_START_OF_ABS_PATH.test(filenameOrUrl);
+  }
+
   function createRequire(filenameOrUrl) {
-    // FIXME: handle URLs and validation
-    const filename = core.opSync("op_require_as_file_path", filenameOrUrl);
+    let fileUrlStr;
+    if (filenameOrUrl instanceof URL) {
+      if (filenameOrUrl.protocol !== "file:") {
+        throw new Error(
+          `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+        );
+      }
+      fileUrlStr = filenameOrUrl.toString();
+    } else if (typeof filenameOrUrl === "string") {
+      if (!filenameOrUrl.startsWith("file:") && !isAbsolute(filenameOrUrl)) {
+        throw new Error(
+          `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+        );
+      }
+      fileUrlStr = filenameOrUrl;
+    } else {
+      throw new Error(
+        `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+      );
+    }
+    const filename = core.ops.op_require_as_file_path(fileUrlStr);
     return createRequireFromPath(filename);
   }
 
@@ -821,25 +889,7 @@
 
   Module.Module = Module;
 
-  const m = {
-    _cache: Module._cache,
-    _extensions: Module._extensions,
-    _findPath: Module._findPath,
-    _initPaths: Module._initPaths,
-    _load: Module._load,
-    _nodeModulePaths: Module._nodeModulePaths,
-    _pathCache: Module._pathCache,
-    _preloadModules: Module._preloadModules,
-    _resolveFilename: Module._resolveFilename,
-    _resolveLookupPaths: Module._resolveLookupPaths,
-    builtinModules: Module.builtinModules,
-    createRequire: Module.createRequire,
-    globalPaths: Module.globalPaths,
-    Module,
-    wrap: Module.wrap,
-  };
-
-  node.nativeModuleExports.module = m;
+  node.nativeModuleExports.module = Module;
 
   function loadNativeModule(_id, request) {
     if (nativeModulePolyfill.has(request)) {
@@ -864,36 +914,31 @@
     throw new Error("not implemented");
   }
 
-  function bindExport(value, mod) {
-    // ensure exported functions are bound to their module object
-    if (typeof value === "function") {
-      return FunctionPrototypeBind(value, mod);
-    } else {
-      return value;
-    }
-  }
-
   /** @param specifier {string} */
   function packageSpecifierSubPath(specifier) {
-    let parts = specifier.split("/");
-    if (parts[0].startsWith("@")) {
-      parts = parts.slice(2);
+    let parts = StringPrototypeSplit(specifier, "/");
+    if (StringPrototypeStartsWith(parts[0], "@")) {
+      parts = ArrayPrototypeSlice(parts, 2);
     } else {
-      parts = parts.slice(1);
+      parts = ArrayPrototypeSlice(parts, 1);
     }
-    return parts.join("/");
+    return ArrayPrototypeJoin(parts, "/");
   }
 
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     require: {
+      setUsesLocalNodeModulesDir() {
+        usesLocalNodeModulesDir = true;
+      },
+      setInspectBrk() {
+        hasInspectBrk = true;
+      },
       Module,
       wrapSafe,
       toRealPath,
       cjsParseCache,
       readPackageScope,
-      bindExport,
-      moduleExports: m,
     },
   };
 })(globalThis);

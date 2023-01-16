@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -17,7 +17,9 @@
   const { getLocationHref } = window.__bootstrap.location;
   const { serializePermissions } = window.__bootstrap.permissions;
   const { log } = window.__bootstrap.util;
-  const { defineEventHandler } = window.__bootstrap.event;
+  const { ErrorEvent, MessageEvent, defineEventHandler } =
+    window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const {
     deserializeJsMessageData,
     serializeJsMessageData,
@@ -137,7 +139,7 @@
 
     #pollControl = async () => {
       while (this.#status === "RUNNING") {
-        const [type, data] = await hostRecvCtrl(this.#id);
+        const { 0: type, 1: data } = await hostRecvCtrl(this.#id);
 
         // If terminate was called then we ignore all messages
         if (this.#status === "TERMINATED") {

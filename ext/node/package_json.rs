@@ -1,6 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::DenoDirNpmResolver;
+use crate::NodeModuleKind;
+use crate::NodePermissions;
+
+use super::RequireNpmResolver;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -17,9 +20,10 @@ pub struct PackageJson {
   pub exports: Option<Map<String, Value>>,
   pub imports: Option<Map<String, Value>>,
   pub bin: Option<Value>,
-  pub main: Option<String>,
-  pub module: Option<String>,
+  main: Option<String>,   // use .main(...)
+  module: Option<String>, // use .main(...)
   pub name: Option<String>,
+  pub version: Option<String>,
   pub path: PathBuf,
   pub typ: String,
   pub types: Option<String>,
@@ -35,6 +39,7 @@ impl PackageJson {
       main: None,
       module: None,
       name: None,
+      version: None,
       path,
       typ: "none".to_string(),
       types: None,
@@ -42,10 +47,17 @@ impl PackageJson {
   }
 
   pub fn load(
-    resolver: &dyn DenoDirNpmResolver,
+    resolver: &dyn RequireNpmResolver,
+    permissions: &mut dyn NodePermissions,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
-    resolver.ensure_read_permission(&path)?;
+    resolver.ensure_read_permission(permissions, &path)?;
+    Self::load_skip_read_permission(path)
+  }
+
+  pub fn load_skip_read_permission(
+    path: PathBuf,
+  ) -> Result<PackageJson, AnyError> {
     let source = match std::fs::read_to_string(&path) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
@@ -69,6 +81,7 @@ impl PackageJson {
     let main_val = package_json.get("main");
     let module_val = package_json.get("module");
     let name_val = package_json.get("name");
+    let version_val = package_json.get("version");
     let type_val = package_json.get("type");
     let bin = package_json.get("bin").map(ToOwned::to_owned);
     let exports = package_json.get("exports").map(|exports| {
@@ -86,6 +99,7 @@ impl PackageJson {
       .map(|imp| imp.to_owned());
     let main = main_val.and_then(|s| s.as_str()).map(|s| s.to_string());
     let name = name_val.and_then(|s| s.as_str()).map(|s| s.to_string());
+    let version = version_val.and_then(|s| s.as_str()).map(|s| s.to_string());
     let module = module_val.and_then(|s| s.as_str()).map(|s| s.to_string());
 
     // Ignore unknown types for forwards compatibility
@@ -114,6 +128,7 @@ impl PackageJson {
       path,
       main,
       name,
+      version,
       module,
       typ,
       types,
@@ -122,6 +137,14 @@ impl PackageJson {
       bin,
     };
     Ok(package_json)
+  }
+
+  pub fn main(&self, referrer_kind: NodeModuleKind) -> Option<&String> {
+    if referrer_kind == NodeModuleKind::Esm && self.typ == "module" {
+      self.module.as_ref().or(self.main.as_ref())
+    } else {
+      self.main.as_ref()
+    }
   }
 }
 

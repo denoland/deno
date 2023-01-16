@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 mod async_cancel;
 mod async_cell;
 mod bindings;
@@ -8,6 +8,7 @@ mod extensions;
 mod flags;
 mod gotham_state;
 mod inspector;
+mod io;
 mod module_specifier;
 mod modules;
 mod normalize_path;
@@ -17,6 +18,7 @@ mod ops_builtin_v8;
 mod ops_metrics;
 mod resources;
 mod runtime;
+pub mod snapshot_util;
 mod source_map;
 
 // Re-exports
@@ -34,6 +36,8 @@ pub use serde_v8::ZeroCopyBuf;
 pub use sourcemap;
 pub use url;
 pub use v8;
+
+pub use deno_ops::op;
 
 pub use crate::async_cancel::CancelFuture;
 pub use crate::async_cancel::CancelHandle;
@@ -58,6 +62,9 @@ pub use crate::inspector::InspectorMsgKind;
 pub use crate::inspector::InspectorSessionProxy;
 pub use crate::inspector::JsRuntimeInspector;
 pub use crate::inspector::LocalInspectorSession;
+pub use crate::io::BufMutView;
+pub use crate::io::BufView;
+pub use crate::io::WriteOutcome;
 pub use crate::module_specifier::resolve_import;
 pub use crate::module_specifier::resolve_path;
 pub use crate::module_specifier::resolve_url;
@@ -72,6 +79,7 @@ pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::ModuleType;
 pub use crate::modules::NoopModuleLoader;
+pub use crate::modules::ResolutionKind;
 pub use crate::normalize_path::normalize_path;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
@@ -104,20 +112,21 @@ pub use crate::runtime::Snapshot;
 pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
 pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
 pub use crate::source_map::SourceMapGetter;
-pub use deno_ops::op;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()
 }
 
-/// An internal module re-exporting funcs used by the #[op] (`deno_ops`) macro
+/// An internal module re-exporting functions used by the #[op] (`deno_ops`) macro
 #[doc(hidden)]
 pub mod _ops {
   pub use super::bindings::throw_type_error;
   pub use super::error_codes::get_error_code;
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;
+  pub use super::ops::OpResult;
   pub use super::runtime::queue_async_op;
+  pub use super::runtime::queue_fast_async_op;
   pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
   pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
 }

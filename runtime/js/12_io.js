@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
@@ -145,7 +145,7 @@
       const buf = new Uint8Array(READ_PER_ITER);
       const read = r.readSync(buf);
       if (typeof read == "number") {
-        ArrayPrototypePush(buffers, buf.subarray(0, read));
+        ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buf, 0, read));
       } else {
         break;
       }
@@ -156,14 +156,15 @@
 
   function concatBuffers(buffers) {
     let totalLen = 0;
-    for (const buf of buffers) {
-      totalLen += buf.byteLength;
+    for (let i = 0; i < buffers.length; ++i) {
+      totalLen += buffers[i].byteLength;
     }
 
     const contents = new Uint8Array(totalLen);
 
     let n = 0;
-    for (const buf of buffers) {
+    for (let i = 0; i < buffers.length; ++i) {
+      const buf = buffers[i];
       TypedArrayPrototypeSet(contents, buf, n);
       n += buf.byteLength;
     }
@@ -177,7 +178,7 @@
 
     while (cursor < size) {
       const sliceEnd = MathMin(size + 1, cursor + READ_PER_ITER);
-      const slice = buf.subarray(cursor, sliceEnd);
+      const slice = TypedArrayPrototypeSubarray(buf, cursor, sliceEnd);
       const read = r.readSync(slice);
       if (typeof read == "number") {
         cursor += read;
@@ -191,7 +192,7 @@
       // Read remaining and concat
       return concatBuffers([buf, readAllSync(r)]);
     } else { // cursor == size
-      return buf.subarray(0, cursor);
+      return TypedArrayPrototypeSubarray(buf, 0, cursor);
     }
   }
 
@@ -202,7 +203,7 @@
     while (cursor < size) {
       signal?.throwIfAborted();
       const sliceEnd = MathMin(size + 1, cursor + READ_PER_ITER);
-      const slice = buf.subarray(cursor, sliceEnd);
+      const slice = TypedArrayPrototypeSubarray(buf, cursor, sliceEnd);
       const read = await r.read(slice);
       if (typeof read == "number") {
         cursor += read;
@@ -217,7 +218,7 @@
       // Read remaining and concat
       return concatBuffers([buf, await readAllInner(r, options)]);
     } else {
-      return buf.subarray(0, cursor);
+      return TypedArrayPrototypeSubarray(buf, 0, cursor);
     }
   }
 

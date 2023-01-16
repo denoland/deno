@@ -1,8 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::error::AnyError;
 use crate::gotham_state::GothamState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
+use crate::runtime::JsRuntimeState;
 use crate::OpDecl;
 use crate::OpsTracker;
 use anyhow::Error;
@@ -18,6 +20,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::rc::Weak;
 use std::task::Context;
 use std::task::Poll;
 
@@ -88,6 +91,7 @@ where
   }
 }
 
+pub type RealmIdx = usize;
 pub type PromiseId = i32;
 pub type OpAsyncFuture = OpCall<(PromiseId, OpId, OpResult)>;
 pub type OpFn =
@@ -130,7 +134,7 @@ impl OpError {
   pub fn new(get_class: GetErrorClassFn, err: Error) -> Self {
     Self {
       class_name: (get_class)(&err),
-      message: err.to_string(),
+      message: format!("{:#}", err),
       code: crate::error_codes::get_error_code(&err),
     }
   }
@@ -150,7 +154,10 @@ pub fn to_op_result<R: Serialize + 'static>(
 pub struct OpCtx {
   pub id: OpId,
   pub state: Rc<RefCell<OpState>>,
-  pub decl: OpDecl,
+  pub decl: Rc<OpDecl>,
+  pub runtime_state: Weak<RefCell<JsRuntimeState>>,
+  // Index of the current realm into `JsRuntimeState::known_realms`.
+  pub realm_idx: RealmIdx,
 }
 
 /// Maintains the resources and ops inside a JS runtime.
@@ -158,6 +165,7 @@ pub struct OpState {
   pub resource_table: ResourceTable,
   pub get_error_class_fn: GetErrorClassFn,
   pub tracker: OpsTracker,
+  pub last_fast_op_error: Option<AnyError>,
   gotham_state: GothamState,
 }
 
@@ -167,6 +175,7 @@ impl OpState {
       resource_table: Default::default(),
       get_error_class_fn: &|_| "Error",
       gotham_state: Default::default(),
+      last_fast_op_error: None,
       tracker: OpsTracker::new(ops_count),
     }
   }

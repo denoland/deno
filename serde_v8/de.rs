@@ -1,15 +1,23 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-use serde::de::{self, Visitor};
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use serde::de::SeqAccess as _;
+use serde::de::Visitor;
+use serde::de::{self};
 use serde::Deserialize;
 
-use crate::error::{Error, Result};
-use crate::keys::{v8_struct_key, KeyCache};
+use crate::error::Error;
+use crate::error::Result;
+use crate::keys::v8_struct_key;
+use crate::keys::KeyCache;
+use crate::magic;
+use crate::magic::transl8::visit_magic;
 use crate::magic::transl8::FromV8;
-use crate::magic::transl8::{visit_magic, MagicType};
+use crate::magic::transl8::MagicType;
 use crate::payload::ValueType;
-use crate::{
-  magic, ByteString, DetachedBuffer, StringOrBuffer, U16String, ZeroCopyBuf,
-};
+use crate::ByteString;
+use crate::DetachedBuffer;
+use crate::StringOrBuffer;
+use crate::U16String;
+use crate::ZeroCopyBuf;
 
 pub struct Deserializer<'a, 'b, 's> {
   input: v8::Local<'a, v8::Value>,
@@ -170,11 +178,11 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     visitor.visit_f64(
       if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
-        x.value() as f64
+        x.value()
       } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
         bigint_to_f64(x)
       } else if let Some(x) = self.input.number_value(self.scope) {
-        x as f64
+        x
       } else if let Some(x) = self.input.to_big_int(self.scope) {
         bigint_to_f64(x)
       } else {
@@ -259,15 +267,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     let arr = v8::Local::<v8::Array>::try_from(self.input)
       .map_err(|_| Error::ExpectedArray)?;
-    let len = arr.length();
-    let obj = v8::Local::<v8::Object>::from(arr);
-    let seq = SeqAccess {
-      pos: 0,
-      len,
-      obj,
-      scope: self.scope,
-    };
-    visitor.visit_seq(seq)
+    visitor.visit_seq(SeqAccess::new(arr.into(), self.scope, 0..arr.length()))
   }
 
   // Like deserialize_seq except it prefers tuple's length over input array's length
@@ -283,13 +283,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
         return Err(Error::LengthMismatch);
       }
     }
-    let seq = SeqAccess {
-      pos: 0,
-      len: len as u32,
-      obj,
-      scope: self.scope,
-    };
-    visitor.visit_seq(seq)
+    visitor.visit_seq(SeqAccess::new(obj, self.scope, 0..len as u32))
   }
 
   // Tuple structs look just like sequences in JSON.
@@ -325,19 +319,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       };
       visitor.visit_map(map)
     } else {
-      let prop_names = obj.get_own_property_names(self.scope);
-      let keys: Vec<magic::Value> = match prop_names {
-        Some(names) => from_v8(self.scope, names.into()).unwrap(),
-        None => vec![],
-      };
-
-      let map = MapObjectAccess {
-        obj,
-        keys: keys.into_iter(),
-        next_value: None,
-        scope: self.scope,
-      };
-      visitor.visit_map(map)
+      visitor.visit_map(MapObjectAccess::new(obj, self.scope))
     }
   }
 
@@ -371,14 +353,20 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       }
       _ => {
         // Regular struct
-        let obj = self.input.try_into().or(Err(Error::ExpectedObject))?;
-        visitor.visit_seq(StructAccess {
-          fields,
-          obj,
-          pos: 0,
-          scope: self.scope,
-          _cache: None,
-        })
+        let obj = v8::Local::<v8::Object>::try_from(self.input)
+          .or(Err(Error::ExpectedObject))?;
+
+        // Fields names are a hint and must be inferred when not provided
+        if fields.is_empty() {
+          visitor.visit_map(MapObjectAccess::new(obj, self.scope))
+        } else {
+          visitor.visit_map(StructAccess {
+            obj,
+            scope: self.scope,
+            keys: fields.iter(),
+            next_value: None,
+          })
+        }
       }
     }
   }
@@ -410,7 +398,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       let obj = v8::Local::<v8::Object>::try_from(self.input).unwrap();
       // Unpack single-key
       let tag = {
-        let prop_names = obj.get_own_property_names(self.scope);
+        let prop_names =
+          obj.get_own_property_names(self.scope, Default::default());
         let prop_names = prop_names.ok_or(Error::ExpectedEnum)?;
         if prop_names.length() != 1 {
           return Err(Error::LengthMismatch);
@@ -453,7 +442,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
-      .and_then(|zb| visitor.visit_bytes(&*zb))
+      .and_then(|zb| visitor.visit_bytes(&zb))
   }
 
   fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
@@ -467,9 +456,31 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
 
 struct MapObjectAccess<'a, 's> {
   obj: v8::Local<'a, v8::Object>,
-  scope: &'a mut v8::HandleScope<'s>,
-  keys: std::vec::IntoIter<magic::Value<'a>>,
-  next_value: Option<v8::Local<'a, v8::Value>>,
+  keys: SeqAccess<'a, 's>,
+  next_value: Option<v8::Local<'s, v8::Value>>,
+}
+
+impl<'a, 's> MapObjectAccess<'a, 's> {
+  pub fn new(
+    obj: v8::Local<'a, v8::Object>,
+    scope: &'a mut v8::HandleScope<'s>,
+  ) -> Self {
+    let keys = match obj.get_own_property_names(
+      scope,
+      v8::GetPropertyNamesArgsBuilder::new()
+        .key_conversion(v8::KeyConversionMode::ConvertToString)
+        .build(),
+    ) {
+      Some(keys) => SeqAccess::new(keys.into(), scope, 0..keys.length()),
+      None => SeqAccess::new(obj, scope, 0..0),
+    };
+
+    Self {
+      obj,
+      keys,
+      next_value: None,
+    }
+  }
 }
 
 impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_> {
@@ -479,16 +490,16 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_> {
     &mut self,
     seed: K,
   ) -> Result<Option<K::Value>> {
-    for key in self.keys.by_ref() {
-      let v8_val = self.obj.get(self.scope, key.v8_value).unwrap();
+    while let Some(key) = self.keys.next_element::<magic::Value>()? {
+      let v8_val = self.obj.get(self.keys.scope, key.v8_value).unwrap();
       if v8_val.is_undefined() {
         // Historically keys/value pairs with undefined values are not added to the output
         continue;
       }
       self.next_value = Some(v8_val);
-      let mut deserializer = Deserializer::new(self.scope, key.v8_value, None);
-      let k = seed.deserialize(&mut deserializer)?;
-      return Ok(Some(k));
+      let mut deserializer =
+        Deserializer::new(self.keys.scope, key.v8_value, None);
+      return seed.deserialize(&mut deserializer).map(Some);
     }
     Ok(None)
   }
@@ -497,13 +508,16 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_> {
     &mut self,
     seed: V,
   ) -> Result<V::Value> {
-    let v8_val = self.next_value.take().unwrap();
-    let mut deserializer = Deserializer::new(self.scope, v8_val, None);
+    let v8_val = self
+      .next_value
+      .take()
+      .expect("Call next_key_seed before next_value_seed");
+    let mut deserializer = Deserializer::new(self.keys.scope, v8_val, None);
     seed.deserialize(&mut deserializer)
   }
 
   fn size_hint(&self) -> Option<usize> {
-    Some(self.keys.len())
+    self.keys.size_hint()
   }
 }
 
@@ -548,70 +562,81 @@ impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_> {
   }
 }
 
-struct StructAccess<'a, 'b, 's> {
+struct StructAccess<'a, 's> {
   obj: v8::Local<'a, v8::Object>,
-  scope: &'b mut v8::HandleScope<'s>,
-  fields: &'static [&'static str],
-  pos: usize,
-  _cache: Option<&'b mut KeyCache>,
+  scope: &'a mut v8::HandleScope<'s>,
+  keys: std::slice::Iter<'static, &'static str>,
+  next_value: Option<v8::Local<'s, v8::Value>>,
 }
 
-impl<'de> de::SeqAccess<'de> for StructAccess<'_, '_, '_> {
+impl<'de> de::MapAccess<'de> for StructAccess<'_, '_> {
   type Error = Error;
 
-  fn next_element_seed<T: de::DeserializeSeed<'de>>(
-    &mut self,
-    seed: T,
-  ) -> Result<Option<T::Value>> {
-    if self.pos >= self.fields.len() {
-      return Ok(None);
+  fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
+  where
+    K: de::DeserializeSeed<'de>,
+  {
+    for field in self.keys.by_ref() {
+      let key = v8_struct_key(self.scope, field).into();
+      let val = self.obj.get(self.scope, key).unwrap();
+      if val.is_undefined() {
+        // Historically keys/value pairs with undefined values are not added to the output
+        continue;
+      }
+      self.next_value = Some(val);
+      let mut deserializer = Deserializer::new(self.scope, key, None);
+      return seed.deserialize(&mut deserializer).map(Some);
     }
+    Ok(None)
+  }
 
-    let pos = self.pos;
-    self.pos += 1;
-
-    let field = self.fields[pos];
-    let key = v8_struct_key(self.scope, field).into();
-    let val = self.obj.get(self.scope, key).unwrap();
+  fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
+  where
+    V: de::DeserializeSeed<'de>,
+  {
+    let val = self
+      .next_value
+      .take()
+      .expect("Call next_key_seed before next_value_seed");
     let mut deserializer = Deserializer::new(self.scope, val, None);
-    match seed.deserialize(&mut deserializer) {
-      Ok(val) => Ok(Some(val)),
-      // Fallback to Ok(None) for #[serde(Default)] at cost of error quality ...
-      // TODO(@AaronO): double check that there's no better solution
-      Err(_) if val.is_undefined() => Ok(None),
-      Err(e) => Err(e),
-    }
+    seed.deserialize(&mut deserializer)
   }
 }
 
-struct SeqAccess<'a, 'b, 's> {
+struct SeqAccess<'a, 's> {
   obj: v8::Local<'a, v8::Object>,
-  scope: &'b mut v8::HandleScope<'s>,
-  len: u32,
-  pos: u32,
+  scope: &'a mut v8::HandleScope<'s>,
+  range: std::ops::Range<u32>,
 }
 
-impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_, '_> {
+impl<'a, 's> SeqAccess<'a, 's> {
+  pub fn new(
+    obj: v8::Local<'a, v8::Object>,
+    scope: &'a mut v8::HandleScope<'s>,
+    range: std::ops::Range<u32>,
+  ) -> Self {
+    Self { obj, scope, range }
+  }
+}
+
+impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_> {
   type Error = Error;
 
   fn next_element_seed<T: de::DeserializeSeed<'de>>(
     &mut self,
     seed: T,
   ) -> Result<Option<T::Value>> {
-    let pos = self.pos;
-    self.pos += 1;
-
-    if pos < self.len {
+    if let Some(pos) = self.range.next() {
       let val = self.obj.get_index(self.scope, pos).unwrap();
       let mut deserializer = Deserializer::new(self.scope, val, None);
-      Ok(Some(seed.deserialize(&mut deserializer)?))
+      seed.deserialize(&mut deserializer).map(Some)
     } else {
       Ok(None)
     }
   }
 
   fn size_hint(&self) -> Option<usize> {
-    Some((self.len - self.pos) as usize)
+    self.range.size_hint().1
   }
 }
 
@@ -716,28 +741,26 @@ fn to_utf8_fast(
   scope: &mut v8::HandleScope,
 ) -> Option<String> {
   // Over-allocate by 20% to avoid checking string twice
-  let len = s.length();
-  let capacity = (len as f64 * 1.2) as usize;
+  let str_chars = s.length();
+  let capacity = (str_chars as f64 * 1.2) as usize;
   let mut buf = Vec::with_capacity(capacity);
+
   let mut nchars = 0;
-  let data = buf.as_mut_ptr();
-  let length = s.write_utf8(
+  let bytes_len = s.write_utf8_uninit(
     scope,
-    // SAFETY: we're essentially providing the raw internal slice/buffer owned by the Vec
-    // which fulfills all of from_raw_parts_mut's safety requirements besides "initialization"
-    // and since we're operating on a [u8] not [T] we can safely assume the slice's values
-    // are sufficiently "initialized" for writes
-    unsafe { std::slice::from_raw_parts_mut(data, capacity) },
+    buf.spare_capacity_mut(),
     Some(&mut nchars),
     v8::WriteOptions::NO_NULL_TERMINATION
       | v8::WriteOptions::REPLACE_INVALID_UTF8,
   );
-  if nchars < len {
+
+  if nchars < str_chars {
     return None;
   }
-  // SAFETY: write_utf8 guarantees `length` bytes are initialized & valid utf8
+
+  // SAFETY: write_utf8_uninit guarantees `bytes_len` bytes are initialized & valid utf8
   unsafe {
-    buf.set_len(length);
+    buf.set_len(bytes_len);
     Some(String::from_utf8_unchecked(buf))
   }
 }
@@ -748,21 +771,18 @@ fn to_utf8_slow(
 ) -> String {
   let capacity = s.utf8_length(scope);
   let mut buf = Vec::with_capacity(capacity);
-  let data = buf.as_mut_ptr();
-  let length = s.write_utf8(
+
+  let bytes_len = s.write_utf8_uninit(
     scope,
-    // SAFETY: we're essentially providing the raw internal slice/buffer owned by the Vec
-    // which fulfills all of from_raw_parts_mut's safety requirements besides "initialization"
-    // and since we're operating on a [u8] not [T] we can safely assume the slice's values
-    // are sufficiently "initialized" for writes
-    unsafe { std::slice::from_raw_parts_mut(data, capacity) },
+    buf.spare_capacity_mut(),
     None,
     v8::WriteOptions::NO_NULL_TERMINATION
       | v8::WriteOptions::REPLACE_INVALID_UTF8,
   );
-  // SAFETY: write_utf8 guarantees `length` bytes are initialized & valid utf8
+
+  // SAFETY: write_utf8_uninit guarantees `bytes_len` bytes are initialized & valid utf8
   unsafe {
-    buf.set_len(length);
+    buf.set_len(bytes_len);
     String::from_utf8_unchecked(buf)
   }
 }

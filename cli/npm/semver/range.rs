@@ -1,6 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::cmp::Ordering;
+
+use serde::Deserialize;
+use serde::Serialize;
 
 use super::NpmVersion;
 
@@ -14,7 +17,7 @@ impl VersionRangeSet {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RangeBound {
   Version(VersionBound),
   Unbounded, // matches everything
@@ -91,13 +94,13 @@ impl RangeBound {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum VersionBoundKind {
   Inclusive,
   Exclusive,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct VersionBound {
   pub kind: VersionBoundKind,
   pub version: NpmVersion,
@@ -109,7 +112,7 @@ impl VersionBound {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct VersionRange {
   pub start: RangeBound,
   pub end: RangeBound,

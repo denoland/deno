@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -8,7 +8,9 @@
   const core = window.Deno.core;
   const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
-  const { defineEventHandler, setTarget } = window.__bootstrap.event;
+  const { MessageEvent, defineEventHandler, setTarget } =
+    window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayPrototypeIndexOf,
@@ -32,7 +34,7 @@
         break;
       }
 
-      const [name, data] = message;
+      const { 0: name, 1: data } = message;
       dispatch(null, name, new Uint8Array(data));
     }
 
@@ -41,7 +43,9 @@
   }
 
   function dispatch(source, name, data) {
-    for (const channel of channels) {
+    for (let i = 0; i < channels.length; ++i) {
+      const channel = channels[i];
+
       if (channel === source) continue; // Don't self-send.
       if (channel[_name] !== name) continue;
       if (channel[_closed]) continue;
@@ -118,7 +122,11 @@
       dispatch(this, this[_name], new Uint8Array(data));
 
       // Send to listeners in other VMs.
-      defer(() => core.opAsync("op_broadcast_send", rid, this[_name], data));
+      defer(() => {
+        if (!this[_closed]) {
+          core.opAsync("op_broadcast_send", rid, this[_name], data);
+        }
+      });
     }
 
     close() {

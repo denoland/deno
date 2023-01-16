@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::hash::Hasher;
 
@@ -31,6 +31,14 @@ impl FastInsecureHasher {
 
   pub fn write_u64(&mut self, value: u64) -> &mut Self {
     self.0.write_u64(value);
+    self
+  }
+
+  pub fn write_hashable(
+    &mut self,
+    hashable: &impl std::hash::Hash,
+  ) -> &mut Self {
+    hashable.hash(&mut self.0);
     self
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -7,12 +7,6 @@
 
 declare namespace Deno {
   namespace core {
-    /** Call an op in Rust, and synchronously receive the result. */
-    function opSync(
-      opName: string,
-      ...args: any[]
-    ): any;
-
     /** Call an op in Rust, and asynchronously receive the result. */
     function opAsync(
       opName: string,
@@ -60,6 +54,11 @@ declare namespace Deno {
      * Write to a (stream) resource that implements write()
      */
     function write(rid: number, buf: Uint8Array): Promise<number>;
+
+    /**
+     * Write to a (stream) resource that implements write()
+     */
+    function writeAll(rid: number, buf: Uint8Array): Promise<void>;
 
     /**
      * Print a message to stdout or stderr
@@ -164,5 +163,26 @@ declare namespace Deno {
      * enabled.
      */
     const opCallTraces: Map<number, OpCallTrace>;
+
+    /**
+     * Adds a callback for the given Promise event. If this function is called
+     * multiple times, the callbacks are called in the order they were added.
+     * - `init_hook` is called when a new promise is created. When a new promise
+     *   is created as part of the chain in the case of `Promise.then` or in the
+     *   intermediate promises created by `Promise.{race, all}`/`AsyncFunctionAwait`,
+     *   we pass the parent promise otherwise we pass undefined.
+     * - `before_hook` is called at the beginning of the promise reaction.
+     * - `after_hook` is called at the end of the promise reaction.
+     * - `resolve_hook` is called at the beginning of resolve or reject function.
+     */
+    function setPromiseHooks(
+      init_hook?: (
+        promise: Promise<unknown>,
+        parentPromise?: Promise<unknown>,
+      ) => void,
+      before_hook?: (promise: Promise<unknown>) => void,
+      after_hook?: (promise: Promise<unknown>) => void,
+      resolve_hook?: (promise: Promise<unknown>) => void,
+    ): void;
   }
 }

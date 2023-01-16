@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
 use super::cache;
@@ -12,9 +12,9 @@ use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
 
-use crate::args::LintConfig;
-use crate::diagnostics;
+use crate::args::LintOptions;
 use crate::npm::NpmPackageReference;
+use crate::tools::lint::get_configured_rules;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -25,6 +25,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_graph::Resolved;
+use deno_lint::rules::LintRule;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
 use std::collections::HashMap;
@@ -37,13 +38,13 @@ use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
 pub type SnapshotForDiagnostics =
-  (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);
+  (Arc<StateSnapshot>, Arc<ConfigSnapshot>, LintOptions);
 pub type DiagnosticRecord =
   (ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>);
 pub type DiagnosticVec = Vec<DiagnosticRecord>;
 type DiagnosticMap =
   HashMap<ModuleSpecifier, (Option<i32>, Vec<lsp::Diagnostic>)>;
-type TsDiagnosticsMap = HashMap<String, Vec<diagnostics::Diagnostic>>;
+type TsDiagnosticsMap = HashMap<String, Vec<crate::tsc::Diagnostic>>;
 type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp::Diagnostic>>;
 
 #[derive(Clone)]
@@ -199,7 +200,7 @@ impl DiagnosticsServer {
           match rx.recv().await {
             // channel has closed
             None => break,
-            Some((snapshot, config, maybe_lint_config)) => {
+            Some((snapshot, config, lint_options)) => {
               // cancel the previous run
               token.cancel();
               token = CancellationToken::new();
@@ -301,7 +302,7 @@ impl DiagnosticsServer {
                   let diagnostics = generate_lint_diagnostics(
                     &snapshot,
                     &config,
-                    maybe_lint_config,
+                    &lint_options,
                     token.clone(),
                   )
                   .await;
@@ -335,25 +336,25 @@ impl DiagnosticsServer {
   }
 }
 
-impl<'a> From<&'a diagnostics::DiagnosticCategory> for lsp::DiagnosticSeverity {
-  fn from(category: &'a diagnostics::DiagnosticCategory) -> Self {
+impl<'a> From<&'a crate::tsc::DiagnosticCategory> for lsp::DiagnosticSeverity {
+  fn from(category: &'a crate::tsc::DiagnosticCategory) -> Self {
     match category {
-      diagnostics::DiagnosticCategory::Error => lsp::DiagnosticSeverity::ERROR,
-      diagnostics::DiagnosticCategory::Warning => {
+      crate::tsc::DiagnosticCategory::Error => lsp::DiagnosticSeverity::ERROR,
+      crate::tsc::DiagnosticCategory::Warning => {
         lsp::DiagnosticSeverity::WARNING
       }
-      diagnostics::DiagnosticCategory::Suggestion => {
+      crate::tsc::DiagnosticCategory::Suggestion => {
         lsp::DiagnosticSeverity::HINT
       }
-      diagnostics::DiagnosticCategory::Message => {
+      crate::tsc::DiagnosticCategory::Message => {
         lsp::DiagnosticSeverity::INFORMATION
       }
     }
   }
 }
 
-impl<'a> From<&'a diagnostics::Position> for lsp::Position {
-  fn from(pos: &'a diagnostics::Position) -> Self {
+impl<'a> From<&'a crate::tsc::Position> for lsp::Position {
+  fn from(pos: &'a crate::tsc::Position) -> Self {
     Self {
       line: pos.line as u32,
       character: pos.character as u32,
@@ -361,7 +362,7 @@ impl<'a> From<&'a diagnostics::Position> for lsp::Position {
   }
 }
 
-fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
+fn get_diagnostic_message(diagnostic: &crate::tsc::Diagnostic) -> String {
   if let Some(message) = diagnostic.message_text.clone() {
     message
   } else if let Some(message_chain) = diagnostic.message_chain.clone() {
@@ -372,8 +373,8 @@ fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
 }
 
 fn to_lsp_range(
-  start: &diagnostics::Position,
-  end: &diagnostics::Position,
+  start: &crate::tsc::Position,
+  end: &crate::tsc::Position,
 ) -> lsp::Range {
   lsp::Range {
     start: start.into(),
@@ -382,7 +383,7 @@ fn to_lsp_range(
 }
 
 fn to_lsp_related_information(
-  related_information: &Option<Vec<diagnostics::Diagnostic>>,
+  related_information: &Option<Vec<crate::tsc::Diagnostic>>,
 ) -> Option<Vec<lsp::DiagnosticRelatedInformation>> {
   related_information.as_ref().map(|related| {
     related
@@ -408,7 +409,7 @@ fn to_lsp_related_information(
 }
 
 fn ts_json_to_diagnostics(
-  diagnostics: Vec<diagnostics::Diagnostic>,
+  diagnostics: Vec<crate::tsc::Diagnostic>,
 ) -> Vec<lsp::Diagnostic> {
   diagnostics
     .iter()
@@ -444,12 +445,12 @@ fn ts_json_to_diagnostics(
 async fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
   config: &ConfigSnapshot,
-  maybe_lint_config: Option<LintConfig>,
+  lint_options: &LintOptions,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let documents = snapshot.documents.documents(true, true);
   let workspace_settings = config.settings.workspace.clone();
-
+  let lint_rules = get_configured_rules(lint_options.rules.clone());
   let mut diagnostics_vec = Vec::new();
   if workspace_settings.lint {
     for document in documents {
@@ -458,13 +459,21 @@ async fn generate_lint_diagnostics(
         break;
       }
 
+      // ignore any npm package files
+      if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+        if npm_resolver.in_npm_package(document.specifier()) {
+          continue;
+        }
+      }
+
       let version = document.maybe_lsp_version();
       diagnostics_vec.push((
         document.specifier().clone(),
         version,
         generate_document_lint_diagnostics(
           config,
-          &maybe_lint_config,
+          lint_options,
+          lint_rules.clone(),
           &document,
         ),
       ));
@@ -475,23 +484,21 @@ async fn generate_lint_diagnostics(
 
 fn generate_document_lint_diagnostics(
   config: &ConfigSnapshot,
-  maybe_lint_config: &Option<LintConfig>,
+  lint_options: &LintOptions,
+  lint_rules: Vec<Arc<dyn LintRule>>,
   document: &Document,
 ) -> Vec<lsp::Diagnostic> {
   if !config.specifier_enabled(document.specifier()) {
     return Vec::new();
   }
-  if let Some(lint_config) = &maybe_lint_config {
-    if !lint_config.files.matches_specifier(document.specifier()) {
-      return Vec::new();
-    }
+  if !lint_options.files.matches_specifier(document.specifier()) {
+    return Vec::new();
   }
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
-      if let Ok(references) = analysis::get_lint_references(
-        &parsed_source,
-        maybe_lint_config.as_ref(),
-      ) {
+      if let Ok(references) =
+        analysis::get_lint_references(&parsed_source, lint_rules)
+      {
         references
           .into_iter()
           .map(|r| r.to_diagnostic())
@@ -597,6 +604,8 @@ pub enum DenoDiagnostic {
   NoCacheBlob,
   /// A data module was not found in the cache.
   NoCacheData(ModuleSpecifier),
+  /// A remote npm package reference was not found in the cache.
+  NoCacheNpm(NpmPackageReference, ModuleSpecifier),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
   /// The specifier resolved to a remote specifier that was redirected to
@@ -622,6 +631,7 @@ impl DenoDiagnostic {
       Self::NoCache(_) => "no-cache",
       Self::NoCacheBlob => "no-cache-blob",
       Self::NoCacheData(_) => "no-cache-data",
+      Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
       Self::Redirect { .. } => "redirect",
       Self::ResolutionError(err) => match err {
@@ -690,16 +700,17 @@ impl DenoDiagnostic {
           }),
           ..Default::default()
         },
-        "no-cache" | "no-cache-data" => {
+        "no-cache" | "no-cache-data" | "no-cache-npm" => {
           let data = diagnostic
             .data
             .clone()
             .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
           let data: DiagnosticDataSpecifier = serde_json::from_value(data)?;
-          let title = if code == "no-cache" {
-            format!("Cache \"{}\" and its dependencies.", data.specifier)
-          } else {
-            "Cache the data URL and its dependencies.".to_string()
+          let title = match code.as_str() {
+            "no-cache" | "no-cache-npm" => {
+              format!("Cache \"{}\" and its dependencies.", data.specifier)
+            }
+            _ => "Cache the data URL and its dependencies.".to_string(),
           };
           lsp::CodeAction {
             title,
@@ -757,6 +768,7 @@ impl DenoDiagnostic {
         code.as_str(),
         "import-map-remap"
           | "no-cache"
+          | "no-cache-npm"
           | "no-cache-data"
           | "no-assert-type"
           | "redirect"
@@ -777,6 +789,7 @@ impl DenoDiagnostic {
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{}\".", specifier), Some(json!({ "specifier": specifier }))),
       Self::NoCacheBlob => (lsp::DiagnosticSeverity::ERROR, "Uncached blob URL.".to_string(), None),
       Self::NoCacheData(specifier) => (lsp::DiagnosticSeverity::ERROR, "Uncached data URL.".to_string(), Some(json!({ "specifier": specifier }))),
+      Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: \"{}\".", pkg_ref.req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{}\" was redirected to \"{}\".", from, to), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => (lsp::DiagnosticSeverity::ERROR, err.to_string(), None),
@@ -847,8 +860,20 @@ fn diagnose_resolved(
               .push(DenoDiagnostic::NoAssertType.to_lsp_diagnostic(&range)),
           }
         }
-      } else if NpmPackageReference::from_specifier(specifier).is_ok() {
-        // ignore npm specifiers for now
+      } else if let Ok(pkg_ref) = NpmPackageReference::from_specifier(specifier)
+      {
+        if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+          // show diagnostics for npm package references that aren't cached
+          if npm_resolver
+            .resolve_package_folder_from_deno_module(&pkg_ref.req)
+            .is_err()
+          {
+            diagnostics.push(
+              DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone())
+                .to_lsp_diagnostic(&range),
+            );
+          }
+        }
       } else {
         // When the document is not available, it means that it cannot be found
         // in the cache or locally on the disk, so we want to issue a diagnostic
@@ -882,6 +907,12 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
+  if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+    if npm_resolver.in_npm_package(referrer) {
+      return; // ignore, surface typescript errors instead
+    }
+  }
+
   if let Some(import_map) = &snapshot.maybe_import_map {
     if let Resolved::Ok {
       specifier, range, ..
@@ -938,8 +969,8 @@ async fn generate_deno_diagnostics(
           &mut diagnostics,
           snapshot,
           specifier,
-          &dependency_key,
-          &dependency,
+          dependency_key,
+          dependency,
         );
       }
     }
@@ -980,7 +1011,7 @@ mod tests {
       documents.open(
         specifier.clone(),
         *version,
-        language_id.clone(),
+        *language_id,
         (*source).into(),
       );
     }
@@ -1050,7 +1081,7 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &enabled_config,
-        None,
+        &Default::default(),
         Default::default(),
       )
       .await;
@@ -1091,7 +1122,7 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &disabled_config,
-        None,
+        &Default::default(),
         Default::default(),
       )
       .await;

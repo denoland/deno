@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
 
@@ -10,6 +10,13 @@
     ArrayPrototypeFilter,
     ObjectEntries,
     ObjectCreate,
+    ObjectDefineProperty,
+    Proxy,
+    ReflectDefineProperty,
+    ReflectGetOwnPropertyDescriptor,
+    ReflectOwnKeys,
+    Set,
+    SetPrototypeHas,
   } = window.__bootstrap.primordials;
 
   function assert(cond) {
@@ -49,29 +56,29 @@
       return success;
     },
     ownKeys(_target) {
-      const globalThisKeys = Reflect.ownKeys(globalThis);
-      const nodeGlobalsKeys = Reflect.ownKeys(nodeGlobals);
+      const globalThisKeys = ReflectOwnKeys(globalThis);
+      const nodeGlobalsKeys = ReflectOwnKeys(nodeGlobals);
       const nodeGlobalsKeySet = new Set(nodeGlobalsKeys);
       return [
         ...ArrayPrototypeFilter(
           globalThisKeys,
-          (k) => !nodeGlobalsKeySet.has(k),
+          (k) => !SetPrototypeHas(nodeGlobalsKeySet, k),
         ),
         ...nodeGlobalsKeys,
       ];
     },
     defineProperty(_target, prop, desc) {
       if (prop in nodeGlobals) {
-        return Reflect.defineProperty(nodeGlobals, prop, desc);
+        return ReflectDefineProperty(nodeGlobals, prop, desc);
       } else {
-        return Reflect.defineProperty(globalThis, prop, desc);
+        return ReflectDefineProperty(globalThis, prop, desc);
       }
     },
     getOwnPropertyDescriptor(_target, prop) {
       if (prop in nodeGlobals) {
-        return Reflect.getOwnPropertyDescriptor(nodeGlobals, prop);
+        return ReflectGetOwnPropertyDescriptor(nodeGlobals, prop);
       } else {
-        return Reflect.getOwnPropertyDescriptor(globalThis, prop);
+        return ReflectGetOwnPropertyDescriptor(globalThis, prop);
       }
     },
     has(_target, prop) {
@@ -82,7 +89,7 @@
   const nativeModuleExports = ObjectCreate(null);
   const builtinModules = [];
 
-  function initialize(nodeModules) {
+  function initialize(nodeModules, nodeGlobalThisName) {
     assert(!initialized);
     initialized = true;
     for (const [name, exports] of ObjectEntries(nodeModules)) {
@@ -93,11 +100,20 @@
     nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
     nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
     nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
+    nodeGlobals.console = nativeModuleExports["console"];
     nodeGlobals.global = nodeGlobalThis;
     nodeGlobals.process = nativeModuleExports["process"];
     nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
     nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
     nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
+
+    // add a hidden global for the esm code to use in order to reliably
+    // get node's globalThis
+    ObjectDefineProperty(globalThis, nodeGlobalThisName, {
+      enumerable: false,
+      writable: false,
+      value: nodeGlobalThis,
+    });
   }
 
   window.__bootstrap.internals = {

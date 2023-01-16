@@ -2,6 +2,6 @@
   "name": "@denotest/dual-cjs-esm",
   "version": "1.0.0",
   "type": "module",
-  "main": "./index.cjs",
-  "module": "./index.mjs"
+  "main": "./main.cjs",
+  "module": "./main.mjs"
 }

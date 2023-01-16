@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -93,6 +93,20 @@ Deno.test(
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
     assertEquals(actual, "Hello");
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function writeFileSyncCreateNew() {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    Deno.writeFileSync(filename, data, { createNew: true });
+
+    assertThrows(() => {
+      Deno.writeFileSync(filename, data, { createNew: true });
+    }, Deno.errors.AlreadyExists);
   },
 );
 
@@ -213,6 +227,19 @@ Deno.test(
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
     assertEquals(actual, "Hello");
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileCreateNew() {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    await Deno.writeFile(filename, data, { createNew: true });
+    await assertRejects(async () => {
+      await Deno.writeFile(filename, data, { createNew: true });
+    }, Deno.errors.AlreadyExists);
   },
 );
 
@@ -366,3 +393,19 @@ function pathExists(path: string | URL) {
     return false;
   }
 }
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileStream() {
+    const stream = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new Uint8Array([1]));
+        controller.enqueue(new Uint8Array([2]));
+        controller.close();
+      },
+    });
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    await Deno.writeFile(filename, stream);
+    assertEquals(Deno.readFileSync(filename), new Uint8Array([1, 2]));
+  },
+);

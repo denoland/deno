@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -18,7 +18,6 @@
     // deno-lint-ignore camelcase
     NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
-    ObjectPrototypeIsPrototypeOf,
     SafeArrayIterator,
     SymbolFor,
     TypeError,
@@ -31,7 +30,7 @@
   const hrU8 = new Uint8Array(8);
   const hr = new Uint32Array(hrU8.buffer);
   function opNow() {
-    ops.op_now.fast(hrU8);
+    ops.op_now(hrU8);
     return (hr[0] * 1000 + hr[1] / 1e6);
   }
 
@@ -245,7 +244,12 @@
     // 1.
     PromisePrototypeThen(
       sleepPromise,
-      () => {
+      (cancelled) => {
+        if (!cancelled) {
+          // The timer was cancelled.
+          removeFromScheduledTimers(timerObject);
+          return;
+        }
         // 2. Wait until any invocations of this algorithm that had the same
         // global and orderingIdentifier, that started before this one, and
         // whose milliseconds is equal to or less than this one's, have
@@ -276,14 +280,6 @@
           }
 
           currentEntry = currentEntry.next;
-        }
-      },
-      (err) => {
-        if (ObjectPrototypeIsPrototypeOf(core.InterruptedPrototype, err)) {
-          // The timer was cancelled.
-          removeFromScheduledTimers(timerObject);
-        } else {
-          throw err;
         }
       },
     );

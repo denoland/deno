@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -146,7 +146,7 @@ Deno.test({ permissions: { read: true } }, function lstatSyncSuccess() {
 
 Deno.test({ permissions: { read: false } }, function lstatSyncPerm() {
   assertThrows(() => {
-    Deno.lstatSync("hello.txt");
+    Deno.lstatSync("assets/hello.txt");
   }, Deno.errors.PermissionDenied);
 });
 

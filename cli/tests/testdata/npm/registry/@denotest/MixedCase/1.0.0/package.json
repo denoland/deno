@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/MixedCase",
+  "version": "1.0.0",
+  "dependencies": {
+    "@denotest/CAPITALS": "^1"
+  }
+}

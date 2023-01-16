@@ -1,4 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::path::PathBuf;
 
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
@@ -61,13 +63,26 @@ pub fn err_invalid_package_target(
 ) -> AnyError {
   let rel_error = !is_import && !target.is_empty() && !target.starts_with("./");
   let mut msg = "[ERR_INVALID_PACKAGE_TARGET]".to_string();
+  let pkg_json_path = PathBuf::from(pkg_path).join("package.json");
 
   if key == "." {
     assert!(!is_import);
-    msg = format!("{} Invalid \"exports\" main target {} defined in the package config {}package.json", msg, target, pkg_path)
+    msg = format!(
+      "{} Invalid \"exports\" main target {} defined in the package config {}",
+      msg,
+      target,
+      pkg_json_path.display()
+    )
   } else {
     let ie = if is_import { "imports" } else { "exports" };
-    msg = format!("{} Invalid \"{}\" target {} defined for '{}' in the package config {}package.json", msg, ie, target, key, pkg_path)
+    msg = format!(
+      "{} Invalid \"{}\" target {} defined for '{}' in the package config {}",
+      msg,
+      ie,
+      target,
+      key,
+      pkg_json_path.display()
+    )
   };
 
   if let Some(base) = maybe_referrer {
@@ -81,23 +96,36 @@ pub fn err_invalid_package_target(
 }
 
 pub fn err_package_path_not_exported(
-  pkg_path: String,
+  mut pkg_path: String,
   subpath: String,
   maybe_referrer: Option<String>,
 ) -> AnyError {
   let mut msg = "[ERR_PACKAGE_PATH_NOT_EXPORTED]".to_string();
 
+  #[cfg(windows)]
+  {
+    if !pkg_path.ends_with('\\') {
+      pkg_path.push('\\');
+    }
+  }
+  #[cfg(not(windows))]
+  {
+    if !pkg_path.ends_with('/') {
+      pkg_path.push('/');
+    }
+  }
+
   if subpath == "." {
     msg = format!(
-      "{} No \"exports\" main defined in {}package.json",
+      "{} No \"exports\" main defined in '{}package.json'",
       msg, pkg_path
     );
   } else {
-    msg = format!("{} Package subpath \'{}\' is not defined by \"exports\" in {}package.json", msg, subpath, pkg_path);
+    msg = format!("{} Package subpath '{}' is not defined by \"exports\" in '{}package.json'", msg, subpath, pkg_path);
   };
 
   if let Some(referrer) = maybe_referrer {
-    msg = format!("{} imported from {}", msg, referrer);
+    msg = format!("{} imported from '{}'", msg, referrer);
   }
 
   generic_error(msg)

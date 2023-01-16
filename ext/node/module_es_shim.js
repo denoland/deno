@@ -1,4 +1,6 @@
-const m = Deno[Deno.internal].require.moduleExports;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+const m = Deno[Deno.internal].require.Module;
 export const _cache = m._cache;
 export const _extensions = m._extensions;
 export const _findPath = m._findPath;

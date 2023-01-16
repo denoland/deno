@@ -1,9 +1,7 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::TcpStreamResource;
 use crate::ops::IpAddr;
-use crate::ops::OpAddr;
-use crate::ops::OpConn;
 use crate::ops::TlsHandshakeInfo;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
@@ -38,7 +36,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
@@ -659,9 +656,9 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
 pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
   vec![
     op_tls_start::decl::<P>(),
-    op_tls_connect::decl::<P>(),
-    op_tls_listen::decl::<P>(),
-    op_tls_accept::decl(),
+    op_net_connect_tls::decl::<P>(),
+    op_net_listen_tls::decl::<P>(),
+    op_net_accept_tls::decl(),
     op_tls_handshake::decl(),
   ]
 }
@@ -691,21 +688,18 @@ impl TlsStreamResource {
 
   pub async fn read(
     self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+    data: &mut [u8],
+  ) -> Result<usize, AnyError> {
     let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
-    let nread = rd.read(&mut buf).try_or_cancel(cancel_handle).await?;
-    Ok((nread, buf))
+    let nread = rd.read(data).try_or_cancel(cancel_handle).await?;
+    Ok(nread)
   }
 
-  pub async fn write(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  pub async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
     self.handshake().await?;
     let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
-    let nwritten = wr.write(&buf).await?;
+    let nwritten = wr.write(data).await?;
     wr.flush().await?;
     Ok(nwritten)
   }
@@ -736,19 +730,11 @@ impl TlsStreamResource {
 }
 
 impl Resource for TlsStreamResource {
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+
   fn name(&self) -> Cow<str> {
     "tlsStream".into()
-  }
-
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
-  }
-
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
@@ -763,9 +749,6 @@ impl Resource for TlsStreamResource {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectTlsArgs {
-  transport: String,
-  hostname: String,
-  port: u16,
   cert_file: Option<String>,
   ca_certs: Vec<String>,
   cert_chain: Option<String>,
@@ -786,7 +769,7 @@ pub struct StartTlsArgs {
 pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
-) -> Result<OpConn, AnyError>
+) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
@@ -799,7 +782,7 @@ where
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
-    permissions.check_net(&(hostname, Some(0)))?;
+    permissions.check_net(&(hostname, Some(0)), "Deno.startTls()")?;
   }
 
   let ca_certs = args
@@ -824,12 +807,16 @@ where
     .borrow::<DefaultTlsOptions>()
     .root_cert_store
     .clone();
+
   let resource_rc = state
     .borrow_mut()
     .resource_table
     .take::<TcpStreamResource>(rid)?;
+  // This TCP connection might be used somewhere else. If it's the case, we cannot proceed with the
+  // process of starting a TLS connection on top of this TCP connection, so we just return a bad
+  // resource error. See also: https://github.com/denoland/deno/pull/16242
   let resource = Rc::try_unwrap(resource_rc)
-    .expect("Only a single use of this resource should happen");
+    .map_err(|_| bad_resource("TCP stream is currently in use"))?;
   let (read_half, write_half) = resource.into_inner();
   let tcp_stream = read_half.reunite(write_half)?;
 
@@ -861,33 +848,18 @@ where
       .add(TlsStreamResource::new(tls_stream.into_split()))
   };
 
-  Ok(OpConn {
-    rid,
-    local_addr: Some(OpAddr::Tcp(IpAddr {
-      hostname: local_addr.ip().to_string(),
-      port: local_addr.port(),
-    })),
-    remote_addr: Some(OpAddr::Tcp(IpAddr {
-      hostname: remote_addr.ip().to_string(),
-      port: remote_addr.port(),
-    })),
-  })
+  Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
 #[op]
-pub async fn op_tls_connect<NP>(
+pub async fn op_net_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
+  addr: IpAddr,
   args: ConnectTlsArgs,
-) -> Result<OpConn, AnyError>
+) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  assert_eq!(args.transport, "tcp");
-  let hostname = match &*args.hostname {
-    "" => "localhost",
-    n => n,
-  };
-  let port = args.port;
   let cert_file = args.cert_file.as_deref();
   let unsafely_ignore_certificate_errors = state
     .borrow()
@@ -904,9 +876,10 @@ where
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
-    permissions.check_net(&(hostname, Some(port)))?;
+    permissions
+      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")?;
     if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path))?;
+      permissions.check_read(Path::new(path), "Deno.connectTls()")?;
     }
   }
 
@@ -927,10 +900,9 @@ where
     .borrow::<DefaultTlsOptions>()
     .root_cert_store
     .clone();
-  let hostname_dns =
-    ServerName::try_from(hostname).map_err(|_| invalid_hostname(hostname))?;
-
-  let connect_addr = resolve_addr(hostname, port)
+  let hostname_dns = ServerName::try_from(&*addr.hostname)
+    .map_err(|_| invalid_hostname(&addr.hostname))?;
+  let connect_addr = resolve_addr(&addr.hostname, addr.port)
     .await?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
@@ -976,17 +948,7 @@ where
       .add(TlsStreamResource::new(tls_stream.into_split()))
   };
 
-  Ok(OpConn {
-    rid,
-    local_addr: Some(OpAddr::Tcp(IpAddr {
-      hostname: local_addr.ip().to_string(),
-      port: local_addr.port(),
-    })),
-    remote_addr: Some(OpAddr::Tcp(IpAddr {
-      hostname: remote_addr.ip().to_string(),
-      port: remote_addr.port(),
-    })),
-  })
+  Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
 fn load_certs_from_file(path: &str) -> Result<Vec<Certificate>, AnyError> {
@@ -1021,9 +983,6 @@ impl Resource for TlsListenerResource {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListenTlsArgs {
-  transport: String,
-  hostname: String,
-  port: u16,
   cert: Option<String>,
   // TODO(kt3k): Remove this option at v2.0.
   cert_file: Option<String>,
@@ -1031,19 +990,22 @@ pub struct ListenTlsArgs {
   // TODO(kt3k): Remove this option at v2.0.
   key_file: Option<String>,
   alpn_protocols: Option<Vec<String>>,
+  reuse_port: bool,
 }
 
 #[op]
-pub fn op_tls_listen<NP>(
+pub fn op_net_listen_tls<NP>(
   state: &mut OpState,
+  addr: IpAddr,
   args: ListenTlsArgs,
-) -> Result<OpConn, AnyError>
+) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  assert_eq!(args.transport, "tcp");
-  let hostname = &*args.hostname;
-  let port = args.port;
+  if args.reuse_port {
+    super::check_unstable(state, "Deno.listenTls({ reusePort: true })");
+  }
+
   let cert_file = args.cert_file.as_deref();
   let key_file = args.key_file.as_deref();
   let cert = args.cert.as_deref();
@@ -1051,12 +1013,13 @@ where
 
   {
     let permissions = state.borrow_mut::<NP>();
-    permissions.check_net(&(hostname, Some(port)))?;
+    permissions
+      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenTls()")?;
     if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path))?;
+      permissions.check_read(Path::new(path), "Deno.listenTls()")?;
     }
     if let Some(path) = key_file {
-      permissions.check_read(Path::new(path))?;
+      permissions.check_read(Path::new(path), "Deno.listenTls()")?;
     }
   }
 
@@ -1092,7 +1055,7 @@ where
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
 
-  let bind_addr = resolve_addr_sync(hostname, port)?
+  let bind_addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
   let domain = if bind_addr.is_ipv4() {
@@ -1103,6 +1066,10 @@ where
   let socket = Socket::new(domain, Type::STREAM, None)?;
   #[cfg(not(windows))]
   socket.set_reuse_address(true)?;
+  if args.reuse_port {
+    #[cfg(target_os = "linux")]
+    socket.set_reuse_port(true)?;
+  }
   let socket_addr = socket2::SockAddr::from(bind_addr);
   socket.bind(&socket_addr)?;
   socket.listen(128)?;
@@ -1119,21 +1086,14 @@ where
 
   let rid = state.resource_table.add(tls_listener_resource);
 
-  Ok(OpConn {
-    rid,
-    local_addr: Some(OpAddr::Tcp(IpAddr {
-      hostname: local_addr.ip().to_string(),
-      port: local_addr.port(),
-    })),
-    remote_addr: None,
-  })
+  Ok((rid, IpAddr::from(local_addr)))
 }
 
 #[op]
-pub async fn op_tls_accept(
+pub async fn op_net_accept_tls(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<OpConn, AnyError> {
+) -> Result<(ResourceId, IpAddr, IpAddr), AnyError> {
   let resource = state
     .borrow()
     .resource_table
@@ -1167,17 +1127,7 @@ pub async fn op_tls_accept(
       .add(TlsStreamResource::new(tls_stream.into_split()))
   };
 
-  Ok(OpConn {
-    rid,
-    local_addr: Some(OpAddr::Tcp(IpAddr {
-      hostname: local_addr.ip().to_string(),
-      port: local_addr.port(),
-    })),
-    remote_addr: Some(OpAddr::Tcp(IpAddr {
-      hostname: remote_addr.ip().to_string(),
-      port: remote_addr.port(),
-    })),
-  })
+  Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
 #[op]

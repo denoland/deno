@@ -1,0 +1,14 @@
+{
+  "name": "@denotest/no-types-in-conditional-exports",
+  "version": "1.0.0",
+  "main": "./lib/foo.js",
+  "module": "./lib/foo-esm.js",
+  "exports": {
+    ".": {
+      "require": "./lib/foo.js",
+      "import": "./lib/foo-esm.js"
+    },
+    "./*": "./*"
+  },
+  "type": "module"
+}

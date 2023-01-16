@@ -1,12 +1,15 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::cell::UnsafeCell;
+use std::future::Future;
+use std::io::Read;
+use std::io::Write;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::Mutex;
+
 use deno_core::error::AnyError;
 use mio::net::TcpStream;
-use std::{
-  cell::UnsafeCell,
-  future::Future,
-  io::{Read, Write},
-  pin::Pin,
-  sync::{Arc, Mutex},
-};
 use tokio::sync::mpsc;
 
 use crate::ParseStatus;

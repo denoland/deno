@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -16,12 +16,9 @@
   const { Blob, BlobPrototype, File, FilePrototype } =
     globalThis.__bootstrap.file;
   const {
-    ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeSlice,
     ArrayPrototypeSplice,
-    ArrayPrototypeFilter,
-    ArrayPrototypeForEach,
     Map,
     MapPrototypeGet,
     MapPrototypeSet,
@@ -165,7 +162,9 @@
         context: "Argument 1",
       });
 
-      for (const entry of this[entryList]) {
+      const entries = this[entryList];
+      for (let i = 0; i < entries.length; ++i) {
+        const entry = entries[i];
         if (entry.name === name) return entry.value;
       }
       return null;
@@ -186,7 +185,9 @@
       });
 
       const returnList = [];
-      for (const entry of this[entryList]) {
+      const entries = this[entryList];
+      for (let i = 0; i < entries.length; ++i) {
+        const entry = entries[i];
         if (entry.name === name) ArrayPrototypePush(returnList, entry.value);
       }
       return returnList;
@@ -206,7 +207,9 @@
         context: "Argument 1",
       });
 
-      for (const entry of this[entryList]) {
+      const entries = this[entryList];
+      for (let i = 0; i < entries.length; ++i) {
+        const entry = entries[i];
         if (entry.name === name) return true;
       }
       return false;
@@ -301,7 +304,8 @@
     const chunks = [];
     const prefix = `--${boundary}\r\nContent-Disposition: form-data; name="`;
 
-    for (const [name, value] of formData) {
+    // deno-lint-ignore prefer-primordials
+    for (const { 0: name, 1: value } of formData) {
       if (typeof value === "string") {
         ArrayPrototypePush(
           chunks,
@@ -335,20 +339,17 @@
     /** @type {Map<string, string>} */
     const params = new Map();
     // Forced to do so for some Map constructor param mismatch
-    ArrayPrototypeForEach(
-      ArrayPrototypeMap(
-        ArrayPrototypeFilter(
-          ArrayPrototypeMap(
-            ArrayPrototypeSlice(StringPrototypeSplit(value, ";"), 1),
-            (s) => StringPrototypeSplit(StringPrototypeTrim(s), "="),
-          ),
-          (arr) => arr.length > 1,
-        ),
-        ([k, v]) => [k, StringPrototypeReplace(v, /^"([^"]*)"$/, "$1")],
-      ),
-      ([k, v]) => MapPrototypeSet(params, k, v),
-    );
-
+    const values = ArrayPrototypeSlice(StringPrototypeSplit(value, ";"), 1);
+    for (let i = 0; i < values.length; i++) {
+      const entries = StringPrototypeSplit(StringPrototypeTrim(values[i]), "=");
+      if (entries.length > 1) {
+        MapPrototypeSet(
+          params,
+          entries[0],
+          StringPrototypeReplace(entries[1], /^"([^"]*)"$/, "$1"),
+        );
+      }
+    }
     return params;
   }
 
@@ -378,7 +379,8 @@
     #parseHeaders(headersText) {
       const headers = new Headers();
       const rawHeaders = StringPrototypeSplit(headersText, "\r\n");
-      for (const rawHeader of rawHeaders) {
+      for (let i = 0; i < rawHeaders.length; ++i) {
+        const rawHeader = rawHeaders[i];
         const sepIndex = StringPrototypeIndexOf(rawHeader, ":");
         if (sepIndex < 0) {
           continue; // Skip this header
@@ -399,9 +401,19 @@
      * @returns {FormData}
      */
     parse() {
-      // Body must be at least 2 boundaries + \r\n + -- on the last boundary.
+      // To have fields body must be at least 2 boundaries + \r\n + --
+      // on the last boundary.
       if (this.body.length < (this.boundary.length * 2) + 4) {
-        throw new TypeError("Form data too short to be valid.");
+        const decodedBody = core.decode(this.body);
+        const lastBoundary = this.boundary + "--";
+        // check if it's an empty valid form data
+        if (
+          decodedBody === lastBoundary ||
+          decodedBody === lastBoundary + "\r\n"
+        ) {
+          return new FormData();
+        }
+        throw new TypeError("Unable to parse body as form data.");
       }
 
       const formData = new FormData();

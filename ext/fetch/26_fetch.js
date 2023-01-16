@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -17,7 +17,7 @@
   const webidl = window.__bootstrap.webidl;
   const { byteLowerCase } = window.__bootstrap.infra;
   const { BlobPrototype } = window.__bootstrap.file;
-  const { errorReadableStream, ReadableStreamPrototype } =
+  const { errorReadableStream, ReadableStreamPrototype, readableStreamForRid } =
     window.__bootstrap.streams;
   const { InnerBody, extractBody } = window.__bootstrap.fetchBody;
   const {
@@ -44,7 +44,6 @@
     String,
     StringPrototypeStartsWith,
     StringPrototypeToLowerCase,
-    TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
     Uint8ArrayPrototype,
@@ -89,65 +88,22 @@
     return core.opAsync("op_fetch_send", rid);
   }
 
-  // A finalization registry to clean up underlying fetch resources that are GC'ed.
-  const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
-    core.tryClose(rid);
-  });
-
   /**
    * @param {number} responseBodyRid
    * @param {AbortSignal} [terminator]
    * @returns {ReadableStream<Uint8Array>}
    */
   function createResponseBodyStream(responseBodyRid, terminator) {
+    const readable = readableStreamForRid(responseBodyRid);
+
     function onAbort() {
-      if (readable) {
-        errorReadableStream(readable, terminator.reason);
-      }
+      errorReadableStream(readable, terminator.reason);
       core.tryClose(responseBodyRid);
     }
+
     // TODO(lucacasonato): clean up registration
     terminator[abortSignal.add](onAbort);
-    const readable = new ReadableStream({
-      type: "bytes",
-      async pull(controller) {
-        try {
-          // This is the largest possible size for a single packet on a TLS
-          // stream.
-          const chunk = new Uint8Array(16 * 1024 + 256);
-          // TODO(@AaronO): switch to handle nulls if that's moved to core
-          const read = await core.read(
-            responseBodyRid,
-            chunk,
-          );
-          if (read > 0) {
-            // We read some data. Enqueue it onto the stream.
-            controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
-          } else {
-            RESOURCE_REGISTRY.unregister(readable);
-            // We have reached the end of the body, so we close the stream.
-            controller.close();
-            core.tryClose(responseBodyRid);
-          }
-        } catch (err) {
-          RESOURCE_REGISTRY.unregister(readable);
-          if (terminator.aborted) {
-            controller.error(terminator.reason);
-          } else {
-            // There was an error while reading a chunk of the body, so we
-            // error.
-            controller.error(err);
-          }
-          core.tryClose(responseBodyRid);
-        }
-      },
-      cancel() {
-        if (!terminator.aborted) {
-          terminator[abortSignal.signalAbort]();
-        }
-      },
-    });
-    RESOURCE_REGISTRY.register(readable, responseBodyRid, readable);
+
     return readable;
   }
 
@@ -165,6 +121,7 @@
 
       const body = new InnerBody(req.blobUrlEntry.stream());
       terminator[abortSignal.add](() => body.error(terminator.reason));
+      processUrlList(req.urlList, req.urlListProcessed);
 
       return {
         headerList: [
@@ -179,7 +136,9 @@
           if (this.urlList.length == 0) return null;
           return this.urlList[this.urlList.length - 1];
         },
-        urlList: recursive ? [] : [...new SafeArrayIterator(req.urlList)],
+        urlList: recursive
+          ? []
+          : [...new SafeArrayIterator(req.urlListProcessed)],
       };
     }
 
@@ -241,6 +200,8 @@
     }
     terminator[abortSignal.add](onAbort);
 
+    let requestSendError;
+    let requestSendErrorSet = false;
     if (requestBodyRid !== null) {
       if (
         reqBody === null ||
@@ -251,44 +212,69 @@
       const reader = reqBody.getReader();
       WeakMapPrototypeSet(requestBodyReaders, req, reader);
       (async () => {
-        while (true) {
-          const { value, done } = await PromisePrototypeCatch(
-            reader.read(),
-            (err) => {
-              if (terminator.aborted) return { done: true, value: undefined };
-              throw err;
-            },
-          );
+        let done = false;
+        while (!done) {
+          let val;
+          try {
+            const res = await reader.read();
+            done = res.done;
+            val = res.value;
+          } catch (err) {
+            if (terminator.aborted) break;
+            // TODO(lucacasonato): propagate error into response body stream
+            requestSendError = err;
+            requestSendErrorSet = true;
+            break;
+          }
           if (done) break;
-          if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
-            await reader.cancel("value not a Uint8Array");
+          if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, val)) {
+            const error = new TypeError(
+              "Item in request body ReadableStream is not a Uint8Array",
+            );
+            await reader.cancel(error);
+            // TODO(lucacasonato): propagate error into response body stream
+            requestSendError = error;
+            requestSendErrorSet = true;
             break;
           }
           try {
-            await PromisePrototypeCatch(
-              core.write(requestBodyRid, value),
-              (err) => {
-                if (terminator.aborted) return;
-                throw err;
-              },
-            );
-            if (terminator.aborted) break;
+            await core.writeAll(requestBodyRid, val);
           } catch (err) {
+            if (terminator.aborted) break;
             await reader.cancel(err);
+            // TODO(lucacasonato): propagate error into response body stream
+            requestSendError = err;
+            requestSendErrorSet = true;
             break;
+          }
+        }
+        if (done && !terminator.aborted) {
+          try {
+            await core.shutdown(requestBodyRid);
+          } catch (err) {
+            if (!terminator.aborted) {
+              requestSendError = err;
+              requestSendErrorSet = true;
+            }
           }
         }
         WeakMapPrototypeDelete(requestBodyReaders, req);
         core.tryClose(requestBodyRid);
       })();
     }
-
     let resp;
     try {
-      resp = await PromisePrototypeCatch(opFetchSend(requestRid), (err) => {
-        if (terminator.aborted) return;
-        throw err;
-      });
+      resp = await opFetchSend(requestRid);
+    } catch (err) {
+      if (terminator.aborted) return;
+      if (requestSendErrorSet) {
+        // if the request body stream errored, we want to propagate that error
+        // instead of the original error from opFetchSend
+        throw new TypeError("Failed to fetch: request body stream errored", {
+          cause: requestSendError,
+        });
+      }
+      throw err;
     } finally {
       if (cancelHandleRid !== null) {
         core.tryClose(cancelHandleRid);
@@ -570,14 +556,15 @@
         // 2.6.
         // Rather than consuming the body as an ArrayBuffer, this passes each
         // chunk to the feed as soon as it's available.
-        (async () => {
-          const reader = res.body.getReader();
-          while (true) {
-            const { value: chunk, done } = await reader.read();
-            if (done) break;
-            ops.op_wasm_streaming_feed(rid, chunk);
-          }
-        })().then(
+        PromisePrototypeThen(
+          (async () => {
+            const reader = res.body.getReader();
+            while (true) {
+              const { value: chunk, done } = await reader.read();
+              if (done) break;
+              ops.op_wasm_streaming_feed(rid, chunk);
+            }
+          })(),
           // 2.7
           () => core.close(rid),
           // 2.8

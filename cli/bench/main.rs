@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -15,7 +15,6 @@ use std::time::SystemTime;
 
 mod http;
 mod lsp;
-mod metrics;
 
 fn read_json(filename: &str) -> Result<Value> {
   let f = fs::File::open(filename)?;
@@ -35,7 +34,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   // invalidating that cache.
   (
     "cold_hello",
-    &["run", "--reload", "cli/tests/testdata/002_hello.ts"],
+    &["run", "--reload", "cli/tests/testdata/run/002_hello.ts"],
     None,
   ),
   (
@@ -43,19 +42,23 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--reload",
-      "cli/tests/testdata/003_relative_import.ts",
+      "cli/tests/testdata/run/003_relative_import.ts",
     ],
     None,
   ),
-  ("hello", &["run", "cli/tests/testdata/002_hello.ts"], None),
+  (
+    "hello",
+    &["run", "cli/tests/testdata/run/002_hello.ts"],
+    None,
+  ),
   (
     "relative_import",
-    &["run", "cli/tests/testdata/003_relative_import.ts"],
+    &["run", "cli/tests/testdata/run/003_relative_import.ts"],
     None,
   ),
   (
     "error_001",
-    &["run", "cli/tests/testdata/error_001.ts"],
+    &["run", "cli/tests/testdata/run/error_001.ts"],
     Some(1),
   ),
   (
@@ -64,7 +67,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "run",
       "--reload",
       "--no-check",
-      "cli/tests/testdata/002_hello.ts",
+      "cli/tests/testdata/run/002_hello.ts",
     ],
     None,
   ),
@@ -97,22 +100,25 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "text_decoder",
-    &["run", "cli/tests/testdata/text_decoder_perf.js"],
+    &["run", "cli/tests/testdata/benches/text_decoder_perf.js"],
     None,
   ),
   (
     "text_encoder",
-    &["run", "cli/tests/testdata/text_encoder_perf.js"],
+    &["run", "cli/tests/testdata/benches/text_encoder_perf.js"],
     None,
   ),
   (
     "text_encoder_into",
-    &["run", "cli/tests/testdata/text_encoder_into_perf.js"],
+    &[
+      "run",
+      "cli/tests/testdata/benches/text_encoder_into_perf.js",
+    ],
     None,
   ),
   (
     "response_string",
-    &["run", "cli/tests/testdata/response_string_perf.js"],
+    &["run", "cli/tests/testdata/benches/response_string_perf.js"],
     None,
   ),
   (
@@ -174,7 +180,6 @@ fn run_exec_time(
     benchmark_file,
     "--warmup",
     "3",
-    "--show-output",
   ]
   .iter()
   .map(|s| s.to_string())
@@ -338,7 +343,7 @@ fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
 
   for (name, args, return_code) in EXEC_TIME_BENCHMARKS {
     let proc = Command::new("time")
-      .args(&["-v", deno_exe.to_str().unwrap()])
+      .args(["-v", deno_exe.to_str().unwrap()])
       .args(args.iter())
       .stdout(Stdio::null())
       .stderr(Stdio::piped())
@@ -428,7 +433,7 @@ async fn main() -> Result<()> {
 
   let target_dir = test_util::target_dir();
   let deno_exe = test_util::deno_exe_path();
-  env::set_current_dir(&test_util::root_path())?;
+  env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
     created_at: chrono::Utc::now()
@@ -446,37 +451,28 @@ async fn main() -> Result<()> {
     ..Default::default()
   };
 
-  let mut reporter = metrics::Reporter::new().await;
-
   if benchmarks.contains(&"bundle") {
     let bundle_size = bundle_benchmark(&deno_exe)?;
-    reporter.write("bundle_size", &bundle_size);
     new_data.bundle_size = bundle_size;
   }
 
   if benchmarks.contains(&"exec_time") {
     let exec_times = run_exec_time(&deno_exe, &target_dir)?;
-    for (name, data) in exec_times.iter() {
-      reporter.write_one("exec_time", name, *data.get("mean").unwrap());
-    }
     new_data.benchmark = exec_times;
   }
 
   if benchmarks.contains(&"binary_size") {
     let binary_sizes = get_binary_sizes(&target_dir)?;
-    reporter.write("binary_size", &binary_sizes);
     new_data.binary_size = binary_sizes;
   }
 
   if benchmarks.contains(&"cargo_deps") {
     let cargo_deps = cargo_deps();
-    reporter.write_one("cargo_deps", "cargo_deps", cargo_deps as i64);
     new_data.cargo_deps = cargo_deps;
   }
 
   if benchmarks.contains(&"lsp") {
     let lsp_exec_times = lsp::benchmarks(&deno_exe)?;
-    reporter.write("lsp_exec_time", &lsp_exec_times);
     new_data.lsp_exec_time = lsp_exec_times;
   }
 
@@ -486,14 +482,12 @@ async fn main() -> Result<()> {
       .iter()
       .map(|(name, result)| (name.clone(), result.requests as i64))
       .collect();
-    reporter.write("req_per_sec", &req_per_sec);
     new_data.req_per_sec = req_per_sec;
     let max_latency = stats
       .iter()
       .map(|(name, result)| (name.clone(), result.latency))
       .collect();
 
-    reporter.write("max_latency", &max_latency);
     new_data.max_latency = max_latency;
   }
 
@@ -507,7 +501,7 @@ async fn main() -> Result<()> {
       let mut file = secure_tempfile::NamedTempFile::new()?;
 
       let exit_status = Command::new("strace")
-        .args(&[
+        .args([
           "-c",
           "-f",
           "-o",
@@ -516,6 +510,7 @@ async fn main() -> Result<()> {
         ])
         .args(args.iter())
         .stdout(Stdio::null())
+        .env("LC_NUMERIC", "C")
         .spawn()?
         .wait()?;
       let expected_exit_code = expected_exit_code.unwrap_or(0);
@@ -531,19 +526,15 @@ async fn main() -> Result<()> {
       syscall_count.insert(name.to_string(), total as i64);
     }
 
-    reporter.write("thread_count", &thread_count);
     new_data.thread_count = thread_count;
-    reporter.write("syscall_count", &syscall_count);
     new_data.syscall_count = syscall_count;
   }
 
   if benchmarks.contains(&"mem_usage") {
     let max_memory = run_max_mem_benchmark(&deno_exe)?;
-    reporter.write("max_memory", &max_memory);
     new_data.max_memory = max_memory;
   }
 
-  reporter.submit().await;
   if let Some(filename) = target_dir.join("bench.json").to_str() {
     write_json(filename, &serde_json::to_value(&new_data)?)?;
   } else {

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
@@ -7,6 +7,8 @@ use deno_core::parking_lot::Mutex;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+use deno_core::BufMutView;
+use deno_core::BufView;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Extension;
@@ -14,7 +16,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -34,48 +35,49 @@ use tokio::process;
 use std::os::unix::io::FromRawFd;
 
 #[cfg(windows)]
-use {
-  std::os::windows::io::FromRawHandle,
-  winapi::um::{processenv::GetStdHandle, winbase},
-};
+use std::os::windows::io::FromRawHandle;
+#[cfg(windows)]
+use winapi::um::processenv::GetStdHandle;
+#[cfg(windows)]
+use winapi::um::winbase;
 
 // Store the stdio fd/handles in global statics in order to keep them
 // alive for the duration of the application since the last handle/fd
 // being dropped will close the corresponding pipe.
 #[cfg(unix)]
-static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdin
   unsafe { StdFile::from_raw_fd(0) }
 });
 #[cfg(unix)]
-static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdout
   unsafe { StdFile::from_raw_fd(1) }
 });
 #[cfg(unix)]
-static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stderr
   unsafe { StdFile::from_raw_fd(2) }
 });
 
 #[cfg(windows)]
-static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdin
   unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE)) }
 });
 #[cfg(windows)]
-static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdout
   unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE)) }
 });
 #[cfg(windows)]
-static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stderr
   unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE)) }
 });
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_io")
     .ops(vec![op_read_sync::decl(), op_write_sync::decl()])
     .build()
 }
@@ -113,7 +115,7 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
   // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
   let stdio = Rc::new(RefCell::new(Some(stdio)));
 
-  Extension::builder()
+  Extension::builder("deno_stdio")
     .middleware(|op| match op.name {
       "op_print" => op_print::decl(),
       _ => op,
@@ -124,7 +126,8 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
         .take()
         .expect("Extension only supports being used once.");
       let t = &mut state.resource_table;
-      t.add(StdFileResource::stdio(
+
+      let rid = t.add(StdFileResource::stdio(
         match stdio.stdin {
           StdioPipe::Inherit => StdFileResourceInner {
             kind: StdFileResourceKind::Stdin,
@@ -134,7 +137,9 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
         },
         "stdin",
       ));
-      t.add(StdFileResource::stdio(
+      assert_eq!(rid, 0, "stdin must have ResourceId 0");
+
+      let rid = t.add(StdFileResource::stdio(
         match stdio.stdout {
           StdioPipe::Inherit => StdFileResourceInner {
             kind: StdFileResourceKind::Stdout,
@@ -144,7 +149,9 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
         },
         "stdout",
       ));
-      t.add(StdFileResource::stdio(
+      assert_eq!(rid, 1, "stdout must have ResourceId 1");
+
+      let rid = t.add(StdFileResource::stdio(
         match stdio.stderr {
           StdioPipe::Inherit => StdFileResourceInner {
             kind: StdFileResourceKind::Stderr,
@@ -154,6 +161,7 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
         },
         "stderr",
       ));
+      assert_eq!(rid, 2, "stderr must have ResourceId 2");
       Ok(())
     })
     .build()
@@ -196,9 +204,9 @@ where
     RcRef::map(self, |r| &r.stream).borrow_mut()
   }
 
-  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
     let mut stream = self.borrow_mut().await;
-    let nwritten = stream.write(&buf).await?;
+    let nwritten = stream.write(data).await?;
     Ok(nwritten)
   }
 
@@ -244,16 +252,10 @@ where
     self.cancel_handle.cancel()
   }
 
-  async fn read(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
     let mut rd = self.borrow_mut().await;
-    let nread = rd
-      .read(&mut buf)
-      .try_or_cancel(self.cancel_handle())
-      .await?;
-    Ok((nread, buf))
+    let nread = rd.read(data).try_or_cancel(self.cancel_handle()).await?;
+    Ok(nread)
   }
 
   pub fn into_inner(self) -> S {
@@ -268,9 +270,7 @@ impl Resource for ChildStdinResource {
     "childStdin".into()
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
-  }
+  deno_core::impl_writable!();
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
     Box::pin(self.shutdown())
@@ -280,15 +280,10 @@ impl Resource for ChildStdinResource {
 pub type ChildStdoutResource = ReadOnlyResource<process::ChildStdout>;
 
 impl Resource for ChildStdoutResource {
+  deno_core::impl_readable_byob!();
+
   fn name(&self) -> Cow<str> {
     "childStdout".into()
-  }
-
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
   }
 
   fn close(self: Rc<Self>) {
@@ -299,15 +294,10 @@ impl Resource for ChildStdoutResource {
 pub type ChildStderrResource = ReadOnlyResource<process::ChildStderr>;
 
 impl Resource for ChildStderrResource {
+  deno_core::impl_readable_byob!();
+
   fn name(&self) -> Cow<str> {
     "childStderr".into()
-  }
-
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
   }
 
   fn close(self: Rc<Self>) {
@@ -528,22 +518,31 @@ impl StdFileResource {
     result
   }
 
-  async fn read(
+  async fn read_byob(
     self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+    mut buf: BufMutView,
+  ) -> Result<(usize, BufMutView), AnyError> {
     self
-      .with_inner_blocking_task(
-        move |inner| -> Result<(usize, ZeroCopyBuf), AnyError> {
-          Ok((inner.read(&mut buf)?, buf))
-        },
-      )
+      .with_inner_blocking_task(move |inner| {
+        let nread = inner.read(&mut buf)?;
+        Ok((nread, buf))
+      })
       .await
   }
 
-  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
+    let buf = data.to_owned();
     self
       .with_inner_blocking_task(move |inner| inner.write_and_maybe_flush(&buf))
+      .await
+  }
+
+  async fn write_all(self: Rc<Self>, data: &[u8]) -> Result<(), AnyError> {
+    let buf = data.to_owned();
+    self
+      .with_inner_blocking_task(move |inner| {
+        inner.write_all_and_maybe_flush(&buf)
+      })
       .await
   }
 
@@ -635,16 +634,27 @@ impl Resource for StdFileResource {
     self.name.as_str().into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
+  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<deno_core::BufView> {
+    Box::pin(async move {
+      let vec = vec![0; limit];
+      let buf = BufMutView::from(vec);
+      let (nread, buf) = self.read_byob(buf).await?;
+      let mut vec = buf.unwrap_vec();
+      if vec.len() != nread {
+        vec.truncate(nread);
+      }
+      Ok(BufView::from(vec))
+    })
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
+  fn read_byob(
+    self: Rc<Self>,
+    buf: deno_core::BufMutView,
+  ) -> AsyncResult<(usize, deno_core::BufMutView)> {
+    Box::pin(self.read_byob(buf))
   }
+
+  deno_core::impl_writable!(with_all);
 
   #[cfg(unix)]
   fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
@@ -673,32 +683,32 @@ pub fn op_print(
   })
 }
 
-#[op]
+#[op(fast)]
 fn op_read_sync(
   state: &mut OpState,
-  rid: ResourceId,
-  mut buf: ZeroCopyBuf,
+  rid: u32,
+  buf: &mut [u8],
 ) -> Result<u32, AnyError> {
   StdFileResource::with_resource(state, rid, move |resource| {
     resource.with_inner_and_metadata(|inner, _| {
       inner
-        .read(&mut buf)
+        .read(buf)
         .map(|n: usize| n as u32)
         .map_err(AnyError::from)
     })
   })
 }
 
-#[op]
+#[op(fast)]
 fn op_write_sync(
   state: &mut OpState,
-  rid: ResourceId,
-  buf: ZeroCopyBuf,
+  rid: u32,
+  buf: &mut [u8],
 ) -> Result<u32, AnyError> {
   StdFileResource::with_resource(state, rid, move |resource| {
     resource.with_inner_and_metadata(|inner, _| {
       inner
-        .write_and_maybe_flush(&buf)
+        .write_and_maybe_flush(buf)
         .map(|nwritten: usize| nwritten as u32)
         .map_err(AnyError::from)
     })

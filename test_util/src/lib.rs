@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
@@ -49,6 +49,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
+use url::Url;
 
 pub mod assertions;
 pub mod lsp;
@@ -93,6 +94,24 @@ lazy_static! {
   static ref GUARD: Mutex<HttpServerCount> = Mutex::new(HttpServerCount::default());
 }
 
+pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
+  vec![
+    ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
+    ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("NO_COLOR".to_string(), "1".to_string()),
+  ]
+}
+
+pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
+  let mut env_vars = env_vars_for_npm_tests_no_sync_download();
+  env_vars.push((
+    // make downloads determinstic
+    "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
+    "1".to_string(),
+  ));
+  env_vars
+}
+
 pub fn root_path() -> PathBuf {
   PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
     .parent()
@@ -116,8 +135,21 @@ pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
 
+pub fn napi_tests_path() -> PathBuf {
+  root_path().join("test_napi")
+}
+
+/// Test server registry url.
+pub fn npm_registry_url() -> String {
+  "http://localhost:4545/npm/registry/".to_string()
+}
+
 pub fn std_path() -> PathBuf {
   root_path().join("test_util").join("std")
+}
+
+pub fn std_file_url() -> String {
+  Url::from_directory_path(std_path()).unwrap().to_string()
 }
 
 pub fn target_dir() -> PathBuf {
@@ -690,7 +722,7 @@ async fn main_server(
         .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
       res.headers_mut().insert(
         "location",
-        HeaderValue::from_bytes(b"/x_deno_warning_redirect.js").unwrap(),
+        HeaderValue::from_bytes(b"/lsp/x_deno_warning_redirect.js").unwrap(),
       );
       Ok(res)
     }
@@ -774,7 +806,7 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/type_directives_redirect.js") => {
+    (_, "/run/type_directives_redirect.js") => {
       let mut res = Response::new(Body::from("export const foo = 'foo';"));
       res.headers_mut().insert(
         "Content-type",
@@ -788,7 +820,7 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/type_headers_deno_types.foo.js") => {
+    (_, "/run/type_headers_deno_types.foo.js") => {
       let mut res = Response::new(Body::from(
         "export function foo(text) { console.log(text); }",
       ));
@@ -799,12 +831,12 @@ async fn main_server(
       res.headers_mut().insert(
         "X-TypeScript-Types",
         HeaderValue::from_static(
-          "http://localhost:4545/type_headers_deno_types.d.ts",
+          "http://localhost:4545/run/type_headers_deno_types.d.ts",
         ),
       );
       Ok(res)
     }
-    (_, "/type_headers_deno_types.d.ts") => {
+    (_, "/run/type_headers_deno_types.d.ts") => {
       let mut res =
         Response::new(Body::from("export function foo(text: number): void;"));
       res.headers_mut().insert(
@@ -813,7 +845,7 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/type_headers_deno_types.foo.d.ts") => {
+    (_, "/run/type_headers_deno_types.foo.d.ts") => {
       let mut res =
         Response::new(Body::from("export function foo(text: string): void;"));
       res.headers_mut().insert(
@@ -936,6 +968,17 @@ async fn main_server(
       res.headers_mut().insert(
         "cache-control",
         HeaderValue::from_static("public, max-age=604800, immutable"),
+      );
+      Ok(res)
+    }
+    (_, "/dynamic_module.ts") => {
+      let mut res = Response::new(Body::from(format!(
+        r#"export const time = {};"#,
+        std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+      )));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
     }
@@ -1074,7 +1117,7 @@ async fn download_npm_registry_file(
       .into_bytes()
   };
   std::fs::create_dir_all(file_path.parent().unwrap())?;
-  std::fs::write(&file_path, bytes)?;
+  std::fs::write(file_path, bytes)?;
   Ok(())
 }
 
@@ -1458,7 +1501,7 @@ pub async fn run_all_servers() {
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
   let mut response = Response::new(Body::from(body));
 
-  if p.ends_with("/053_import_compression/brotli") {
+  if p.ends_with("/run/import_compression/brotli") {
     response
       .headers_mut()
       .insert("Content-Encoding", HeaderValue::from_static("br"));
@@ -1471,7 +1514,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
       .insert("Content-Length", HeaderValue::from_static("26"));
     return response;
   }
-  if p.ends_with("/053_import_compression/gziped") {
+  if p.ends_with("/run/import_compression/gziped") {
     response
       .headers_mut()
       .insert("Content-Encoding", HeaderValue::from_static("gzip"));
@@ -1567,7 +1610,8 @@ impl HttpServerCount {
         .spawn()
         .expect("failed to execute test_server");
       let stdout = test_server.stdout.as_mut().unwrap();
-      use std::io::{BufRead, BufReader};
+      use std::io::BufRead;
+      use std::io::BufReader;
       let lines = BufReader::new(stdout).lines();
 
       // Wait for all the servers to report being ready.
@@ -1861,6 +1905,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
+  pub temp_cwd: bool,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
@@ -1874,6 +1919,11 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       );
       std::borrow::Cow::Borrowed(&self.args_vec)
     };
+    let testdata_dir = testdata_path();
+    let args = args
+      .iter()
+      .map(|arg| arg.replace("$TESTDATA", &testdata_dir.to_string_lossy()))
+      .collect::<Vec<_>>();
     let deno_exe = deno_exe_path();
     println!("deno_exe path {}", deno_exe.display());
 
@@ -1884,17 +1934,21 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     };
 
     let (mut reader, writer) = pipe().unwrap();
-    let testdata_dir = testdata_path();
     let deno_dir = new_deno_dir(); // keep this alive for the test
     let mut command = deno_cmd_with_deno_dir(&deno_dir);
-    println!("deno_exe args {}", self.args);
-    println!("deno_exe testdata path {:?}", &testdata_dir);
+    let cwd = if self.temp_cwd {
+      deno_dir.path()
+    } else {
+      testdata_dir.as_path()
+    };
+    println!("deno_exe args {}", args.join(" "));
+    println!("deno_exe cwd {:?}", &cwd);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();
     }
     command.envs(self.envs.clone());
-    command.current_dir(&testdata_dir);
+    command.current_dir(cwd);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();
     command.stderr(writer_clone);
@@ -1949,7 +2003,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     // deno test's output capturing flushes with a zero-width space in order to
     // synchronize the output pipes. Occassionally this zero width space
     // might end up in the output so strip it from the output comparison here.
-    if args.first() == Some(&"test") {
+    if args.first().map(|s| s.as_str()) == Some("test") {
       actual = actual.replace('\u{200B}', "");
     }
 
@@ -2139,13 +2193,13 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   let mut latency = None;
 
   for line in output.lines() {
-    if requests == None {
+    if requests.is_none() {
       if let Some(cap) = REQUESTS_RX.captures(line) {
         requests =
           Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
       }
     }
-    if latency == None {
+    if latency.is_none() {
       if let Some(cap) = LATENCY_RX.captures(line) {
         let time = cap.get(1).unwrap();
         let unit = cap.get(2).unwrap();
@@ -2184,9 +2238,12 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
   // Filter out non-relevant lines. See the error log at
   // https://github.com/denoland/deno/pull/3715/checks?check_run_id=397365887
   // This is checked in testdata/strace_summary2.out
-  let mut lines = output
-    .lines()
-    .filter(|line| !line.is_empty() && !line.contains("detached ..."));
+  let mut lines = output.lines().filter(|line| {
+    !line.is_empty()
+      && !line.contains("detached ...")
+      && !line.contains("unfinished ...")
+      && !line.contains("????")
+  });
   let count = lines.clone().count();
 
   if count < 4 {
@@ -2201,7 +2258,6 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
     let syscall_fields = line.split_whitespace().collect::<Vec<_>>();
     let len = syscall_fields.len();
     let syscall_name = syscall_fields.last().unwrap();
-
     if (5..=6).contains(&len) {
       summary.insert(
         syscall_name.to_string(),
