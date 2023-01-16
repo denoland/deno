@@ -6,6 +6,28 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.29.4 / 2023.01.16
+
+- feat(core): Reland support for async ops in realms (#17204)
+- fix(cli/fmt): show filepath for InvalidData error (#17361)
+- fix(core): Add `Generator` and `AsyncGenerator` to promordials (#17241)
+- fix(ext/fetch) Fix request clone error in flash server (#16174)
+- fix(ext/fetch): remove Response.trailer from types (#17284)
+- fix(ext/ffi): use SafeMap in getTypeSizeAndAlignment (#17305)
+- fix(ext/flash): Correctly handle errors for chunked responses (#17303)
+- fix(ext/flash): Fix panic when JS caller doesn't consume request body (#16173)
+- fix(ext/flash): Fix typo in 'chunked' flash ops (#17302)
+- fix(napi): allow cleanup hook to remove itself (#17402)
+- fix(napi): correct arguments for napi_get_typedarray_info (#17306)
+- fix(napi): functions related to errors (#17370)
+- fix(napi): update node version to lts (#17399)
+- fix(npm): handle an npm package that has itself as a dependency (#17425)
+- fix(npm): use original node regex in npm resolution (#17404)
+- fix(ops): disallow memory slices as inputs to async ops (#16738)
+- fix(repl): improve validator to mark more code as incomplete (#17443)
+- fix(runtime/fs): preserve permissions in copyFileSync for macOS (#17412)
+- fix(runtime/os): use GetPerformanceInfo for swap info on Windows (#17433)
+
 ### 1.29.3 / 2023.01.13
 
 - feat(core): allow specifying name and dependencies of an Extension (#17301)
