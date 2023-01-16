@@ -1,9 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import {
-  Buffer,
-  BufReader,
-  BufWriter,
-} from "../../../test_util/std/io/buffer.ts";
+import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import { serve, serveTls } from "../../../test_util/std/http/server.ts";
 import {
