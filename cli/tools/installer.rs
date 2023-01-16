@@ -6,6 +6,7 @@ use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::TypeCheckMode;
+use crate::http_util::HttpClient;
 use crate::npm::NpmPackageReference;
 use crate::proc_state::ProcState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -25,6 +26,7 @@ use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use tokio::runtime::Runtime;
 
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
@@ -126,7 +128,20 @@ fn get_installer_root() -> Result<PathBuf, io::Error> {
 }
 
 pub fn infer_name_from_url(url: &Url) -> Option<String> {
-  if let Ok(npm_ref) = NpmPackageReference::from_specifier(url) {
+  // If there's an absolute url with no path, eg. https://my-cli.com
+  // perform a request, and see if it redirects another file instead.
+  let url = url.to_owned();
+  let url = if url.path() == "/" {
+    let rt = Runtime::new().unwrap();
+    let client = HttpClient::new(None, None).unwrap();
+    rt.block_on(client.get_redirected_response(url.clone()))
+      .map(|res| res.url().clone())
+      .unwrap_or(url)
+  } else {
+    url
+  };
+
+  if let Ok(npm_ref) = NpmPackageReference::from_specifier(&url) {
     if let Some(sub_path) = npm_ref.sub_path {
       if !sub_path.contains('/') {
         return Some(sub_path);
@@ -665,6 +680,33 @@ mod tests {
     assert_eq!(
       shim_data.args,
       vec!["run", "--no-config", "http://localhost:4545/subdir/main.ts",]
+    );
+  }
+
+  #[test]
+  fn install_inferred_name_after_redirect_for_no_path_url() {
+    let _http_server_guard = test_util::http_server();
+    let shim_data = resolve_shim_data(
+      &Flags::default(),
+      &InstallFlags {
+        module_url: "http://localhost:4550/?redirect_to=/subdir/redirects/a.ts"
+          .to_string(),
+        args: vec![],
+        name: None,
+        root: Some(env::temp_dir()),
+        force: false,
+      },
+    )
+    .unwrap();
+
+    assert_eq!(shim_data.name, "a");
+    assert_eq!(
+      shim_data.args,
+      vec![
+        "run",
+        "--no-config",
+        "http://localhost:4550/?redirect_to=/subdir/redirects/a.ts",
+      ]
     );
   }
 
