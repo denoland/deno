@@ -520,7 +520,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     hash = Some("1".to_string());
     media_type = MediaType::Dts;
     Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
-  } else if &v.specifier == "deno:///node_types.d.ts" {
+  } else if &v.specifier == "asset:///node_types.d.ts" {
     hash = Some("1".to_string());
     media_type = MediaType::Dts;
     Some(Cow::Borrowed(

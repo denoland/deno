@@ -237,7 +237,7 @@ fn get_tsc_roots(
   if graph_data.has_node_builtin_specifier() {
     // inject a specifier that will resolve node types
     result.push((
-      ModuleSpecifier::parse("deno:///node_types.d.ts").unwrap(),
+      ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
       MediaType::Dts,
     ));
   }

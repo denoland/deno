@@ -774,6 +774,9 @@ pub struct Documents {
   maybe_resolver: Option<CliResolver>,
   /// The npm package requirements.
   npm_reqs: Arc<HashSet<NpmPackageReq>>,
+  /// Gets if any document had a node: specifier such that a @types/node package
+  /// should be injected.
+  has_injected_types_node_package: bool,
   /// Resolves a specifier to its final redirected to specifier.
   specifier_resolver: Arc<SpecifierResolver>,
 }
@@ -789,6 +792,7 @@ impl Documents {
       imports: Default::default(),
       maybe_resolver: None,
       npm_reqs: Default::default(),
+      has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
     }
   }
@@ -929,6 +933,12 @@ impl Documents {
     (*self.npm_reqs).clone()
   }
 
+  /// Returns if a @types/node package was injected into the package
+  /// requirements based on the state of the documents.
+  pub fn has_injected_types_node_package(&self) -> bool {
+    self.has_injected_types_node_package
+  }
+
   /// Return a document for the specifier.
   pub fn get(&self, original_specifier: &ModuleSpecifier) -> Option<Document> {
     let specifier = self.specifier_resolver.resolve(original_specifier)?;
@@ -989,11 +999,15 @@ impl Documents {
   /// tsc when type checking.
   pub fn resolve(
     &self,
-    specifiers: &[String],
-    referrer: &ModuleSpecifier,
+    specifiers: Vec<String>,
+    referrer_doc: &AssetOrDocument,
     maybe_npm_resolver: Option<&NpmPackageResolver>,
-  ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
-    let dependencies = self.get(referrer)?.0.dependencies.clone();
+  ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
+    let referrer = referrer_doc.specifier();
+    let dependencies = match referrer_doc {
+      AssetOrDocument::Asset(_) => None,
+      AssetOrDocument::Document(doc) => Some(doc.0.dependencies.clone()),
+    };
     let mut results = Vec::new();
     for specifier in specifiers {
       if let Some(npm_resolver) = maybe_npm_resolver {
@@ -1001,7 +1015,7 @@ impl Documents {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
             node::node_resolve(
-              specifier,
+              &specifier,
               referrer,
               NodeResolutionMode::Types,
               npm_resolver,
@@ -1013,15 +1027,28 @@ impl Documents {
           continue;
         }
       }
-      // handle npm:<package> urls
+      if let Some(module_name) = specifier.strip_prefix("node:") {
+        if crate::node::resolve_builtin_node_module(module_name).is_ok() {
+          // return itself for node: specifiers because during type checking
+          // we resolve to the ambient modules in the @types/node package
+          // rather than deno_std/node
+          results.push(Some((
+            ModuleSpecifier::parse(&specifier).unwrap(),
+            MediaType::Dts,
+          )));
+          continue;
+        }
+      }
       if specifier.starts_with("asset:") {
-        if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
+        if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
           let media_type = MediaType::from(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
         }
-      } else if let Some(dep) = dependencies.deps.get(specifier) {
+      } else if let Some(dep) =
+        dependencies.as_ref().and_then(|d| d.deps.get(&specifier))
+      {
         if let Resolved::Ok { specifier, .. } = &dep.maybe_type {
           results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
         } else if let Resolved::Ok { specifier, .. } = &dep.maybe_code {
@@ -1030,12 +1057,12 @@ impl Documents {
           results.push(None);
         }
       } else if let Some(Resolved::Ok { specifier, .. }) =
-        self.resolve_imports_dependency(specifier)
+        self.resolve_imports_dependency(&specifier)
       {
         // clone here to avoid double borrow of self
         let specifier = specifier.clone();
         results.push(self.resolve_dependency(&specifier, maybe_npm_resolver));
-      } else if let Ok(npm_ref) = NpmPackageReference::from_str(specifier) {
+      } else if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
         results.push(maybe_npm_resolver.map(|npm_resolver| {
           NodeResolution::into_specifier_and_media_type(
             node_resolve_npm_reference(
@@ -1052,7 +1079,7 @@ impl Documents {
         results.push(None);
       }
     }
-    Some(results)
+    results
   }
 
   /// Update the location of the on disk cache for the document store.
@@ -1196,9 +1223,10 @@ impl Documents {
 
     let mut npm_reqs = doc_analyzer.npm_reqs;
     // ensure a @types/node package exists when any module uses a node: specifier
-    if doc_analyzer.has_node_builtin_specifier
-      && !npm_reqs.iter().any(|r| r.name == "@types/node")
-    {
+    self.has_injected_types_node_package = doc_analyzer
+      .has_node_builtin_specifier
+      && !npm_reqs.iter().any(|r| r.name == "@types/node");
+    if self.has_injected_types_node_package {
       npm_reqs.insert(NpmPackageReq::from_str("@types/node").unwrap());
     }
 
