@@ -1361,7 +1361,7 @@ pub async fn run_tests_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
     let test_options = &test_options;
-    let ps = ps.borrow();
+    let ps = ps.borrow().clone();
 
     async move {
       let test_modules = if test_options.doc {
@@ -1480,7 +1480,7 @@ pub async fn run_tests_with_watch(
     let permissions = &permissions;
     let test_options = &test_options;
     ps.borrow_mut().reset_for_file_watcher();
-    let ps = ps.borrow();
+    let ps = ps.borrow().clone();
 
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(

@@ -538,7 +538,7 @@ pub async fn run_benchmarks_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
     let bench_options = &bench_options;
-    let ps = ps.borrow();
+    let ps = ps.borrow().clone();
 
     async move {
       let bench_modules =
@@ -653,7 +653,7 @@ pub async fn run_benchmarks_with_watch(
     let permissions = &permissions;
     let bench_options = &bench_options;
     ps.borrow_mut().reset_for_file_watcher();
-    let ps = ps.borrow();
+    let ps = ps.borrow().clone();
 
     async move {
       let specifiers =
