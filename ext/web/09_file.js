@@ -23,10 +23,13 @@
     AsyncGeneratorPrototypeNext,
     Date,
     DatePrototypeGetTime,
+    FinalizationRegistry,
     MathMax,
     MathMin,
     ObjectPrototypeIsPrototypeOf,
     RegExpPrototypeTest,
+    // TODO(lucacasonato): add SharedArrayBuffer to primordials
+    // SharedArrayBufferPrototype
     StringPrototypeCharAt,
     StringPrototypeToLowerCase,
     StringPrototypeSlice,
@@ -407,6 +410,7 @@
       }
       if (
         ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
+        // deno-lint-ignore prefer-primordials
         ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
       ) {
         return webidl.converters["ArrayBuffer"](V, opts);
