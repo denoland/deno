@@ -855,7 +855,7 @@ Deno.test(
     });
     await assertRejects(async () => {
       const cmds = [];
-      for (let i = 0; i < 5000; i++) {
+      for (let i = 0; i < 10000; i++) {
         cmds.push(command.output());
       }
       await Promise.all(cmds);
