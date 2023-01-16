@@ -124,6 +124,9 @@ enum NodeParent {
   /// These are top of the graph npm package requirements
   /// as specified in Deno code.
   Req,
+  /// These are top of the graph npm package requirements
+  /// that were injected by the runtime.
+  SyntheticReq,
   /// A reference to another node, which is a resolved package.
   Node(NpmPackageId),
 }
@@ -164,6 +167,7 @@ impl Node {
 #[derive(Debug, Default)]
 pub struct Graph {
   package_reqs: HashMap<String, NpmPackageId>,
+  synthetic_package_reqs: HashMap<String, NpmPackageId>,
   packages_by_name: HashMap<String, Vec<NpmPackageId>>,
   // Ideally this value would be Rc<RefCell<Node>>, but we need to use a Mutex
   // because the lsp requires Send and this code is executed in the lsp.
@@ -209,6 +213,16 @@ impl Graph {
         .lock()
         .add_parent(package_req_text.clone(), NodeParent::Req);
       graph.package_reqs.insert(package_req_text, id.clone());
+    }
+    for (package_req, id) in &snapshot.synthetic_package_reqs {
+      let node = fill_for_id(&mut graph, id, &snapshot.packages);
+      let package_req_text = package_req.to_string();
+      (*node)
+        .lock()
+        .add_parent(package_req_text.clone(), NodeParent::SyntheticReq);
+      graph
+        .synthetic_package_reqs
+        .insert(package_req_text, id.clone());
     }
     graph
   }
@@ -293,6 +307,13 @@ impl Graph {
           .package_reqs
           .insert(specifier.to_string(), node.id.clone());
       }
+      NodeParent::SyntheticReq => {
+        let mut node = (*child).lock();
+        node.add_parent(specifier.to_string(), parent.clone());
+        self
+          .synthetic_package_reqs
+          .insert(specifier.to_string(), node.id.clone());
+      }
     }
   }
 
@@ -334,6 +355,13 @@ impl Graph {
       }
       NodeParent::Req => {
         if let Some(removed_child_id) = self.package_reqs.remove(specifier) {
+          assert_eq!(removed_child_id, *child_id);
+        }
+      }
+      NodeParent::SyntheticReq => {
+        if let Some(removed_child_id) =
+          self.synthetic_package_reqs.remove(specifier)
+        {
           assert_eq!(removed_child_id, *child_id);
         }
       }
@@ -831,6 +859,9 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
               visited_ancestor_versions,
             )));
           }
+        }
+        NodeParent::SyntheticReq => {
+          // ignore
         }
       }
     }
