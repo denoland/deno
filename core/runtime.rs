@@ -1169,7 +1169,7 @@ impl JsRuntime {
     // run in macrotasks callbacks so we need to let them run first).
     self.drain_nexttick()?;
     self.drain_macrotasks()?;
-    self.check_promise_exceptions()?;
+    self.check_promise_rejections()?;
 
     // Event loop middlewares
     let mut maybe_scheduling = false;
@@ -2126,7 +2126,7 @@ impl JsRuntime {
     Ok(root_id)
   }
 
-  fn check_promise_exceptions(&mut self) -> Result<(), Error> {
+  fn check_promise_rejections(&mut self) -> Result<(), Error> {
     let mut state = self.state.borrow_mut();
 
     if state.pending_promise_rejections.is_empty() {
