@@ -525,12 +525,10 @@ async fn generate_ts_diagnostics(
   let specifiers = snapshot
     .documents
     .documents(true, true)
-    .iter()
-    .map(|d| d.specifier().clone())
-    .collect::<Vec<_>>();
+    .into_iter()
+    .map(|d| d.specifier().clone());
   let (enabled_specifiers, disabled_specifiers) = specifiers
-    .iter()
-    .cloned()
+    .into_iter()
     .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
   let ts_diagnostics_map: TsDiagnosticsMap = if !enabled_specifiers.is_empty() {
     let req = tsc::RequestMethod::GetDiagnostics(enabled_specifiers);
