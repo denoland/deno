@@ -2,7 +2,8 @@
 
 use deno_bench_util::bench_js_async;
 use deno_bench_util::bench_or_profile;
-use deno_bench_util::bencher::{benchmark_group, Bencher};
+use deno_bench_util::bencher::benchmark_group;
+use deno_bench_util::bencher::Bencher;
 use deno_core::Extension;
 use deno_web::BlobStore;
 

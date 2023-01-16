@@ -5,7 +5,8 @@ use std::future::Future;
 use std::io;
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
-use std::task::{self, Poll};
+use std::task::Poll;
+use std::task::{self};
 
 pub struct SendFile {
   pub io: (RawFd, RawFd),

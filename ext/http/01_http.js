@@ -135,7 +135,12 @@
         false,
       );
       const signal = abortSignal.newSignal();
-      const request = fromInnerRequest(innerRequest, signal, "immutable");
+      const request = fromInnerRequest(
+        innerRequest,
+        signal,
+        "immutable",
+        false,
+      );
 
       const respondWith = createRespondWith(
         this,

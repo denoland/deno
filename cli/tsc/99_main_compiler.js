@@ -385,7 +385,7 @@ delete Object.prototype.__proto__;
   // paths must be either relative or absolute. Since
   // analysis in Rust operates on fully resolved URLs,
   // it makes sense to use the same scheme here.
-  const ASSETS = "asset:///";
+  const ASSETS_URL_PREFIX = "asset:///";
 
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
@@ -431,6 +431,7 @@ delete Object.prototype.__proto__;
     noEmit: true,
     strict: true,
     target: ts.ScriptTarget.ESNext,
+    lib: ["lib.deno.window.d.ts"],
   };
 
   // todo(dsherret): can we remove this and just use ts.OperationCanceledException?
@@ -546,10 +547,10 @@ delete Object.prototype.__proto__;
       return sourceFile;
     },
     getDefaultLibFileName() {
-      return `${ASSETS}/lib.esnext.d.ts`;
+      return `${ASSETS_URL_PREFIX}lib.esnext.d.ts`;
     },
     getDefaultLibLocation() {
-      return ASSETS;
+      return ASSETS_URL_PREFIX;
     },
     writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
       if (logDebug) {
@@ -887,6 +888,20 @@ delete Object.prototype.__proto__;
     debug("<<< exec stop");
   }
 
+  function getAssets() {
+    /** @type {{ specifier: string; text: string; }[]} */
+    const assets = [];
+    for (const sourceFile of sourceFileCache.values()) {
+      if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
+        assets.push({
+          specifier: sourceFile.fileName,
+          text: sourceFile.text,
+        });
+      }
+    }
+    return assets;
+  }
+
   /**
    * @param {number} id
    * @param {any} data
@@ -935,16 +950,7 @@ delete Object.prototype.__proto__;
         );
       }
       case "getAssets": {
-        const assets = [];
-        for (const sourceFile of sourceFileCache.values()) {
-          if (sourceFile.fileName.startsWith(ASSETS)) {
-            assets.push({
-              specifier: sourceFile.fileName,
-              text: sourceFile.text,
-            });
-          }
-        }
-        return respond(id, assets);
+        return respond(id, getAssets());
       }
       case "getApplicableRefactors": {
         return respond(
@@ -1281,7 +1287,10 @@ delete Object.prototype.__proto__;
     // we are caching in memory common type libraries that will be re-used by
     // tsc on when the snapshot is restored
     assert(
-      host.getSourceFile(`${ASSETS}${specifier}`, ts.ScriptTarget.ESNext),
+      host.getSourceFile(
+        `${ASSETS_URL_PREFIX}${specifier}`,
+        ts.ScriptTarget.ESNext,
+      ),
     );
   }
   // this helps ensure as much as possible is in memory that is re-usable
@@ -1292,12 +1301,16 @@ delete Object.prototype.__proto__;
     options: SNAPSHOT_COMPILE_OPTIONS,
     host,
   });
-  ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM);
+  assert(ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0);
+
+  // remove this now that we don't need it anymore for warming up tsc
+  sourceFileCache.delete(buildSpecifier);
 
   // exposes the two functions that are called by `tsc::exec()` when type
   // checking TypeScript.
   globalThis.startup = startup;
   globalThis.exec = exec;
+  globalThis.getAssets = getAssets;
 
   // exposes the functions that are called when the compiler is used as a
   // language service.

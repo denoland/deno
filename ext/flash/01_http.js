@@ -327,7 +327,7 @@
       );
     }
 
-    (async () => {
+    return (async () => {
       if (!ws) {
         if (hasBody && body[_state] !== "closed") {
           // TODO(@littledivy): Optimize by draining in a single op.
@@ -590,7 +590,6 @@
                     ),
                     onError,
                   );
-                  continue;
                 } else if (typeof resp?.then === "function") {
                   resp.then((resp) =>
                     handleResponse(
@@ -606,24 +605,23 @@
                       tryRespondChunked,
                     )
                   ).catch(onError);
-                  continue;
+                } else {
+                  handleResponse(
+                    req,
+                    resp,
+                    body,
+                    hasBody,
+                    method,
+                    serverId,
+                    i,
+                    respondFast,
+                    respondChunked,
+                    tryRespondChunked,
+                  ).catch(onError);
                 }
               } catch (e) {
                 resp = await onError(e);
               }
-
-              handleResponse(
-                req,
-                resp,
-                body,
-                hasBody,
-                method,
-                serverId,
-                i,
-                respondFast,
-                respondChunked,
-                tryRespondChunked,
-              );
             }
 
             offset += tokens;
@@ -640,7 +638,7 @@
       });
 
       function tryRespondChunked(token, chunk, shutdown) {
-        const nwritten = core.ops.op_try_flash_respond_chuncked(
+        const nwritten = core.ops.op_try_flash_respond_chunked(
           serverId,
           token,
           chunk ?? new Uint8Array(),
@@ -648,7 +646,7 @@
         );
         if (nwritten > 0) {
           return core.opAsync(
-            "op_flash_respond_chuncked",
+            "op_flash_respond_chunked",
             serverId,
             token,
             chunk,
@@ -660,7 +658,7 @@
 
       function respondChunked(token, chunk, shutdown) {
         return core.opAsync(
-          "op_flash_respond_chuncked",
+          "op_flash_respond_chunked",
           serverId,
           token,
           chunk,

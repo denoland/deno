@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --unstable --allow-read --allow-run
+#!/usr/bin/env -S deno run --unstable --allow-read=. --allow-run=git
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import { getSources, ROOT_PATH } from "./util.js";
@@ -16,7 +16,7 @@ async function readFirstPartOfFile(filePath) {
   }
 }
 
-async function checkCopyright() {
+export async function checkCopyright() {
   const sourceFiles = await getSources(ROOT_PATH, [
     // js and ts
     "*.js",
@@ -28,7 +28,6 @@ async function checkCopyright() {
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
     ":!:test_util/wpt/**",
-    ":!:tools/**", // these files are starts with `#!/usr/bin/env`
     ":!:cli/tools/init/templates/**",
 
     // rust
@@ -58,8 +57,9 @@ async function checkCopyright() {
       continue;
     }
 
+    // use .includes(...) because the first line might be a shebang
     if (
-      !fileText.startsWith(
+      !fileText.includes(
         "// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
       )
     ) {
@@ -68,17 +68,11 @@ async function checkCopyright() {
     }
   }
 
-  console.log("\nTotal errors: " + totalCount);
-
   if (totalCount > 0) {
-    Deno.exit(1);
+    throw new Error(`Copyright checker had ${totalCount} errors.`);
   }
 }
 
-async function main() {
-  await Deno.chdir(ROOT_PATH);
-
+if (import.meta.main) {
   await checkCopyright();
 }
-
-await main();

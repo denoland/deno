@@ -133,7 +133,7 @@ impl ProcState {
 
     // Add the extra files listed in the watch flag
     if let Some(watch_paths) = ps.options.watch_paths() {
-      files_to_watch_sender.send(watch_paths.clone()).unwrap();
+      files_to_watch_sender.send(watch_paths.clone())?;
     }
 
     if let Ok(Some(import_map_path)) = ps
@@ -141,7 +141,7 @@ impl ProcState {
       .resolve_import_map_specifier()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
-      files_to_watch_sender.send(vec![import_map_path]).unwrap();
+      files_to_watch_sender.send(vec![import_map_path])?;
     }
 
     Ok(ps)
@@ -625,9 +625,9 @@ impl ProcState {
     // but sadly that's not the case due to missing APIs in V8.
     let is_repl = matches!(self.options.sub_command(), DenoSubcommand::Repl(_));
     let referrer = if referrer.is_empty() && is_repl {
-      deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()
+      deno_core::resolve_url_or_path("./$deno$repl.ts")?
     } else {
-      deno_core::resolve_url_or_path(referrer).unwrap()
+      deno_core::resolve_url_or_path(referrer)?
     };
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier
