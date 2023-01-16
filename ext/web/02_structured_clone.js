@@ -88,7 +88,7 @@
 
       // TypedArray
       let Constructor;
-      switch (TypedArrayPrototypeGetSymbolToStringTag(value)) {
+      switch (tag) {
         case "Int8Array":
           Constructor = Int8Array;
           break;
