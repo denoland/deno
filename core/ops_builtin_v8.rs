@@ -864,13 +864,13 @@ fn op_store_pending_promise_rejection<'a>(
   promise: serde_v8::Value<'a>,
   reason: serde_v8::Value<'a>,
 ) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let mut context_state = context_state_rc.borrow_mut();
   let promise_value =
     v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
   let promise_global = v8::Global::new(scope, promise_value);
   let error_global = v8::Global::new(scope, reason.v8_value);
-  state
+  context_state
     .pending_promise_rejections
     .insert(promise_global, error_global);
 }
@@ -880,12 +880,14 @@ fn op_remove_pending_promise_rejection<'a>(
   scope: &mut v8::HandleScope<'a>,
   promise: serde_v8::Value<'a>,
 ) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let mut context_state = context_state_rc.borrow_mut();
   let promise_value =
     v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
   let promise_global = v8::Global::new(scope, promise_value);
-  state.pending_promise_rejections.remove(&promise_global);
+  context_state
+    .pending_promise_rejections
+    .remove(&promise_global);
 }
 
 #[op(v8)]
@@ -893,12 +895,12 @@ fn op_has_pending_promise_rejection<'a>(
   scope: &mut v8::HandleScope<'a>,
   promise: serde_v8::Value<'a>,
 ) -> bool {
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let context_state = context_state_rc.borrow();
   let promise_value =
     v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
   let promise_global = v8::Global::new(scope, promise_value);
-  state
+  context_state
     .pending_promise_rejections
     .contains_key(&promise_global)
 }
