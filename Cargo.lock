@@ -920,7 +920,6 @@ dependencies = [
  "indexmap",
  "libc",
  "log",
- "mio",
  "once_cell",
  "parking_lot 0.12.1",
  "pin-project",

@@ -45,5 +45,4 @@ path = "examples/http_bench_json_ops/main.rs"
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
 deno_ast.workspace = true
-mio = { version = "0.8", features = ["os-poll", "net"] }
 tokio.workspace = true
