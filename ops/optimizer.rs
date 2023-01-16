@@ -5,15 +5,28 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Formatter;
 
-use pmutil::{q, Quote};
+use pmutil::q;
+use pmutil::Quote;
 use proc_macro2::TokenStream;
 
-use syn::{
-  parse_quote, punctuated::Punctuated, token::Colon2,
-  AngleBracketedGenericArguments, FnArg, GenericArgument, PatType, Path,
-  PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypePtr,
-  TypeReference, TypeSlice, TypeTuple,
-};
+use syn::parse_quote;
+use syn::punctuated::Punctuated;
+use syn::token::Colon2;
+use syn::AngleBracketedGenericArguments;
+use syn::FnArg;
+use syn::GenericArgument;
+use syn::PatType;
+use syn::Path;
+use syn::PathArguments;
+use syn::PathSegment;
+use syn::ReturnType;
+use syn::Signature;
+use syn::Type;
+use syn::TypePath;
+use syn::TypePtr;
+use syn::TypeReference;
+use syn::TypeSlice;
+use syn::TypeTuple;
 
 use crate::Op;
 
@@ -678,7 +691,8 @@ fn double_segment(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{Attributes, Op};
+  use crate::Attributes;
+  use crate::Op;
   use std::path::PathBuf;
   use syn::parse_quote;
 

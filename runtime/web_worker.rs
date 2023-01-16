@@ -243,7 +243,8 @@ impl WebWorkerHandle {
   /// This function will set the termination signal, close the message channel,
   /// and schedule to terminate the isolate after two seconds.
   pub fn terminate(self) {
-    use std::thread::{sleep, spawn};
+    use std::thread::sleep;
+    use std::thread::spawn;
     use std::time::Duration;
 
     let schedule_termination =

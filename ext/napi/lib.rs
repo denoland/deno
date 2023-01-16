@@ -311,7 +311,7 @@ pub struct napi_extended_error_info {
   pub error_message: *const c_char,
   pub engine_reserved: *mut c_void,
   pub engine_error_code: i32,
-  pub status_code: napi_status,
+  pub error_code: napi_status,
 }
 
 #[repr(C)]
@@ -416,6 +416,7 @@ pub struct Env {
   pub cleanup_hooks:
     Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
   pub tsfn_ref_counters: Rc<RefCell<ThreadsafeFunctionRefCounters>>,
+  pub last_error: napi_extended_error_info,
 }
 
 unsafe impl Send for Env {}
@@ -450,6 +451,12 @@ impl Env {
       threadsafe_function_sender,
       cleanup_hooks,
       tsfn_ref_counters,
+      last_error: napi_extended_error_info {
+        error_message: std::ptr::null(),
+        engine_reserved: std::ptr::null_mut(),
+        engine_error_code: 0,
+        error_code: napi_ok,
+      },
     }
   }
 

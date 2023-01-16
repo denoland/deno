@@ -53,7 +53,7 @@ pub fn resolve_redirect_from_response(
 ) -> Result<Url, AnyError> {
   debug_assert!(response.status().is_redirection());
   if let Some(location) = response.headers().get(LOCATION) {
-    let location_string = location.to_str().unwrap();
+    let location_string = location.to_str()?;
     log::debug!("Redirecting to {:?}...", &location_string);
     let new_url = resolve_url_from_location(request_url, location_string);
     Ok(new_url)

@@ -13,7 +13,8 @@ use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ZeroCopyBuf;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::Location;
