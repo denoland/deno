@@ -1,6 +1,6 @@
 // https://github.com/denoland/deno/issues/13729
 // https://github.com/denoland/deno/issues/13938
-import { writeAll } from "../../../../test_util/std/io/util.ts";
+import { writeAll } from "../../../../test_util/std/streams/write_all.ts";
 
 Deno.test("test 1", { permissions: { write: true, read: true } }, async () => {
   const tmpFile = await Deno.makeTempFile();

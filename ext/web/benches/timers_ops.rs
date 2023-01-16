@@ -1,8 +1,10 @@
-use deno_core::Extension;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_bench_util::bench_js_async;
 use deno_bench_util::bench_or_profile;
-use deno_bench_util::bencher::{benchmark_group, Bencher};
+use deno_bench_util::bencher::benchmark_group;
+use deno_bench_util::bencher::Bencher;
+use deno_core::Extension;
 use deno_web::BlobStore;
 
 struct Permissions;
@@ -23,8 +25,9 @@ fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::init(),
     deno_url::init(),
+    deno_console::init(),
     deno_web::init::<Permissions>(BlobStore::default(), None),
-    Extension::builder()
+    Extension::builder("bench_setup")
     .js(vec![
       ("setup", r#"
       const { setTimeout, handleTimerMacrotask } = globalThis.__bootstrap.timers;

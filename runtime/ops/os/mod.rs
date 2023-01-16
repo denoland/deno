@@ -3,7 +3,8 @@
 use super::utils::into_string;
 use crate::permissions::PermissionsContainer;
 use crate::worker::ExitCode;
-use deno_core::error::{type_error, AnyError};
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -40,7 +41,7 @@ fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
 }
 
 pub fn init(exit_code: ExitCode) -> Extension {
-  let mut builder = Extension::builder();
+  let mut builder = Extension::builder("deno_os");
   init_ops(&mut builder)
     .state(move |state| {
       state.put::<ExitCode>(exit_code.clone());
@@ -50,7 +51,7 @@ pub fn init(exit_code: ExitCode) -> Extension {
 }
 
 pub fn init_for_worker() -> Extension {
-  let mut builder = Extension::builder();
+  let mut builder = Extension::builder("deno_os_worker");
   init_ops(&mut builder)
     .middleware(|op| match op.name {
       "op_exit" => noop_op::decl(),

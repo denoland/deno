@@ -12,7 +12,8 @@ use deno_fetch::reqwest;
 use deno_web::BlobStore;
 use deno_websocket::DomExceptionNetworkError;
 use hyper::body::Bytes;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::task::JoinHandle;
 
 // TODO(andreubotella) Properly parse the MIME type
@@ -57,8 +58,7 @@ pub fn op_worker_sync_fetch(
     let runtime = tokio::runtime::Builder::new_current_thread()
       .enable_io()
       .enable_time()
-      .build()
-      .unwrap();
+      .build()?;
 
     let handles: Vec<_> = scripts
       .into_iter()

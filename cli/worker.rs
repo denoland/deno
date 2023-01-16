@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -215,14 +217,10 @@ impl CliMainWorker {
     // Enable op call tracing in core to enable better debugging of op sanitizer
     // failures.
     if self.ps.options.trace_ops() {
-      self
-        .worker
-        .js_runtime
-        .execute_script(
-          &located_script_name!(),
-          "Deno.core.enableOpCallTracing();",
-        )
-        .unwrap();
+      self.worker.js_runtime.execute_script(
+        &located_script_name!(),
+        "Deno.core.enableOpCallTracing();",
+      )?;
     }
 
     let mut maybe_coverage_collector =
@@ -264,13 +262,10 @@ impl CliMainWorker {
   ) -> Result<(), AnyError> {
     self.enable_test();
 
-    self
-      .worker
-      .execute_script(
-        &located_script_name!(),
-        "Deno.core.enableOpCallTracing();",
-      )
-      .unwrap();
+    self.worker.execute_script(
+      &located_script_name!(),
+      "Deno.core.enableOpCallTracing();",
+    )?;
 
     if mode != TestMode::Documentation {
       // We execute the module module as a side module so that import.meta.main is not set.
@@ -492,6 +487,7 @@ async fn create_main_worker_internal(
       &package_ref.req,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
+      &mut PermissionsContainer::allow_all(),
     )?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
@@ -506,7 +502,11 @@ async fn create_main_worker_internal(
     (main_module, false)
   };
 
-  let module_loader = CliModuleLoader::new(ps.clone());
+  let module_loader = CliModuleLoader::new(
+    ps.clone(),
+    PermissionsContainer::allow_all(),
+    permissions.clone(),
+  );
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
 
@@ -682,6 +682,7 @@ fn create_web_worker_callback(
     let module_loader = CliModuleLoader::new_for_worker(
       ps.clone(),
       args.parent_permissions.clone(),
+      args.permissions.clone(),
     );
     let create_web_worker_cb =
       create_web_worker_callback(ps.clone(), stdio.clone());
@@ -761,7 +762,8 @@ fn create_web_worker_callback(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::{resolve_url_or_path, FsModuleLoader};
+  use deno_core::resolve_url_or_path;
+  use deno_core::FsModuleLoader;
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_runtime::deno_web::BlobStore;
   use deno_runtime::permissions::Permissions;

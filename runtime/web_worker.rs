@@ -243,7 +243,8 @@ impl WebWorkerHandle {
   /// This function will set the termination signal, close the message channel,
   /// and schedule to terminate the isolate after two seconds.
   pub fn terminate(self) {
-    use std::thread::{sleep, spawn};
+    use std::thread::sleep;
+    use std::thread::spawn;
     use std::time::Duration;
 
     let schedule_termination =
@@ -370,7 +371,7 @@ impl WebWorker {
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let perm_ext = Extension::builder()
+    let perm_ext = Extension::builder("deno_permissions_web_worker")
       .state(move |state| {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });

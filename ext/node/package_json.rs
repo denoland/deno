@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::NodeModuleKind;
+use crate::NodePermissions;
 
 use super::RequireNpmResolver;
 use deno_core::anyhow;
@@ -52,9 +53,10 @@ impl PackageJson {
 
   pub fn load(
     resolver: &dyn RequireNpmResolver,
+    permissions: &mut dyn NodePermissions,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
-    resolver.ensure_read_permission(&path)?;
+    resolver.ensure_read_permission(permissions, &path)?;
     Self::load_skip_read_permission(path)
   }
 

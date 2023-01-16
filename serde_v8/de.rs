@@ -1,15 +1,23 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use serde::de::{self, SeqAccess as _, Visitor};
+use serde::de::SeqAccess as _;
+use serde::de::Visitor;
+use serde::de::{self};
 use serde::Deserialize;
 
-use crate::error::{Error, Result};
-use crate::keys::{v8_struct_key, KeyCache};
+use crate::error::Error;
+use crate::error::Result;
+use crate::keys::v8_struct_key;
+use crate::keys::KeyCache;
+use crate::magic;
+use crate::magic::transl8::visit_magic;
 use crate::magic::transl8::FromV8;
-use crate::magic::transl8::{visit_magic, MagicType};
+use crate::magic::transl8::MagicType;
 use crate::payload::ValueType;
-use crate::{
-  magic, ByteString, DetachedBuffer, StringOrBuffer, U16String, ZeroCopyBuf,
-};
+use crate::ByteString;
+use crate::DetachedBuffer;
+use crate::StringOrBuffer;
+use crate::U16String;
+use crate::ZeroCopyBuf;
 
 pub struct Deserializer<'a, 'b, 's> {
   input: v8::Local<'a, v8::Value>,

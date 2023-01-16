@@ -94,7 +94,7 @@ pub fn init(
   pre_execute_module_cb: Arc<WorkerEventCb>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder("deno_worker_host")
     .state(move |state| {
       state.put::<WorkersTable>(WorkersTable::default());
       state.put::<WorkerId>(WorkerId::default());

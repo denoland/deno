@@ -26,6 +26,13 @@ Deno.test({ permissions: { env: true } }, function deleteEnv() {
   assertEquals(Deno.env.get("TEST_VAR"), undefined);
 });
 
+Deno.test({ permissions: { env: true } }, function hasEnv() {
+  Deno.env.set("TEST_VAR", "A");
+  assert(Deno.env.has("TEST_VAR"));
+  Deno.env.delete("TEST_VAR");
+  assert(!Deno.env.has("TEST_VAR"));
+});
+
 Deno.test({ permissions: { env: true } }, function avoidEmptyNamedEnv() {
   assertThrows(() => Deno.env.set("", "v"), TypeError);
   assertThrows(() => Deno.env.set("a=a", "v"), TypeError);

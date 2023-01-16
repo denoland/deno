@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Read;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -60,8 +59,7 @@ To grant permissions, set them before the script argument. For example:
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
   )?);
-  let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions).await?;
+  let mut worker = create_main_worker(&ps, main_module, permissions).await?;
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -71,7 +69,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
   let main_module = resolve_url_or_path("./$deno$stdin.ts").unwrap();
   let mut worker = create_main_worker(
-    &ps.clone(),
+    &ps,
     main_module.clone(),
     PermissionsContainer::new(Permissions::from_options(
       &ps.options.permissions_options(),
@@ -87,7 +85,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
     maybe_types: None,
     media_type: MediaType::TypeScript,
     source: String::from_utf8(source)?.into(),
-    specifier: main_module.clone(),
+    specifier: main_module,
     maybe_headers: None,
   };
   // Save our fake file into file fetcher cache
@@ -104,21 +102,17 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   let flags = Arc::new(flags);
   let main_module = resolve_url_or_path(&script)?;
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+  let mut ps =
+    ProcState::build_for_file_watcher((*flags).clone(), sender.clone()).await?;
 
-  let operation = |(sender, main_module): (
-    tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
-    ModuleSpecifier,
-  )| {
-    let flags = flags.clone();
+  let operation = |main_module: ModuleSpecifier| {
+    ps.reset_for_file_watcher();
+    let ps = ps.clone();
     Ok(async move {
-      let ps =
-        ProcState::build_for_file_watcher((*flags).clone(), sender.clone())
-          .await?;
       let permissions = PermissionsContainer::new(Permissions::from_options(
         &ps.options.permissions_options(),
       )?);
-      let worker =
-        create_main_worker(&ps, main_module.clone(), permissions).await?;
+      let worker = create_main_worker(&ps, main_module, permissions).await?;
       worker.run_for_watcher().await?;
 
       Ok(())
@@ -128,7 +122,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   util::file_watcher::watch_func2(
     receiver,
     operation,
-    (sender, main_module),
+    main_module,
     util::file_watcher::PrintConfig {
       job_name: "Process".to_string(),
       clear_screen: !flags.no_clear_screen,
@@ -166,7 +160,7 @@ pub async fn eval_command(
     maybe_types: None,
     media_type: MediaType::Unknown,
     source: String::from_utf8(source_code)?.into(),
-    specifier: main_module.clone(),
+    specifier: main_module,
     maybe_headers: None,
   };
 
