@@ -853,12 +853,12 @@ Deno.test(
     const command = new Deno.Command(Deno.execPath(), {
       args: ["eval", "console.log('hello world')"],
     });
-    const cmds: Array<Promise<Deno.CommandOutput>> = [];
     await assertRejects(async () => {
+      const cmds = [];
       for (let i = 0; i < 5000; i++) {
         cmds.push(command.output());
       }
+      await Promise.all(cmds);
     }, Deno.errors.WouldBlock);
-    await Promise.all(cmds);
   },
 );
