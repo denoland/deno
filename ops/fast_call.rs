@@ -141,9 +141,9 @@ pub(crate) fn generate(
 
   // Retain only *pure* parameters.
   let mut fast_fn_inputs = if optimizer.has_opstate_in_parameters() {
-    inputs.iter().skip(1).cloned().collect()
+    inputs.into_iter().skip(1).collect()
   } else {
-    inputs.clone()
+    inputs
   };
 
   let mut input_variants = optimizer

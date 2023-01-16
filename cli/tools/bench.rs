@@ -617,7 +617,7 @@ pub async fn run_benchmarks_with_watch(
           for path in changed.iter().filter_map(|path| {
             deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
           }) {
-            if modules.contains(&&path) {
+            if modules.contains(&path) {
               modules_to_reload.push((specifier, ModuleKind::Esm));
               break;
             }
@@ -651,16 +651,15 @@ pub async fn run_benchmarks_with_watch(
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
     let permissions = &permissions;
+    let bench_options = &bench_options;
     ps.borrow_mut().reset_for_file_watcher();
     let ps = ps.borrow();
-    let bench_options = &bench_options;
 
     async move {
       let specifiers =
         collect_specifiers(&bench_options.files, is_supported_bench_path)?
-          .iter()
+          .into_iter()
           .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
-          .cloned()
           .collect::<Vec<ModuleSpecifier>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;

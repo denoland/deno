@@ -987,7 +987,7 @@ pub async fn check_specifiers(
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
-  ps: ProcState,
+  ps: &ProcState,
   permissions: &Permissions,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
   options: TestSpecifierOptions,
@@ -1328,7 +1328,7 @@ pub async fn run_tests(
   }
 
   test_specifiers(
-    ps,
+    &ps,
     &permissions,
     specifiers_with_mode,
     TestSpecifierOptions {
@@ -1361,8 +1361,7 @@ pub async fn run_tests_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
     let test_options = &test_options;
-
-    let ps = ps.borrow().clone();
+    let ps = ps.borrow();
 
     async move {
       let test_modules = if test_options.doc {
@@ -1445,7 +1444,7 @@ pub async fn run_tests_with_watch(
           for path in changed.iter().filter_map(|path| {
             deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
           }) {
-            if modules.contains(&&path) {
+            if modules.contains(&path) {
               modules_to_reload.push((specifier, ModuleKind::Esm));
               break;
             }
@@ -1481,7 +1480,7 @@ pub async fn run_tests_with_watch(
     let permissions = &permissions;
     let test_options = &test_options;
     ps.borrow_mut().reset_for_file_watcher();
-    let ps = ps.borrow().clone();
+    let ps = ps.borrow();
 
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
@@ -1490,11 +1489,10 @@ pub async fn run_tests_with_watch(
         &test_options.doc,
       )
       .await?
-      .iter()
+      .into_iter()
       .filter(|(specifier, _)| {
         contains_specifier(&modules_to_reload, specifier)
       })
-      .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
@@ -1505,7 +1503,7 @@ pub async fn run_tests_with_watch(
       }
 
       test_specifiers(
-        ps,
+        &ps,
         permissions,
         specifiers_with_mode,
         TestSpecifierOptions {
