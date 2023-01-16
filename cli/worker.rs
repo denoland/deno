@@ -68,14 +68,19 @@ impl CliMainWorker {
     log::debug!("main_module {}", self.main_module);
 
     if self.ps.options.node() {
+      // TODO(bartlomieju): make it graceful looking for closes package.json
       // We're in Node compat mode, try to find `package.json` and load it.
       let package_json = PackageJson::load_skip_read_permission(
         std::env::current_dir().unwrap().join("package.json"),
       )
       .context("Unable to load package.json from CWD")?;
 
-      self.is_main_cjs = package_json.typ != "module";
+      // NOTE(bartlomieju): we are explicitly not compatible with Node.js here -
+      // Node defaults to "commonjs" if the "type" entry is missing. We default
+      // to ESM and only enable CJS if "type" is "commonjs".
+      self.is_main_cjs = package_json.typ == "commonjs";
 
+      // TODO(bartlomieju): could be extracted into a helper function
       if let Some(deps) = &package_json.dependencies {
         let mut reqs = vec![];
         for (key, value) in deps {
