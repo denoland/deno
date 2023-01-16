@@ -987,6 +987,9 @@ declare namespace __bootstrap {
       constructor: Uint8ArrayConstructor,
       arrayLike: ArrayLike<number>,
     ) => Uint8Array;
+    export const TypedArrayPrototypeGetBuffer: (
+      array: Uint8Array,
+    ) => ArrayBuffer | SharedArrayBuffer;
     export const TypedArrayPrototypeGetByteLength: (
       array: Uint8Array,
     ) => number;

@@ -18,9 +18,11 @@
     ArrayBufferPrototypeSlice,
     ArrayBufferIsView,
     DataView,
+    DataViewPrototypeGetBuffer,
     DataViewPrototypeGetByteLength,
     DataViewPrototypeGetByteOffset,
     ObjectPrototypeIsPrototypeOf,
+    TypedArrayPrototypeGetBuffer,
     TypedArrayPrototypeGetByteOffset,
     TypedArrayPrototypeGetLength,
     TypedArrayPrototypeGetSymbolToStringTag,
@@ -74,18 +76,15 @@
     }
 
     if (ArrayBufferIsView(value)) {
-      const clonedBuffer = structuredClone(value.buffer);
       const tag = TypedArrayPrototypeGetSymbolToStringTag(value);
-
       // DataView
       if (tag === undefined) {
         return new DataView(
-          clonedBuffer,
+          structuredClone(DataViewPrototypeGetBuffer(value)),
           DataViewPrototypeGetByteOffset(value),
           DataViewPrototypeGetByteLength(value),
         );
       }
-
       // TypedArray
       let Constructor;
       switch (tag) {
@@ -124,7 +123,7 @@
           break;
       }
       return new Constructor(
-        clonedBuffer,
+        structuredClone(TypedArrayPrototypeGetBuffer(value)),
         TypedArrayPrototypeGetByteOffset(value),
         TypedArrayPrototypeGetLength(value),
       );
