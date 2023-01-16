@@ -115,7 +115,7 @@
         return null;
       }
 
-      const [streamRid, method, url] = nextRequest;
+      const { 0: streamRid, 1: method, 2: url } = nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
