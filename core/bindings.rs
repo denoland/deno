@@ -505,11 +505,11 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
         let error = message.get_value().unwrap();
         let error_global = v8::Global::new(scope, error);
         state
-          .pending_promise_exceptions
+          .pending_promise_rejections
           .insert(promise_global, error_global);
       }
       PromiseHandlerAddedAfterReject => {
-        state.pending_promise_exceptions.remove(&promise_global);
+        state.pending_promise_rejections.remove(&promise_global);
       }
       PromiseRejectAfterResolved => {}
       PromiseResolveAfterResolved => {
