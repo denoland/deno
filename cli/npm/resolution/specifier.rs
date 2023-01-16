@@ -168,7 +168,7 @@ impl NpmVersionMatcher for NpmPackageReq {
   }
 }
 
-/// Resolves the npm package requirements from the graph attempting. The order
+/// Resolves the npm package requirements from the graph. The order
 /// returned is the order they should be resolved in.
 ///
 /// This function will analyze the module graph for parent-most folder
@@ -248,6 +248,7 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     graph: &ModuleGraph,
     specifier_graph: &mut SpecifierTree,
     seen: &mut HashSet<ModuleSpecifier>,
+    has_node_builtin_specifier: &mut bool,
   ) {
     if !seen.insert(module.specifier.clone()) {
       return; // already visited
@@ -267,12 +268,22 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
           .dependencies
           .insert(get_folder_path_specifier(specifier));
       }
+
+      if !*has_node_builtin_specifier && specifier.scheme() == "node" {
+        *has_node_builtin_specifier = true;
+      }
     }
 
     // now visit all the dependencies
     for specifier in &specifiers {
       if let Some(module) = graph.get(specifier) {
-        analyze_module(module, graph, specifier_graph, seen);
+        analyze_module(
+          module,
+          graph,
+          specifier_graph,
+          seen,
+          has_node_builtin_specifier,
+        );
       }
     }
   }
@@ -284,9 +295,16 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     .collect::<Vec<_>>();
   let mut seen = HashSet::new();
   let mut specifier_graph = SpecifierTree::default();
+  let mut has_node_builtin_specifier = false;
   for root in &root_specifiers {
     if let Some(module) = graph.get(root) {
-      analyze_module(module, graph, &mut specifier_graph, &mut seen);
+      analyze_module(
+        module,
+        graph,
+        &mut specifier_graph,
+        &mut seen,
+        &mut has_node_builtin_specifier,
+      );
     }
   }
 
@@ -324,7 +342,17 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     }
   }
 
-  result
+  // if we have a built-in node specifier
+  if has_node_builtin_specifier
+    && !result.iter().any(|r| r.name == "@types/node")
+  {
+    let mut final_result = Vec::with_capacity(result.len() + 1);
+    final_result.push(NpmPackageReq::from_str("@types/node").unwrap());
+    final_result.extend(result);
+    final_result
+  } else {
+    result
+  }
 }
 
 fn get_folder_path_specifier(specifier: &ModuleSpecifier) -> ModuleSpecifier {

@@ -617,6 +617,8 @@ pub enum DenoDiagnostic {
   },
   /// An error occurred when resolving the specifier string.
   ResolutionError(deno_graph::ResolutionError),
+  /// Invalid `node:` specifier.
+  InvalidNodeSpecifier(ModuleSpecifier),
 }
 
 impl DenoDiagnostic {
@@ -644,6 +646,7 @@ impl DenoDiagnostic {
         },
         ResolutionError::ResolverError { .. } => "resolver-error",
       },
+      Self::InvalidNodeSpecifier(_) => "resolver-error",
     }
   }
 
@@ -794,6 +797,7 @@ impl DenoDiagnostic {
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{}\" was redirected to \"{}\".", from, to), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => (lsp::DiagnosticSeverity::ERROR, err.to_string(), None),
+      Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
     };
     lsp::Diagnostic {
       range: *range,
@@ -879,9 +883,22 @@ fn diagnose_resolved(
       {
         if node::resolve_builtin_node_module(module_name).is_err() {
           diagnostics.push(
-            DenoDiagnostic::NoCache(specifier.clone())
+            DenoDiagnostic::InvalidNodeSpecifier(specifier.clone())
               .to_lsp_diagnostic(&range),
           );
+        } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+          // check that a @types/node package exists in the resolver
+          let types_node_ref =
+            NpmPackageReference::from_str("npm:@types/node").unwrap();
+          if npm_resolver
+            .resolve_package_folder_from_deno_module(&types_node_ref.req)
+            .is_err()
+          {
+            diagnostics.push(
+              DenoDiagnostic::NoCacheNpm(types_node_ref, specifier.clone())
+                .to_lsp_diagnostic(&range),
+            );
+          }
         }
       } else {
         // When the document is not available, it means that it cannot be found

@@ -26,7 +26,6 @@ use crate::node::NodeResolution;
 use crate::npm::resolve_npm_package_reqs;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
-use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 use crate::npm::RealNpmRegistryApi;
 use crate::resolver::CliResolver;
@@ -430,7 +429,7 @@ impl ProcState {
       graph_data.entries().map(|(s, _)| s).cloned().collect()
     };
 
-    let (mut npm_package_reqs, has_node_builtin_specifier) = {
+    let npm_package_reqs = {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph);
       let check_js = self.options.check_js();
@@ -441,21 +440,8 @@ impl ProcState {
           check_js,
         )
         .unwrap()?;
-      (
-        graph_data.npm_package_reqs().clone(),
-        graph_data.has_node_builtin_specifier(),
-      )
+      graph_data.npm_package_reqs().clone()
     };
-
-    // add a @types/node package if the code has a "node:" specifier,
-    // the code is type checking, and there aren't any existing @types/node
-    // packages specified
-    if has_node_builtin_specifier
-      && self.options.type_check_mode() != TypeCheckMode::None
-      && !npm_package_reqs.iter().any(|r| r.name == "@types/node")
-    {
-      npm_package_reqs.push(NpmPackageReq::from_str("@types/node").unwrap());
-    }
 
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;

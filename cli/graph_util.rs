@@ -162,6 +162,16 @@ impl GraphData {
     if has_npm_specifier_in_graph {
       self.npm_packages.extend(resolve_npm_package_reqs(graph));
     }
+
+    // ensure a @types/node package is in the list of npm package requirements
+    // if a node: specifier was in the graph
+    if self.has_node_builtin_specifier
+      && !self.npm_packages.iter().any(|a| a.name == "@types/node")
+    {
+      self
+        .npm_packages
+        .insert(0, NpmPackageReq::from_str("@types/node").unwrap());
+    }
   }
 
   pub fn entries(
