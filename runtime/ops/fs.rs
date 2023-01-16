@@ -679,7 +679,9 @@ fn op_chown_sync(
   #[cfg(unix)]
   {
     use crate::errors::get_nix_error_class;
-    use nix::unistd::{chown, Gid, Uid};
+    use nix::unistd::chown;
+    use nix::unistd::Gid;
+    use nix::unistd::Uid;
     let nix_uid = uid.map(Uid::from_raw);
     let nix_gid = gid.map(Gid::from_raw);
     chown(&path, nix_uid, nix_gid).map_err(|err| {
@@ -717,7 +719,9 @@ async fn op_chown_async(
     #[cfg(unix)]
     {
       use crate::errors::get_nix_error_class;
-      use nix::unistd::{chown, Gid, Uid};
+      use nix::unistd::chown;
+      use nix::unistd::Gid;
+      use nix::unistd::Uid;
       let nix_uid = uid.map(Uid::from_raw);
       let nix_gid = gid.map(Gid::from_raw);
       chown(&path, nix_uid, nix_gid).map_err(|err| {
@@ -1488,7 +1492,8 @@ fn op_symlink_sync(
   }
   #[cfg(not(unix))]
   {
-    use std::os::windows::fs::{symlink_dir, symlink_file};
+    use std::os::windows::fs::symlink_dir;
+    use std::os::windows::fs::symlink_file;
 
     match _type {
       Some(ty) => match ty.as_ref() {

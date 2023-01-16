@@ -2,11 +2,7 @@
 
 // deno-lint-ignore-file
 
-import {
-  Buffer,
-  BufReader,
-  BufWriter,
-} from "../../../test_util/std/io/buffer.ts";
+import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -2325,6 +2321,45 @@ Deno.test(
 
     await promise;
     await server;
+  },
+);
+
+// https://github.com/denoland/deno/issues/15858
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerCanCloneRequest() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: async (req) => {
+        const cloned = req.clone();
+        assertEquals(req.headers, cloned.headers);
+
+        // both requests can read body
+        await req.text();
+        await cloned.json();
+
+        return new Response("ok");
+      },
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningPromise;
+      const resp = await fetch("http://localhost:9000/", {
+        headers: { connection: "close" },
+        method: "POST",
+        body: '{"sus":true}',
+      });
+      const text = await resp.text();
+      assertEquals(text, "ok");
+    } finally {
+      ac.abort();
+      await server;
+    }
   },
 );
 

@@ -638,7 +638,7 @@
       });
 
       function tryRespondChunked(token, chunk, shutdown) {
-        const nwritten = core.ops.op_try_flash_respond_chuncked(
+        const nwritten = core.ops.op_try_flash_respond_chunked(
           serverId,
           token,
           chunk ?? new Uint8Array(),
@@ -646,7 +646,7 @@
         );
         if (nwritten > 0) {
           return core.opAsync(
-            "op_flash_respond_chuncked",
+            "op_flash_respond_chunked",
             serverId,
             token,
             chunk,
@@ -658,7 +658,7 @@
 
       function respondChunked(token, chunk, shutdown) {
         return core.opAsync(
-          "op_flash_respond_chuncked",
+          "op_flash_respond_chunked",
           serverId,
           token,
           chunk,
