@@ -20,7 +20,7 @@ use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
 use crate::util::text_encoding;
 use deno_ast::ParsedSource;
-use deno_core::anyhow::bail;
+use deno_core::anyhow::{anyhow, bail};
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -575,9 +575,7 @@ fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let charset = text_encoding::detect_charset(&file_bytes);
   let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)
-    .with_context(|| {
-      format!("{} is not a valid UTF-8 file", file_path.display())
-    })?;
+    .map_err(|_| anyhow!("{} is not a valid UTF-8 file", file_path.display()))?;
   let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);
   let text = if had_bom {
     text_encoding::strip_bom(&file_text).to_string()
