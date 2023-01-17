@@ -46,7 +46,8 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
-use v8::{DataError, Local, Object, OwnedIsolate};
+use v8::DataError;
+use v8::OwnedIsolate;
 
 type PendingOpFuture = OpCall<(RealmIdx, PromiseId, OpId, OpResult)>;
 
@@ -518,16 +519,14 @@ impl JsRuntime {
               let global = v8::Global::new(&mut scope, val);
               module_map_data = Some(global);
             }
-            Err(err) => {
-              match err {
-                DataError::BadType { actual, expected } => {
-                  dbg!(actual, expected);
-                }
-                DataError::NoData { expected } => {
-                  dbg!(expected);
-                }
+            Err(err) => match err {
+              DataError::BadType { actual, expected } => {
+                dbg!(actual, expected);
               }
-            }
+              DataError::NoData { expected } => {
+                dbg!(expected);
+              }
+            },
           }
         }
 
@@ -574,9 +573,12 @@ impl JsRuntime {
 
     let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
     if let Some(module_map_data) = module_map_data {
-      let scope = &mut v8::HandleScope::with_context(&mut isolate, global_context.clone());
+      let scope = &mut v8::HandleScope::with_context(
+        &mut isolate,
+        global_context.clone(),
+      );
       let mut module_map = module_map_rc.borrow_mut();
-      module_map.from_v8_data(scope, module_map_data);
+      module_map.with_v8_data(scope, module_map_data);
     }
     isolate.set_data(
       Self::MODULE_MAP_DATA_OFFSET,
@@ -3520,9 +3522,9 @@ pub mod tests {
       /*assert_eq!(module_map.ids_by_handle.len(), 1);
       assert_eq!(module_map.ids_by_handle.values().next().unwrap(), &1);
       assert_eq!(module_map.handles_by_id.len(), 1);
-      assert_eq!(module_map.handles_by_id.keys().next().unwrap(), &1);
+      assert_eq!(module_map.handles_by_id.keys().next().unwrap(), &1);*/
       assert_eq!(module_map.info.len(), 1);
-      assert_eq!(module_map.by_name.len(), 1);*/
+      /*assert_eq!(module_map.by_name.len(), 1);*/
       assert_eq!(module_map.next_module_id, 2);
       assert_eq!(module_map.next_load_id, 2);
     }

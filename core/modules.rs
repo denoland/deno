@@ -14,6 +14,8 @@ use futures::stream::Stream;
 use futures::stream::StreamFuture;
 use futures::stream::TryStreamExt;
 use log::debug;
+use serde::Deserialize;
+use serde::Serialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -157,7 +159,7 @@ fn json_module_evaluation_steps<'a>(
 /// how to interpret the module; it is only used to validate
 /// the module against an import assertion (if one is present
 /// in the import statement).
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ModuleType {
   JavaScript,
   Json,
@@ -720,7 +722,7 @@ impl Stream for RecursiveModuleLoad {
   }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub(crate) enum AssertedModuleType {
   JavaScriptOrWasm,
   Json,
@@ -748,12 +750,13 @@ impl std::fmt::Display for AssertedModuleType {
 /// Usually executable (`JavaScriptOrWasm`) is used, except when an
 /// import assertions explicitly constrains an import to JSON, in
 /// which case this will have a `AssertedModuleType::Json`.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ModuleRequest {
   pub specifier: ModuleSpecifier,
   pub asserted_module_type: AssertedModuleType,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct ModuleInfo {
   #[allow(unused)]
   pub id: ModuleId,
@@ -765,7 +768,7 @@ pub(crate) struct ModuleInfo {
 }
 
 /// A symbolic module entity.
-pub (crate) enum SymbolicModule {
+pub(crate) enum SymbolicModule {
   /// This module is an alias to another module.
   /// This is useful such that multiple names could point to
   /// the same underlying module (particularly due to redirects).
@@ -783,12 +786,12 @@ pub(crate) enum ModuleError {
 /// A collection of JS modules.
 pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
-  pub (crate) ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
+  pub(crate) ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   pub handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
   pub info: HashMap<ModuleId, ModuleInfo>,
-  pub (crate) by_name: HashMap<(String, AssertedModuleType), SymbolicModule>,
-  pub (crate) next_module_id: ModuleId,
-  pub (crate) next_load_id: ModuleLoadId,
+  pub(crate) by_name: HashMap<(String, AssertedModuleType), SymbolicModule>,
+  pub(crate) next_module_id: ModuleId,
+  pub(crate) next_load_id: ModuleLoadId,
 
   // Handling of futures for loading module sources
   pub loader: Rc<dyn ModuleLoader>,
@@ -806,36 +809,64 @@ pub(crate) struct ModuleMap {
 }
 
 impl ModuleMap {
-  pub fn to_v8_object(&self, handle_scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  pub fn to_v8_object(
+    &self,
+    handle_scope: &mut v8::HandleScope,
+  ) -> v8::Global<v8::Object> {
     let obj = v8::Object::new(handle_scope);
 
-    let next_module_id_str = v8::String::new(handle_scope, "next_module_id").unwrap();
+    let next_module_id_str =
+      v8::String::new(handle_scope, "next_module_id").unwrap();
     let next_module_id = v8::Integer::new(handle_scope, self.next_module_id);
-    obj.set(handle_scope, next_module_id_str.into(), next_module_id.into());
+    obj.set(
+      handle_scope,
+      next_module_id_str.into(),
+      next_module_id.into(),
+    );
 
-    let next_load_id_str = v8::String::new(handle_scope, "next_load_id").unwrap();
+    let next_load_id_str =
+      v8::String::new(handle_scope, "next_load_id").unwrap();
     let next_load_id = v8::Integer::new(handle_scope, self.next_load_id);
     obj.set(handle_scope, next_load_id_str.into(), next_load_id.into());
+
+    let info_str = v8::String::new(handle_scope, "info").unwrap();
+    let info = serde_v8::to_v8(handle_scope, self.info.clone()).unwrap();
+    obj.set(handle_scope, info_str.into(), info);
 
     v8::Global::new(handle_scope, obj)
   }
 
-  pub fn from_v8_data(&mut self, handle_scope: &mut v8::HandleScope, data: v8::Global<v8::Object>) {
+  pub fn with_v8_data(
+    &mut self,
+    handle_scope: &mut v8::HandleScope,
+    data: v8::Global<v8::Object>,
+  ) {
     let local_data: v8::Local<v8::Object> = v8::Local::new(handle_scope, data);
 
-    let next_module_id_str = v8::String::new(handle_scope, "next_module_id").unwrap();
-    let next_module_id = local_data.get(handle_scope, next_module_id_str.into()).unwrap();
+    let next_module_id_str =
+      v8::String::new(handle_scope, "next_module_id").unwrap();
+    let next_module_id = local_data
+      .get(handle_scope, next_module_id_str.into())
+      .unwrap();
     assert!(next_module_id.is_int32());
     let integer = next_module_id.to_integer(handle_scope).unwrap();
     let val = integer.int32_value(handle_scope).unwrap();
     self.next_module_id = val;
 
-    let next_load_id_str = v8::String::new(handle_scope, "next_load_id").unwrap();
-    let next_load_id = local_data.get(handle_scope, next_load_id_str.into()).unwrap();
+    let next_load_id_str =
+      v8::String::new(handle_scope, "next_load_id").unwrap();
+    let next_load_id = local_data
+      .get(handle_scope, next_load_id_str.into())
+      .unwrap();
     assert!(next_load_id.is_int32());
     let integer = next_load_id.to_integer(handle_scope).unwrap();
     let val = integer.int32_value(handle_scope).unwrap();
     self.next_load_id = val;
+
+    let info_str = v8::String::new(handle_scope, "info").unwrap();
+    let info = local_data.get(handle_scope, info_str.into()).unwrap();
+    assert!(info.is_object());
+    self.info = serde_v8::from_v8(handle_scope, info).unwrap();
   }
 
   pub(crate) fn new(
