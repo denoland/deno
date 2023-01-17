@@ -263,19 +263,16 @@ impl ProcState {
       progress_bar.clone(),
     );
     let maybe_lockfile = lockfile.as_ref().cloned();
-    let mut npm_resolver = NpmPackageResolver::new(
+    let npm_resolver = NpmPackageResolver::new_with_maybe_lockfile(
       npm_cache.clone(),
       api,
       cli_options.no_npm(),
       cli_options
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
-    );
-    if let Some(lockfile) = maybe_lockfile {
-      npm_resolver
-        .add_lockfile_and_maybe_regenerate_snapshot(lockfile)
-        .await?;
-    }
+      maybe_lockfile,
+    )
+    .await?;
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
