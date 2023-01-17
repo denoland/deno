@@ -806,6 +806,38 @@ pub(crate) struct ModuleMap {
 }
 
 impl ModuleMap {
+  pub fn to_v8_object(&self, handle_scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+    let obj = v8::Object::new(handle_scope);
+
+    let next_module_id_str = v8::String::new(handle_scope, "next_module_id").unwrap();
+    let next_module_id = v8::Integer::new(handle_scope, self.next_module_id);
+    obj.set(handle_scope, next_module_id_str.into(), next_module_id.into());
+
+    let next_load_id_str = v8::String::new(handle_scope, "next_load_id").unwrap();
+    let next_load_id = v8::Integer::new(handle_scope, self.next_load_id);
+    obj.set(handle_scope, next_load_id_str.into(), next_load_id.into());
+
+    v8::Global::new(handle_scope, obj)
+  }
+
+  pub fn from_v8_data(&mut self, handle_scope: &mut v8::HandleScope, data: v8::Global<v8::Object>) {
+    let local_data: v8::Local<v8::Object> = v8::Local::new(handle_scope, data);
+
+    let next_module_id_str = v8::String::new(handle_scope, "next_module_id").unwrap();
+    let next_module_id = local_data.get(handle_scope, next_module_id_str.into()).unwrap();
+    assert!(next_module_id.is_int32());
+    let integer = next_module_id.to_integer(handle_scope).unwrap();
+    let val = integer.int32_value(handle_scope).unwrap();
+    self.next_module_id = val;
+
+    let next_load_id_str = v8::String::new(handle_scope, "next_load_id").unwrap();
+    let next_load_id = local_data.get(handle_scope, next_load_id_str.into()).unwrap();
+    assert!(next_load_id.is_int32());
+    let integer = next_load_id.to_integer(handle_scope).unwrap();
+    let val = integer.int32_value(handle_scope).unwrap();
+    self.next_load_id = val;
+  }
+
   pub(crate) fn new(
     loader: Rc<dyn ModuleLoader>,
     op_state: Rc<RefCell<OpState>>,
