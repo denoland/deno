@@ -2644,11 +2644,13 @@ pub mod tests {
   use super::*;
   use crate::error::custom_error;
   use crate::error::AnyError;
+  use crate::modules::AssertedModuleType;
   use crate::modules::ModuleInfo;
   use crate::modules::ModuleSource;
   use crate::modules::ModuleSourceFuture;
   use crate::modules::ModuleType;
   use crate::modules::ResolutionKind;
+  use crate::modules::SymbolicModule;
   use crate::ZeroCopyBuf;
   use deno_ops::op;
   use futures::future::lazy;
@@ -3516,6 +3518,17 @@ pub mod tests {
         }
       );
       assert_eq!(module_map.by_name.len(), 1);
+      assert_eq!(
+        module_map.by_name.keys().next().unwrap(),
+        &(
+          "file:///main.js".to_string(),
+          AssertedModuleType::JavaScriptOrWasm
+        )
+      );
+      assert_eq!(
+        module_map.by_name.values().next().unwrap(),
+        &SymbolicModule::Mod(1)
+      );
       assert_eq!(module_map.next_module_id, 2);
       assert_eq!(module_map.next_load_id, 2);
     }
@@ -3547,7 +3560,18 @@ pub mod tests {
           module_type: ModuleType::JavaScript,
         }
       );
-      // assert_eq!(module_map.by_name.len(), 1);
+      assert_eq!(module_map.by_name.len(), 1);
+      assert_eq!(
+        module_map.by_name.keys().next().unwrap(),
+        &(
+          "file:///main.js".to_string(),
+          AssertedModuleType::JavaScriptOrWasm
+        )
+      );
+      assert_eq!(
+        module_map.by_name.values().next().unwrap(),
+        &SymbolicModule::Mod(1)
+      );
       assert_eq!(module_map.next_module_id, 2);
       assert_eq!(module_map.next_load_id, 2);
     }

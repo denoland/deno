@@ -768,6 +768,7 @@ pub(crate) struct ModuleInfo {
 }
 
 /// A symbolic module entity.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub(crate) enum SymbolicModule {
   /// This module is an alias to another module.
   /// This is useful such that multiple names could point to
@@ -824,7 +825,6 @@ impl ModuleMap {
     obj.set(scope, next_load_id_str.into(), next_load_id.into());
 
     let info_obj = v8::Object::new(scope);
-
     for (key, value) in self.info.clone().into_iter() {
       let key_val = v8::Integer::new(scope, key);
       let module_info = serde_v8::to_v8(scope, value).unwrap();
@@ -832,6 +832,17 @@ impl ModuleMap {
     }
     let info_str = v8::String::new(scope, "info").unwrap();
     obj.set(scope, info_str.into(), info_obj.into());
+
+    let by_name_triples: Vec<(String, AssertedModuleType, SymbolicModule)> =
+      self
+        .by_name
+        .clone()
+        .into_iter()
+        .map(|el| (el.0 .0, el.0 .1, el.1))
+        .collect();
+    let by_name_array = serde_v8::to_v8(scope, by_name_triples).unwrap();
+    let by_name_str = v8::String::new(scope, "by_name").unwrap();
+    obj.set(scope, by_name_str.into(), by_name_array.into());
 
     v8::Global::new(scope, obj)
   }
@@ -886,6 +897,18 @@ impl ModuleMap {
         info.insert(key_int, module_info);
       }
       self.info = info;
+    }
+
+    {
+      let mut by_name = HashMap::new();
+      let by_name_str = v8::String::new(scope, "by_name").unwrap();
+      let by_name_data = local_data.get(scope, by_name_str.into()).unwrap();
+      let by_name_deser_: Vec<(String, AssertedModuleType, SymbolicModule)> =
+        serde_v8::from_v8(scope, by_name_data).unwrap();
+      for (name, module_type, symbolic_module) in by_name_deser_ {
+        by_name.insert((name, module_type), symbolic_module);
+      }
+      self.by_name = by_name;
     }
   }
 
