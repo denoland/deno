@@ -851,6 +851,7 @@ impl ModuleMap {
     &mut self,
     scope: &mut v8::HandleScope,
     data: v8::Global<v8::Object>,
+    module_handles: Vec<v8::Global<v8::Module>>,
   ) {
     let local_data: v8::Local<v8::Object> = v8::Local::new(scope, data);
 
@@ -909,6 +910,22 @@ impl ModuleMap {
         by_name.insert((name, module_type), symbolic_module);
       }
       self.by_name = by_name;
+    }
+
+    {
+      let mut ids_by_handle = HashMap::new();
+      for (index, handle) in module_handles.iter().enumerate() {
+        ids_by_handle.insert(handle.clone(), (index + 1) as i32);
+      }
+      self.ids_by_handle = ids_by_handle;
+
+      {
+        let mut handles_by_id = HashMap::new();
+        for (index, handle) in module_handles.iter().enumerate() {
+          handles_by_id.insert((index + 1) as i32, handle.clone());
+        }
+        self.handles_by_id = handles_by_id;
+      }
     }
   }
 

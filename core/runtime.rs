@@ -425,6 +425,7 @@ impl JsRuntime {
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
     let mut module_map_data = None;
+    let mut module_handles = vec![];
 
     let (mut isolate, snapshot_options) = if options.will_snapshot {
       let (snapshot_creator, snapshot_loaded) =
@@ -516,6 +517,28 @@ impl JsRuntime {
           let mut scope = v8::ContextScope::new(scope, context);
           match scope.get_context_data_from_snapshot_once::<v8::Object>(0) {
             Ok(val) => {
+              let next_module_id = {
+                let next_module_id_str =
+                  v8::String::new(&mut scope, "next_module_id").unwrap();
+                let next_module_id =
+                  val.get(&mut scope, next_module_id_str.into()).unwrap();
+                assert!(next_module_id.is_int32());
+                let integer = next_module_id.to_integer(&mut scope).unwrap();
+                integer.int32_value(&mut scope).unwrap()
+              };
+              let no_of_modules = next_module_id - 1;
+
+              for i in 1..=no_of_modules {
+                let result = scope
+                  .get_context_data_from_snapshot_once::<v8::Module>(
+                    i as usize,
+                  );
+                // FIXME(bartlomieju): gracefully handle error
+                let module_local = result.unwrap();
+                let module_global = v8::Global::new(&mut scope, module_local);
+                module_handles.push(module_global);
+              }
+
               let global = v8::Global::new(&mut scope, val);
               module_map_data = Some(global);
             }
@@ -578,7 +601,7 @@ impl JsRuntime {
         global_context.clone(),
       );
       let mut module_map = module_map_rc.borrow_mut();
-      module_map.with_v8_data(scope, module_map_data);
+      module_map.with_v8_data(scope, module_map_data, module_handles);
     }
     isolate.set_data(
       Self::MODULE_MAP_DATA_OFFSET,
@@ -946,6 +969,10 @@ impl JsRuntime {
       let module_map_rc = self.module_map.take().unwrap();
       let module_map = module_map_rc.borrow();
       let v8_data = module_map.to_v8_object(&mut self.handle_scope());
+      let mut handles_and_ids: Vec<(ModuleId, v8::Global<v8::Module>)> =
+        module_map.handles_by_id.clone().into_iter().collect();
+      handles_and_ids.sort_by_key(|(id, _)| *id);
+
       let v8_isolate = self.v8_isolate();
       Self::drop_state_and_module_map(v8_isolate);
 
@@ -955,6 +982,13 @@ impl JsRuntime {
       let local_data = v8::Local::new(&mut handle_scope, v8_data);
       let offset = handle_scope.add_context_data(local_context, local_data);
       assert_eq!(offset, 0);
+
+      for (id, handle) in handles_and_ids {
+        let module_handle = v8::Local::new(&mut handle_scope, handle);
+        let offset =
+          handle_scope.add_context_data(local_context, module_handle);
+        assert_eq!(offset, id as usize);
+      }
     };
 
     self.state.borrow_mut().global_realm.take();
@@ -3476,6 +3510,7 @@ pub mod tests {
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
+        eprintln!("load() should not be called");
         unreachable!()
       }
     }
@@ -3488,7 +3523,8 @@ pub mod tests {
     });
 
     let specifier = crate::resolve_url("file:///main.js").unwrap();
-    let source_code = "Deno.core.print('hello\\n')".to_string();
+    let source_code =
+      r#"export function hello() { return "hello world" }"#.to_string();
 
     let module_id = futures::executor::block_on(
       runtime.load_main_module(&specifier, Some(source_code)),
@@ -3544,10 +3580,10 @@ pub mod tests {
     {
       let module_map_rc = runtime2.get_module_map();
       let module_map = module_map_rc.borrow();
-      // assert_eq!(module_map.ids_by_handle.len(), 1);
-      // assert_eq!(module_map.ids_by_handle.values().next().unwrap(), &1);
-      // assert_eq!(module_map.handles_by_id.len(), 1);
-      // assert_eq!(module_map.handles_by_id.keys().next().unwrap(), &1);
+      assert_eq!(module_map.ids_by_handle.len(), 1);
+      assert_eq!(module_map.ids_by_handle.values().next().unwrap(), &1);
+      assert_eq!(module_map.handles_by_id.len(), 1);
+      assert_eq!(module_map.handles_by_id.keys().next().unwrap(), &1);
       assert_eq!(module_map.info.len(), 1);
       assert_eq!(module_map.info.keys().next().unwrap(), &1);
       assert_eq!(
@@ -3574,6 +3610,22 @@ pub mod tests {
       );
       assert_eq!(module_map.next_module_id, 2);
       assert_eq!(module_map.next_load_id, 2);
+    }
+
+    let source_code = r#"(async () => {
+      Deno.core.print("hello!\n", true);
+      const mod = await import("file:///main.js");
+      Deno.core.print("hello after import!\n", true);
+      return mod.hello();
+    })();"#
+      .to_string();
+    let val = runtime2.execute_script(".", &source_code).unwrap();
+    let val = futures::executor::block_on(runtime2.resolve_value(val)).unwrap();
+    {
+      let scope = &mut runtime2.handle_scope();
+      let value = v8::Local::new(scope, val);
+      let str_ = value.to_string(scope).unwrap().to_rust_string_lossy(scope);
+      assert_eq!(str_, "hello world");
     }
   }
 
