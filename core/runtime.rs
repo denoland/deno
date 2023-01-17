@@ -2644,6 +2644,7 @@ pub mod tests {
   use super::*;
   use crate::error::custom_error;
   use crate::error::AnyError;
+  use crate::modules::ModuleInfo;
   use crate::modules::ModuleSource;
   use crate::modules::ModuleSourceFuture;
   use crate::modules::ModuleType;
@@ -3503,6 +3504,17 @@ pub mod tests {
       assert_eq!(module_map.handles_by_id.len(), 1);
       assert_eq!(module_map.handles_by_id.keys().next().unwrap(), &1);
       assert_eq!(module_map.info.len(), 1);
+      assert_eq!(module_map.info.keys().next().unwrap(), &1);
+      assert_eq!(
+        module_map.info.values().next().unwrap(),
+        &ModuleInfo {
+          id: 1,
+          main: true,
+          name: "file:///main.js".to_string(),
+          requests: vec![],
+          module_type: ModuleType::JavaScript,
+        }
+      );
       assert_eq!(module_map.by_name.len(), 1);
       assert_eq!(module_map.next_module_id, 2);
       assert_eq!(module_map.next_load_id, 2);
@@ -3519,12 +3531,23 @@ pub mod tests {
     {
       let module_map_rc = runtime2.get_module_map();
       let module_map = module_map_rc.borrow();
-      /*assert_eq!(module_map.ids_by_handle.len(), 1);
-      assert_eq!(module_map.ids_by_handle.values().next().unwrap(), &1);
-      assert_eq!(module_map.handles_by_id.len(), 1);
-      assert_eq!(module_map.handles_by_id.keys().next().unwrap(), &1);*/
+      // assert_eq!(module_map.ids_by_handle.len(), 1);
+      // assert_eq!(module_map.ids_by_handle.values().next().unwrap(), &1);
+      // assert_eq!(module_map.handles_by_id.len(), 1);
+      // assert_eq!(module_map.handles_by_id.keys().next().unwrap(), &1);
       assert_eq!(module_map.info.len(), 1);
-      /*assert_eq!(module_map.by_name.len(), 1);*/
+      assert_eq!(module_map.info.keys().next().unwrap(), &1);
+      assert_eq!(
+        module_map.info.values().next().unwrap(),
+        &ModuleInfo {
+          id: 1,
+          main: true,
+          name: "file:///main.js".to_string(),
+          requests: vec![],
+          module_type: ModuleType::JavaScript,
+        }
+      );
+      // assert_eq!(module_map.by_name.len(), 1);
       assert_eq!(module_map.next_module_id, 2);
       assert_eq!(module_map.next_load_id, 2);
     }

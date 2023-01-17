@@ -756,7 +756,7 @@ pub(crate) struct ModuleRequest {
   pub asserted_module_type: AssertedModuleType,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct ModuleInfo {
   #[allow(unused)]
   pub id: ModuleId,
@@ -811,62 +811,82 @@ pub(crate) struct ModuleMap {
 impl ModuleMap {
   pub fn to_v8_object(
     &self,
-    handle_scope: &mut v8::HandleScope,
+    scope: &mut v8::HandleScope,
   ) -> v8::Global<v8::Object> {
-    let obj = v8::Object::new(handle_scope);
+    let obj = v8::Object::new(scope);
 
-    let next_module_id_str =
-      v8::String::new(handle_scope, "next_module_id").unwrap();
-    let next_module_id = v8::Integer::new(handle_scope, self.next_module_id);
-    obj.set(
-      handle_scope,
-      next_module_id_str.into(),
-      next_module_id.into(),
-    );
+    let next_module_id_str = v8::String::new(scope, "next_module_id").unwrap();
+    let next_module_id = v8::Integer::new(scope, self.next_module_id);
+    obj.set(scope, next_module_id_str.into(), next_module_id.into());
 
-    let next_load_id_str =
-      v8::String::new(handle_scope, "next_load_id").unwrap();
-    let next_load_id = v8::Integer::new(handle_scope, self.next_load_id);
-    obj.set(handle_scope, next_load_id_str.into(), next_load_id.into());
+    let next_load_id_str = v8::String::new(scope, "next_load_id").unwrap();
+    let next_load_id = v8::Integer::new(scope, self.next_load_id);
+    obj.set(scope, next_load_id_str.into(), next_load_id.into());
 
-    let info_str = v8::String::new(handle_scope, "info").unwrap();
-    let info = serde_v8::to_v8(handle_scope, self.info.clone()).unwrap();
-    obj.set(handle_scope, info_str.into(), info);
+    let info_obj = v8::Object::new(scope);
 
-    v8::Global::new(handle_scope, obj)
+    for (key, value) in self.info.clone().into_iter() {
+      let key_val = v8::Integer::new(scope, key);
+      let module_info = serde_v8::to_v8(scope, value).unwrap();
+      info_obj.set(scope, key_val.into(), module_info);
+    }
+    let info_str = v8::String::new(scope, "info").unwrap();
+    obj.set(scope, info_str.into(), info_obj.into());
+
+    v8::Global::new(scope, obj)
   }
 
   pub fn with_v8_data(
     &mut self,
-    handle_scope: &mut v8::HandleScope,
+    scope: &mut v8::HandleScope,
     data: v8::Global<v8::Object>,
   ) {
-    let local_data: v8::Local<v8::Object> = v8::Local::new(handle_scope, data);
+    let local_data: v8::Local<v8::Object> = v8::Local::new(scope, data);
 
-    let next_module_id_str =
-      v8::String::new(handle_scope, "next_module_id").unwrap();
-    let next_module_id = local_data
-      .get(handle_scope, next_module_id_str.into())
-      .unwrap();
-    assert!(next_module_id.is_int32());
-    let integer = next_module_id.to_integer(handle_scope).unwrap();
-    let val = integer.int32_value(handle_scope).unwrap();
-    self.next_module_id = val;
+    {
+      let next_module_id_str =
+        v8::String::new(scope, "next_module_id").unwrap();
+      let next_module_id =
+        local_data.get(scope, next_module_id_str.into()).unwrap();
+      assert!(next_module_id.is_int32());
+      let integer = next_module_id.to_integer(scope).unwrap();
+      let val = integer.int32_value(scope).unwrap();
+      self.next_module_id = val;
+    }
 
-    let next_load_id_str =
-      v8::String::new(handle_scope, "next_load_id").unwrap();
-    let next_load_id = local_data
-      .get(handle_scope, next_load_id_str.into())
-      .unwrap();
-    assert!(next_load_id.is_int32());
-    let integer = next_load_id.to_integer(handle_scope).unwrap();
-    let val = integer.int32_value(handle_scope).unwrap();
-    self.next_load_id = val;
+    {
+      let next_load_id_str = v8::String::new(scope, "next_load_id").unwrap();
+      let next_load_id =
+        local_data.get(scope, next_load_id_str.into()).unwrap();
+      assert!(next_load_id.is_int32());
+      let integer = next_load_id.to_integer(scope).unwrap();
+      let val = integer.int32_value(scope).unwrap();
+      self.next_load_id = val;
+    }
 
-    let info_str = v8::String::new(handle_scope, "info").unwrap();
-    let info = local_data.get(handle_scope, info_str.into()).unwrap();
-    assert!(info.is_object());
-    self.info = serde_v8::from_v8(handle_scope, info).unwrap();
+    {
+      let mut info = HashMap::new();
+      let info_str = v8::String::new(scope, "info").unwrap();
+      let info_data: v8::Local<v8::Object> = local_data
+        .get(scope, info_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+      let keys = info_data
+        .get_own_property_names(scope, v8::GetPropertyNamesArgs::default())
+        .unwrap();
+      let keys_len = keys.length();
+
+      for i in 0..keys_len {
+        let key = keys.get_index(scope, i).unwrap();
+        let key_val = key.to_integer(scope).unwrap();
+        let key_int = key_val.int32_value(scope).unwrap();
+        let value = info_data.get(scope, key).unwrap();
+        let module_info = serde_v8::from_v8(scope, value).unwrap();
+        info.insert(key_int, module_info);
+      }
+      self.info = info;
+    }
   }
 
   pub(crate) fn new(
