@@ -106,16 +106,20 @@ impl NpmPackageResolver {
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Result<Self, AnyError> {
     let maybe_snapshot = if let Some(lockfile) = &maybe_lockfile {
-      Some(
-        NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &api)
-          .await
-          .with_context(|| {
-            format!(
-              "failed reading lockfile '{}'",
-              lockfile.lock().filename.display()
-            )
-          })?,
-      )
+      if lockfile.lock().overwrite {
+        None
+      } else {
+        Some(
+          NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &api)
+            .await
+            .with_context(|| {
+              format!(
+                "failed reading lockfile '{}'",
+                lockfile.lock().filename.display()
+              )
+            })?,
+        )
+      }
     } else {
       None
     };

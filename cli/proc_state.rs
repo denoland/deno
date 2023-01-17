@@ -262,7 +262,6 @@ impl ProcState {
       http_client.clone(),
       progress_bar.clone(),
     );
-    let maybe_lockfile = lockfile.as_ref().cloned();
     let npm_resolver = NpmPackageResolver::new_with_maybe_lockfile(
       npm_cache.clone(),
       api,
@@ -270,7 +269,7 @@ impl ProcState {
       cli_options
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
-      maybe_lockfile,
+      lockfile.as_ref().cloned(),
     )
     .await?;
     let node_analysis_cache =
