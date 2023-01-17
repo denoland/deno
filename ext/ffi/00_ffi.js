@@ -24,7 +24,7 @@
     PromisePrototypeThen,
     MathMax,
     MathCeil,
-    Map,
+    SafeMap,
     SafeArrayIterator,
   } = window.__bootstrap.primordials;
 
@@ -255,7 +255,7 @@
       typeof type.struct === "object";
   }
 
-  function getTypeSizeAndAlignment(type, cache = new Map()) {
+  function getTypeSizeAndAlignment(type, cache = new SafeMap()) {
     if (isStruct(type)) {
       const cached = cache.get(type);
       if (cached !== undefined) {
@@ -268,7 +268,10 @@
       let size = 0;
       let alignment = 1;
       for (const field of new SafeArrayIterator(type.struct)) {
-        const [fieldSize, fieldAlign] = getTypeSizeAndAlignment(field, cache);
+        const { 0: fieldSize, 1: fieldAlign } = getTypeSizeAndAlignment(
+          field,
+          cache,
+        );
         alignment = MathMax(alignment, fieldAlign);
         size = MathCeil(size / fieldAlign) * fieldAlign;
         size += fieldSize;
@@ -319,7 +322,7 @@
           "Invalid UnsafeCallback, cannot be nonblocking",
         );
       }
-      const [rid, pointer] = ops.op_ffi_unsafe_callback_create(
+      const { 0: rid, 1: pointer } = ops.op_ffi_unsafe_callback_create(
         definition,
         callback,
       );
@@ -362,7 +365,7 @@
     symbols = {};
 
     constructor(path, symbols) {
-      [this.#rid, this.symbols] = ops.op_ffi_load({ path, symbols });
+      ({ 0: this.#rid, 1: this.symbols } = ops.op_ffi_load({ path, symbols }));
       for (const symbol in symbols) {
         if (!ObjectPrototypeHasOwnProperty(symbols, symbol)) {
           continue;

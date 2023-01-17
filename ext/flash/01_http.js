@@ -140,7 +140,7 @@
     // Date header: https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.2
     let str = `HTTP/1.1 ${status} ${statusCodes[status]}\r\nDate: ${date}\r\n`;
     for (let i = 0; i < headerList.length; ++i) {
-      const [name, value] = headerList[i];
+      const { 0: name, 1: value } = headerList[i];
       // header-field   = field-name ":" OWS field-value OWS
       str += `${name}: ${value}\r\n`;
     }
@@ -638,7 +638,7 @@
       });
 
       function tryRespondChunked(token, chunk, shutdown) {
-        const nwritten = core.ops.op_try_flash_respond_chuncked(
+        const nwritten = core.ops.op_try_flash_respond_chunked(
           serverId,
           token,
           chunk ?? new Uint8Array(),
@@ -646,7 +646,7 @@
         );
         if (nwritten > 0) {
           return core.opAsync(
-            "op_flash_respond_chuncked",
+            "op_flash_respond_chunked",
             serverId,
             token,
             chunk,
@@ -658,7 +658,7 @@
 
       function respondChunked(token, chunk, shutdown) {
         return core.opAsync(
-          "op_flash_respond_chuncked",
+          "op_flash_respond_chunked",
           serverId,
           token,
           chunk,

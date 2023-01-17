@@ -1,13 +1,25 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 //! Code generation for V8 fast calls.
 
-use pmutil::{q, Quote, ToTokensExt};
-use proc_macro2::{Span, TokenStream};
+use pmutil::q;
+use pmutil::Quote;
+use pmutil::ToTokensExt;
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{
-  parse_quote, punctuated::Punctuated, token::Comma, GenericParam, Generics,
-  Ident, ItemFn, ItemImpl, Path, PathArguments, PathSegment, Type, TypePath,
-};
+use syn::parse_quote;
+use syn::punctuated::Punctuated;
+use syn::token::Comma;
+use syn::GenericParam;
+use syn::Generics;
+use syn::Ident;
+use syn::ItemFn;
+use syn::ItemImpl;
+use syn::Path;
+use syn::PathArguments;
+use syn::PathSegment;
+use syn::Type;
+use syn::TypePath;
 
 use crate::optimizer::FastValue;
 use crate::optimizer::Optimizer;
@@ -129,9 +141,9 @@ pub(crate) fn generate(
 
   // Retain only *pure* parameters.
   let mut fast_fn_inputs = if optimizer.has_opstate_in_parameters() {
-    inputs.iter().skip(1).cloned().collect()
+    inputs.into_iter().skip(1).collect()
   } else {
-    inputs.clone()
+    inputs
   };
 
   let mut input_variants = optimizer

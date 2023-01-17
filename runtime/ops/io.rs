@@ -35,10 +35,11 @@ use tokio::process;
 use std::os::unix::io::FromRawFd;
 
 #[cfg(windows)]
-use {
-  std::os::windows::io::FromRawHandle,
-  winapi::um::{processenv::GetStdHandle, winbase},
-};
+use std::os::windows::io::FromRawHandle;
+#[cfg(windows)]
+use winapi::um::processenv::GetStdHandle;
+#[cfg(windows)]
+use winapi::um::winbase;
 
 // Store the stdio fd/handles in global statics in order to keep them
 // alive for the duration of the application since the last handle/fd

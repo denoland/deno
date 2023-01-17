@@ -152,8 +152,11 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 pub(crate) struct ContextState {
   js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
-  // TODO(andreubotella): Move the rest of Option<Global<Function>> fields from
-  // JsRuntimeState to this struct.
+  pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) pending_promise_rejections:
+    HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pub(crate) unrefed_ops: HashSet<i32>,
   // We don't explicitly re-read this prop but need the slice to live alongside
   // the context
@@ -167,12 +170,7 @@ pub struct JsRuntimeState {
   known_realms: Vec<v8::Weak<v8::Context>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
-  pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
-  pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) pending_promise_exceptions:
-    HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
   pub(crate) pending_mod_evaluate: Option<ModEvaluate>,
   /// A counter used to delay our dynamic import deadlock detection by one spin
@@ -189,7 +187,7 @@ pub struct JsRuntimeState {
   /// It will be retrieved by `exception_to_err_result` and used as an error
   /// instead of any other exceptions.
   // TODO(nayeemrmn): This is polled in `exception_to_err_result()` which is
-  // flimsy. Try to poll it similarly to `pending_promise_exceptions`.
+  // flimsy. Try to poll it similarly to `pending_promise_rejections`.
   pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
   pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
@@ -386,16 +384,12 @@ impl JsRuntime {
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
     let state_rc = Rc::new(RefCell::new(JsRuntimeState {
-      pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: vec![],
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
-      js_promise_reject_cb: None,
-      js_format_exception_cb: None,
       has_tick_scheduled: false,
-      js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,
       source_map_cache: Default::default(),
       pending_ops: FuturesUnordered::new(),
@@ -932,19 +926,18 @@ impl JsRuntime {
         let v8_isolate = self.v8_isolate();
         if let Some(context) = weak_context.to_global(v8_isolate) {
           let realm = JsRealm::new(context.clone());
-          let realm_state = realm.state(v8_isolate);
-          std::mem::take(&mut realm_state.borrow_mut().js_recv_cb);
-          std::mem::take(
-            &mut realm_state.borrow_mut().js_build_custom_error_cb,
-          );
+          let realm_state_rc = realm.state(v8_isolate);
+          let mut realm_state = realm_state_rc.borrow_mut();
+          std::mem::take(&mut realm_state.js_recv_cb);
+          std::mem::take(&mut realm_state.js_build_custom_error_cb);
+          std::mem::take(&mut realm_state.js_promise_reject_cb);
+          std::mem::take(&mut realm_state.js_format_exception_cb);
+          std::mem::take(&mut realm_state.js_wasm_streaming_cb);
           context.open(v8_isolate).clear_all_slots(v8_isolate);
         }
       }
 
       let mut state = self.state.borrow_mut();
-      std::mem::take(&mut state.js_promise_reject_cb);
-      std::mem::take(&mut state.js_format_exception_cb);
-      std::mem::take(&mut state.js_wasm_streaming_cb);
       state.js_macrotask_cbs.clear();
       state.js_nexttick_cbs.clear();
       state.known_realms.clear();
@@ -1175,7 +1168,7 @@ impl JsRuntime {
     // run in macrotasks callbacks so we need to let them run first).
     self.drain_nexttick()?;
     self.drain_macrotasks()?;
-    self.check_promise_exceptions()?;
+    self.check_promise_rejections()?;
 
     // Event loop middlewares
     let mut maybe_scheduling = false;
@@ -1611,6 +1604,7 @@ impl JsRuntime {
     &mut self,
     id: ModuleId,
   ) -> oneshot::Receiver<Result<(), Error>> {
+    let global_realm = self.global_realm();
     let state_rc = self.state.clone();
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
@@ -1694,7 +1688,11 @@ impl JsRuntime {
           .handled_promise_rejections
           .contains(&promise_global);
         if !pending_rejection_was_already_handled {
-          state.pending_promise_exceptions.remove(&promise_global);
+          global_realm
+            .state(tc_scope)
+            .borrow_mut()
+            .pending_promise_rejections
+            .remove(&promise_global);
         }
       }
       let promise_global = v8::Global::new(tc_scope, promise);
@@ -2132,27 +2130,15 @@ impl JsRuntime {
     Ok(root_id)
   }
 
-  fn check_promise_exceptions(&mut self) -> Result<(), Error> {
-    let mut state = self.state.borrow_mut();
-
-    if state.pending_promise_exceptions.is_empty() {
-      return Ok(());
+  fn check_promise_rejections(&mut self) -> Result<(), Error> {
+    let known_realms = self.state.borrow().known_realms.clone();
+    let isolate = self.v8_isolate();
+    for weak_context in known_realms {
+      if let Some(context) = weak_context.to_global(isolate) {
+        JsRealm(context).check_promise_rejections(isolate)?;
+      }
     }
-
-    let key = {
-      state
-        .pending_promise_exceptions
-        .keys()
-        .next()
-        .unwrap()
-        .clone()
-    };
-    let handle = state.pending_promise_exceptions.remove(&key).unwrap();
-    drop(state);
-
-    let scope = &mut self.handle_scope();
-    let exception = v8::Local::new(scope, handle);
-    exception_to_err_result(scope, exception, true)
+    Ok(())
   }
 
   // Send finished responses to JS
@@ -2503,6 +2489,36 @@ impl JsRealm {
   }
 
   // TODO(andreubotella): `mod_evaluate`, `load_main_module`, `load_side_module`
+
+  fn check_promise_rejections(
+    &self,
+    isolate: &mut v8::Isolate,
+  ) -> Result<(), Error> {
+    let context_state_rc = self.state(isolate);
+    let mut context_state = context_state_rc.borrow_mut();
+
+    if context_state.pending_promise_rejections.is_empty() {
+      return Ok(());
+    }
+
+    let key = {
+      context_state
+        .pending_promise_rejections
+        .keys()
+        .next()
+        .unwrap()
+        .clone()
+    };
+    let handle = context_state
+      .pending_promise_rejections
+      .remove(&key)
+      .unwrap();
+    drop(context_state);
+
+    let scope = &mut self.handle_scope(isolate);
+    let exception = v8::Local::new(scope, handle);
+    exception_to_err_result(scope, exception, true)
+  }
 }
 
 #[inline]
@@ -2599,7 +2615,8 @@ pub mod tests {
   use std::ops::FnOnce;
   use std::pin::Pin;
   use std::rc::Rc;
-  use std::sync::atomic::{AtomicUsize, Ordering};
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
   use std::sync::Arc;
   // deno_ops macros generate code assuming deno_core in scope.
   mod deno_core {
@@ -4051,7 +4068,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           if (reason.message !== "reject") {
             throw Error("unexpected reason: " + reason);
           }
-          Deno.core.ops.op_store_pending_promise_exception(promise);
+          Deno.core.ops.op_store_pending_promise_rejection(promise);
           Deno.core.ops.op_promise_reject();
         });
         new Promise((_, reject) => reject(Error("reject")));
@@ -4078,6 +4095,55 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
     runtime.run_event_loop(false).await.unwrap_err();
 
     assert_eq!(2, PROMISE_REJECT.load(Ordering::Relaxed));
+  }
+
+  #[tokio::test]
+  async fn test_set_promise_reject_callback_realms() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let global_realm = runtime.global_realm();
+    let realm1 = runtime.create_realm().unwrap();
+    let realm2 = runtime.create_realm().unwrap();
+
+    let realm_expectations = &[
+      (&global_realm, "global_realm", 42),
+      (&realm1, "realm1", 140),
+      (&realm2, "realm2", 720),
+    ];
+
+    // Set up promise reject callbacks.
+    for (realm, realm_name, number) in realm_expectations {
+      realm
+        .execute_script(
+          runtime.v8_isolate(),
+          "",
+          &format!(
+            r#"
+              Deno.core.initializeAsyncOps();
+              globalThis.rejectValue = undefined;
+              Deno.core.setPromiseRejectCallback((_type, _promise, reason) => {{
+                globalThis.rejectValue = `{realm_name}/${{reason}}`;
+              }});
+              Deno.core.ops.op_void_async().then(() => Promise.reject({number}));
+            "#,
+            realm_name=realm_name,
+            number=number
+          ),
+        )
+        .unwrap();
+    }
+
+    runtime.run_event_loop(false).await.unwrap();
+
+    for (realm, realm_name, number) in realm_expectations {
+      let reject_value = realm
+        .execute_script(runtime.v8_isolate(), "", "globalThis.rejectValue")
+        .unwrap();
+      let scope = &mut realm.handle_scope(runtime.v8_isolate());
+      let reject_value = v8::Local::new(scope, reject_value);
+      assert!(reject_value.is_string());
+      let reject_value_string = reject_value.to_rust_string_lossy(scope);
+      assert_eq!(reject_value_string, format!("{}/{}", realm_name, number));
+    }
   }
 
   #[tokio::test]
