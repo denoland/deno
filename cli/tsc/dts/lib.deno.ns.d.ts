@@ -1451,9 +1451,9 @@ declare namespace Deno {
      * Implementations should not retain a reference to `p`.
      *
      * Use
-     * [`itereateReader`](https://deno.land/std/streams/conversion.ts?s=iterateReader)
+     * [`itereateReader`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReader)
      * from
-     * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+     * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
      * to turn a `Reader` into an {@linkcode AsyncIterator}.
      */
     read(p: Uint8Array): Promise<number | null>;
@@ -1485,9 +1485,9 @@ declare namespace Deno {
      * Implementations should not retain a reference to `p`.
      *
      * Use
-     * [`itereateReaderSync`](https://deno.land/std/streams/conversion.ts?s=iterateReaderSync)
+     * [`itereateReaderSync`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReaderSync)
      * from from
-     * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+     * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
      * to turn a `ReaderSync` into an {@linkcode Iterator}.
      */
     readSync(p: Uint8Array): number | null;
@@ -1586,8 +1586,8 @@ declare namespace Deno {
    * the first error encountered while copying.
    *
    * @deprecated Use
-   * [`copy`](https://deno.land/std/streams/conversion.ts?s=copy) from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`copy`](https://deno.land/std/streams/copy.ts?s=copy) from
+   * [`std/streams/copy.ts`](https://deno.land/std/streams/copy.ts)
    * instead. `Deno.copy` will be removed in the future.
    *
    * @category I/O
@@ -1606,9 +1606,9 @@ declare namespace Deno {
    * Turns a Reader, `r`, into an async iterator.
    *
    * @deprecated Use
-   * [`iterateReader`](https://deno.land/std/streams/conversion.ts?s=iterateReader)
+   * [`iterateReader`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReader)
    * from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
    * instead. `Deno.iter` will be removed in the future.
    *
    * @category I/O
@@ -1622,9 +1622,9 @@ declare namespace Deno {
    * Turns a ReaderSync, `r`, into an iterator.
    *
    * @deprecated Use
-   * [`iterateReaderSync`](https://deno.land/std/streams/conversion.ts?s=iterateReaderSync)
+   * [`iterateReaderSync`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReaderSync)
    * from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
    * instead. `Deno.iterSync` will be removed in the future.
    *
    * @category I/O
@@ -1715,8 +1715,8 @@ declare namespace Deno {
    *
    * This function is one of the lowest level APIs and most users should not
    * work with this directly, but rather use
-   * [`readAll()`](https://deno.land/std/streams/conversion.ts?s=readAll) from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`readAll()`](https://deno.land/std/streams/read_all.ts?s=readAll) from
+   * [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
    * instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single call.**
@@ -1745,9 +1745,9 @@ declare namespace Deno {
    *
    * This function is one of the lowest level APIs and most users should not
    * work with this directly, but rather use
-   * [`readAllSync()`](https://deno.land/std/streams/conversion.ts?s=readAllSync)
+   * [`readAllSync()`](https://deno.land/std/streams/read_all.ts?s=readAllSync)
    * from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
    * instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single
@@ -1770,8 +1770,8 @@ declare namespace Deno {
    *
    * Resolves to the number of bytes written. This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather use
-   * [`writeAll()`](https://deno.land/std/streams/conversion.ts?s=writeAll) from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`writeAll()`](https://deno.land/std/streams/write_all.ts?s=writeAll) from
+   * [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
    * instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
@@ -1795,9 +1795,9 @@ declare namespace Deno {
    * Returns the number of bytes written. This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather
    * use
-   * [`writeAllSync()`](https://deno.land/std/streams/conversion.ts?s=writeAllSync)
+   * [`writeAllSync()`](https://deno.land/std/streams/write_all.ts?s=writeAllSync)
    * from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
    * instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
@@ -2568,8 +2568,8 @@ declare namespace Deno {
    * Uint8Array`.
    *
    * @deprecated Use
-   *   [`readAll`](https://deno.land/std/streams/conversion.ts?s=readAll) from
-   *   [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   *   [`readAll`](https://deno.land/std/streams/read_all.ts?s=readAll) from
+   *   [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
    *   instead. `Deno.readAll` will be removed in the future.
    *
    * @category I/O
@@ -2581,9 +2581,9 @@ declare namespace Deno {
    * as `Uint8Array`.
    *
    * @deprecated Use
-   *   [`readAllSync`](https://deno.land/std/streams/conversion.ts?s=readAllSync)
+   *   [`readAllSync`](https://deno.land/std/streams/read_all.ts?s=readAllSync)
    *   from
-   *   [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   *   [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
    *   instead. `Deno.readAllSync` will be removed in the future.
    *
    * @category I/O
@@ -2594,8 +2594,8 @@ declare namespace Deno {
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
    * @deprecated Use
-   *   [`writeAll`](https://deno.land/std/streams/conversion.ts?s=writeAll) from
-   *   [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   *   [`writeAll`](https://deno.land/std/streams/write_all.ts?s=writeAll) from
+   *   [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
    *   instead. `Deno.writeAll` will be removed in the future.
    *
    * @category I/O
@@ -2607,9 +2607,9 @@ declare namespace Deno {
    * writer (`w`).
    *
    * @deprecated Use
-   *   [`writeAllSync`](https://deno.land/std/streams/conversion.ts?s=writeAllSync)
+   *   [`writeAllSync`](https://deno.land/std/streams/write_all.ts?s=writeAllSync)
    *   from
-   *   [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   *   [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
    *   instead. `Deno.writeAllSync` will be removed in the future.
    *
    * @category I/O

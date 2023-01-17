@@ -155,6 +155,8 @@ pub(crate) struct ContextState {
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) pending_promise_rejections:
+    HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pub(crate) unrefed_ops: HashSet<i32>,
   // We don't explicitly re-read this prop but need the slice to live alongside
   // the context
@@ -169,8 +171,6 @@ pub struct JsRuntimeState {
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
-  pub(crate) pending_promise_exceptions:
-    HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
   pub(crate) pending_mod_evaluate: Option<ModEvaluate>,
   /// A counter used to delay our dynamic import deadlock detection by one spin
@@ -187,7 +187,7 @@ pub struct JsRuntimeState {
   /// It will be retrieved by `exception_to_err_result` and used as an error
   /// instead of any other exceptions.
   // TODO(nayeemrmn): This is polled in `exception_to_err_result()` which is
-  // flimsy. Try to poll it similarly to `pending_promise_exceptions`.
+  // flimsy. Try to poll it similarly to `pending_promise_rejections`.
   pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
   pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
@@ -384,7 +384,6 @@ impl JsRuntime {
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
     let state_rc = Rc::new(RefCell::new(JsRuntimeState {
-      pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: vec![],
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
@@ -1169,7 +1168,7 @@ impl JsRuntime {
     // run in macrotasks callbacks so we need to let them run first).
     self.drain_nexttick()?;
     self.drain_macrotasks()?;
-    self.check_promise_exceptions()?;
+    self.check_promise_rejections()?;
 
     // Event loop middlewares
     let mut maybe_scheduling = false;
@@ -1605,6 +1604,7 @@ impl JsRuntime {
     &mut self,
     id: ModuleId,
   ) -> oneshot::Receiver<Result<(), Error>> {
+    let global_realm = self.global_realm();
     let state_rc = self.state.clone();
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
@@ -1688,7 +1688,11 @@ impl JsRuntime {
           .handled_promise_rejections
           .contains(&promise_global);
         if !pending_rejection_was_already_handled {
-          state.pending_promise_exceptions.remove(&promise_global);
+          global_realm
+            .state(tc_scope)
+            .borrow_mut()
+            .pending_promise_rejections
+            .remove(&promise_global);
         }
       }
       let promise_global = v8::Global::new(tc_scope, promise);
@@ -2126,27 +2130,15 @@ impl JsRuntime {
     Ok(root_id)
   }
 
-  fn check_promise_exceptions(&mut self) -> Result<(), Error> {
-    let mut state = self.state.borrow_mut();
-
-    if state.pending_promise_exceptions.is_empty() {
-      return Ok(());
+  fn check_promise_rejections(&mut self) -> Result<(), Error> {
+    let known_realms = self.state.borrow().known_realms.clone();
+    let isolate = self.v8_isolate();
+    for weak_context in known_realms {
+      if let Some(context) = weak_context.to_global(isolate) {
+        JsRealm(context).check_promise_rejections(isolate)?;
+      }
     }
-
-    let key = {
-      state
-        .pending_promise_exceptions
-        .keys()
-        .next()
-        .unwrap()
-        .clone()
-    };
-    let handle = state.pending_promise_exceptions.remove(&key).unwrap();
-    drop(state);
-
-    let scope = &mut self.handle_scope();
-    let exception = v8::Local::new(scope, handle);
-    exception_to_err_result(scope, exception, true)
+    Ok(())
   }
 
   // Send finished responses to JS
@@ -2497,6 +2489,36 @@ impl JsRealm {
   }
 
   // TODO(andreubotella): `mod_evaluate`, `load_main_module`, `load_side_module`
+
+  fn check_promise_rejections(
+    &self,
+    isolate: &mut v8::Isolate,
+  ) -> Result<(), Error> {
+    let context_state_rc = self.state(isolate);
+    let mut context_state = context_state_rc.borrow_mut();
+
+    if context_state.pending_promise_rejections.is_empty() {
+      return Ok(());
+    }
+
+    let key = {
+      context_state
+        .pending_promise_rejections
+        .keys()
+        .next()
+        .unwrap()
+        .clone()
+    };
+    let handle = context_state
+      .pending_promise_rejections
+      .remove(&key)
+      .unwrap();
+    drop(context_state);
+
+    let scope = &mut self.handle_scope(isolate);
+    let exception = v8::Local::new(scope, handle);
+    exception_to_err_result(scope, exception, true)
+  }
 }
 
 #[inline]
@@ -4046,7 +4068,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           if (reason.message !== "reject") {
             throw Error("unexpected reason: " + reason);
           }
-          Deno.core.ops.op_store_pending_promise_exception(promise);
+          Deno.core.ops.op_store_pending_promise_rejection(promise);
           Deno.core.ops.op_promise_reject();
         });
         new Promise((_, reject) => reject(Error("reject")));
