@@ -842,7 +842,7 @@ impl ModuleMap {
         .collect();
     let by_name_array = serde_v8::to_v8(scope, by_name_triples).unwrap();
     let by_name_str = v8::String::new(scope, "by_name").unwrap();
-    obj.set(scope, by_name_str.into(), by_name_array.into());
+    obj.set(scope, by_name_str.into(), by_name_array);
 
     v8::Global::new(scope, obj)
   }

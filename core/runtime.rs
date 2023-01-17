@@ -596,10 +596,8 @@ impl JsRuntime {
 
     let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
     if let Some(module_map_data) = module_map_data {
-      let scope = &mut v8::HandleScope::with_context(
-        &mut isolate,
-        global_context.clone(),
-      );
+      let scope =
+        &mut v8::HandleScope::with_context(&mut isolate, global_context);
       let mut module_map = module_map_rc.borrow_mut();
       module_map.with_v8_data(scope, module_map_data, module_handles);
     }
