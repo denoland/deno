@@ -329,6 +329,26 @@ impl NpmPackageResolver {
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
     self.inner.lock(lockfile)
   }
+
+  pub async fn inject_synthetic_types_node_package(
+    &self,
+  ) -> Result<(), AnyError> {
+    if self.no_npm {
+      return Err(custom_error(
+        "NoNpm",
+        "A node built-in specifier was used; but --no-npm is specified.",
+      ));
+    }
+
+    // add and ensure this isn't added to the lockfile
+    self
+      .inner
+      .add_package_reqs(vec![NpmPackageReq::from_str("@types/node").unwrap()])
+      .await?;
+    self.inner.cache_packages().await?;
+
+    Ok(())
+  }
 }
 
 impl RequireNpmResolver for NpmPackageResolver {

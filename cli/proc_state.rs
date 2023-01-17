@@ -23,7 +23,7 @@ use crate::graph_util::ModuleEntry;
 use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
-use crate::npm::resolve_npm_package_reqs;
+use crate::npm::resolve_graph_npm_info;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
@@ -425,7 +425,7 @@ impl ProcState {
       graph_data.entries().map(|(s, _)| s).cloned().collect()
     };
 
-    let npm_package_reqs = {
+    let (npm_package_reqs, has_node_builtin_specifier) = {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph);
       let check_js = self.options.check_js();
@@ -436,12 +436,24 @@ impl ProcState {
           check_js,
         )
         .unwrap()?;
-      graph_data.npm_package_reqs().clone()
+      (
+        graph_data.npm_package_reqs().clone(),
+        graph_data.has_node_builtin_specifier(),
+      )
     };
 
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
       self.prepare_node_std_graph().await?;
+    }
+
+    if has_node_builtin_specifier
+      && self.options.type_check_mode() != TypeCheckMode::None
+    {
+      self
+        .npm_resolver
+        .inject_synthetic_types_node_package()
+        .await?;
     }
 
     drop(_pb_clear_guard);
@@ -741,9 +753,20 @@ impl ProcState {
     .await;
 
     // add the found npm package requirements to the npm resolver and cache them
-    let npm_package_reqs = resolve_npm_package_reqs(&graph);
-    if !npm_package_reqs.is_empty() {
-      self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
+    let graph_npm_info = resolve_graph_npm_info(&graph);
+    if !graph_npm_info.package_reqs.is_empty() {
+      self
+        .npm_resolver
+        .add_package_reqs(graph_npm_info.package_reqs)
+        .await?;
+    }
+    if graph_npm_info.has_node_builtin_specifier
+      && self.options.type_check_mode() != TypeCheckMode::None
+    {
+      self
+        .npm_resolver
+        .inject_synthetic_types_node_package()
+        .await?;
     }
 
     Ok(graph)

@@ -8,7 +8,7 @@ use crate::cache;
 use crate::cache::TypeCheckCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
-use crate::npm::resolve_npm_package_reqs;
+use crate::npm::resolve_graph_npm_info;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
 use crate::proc_state::ProcState;
@@ -160,17 +160,9 @@ impl GraphData {
     }
 
     if has_npm_specifier_in_graph {
-      self.npm_packages.extend(resolve_npm_package_reqs(graph));
-    }
-
-    // ensure a @types/node package is in the list of npm package requirements
-    // if a node: specifier was in the graph
-    if self.has_node_builtin_specifier
-      && !self.npm_packages.iter().any(|a| a.name == "@types/node")
-    {
       self
         .npm_packages
-        .insert(0, NpmPackageReq::from_str("@types/node").unwrap());
+        .extend(resolve_graph_npm_info(graph).package_reqs);
     }
   }
 
@@ -579,6 +571,14 @@ pub async fn create_graph_and_maybe_check(
   }
 
   if ps.options.type_check_mode() != TypeCheckMode::None {
+    // node built-in specifiers use the @types/node package to determine
+    // types, so inject that now after the lockfile has been written
+    if graph_data.has_node_builtin_specifier() {
+      ps.npm_resolver
+        .inject_synthetic_types_node_package()
+        .await?;
+    }
+
     let ts_config_result =
       ps.options.resolve_ts_config_for_emit(TsConfigType::Check {
         lib: ps.options.ts_type_lib_window(),

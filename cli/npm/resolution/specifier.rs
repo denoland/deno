@@ -168,8 +168,15 @@ impl NpmVersionMatcher for NpmPackageReq {
   }
 }
 
-/// Resolves the npm package requirements from the graph. The order
-/// returned is the order they should be resolved in.
+pub struct GraphNpmInfo {
+  /// The order of these package requirements is the order they
+  /// should be resolved in.
+  pub package_reqs: Vec<NpmPackageReq>,
+  /// Gets if the graph had a built-in node specifier (ex. `node:fs`).
+  pub has_node_builtin_specifier: bool,
+}
+
+/// Resolves npm specific information from the graph.
 ///
 /// This function will analyze the module graph for parent-most folder
 /// specifiers of all modules, then group npm specifiers together as found in
@@ -211,7 +218,7 @@ impl NpmVersionMatcher for NpmPackageReq {
 ///
 /// Then it would resolve the npm specifiers in each of those groups according
 /// to that tree going by tree depth.
-pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
+pub fn resolve_graph_npm_info(graph: &ModuleGraph) -> GraphNpmInfo {
   fn collect_specifiers<'a>(
     graph: &'a ModuleGraph,
     module: &'a deno_graph::Module,
@@ -342,16 +349,9 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     }
   }
 
-  // if we have a built-in node specifier
-  if has_node_builtin_specifier
-    && !result.iter().any(|r| r.name == "@types/node")
-  {
-    let mut final_result = Vec::with_capacity(result.len() + 1);
-    final_result.push(NpmPackageReq::from_str("@types/node").unwrap());
-    final_result.extend(result);
-    final_result
-  } else {
-    result
+  GraphNpmInfo {
+    has_node_builtin_specifier,
+    package_reqs: result,
   }
 }
 
@@ -1014,7 +1014,8 @@ mod tests {
       },
     )
     .await;
-    let reqs = resolve_npm_package_reqs(&graph)
+    let reqs = resolve_graph_npm_info(&graph)
+      .package_reqs
       .into_iter()
       .map(|r| r.to_string())
       .collect::<Vec<_>>();
