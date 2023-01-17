@@ -3440,7 +3440,7 @@ pub mod tests {
 
     let loader = std::rc::Rc::new(ModsLoader::default());
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(loader),
+      module_loader: Some(loader.clone()),
       will_snapshot: true,
       ..Default::default()
     });
@@ -3456,7 +3456,39 @@ pub mod tests {
     let _ = runtime.mod_evaluate(module_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
-    let _snapshot = runtime.snapshot();
+    {
+      let module_map_rc = runtime.get_module_map();
+      let module_map = module_map_rc.borrow();
+      assert_eq!(module_map.ids_by_handle.len(), 1);
+      assert_eq!(module_map.ids_by_handle.values().next().unwrap(), &1);
+      assert_eq!(module_map.handles_by_id.len(), 1);
+      assert_eq!(module_map.handles_by_id.keys().next().unwrap(), &1);
+      assert_eq!(module_map.info.len(), 1);
+      assert_eq!(module_map.by_name.len(), 1);
+      assert_eq!(module_map.next_module_id, 2);
+      assert_eq!(module_map.next_load_id, 2);
+    }
+
+    let snapshot = runtime.snapshot();
+
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      startup_snapshot: Some(Snapshot::JustCreated(snapshot)),
+      ..Default::default()
+    });
+
+    {
+      let module_map_rc = runtime2.get_module_map();
+      let module_map = module_map_rc.borrow();
+      assert_eq!(module_map.ids_by_handle.len(), 1);
+      assert_eq!(module_map.ids_by_handle.values().next().unwrap(), &1);
+      assert_eq!(module_map.handles_by_id.len(), 1);
+      assert_eq!(module_map.handles_by_id.keys().next().unwrap(), &1);
+      assert_eq!(module_map.info.len(), 1);
+      assert_eq!(module_map.by_name.len(), 1);
+      assert_eq!(module_map.next_module_id, 2);
+      assert_eq!(module_map.next_load_id, 2);
+    }
   }
 
   #[test]

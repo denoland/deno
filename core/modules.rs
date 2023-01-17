@@ -765,7 +765,7 @@ pub(crate) struct ModuleInfo {
 }
 
 /// A symbolic module entity.
-enum SymbolicModule {
+pub (crate) enum SymbolicModule {
   /// This module is an alias to another module.
   /// This is useful such that multiple names could point to
   /// the same underlying module (particularly due to redirects).
@@ -783,12 +783,12 @@ pub(crate) enum ModuleError {
 /// A collection of JS modules.
 pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
-  ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
+  pub (crate) ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   pub handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
   pub info: HashMap<ModuleId, ModuleInfo>,
-  by_name: HashMap<(String, AssertedModuleType), SymbolicModule>,
-  next_module_id: ModuleId,
-  next_load_id: ModuleLoadId,
+  pub (crate) by_name: HashMap<(String, AssertedModuleType), SymbolicModule>,
+  pub (crate) next_module_id: ModuleId,
+  pub (crate) next_load_id: ModuleLoadId,
 
   // Handling of futures for loading module sources
   pub loader: Rc<dyn ModuleLoader>,
