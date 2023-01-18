@@ -901,32 +901,29 @@ impl ModuleMap {
     }
 
     {
-      let mut by_name = HashMap::new();
       let by_name_str = v8::String::new(scope, "by_name").unwrap();
       let by_name_data = local_data.get(scope, by_name_str.into()).unwrap();
-      let by_name_deser_: Vec<(String, AssertedModuleType, SymbolicModule)> =
+      let by_name_deser: Vec<(String, AssertedModuleType, SymbolicModule)> =
         serde_v8::from_v8(scope, by_name_data).unwrap();
-      for (name, module_type, symbolic_module) in by_name_deser_ {
-        by_name.insert((name, module_type), symbolic_module);
-      }
-      self.by_name = by_name;
+      self.by_name = by_name_deser
+        .into_iter()
+        .map(|(name, module_type, symbolic_module)| {
+          ((name, module_type), symbolic_module)
+        })
+        .collect();
     }
 
-    {
-      let mut ids_by_handle = HashMap::new();
-      for (index, handle) in module_handles.iter().enumerate() {
-        ids_by_handle.insert(handle.clone(), (index + 1) as i32);
-      }
-      self.ids_by_handle = ids_by_handle;
+    self.ids_by_handle = module_handles
+      .iter()
+      .enumerate()
+      .map(|(index, handle)| (handle.clone(), (index + 1) as i32))
+      .collect();
 
-      {
-        let mut handles_by_id = HashMap::new();
-        for (index, handle) in module_handles.iter().enumerate() {
-          handles_by_id.insert((index + 1) as i32, handle.clone());
-        }
-        self.handles_by_id = handles_by_id;
-      }
-    }
+    self.handles_by_id = module_handles
+      .iter()
+      .enumerate()
+      .map(|(index, handle)| ((index + 1) as i32, handle.clone()))
+      .collect();
   }
 
   pub(crate) fn new(
