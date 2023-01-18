@@ -810,10 +810,10 @@ pub(crate) struct ModuleMap {
 }
 
 impl ModuleMap {
-  pub fn to_v8_object(
+  pub fn serialize_for_snapshotting(
     &self,
     scope: &mut v8::HandleScope,
-  ) -> v8::Global<v8::Object> {
+  ) -> (v8::Global<v8::Object>, Vec<v8::Global<v8::Module>>) {
     let obj = v8::Object::new(scope);
 
     let next_module_id_str = v8::String::new(scope, "next_module_id").unwrap();
@@ -844,10 +844,19 @@ impl ModuleMap {
     let by_name_str = v8::String::new(scope, "by_name").unwrap();
     obj.set(scope, by_name_str.into(), by_name_array);
 
-    v8::Global::new(scope, obj)
+    let obj_global = v8::Global::new(scope, obj);
+
+    let mut handles_and_ids: Vec<(ModuleId, v8::Global<v8::Module>)> =
+      self.handles_by_id.clone().into_iter().collect();
+    handles_and_ids.sort_by_key(|(id, _)| *id);
+    let handles: Vec<v8::Global<v8::Module>> = handles_and_ids
+      .into_iter()
+      .map(|(_, handle)| handle)
+      .collect();
+    (obj_global, handles)
   }
 
-  pub fn with_v8_data(
+  pub fn update_with_snapshot_data(
     &mut self,
     scope: &mut v8::HandleScope,
     data: v8::Global<v8::Object>,

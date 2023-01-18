@@ -46,7 +46,6 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
-use v8::DataError;
 use v8::OwnedIsolate;
 
 type PendingOpFuture = OpCall<(RealmIdx, PromiseId, OpId, OpResult)>;
@@ -513,8 +512,26 @@ impl JsRuntime {
         let context =
           bindings::initialize_context(scope, &op_ctxs, snapshot_options);
 
+        // Get module map data from the snapshot
         {
+          fn data_error_to_panic(err: v8::DataError) {
+            match err {
+              v8::DataError::BadType { actual, expected } => {
+                panic!(
+                  "Invalid type for snapshot data: expected {}, got {}",
+                  expected, actual
+                );
+              }
+              v8::DataError::NoData { expected } => {
+                panic!("No data for snapshot data: expected {}", expected);
+              }
+            }
+          }
+
           let mut scope = v8::ContextScope::new(scope, context);
+          // The 0th element is the module map itself, followed by X number of module
+          // handles. We need to deserialize the "next_module_id" field from the
+          // map to see how many module handles we expect.
           match scope.get_context_data_from_snapshot_once::<v8::Object>(0) {
             Ok(val) => {
               let next_module_id = {
@@ -529,27 +546,21 @@ impl JsRuntime {
               let no_of_modules = next_module_id - 1;
 
               for i in 1..=no_of_modules {
-                let result = scope
-                  .get_context_data_from_snapshot_once::<v8::Module>(
-                    i as usize,
-                  );
-                // FIXME(bartlomieju): gracefully handle error
-                let module_local = result.unwrap();
-                let module_global = v8::Global::new(&mut scope, module_local);
-                module_handles.push(module_global);
+                match scope
+                  .get_context_data_from_snapshot_once::<v8::Module>(i as usize)
+                {
+                  Ok(val) => {
+                    let module_global = v8::Global::new(&mut scope, val);
+                    module_handles.push(module_global);
+                  }
+                  Err(err) => data_error_to_panic(err),
+                }
               }
 
               let global = v8::Global::new(&mut scope, val);
               module_map_data = Some(global);
             }
-            Err(err) => match err {
-              DataError::BadType { actual, expected } => {
-                dbg!(actual, expected);
-              }
-              DataError::NoData { expected } => {
-                dbg!(expected);
-              }
-            },
+            Err(err) => data_error_to_panic(err),
           }
         }
 
@@ -599,7 +610,11 @@ impl JsRuntime {
       let scope =
         &mut v8::HandleScope::with_context(&mut isolate, global_context);
       let mut module_map = module_map_rc.borrow_mut();
-      module_map.with_v8_data(scope, module_map_data, module_handles);
+      module_map.update_with_snapshot_data(
+        scope,
+        module_map_data,
+        module_handles,
+      );
     }
     isolate.set_data(
       Self::MODULE_MAP_DATA_OFFSET,
@@ -962,32 +977,32 @@ impl JsRuntime {
 
     self.state.borrow_mut().inspector.take();
 
-    // Drop existing ModuleMap to drop v8::Global handles
+    // Serialize the module map and store its data in the snapshot.
     {
       let module_map_rc = self.module_map.take().unwrap();
       let module_map = module_map_rc.borrow();
-      let v8_data = module_map.to_v8_object(&mut self.handle_scope());
-      let mut handles_and_ids: Vec<(ModuleId, v8::Global<v8::Module>)> =
-        module_map.handles_by_id.clone().into_iter().collect();
-      handles_and_ids.sort_by_key(|(id, _)| *id);
-
-      let v8_isolate = self.v8_isolate();
-      Self::drop_state_and_module_map(v8_isolate);
+      let (module_map_data, module_handles) =
+        module_map.serialize_for_snapshotting(&mut self.handle_scope());
 
       let context = self.global_context();
-      let mut handle_scope = self.handle_scope();
-      let local_context = v8::Local::new(&mut handle_scope, context);
-      let local_data = v8::Local::new(&mut handle_scope, v8_data);
-      let offset = handle_scope.add_context_data(local_context, local_data);
+      let mut scope = self.handle_scope();
+      let local_context = v8::Local::new(&mut scope, context);
+      let local_data = v8::Local::new(&mut scope, module_map_data);
+      let offset = scope.add_context_data(local_context, local_data);
       assert_eq!(offset, 0);
 
-      for (id, handle) in handles_and_ids {
-        let module_handle = v8::Local::new(&mut handle_scope, handle);
-        let offset =
-          handle_scope.add_context_data(local_context, module_handle);
-        assert_eq!(offset, id as usize);
+      for (index, handle) in module_handles.into_iter().enumerate() {
+        let module_handle = v8::Local::new(&mut scope, handle);
+        let offset = scope.add_context_data(local_context, module_handle);
+        assert_eq!(offset, index + 1);
       }
-    };
+    }
+
+    // Drop existing ModuleMap to drop v8::Global handles
+    {
+      let v8_isolate = self.v8_isolate();
+      Self::drop_state_and_module_map(v8_isolate);
+    }
 
     self.state.borrow_mut().global_realm.take();
 
@@ -3513,26 +3528,7 @@ pub mod tests {
       }
     }
 
-    let loader = std::rc::Rc::new(ModsLoader::default());
-    let mut runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(loader.clone()),
-      will_snapshot: true,
-      ..Default::default()
-    });
-
-    let specifier = crate::resolve_url("file:///main.js").unwrap();
-    let source_code =
-      r#"export function hello() { return "hello world" }"#.to_string();
-
-    let module_id = futures::executor::block_on(
-      runtime.load_main_module(&specifier, Some(source_code)),
-    )
-    .unwrap();
-
-    let _ = runtime.mod_evaluate(module_id);
-    futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
-
-    {
+    fn assert_module_map(runtime: &mut JsRuntime) {
       let module_map_rc = runtime.get_module_map();
       let module_map = module_map_rc.borrow();
       assert_eq!(module_map.ids_by_handle.len(), 1);
@@ -3567,6 +3563,27 @@ pub mod tests {
       assert_eq!(module_map.next_load_id, 2);
     }
 
+    let loader = std::rc::Rc::new(ModsLoader::default());
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader.clone()),
+      will_snapshot: true,
+      ..Default::default()
+    });
+
+    let specifier = crate::resolve_url("file:///main.js").unwrap();
+    let source_code =
+      r#"export function hello() { return "hello world" }"#.to_string();
+
+    let module_id = futures::executor::block_on(
+      runtime.load_main_module(&specifier, Some(source_code)),
+    )
+    .unwrap();
+
+    let _ = runtime.mod_evaluate(module_id);
+    futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
+
+    assert_module_map(&mut runtime);
+
     let snapshot = runtime.snapshot();
 
     let mut runtime2 = JsRuntime::new(RuntimeOptions {
@@ -3575,40 +3592,7 @@ pub mod tests {
       ..Default::default()
     });
 
-    {
-      let module_map_rc = runtime2.get_module_map();
-      let module_map = module_map_rc.borrow();
-      assert_eq!(module_map.ids_by_handle.len(), 1);
-      assert_eq!(module_map.ids_by_handle.values().next().unwrap(), &1);
-      assert_eq!(module_map.handles_by_id.len(), 1);
-      assert_eq!(module_map.handles_by_id.keys().next().unwrap(), &1);
-      assert_eq!(module_map.info.len(), 1);
-      assert_eq!(module_map.info.keys().next().unwrap(), &1);
-      assert_eq!(
-        module_map.info.values().next().unwrap(),
-        &ModuleInfo {
-          id: 1,
-          main: true,
-          name: "file:///main.js".to_string(),
-          requests: vec![],
-          module_type: ModuleType::JavaScript,
-        }
-      );
-      assert_eq!(module_map.by_name.len(), 1);
-      assert_eq!(
-        module_map.by_name.keys().next().unwrap(),
-        &(
-          "file:///main.js".to_string(),
-          AssertedModuleType::JavaScriptOrWasm
-        )
-      );
-      assert_eq!(
-        module_map.by_name.values().next().unwrap(),
-        &SymbolicModule::Mod(1)
-      );
-      assert_eq!(module_map.next_module_id, 2);
-      assert_eq!(module_map.next_load_id, 2);
-    }
+    assert_module_map(&mut runtime2);
 
     let source_code = r#"(async () => {
       Deno.core.print("hello!\n", true);
