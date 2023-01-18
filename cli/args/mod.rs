@@ -42,6 +42,7 @@ use deno_runtime::permissions::PermissionsOptions;
 use std::collections::BTreeMap;
 use std::env;
 use std::io::BufReader;
+use std::io::Cursor;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -370,7 +371,7 @@ fn resolve_lint_rules_options(
 pub fn get_root_cert_store(
   maybe_root_path: Option<PathBuf>,
   maybe_ca_stores: Option<Vec<String>>,
-  maybe_ca_file: Option<String>,
+  maybe_ca_data: Option<CaData>,
 ) -> Result<RootCertStore, AnyError> {
   let mut root_cert_store = RootCertStore::empty();
   let ca_stores: Vec<String> = maybe_ca_stores
@@ -413,17 +414,27 @@ pub fn get_root_cert_store(
     }
   }
 
-  let ca_file = maybe_ca_file.or_else(|| env::var("DENO_CERT").ok());
-  if let Some(ca_file) = ca_file {
-    let ca_file = if let Some(root) = &maybe_root_path {
-      root.join(&ca_file)
-    } else {
-      PathBuf::from(ca_file)
+  let ca_data =
+    maybe_ca_data.or_else(|| env::var("DENO_CERT").ok().map(CaData::File));
+  if let Some(ca_data) = ca_data {
+    let result = match ca_data {
+      CaData::File(ca_file) => {
+        let ca_file = if let Some(root) = &maybe_root_path {
+          root.join(&ca_file)
+        } else {
+          PathBuf::from(ca_file)
+        };
+        let certfile = std::fs::File::open(ca_file)?;
+        let mut reader = BufReader::new(certfile);
+        rustls_pemfile::certs(&mut reader)
+      }
+      CaData::Bytes(data) => {
+        let mut reader = BufReader::new(Cursor::new(data));
+        rustls_pemfile::certs(&mut reader)
+      }
     };
-    let certfile = std::fs::File::open(ca_file)?;
-    let mut reader = BufReader::new(certfile);
 
-    match rustls_pemfile::certs(&mut reader) {
+    match result {
       Ok(certs) => {
         root_cert_store.add_parsable_certificates(&certs);
       }
@@ -576,7 +587,7 @@ impl CliOptions {
     get_root_cert_store(
       None,
       self.flags.ca_stores.clone(),
-      self.flags.ca_file.clone(),
+      self.flags.ca_data.clone(),
     )
   }
 
@@ -722,8 +733,8 @@ impl CliOptions {
     &self.flags.argv
   }
 
-  pub fn ca_file(&self) -> &Option<String> {
-    &self.flags.ca_file
+  pub fn ca_data(&self) -> &Option<CaData> {
+    &self.flags.ca_data
   }
 
   pub fn ca_stores(&self) -> &Option<Vec<String>> {
