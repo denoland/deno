@@ -1,5 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
 use async_trait::async_trait;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -12,13 +19,6 @@ use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-
-use std::borrow::Cow;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
 use crate::deserialize_headers;
 use crate::get_header;

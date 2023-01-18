@@ -26,6 +26,7 @@
     MapPrototypeSet,
     MathCeil,
     ObjectKeys,
+    ObjectPrototypeHasOwnProperty,
     ObjectPrototypeIsPrototypeOf,
     Promise,
     SafeArrayIterator,
@@ -167,6 +168,9 @@
 
       const details = [];
       for (const key in post.ops) {
+        if (!ObjectPrototypeHasOwnProperty(post.ops, key)) {
+          continue;
+        }
         const preOp = pre.ops[key] ??
           { opsDispatchedAsync: 0, opsCompletedAsync: 0 };
         const postOp = post.ops[key];

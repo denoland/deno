@@ -305,7 +305,7 @@
     const prefix = `--${boundary}\r\nContent-Disposition: form-data; name="`;
 
     // deno-lint-ignore prefer-primordials
-    for (const [name, value] of formData) {
+    for (const { 0: name, 1: value } of formData) {
       if (typeof value === "string") {
         ArrayPrototypePush(
           chunks,
