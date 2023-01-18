@@ -427,6 +427,60 @@ impl JsRuntime {
     let mut module_map_data = None;
     let mut module_handles = vec![];
 
+    fn get_context_data(
+      scope: &mut v8::HandleScope<()>,
+      context: v8::Local<v8::Context>,
+    ) -> (Vec<v8::Global<v8::Module>>, v8::Global<v8::Object>) {
+      fn data_error_to_panic(err: v8::DataError) -> ! {
+        match err {
+          v8::DataError::BadType { actual, expected } => {
+            panic!(
+              "Invalid type for snapshot data: expected {}, got {}",
+              expected, actual
+            );
+          }
+          v8::DataError::NoData { expected } => {
+            panic!("No data for snapshot data: expected {}", expected);
+          }
+        }
+      }
+
+      let mut module_handles = vec![];
+      let mut scope = v8::ContextScope::new(scope, context);
+      // The 0th element is the module map itself, followed by X number of module
+      // handles. We need to deserialize the "next_module_id" field from the
+      // map to see how many module handles we expect.
+      match scope.get_context_data_from_snapshot_once::<v8::Object>(0) {
+        Ok(val) => {
+          let next_module_id = {
+            let next_module_id_str =
+              v8::String::new(&mut scope, "next_module_id").unwrap();
+            let next_module_id =
+              val.get(&mut scope, next_module_id_str.into()).unwrap();
+            assert!(next_module_id.is_int32());
+            let integer = next_module_id.to_integer(&mut scope).unwrap();
+            integer.int32_value(&mut scope).unwrap()
+          };
+          let no_of_modules = next_module_id - 1;
+
+          for i in 1..=no_of_modules {
+            match scope
+              .get_context_data_from_snapshot_once::<v8::Module>(i as usize)
+            {
+              Ok(val) => {
+                let module_global = v8::Global::new(&mut scope, val);
+                module_handles.push(module_global);
+              }
+              Err(err) => data_error_to_panic(err),
+            }
+          }
+
+          (module_handles, v8::Global::new(&mut scope, val))
+        }
+        Err(err) => data_error_to_panic(err),
+      }
+    }
+
     let (mut isolate, snapshot_options) = if options.will_snapshot {
       let (snapshot_creator, snapshot_loaded) =
         if let Some(snapshot) = options.startup_snapshot {
@@ -471,6 +525,14 @@ impl JsRuntime {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
           bindings::initialize_context(scope, &op_ctxs, snapshot_options);
+
+        // Get module map data from the snapshot
+        if has_startup_snapshot {
+          let context_data = get_context_data(scope, context);
+          module_handles = context_data.0;
+          module_map_data = Some(context_data.1);
+        }
+
         global_context = v8::Global::new(scope, context);
         scope.set_default_context(context);
       }
@@ -515,54 +577,9 @@ impl JsRuntime {
 
         // Get module map data from the snapshot
         if has_startup_snapshot {
-          fn data_error_to_panic(err: v8::DataError) {
-            match err {
-              v8::DataError::BadType { actual, expected } => {
-                panic!(
-                  "Invalid type for snapshot data: expected {}, got {}",
-                  expected, actual
-                );
-              }
-              v8::DataError::NoData { expected } => {
-                panic!("No data for snapshot data: expected {}", expected);
-              }
-            }
-          }
-
-          let mut scope = v8::ContextScope::new(scope, context);
-          // The 0th element is the module map itself, followed by X number of module
-          // handles. We need to deserialize the "next_module_id" field from the
-          // map to see how many module handles we expect.
-          match scope.get_context_data_from_snapshot_once::<v8::Object>(0) {
-            Ok(val) => {
-              let next_module_id = {
-                let next_module_id_str =
-                  v8::String::new(&mut scope, "next_module_id").unwrap();
-                let next_module_id =
-                  val.get(&mut scope, next_module_id_str.into()).unwrap();
-                assert!(next_module_id.is_int32());
-                let integer = next_module_id.to_integer(&mut scope).unwrap();
-                integer.int32_value(&mut scope).unwrap()
-              };
-              let no_of_modules = next_module_id - 1;
-
-              for i in 1..=no_of_modules {
-                match scope
-                  .get_context_data_from_snapshot_once::<v8::Module>(i as usize)
-                {
-                  Ok(val) => {
-                    let module_global = v8::Global::new(&mut scope, val);
-                    module_handles.push(module_global);
-                  }
-                  Err(err) => data_error_to_panic(err),
-                }
-              }
-
-              let global = v8::Global::new(&mut scope, val);
-              module_map_data = Some(global);
-            }
-            Err(err) => data_error_to_panic(err),
-          }
+          let context_data = get_context_data(scope, context);
+          module_handles = context_data.0;
+          module_map_data = Some(context_data.1);
         }
 
         global_context = v8::Global::new(scope, context);
@@ -2705,9 +2722,12 @@ pub mod tests {
   use std::ops::FnOnce;
   use std::pin::Pin;
   use std::rc::Rc;
+  use std::str::FromStr;
   use std::sync::atomic::AtomicUsize;
   use std::sync::atomic::Ordering;
   use std::sync::Arc;
+  use url::Url;
+
   // deno_ops macros generate code assuming deno_core in scope.
   mod deno_core {
     pub use crate::*;
@@ -3512,8 +3532,6 @@ pub mod tests {
         referrer: &str,
         _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
-        assert_eq!(specifier, "file:///main.js");
-        assert_eq!(referrer, ".");
         let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
@@ -3588,24 +3606,104 @@ pub mod tests {
     let snapshot = runtime.snapshot();
 
     let mut runtime2 = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(loader),
+      module_loader: Some(loader.clone()),
+      will_snapshot: true,
       startup_snapshot: Some(Snapshot::JustCreated(snapshot)),
       ..Default::default()
     });
 
     assert_module_map(&mut runtime2);
 
+    let specifier = crate::resolve_url("file:///bar.js").unwrap();
+    let source_code = r#"import { hello } from "file:///main.js";
+      export function world() { return hello() }
+      "#
+    .to_string();
+
+    let module_id = futures::executor::block_on(
+      runtime2.load_side_module(&specifier, Some(source_code)),
+    )
+    .unwrap();
+
+    let _ = runtime2.mod_evaluate(module_id);
+    futures::executor::block_on(runtime2.run_event_loop(false)).unwrap();
+
+    let snapshot2 = runtime2.snapshot();
+
+    let mut runtime3 = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      startup_snapshot: Some(Snapshot::JustCreated(snapshot2)),
+      ..Default::default()
+    });
+
+    {
+      let module_map_rc = runtime3.get_module_map();
+      let module_map = module_map_rc.borrow();
+      assert_eq!(module_map.ids_by_handle.len(), 2);
+      let values = module_map.ids_by_handle.values().collect::<Vec<_>>();
+      assert!(values.contains(&&1));
+      assert!(values.contains(&&2));
+      assert_eq!(module_map.handles_by_id.len(), 2);
+      assert!(module_map.handles_by_id.contains_key(&1));
+      assert!(module_map.handles_by_id.contains_key(&2));
+      assert_eq!(module_map.info.len(), 2);
+      assert_eq!(
+        module_map.info.get(&1).unwrap(),
+        &ModuleInfo {
+          id: 1,
+          main: true,
+          name: "file:///main.js".to_string(),
+          requests: vec![],
+          module_type: ModuleType::JavaScript,
+        }
+      );
+      assert_eq!(
+        module_map.info.get(&2).unwrap(),
+        &ModuleInfo {
+          id: 2,
+          main: false,
+          name: "file:///bar.js".to_string(),
+          requests: vec![crate::modules::ModuleRequest {
+            specifier: Url::from_str("file:///main.js").unwrap(),
+            asserted_module_type: AssertedModuleType::JavaScriptOrWasm
+          }],
+          module_type: ModuleType::JavaScript,
+        }
+      );
+      assert_eq!(module_map.by_name.len(), 2);
+      assert_eq!(
+        module_map
+          .by_name
+          .get(&(
+            "file:///main.js".to_string(),
+            AssertedModuleType::JavaScriptOrWasm
+          ))
+          .unwrap(),
+        &SymbolicModule::Mod(1)
+      );
+      assert_eq!(
+        module_map
+          .by_name
+          .get(&(
+            "file:///bar.js".to_string(),
+            AssertedModuleType::JavaScriptOrWasm
+          ))
+          .unwrap(),
+        &SymbolicModule::Mod(2)
+      );
+      assert_eq!(module_map.next_module_id, 3);
+      assert_eq!(module_map.next_load_id, 3);
+    }
+
     let source_code = r#"(async () => {
-      Deno.core.print("hello!\n", true);
-      const mod = await import("file:///main.js");
-      Deno.core.print("hello after import!\n", true);
-      return mod.hello();
+      const mod = await import("file:///bar.js");
+      return mod.world();
     })();"#
       .to_string();
-    let val = runtime2.execute_script(".", &source_code).unwrap();
-    let val = futures::executor::block_on(runtime2.resolve_value(val)).unwrap();
+    let val = runtime3.execute_script(".", &source_code).unwrap();
+    let val = futures::executor::block_on(runtime3.resolve_value(val)).unwrap();
     {
-      let scope = &mut runtime2.handle_scope();
+      let scope = &mut runtime3.handle_scope();
       let value = v8::Local::new(scope, val);
       let str_ = value.to_string(scope).unwrap().to_rust_string_lossy(scope);
       assert_eq!(str_, "hello world");
