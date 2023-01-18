@@ -4,6 +4,8 @@
 // exercise the event loop in a simple yet semi-realistic way.
 Deno.core.initializeAsyncOps();
 
+const { ops } = Deno.core;
+
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
@@ -13,27 +15,28 @@ const responseBuf = new Uint8Array(
 
 /** Listens on 0.0.0.0:4570, returns rid. */
 function listen() {
-  return Deno.core.ops.op_listen();
+  return ops.op_listen();
 }
 
 /** Accepts a connection, returns rid. */
 function accept(serverRid) {
-  return Deno.core.ops.op_accept(serverRid);
+  return ops.op_accept(serverRid);
+}
+
+function read(serverRid, buf) {
+  return ops.op_read_socket(serverRid, buf);
 }
 
 async function serve(rid) {
   try {
     while (true) {
-      await Deno.core.read(rid, requestBuf);
-      await Deno.core.writeAll(rid, responseBuf);
+      await read(rid, requestBuf);
+      if (!ops.op_try_write(rid, responseBuf)) {
+        await Deno.core.writeAll(rid, responseBuf);
+      }
     }
-  } catch (e) {
-    if (
-      !e.message.includes("Broken pipe") &&
-      !e.message.includes("Connection reset by peer")
-    ) {
-      throw e;
-    }
+  } catch {
+    // pass
   }
   Deno.core.close(rid);
 }
