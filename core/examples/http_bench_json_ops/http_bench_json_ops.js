@@ -32,7 +32,6 @@ async function serve(rid) {
     while (true) {
       await read(rid, requestBuf);
       if (!ops.op_try_write(rid, responseBuf)) {
-        console.log("write failed");
         await Deno.core.writeAll(rid, responseBuf);
       }
     }
