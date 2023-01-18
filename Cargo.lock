@@ -239,11 +239,12 @@ checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
 name = "base64-simd"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "781dd20c3aff0bd194fe7d2a977dd92f21c173891f3a03b677359e5fa457e5d5"
+checksum = "339abbe78e73178762e23bea9dfd08e697eb3f3301cd4be981c0f78ba5859195"
 dependencies = [
- "simd-abstraction",
+ "outref",
+ "vsimd",
 ]
 
 [[package]]
@@ -755,7 +756,7 @@ checksum = "8d7439c3735f405729d52c3fbbe4de140eaf938a1fe47d227c27f8254d4302a5"
 
 [[package]]
 name = "deno"
-version = "1.29.3"
+version = "1.29.4"
 dependencies = [
  "atty",
  "base32",
@@ -871,7 +872,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.78.0"
+version = "0.79.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -881,7 +882,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.78.0"
+version = "0.79.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -891,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -903,14 +904,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.84.0"
+version = "0.85.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.166.0"
+version = "0.167.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -935,7 +936,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.98.0"
+version = "0.99.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1002,7 +1003,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.108.0"
+version = "0.109.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -1019,7 +1020,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.71.0"
+version = "0.72.0"
 dependencies = [
  "deno_core",
  "dlopen",
@@ -1032,7 +1033,7 @@ dependencies = [
 
 [[package]]
 name = "deno_flash"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1070,7 +1071,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.79.0"
+version = "0.80.0"
 dependencies = [
  "async-compression",
  "base64",
@@ -1112,7 +1113,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "deno_core",
  "libloading",
@@ -1120,7 +1121,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.76.0"
+version = "0.77.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1134,7 +1135,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1145,7 +1146,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.44.0"
+version = "0.45.0"
 dependencies = [
  "once_cell",
  "pmutil",
@@ -1161,7 +1162,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.92.0"
+version = "0.93.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
@@ -1227,7 +1228,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.71.0"
+version = "0.72.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1241,7 +1242,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.84.0"
+version = "0.85.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1253,7 +1254,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.115.0"
+version = "0.116.0"
 dependencies = [
  "async-trait",
  "base64-simd",
@@ -1271,7 +1272,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.85.0"
+version = "0.86.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -1282,7 +1283,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.84.0"
+version = "0.85.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1290,7 +1291,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.89.0"
+version = "0.90.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1304,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.79.0"
+version = "0.80.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -2805,7 +2806,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "proc-macro2 1.0.47",
  "quote 1.0.21",
@@ -3021,9 +3022,9 @@ dependencies = [
 
 [[package]]
 name = "outref"
-version = "0.1.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f222829ae9293e33a9f5e9f440c6760a3d450a64affe1846486b140db81c1f4"
+checksum = "4030760ffd992bef45b0ae3f10ce1aba99e33464c90d14dd7c039884963ddc7a"
 
 [[package]]
 name = "p256"
@@ -3938,7 +3939,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.77.0"
+version = "0.78.0"
 dependencies = [
  "bencher",
  "bytes",
@@ -4008,15 +4009,6 @@ checksum = "deb766570a2825fa972bceff0d195727876a9cdf2460ab2e52d455dc2de47fd9"
 dependencies = [
  "digest 0.10.5",
  "rand_core 0.6.4",
-]
-
-[[package]]
-name = "simd-abstraction"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49d3f0728c33eb35102d2489a6a13dbbb510b07864b854e961b9e4b9cd011c61"
-dependencies = [
- "outref",
 ]
 
 [[package]]
@@ -5350,6 +5342,12 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
+
+[[package]]
+name = "vsimd"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vte"

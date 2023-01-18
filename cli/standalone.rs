@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CaData;
 use crate::args::Flags;
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
@@ -7,7 +8,6 @@ use crate::ops;
 use crate::proc_state::ProcState;
 use crate::version;
 use crate::CliResolver;
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -26,7 +26,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
@@ -38,8 +37,6 @@ use deno_runtime::BootstrapOptions;
 use import_map::parse_from_json;
 use log::Level;
 use std::env::current_exe;
-use std::io::BufReader;
-use std::io::Cursor;
 use std::io::SeekFrom;
 use std::iter::once;
 use std::pin::Pin;
@@ -217,6 +214,7 @@ fn metadata_to_flags(metadata: &Metadata) -> Flags {
     v8_flags: metadata.v8_flags.clone(),
     log_level: metadata.log_level,
     ca_stores: metadata.ca_stores.clone(),
+    ca_data: metadata.ca_data.clone().map(CaData::Bytes),
     ..Default::default()
   }
 }
@@ -257,22 +255,7 @@ pub async fn run(
       .collect::<Vec<_>>(),
   );
 
-  let mut root_cert_store = ps.root_cert_store.clone();
-
-  if let Some(cert) = metadata.ca_data {
-    let reader = &mut BufReader::new(Cursor::new(cert));
-    match rustls_pemfile::certs(reader) {
-      Ok(certs) => {
-        root_cert_store.add_parsable_certificates(&certs);
-      }
-      Err(e) => {
-        return Err(anyhow!(
-          "Unable to add pem file to certificate store: {}",
-          e
-        ));
-      }
-    }
-  }
+  let root_cert_store = ps.root_cert_store.clone();
 
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {

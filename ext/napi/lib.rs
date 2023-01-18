@@ -533,7 +533,8 @@ pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
           maybe_scheduling = true;
         }
 
-        for (_id, counter) in napi_state.tsfn_ref_counters.borrow().iter() {
+        let tsfn_ref_counters = napi_state.tsfn_ref_counters.borrow().clone();
+        for (_id, counter) in tsfn_ref_counters.iter() {
           if counter.load(std::sync::atomic::Ordering::SeqCst) > 0 {
             maybe_scheduling = true;
             break;
