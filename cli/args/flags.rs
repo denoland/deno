@@ -291,6 +291,15 @@ impl Default for ConfigFlag {
   }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CaData {
+  /// The string is a file path
+  File(String),
+  /// This variant is not exposed as an option in the CLI, it is used internally
+  /// for standalone binaries.
+  Bytes(Vec<u8>),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
@@ -308,7 +317,7 @@ pub struct Flags {
   pub allow_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
   pub ca_stores: Option<Vec<String>>,
-  pub ca_file: Option<String>,
+  pub ca_data: Option<CaData>,
   pub cache_blocklist: Vec<String>,
   /// This is not exposed as an option in the CLI, it is used internally when
   /// the language server is configured with an explicit cache option.
@@ -3095,7 +3104,10 @@ fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 }
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
+  flags.ca_data = matches
+    .value_of("cert")
+    .map(ToOwned::to_owned)
+    .map(CaData::File);
 }
 
 fn enable_testing_features_arg_parse(
@@ -4280,7 +4292,7 @@ mod tests {
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
-        ca_file: Some("example.crt".to_string()),
+        ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         v8_flags: svec!["--help", "--random-seed=1"],
@@ -4374,7 +4386,7 @@ mod tests {
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
-        ca_file: Some("example.crt".to_string()),
+        ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         v8_flags: svec!["--help", "--random-seed=1"],
@@ -5040,7 +5052,7 @@ mod tests {
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
-        ca_file: Some("example.crt".to_string()),
+        ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
@@ -5612,7 +5624,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        ca_file: Some("example.crt".to_owned()),
+        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
@@ -5860,7 +5872,7 @@ mod tests {
           out_file: None,
         }),
         type_check_mode: TypeCheckMode::Local,
-        ca_file: Some("example.crt".to_owned()),
+        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
@@ -5879,7 +5891,7 @@ mod tests {
           version: None,
           output: None,
         }),
-        ca_file: Some("example.crt".to_owned()),
+        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
@@ -5901,7 +5913,7 @@ mod tests {
         subcommand: DenoSubcommand::Cache(CacheFlags {
           files: svec!["script.ts", "script_two.ts"],
         }),
-        ca_file: Some("example.crt".to_owned()),
+        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
@@ -5923,7 +5935,7 @@ mod tests {
           json: false,
           file: Some("https://example.com".to_string()),
         }),
-        ca_file: Some("example.crt".to_owned()),
+        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
@@ -6097,7 +6109,7 @@ mod tests {
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
-        ca_file: Some("example.crt".to_string()),
+        ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_read: Some(vec![]),
