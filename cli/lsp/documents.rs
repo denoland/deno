@@ -52,15 +52,13 @@ static JS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     "content-type".to_string(),
     "application/javascript".to_string(),
   )])
-  .iter()
-  .cloned()
+  .into_iter()
   .collect()
 });
 
 static JSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
   ([("content-type".to_string(), "text/jsx".to_string())])
-    .iter()
-    .cloned()
+    .into_iter()
     .collect()
 });
 
@@ -69,15 +67,13 @@ static TS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     "content-type".to_string(),
     "application/typescript".to_string(),
   )])
-  .iter()
-  .cloned()
+  .into_iter()
   .collect()
 });
 
 static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
   ([("content-type".to_string(), "text/tsx".to_string())])
-    .iter()
-    .cloned()
+    .into_iter()
     .collect()
 });
 

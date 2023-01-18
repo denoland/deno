@@ -23,6 +23,7 @@
     BigInt64ArrayPrototype,
     BigUint64ArrayPrototype,
     DataView,
+    FinalizationRegistry,
     Int8ArrayPrototype,
     Int16ArrayPrototype,
     Int32ArrayPrototype,
@@ -45,7 +46,8 @@
     RangeError,
     ReflectHas,
     SafePromiseAll,
-    SharedArrayBuffer,
+    // TODO(lucacasonato): add SharedArrayBuffer to primordials
+    // SharedArrayBufferPrototype
     Symbol,
     SymbolAsyncIterator,
     SymbolFor,
@@ -205,6 +207,7 @@
     assert(typeof O === "object");
     assert(
       ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, O) ||
+        // deno-lint-ignore prefer-primordials
         ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O),
     );
     if (isDetachedBuffer(O)) {
