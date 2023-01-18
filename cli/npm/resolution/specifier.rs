@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -132,7 +132,7 @@ impl std::fmt::Display for NpmPackageReq {
 
 impl NpmPackageReq {
   pub fn from_str(text: &str) -> Result<Self, AnyError> {
-    // probably should do something more targetted in the future
+    // probably should do something more targeted in the future
     let reference = NpmPackageReference::from_str(&format!("npm:{}", text))?;
     Ok(reference.req)
   }

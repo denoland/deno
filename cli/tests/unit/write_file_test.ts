@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -393,3 +393,19 @@ function pathExists(path: string | URL) {
     return false;
   }
 }
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileStream() {
+    const stream = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new Uint8Array([1]));
+        controller.enqueue(new Uint8Array([2]));
+        controller.close();
+      },
+    });
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    await Deno.writeFile(filename, stream);
+    assertEquals(Deno.readFileSync(filename), new Uint8Array([1, 2]));
+  },
+);

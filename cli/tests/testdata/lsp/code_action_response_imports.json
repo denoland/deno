@@ -1,30 +1,30 @@
 [
   {
-    "title": "Add import from \"./file00.ts\"",
+    "title": "Add import from \"./file02.ts\"",
     "kind": "quickfix",
     "diagnostics": [
       {
         "range": {
           "start": {
-            "line": 1,
-            "character": 12
+            "line": 0,
+            "character": 50
           },
           "end": {
-            "line": 1,
-            "character": 15
+            "line": 0,
+            "character": 67
           }
         },
         "severity": 1,
         "code": 2304,
         "source": "deno-ts",
-        "message": "Cannot find name 'abc'."
+        "message": "Cannot find name 'DuckConfigOptions'."
       }
     ],
     "edit": {
       "documentChanges": [
         {
           "textDocument": {
-            "uri": "file:///a/file01.ts",
+            "uri": "file:///a/file00.ts",
             "version": 1
           },
           "edits": [
@@ -39,7 +39,7 @@
                   "character": 0
                 }
               },
-              "newText": "import { abc } from \"./file00.ts\";\n"
+              "newText": "import { DuckConfigOptions } from \"./file02.ts\";\n\n"
             }
           ]
         }
@@ -53,51 +53,51 @@
       {
         "range": {
           "start": {
-            "line": 1,
-            "character": 12
+            "line": 0,
+            "character": 50
           },
           "end": {
-            "line": 1,
-            "character": 15
+            "line": 0,
+            "character": 67
           }
         },
         "severity": 1,
         "code": 2304,
         "source": "deno-ts",
-        "message": "Cannot find name 'abc'."
+        "message": "Cannot find name 'DuckConfigOptions'."
       }
     ],
     "data": {
-      "specifier": "file:///a/file01.ts",
+      "specifier": "file:///a/file00.ts",
       "fixId": "fixMissingImport"
     }
   },
   {
-    "title": "Add import from \"./file00.ts\"",
+    "title": "Add import from \"./file01.ts\"",
     "kind": "quickfix",
     "diagnostics": [
       {
         "range": {
           "start": {
-            "line": 2,
-            "character": 12
+            "line": 4,
+            "character": 39
           },
           "end": {
-            "line": 2,
-            "character": 15
+            "line": 4,
+            "character": 49
           }
         },
         "severity": 1,
         "code": 2304,
         "source": "deno-ts",
-        "message": "Cannot find name 'def'."
+        "message": "Cannot find name 'DuckConfig'."
       }
     ],
     "edit": {
       "documentChanges": [
         {
           "textDocument": {
-            "uri": "file:///a/file01.ts",
+            "uri": "file:///a/file00.ts",
             "version": 1
           },
           "edits": [
@@ -112,7 +112,7 @@
                   "character": 0
                 }
               },
-              "newText": "import { def } from \"./file00.ts\";\n"
+              "newText": "import { DuckConfig } from \"./file01.ts\";\n\n"
             }
           ]
         }

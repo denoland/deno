@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -29,6 +29,7 @@
     JSONStringify,
     MathCeil,
     ObjectAssign,
+    ObjectPrototypeHasOwnProperty,
     ObjectPrototypeIsPrototypeOf,
     StringPrototypeToLowerCase,
     StringPrototypeToUpperCase,
@@ -211,6 +212,9 @@
     // 5.
     let desiredType = undefined;
     for (const key in registeredAlgorithms) {
+      if (!ObjectPrototypeHasOwnProperty(registeredAlgorithms, key)) {
+        continue;
+      }
       if (
         StringPrototypeToUpperCase(key) === StringPrototypeToUpperCase(algName)
       ) {
@@ -242,6 +246,9 @@
     const dict = simpleAlgorithmDictionaries[desiredType];
     // 10.
     for (const member in dict) {
+      if (!ObjectPrototypeHasOwnProperty(dict, member)) {
+        continue;
+      }
       const idlType = dict[member];
       const idlValue = normalizedAlgorithm[member];
       // 3.

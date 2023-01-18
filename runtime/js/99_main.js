@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 // Removes the `__proto__` for security reasons.
@@ -33,7 +33,6 @@ delete Intl.v8BreakIterator;
     SymbolFor,
     SymbolIterator,
     PromisePrototypeThen,
-    SafeArrayIterator,
     SafeWeakMap,
     TypeError,
     WeakMapPrototypeDelete,
@@ -206,7 +205,8 @@ delete Intl.v8BreakIterator;
     );
     loadedMainWorkerScript = true;
 
-    for (const { url, script } of new SafeArrayIterator(scripts)) {
+    for (let i = 0; i < scripts.length; ++i) {
+      const { url, script } = scripts[i];
       const err = core.evalContext(script, url)[1];
       if (err !== null) {
         throw err.thrown;
@@ -323,13 +323,13 @@ delete Intl.v8BreakIterator;
   function promiseRejectCallback(type, promise, reason) {
     switch (type) {
       case 0: {
-        ops.op_store_pending_promise_exception(promise, reason);
+        ops.op_store_pending_promise_rejection(promise, reason);
         ArrayPrototypePush(pendingRejections, promise);
         WeakMapPrototypeSet(pendingRejectionsReasons, promise, reason);
         break;
       }
       case 1: {
-        ops.op_remove_pending_promise_exception(promise);
+        ops.op_remove_pending_promise_rejection(promise);
         const index = ArrayPrototypeIndexOf(pendingRejections, promise);
         if (index > -1) {
           ArrayPrototypeSplice(pendingRejections, index, 1);
@@ -348,7 +348,7 @@ delete Intl.v8BreakIterator;
   function promiseRejectMacrotaskCallback() {
     while (pendingRejections.length > 0) {
       const promise = ArrayPrototypeShift(pendingRejections);
-      const hasPendingException = ops.op_has_pending_promise_exception(
+      const hasPendingException = ops.op_has_pending_promise_rejection(
         promise,
       );
       const reason = WeakMapPrototypeGet(pendingRejectionsReasons, promise);
@@ -369,7 +369,7 @@ delete Intl.v8BreakIterator;
 
       const errorEventCb = (event) => {
         if (event.error === reason) {
-          ops.op_remove_pending_promise_exception(promise);
+          ops.op_remove_pending_promise_rejection(promise);
         }
       };
       // Add a callback for "error" event - it will be dispatched
@@ -382,7 +382,7 @@ delete Intl.v8BreakIterator;
       // If event was not prevented (or "unhandledrejection" listeners didn't
       // throw) we will let Rust side handle it.
       if (rejectionEvent.defaultPrevented) {
-        ops.op_remove_pending_promise_exception(promise);
+        ops.op_remove_pending_promise_rejection(promise);
       }
     }
     return true;
@@ -399,7 +399,7 @@ delete Intl.v8BreakIterator;
     performance.setTimeOrigin(DateNow());
     net.setup(runtimeOptions.unstableFlag);
 
-    const consoleFromV8 = window.console;
+    const consoleFromV8 = window.Deno.core.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
     // Remove bootstrapping data from the global scope
@@ -483,6 +483,7 @@ delete Intl.v8BreakIterator;
           ops.op_node_unstable_net_listen_udp,
           ops.op_node_unstable_net_listen_unixpacket,
         ),
+        osUptime: __bootstrap.os.createOsUptime(ops.op_node_unstable_os_uptime),
       },
     });
 
@@ -524,6 +525,7 @@ delete Intl.v8BreakIterator;
           ops.op_net_listen_udp,
           ops.op_net_listen_unixpacket,
         ),
+        osUptime: __bootstrap.os.createOsUptime(ops.op_os_uptime),
       });
     }
 
@@ -547,7 +549,7 @@ delete Intl.v8BreakIterator;
     performance.setTimeOrigin(DateNow());
     net.setup(runtimeOptions.unstableFlag);
 
-    const consoleFromV8 = window.console;
+    const consoleFromV8 = window.Deno.core.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
     // Remove bootstrapping data from the global scope
@@ -627,6 +629,7 @@ delete Intl.v8BreakIterator;
           ops.op_node_unstable_net_listen_udp,
           ops.op_node_unstable_net_listen_unixpacket,
         ),
+        osUptime: __bootstrap.os.createOsUptime(ops.op_node_unstable_os_uptime),
       },
     });
 
@@ -660,6 +663,7 @@ delete Intl.v8BreakIterator;
           ops.op_net_listen_udp,
           ops.op_net_listen_unixpacket,
         ),
+        osUptime: __bootstrap.os.createOsUptime(ops.op_os_uptime),
       });
     }
     ObjectDefineProperties(finalDenoNs, {

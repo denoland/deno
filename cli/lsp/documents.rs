@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
 use super::text::LineIndex;
@@ -33,6 +33,7 @@ use deno_core::ModuleSpecifier;
 use deno_graph::GraphImport;
 use deno_graph::Resolved;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -51,15 +52,13 @@ static JS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     "content-type".to_string(),
     "application/javascript".to_string(),
   )])
-  .iter()
-  .cloned()
+  .into_iter()
   .collect()
 });
 
 static JSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
   ([("content-type".to_string(), "text/jsx".to_string())])
-    .iter()
-    .cloned()
+    .into_iter()
     .collect()
 });
 
@@ -68,19 +67,17 @@ static TS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     "content-type".to_string(),
     "application/typescript".to_string(),
   )])
-  .iter()
-  .cloned()
+  .into_iter()
   .collect()
 });
 
 static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
   ([("content-type".to_string(), "text/tsx".to_string())])
-    .iter()
-    .cloned()
+    .into_iter()
     .collect()
 });
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LanguageId {
   JavaScript,
   Jsx,
@@ -93,6 +90,31 @@ pub enum LanguageId {
 }
 
 impl LanguageId {
+  pub fn as_media_type(&self) -> MediaType {
+    match self {
+      LanguageId::JavaScript => MediaType::JavaScript,
+      LanguageId::Jsx => MediaType::Jsx,
+      LanguageId::TypeScript => MediaType::TypeScript,
+      LanguageId::Tsx => MediaType::Tsx,
+      LanguageId::Json => MediaType::Json,
+      LanguageId::JsonC => MediaType::Json,
+      LanguageId::Markdown | LanguageId::Unknown => MediaType::Unknown,
+    }
+  }
+
+  pub fn as_extension(&self) -> Option<&'static str> {
+    match self {
+      LanguageId::JavaScript => Some("js"),
+      LanguageId::Jsx => Some("jsx"),
+      LanguageId::TypeScript => Some("ts"),
+      LanguageId::Tsx => Some("tsx"),
+      LanguageId::Json => Some("json"),
+      LanguageId::JsonC => Some("jsonc"),
+      LanguageId::Markdown => Some("md"),
+      LanguageId::Unknown => None,
+    }
+  }
+
   fn as_headers(&self) -> Option<&HashMap<String, String>> {
     match self {
       Self::JavaScript => Some(&JS_HEADERS),
@@ -394,7 +416,7 @@ impl Document {
     Ok(Document(Arc::new(DocumentInner {
       specifier: self.0.specifier.clone(),
       fs_version: self.0.fs_version.clone(),
-      maybe_language_id: self.0.maybe_language_id.clone(),
+      maybe_language_id: self.0.maybe_language_id,
       dependencies,
       text_info,
       line_index,
@@ -464,10 +486,22 @@ impl Document {
 
   pub fn media_type(&self) -> MediaType {
     if let Some(Ok(module)) = &self.0.maybe_module {
-      module.media_type
-    } else {
-      MediaType::from(&self.0.specifier)
+      return module.media_type;
     }
+    let specifier_media_type = MediaType::from(&self.0.specifier);
+    if specifier_media_type != MediaType::Unknown {
+      return specifier_media_type;
+    }
+
+    self
+      .0
+      .maybe_language_id
+      .map(|id| id.as_media_type())
+      .unwrap_or(MediaType::Unknown)
+  }
+
+  pub fn maybe_language_id(&self) -> Option<LanguageId> {
+    self.0.maybe_language_id
   }
 
   /// Returns the current language server client version if any.
@@ -967,6 +1001,7 @@ impl Documents {
               referrer,
               NodeResolutionMode::Types,
               npm_resolver,
+              &mut PermissionsContainer::allow_all(),
             )
             .ok()
             .flatten(),
@@ -1003,6 +1038,7 @@ impl Documents {
               &npm_ref,
               NodeResolutionMode::Types,
               npm_resolver,
+              &mut PermissionsContainer::allow_all(),
             )
             .ok()
             .flatten(),
@@ -1171,6 +1207,7 @@ impl Documents {
             &npm_ref,
             NodeResolutionMode::Types,
             npm_resolver,
+            &mut PermissionsContainer::allow_all(),
           )
           .ok()
           .flatten(),

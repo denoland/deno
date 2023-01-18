@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 // Only for testing types. Invoke with `deno cache`
 
@@ -66,17 +66,10 @@ const remote = Deno.dlopen(
 
 Deno.dlopen(
   "dummy_lib_2.so",
-  // is declared using "pointer" or "function" + UnsafeFnPointer
   {
     wrong_method1: {
       parameters: [],
-      // @ts-expect-error not assignable to type 'NativeResultType'
-      result: {
-        function: {
-          parameters: [],
-          result: "void",
-        },
-      },
+      result: "function",
     },
   },
 );

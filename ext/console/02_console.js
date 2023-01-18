@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -277,7 +277,8 @@
       }` +
       `${tableChars.rightMiddle}\n`;
 
-    for (const row of new SafeArrayIterator(rows)) {
+    for (let i = 0; i < rows.length; ++i) {
+      const row = rows[i];
       result += `${renderRow(row, columnWidths, columnRightAlign)}\n`;
     }
 
@@ -359,7 +360,7 @@
       ObjectKeys(value).length > 0 ||
       ObjectGetOwnPropertySymbols(value).length > 0
     ) {
-      const [propString, refIndex] = inspectRawObject(
+      const { 0: propString, 1: refIndex } = inspectRawObject(
         value,
         inspectOptions,
       );
@@ -846,7 +847,7 @@
       displayName: "",
       delims: ["[", "]"],
       entryHandler: (entry, inspectOptions) => {
-        const [index, val] = entry;
+        const { 0: index, 1: val } = entry;
         let i = index;
         lastValidIndex = index;
         if (!ObjectPrototypeHasOwnProperty(value, i)) {
@@ -939,7 +940,7 @@
       displayName: "Map",
       delims: ["{", "}"],
       entryHandler: (entry, inspectOptions) => {
-        const [key, val] = entry;
+        const { 0: key, 1: val } = entry;
         inspectOptions.indentLevel++;
         const inspectedValue = `${
           inspectValueWithQuotes(key, inspectOptions)
@@ -995,7 +996,8 @@
     }
 
     const refMap = new Map();
-    for (const cause of new SafeArrayIterator(causes)) {
+    for (let i = 0; i < causes.length; ++i) {
+      const cause = causes[i];
       if (circular !== undefined) {
         const index = MapPrototypeGet(circular, cause);
         if (index !== undefined) {
@@ -1005,7 +1007,7 @@
     }
     ArrayPrototypeShift(causes);
 
-    let finalMessage = (MapPrototypeGet(refMap, value) ?? "");
+    let finalMessage = MapPrototypeGet(refMap, value) ?? "";
 
     if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
       const stackLines = StringPrototypeSplit(value.stack, "\n");
@@ -1098,7 +1100,7 @@
     const cyan = maybeColor(colors.cyan, inspectOptions);
     const red = maybeColor(colors.red, inspectOptions);
 
-    const [state, result] = core.getPromiseDetails(value);
+    const { 0: state, 1: result } = core.getPromiseDetails(value);
 
     if (state === PromiseState.Pending) {
       return `Promise { ${cyan("<pending>")} }`;
@@ -1172,7 +1174,8 @@
 
     inspectOptions.indentLevel++;
 
-    for (const key of new SafeArrayIterator(stringKeys)) {
+    for (let i = 0; i < stringKeys.length; ++i) {
+      const key = stringKeys[i];
       if (inspectOptions.getters) {
         let propertyValue;
         let error = null;
@@ -1208,7 +1211,8 @@
       }
     }
 
-    for (const key of new SafeArrayIterator(symbolKeys)) {
+    for (let i = 0; i < symbolKeys.length; ++i) {
+      const key = symbolKeys[i];
       if (
         !inspectOptions.showHidden &&
         !propertyIsEnumerable(value, key)
@@ -1359,7 +1363,7 @@
       );
     } else {
       // Otherwise, default object formatting
-      let [insp, refIndex] = inspectRawObject(value, inspectOptions);
+      let { 0: insp, 1: refIndex } = inspectRawObject(value, inspectOptions);
       insp = refIndex + insp;
       return insp;
     }
@@ -1564,17 +1568,17 @@
       let g_;
       let b_;
       if (h < 60) {
-        [r_, g_, b_] = [c, x, 0];
+        ({ 0: r_, 1: g_, 2: b_ } = [c, x, 0]);
       } else if (h < 120) {
-        [r_, g_, b_] = [x, c, 0];
+        ({ 0: r_, 1: g_, 2: b_ } = [x, c, 0]);
       } else if (h < 180) {
-        [r_, g_, b_] = [0, c, x];
+        ({ 0: r_, 1: g_, 2: b_ } = [0, c, x]);
       } else if (h < 240) {
-        [r_, g_, b_] = [0, x, c];
+        ({ 0: r_, 1: g_, 2: b_ } = [0, x, c]);
       } else if (h < 300) {
-        [r_, g_, b_] = [x, 0, c];
+        ({ 0: r_, 1: g_, 2: b_ } = [x, 0, c]);
       } else {
-        [r_, g_, b_] = [c, 0, x];
+        ({ 0: r_, 1: g_, 2: b_ } = [c, 0, x]);
       }
       return [
         MathRound((r_ + m) * 255),
@@ -1640,7 +1644,8 @@
       currentPart = "";
     }
 
-    for (const [key, value] of new SafeArrayIterator(rawEntries)) {
+    for (let i = 0; i < rawEntries.length; ++i) {
+      const { 0: key, 1: value } = rawEntries[i];
       if (key == "background-color") {
         if (value != null) {
           css.backgroundColor = value;
@@ -1661,11 +1666,9 @@
         }
       } else if (key == "text-decoration-line") {
         css.textDecorationLine = [];
-        for (
-          const lineType of new SafeArrayIterator(
-            StringPrototypeSplit(value, /\s+/g),
-          )
-        ) {
+        const lineTypes = StringPrototypeSplit(value, /\s+/g);
+        for (let i = 0; i < lineTypes.length; ++i) {
+          const lineType = lineTypes[i];
           if (
             ArrayPrototypeIncludes(
               ["line-through", "overline", "underline"],
@@ -1683,11 +1686,9 @@
       } else if (key == "text-decoration") {
         css.textDecorationColor = null;
         css.textDecorationLine = [];
-        for (
-          const arg of new SafeArrayIterator(
-            StringPrototypeSplit(value, /\s+/g),
-          )
-        ) {
+        const args = StringPrototypeSplit(value, /\s+/g);
+        for (let i = 0; i < args.length; ++i) {
+          const arg = args[i];
           const maybeColor = parseCssColor(arg);
           if (maybeColor != null) {
             css.textDecorationColor = maybeColor;
@@ -1735,12 +1736,12 @@
         ansi += `\x1b[47m`;
       } else {
         if (ArrayIsArray(css.backgroundColor)) {
-          const [r, g, b] = css.backgroundColor;
+          const { 0: r, 1: g, 2: b } = css.backgroundColor;
           ansi += `\x1b[48;2;${r};${g};${b}m`;
         } else {
           const parsed = parseCssColor(css.backgroundColor);
           if (parsed !== null) {
-            const [r, g, b] = parsed;
+            const { 0: r, 1: g, 2: b } = parsed;
             ansi += `\x1b[48;2;${r};${g};${b}m`;
           } else {
             ansi += "\x1b[49m";
@@ -1769,12 +1770,12 @@
         ansi += `\x1b[37m`;
       } else {
         if (ArrayIsArray(css.color)) {
-          const [r, g, b] = css.color;
+          const { 0: r, 1: g, 2: b } = css.color;
           ansi += `\x1b[38;2;${r};${g};${b}m`;
         } else {
           const parsed = parseCssColor(css.color);
           if (parsed !== null) {
-            const [r, g, b] = parsed;
+            const { 0: r, 1: g, 2: b } = parsed;
             ansi += `\x1b[38;2;${r};${g};${b}m`;
           } else {
             ansi += "\x1b[39m";
@@ -1798,7 +1799,7 @@
     }
     if (!colorEquals(css.textDecorationColor, prevCss.textDecorationColor)) {
       if (css.textDecorationColor != null) {
-        const [r, g, b] = css.textDecorationColor;
+        const { 0: r, 1: g, 2: b } = css.textDecorationColor;
         ansi += `\x1b[58;2;${r};${g};${b}m`;
       } else {
         ansi += "\x1b[59m";
@@ -2044,7 +2045,7 @@
         return;
       }
 
-      const [first, ...rest] = args;
+      const [first, ...rest] = new SafeArrayIterator(args);
 
       if (typeof first === "string") {
         this.error(
@@ -2144,7 +2145,8 @@
         } else {
           const valueObj = value || {};
           const keys = properties || ObjectKeys(valueObj);
-          for (const k of new SafeArrayIterator(keys)) {
+          for (let i = 0; i < keys.length; ++i) {
+            const k = keys[i];
             if (!primitive && ReflectHas(valueObj, k)) {
               if (!(ReflectHas(objectValues, k))) {
                 objectValues[k] = ArrayPrototypeFill(new Array(numRows), "");
@@ -2339,7 +2341,9 @@
   function wrapConsole(consoleFromDeno, consoleFromV8) {
     const callConsole = core.callConsole;
 
-    for (const key of new SafeArrayIterator(ObjectKeys(consoleFromV8))) {
+    const keys = ObjectKeys(consoleFromV8);
+    for (let i = 0; i < keys.length; ++i) {
+      const key = keys[i];
       if (ObjectPrototypeHasOwnProperty(consoleFromDeno, key)) {
         consoleFromDeno[key] = FunctionPrototypeBind(
           callConsole,

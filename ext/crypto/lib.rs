@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use aes_kw::KekAes128;
 use aes_kw::KekAes192;
@@ -73,7 +73,8 @@ use crate::key::HkdfOutput;
 use crate::shared::RawKeyData;
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl", "deno_web"])
     .js(include_js_files!(
       prefix "deno:ext/crypto",
       "00_crypto.js",

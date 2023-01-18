@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import * as colors from "../../../test_util/std/fmt/colors.ts";
 export { colors };
@@ -20,7 +20,7 @@ export {
 export { deferred } from "../../../test_util/std/async/deferred.ts";
 export type { Deferred } from "../../../test_util/std/async/deferred.ts";
 export { delay } from "../../../test_util/std/async/delay.ts";
-export { readLines } from "../../../test_util/std/io/buffer.ts";
+export { readLines } from "../../../test_util/std/io/read_lines.ts";
 export { parse as parseArgs } from "../../../test_util/std/flags/mod.ts";
 
 export function pathToAbsoluteFileUrl(path: string): URL {

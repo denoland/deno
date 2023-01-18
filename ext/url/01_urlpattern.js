@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -20,7 +20,6 @@
     RegExp,
     RegExpPrototypeExec,
     RegExpPrototypeTest,
-    SafeArrayIterator,
     Symbol,
     SymbolFor,
     TypeError,
@@ -72,7 +71,9 @@
 
       const components = ops.op_urlpattern_parse(input, baseURL);
 
-      for (const key of new SafeArrayIterator(ObjectKeys(components))) {
+      const keys = ObjectKeys(components);
+      for (let i = 0; i < keys.length; ++i) {
+        const key = keys[i];
         try {
           components[key].regexp = new RegExp(
             components[key].regexpString,
@@ -154,9 +155,11 @@
         return false;
       }
 
-      const [values] = res;
+      const values = res[0];
 
-      for (const key of new SafeArrayIterator(ObjectKeys(values))) {
+      const keys = ObjectKeys(values);
+      for (let i = 0; i < keys.length; ++i) {
+        const key = keys[i];
         if (!RegExpPrototypeTest(this[_components][key].regexp, values[key])) {
           return false;
         }
@@ -193,7 +196,7 @@
         return null;
       }
 
-      const [values, inputs] = res;
+      const { 0: values, 1: inputs } = res;
       if (inputs[1] === null) {
         inputs.pop();
       }
@@ -201,8 +204,9 @@
       /** @type {URLPatternResult} */
       const result = { inputs };
 
-      /** @type {string} */
-      for (const key of new SafeArrayIterator(ObjectKeys(values))) {
+      const keys = ObjectKeys(values);
+      for (let i = 0; i < keys.length; ++i) {
+        const key = keys[i];
         /** @type {Component} */
         const component = this[_components][key];
         const input = values[key];

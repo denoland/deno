@@ -1,10 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::FsModuleLoader;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
@@ -71,7 +71,7 @@ async fn main() -> Result<(), AnyError> {
   let js_path =
     Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/hello_runtime.js");
   let main_module = deno_core::resolve_path(&js_path.to_string_lossy())?;
-  let permissions = Permissions::allow_all();
+  let permissions = PermissionsContainer::allow_all();
 
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
@@ -78,7 +78,8 @@ pub mod compressible;
 mod reader_stream;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_web", "deno_net", "deno_fetch", "deno_websocket"])
     .js(include_js_files!(
       prefix "deno:ext/http",
       "01_http.js",

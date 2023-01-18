@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CacheSetting;
 use crate::auth_tokens::AuthToken;
@@ -31,7 +31,7 @@ use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
 use deno_runtime::deno_fetch::reqwest::header::IF_NONE_MATCH;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use log::debug;
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -90,7 +90,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let local = specifier.to_file_path().map_err(|_| {
     uri_error(format!("Invalid file path.\n  Specifier: {}", specifier))
   })?;
-  let bytes = fs::read(local.clone())?;
+  let bytes = fs::read(&local)?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
   let source = get_source_from_bytes(bytes, Some(charset))?;
   let media_type = MediaType::from(specifier);
@@ -359,7 +359,7 @@ impl FileFetcher {
     let blob = {
       let blob_store = self.blob_store.borrow();
       blob_store
-        .get_object_url(specifier.clone())?
+        .get_object_url(specifier.clone())
         .ok_or_else(|| {
           custom_error(
             "NotFound",
@@ -406,7 +406,7 @@ impl FileFetcher {
   fn fetch_remote(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &mut Permissions,
+    permissions: PermissionsContainer,
     redirect_limit: i64,
     maybe_accept: Option<String>,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
@@ -461,7 +461,6 @@ impl FileFetcher {
     };
     let maybe_auth_token = self.auth_tokens.get(specifier);
     let specifier = specifier.clone();
-    let mut permissions = permissions.clone();
     let client = self.http_client.clone();
     let file_fetcher = self.clone();
     // A single pass of fetch either yields code or yields a redirect.
@@ -487,7 +486,7 @@ impl FileFetcher {
           file_fetcher
             .fetch_remote(
               &redirect_url,
-              &mut permissions,
+              permissions,
               redirect_limit - 1,
               maybe_accept,
             )
@@ -525,7 +524,7 @@ impl FileFetcher {
       CacheSetting::ReloadSome(list) => {
         let mut url = specifier.clone();
         url.set_fragment(None);
-        if list.contains(&url.as_str().to_string()) {
+        if list.iter().any(|x| x == url.as_str()) {
           return false;
         }
         url.set_query(None);
@@ -547,7 +546,7 @@ impl FileFetcher {
   pub async fn fetch(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &mut Permissions,
+    permissions: PermissionsContainer,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
     self.fetch_with_accept(specifier, permissions, None).await
@@ -556,7 +555,7 @@ impl FileFetcher {
   pub async fn fetch_with_accept(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &mut Permissions,
+    permissions: PermissionsContainer,
     maybe_accept: Option<&str>,
   ) -> Result<File, AnyError> {
     let scheme = get_validated_scheme(specifier)?;
@@ -797,7 +796,7 @@ mod tests {
   async fn test_fetch(specifier: &ModuleSpecifier) -> (File, FileFetcher) {
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result = file_fetcher
-      .fetch(specifier, &mut Permissions::allow_all())
+      .fetch(specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     (result.unwrap(), file_fetcher)
@@ -809,7 +808,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
-      .fetch_remote(specifier, &mut Permissions::allow_all(), 1, None)
+      .fetch_remote(specifier, PermissionsContainer::allow_all(), 1, None)
       .await;
     assert!(result.is_ok());
     let (_, headers, _) = file_fetcher.http_cache.get(specifier).unwrap();
@@ -1053,7 +1052,7 @@ mod tests {
     file_fetcher.insert_cached(file.clone());
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let result_file = result.unwrap();
@@ -1069,7 +1068,7 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1098,7 +1097,7 @@ mod tests {
     let specifier = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1130,7 +1129,7 @@ mod tests {
     );
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1153,7 +1152,7 @@ mod tests {
       resolve_url_or_path("http://localhost:4545/subdir/mod2.ts").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1175,7 +1174,7 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1196,7 +1195,7 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result = file_fetcher_02
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1219,7 +1218,7 @@ mod tests {
     )
     .unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1252,7 +1251,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1271,7 +1270,7 @@ mod tests {
     )
     .unwrap();
     let result = file_fetcher_02
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1303,7 +1302,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1356,7 +1355,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1422,7 +1421,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1442,7 +1441,7 @@ mod tests {
     )
     .unwrap();
     let result = file_fetcher_02
-      .fetch(&redirected_specifier, &mut Permissions::allow_all())
+      .fetch(&redirected_specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1464,12 +1463,12 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &mut Permissions::allow_all(), 2, None)
+      .fetch_remote(&specifier, PermissionsContainer::allow_all(), 2, None)
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &mut Permissions::allow_all(), 1, None)
+      .fetch_remote(&specifier, PermissionsContainer::allow_all(), 1, None)
       .await;
     assert!(result.is_err());
 
@@ -1501,7 +1500,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1545,7 +1544,7 @@ mod tests {
       resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1580,7 +1579,7 @@ mod tests {
       resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1588,12 +1587,12 @@ mod tests {
     assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified.");
 
     let result = file_fetcher_02
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher_01
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
   }
@@ -1606,7 +1605,7 @@ mod tests {
       resolve_url_or_path(&fixture_path.to_string_lossy()).unwrap();
     fs::write(fixture_path.clone(), r#"console.log("hello deno");"#).unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1614,7 +1613,7 @@ mod tests {
 
     fs::write(fixture_path, r#"console.log("goodbye deno");"#).unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1630,7 +1629,7 @@ mod tests {
     let specifier =
       ModuleSpecifier::parse("http://localhost:4545/dynamic").unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1639,7 +1638,7 @@ mod tests {
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1657,7 +1656,7 @@ mod tests {
     let specifier =
       ModuleSpecifier::parse("http://localhost:4545/dynamic_cache").unwrap();
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1666,7 +1665,7 @@ mod tests {
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let result = file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::TsConfig;
 use crate::graph_util::GraphData;
@@ -25,6 +25,7 @@ use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_v8;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
@@ -33,6 +34,7 @@ use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::Resolved;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -47,28 +49,6 @@ pub use self::diagnostics::DiagnosticCategory;
 pub use self::diagnostics::DiagnosticMessageChain;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
-
-// Declaration files
-
-pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
-pub static DENO_CONSOLE_LIB: &str = include_str!(env!("DENO_CONSOLE_LIB_PATH"));
-pub static DENO_URL_LIB: &str = include_str!(env!("DENO_URL_LIB_PATH"));
-pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
-pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
-pub static DENO_WEBGPU_LIB: &str = include_str!(env!("DENO_WEBGPU_LIB_PATH"));
-pub static DENO_WEBSOCKET_LIB: &str =
-  include_str!(env!("DENO_WEBSOCKET_LIB_PATH"));
-pub static DENO_WEBSTORAGE_LIB: &str =
-  include_str!(env!("DENO_WEBSTORAGE_LIB_PATH"));
-pub static DENO_CACHE_LIB: &str = include_str!(env!("DENO_CACHE_LIB_PATH"));
-pub static DENO_CRYPTO_LIB: &str = include_str!(env!("DENO_CRYPTO_LIB_PATH"));
-pub static DENO_BROADCAST_CHANNEL_LIB: &str =
-  include_str!(env!("DENO_BROADCAST_CHANNEL_LIB_PATH"));
-pub static DENO_NET_LIB: &str = include_str!(env!("DENO_NET_LIB_PATH"));
-pub static SHARED_GLOBALS_LIB: &str =
-  include_str!("dts/lib.deno.shared_globals.d.ts");
-pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
-pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
 
 pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   #[cold]
@@ -88,28 +68,57 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
 );
 
 pub fn get_types_declaration_file_text(unstable: bool) -> String {
-  let mut types = vec![
-    DENO_NS_LIB,
-    DENO_CONSOLE_LIB,
-    DENO_URL_LIB,
-    DENO_WEB_LIB,
-    DENO_FETCH_LIB,
-    DENO_WEBGPU_LIB,
-    DENO_WEBSOCKET_LIB,
-    DENO_WEBSTORAGE_LIB,
-    DENO_CRYPTO_LIB,
-    DENO_BROADCAST_CHANNEL_LIB,
-    DENO_NET_LIB,
-    SHARED_GLOBALS_LIB,
-    DENO_CACHE_LIB,
-    WINDOW_LIB,
+  let mut assets = get_asset_texts_from_new_runtime()
+    .unwrap()
+    .into_iter()
+    .map(|a| (a.specifier, a.text))
+    .collect::<HashMap<_, _>>();
+
+  let mut lib_names = vec![
+    "deno.ns",
+    "deno.console",
+    "deno.url",
+    "deno.web",
+    "deno.fetch",
+    "deno.webgpu",
+    "deno.websocket",
+    "deno.webstorage",
+    "deno.crypto",
+    "deno.broadcast_channel",
+    "deno.net",
+    "deno.shared_globals",
+    "deno.cache",
+    "deno.window",
   ];
 
   if unstable {
-    types.push(UNSTABLE_NS_LIB);
+    lib_names.push("deno.unstable");
   }
 
-  types.join("\n")
+  lib_names
+    .into_iter()
+    .map(|name| {
+      let asset_url = format!("asset:///lib.{}.d.ts", name);
+      assets.remove(&asset_url).unwrap()
+    })
+    .collect::<Vec<_>>()
+    .join("\n")
+}
+
+fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
+  // the assets are stored within the typescript isolate, so take them out of there
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(compiler_snapshot()),
+    extensions: vec![Extension::builder("deno_cli_tsc")
+      .ops(get_tsc_ops())
+      .build()],
+    ..Default::default()
+  });
+  let global =
+    runtime.execute_script("get_assets.js", "globalThis.getAssets()")?;
+  let scope = &mut runtime.handle_scope();
+  let local = deno_core::v8::Local::new(scope, global);
+  Ok(serde_v8::from_v8::<Vec<AssetText>>(scope, local)?)
 }
 
 pub fn compiler_snapshot() -> Snapshot {
@@ -123,40 +132,44 @@ macro_rules! inc {
 }
 
 /// Contains static assets that are not preloaded in the compiler snapshot.
-pub static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
-  Lazy::new(|| {
-    ([
-      (
-        "lib.dom.asynciterable.d.ts",
-        inc!("lib.dom.asynciterable.d.ts"),
-      ),
-      ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
-      ("lib.dom.extras.d.ts", inc!("lib.dom.extras.d.ts")),
-      ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
-      ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
-      ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
-      ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
-      ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
-      ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
-      ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
-      ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
-      ("lib.es2022.full.d.ts", inc!("lib.es2022.full.d.ts")),
-      ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
-      ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
-      ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
-      (
-        "lib.webworker.importscripts.d.ts",
-        inc!("lib.webworker.importscripts.d.ts"),
-      ),
-      (
-        "lib.webworker.iterable.d.ts",
-        inc!("lib.webworker.iterable.d.ts"),
-      ),
-    ])
-    .iter()
-    .cloned()
-    .collect()
-  });
+///
+/// We lazily load these because putting them in the compiler snapshot will
+/// increase memory usage when not used (last time checked by about 0.5MB).
+pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
+  HashMap<&'static str, &'static str>,
+> = Lazy::new(|| {
+  ([
+    (
+      "lib.dom.asynciterable.d.ts",
+      inc!("lib.dom.asynciterable.d.ts"),
+    ),
+    ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
+    ("lib.dom.extras.d.ts", inc!("lib.dom.extras.d.ts")),
+    ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
+    ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
+    ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
+    ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
+    ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
+    ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
+    ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
+    ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
+    ("lib.es2022.full.d.ts", inc!("lib.es2022.full.d.ts")),
+    ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
+    ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
+    ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
+    (
+      "lib.webworker.importscripts.d.ts",
+      inc!("lib.webworker.importscripts.d.ts"),
+    ),
+    (
+      "lib.webworker.iterable.d.ts",
+      inc!("lib.webworker.iterable.d.ts"),
+    ),
+  ])
+  .iter()
+  .cloned()
+  .collect()
+});
 
 /// A structure representing stats from a type check operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -192,9 +205,16 @@ impl fmt::Display for Stats {
   }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetText {
+  pub specifier: String,
+  pub text: String,
+}
+
 /// Retrieve a static asset that are included in the binary.
-pub fn get_asset(asset: &str) -> Option<&'static str> {
-  STATIC_ASSETS.get(asset).map(|s| s.to_owned())
+fn get_lazily_loaded_asset(asset: &str) -> Option<&'static str> {
+  LAZILY_LOADED_STATIC_ASSETS.get(asset).map(|s| s.to_owned())
 }
 
 fn get_maybe_hash(
@@ -500,9 +520,8 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     hash = Some("1".to_string());
     media_type = MediaType::Dts;
     Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
-  } else if v.specifier.starts_with("asset:///") {
-    let name = v.specifier.replace("asset:///", "");
-    let maybe_source = get_asset(&name);
+  } else if let Some(name) = v.specifier.strip_prefix("asset:///") {
+    let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, &state.hash_data);
     media_type = MediaType::from(&v.specifier);
     maybe_source.map(Cow::Borrowed)
@@ -510,28 +529,28 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     let specifier = if let Some(remapped_specifier) =
       state.remapped_specifiers.get(&v.specifier)
     {
-      remapped_specifier.clone()
+      remapped_specifier
     } else if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
-      remapped_specifier.clone()
+      remapped_specifier
     } else {
-      specifier
+      &specifier
     };
     let maybe_source = if let Some(ModuleEntry::Module {
       code,
       media_type: mt,
       ..
     }) =
-      graph_data.get(&graph_data.follow_redirect(&specifier))
+      graph_data.get(&graph_data.follow_redirect(specifier))
     {
       media_type = *mt;
       Some(Cow::Borrowed(code as &str))
     } else if state
       .maybe_npm_resolver
       .as_ref()
-      .map(|resolver| resolver.in_npm_package(&specifier))
+      .map(|resolver| resolver.in_npm_package(specifier))
       .unwrap_or(false)
     {
-      media_type = MediaType::from(&specifier);
+      media_type = MediaType::from(specifier);
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path)
         .with_context(|| format!("Unable to load {}", file_path.display()))?;
@@ -647,6 +666,7 @@ fn op_resolve(
                   &referrer,
                   NodeResolutionMode::Types,
                   npm_resolver,
+                  &mut PermissionsContainer::allow_all(),
                 )
                 .ok()
                 .flatten(),
@@ -703,6 +723,7 @@ pub fn resolve_npm_package_reference_types(
     npm_ref,
     NodeResolutionMode::Types,
     npm_resolver,
+    &mut PermissionsContainer::allow_all(),
   )?;
   Ok(NodeResolution::into_specifier_and_media_type(
     maybe_resolution,
@@ -770,17 +791,8 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .collect();
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
-    extensions: vec![Extension::builder()
-      .ops(vec![
-        op_cwd::decl(),
-        op_create_hash::decl(),
-        op_emit::decl(),
-        op_exists::decl(),
-        op_is_node_file::decl(),
-        op_load::decl(),
-        op_resolve::decl(),
-        op_respond::decl(),
-      ])
+    extensions: vec![Extension::builder("deno_cli_tsc")
+      .ops(get_tsc_ops())
       .state(move |state| {
         state.put(State::new(
           request.graph_data.clone(),
@@ -828,6 +840,19 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   } else {
     Err(anyhow!("The response for the exec request was not set."))
   }
+}
+
+fn get_tsc_ops() -> Vec<deno_core::OpDecl> {
+  vec![
+    op_cwd::decl(),
+    op_create_hash::decl(),
+    op_emit::decl(),
+    op_exists::decl(),
+    op_is_node_file::decl(),
+    op_load::decl(),
+    op_resolve::decl(),
+    op_respond::decl(),
+  ]
 }
 
 #[cfg(test)]
@@ -1086,7 +1111,7 @@ mod tests {
     .expect("should have invoked op");
     let actual: LoadResponse =
       serde_json::from_value(value).expect("failed to deserialize");
-    let expected = get_asset("lib.dom.d.ts").unwrap();
+    let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
     assert_eq!(actual.data, expected);
     assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
