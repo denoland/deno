@@ -351,7 +351,8 @@ impl JsRuntime {
     DENO_INIT.call_once(move || v8_init(v8_platform, options.will_snapshot));
 
     // Add builtins extension
-    if options.startup_snapshot.is_none() {
+    let has_startup_snapshot = options.startup_snapshot.is_some();
+    if !has_startup_snapshot {
       options
         .extensions_with_js
         .insert(0, crate::ops_builtin::init_builtins());
@@ -513,7 +514,7 @@ impl JsRuntime {
           bindings::initialize_context(scope, &op_ctxs, snapshot_options);
 
         // Get module map data from the snapshot
-        {
+        if has_startup_snapshot {
           fn data_error_to_panic(err: v8::DataError) {
             match err {
               v8::DataError::BadType { actual, expected } => {
