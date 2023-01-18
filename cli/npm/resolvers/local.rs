@@ -19,6 +19,7 @@ use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_runtime::deno_core::futures;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use tokio::task::JoinHandle;
@@ -245,8 +246,16 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     .boxed()
   }
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
-    ensure_registry_read_permission(&self.root_node_modules_path, path)
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    ensure_registry_read_permission(
+      permissions,
+      &self.root_node_modules_path,
+      path,
+    )
   }
 
   fn snapshot(&self) -> NpmResolutionSnapshot {
@@ -254,7 +263,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
   }
 
   fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
-    self.resolution.lock(lockfile, &self.snapshot())
+    self.resolution.lock(lockfile)
   }
 }
 

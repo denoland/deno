@@ -193,7 +193,7 @@
     DATA_CLONE_ERR,
   });
   for (let i = 0; i < entries.length; ++i) {
-    const [key, value] = entries[i];
+    const { 0: key, 1: value } = entries[i];
     const desc = { value, enumerable: true };
     ObjectDefineProperty(DOMException, key, desc);
     ObjectDefineProperty(DOMException.prototype, key, desc);

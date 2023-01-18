@@ -58,16 +58,48 @@ declare namespace __bootstrap {
     export function uncurryThis<T extends (...args: unknown[]) => unknown>(
       fn: T,
     ): (self: ThisType<T>, ...args: Parameters<T>) => ReturnType<T>;
+    export function applyBind<T extends (...args: unknown[]) => unknown>(
+      fn: T,
+    ): (self: ThisType<T>, args: Parameters<T>) => ReturnType<T>;
+
+    // safe objects
     export function makeSafe<T extends NewableFunction>(
       unsafe: NewableFunction,
       safe: T,
     ): T;
+    export const SafeMap: typeof globalThis.Map;
+    export const SafeWeakMap: typeof globalThis.WeakMap;
+    export const SafeSet: typeof globalThis.Set;
+    export const SafeWeakSet: typeof globalThis.WeakSet;
+    export const SafeFinalizationRegistry:
+      typeof globalThis.FinalizationRegistry;
+    export const SafeWeakRef: typeof globalThis.WeakRef;
+    export const SafePromiseAll: typeof Promise.all;
+    export const SafePromisePrototypeFinally: UncurryThis<
+      Promise.prototype.finally
+    >;
 
+    // safe iterators
+    export const SafeArrayIterator: new <T>(array: T[]) => IterableIterator<T>;
+    export const SafeSetIterator: new <T>(set: Set<T>) => IterableIterator<T>;
+    export const SafeMapIterator: new <K, V>(
+      map: Map<K, V>,
+    ) => IterableIterator<[K, V]>;
+    export const SafeStringIterator: new (
+      str: string,
+    ) => IterableIterator<string>;
+
+    // intrinsic objects
+    export const indirectEval: typeof globalThis.eval;
     export const isNaN: typeof globalThis.isNaN;
     export const decodeURI: typeof globalThis.decodeURI;
     export const decodeURIComponent: typeof globalThis.decodeURIComponent;
     export const encodeURI: typeof globalThis.encodeURI;
     export const encodeURIComponent: typeof globalThis.encodeURIComponent;
+    export const queueMicrotask: typeof globalThis.queueMicrotask;
+    export const setQueueMicrotask: (
+      queueMicrotask: typeof globalThis.queueMicrotask,
+    ) => void;
     export const JSONParse: typeof JSON.parse;
     export const JSONStringify: typeof JSON.stringify;
     export const MathAbs: typeof Math.abs;
@@ -88,6 +120,7 @@ declare namespace __bootstrap {
     export const MathFloor: typeof Math.floor;
     export const MathFround: typeof Math.fround;
     export const MathHypot: typeof Math.hypot;
+    export const MathHypotApply: StaticApply<typeof Math.hypot>;
     export const MathImul: typeof Math.imul;
     export const MathLog: typeof Math.log;
     export const MathLog1p: typeof Math.log1p;
@@ -96,6 +129,7 @@ declare namespace __bootstrap {
     export const MathMax: typeof Math.max;
     export const MathMaxApply: StaticApply<typeof Math.max>;
     export const MathMin: typeof Math.min;
+    export const MathMinApply: StaticApply<typeof Math.min>;
     export const MathPow: typeof Math.pow;
     export const MathRandom: typeof Math.random;
     export const MathRound: typeof Math.round;
@@ -114,6 +148,10 @@ declare namespace __bootstrap {
     export const MathPI: typeof Math.PI;
     export const MathSQRT1_2: typeof Math.SQRT1_2;
     export const MathSQRT2: typeof Math.SQRT2;
+    export const Proxy: typeof globalThis.Proxy;
+    export const ProxyLength: typeof Proxy.length;
+    export const ProxyName: typeof Proxy.name;
+    export const ProxyRevocable: typeof Proxy.revocable;
     export const ReflectDefineProperty: typeof Reflect.defineProperty;
     export const ReflectDeleteProperty: typeof Reflect.deleteProperty;
     export const ReflectApply: typeof Reflect.apply;
@@ -139,6 +177,8 @@ declare namespace __bootstrap {
     export const ArrayIsArray: typeof Array.isArray;
     export const ArrayFrom: typeof Array.from;
     export const ArrayOf: typeof Array.of;
+    export const ArrayOfApply: StaticApply<typeof Array.of>;
+    export const ArrayPrototypeAt: UncurryThis<typeof Array.prototype.at>;
     export const ArrayPrototypeConcat: UncurryThis<
       typeof Array.prototype.concat
     >;
@@ -475,6 +515,17 @@ declare namespace __bootstrap {
     export const EvalErrorLength: typeof EvalError.length;
     export const EvalErrorName: typeof EvalError.name;
     export const EvalErrorPrototype: typeof EvalError.prototype;
+    export const FinalizationRegistry: typeof globalThis.FinalizationRegistry;
+    export const FinalizationRegistryLength: typeof FinalizationRegistry.length;
+    export const FinalizationRegistryName: typeof FinalizationRegistry.name;
+    export const FinalizationRegistryPrototype:
+      typeof FinalizationRegistry.prototype;
+    export const FinalizationRegistryPrototypeRegister: UncurryThis<
+      typeof FinalizationRegistry.prototype.registar
+    >;
+    export const FinalizationRegistryPrototypeUnregister: UncurryThis<
+      typeof FinalizationRegistry.prototype.unregister
+    >;
     export const Float32Array: typeof globalThis.Float32Array;
     export const Float32ArrayLength: typeof Float32Array.length;
     export const Float32ArrayName: typeof Float32Array.name;
@@ -627,7 +678,6 @@ declare namespace __bootstrap {
     export const ObjectPrototypeToLocaleString: UncurryThis<
       typeof Object.prototype.toLocaleString
     >;
-    export const queueMicrotask: typeof globalThis.queueMicrotask;
     export const RangeError: typeof globalThis.RangeError;
     export const RangeErrorLength: typeof RangeError.length;
     export const RangeErrorName: typeof RangeError.name;
@@ -685,6 +735,9 @@ declare namespace __bootstrap {
       typeof String.prototype.codePointAt
     >;
     export const StringPrototypeConcat: UncurryThis<
+      typeof String.prototype.concat
+    >;
+    export const StringPrototypeConcatApply: UncurryThisStaticApply<
       typeof String.prototype.concat
     >;
     export const StringPrototypeEndsWith: UncurryThis<
@@ -829,6 +882,99 @@ declare namespace __bootstrap {
     export const TypeErrorLength: typeof TypeError.length;
     export const TypeErrorName: typeof TypeError.name;
     export const TypeErrorPrototype: typeof TypeError.prototype;
+    export const URIError: typeof globalThis.URIError;
+    export const URIErrorLength: typeof URIError.length;
+    export const URIErrorName: typeof URIError.name;
+    export const URIErrorPrototype: typeof URIError.prototype;
+    export const Uint16Array: typeof globalThis.Uint16Array;
+    export const Uint16ArrayLength: typeof Uint16Array.length;
+    export const Uint16ArrayName: typeof Uint16Array.name;
+    export const Uint16ArrayPrototype: typeof Uint16Array.prototype;
+    export const Uint16ArrayBYTES_PER_ELEMENT:
+      typeof Uint16Array.BYTES_PER_ELEMENT;
+    export const Uint32Array: typeof globalThis.Uint32Array;
+    export const Uint32ArrayLength: typeof Uint32Array.length;
+    export const Uint32ArrayName: typeof Uint32Array.name;
+    export const Uint32ArrayPrototype: typeof Uint32Array.prototype;
+    export const Uint32ArrayBYTES_PER_ELEMENT:
+      typeof Uint32Array.BYTES_PER_ELEMENT;
+    export const Uint8Array: typeof globalThis.Uint8Array;
+    export const Uint8ArrayLength: typeof Uint8Array.length;
+    export const Uint8ArrayName: typeof Uint8Array.name;
+    export const Uint8ArrayPrototype: typeof Uint8Array.prototype;
+    export const Uint8ArrayBYTES_PER_ELEMENT:
+      typeof Uint8Array.BYTES_PER_ELEMENT;
+    export const Uint8ClampedArray: typeof globalThis.Uint8ClampedArray;
+    export const Uint8ClampedArrayLength: typeof Uint8ClampedArray.length;
+    export const Uint8ClampedArrayName: typeof Uint8ClampedArray.name;
+    export const Uint8ClampedArrayPrototype: typeof Uint8ClampedArray.prototype;
+    export const Uint8ClampedArrayBYTES_PER_ELEMENT:
+      typeof Uint8ClampedArray.BYTES_PER_ELEMENT;
+    export const WeakMap: typeof globalThis.WeakMap;
+    export const WeakMapLength: typeof WeakMap.length;
+    export const WeakMapName: typeof WeakMap.name;
+    export const WeakMapPrototype: typeof WeakMap.prototype;
+    export const WeakMapPrototypeDelete: UncurryThis<
+      typeof WeakMap.prototype.delete
+    >;
+    export const WeakMapPrototypeGet: UncurryThis<typeof WeakMap.prototype.get>;
+    export const WeakMapPrototypeSet: UncurryThis<typeof WeakMap.prototype.set>;
+    export const WeakMapPrototypeHas: UncurryThis<typeof WeakMap.prototype.has>;
+    export const WeakRef: typeof globalThis.WeakRef;
+    export const WeakRefLength: typeof WeakRef.length;
+    export const WeakRefName: typeof WeakRef.name;
+    export const WeakRefPrototype: typeof WeakRef.prototype;
+    export const WeakRefPrototypeDeref: UncurryThis<
+      typeof WeakRef.prototype.deref
+    >;
+    export const WeakSet: typeof globalThis.WeakSet;
+    export const WeakSetLength: typeof WeakSet.length;
+    export const WeakSetName: typeof WeakSet.name;
+    export const WeakSetPrototype: typeof WeakSet.prototype;
+    export const WeakSetPrototypeDelete: UncurryThis<
+      typeof WeakSet.prototype.delete
+    >;
+    export const WeakSetPrototypeHas: UncurryThis<typeof WeakSet.prototype.has>;
+    export const WeakSetPrototypeAdd: UncurryThis<typeof WeakSet.prototype.add>;
+    export const Promise: typeof globalThis.Promise;
+    export const PromiseLength: typeof Promise.length;
+    export const PromiseName: typeof Promise.name;
+    export const PromisePrototype: typeof Promise.prototype;
+    export const PromiseAll: typeof Promise.all;
+    export const PromiseRace: typeof Promise.race;
+    export const PromiseResolve: typeof Promise.resolve;
+    export const PromiseReject: typeof Promise.reject;
+    export const PromiseAllSettled: typeof Promise.allSettled;
+    export const PromiseAny: typeof Promise.any;
+    export const PromisePrototypeThen: UncurryThis<
+      typeof Promise.prototype.then
+    >;
+    export const PromisePrototypeCatch: UncurryThis<
+      typeof Promise.prototype.catch
+    >;
+    export const PromisePrototypeFinally: UncurryThis<
+      typeof Promise.prototype.finally
+    >;
+
+    // abstract intrinsic objects
+    export const ArrayIteratorPrototypeNext: <T>(
+      iterator: IterableIterator<T>,
+    ) => IteratorResult<T>;
+    export const SetIteratorPrototypeNext: <T>(
+      iterator: IterableIterator<T>,
+    ) => IteratorResult<T>;
+    export const MapIteratorPrototypeNext: <T>(
+      iterator: IterableIterator<T>,
+    ) => IteratorResult<T>;
+    export const StringIteratorPrototypeNext: <T>(
+      iterator: IterableIterator<T>,
+    ) => IteratorResult<T>;
+    export const GeneratorPrototypeNext: <T>(
+      generator: Generator<T>,
+    ) => IteratorResult<T>;
+    export const AsyncGeneratorPrototypeNext: <T>(
+      asyncGenerator: AsyncGenerator<T>,
+    ) => Promise<IteratorResult<T>>;
     export const TypedArrayFrom: (
       constructor: Uint8ArrayConstructor,
       arrayLike: ArrayLike<number>,
@@ -898,72 +1044,6 @@ declare namespace __bootstrap {
     >;
     export const TypedArrayPrototypeValueOf: UncurryThis<
       typeof Uint8Array.prototype.valueOf
-    >;
-    export const URIError: typeof globalThis.URIError;
-    export const URIErrorLength: typeof URIError.length;
-    export const URIErrorName: typeof URIError.name;
-    export const URIErrorPrototype: typeof URIError.prototype;
-    export const Uint16Array: typeof globalThis.Uint16Array;
-    export const Uint16ArrayLength: typeof Uint16Array.length;
-    export const Uint16ArrayName: typeof Uint16Array.name;
-    export const Uint16ArrayPrototype: typeof Uint16Array.prototype;
-    export const Uint16ArrayBYTES_PER_ELEMENT:
-      typeof Uint16Array.BYTES_PER_ELEMENT;
-    export const Uint32Array: typeof globalThis.Uint32Array;
-    export const Uint32ArrayLength: typeof Uint32Array.length;
-    export const Uint32ArrayName: typeof Uint32Array.name;
-    export const Uint32ArrayPrototype: typeof Uint32Array.prototype;
-    export const Uint32ArrayBYTES_PER_ELEMENT:
-      typeof Uint32Array.BYTES_PER_ELEMENT;
-    export const Uint8Array: typeof globalThis.Uint8Array;
-    export const Uint8ArrayLength: typeof Uint8Array.length;
-    export const Uint8ArrayName: typeof Uint8Array.name;
-    export const Uint8ArrayPrototype: typeof Uint8Array.prototype;
-    export const Uint8ArrayBYTES_PER_ELEMENT:
-      typeof Uint8Array.BYTES_PER_ELEMENT;
-    export const Uint8ClampedArray: typeof globalThis.Uint8ClampedArray;
-    export const Uint8ClampedArrayLength: typeof Uint8ClampedArray.length;
-    export const Uint8ClampedArrayName: typeof Uint8ClampedArray.name;
-    export const Uint8ClampedArrayPrototype: typeof Uint8ClampedArray.prototype;
-    export const Uint8ClampedArrayBYTES_PER_ELEMENT:
-      typeof Uint8ClampedArray.BYTES_PER_ELEMENT;
-    export const WeakMap: typeof globalThis.WeakMap;
-    export const WeakMapLength: typeof WeakMap.length;
-    export const WeakMapName: typeof WeakMap.name;
-    export const WeakMapPrototype: typeof WeakMap.prototype;
-    export const WeakMapPrototypeDelete: UncurryThis<
-      typeof WeakMap.prototype.delete
-    >;
-    export const WeakMapPrototypeGet: UncurryThis<typeof WeakMap.prototype.get>;
-    export const WeakMapPrototypeSet: UncurryThis<typeof WeakMap.prototype.set>;
-    export const WeakMapPrototypeHas: UncurryThis<typeof WeakMap.prototype.has>;
-    export const WeakSet: typeof globalThis.WeakSet;
-    export const WeakSetLength: typeof WeakSet.length;
-    export const WeakSetName: typeof WeakSet.name;
-    export const WeakSetPrototype: typeof WeakSet.prototype;
-    export const WeakSetPrototypeDelete: UncurryThis<
-      typeof WeakSet.prototype.delete
-    >;
-    export const WeakSetPrototypeHas: UncurryThis<typeof WeakSet.prototype.has>;
-    export const WeakSetPrototypeAdd: UncurryThis<typeof WeakSet.prototype.add>;
-    export const Promise: typeof globalThis.Promise;
-    export const PromiseLength: typeof Promise.length;
-    export const PromiseName: typeof Promise.name;
-    export const PromisePrototype: typeof Promise.prototype;
-    export const PromiseAll: typeof Promise.all;
-    export const PromiseRace: typeof Promise.race;
-    export const PromiseResolve: typeof Promise.resolve;
-    export const PromiseReject: typeof Promise.reject;
-    export const PromiseAllSettled: typeof Promise.allSettled;
-    export const PromiseAny: typeof Promise.any;
-    export const PromisePrototypeThen: UncurryThis<
-      typeof Promise.prototype.then
-    >;
-    export const PromisePrototypeCatch: UncurryThis<
-      typeof Promise.prototype.catch
-    >;
-    export const PromisePrototypeFinally: UncurryThis<
-      typeof Promise.prototype.finally
     >;
   }
 }

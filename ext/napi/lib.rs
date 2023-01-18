@@ -18,6 +18,9 @@ use std::cell::RefCell;
 use std::ffi::CString;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
 use std::task::Poll;
 use std::thread_local;
 
@@ -121,6 +124,38 @@ pub enum Error {
   ArrayBufferExpected,
   DetachableArraybufferExpected,
   WouldDeadlock,
+}
+
+#[allow(clippy::from_over_into)]
+impl Into<Error> for napi_status {
+  fn into(self) -> Error {
+    match self {
+      napi_invalid_arg => Error::InvalidArg,
+      napi_object_expected => Error::ObjectExpected,
+      napi_string_expected => Error::StringExpected,
+      napi_name_expected => Error::NameExpected,
+      napi_function_expected => Error::FunctionExpected,
+      napi_number_expected => Error::NumberExpected,
+      napi_boolean_expected => Error::BooleanExpected,
+      napi_array_expected => Error::ArrayExpected,
+      napi_generic_failure => Error::GenericFailure,
+      napi_pending_exception => Error::PendingException,
+      napi_cancelled => Error::Cancelled,
+      napi_escape_called_twice => Error::EscapeCalledTwice,
+      napi_handle_scope_mismatch => Error::HandleScopeMismatch,
+      napi_callback_scope_mismatch => Error::CallbackScopeMismatch,
+      napi_queue_full => Error::QueueFull,
+      napi_closing => Error::Closing,
+      napi_bigint_expected => Error::BigIntExpected,
+      napi_date_expected => Error::DateExpected,
+      napi_arraybuffer_expected => Error::ArrayBufferExpected,
+      napi_detachable_arraybuffer_expected => {
+        Error::DetachableArraybufferExpected
+      }
+      napi_would_deadlock => Error::WouldDeadlock,
+      _ => unreachable!(),
+    }
+  }
 }
 
 pub type Result = std::result::Result<(), Error>;
@@ -276,7 +311,7 @@ pub struct napi_extended_error_info {
   pub error_message: *const c_char,
   pub engine_reserved: *mut c_void,
   pub engine_error_code: i32,
-  pub status_code: napi_status,
+  pub error_code: napi_status,
 }
 
 #[repr(C)]
@@ -289,7 +324,7 @@ pub struct napi_node_version {
 }
 
 pub type PendingNapiAsyncWork = Box<dyn FnOnce()>;
-
+pub type ThreadsafeFunctionRefCounters = Vec<(usize, Arc<AtomicUsize>)>;
 pub struct NapiState {
   // Async tasks.
   pub pending_async_work: Vec<PendingNapiAsyncWork>,
@@ -301,8 +336,42 @@ pub struct NapiState {
     mpsc::UnboundedReceiver<ThreadSafeFunctionStatus>,
   pub threadsafe_function_sender:
     mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
+  pub env_cleanup_hooks:
+    Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
+  pub tsfn_ref_counters: Rc<RefCell<ThreadsafeFunctionRefCounters>>,
 }
 
+impl Drop for NapiState {
+  fn drop(&mut self) {
+    let hooks = {
+      let h = self.env_cleanup_hooks.borrow_mut();
+      h.clone()
+    };
+
+    // Hooks are supposed to be run in LIFO order
+    let hooks_to_run = hooks.into_iter().rev();
+
+    for hook in hooks_to_run {
+      // This hook might have been removed by a previous hook, in such case skip it here.
+      if !self
+        .env_cleanup_hooks
+        .borrow()
+        .iter()
+        .any(|pair| pair.0 == hook.0 && pair.1 == hook.1)
+      {
+        continue;
+      }
+
+      (hook.0)(hook.1);
+      {
+        self
+          .env_cleanup_hooks
+          .borrow_mut()
+          .retain(|pair| !(pair.0 == hook.0 && pair.1 == hook.1));
+      }
+    }
+  }
+}
 #[repr(C)]
 #[derive(Debug)]
 /// Env that is shared between all contexts in same native module.
@@ -344,6 +413,10 @@ pub struct Env {
   pub async_work_sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   pub threadsafe_function_sender:
     mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
+  pub cleanup_hooks:
+    Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
+  pub tsfn_ref_counters: Rc<RefCell<ThreadsafeFunctionRefCounters>>,
+  pub last_error: napi_extended_error_info,
 }
 
 unsafe impl Send for Env {}
@@ -355,6 +428,10 @@ impl Env {
     context: v8::Global<v8::Context>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
     threadsafe_function_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
+    cleanup_hooks: Rc<
+      RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>,
+    >,
+    tsfn_ref_counters: Rc<RefCell<ThreadsafeFunctionRefCounters>>,
   ) -> Self {
     let sc = sender.clone();
     ASYNC_WORK_SENDER.with(|s| {
@@ -372,6 +449,14 @@ impl Env {
       open_handle_scopes: 0,
       async_work_sender: sender,
       threadsafe_function_sender,
+      cleanup_hooks,
+      tsfn_ref_counters,
+      last_error: napi_extended_error_info {
+        error_message: std::ptr::null(),
+        engine_reserved: std::ptr::null_mut(),
+        engine_error_code: 0,
+        error_code: napi_ok,
+      },
     }
   }
 
@@ -407,10 +492,26 @@ impl Env {
     // using `napi_open_handle_scope`.
     unsafe { v8::CallbackScope::new(context) }
   }
+
+  pub fn add_threadsafe_function_ref_counter(
+    &mut self,
+    id: usize,
+    counter: Arc<AtomicUsize>,
+  ) {
+    let mut counters = self.tsfn_ref_counters.borrow_mut();
+    assert!(!counters.iter().any(|(i, _)| *i == id));
+    counters.push((id, counter));
+  }
+
+  pub fn remove_threadsafe_function_ref_counter(&mut self, id: usize) {
+    let mut counters = self.tsfn_ref_counters.borrow_mut();
+    let index = counters.iter().position(|(i, _)| *i == id).unwrap();
+    counters.remove(index);
+  }
 }
 
 pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
     .ops(vec![op_napi_open::decl::<P>()])
     .event_loop_middleware(|op_state_rc, cx| {
       // `work` can call back into the runtime. It can also schedule an async task
@@ -428,21 +529,15 @@ pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
           napi_state.pending_async_work.push(async_work_fut);
         }
 
-        while let Poll::Ready(Some(tsfn_status)) =
-          napi_state.threadsafe_function_receiver.poll_next_unpin(cx)
-        {
-          match tsfn_status {
-            ThreadSafeFunctionStatus::Alive => {
-              napi_state.active_threadsafe_functions += 1
-            }
-            ThreadSafeFunctionStatus::Dead => {
-              napi_state.active_threadsafe_functions -= 1
-            }
-          };
-        }
-
         if napi_state.active_threadsafe_functions > 0 {
           maybe_scheduling = true;
+        }
+
+        for (_id, counter) in napi_state.tsfn_ref_counters.borrow().iter() {
+          if counter.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+            maybe_scheduling = true;
+            break;
+          }
         }
       }
 
@@ -475,6 +570,8 @@ pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
         threadsafe_function_sender,
         threadsafe_function_receiver,
         active_threadsafe_functions: 0,
+        env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
+        tsfn_ref_counters: Rc::new(RefCell::new(vec![])),
       });
       state.put(Unstable(unstable));
       Ok(())
@@ -511,13 +608,21 @@ where
   let permissions = op_state.borrow_mut::<NP>();
   permissions.check(Some(&PathBuf::from(&path)))?;
 
-  let (async_work_sender, tsfn_sender, isolate_ptr) = {
+  let (
+    async_work_sender,
+    tsfn_sender,
+    isolate_ptr,
+    cleanup_hooks,
+    tsfn_ref_counters,
+  ) = {
     let napi_state = op_state.borrow::<NapiState>();
     let isolate_ptr = op_state.borrow::<*mut v8::OwnedIsolate>();
     (
       napi_state.async_work_sender.clone(),
       napi_state.threadsafe_function_sender.clone(),
       *isolate_ptr,
+      napi_state.env_cleanup_hooks.clone(),
+      napi_state.tsfn_ref_counters.clone(),
     )
   };
 
@@ -539,6 +644,8 @@ where
     v8::Global::new(scope, ctx),
     async_work_sender,
     tsfn_sender,
+    cleanup_hooks,
+    tsfn_ref_counters,
   );
   env.shared = Box::into_raw(Box::new(env_shared));
   let env_ptr = Box::into_raw(Box::new(env)) as _;
@@ -603,6 +710,7 @@ where
             ),
           )
         };
+
         Ok(serde_v8::Value {
           v8_value: exports.into(),
         })

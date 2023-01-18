@@ -367,16 +367,16 @@
     }
 
     #updateComponents() {
-      [
-        this.#schemeEnd,
-        this.#usernameEnd,
-        this.#hostStart,
-        this.#hostEnd,
-        this.#port,
-        this.#pathStart,
-        this.#queryStart,
-        this.#fragmentStart,
-      ] = componentsBuf;
+      ({
+        0: this.#schemeEnd,
+        1: this.#usernameEnd,
+        2: this.#hostStart,
+        3: this.#hostEnd,
+        4: this.#port,
+        5: this.#pathStart,
+        6: this.#queryStart,
+        7: this.#fragmentStart,
+      } = componentsBuf);
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {

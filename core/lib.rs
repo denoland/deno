@@ -37,6 +37,8 @@ pub use sourcemap;
 pub use url;
 pub use v8;
 
+pub use deno_ops::op;
+
 pub use crate::async_cancel::CancelFuture;
 pub use crate::async_cancel::CancelHandle;
 pub use crate::async_cancel::CancelTryFuture;
@@ -77,6 +79,7 @@ pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::ModuleType;
 pub use crate::modules::NoopModuleLoader;
+pub use crate::modules::ResolutionKind;
 pub use crate::normalize_path::normalize_path;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
@@ -109,13 +112,12 @@ pub use crate::runtime::Snapshot;
 pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
 pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
 pub use crate::source_map::SourceMapGetter;
-pub use deno_ops::op;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()
 }
 
-/// An internal module re-exporting funcs used by the #[op] (`deno_ops`) macro
+/// An internal module re-exporting functions used by the #[op] (`deno_ops`) macro
 #[doc(hidden)]
 pub mod _ops {
   pub use super::bindings::throw_type_error;

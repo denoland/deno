@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -27,7 +29,7 @@ use deno_net::io::UnixStreamResource;
 use tokio::net::UnixStream;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_http_runtime")
     .ops(vec![
       op_http_start::decl(),
       op_http_upgrade::decl(),

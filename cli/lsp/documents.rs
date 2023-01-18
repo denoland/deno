@@ -33,6 +33,7 @@ use deno_core::ModuleSpecifier;
 use deno_graph::GraphImport;
 use deno_graph::Resolved;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -51,15 +52,13 @@ static JS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     "content-type".to_string(),
     "application/javascript".to_string(),
   )])
-  .iter()
-  .cloned()
+  .into_iter()
   .collect()
 });
 
 static JSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
   ([("content-type".to_string(), "text/jsx".to_string())])
-    .iter()
-    .cloned()
+    .into_iter()
     .collect()
 });
 
@@ -68,15 +67,13 @@ static TS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     "content-type".to_string(),
     "application/typescript".to_string(),
   )])
-  .iter()
-  .cloned()
+  .into_iter()
   .collect()
 });
 
 static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
   ([("content-type".to_string(), "text/tsx".to_string())])
-    .iter()
-    .cloned()
+    .into_iter()
     .collect()
 });
 
@@ -1004,6 +1001,7 @@ impl Documents {
               referrer,
               NodeResolutionMode::Types,
               npm_resolver,
+              &mut PermissionsContainer::allow_all(),
             )
             .ok()
             .flatten(),
@@ -1040,6 +1038,7 @@ impl Documents {
               &npm_ref,
               NodeResolutionMode::Types,
               npm_resolver,
+              &mut PermissionsContainer::allow_all(),
             )
             .ok()
             .flatten(),
@@ -1208,6 +1207,7 @@ impl Documents {
             &npm_ref,
             NodeResolutionMode::Types,
             npm_resolver,
+            &mut PermissionsContainer::allow_all(),
           )
           .ok()
           .flatten(),
