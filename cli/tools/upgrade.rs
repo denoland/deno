@@ -162,6 +162,14 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
   }
 }
 
+fn get_minor_version(version: &str) -> &str {
+  version.rsplitn(2, ".").collect::<Vec<&str>>()[1]
+}
+
+fn has_same_minor_version(current_version: &str, new_version: &str) -> bool {
+  get_minor_version(current_version) == get_minor_version(new_version)
+}
+
 pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
   if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
     return;
@@ -210,8 +218,15 @@ pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
           colors::yellow(
             "Release notes: https://github.com/denoland/deno/releases/tag/v"
           ),
-          colors::yellow(upgrade_version),
+          colors::yellow(&upgrade_version),
         );
+        if !has_same_minor_version(&version::deno(), &upgrade_version) {
+          eprint!(
+            "{}{}",
+            colors::yellow("Blog post: https://deno.com/blog/v"),
+            colors::yellow(get_minor_version(&upgrade_version)),
+          );
+        }
       }
 
       update_checker.store_prompted();
@@ -302,6 +317,11 @@ pub async fn upgrade(
           "Release notes: https://github.com/denoland/deno/releases/tag/v",
           crate::version::deno(),
         );
+        log::info!(
+          "{}{}",
+          "Blog post: https://deno.com/blog/v",
+          get_minor_version(&crate::version::deno())
+        );
         return Ok(());
       } else {
         passed_version
@@ -344,6 +364,11 @@ pub async fn upgrade(
             "{}{}",
             "Release notes: https://github.com/denoland/deno/releases/tag/v",
             crate::version::deno(),
+          );
+          log::info!(
+            "{}{}",
+            "Blog post: https://deno.com/blog/v",
+            get_minor_version(&crate::version::deno())
           );
         }
         return Ok(());
@@ -388,6 +413,11 @@ pub async fn upgrade(
       "Release notes: https://github.com/denoland/deno/releases/tag/v",
       install_version,
     );
+    log::info!(
+      "{}{}",
+      "Blog post: https://deno.com/blog/v",
+      get_minor_version(&install_version)
+    );
   } else {
     let output_exe_path =
       upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
@@ -423,6 +453,11 @@ pub async fn upgrade(
       "{}{}",
       "Release notes: https://github.com/denoland/deno/releases/tag/v",
       &install_version,
+    );
+    log::info!(
+      "{}{}",
+      "Blog post: https://deno.com/blog/v",
+      get_minor_version(&install_version)
     );
   }
 
