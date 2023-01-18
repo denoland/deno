@@ -163,7 +163,7 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
 }
 
 fn get_minor_version(version: &str) -> &str {
-  version.rsplitn(2, ".").collect::<Vec<&str>>()[1]
+  version.rsplitn(2, '.').collect::<Vec<&str>>()[1]
 }
 
 fn has_same_minor_version(current_version: &str, new_version: &str) -> bool {
