@@ -50,9 +50,9 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_apply_source_map::decl(),
     op_set_format_exception_callback::decl(),
     op_event_loop_has_more_work::decl(),
-    op_store_pending_promise_exception::decl(),
-    op_remove_pending_promise_exception::decl(),
-    op_has_pending_promise_exception::decl(),
+    op_store_pending_promise_rejection::decl(),
+    op_remove_pending_promise_rejection::decl(),
+    op_has_pending_promise_rejection::decl(),
     op_arraybuffer_was_detached::decl(),
   ]
 }
@@ -859,7 +859,7 @@ fn op_event_loop_has_more_work(scope: &mut v8::HandleScope) -> bool {
 }
 
 #[op(v8)]
-fn op_store_pending_promise_exception<'a>(
+fn op_store_pending_promise_rejection<'a>(
   scope: &mut v8::HandleScope<'a>,
   promise: serde_v8::Value<'a>,
   reason: serde_v8::Value<'a>,
@@ -871,12 +871,12 @@ fn op_store_pending_promise_exception<'a>(
   let promise_global = v8::Global::new(scope, promise_value);
   let error_global = v8::Global::new(scope, reason.v8_value);
   state
-    .pending_promise_exceptions
+    .pending_promise_rejections
     .insert(promise_global, error_global);
 }
 
 #[op(v8)]
-fn op_remove_pending_promise_exception<'a>(
+fn op_remove_pending_promise_rejection<'a>(
   scope: &mut v8::HandleScope<'a>,
   promise: serde_v8::Value<'a>,
 ) {
@@ -885,11 +885,11 @@ fn op_remove_pending_promise_exception<'a>(
   let promise_value =
     v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
   let promise_global = v8::Global::new(scope, promise_value);
-  state.pending_promise_exceptions.remove(&promise_global);
+  state.pending_promise_rejections.remove(&promise_global);
 }
 
 #[op(v8)]
-fn op_has_pending_promise_exception<'a>(
+fn op_has_pending_promise_rejection<'a>(
   scope: &mut v8::HandleScope<'a>,
   promise: serde_v8::Value<'a>,
 ) -> bool {
@@ -899,7 +899,7 @@ fn op_has_pending_promise_exception<'a>(
     v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
   let promise_global = v8::Global::new(scope, promise_value);
   state
-    .pending_promise_exceptions
+    .pending_promise_rejections
     .contains_key(&promise_global)
 }
 
