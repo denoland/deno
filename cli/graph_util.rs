@@ -219,9 +219,16 @@ impl GraphData {
         continue; // skip analyzing npm specifiers
       }
 
+      if specifier.as_str().starts_with("node:") {
+        continue; // skip analyzing node builtins
+      }
+
       let (specifier, entry) = match self.modules.get_key_value(specifier) {
         Some(pair) => pair,
-        None => return None,
+        None => {
+          eprintln!("unknown specifier: {}", specifier);
+          return None;
+        }
       };
       result.insert(specifier, entry);
       match entry {

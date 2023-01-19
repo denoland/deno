@@ -69,6 +69,10 @@ impl Loader for FetchCacher {
       return None;
     }
 
+    if specifier.scheme() == "node" {
+      return None;
+    }
+
     let local = self.file_fetcher.get_local_path(specifier)?;
     if local.is_file() {
       let emit = self

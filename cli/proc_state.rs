@@ -447,6 +447,7 @@ impl ProcState {
       )
     };
 
+    eprintln!("npm package reqs {:?}", npm_package_reqs);
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
       self.prepare_node_std_graph().await?;
