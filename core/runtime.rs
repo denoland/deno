@@ -2722,11 +2722,9 @@ pub mod tests {
   use std::ops::FnOnce;
   use std::pin::Pin;
   use std::rc::Rc;
-  use std::str::FromStr;
   use std::sync::atomic::AtomicUsize;
   use std::sync::atomic::Ordering;
   use std::sync::Arc;
-  use url::Url;
 
   // deno_ops macros generate code assuming deno_core in scope.
   mod deno_core {
@@ -3547,61 +3545,105 @@ pub mod tests {
       }
     }
 
-    fn assert_module_map(runtime: &mut JsRuntime) {
-      let module_map_rc = runtime.get_module_map();
-      let module_map = module_map_rc.borrow();
-      assert_eq!(module_map.ids_by_handle.len(), 1);
-      assert_eq!(module_map.ids_by_handle.values().next().unwrap(), &1);
-      assert_eq!(module_map.handles_by_id.len(), 1);
-      assert_eq!(module_map.handles_by_id.keys().next().unwrap(), &1);
-      assert_eq!(module_map.info.len(), 1);
-      assert_eq!(module_map.info.keys().next().unwrap(), &1);
-      assert_eq!(
-        module_map.info.values().next().unwrap(),
-        &ModuleInfo {
-          id: 1,
-          main: true,
-          name: "file:///main.js".to_string(),
-          requests: vec![],
-          module_type: ModuleType::JavaScript,
-        }
+    fn create_module(
+      runtime: &mut JsRuntime,
+      i: usize,
+      main: bool,
+    ) -> ModuleInfo {
+      let specifier = crate::resolve_url(&format!("file:///{i}.js")).unwrap();
+      let prev = i - 1;
+      let source_code = format!(
+        r#"
+        import {{ f{prev} }} from "file:///{prev}.js";
+        export function f{i}() {{ return f{prev}() }}
+        "#
       );
-      assert_eq!(module_map.by_name.len(), 1);
-      assert_eq!(
-        module_map.by_name.keys().next().unwrap(),
-        &(
-          "file:///main.js".to_string(),
-          AssertedModuleType::JavaScriptOrWasm
+
+      let id = if main {
+        futures::executor::block_on(
+          runtime.load_main_module(&specifier, Some(source_code)),
         )
-      );
-      assert_eq!(
-        module_map.by_name.values().next().unwrap(),
-        &SymbolicModule::Mod(1)
-      );
-      assert_eq!(module_map.next_module_id, 2);
-      assert_eq!(module_map.next_load_id, 2);
+        .unwrap()
+      } else {
+        futures::executor::block_on(
+          runtime.load_side_module(&specifier, Some(source_code)),
+        )
+        .unwrap()
+      };
+      assert_eq!(i + 1, id as usize);
+
+      let _ = runtime.mod_evaluate(id);
+      futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
+
+      ModuleInfo {
+        id,
+        main,
+        name: specifier.to_string(),
+        requests: vec![crate::modules::ModuleRequest {
+          specifier: crate::resolve_url(&format!("file:///{prev}.js")).unwrap(),
+          asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
+        }],
+        module_type: ModuleType::JavaScript,
+      }
     }
 
-    let loader = std::rc::Rc::new(ModsLoader::default());
+    fn assert_module_map(runtime: &mut JsRuntime, modules: &Vec<ModuleInfo>) {
+      let module_map_rc = runtime.get_module_map();
+      let module_map = module_map_rc.borrow();
+      assert_eq!(module_map.ids_by_handle.len(), modules.len());
+      assert_eq!(module_map.handles_by_id.len(), modules.len());
+      assert_eq!(module_map.info.len(), modules.len());
+      assert_eq!(module_map.by_name.len(), modules.len());
+
+      assert_eq!(module_map.next_module_id, (modules.len() + 1) as ModuleId);
+      assert_eq!(module_map.next_load_id, (modules.len() + 1) as ModuleId);
+
+      let ids_by_handle = module_map.ids_by_handle.values().collect::<Vec<_>>();
+
+      for info in modules {
+        assert!(ids_by_handle.contains(&&info.id));
+        assert!(module_map.handles_by_id.contains_key(&info.id));
+        assert_eq!(module_map.info.get(&info.id).unwrap(), info);
+        assert_eq!(
+          module_map
+            .by_name
+            .get(&(info.name.clone(), AssertedModuleType::JavaScriptOrWasm))
+            .unwrap(),
+          &SymbolicModule::Mod(info.id)
+        );
+      }
+    }
+
+    let loader = Rc::new(ModsLoader::default());
     let mut runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader.clone()),
       will_snapshot: true,
       ..Default::default()
     });
 
-    let specifier = crate::resolve_url("file:///main.js").unwrap();
+    let specifier = crate::resolve_url(&format!("file:///0.js")).unwrap();
     let source_code =
-      r#"export function hello() { return "hello world" }"#.to_string();
-
-    let module_id = futures::executor::block_on(
-      runtime.load_main_module(&specifier, Some(source_code)),
+      r#"export function f0() { return "hello world" }"#.to_string();
+    let id = futures::executor::block_on(
+      runtime.load_side_module(&specifier, Some(source_code)),
     )
     .unwrap();
 
-    let _ = runtime.mod_evaluate(module_id);
+    let _ = runtime.mod_evaluate(id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
-    assert_module_map(&mut runtime);
+    let mut modules = vec![];
+    modules.push(ModuleInfo {
+      id,
+      main: false,
+      name: specifier.to_string(),
+      requests: vec![],
+      module_type: ModuleType::JavaScript,
+    });
+
+    modules.extend((1..3).map(|i| create_module(&mut runtime, i, false)));
+
+    assert_module_map(&mut runtime, &modules);
 
     let snapshot = runtime.snapshot();
 
@@ -3612,21 +3654,12 @@ pub mod tests {
       ..Default::default()
     });
 
-    assert_module_map(&mut runtime2);
+    assert_module_map(&mut runtime2, &modules);
 
-    let specifier = crate::resolve_url("file:///bar.js").unwrap();
-    let source_code = r#"import { hello } from "file:///main.js";
-      export function world() { return hello() }
-      "#
-    .to_string();
+    modules.extend((3..5).map(|i| create_module(&mut runtime2, i, false)));
+    modules.push(create_module(&mut runtime2, 5, true));
 
-    let module_id = futures::executor::block_on(
-      runtime2.load_side_module(&specifier, Some(source_code)),
-    )
-    .unwrap();
-
-    let _ = runtime2.mod_evaluate(module_id);
-    futures::executor::block_on(runtime2.run_event_loop(false)).unwrap();
+    assert_module_map(&mut runtime2, &modules);
 
     let snapshot2 = runtime2.snapshot();
 
@@ -3636,68 +3669,11 @@ pub mod tests {
       ..Default::default()
     });
 
-    {
-      let module_map_rc = runtime3.get_module_map();
-      let module_map = module_map_rc.borrow();
-      assert_eq!(module_map.ids_by_handle.len(), 2);
-      let values = module_map.ids_by_handle.values().collect::<Vec<_>>();
-      assert!(values.contains(&&1));
-      assert!(values.contains(&&2));
-      assert_eq!(module_map.handles_by_id.len(), 2);
-      assert!(module_map.handles_by_id.contains_key(&1));
-      assert!(module_map.handles_by_id.contains_key(&2));
-      assert_eq!(module_map.info.len(), 2);
-      assert_eq!(
-        module_map.info.get(&1).unwrap(),
-        &ModuleInfo {
-          id: 1,
-          main: true,
-          name: "file:///main.js".to_string(),
-          requests: vec![],
-          module_type: ModuleType::JavaScript,
-        }
-      );
-      assert_eq!(
-        module_map.info.get(&2).unwrap(),
-        &ModuleInfo {
-          id: 2,
-          main: false,
-          name: "file:///bar.js".to_string(),
-          requests: vec![crate::modules::ModuleRequest {
-            specifier: Url::from_str("file:///main.js").unwrap(),
-            asserted_module_type: AssertedModuleType::JavaScriptOrWasm
-          }],
-          module_type: ModuleType::JavaScript,
-        }
-      );
-      assert_eq!(module_map.by_name.len(), 2);
-      assert_eq!(
-        module_map
-          .by_name
-          .get(&(
-            "file:///main.js".to_string(),
-            AssertedModuleType::JavaScriptOrWasm
-          ))
-          .unwrap(),
-        &SymbolicModule::Mod(1)
-      );
-      assert_eq!(
-        module_map
-          .by_name
-          .get(&(
-            "file:///bar.js".to_string(),
-            AssertedModuleType::JavaScriptOrWasm
-          ))
-          .unwrap(),
-        &SymbolicModule::Mod(2)
-      );
-      assert_eq!(module_map.next_module_id, 3);
-      assert_eq!(module_map.next_load_id, 3);
-    }
+    assert_module_map(&mut runtime3, &modules);
 
     let source_code = r#"(async () => {
-      const mod = await import("file:///bar.js");
-      return mod.world();
+      const mod = await import("file:///5.js");
+      return mod.f5();
     })();"#
       .to_string();
     let val = runtime3.execute_script(".", &source_code).unwrap();
