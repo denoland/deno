@@ -430,6 +430,7 @@ impl ProcState {
       graph_data.entries().map(|(s, _)| s).cloned().collect()
     };
 
+    eprintln!("before!");
     let (npm_package_reqs, has_node_builtin_specifier) = {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph);
