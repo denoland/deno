@@ -101,16 +101,24 @@ impl Loader for FetchCacher {
       ));
     }
 
-    let specifier = if specifier.scheme() == "node" {
-      match crate::node::resolve_builtin_node_module(
-        specifier.as_str().strip_prefix("node:").unwrap(),
-      ) {
-        Ok(specifier) => specifier,
-        Err(err) => return Box::pin(futures::future::ready(Err(err))),
-      }
-    } else {
-      specifier.clone()
-    };
+    let specifier =
+      if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
+        if module_name == "module" {
+          // We use the built-in module for "module", so resolve it as external
+          return Box::pin(futures::future::ready(Ok(Some(
+            deno_graph::source::LoadResponse::External {
+              specifier: specifier.clone(),
+            },
+          ))));
+        }
+
+        match crate::node::resolve_builtin_node_module(module_name) {
+          Ok(specifier) => specifier,
+          Err(err) => return Box::pin(futures::future::ready(Err(err))),
+        }
+      } else {
+        specifier.clone()
+      };
 
     let permissions = if is_dynamic {
       self.dynamic_permissions.clone()

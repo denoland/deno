@@ -8,7 +8,7 @@ use crate::cache;
 use crate::cache::TypeCheckCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
-use crate::npm::resolve_npm_package_reqs;
+use crate::npm::resolve_graph_npm_info;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
 use crate::proc_state::ProcState;
@@ -63,6 +63,7 @@ pub enum ModuleEntry {
 pub struct GraphData {
   modules: HashMap<ModuleSpecifier, ModuleEntry>,
   npm_packages: Vec<NpmPackageReq>,
+  has_node_builtin_specifier: bool,
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
   referrer_map: HashMap<ModuleSpecifier, Box<Range>>,
@@ -94,6 +95,10 @@ impl GraphData {
       if NpmPackageReference::from_specifier(specifier).is_ok() {
         has_npm_specifier_in_graph = true;
         continue;
+      }
+
+      if !self.has_node_builtin_specifier && specifier.scheme() == "node" {
+        self.has_node_builtin_specifier = true;
       }
 
       if self.modules.contains_key(specifier) {
@@ -155,7 +160,9 @@ impl GraphData {
     }
 
     if has_npm_specifier_in_graph {
-      self.npm_packages.extend(resolve_npm_package_reqs(graph));
+      self
+        .npm_packages
+        .extend(resolve_graph_npm_info(graph).package_reqs);
     }
   }
 
@@ -163,6 +170,11 @@ impl GraphData {
     &self,
   ) -> impl Iterator<Item = (&ModuleSpecifier, &ModuleEntry)> {
     self.modules.iter()
+  }
+
+  /// Gets if the graph had a "node:" specifier.
+  pub fn has_node_builtin_specifier(&self) -> bool {
+    self.has_node_builtin_specifier
   }
 
   /// Gets the npm package requirements from all the encountered graphs
@@ -292,6 +304,7 @@ impl GraphData {
     }
     Some(Self {
       modules,
+      has_node_builtin_specifier: self.has_node_builtin_specifier,
       npm_packages: self.npm_packages.clone(),
       referrer_map,
       graph_imports: self.graph_imports.to_vec(),
@@ -558,6 +571,14 @@ pub async fn create_graph_and_maybe_check(
   }
 
   if ps.options.type_check_mode() != TypeCheckMode::None {
+    // node built-in specifiers use the @types/node package to determine
+    // types, so inject that now after the lockfile has been written
+    if graph_data.has_node_builtin_specifier() {
+      ps.npm_resolver
+        .inject_synthetic_types_node_package()
+        .await?;
+    }
+
     let ts_config_result =
       ps.options.resolve_ts_config_for_emit(TsConfigType::Check {
         lib: ps.options.ts_type_lib_window(),

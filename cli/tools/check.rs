@@ -233,10 +233,16 @@ fn get_tsc_roots(
   graph_data: &GraphData,
   check_js: bool,
 ) -> Vec<(ModuleSpecifier, MediaType)> {
-  graph_data
-    .entries()
-    .into_iter()
-    .filter_map(|(specifier, module_entry)| match module_entry {
+  let mut result = Vec::new();
+  if graph_data.has_node_builtin_specifier() {
+    // inject a specifier that will resolve node types
+    result.push((
+      ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
+      MediaType::Dts,
+    ));
+  }
+  result.extend(graph_data.entries().into_iter().filter_map(
+    |(specifier, module_entry)| match module_entry {
       ModuleEntry::Module {
         media_type, code, ..
       } => match media_type {
@@ -253,8 +259,9 @@ fn get_tsc_roots(
         _ => None,
       },
       _ => None,
-    })
-    .collect()
+    },
+  ));
+  result
 }
 
 /// Matches the `@ts-check` pragma.
