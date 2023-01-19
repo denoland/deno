@@ -100,6 +100,9 @@ impl Resolver for BareSpecifierResolver {
       Ok(specifier) => ResolveResponse::Specifier(specifier),
       Err(err) => match err {
         ModuleResolutionError::ImportPrefixMissing(_, _) => {
+          if specifier == "." {
+            panic!()
+          }
           eprintln!("mapping {} {}", specifier, referrer.as_str());
           ResolveResponse::Specifier(
             resolve_import(

@@ -357,6 +357,11 @@ impl ProcState {
       self.file_fetcher.clone(),
       root_permissions,
       dynamic_permissions,
+      if self.options.get_maybe_package_json().is_some() {
+        Some(roots[0].0.clone())
+      } else {
+        None
+      },
     );
     let maybe_imports = self.options.to_maybe_imports()?;
     let mut maybe_resolver =
@@ -430,7 +435,6 @@ impl ProcState {
       graph_data.entries().map(|(s, _)| s).cloned().collect()
     };
 
-    eprintln!("before!");
     let (npm_package_reqs, has_node_builtin_specifier) = {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph);
@@ -720,6 +724,7 @@ impl ProcState {
       self.file_fetcher.clone(),
       PermissionsContainer::allow_all(),
       PermissionsContainer::allow_all(),
+      None,
     )
   }
 

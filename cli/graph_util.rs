@@ -536,6 +536,7 @@ pub async fn create_graph_and_maybe_check(
     ps.file_fetcher.clone(),
     PermissionsContainer::allow_all(),
     PermissionsContainer::allow_all(),
+    None,
   );
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_cli_resolver = CliResolver::maybe_new(
