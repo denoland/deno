@@ -328,7 +328,15 @@ impl ProcState {
     });
     let roots = roots
       .into_iter()
-      .map(|s| (s, ModuleKind::Esm))
+      .map(|s| {
+        (s, {
+          if self.options.node() {
+            ModuleKind::External
+          } else {
+            ModuleKind::Esm
+          }
+        })
+      })
       .collect::<Vec<_>>();
 
     if !has_root_npm_specifier {
@@ -359,8 +367,13 @@ impl ProcState {
       dynamic_permissions,
     );
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_resolver =
+    let mut maybe_resolver =
       self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
+
+    if self.options.node() {
+      maybe_resolver =
+        Some(crate::resolver::BareSpecifierResolver.as_graph_resolver())
+    }
 
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,

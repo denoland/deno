@@ -11,6 +11,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 
@@ -27,6 +28,8 @@ pub struct PackageJson {
   pub path: PathBuf,
   pub typ: String,
   pub types: Option<String>,
+  pub dependencies: Option<HashMap<String, String>>,
+  pub dev_dependencies: Option<HashMap<String, String>>,
 }
 
 impl PackageJson {
@@ -43,6 +46,8 @@ impl PackageJson {
       path,
       typ: "none".to_string(),
       types: None,
+      dependencies: None,
+      dev_dependencies: None,
     }
   }
 
@@ -102,6 +107,25 @@ impl PackageJson {
     let version = version_val.and_then(|s| s.as_str()).map(|s| s.to_string());
     let module = module_val.and_then(|s| s.as_str()).map(|s| s.to_string());
 
+    let dependencies = package_json.get("dependencies").and_then(|d| {
+      if d.is_object() {
+        let deps: HashMap<String, String> =
+          serde_json::from_value(d.to_owned()).unwrap();
+        Some(deps)
+      } else {
+        None
+      }
+    });
+    let dev_dependencies = package_json.get("devDependencies").and_then(|d| {
+      if d.is_object() {
+        let deps: HashMap<String, String> =
+          serde_json::from_value(d.to_owned()).unwrap();
+        Some(deps)
+      } else {
+        None
+      }
+    });
+
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
       if let Some(t) = t.as_str() {
@@ -135,6 +159,8 @@ impl PackageJson {
       exports,
       imports,
       bin,
+      dependencies,
+      dev_dependencies,
     };
     Ok(package_json)
   }

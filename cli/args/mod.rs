@@ -648,6 +648,10 @@ impl CliOptions {
       .and_then(|c| c.to_maybe_jsx_import_source_config())
   }
 
+  pub fn node(&self) -> bool {
+    self.flags.node
+  }
+
   /// Return any imports that should be brought into the scope of the module
   /// graph.
   pub fn to_maybe_imports(&self) -> MaybeImportsResult {

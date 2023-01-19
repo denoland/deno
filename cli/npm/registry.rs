@@ -354,7 +354,11 @@ impl RealNpmRegistryApiInner {
           .load_package_info_from_registry(name)
           .await
           .with_context(|| {
-          format!("Error getting response at {}", self.get_package_url(name))
+          format!(
+            "Error getting package info for {} from {}",
+            name,
+            self.get_package_url(name),
+          )
         })?;
       }
       let maybe_package_info = maybe_package_info.map(Arc::new);

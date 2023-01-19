@@ -217,11 +217,16 @@ impl GraphData {
     while let Some(specifier) = visiting.pop_front() {
       if NpmPackageReference::from_specifier(specifier).is_ok() {
         continue; // skip analyzing npm specifiers
+      } else if specifier.scheme() == "node" {
+        continue; // skip analyzing node builtins
       }
 
       let (specifier, entry) = match self.modules.get_key_value(specifier) {
         Some(pair) => pair,
-        None => return None,
+        None => {
+          eprintln!("Missing module: {}", specifier);
+          return None;
+        }
       };
       result.insert(specifier, entry);
       match entry {

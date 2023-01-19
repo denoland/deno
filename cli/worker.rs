@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
@@ -15,6 +16,7 @@ use deno_core::v8;
 use deno_core::Extension;
 use deno_core::ModuleId;
 use deno_runtime::colors;
+use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
@@ -64,6 +66,37 @@ impl CliMainWorker {
     let mut maybe_coverage_collector =
       self.maybe_setup_coverage_collector().await?;
     log::debug!("main_module {}", self.main_module);
+
+    if self.ps.options.node() {
+      // We're in Node compat mode, try to find `package.json` and load it.
+      let package_json = PackageJson::load_skip_read_permission(
+        std::env::current_dir().unwrap().join("package.json"),
+      )
+      .context("Unable to load package.json from CWD")?;
+
+      self.is_main_cjs = package_json.typ != "module";
+
+      if let Some(deps) = &package_json.dependencies {
+        let mut reqs = vec![];
+        for (key, value) in deps {
+          let npm_ref =
+            NpmPackageReference::from_str(&format!("npm:{}@{}", key, value))
+              .unwrap();
+          reqs.push(npm_ref.req);
+        }
+        self.ps.npm_resolver.add_package_reqs(reqs).await?;
+      }
+      if let Some(deps) = &package_json.dev_dependencies {
+        let mut reqs = vec![];
+        for (key, value) in deps {
+          let npm_ref =
+            NpmPackageReference::from_str(&format!("npm:{}@{}", key, value))
+              .unwrap();
+          reqs.push(npm_ref.req);
+        }
+        self.ps.npm_resolver.add_package_reqs(reqs).await?;
+      }
+    }
 
     if self.is_main_cjs {
       self.ps.prepare_node_std_graph().await?;

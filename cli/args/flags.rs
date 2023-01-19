@@ -340,6 +340,8 @@ pub struct Flags {
   pub version: bool,
   pub watch: Option<Vec<PathBuf>>,
   pub no_clear_screen: bool,
+
+  pub node: bool,
 }
 
 fn join_paths(allowlist: &[PathBuf], d: &str) -> String {
@@ -1497,6 +1499,7 @@ fn run_subcommand<'a>() -> Command<'a> {
     )
     .arg(no_clear_screen_arg())
     .trailing_var_arg(true)
+    .arg(Arg::new("node").long("node"))
     .arg(script_arg().required(true))
     .about("Run a JavaScript or TypeScript program")
     .long_about(
@@ -2705,6 +2708,7 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.argv.push(v);
   }
 
+  flags.node = matches.is_present("node");
   watch_arg_parse(flags, matches, true);
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
 }

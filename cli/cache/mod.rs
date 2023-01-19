@@ -65,7 +65,8 @@ impl FetchCacher {
 
 impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
-    if specifier.scheme() == "npm" {
+    let scheme = specifier.scheme();
+    if scheme == "npm" || scheme == "node" {
       return None;
     }
 
