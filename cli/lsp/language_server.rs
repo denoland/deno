@@ -58,6 +58,7 @@ use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
 use crate::args::get_root_cert_store;
+use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::ConfigFile;
@@ -579,7 +580,7 @@ impl Inner {
     let root_cert_store = Some(get_root_cert_store(
       maybe_root_path,
       workspace_settings.certificate_stores,
-      workspace_settings.tls_certificate,
+      workspace_settings.tls_certificate.map(CaData::File),
     )?);
     let client = HttpClient::new(
       root_cert_store,
@@ -2952,7 +2953,7 @@ impl Inner {
       Flags {
         cache_path: self.maybe_cache_path.clone(),
         ca_stores: None,
-        ca_file: None,
+        ca_data: None,
         unsafely_ignore_certificate_errors: None,
         // this is to allow loading npm specifiers, so we can remove this
         // once stabilizing them
