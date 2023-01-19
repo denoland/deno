@@ -77,13 +77,9 @@ fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
     Some(ref s) if !s.is_empty() => {
       let argv0 = std::path::PathBuf::from(s);
       if argv0.is_absolute() {
-        argv0.canonicalize().unwrap()
+        argv0
       } else {
-        std::env::current_dir()
-          .unwrap()
-          .join(argv0)
-          .canonicalize()
-          .unwrap()
+        std::env::current_dir().unwrap().join(argv0)
       }
     }
     _ => std::env::current_exe().unwrap(),
