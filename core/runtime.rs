@@ -453,17 +453,16 @@ impl JsRuntime {
       match scope.get_context_data_from_snapshot_once::<v8::Object>(0) {
         Ok(val) => {
           let next_module_id = {
-            let next_module_id_str =
-              v8::String::new(&mut scope, "next_module_id").unwrap();
-            let next_module_id =
-              val.get(&mut scope, next_module_id_str.into()).unwrap();
-            assert!(next_module_id.is_int32());
-            let integer = next_module_id.to_integer(&mut scope).unwrap();
-            integer.int32_value(&mut scope).unwrap()
+            let info_str = v8::String::new(&mut scope, "info").unwrap();
+            let info_data: v8::Local<v8::Array> = val
+              .get(&mut scope, info_str.into())
+              .unwrap()
+              .try_into()
+              .unwrap();
+            info_data.length()
           };
-          let no_of_modules = next_module_id - 1;
 
-          for i in 1..=no_of_modules {
+          for i in 1..=next_module_id {
             match scope
               .get_context_data_from_snapshot_once::<v8::Module>(i as usize)
             {
@@ -1411,7 +1410,7 @@ fn get_stalled_top_level_await_message_for_module(
 ) -> Vec<v8::Global<v8::Message>> {
   let module_map = JsRuntime::module_map(scope);
   let module_map = module_map.borrow();
-  let module_handle = module_map.handles_by_id.get(&module_id).unwrap();
+  let module_handle = module_map.handles.get(module_id).unwrap();
 
   let module = v8::Local::new(scope, module_handle);
   let stalled = module.get_stalled_top_level_await_message(scope);
@@ -1431,7 +1430,7 @@ fn find_stalled_top_level_await(
   // First check if that's root module
   let root_module_id = module_map
     .info
-    .values()
+    .iter()
     .filter(|m| m.main)
     .map(|m| m.id)
     .next();
@@ -1446,8 +1445,7 @@ fn find_stalled_top_level_await(
 
   // It wasn't a top module, so iterate over all modules and try to find
   // any with stalled top level await
-  let module_ids = module_map.handles_by_id.keys().copied().collect::<Vec<_>>();
-  for module_id in module_ids {
+  for module_id in 0..module_map.handles.len() {
     let messages =
       get_stalled_top_level_await_message_for_module(scope, module_id);
     if !messages.is_empty() {
@@ -3570,7 +3568,7 @@ pub mod tests {
         )
         .unwrap()
       };
-      assert_eq!(i + 1, id as usize);
+      assert_eq!(i, id as usize);
 
       let _ = runtime.mod_evaluate(id);
       futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
@@ -3590,20 +3588,15 @@ pub mod tests {
     fn assert_module_map(runtime: &mut JsRuntime, modules: &Vec<ModuleInfo>) {
       let module_map_rc = runtime.get_module_map();
       let module_map = module_map_rc.borrow();
-      assert_eq!(module_map.ids_by_handle.len(), modules.len());
-      assert_eq!(module_map.handles_by_id.len(), modules.len());
+      assert_eq!(module_map.handles.len(), modules.len());
       assert_eq!(module_map.info.len(), modules.len());
       assert_eq!(module_map.by_name.len(), modules.len());
 
-      assert_eq!(module_map.next_module_id, (modules.len() + 1) as ModuleId);
-      assert_eq!(module_map.next_load_id, (modules.len() + 1) as ModuleId);
-
-      let ids_by_handle = module_map.ids_by_handle.values().collect::<Vec<_>>();
+      assert_eq!(module_map.next_load_id, (modules.len() + 1) as ModuleLoadId);
 
       for info in modules {
-        assert!(ids_by_handle.contains(&&info.id));
-        assert!(module_map.handles_by_id.contains_key(&info.id));
-        assert_eq!(module_map.info.get(&info.id).unwrap(), info);
+        assert!(module_map.handles.get(info.id).is_some());
+        assert_eq!(module_map.info.get(info.id).unwrap(), info);
         assert_eq!(
           module_map
             .by_name

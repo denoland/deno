@@ -26,7 +26,7 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
-pub type ModuleId = i32;
+pub type ModuleId = usize;
 pub(crate) type ModuleLoadId = i32;
 
 pub const BOM_CHAR: &[u8] = &[0xef, 0xbb, 0xbf];
@@ -453,7 +453,7 @@ impl RecursiveModuleLoad {
         load.root_module_type = Some(
           module_map_rc
             .borrow()
-            .get_info_by_id(&module_id)
+            .get_info_by_id(module_id)
             .unwrap()
             .module_type,
         );
@@ -787,11 +787,9 @@ pub(crate) enum ModuleError {
 /// A collection of JS modules.
 pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
-  pub(crate) ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
-  pub handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
-  pub info: HashMap<ModuleId, ModuleInfo>,
+  pub handles: Vec<v8::Global<v8::Module>>,
+  pub info: Vec<ModuleInfo>,
   pub(crate) by_name: HashMap<(String, AssertedModuleType), SymbolicModule>,
-  pub(crate) next_module_id: ModuleId,
   pub(crate) next_load_id: ModuleLoadId,
 
   // Handling of futures for loading module sources
@@ -816,22 +814,13 @@ impl ModuleMap {
   ) -> (v8::Global<v8::Object>, Vec<v8::Global<v8::Module>>) {
     let obj = v8::Object::new(scope);
 
-    let next_module_id_str = v8::String::new(scope, "next_module_id").unwrap();
-    let next_module_id = v8::Integer::new(scope, self.next_module_id);
-    obj.set(scope, next_module_id_str.into(), next_module_id.into());
-
     let next_load_id_str = v8::String::new(scope, "next_load_id").unwrap();
     let next_load_id = v8::Integer::new(scope, self.next_load_id);
     obj.set(scope, next_load_id_str.into(), next_load_id.into());
 
-    let info_obj = v8::Object::new(scope);
-    for (key, value) in self.info.clone().into_iter() {
-      let key_val = v8::Integer::new(scope, key);
-      let module_info = serde_v8::to_v8(scope, value).unwrap();
-      info_obj.set(scope, key_val.into(), module_info);
-    }
+    let info_val = serde_v8::to_v8(scope, self.info.clone()).unwrap();
     let info_str = v8::String::new(scope, "info").unwrap();
-    obj.set(scope, info_str.into(), info_obj.into());
+    obj.set(scope, info_str.into(), info_val);
 
     let by_name_triples: Vec<(String, AssertedModuleType, SymbolicModule)> =
       self
@@ -846,13 +835,7 @@ impl ModuleMap {
 
     let obj_global = v8::Global::new(scope, obj);
 
-    let mut handles_and_ids: Vec<(ModuleId, v8::Global<v8::Module>)> =
-      self.handles_by_id.clone().into_iter().collect();
-    handles_and_ids.sort_by_key(|(id, _)| *id);
-    let handles: Vec<v8::Global<v8::Module>> = handles_and_ids
-      .into_iter()
-      .map(|(_, handle)| handle)
-      .collect();
+    let handles = self.handles.clone();
     (obj_global, handles)
   }
 
@@ -865,17 +848,6 @@ impl ModuleMap {
     let local_data: v8::Local<v8::Object> = v8::Local::new(scope, data);
 
     {
-      let next_module_id_str =
-        v8::String::new(scope, "next_module_id").unwrap();
-      let next_module_id =
-        local_data.get(scope, next_module_id_str.into()).unwrap();
-      assert!(next_module_id.is_int32());
-      let integer = next_module_id.to_integer(scope).unwrap();
-      let val = integer.int32_value(scope).unwrap();
-      self.next_module_id = val;
-    }
-
-    {
       let next_load_id_str = v8::String::new(scope, "next_load_id").unwrap();
       let next_load_id =
         local_data.get(scope, next_load_id_str.into()).unwrap();
@@ -886,27 +858,9 @@ impl ModuleMap {
     }
 
     {
-      let mut info = HashMap::new();
       let info_str = v8::String::new(scope, "info").unwrap();
-      let info_data: v8::Local<v8::Object> = local_data
-        .get(scope, info_str.into())
-        .unwrap()
-        .try_into()
-        .unwrap();
-      let keys = info_data
-        .get_own_property_names(scope, v8::GetPropertyNamesArgs::default())
-        .unwrap();
-      let keys_len = keys.length();
-
-      for i in 0..keys_len {
-        let key = keys.get_index(scope, i).unwrap();
-        let key_val = key.to_integer(scope).unwrap();
-        let key_int = key_val.int32_value(scope).unwrap();
-        let value = info_data.get(scope, key).unwrap();
-        let module_info = serde_v8::from_v8(scope, value).unwrap();
-        info.insert(key_int, module_info);
-      }
-      self.info = info;
+      let info_val = local_data.get(scope, info_str.into()).unwrap();
+      self.info = serde_v8::from_v8(scope, info_val).unwrap();
     }
 
     {
@@ -922,17 +876,7 @@ impl ModuleMap {
         .collect();
     }
 
-    self.ids_by_handle = module_handles
-      .iter()
-      .enumerate()
-      .map(|(index, handle)| (handle.clone(), (index + 1) as i32))
-      .collect();
-
-    self.handles_by_id = module_handles
-      .iter()
-      .enumerate()
-      .map(|(index, handle)| ((index + 1) as i32, handle.clone()))
-      .collect();
+    self.handles = module_handles;
   }
 
   pub(crate) fn new(
@@ -940,11 +884,9 @@ impl ModuleMap {
     op_state: Rc<RefCell<OpState>>,
   ) -> ModuleMap {
     Self {
-      ids_by_handle: HashMap::new(),
-      handles_by_id: HashMap::new(),
-      info: HashMap::new(),
+      handles: vec![],
+      info: vec![],
       by_name: HashMap::new(),
-      next_module_id: 1,
       next_load_id: 1,
       loader,
       op_state,
@@ -1100,7 +1042,7 @@ impl ModuleMap {
     }
 
     if main {
-      let maybe_main_module = self.info.values().find(|module| module.main);
+      let maybe_main_module = self.info.iter().find(|module| module.main);
       if let Some(main_module) = maybe_main_module {
         return Err(ModuleError::Other(generic_error(
           format!("Trying to create \"main\" module ({:?}), when one already exists ({:?})",
@@ -1130,30 +1072,25 @@ impl ModuleMap {
     main: bool,
     requests: Vec<ModuleRequest>,
   ) -> ModuleId {
-    let id = self.next_module_id;
-    self.next_module_id += 1;
+    let id = self.handles.len();
     self.by_name.insert(
       (name.to_string(), module_type.into()),
       SymbolicModule::Mod(id),
     );
-    self.handles_by_id.insert(id, handle.clone());
-    self.ids_by_handle.insert(handle, id);
-    self.info.insert(
+    self.handles.push(handle);
+    self.info.push(ModuleInfo {
       id,
-      ModuleInfo {
-        id,
-        main,
-        name: name.to_string(),
-        requests,
-        module_type,
-      },
-    );
+      main,
+      name: name.to_string(),
+      requests,
+      module_type,
+    });
 
     id
   }
 
   fn get_requested_modules(&self, id: ModuleId) -> Option<&Vec<ModuleRequest>> {
-    self.info.get(&id).map(|i| &i.requests)
+    self.info.get(id).map(|i| &i.requests)
   }
 
   fn is_registered(
@@ -1162,7 +1099,7 @@ impl ModuleMap {
     asserted_module_type: AssertedModuleType,
   ) -> bool {
     if let Some(id) = self.get_id(specifier.as_str(), asserted_module_type) {
-      let info = self.get_info_by_id(&id).unwrap();
+      let info = self.get_info_by_id(id).unwrap();
       return asserted_module_type == info.module_type.into();
     }
 
@@ -1195,21 +1132,21 @@ impl ModuleMap {
     &self,
     id: ModuleId,
   ) -> Option<v8::Global<v8::Module>> {
-    self.handles_by_id.get(&id).cloned()
+    self.handles.get(id).cloned()
   }
 
   pub(crate) fn get_info(
     &self,
     global: &v8::Global<v8::Module>,
   ) -> Option<&ModuleInfo> {
-    if let Some(id) = self.ids_by_handle.get(global) {
+    if let Some(id) = self.handles.iter().position(|module| module == global) {
       return self.info.get(id);
     }
 
     None
   }
 
-  pub(crate) fn get_info_by_id(&self, id: &ModuleId) -> Option<&ModuleInfo> {
+  pub(crate) fn get_info_by_id(&self, id: ModuleId) -> Option<&ModuleInfo> {
     self.info.get(id)
   }
 
