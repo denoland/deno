@@ -3568,7 +3568,7 @@ pub mod tests {
         )
         .unwrap()
       };
-      assert_eq!(i, id as usize);
+      assert_eq!(i, id);
 
       let _ = runtime.mod_evaluate(id);
       futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
