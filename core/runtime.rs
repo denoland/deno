@@ -616,7 +616,7 @@ impl JsRuntime {
       state.inspector = inspector;
       state
         .known_realms
-        .push(v8::Weak::new(&mut isolate, global_context.clone()));
+        .push(v8::Weak::new(&mut isolate, &global_context));
     }
     isolate.set_data(
       Self::STATE_DATA_OFFSET,
