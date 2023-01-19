@@ -292,6 +292,7 @@
 
   const {
     ArrayPrototypeForEach,
+    ArrayPrototypeJoin,
     ArrayPrototypeMap,
     FunctionPrototypeCall,
     ObjectDefineProperty,
@@ -302,6 +303,7 @@
     PromisePrototype,
     PromisePrototypeThen,
     SymbolIterator,
+    TypedArrayPrototypeJoin,
   } = primordials;
 
   // Because these functions are used by `makeSafe`, which is exposed
@@ -456,6 +458,12 @@
       }
     },
   );
+
+  primordials.ArrayPrototypeToString = (thisArray) =>
+    ArrayPrototypeJoin(thisArray);
+
+  primordials.TypedArrayPrototypeToString = (thisArray) =>
+    TypedArrayPrototypeJoin(thisArray);
 
   primordials.PromisePrototypeCatch = (thisPromise, onRejected) =>
     PromisePrototypeThen(thisPromise, undefined, onRejected);
