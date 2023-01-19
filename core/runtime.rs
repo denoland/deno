@@ -3621,7 +3621,7 @@ pub mod tests {
       ..Default::default()
     });
 
-    let specifier = crate::resolve_url(&format!("file:///0.js")).unwrap();
+    let specifier = crate::resolve_url("file:///0.js").unwrap();
     let source_code =
       r#"export function f0() { return "hello world" }"#.to_string();
     let id = futures::executor::block_on(
