@@ -3641,7 +3641,7 @@ pub mod tests {
       module_type: ModuleType::JavaScript,
     });
 
-    modules.extend((1..3).map(|i| create_module(&mut runtime, i, false)));
+    modules.extend((1..200).map(|i| create_module(&mut runtime, i, false)));
 
     assert_module_map(&mut runtime, &modules);
 
@@ -3656,8 +3656,8 @@ pub mod tests {
 
     assert_module_map(&mut runtime2, &modules);
 
-    modules.extend((3..5).map(|i| create_module(&mut runtime2, i, false)));
-    modules.push(create_module(&mut runtime2, 5, true));
+    modules.extend((200..400).map(|i| create_module(&mut runtime2, i, false)));
+    modules.push(create_module(&mut runtime2, 400, true));
 
     assert_module_map(&mut runtime2, &modules);
 
@@ -3672,8 +3672,8 @@ pub mod tests {
     assert_module_map(&mut runtime3, &modules);
 
     let source_code = r#"(async () => {
-      const mod = await import("file:///5.js");
-      return mod.f5();
+      const mod = await import("file:///400.js");
+      return mod.f400();
     })();"#
       .to_string();
     let val = runtime3.execute_script(".", &source_code).unwrap();
