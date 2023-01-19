@@ -366,7 +366,7 @@ impl ProcState {
     let mut maybe_resolver =
       self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
 
-    if self.options.node() {
+    if self.options.get_maybe_package_json().is_some() {
       maybe_resolver =
         Some(crate::resolver::BareSpecifierResolver.as_graph_resolver())
     }

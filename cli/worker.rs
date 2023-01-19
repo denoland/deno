@@ -5,7 +5,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
@@ -16,7 +15,6 @@ use deno_core::v8;
 use deno_core::Extension;
 use deno_core::ModuleId;
 use deno_runtime::colors;
-use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
@@ -67,18 +65,8 @@ impl CliMainWorker {
       self.maybe_setup_coverage_collector().await?;
     log::debug!("main_module {}", self.main_module);
 
-    if self.ps.options.node() {
-      // TODO(bartlomieju): make it graceful looking for closes package.json
-      // We're in Node compat mode, try to find `package.json` and load it.
-      let package_json = PackageJson::load_skip_read_permission(
-        std::env::current_dir().unwrap().join("package.json"),
-      )
-      .context("Unable to load package.json from CWD")?;
-
-      // NOTE(bartlomieju): we are explicitly not compatible with Node.js here -
-      // Node defaults to "commonjs" if the "type" entry is missing. We default
-      // to ESM and only enable CJS if "type" is "commonjs".
-      self.is_main_cjs = package_json.typ == "commonjs";
+    if let Some(package_json) = self.ps.options.get_maybe_package_json() {
+      self.is_main_cjs = package_json.typ != "module";
 
       // TODO(bartlomieju): could be extracted into a helper function
       if let Some(deps) = &package_json.dependencies {

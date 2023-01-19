@@ -349,8 +349,6 @@ pub struct Flags {
   pub version: bool,
   pub watch: Option<Vec<PathBuf>>,
   pub no_clear_screen: bool,
-
-  pub node: bool,
 }
 
 fn join_paths(allowlist: &[PathBuf], d: &str) -> String {
@@ -501,6 +499,21 @@ impl Flags {
       }
       _ => Some(vec![]),
     }
+  }
+
+  pub fn package_json_args(&self) -> Option<PathBuf> {
+    use DenoSubcommand::*;
+
+    if let Run(RunFlags { script }) = &self.subcommand {
+      if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
+        if module_specifier.scheme() == "file" {
+          let p = module_specifier.to_file_path().unwrap();
+          return Some(p);
+        }
+      }
+    }
+
+    None
   }
 
   pub fn has_permission(&self) -> bool {
@@ -1508,7 +1521,6 @@ fn run_subcommand<'a>() -> Command<'a> {
     )
     .arg(no_clear_screen_arg())
     .trailing_var_arg(true)
-    .arg(Arg::new("node").long("node"))
     .arg(script_arg().required(true))
     .about("Run a JavaScript or TypeScript program")
     .long_about(
@@ -2717,7 +2729,6 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.argv.push(v);
   }
 
-  flags.node = matches.is_present("node");
   watch_arg_parse(flags, matches, true);
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
 }
