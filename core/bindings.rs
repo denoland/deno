@@ -455,10 +455,12 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
   let context_state_rc = JsRealm::state_from_scope(scope);
+  let mut context_state = context_state_rc.borrow_mut();
 
-  let promise_reject_cb =
-    context_state_rc.borrow().js_promise_reject_cb.clone();
-  if let Some(js_promise_reject_cb) = promise_reject_cb {
+  if let Some(js_promise_reject_cb) = context_state.js_promise_reject_cb.clone()
+  {
+    drop(context_state);
+
     let tc_scope = &mut v8::TryCatch::new(scope);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
@@ -496,20 +498,20 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       }
     }
   } else {
-    let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
     let promise = message.get_promise();
     let promise_global = v8::Global::new(scope, promise);
     match message.get_event() {
       PromiseRejectWithNoHandler => {
         let error = message.get_value().unwrap();
         let error_global = v8::Global::new(scope, error);
-        state
-          .pending_promise_exceptions
+        context_state
+          .pending_promise_rejections
           .insert(promise_global, error_global);
       }
       PromiseHandlerAddedAfterReject => {
-        state.pending_promise_exceptions.remove(&promise_global);
+        context_state
+          .pending_promise_rejections
+          .remove(&promise_global);
       }
       PromiseRejectAfterResolved => {}
       PromiseResolveAfterResolved => {

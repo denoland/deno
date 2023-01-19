@@ -70,7 +70,7 @@
     SetPrototypeDelete,
     SetPrototypeAdd,
     // TODO(lucacasonato): add SharedArrayBuffer to primordials
-    // SharedArrayBuffer,
+    // SharedArrayBufferPrototype
     String,
     StringFromCodePoint,
     StringPrototypeCharCodeAt,
@@ -453,6 +453,7 @@
   }
 
   function isSharedArrayBuffer(V) {
+    // deno-lint-ignore prefer-primordials
     return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V);
   }
 
