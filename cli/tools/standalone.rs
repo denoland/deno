@@ -3,7 +3,6 @@
 use crate::args::CaData;
 use crate::args::CompileFlags;
 use crate::args::Flags;
-use crate::cache::CACHE_PERM;
 use crate::cache::DenoDir;
 use crate::graph_util::create_graph_and_maybe_check;
 use crate::graph_util::error_for_any_npm_specifier;
@@ -37,6 +36,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::installer::infer_name_from_url;
+
+const EXEC_PERM: u32 = 0o777;
 
 pub async fn compile(
   flags: Flags,
@@ -146,7 +147,7 @@ async fn download_base_binary(
   std::fs::create_dir_all(output_directory)?;
   let output_path = output_directory.join(binary_path_suffix);
   std::fs::create_dir_all(output_path.parent().unwrap())?;
-  util::fs::atomic_write_file(&output_path, bytes, CACHE_PERM)?;
+  util::fs::atomic_write_file(&output_path, bytes, EXEC_PERM)?;
   Ok(())
 }
 
@@ -280,13 +281,7 @@ async fn write_standalone_binary(
     tokio::fs::create_dir_all(output_base).await?;
   }
 
-  tokio::fs::write(&output_path, final_bin).await?;
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::PermissionsExt;
-    let perms = std::fs::Permissions::from_mode(0o777);
-    tokio::fs::set_permissions(output_path, perms).await?;
-  }
+  util::fs::atomic_write_file(&output_path, final_bin, EXEC_PERM)?;
 
   Ok(())
 }
