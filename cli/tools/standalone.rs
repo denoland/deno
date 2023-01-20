@@ -210,7 +210,7 @@ async fn create_standalone_binary(
   trailer.write_all(&metadata_pos.to_be_bytes())?;
 
   let mut final_bin = Vec::with_capacity(
-    original_bin.len() + eszip_archive.len() + trailer.len(),
+    original_bin.len() + eszip_archive.len() + metadata.len() + trailer.len(),
   );
   final_bin.append(&mut original_bin);
   final_bin.append(&mut eszip_archive);
