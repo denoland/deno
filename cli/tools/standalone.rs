@@ -3,12 +3,14 @@
 use crate::args::CaData;
 use crate::args::CompileFlags;
 use crate::args::Flags;
+use crate::cache::CACHE_PERM;
 use crate::cache::DenoDir;
 use crate::graph_util::create_graph_and_maybe_check;
 use crate::graph_util::error_for_any_npm_specifier;
 use crate::http_util::HttpClient;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
+use crate::util;
 use crate::util::path::path_has_trailing_slash;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -144,7 +146,7 @@ async fn download_base_binary(
   std::fs::create_dir_all(output_directory)?;
   let output_path = output_directory.join(binary_path_suffix);
   std::fs::create_dir_all(output_path.parent().unwrap())?;
-  tokio::fs::write(output_path, bytes).await?;
+  util::fs::atomic_write_file(&output_path, bytes, CACHE_PERM)?;
   Ok(())
 }
 
