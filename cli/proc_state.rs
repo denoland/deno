@@ -43,6 +43,7 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
@@ -207,23 +208,36 @@ impl ProcState {
     )?;
 
     let lockfile = cli_options.maybe_lock_file();
-    let maybe_import_map_specifier =
-      cli_options.resolve_import_map_specifier()?;
 
     let maybe_import_map =
-      if let Some(import_map_specifier) = maybe_import_map_specifier {
-        let file = file_fetcher
-          .fetch(&import_map_specifier, PermissionsContainer::allow_all())
-          .await
-          .context(format!(
-            "Unable to load '{}' import map",
-            import_map_specifier
-          ))?;
-        let import_map =
-          import_map_from_text(&import_map_specifier, &file.source)?;
+      if let Some(import_map_json) = cli_options.resolve_import_map() {
+        let import_map = import_map_from_value(
+          &cli_options
+            .get_maybe_config_file()
+            .as_ref()
+            .unwrap()
+            .specifier,
+          import_map_json,
+        )?;
         Some(Arc::new(import_map))
       } else {
-        None
+        let maybe_import_map_specifier =
+          cli_options.resolve_import_map_specifier()?;
+
+        if let Some(import_map_specifier) = maybe_import_map_specifier {
+          let file = file_fetcher
+            .fetch(&import_map_specifier, PermissionsContainer::allow_all())
+            .await
+            .context(format!(
+              "Unable to load '{}' import map",
+              import_map_specifier
+            ))?;
+          let import_map =
+            import_map_from_text(&import_map_specifier, &file.source)?;
+          Some(Arc::new(import_map))
+        } else {
+          None
+        }
       };
 
     let maybe_inspector_server =
@@ -747,6 +761,30 @@ impl ProcState {
 
     Ok(graph)
   }
+}
+
+pub fn import_map_from_value(
+  specifier: &Url,
+  value: serde_json::Value,
+) -> Result<ImportMap, AnyError> {
+  debug_assert!(
+    !specifier.as_str().contains("../"),
+    "Import map specifier incorrectly contained ../: {}",
+    specifier.as_str()
+  );
+  let result = import_map::parse_from_value(specifier, value)?;
+  if !result.diagnostics.is_empty() {
+    warn!(
+      "Import map diagnostics:\n{}",
+      result
+        .diagnostics
+        .into_iter()
+        .map(|d| format!("  - {}", d))
+        .collect::<Vec<_>>()
+        .join("\n")
+    );
+  }
+  Ok(result.import_map)
 }
 
 pub fn import_map_from_text(

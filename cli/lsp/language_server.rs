@@ -74,6 +74,7 @@ use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
 use crate::npm::RealNpmRegistryApi;
 use crate::proc_state::import_map_from_text;
+use crate::proc_state::import_map_from_value;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -601,6 +602,17 @@ impl Inner {
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_import_map", None::<()>);
+
+    if let Some(config_file) = &self.maybe_config_file {
+      if let Some(import_map_json) = config_file.to_import_map() {
+        let import_map_url =
+          self.maybe_config_file.as_ref().unwrap().specifier.clone();
+        let import_map =
+          import_map_from_value(&import_map_url, import_map_json)?;
+        self.maybe_import_map_uri = Some(import_map_url);
+        self.maybe_import_map = Some(Arc::new(import_map));
+      }
+    }
 
     let maybe_import_map_url = if let Some(import_map_str) = self
       .config

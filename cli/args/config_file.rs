@@ -464,6 +464,8 @@ pub enum LockConfig {
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
   pub import_map: Option<String>,
+  pub imports: Option<Value>,
+  pub scopes: Option<Value>,
   pub lint: Option<Value>,
   pub fmt: Option<Value>,
   pub tasks: Option<Value>,
@@ -663,6 +665,22 @@ impl ConfigFile {
 
   pub fn to_import_map_path(&self) -> Option<String> {
     self.json.import_map.clone()
+  }
+
+  pub fn to_import_map(&self) -> Option<serde_json::Value> {
+    match (&self.json.imports, &self.json.scopes) {
+      (Some(imports), Some(scopes)) => Some(json!({
+        "imports": imports.clone(),
+        "scopes": scopes.clone(),
+      })),
+      (Some(imports), None) => Some(json!({
+        "imports": imports.clone(),
+      })),
+      (None, Some(scopes)) => Some(json!({
+        "scopes": scopes.clone(),
+      })),
+      _ => None,
+    }
   }
 
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
