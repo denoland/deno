@@ -52,7 +52,6 @@ delete Intl.v8BreakIterator;
   const quoteString = window.__bootstrap.console.quoteString;
   const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
-  const net = window.__bootstrap.net;
   const url = window.__bootstrap.url;
   const fetch = window.__bootstrap.fetch;
   const messagePort = window.__bootstrap.messagePort;
@@ -397,7 +396,6 @@ delete Intl.v8BreakIterator;
 
     core.initializeAsyncOps();
     performance.setTimeOrigin(DateNow());
-    net.setup(runtimeOptions.unstableFlag);
 
     const consoleFromV8 = window.Deno.core.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
@@ -542,7 +540,6 @@ delete Intl.v8BreakIterator;
 
     core.initializeAsyncOps();
     performance.setTimeOrigin(DateNow());
-    net.setup(runtimeOptions.unstableFlag);
 
     const consoleFromV8 = window.Deno.core.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
