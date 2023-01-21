@@ -606,21 +606,23 @@ fn napi_create_function(
   check_env!(env);
   check_arg!(env, result);
   check_arg_option!(env, cb);
-  check_arg!(env, name);
 
   if length > INT_MAX as _ {
     return Err(Error::InvalidArg);
   }
 
-  let name = std::slice::from_raw_parts(name, length);
-  // If it ends with NULL
-  let name = if name[name.len() - 1] == 0 {
-    std::str::from_utf8_unchecked(&name[0..name.len() - 1])
-  } else {
-    std::str::from_utf8_unchecked(name)
-  };
+  let name = name.as_ref().map(|s| std::slice::from_raw_parts(s, length));
 
-  *result = create_function(env, Some(name), cb, cb_info).into();
+  let name = name.map(|name| {
+    // If it ends with NULL
+    if name[name.len() - 1] == 0 {
+      std::str::from_utf8_unchecked(&name[0..name.len() - 1])
+    } else {
+      std::str::from_utf8_unchecked(name)
+    }
+  });
+
+  *result = create_function(env, name, cb, cb_info).into();
   Ok(())
 }
 
