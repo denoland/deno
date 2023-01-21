@@ -40,18 +40,19 @@ pub struct PtrSymbol {
 }
 
 impl PtrSymbol {
-  pub fn new(fn_ptr: usize, def: &ForeignFunction) -> Self {
+  pub fn new(fn_ptr: usize, def: &ForeignFunction) -> Result<Self, AnyError> {
     let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
     let cif = libffi::middle::Cif::new(
       def
         .parameters
         .clone()
         .into_iter()
-        .map(libffi::middle::Type::from),
-      def.result.clone().into(),
+        .map(libffi::middle::Type::try_from)
+        .collect::<Result<Vec<_>, _>>()?,
+      def.result.clone().try_into()?,
     );
 
-    Self { cif, ptr }
+    Ok(Self { cif, ptr })
   }
 }
 
@@ -578,8 +579,12 @@ where
     waker: None,
   }));
   let cif = Cif::new(
-    args.parameters.into_iter().map(libffi::middle::Type::from),
-    libffi::middle::Type::from(args.result),
+    args
+      .parameters
+      .into_iter()
+      .map(libffi::middle::Type::try_from)
+      .collect::<Result<Vec<_>, _>>()?,
+    libffi::middle::Type::try_from(args.result)?,
   );
 
   // SAFETY: CallbackInfo is leaked, is not null and stays valid as long as the callback exists.
