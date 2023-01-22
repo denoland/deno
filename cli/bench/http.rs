@@ -1,9 +1,16 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::collections::HashMap;
+use std::path::Path;
+use std::process::Command;
+use std::sync::atomic::AtomicU16;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use super::Result;
-use std::sync::atomic::{AtomicU16, Ordering};
-use std::{collections::HashMap, path::Path, process::Command, time::Duration};
-pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
+
+pub use test_util::parse_wrk_output;
+pub use test_util::WrkOutput as HttpBenchmarkResult;
 // Some of the benchmarks in this file have been renamed. In case the history
 // somehow gets messed up:
 //   "node_http" was once called "node"
@@ -27,7 +34,7 @@ pub fn benchmark(
   let mut res = HashMap::new();
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let http_dir = manifest_dir.join("bench").join("http");
-  for entry in std::fs::read_dir(http_dir.clone())? {
+  for entry in std::fs::read_dir(&http_dir)? {
     let entry = entry?;
     let pathbuf = entry.path();
     let path = pathbuf.to_str().unwrap();

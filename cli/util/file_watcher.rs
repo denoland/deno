@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::util::fs::canonicalize_path;
@@ -107,9 +107,13 @@ where
         log::debug!("File change ignored")
       }
       ResolutionResult::Restart {
-        paths_to_watch,
+        mut paths_to_watch,
         result,
       } => {
+        // watch the current directory when empty
+        if paths_to_watch.is_empty() {
+          paths_to_watch.push(PathBuf::from("."));
+        }
         return (paths_to_watch, result);
       }
     }
@@ -190,9 +194,13 @@ where
       print_after_restart();
     }
     ResolutionResult::Restart {
-      paths_to_watch: paths,
+      paths_to_watch: mut paths,
       result,
     } => {
+      // watch the current directory when empty
+      if paths.is_empty() {
+        paths.push(PathBuf::from("."));
+      }
       paths_to_watch = paths;
       resolution_result = result;
     }
@@ -314,13 +322,13 @@ where
         continue;
       },
       _ = operation_future => {
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
         // TODO(bartlomieju): print exit code here?
         info!(
           "{} {} finished. Restarting on file change...",
           colors::intense_blue("Watcher"),
           job_name,
         );
-        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
       },
     };
 

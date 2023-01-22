@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -18,6 +18,8 @@
   const {
     PromiseReject,
     PromiseResolve,
+    // TODO(lucacasonato): add SharedArrayBuffer to primordials
+    // SharedArrayBufferPrototype
     StringPrototypeCharCodeAt,
     StringPrototypeSlice,
     TypedArrayPrototypeSubarray,
@@ -108,6 +110,7 @@
         // When doing so they will have to make sure that changes to input do not affect future calls to decode().
         if (
           ObjectPrototypeIsPrototypeOf(
+            // deno-lint-ignore prefer-primordials
             SharedArrayBuffer.prototype,
             input || input.buffer,
           )

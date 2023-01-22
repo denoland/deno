@@ -1,5 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CaData;
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::cache::DenoDir;
@@ -21,7 +22,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::colors;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -39,7 +40,7 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags.clone()).await?;
+  let ps = ProcState::build(flags).await?;
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   let deno_dir = &ps.dir;
 
@@ -72,7 +73,7 @@ pub async fn compile(
   let final_bin = create_standalone_binary(
     original_binary,
     eszip,
-    module_specifier.clone(),
+    module_specifier,
     &compile_flags,
     ps,
   )
@@ -158,10 +159,11 @@ async fn create_standalone_binary(
 ) -> Result<Vec<u8>, AnyError> {
   let mut eszip_archive = eszip.into_bytes();
 
-  let ca_data = match ps.options.ca_file() {
-    Some(ca_file) => {
+  let ca_data = match ps.options.ca_data() {
+    Some(CaData::File(ca_file)) => {
       Some(fs::read(ca_file).with_context(|| format!("Reading: {}", ca_file))?)
     }
+    Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
     None => None,
   };
   let maybe_import_map: Option<(Url, String)> =
@@ -170,7 +172,7 @@ async fn create_standalone_binary(
       Some(import_map_specifier) => {
         let file = ps
           .file_fetcher
-          .fetch(&import_map_specifier, &mut Permissions::allow_all())
+          .fetch(&import_map_specifier, PermissionsContainer::allow_all())
           .await
           .context(format!(
             "Unable to load '{}' import map",

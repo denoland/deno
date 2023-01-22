@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -194,7 +194,9 @@
         context: "Argument 1",
       });
       const values = [];
-      for (const entry of new SafeArrayIterator(this[_list])) {
+      const entries = this[_list];
+      for (let i = 0; i < entries.length; ++i) {
+        const entry = entries[i];
         if (entry[0] === name) {
           ArrayPrototypePush(values, entry[1]);
         }
@@ -214,7 +216,9 @@
         prefix,
         context: "Argument 1",
       });
-      for (const entry of new SafeArrayIterator(this[_list])) {
+      const entries = this[_list];
+      for (let i = 0; i < entries.length; ++i) {
+        const entry = entries[i];
         if (entry[0] === name) {
           return entry[1];
         }
@@ -363,16 +367,16 @@
     }
 
     #updateComponents() {
-      [
-        this.#schemeEnd,
-        this.#usernameEnd,
-        this.#hostStart,
-        this.#hostEnd,
-        this.#port,
-        this.#pathStart,
-        this.#queryStart,
-        this.#fragmentStart,
-      ] = componentsBuf;
+      ({
+        0: this.#schemeEnd,
+        1: this.#usernameEnd,
+        2: this.#hostStart,
+        3: this.#hostEnd,
+        4: this.#port,
+        5: this.#pathStart,
+        6: this.#queryStart,
+        7: this.#fragmentStart,
+      } = componentsBuf);
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {

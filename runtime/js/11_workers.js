@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -139,7 +139,7 @@
 
     #pollControl = async () => {
       while (this.#status === "RUNNING") {
-        const [type, data] = await hostRecvCtrl(this.#id);
+        const { 0: type, 1: data } = await hostRecvCtrl(this.#id);
 
         // If terminate was called then we ignore all messages
         if (this.#status === "TERMINATED") {

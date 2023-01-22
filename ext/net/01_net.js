@@ -1,11 +1,15 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-  const { readableStreamForRid, writableStreamForRid } =
-    window.__bootstrap.streams;
+  const {
+    readableStreamForRidUnrefable,
+    readableStreamForRidUnrefableRef,
+    readableStreamForRidUnrefableUnref,
+    writableStreamForRid,
+  } = window.__bootstrap.streams;
   const {
     Error,
     ObjectPrototypeIsPrototypeOf,
@@ -18,17 +22,6 @@
   } = window.__bootstrap.primordials;
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
-
-  async function read(
-    rid,
-    buffer,
-  ) {
-    if (buffer.length === 0) {
-      return 0;
-    }
-    const nread = await core.read(rid, buffer);
-    return nread === 0 ? null : nread;
-  }
 
   async function write(rid, data) {
     return await core.write(rid, data);
@@ -46,6 +39,8 @@
     #rid = 0;
     #remoteAddr = null;
     #localAddr = null;
+    #unref = false;
+    #pendingReadPromiseIds = [];
 
     #readable;
     #writable;
@@ -72,8 +67,25 @@
       return write(this.rid, p);
     }
 
-    read(p) {
-      return read(this.rid, p);
+    async read(buffer) {
+      if (buffer.length === 0) {
+        return 0;
+      }
+      const promise = core.read(this.rid, buffer);
+      const promiseId = promise[promiseIdSymbol];
+      if (this.#unref) core.unrefOp(promiseId);
+      this.#pendingReadPromiseIds.push(promiseId);
+      let nread;
+      try {
+        nread = await promise;
+      } catch (e) {
+        throw e;
+      } finally {
+        this.#pendingReadPromiseIds = this.#pendingReadPromiseIds.filter((id) =>
+          id !== promiseId
+        );
+      }
+      return nread === 0 ? null : nread;
     }
 
     close() {
@@ -86,7 +98,10 @@
 
     get readable() {
       if (this.#readable === undefined) {
-        this.#readable = readableStreamForRid(this.rid);
+        this.#readable = readableStreamForRidUnrefable(this.rid);
+        if (this.#unref) {
+          readableStreamForRidUnrefableUnref(this.#readable);
+        }
       }
       return this.#readable;
     }
@@ -96,6 +111,22 @@
         this.#writable = writableStreamForRid(this.rid);
       }
       return this.#writable;
+    }
+
+    ref() {
+      this.#unref = false;
+      if (this.#readable) {
+        readableStreamForRidUnrefableRef(this.#readable);
+      }
+      this.#pendingReadPromiseIds.forEach((id) => core.refOp(id));
+    }
+
+    unref() {
+      this.#unref = true;
+      if (this.#readable) {
+        readableStreamForRidUnrefableUnref(this.#readable);
+      }
+      this.#pendingReadPromiseIds.forEach((id) => core.unrefOp(id));
     }
   }
 
@@ -144,7 +175,7 @@
       }
       this.#promiseId = promise[promiseIdSymbol];
       if (this.#unref) core.unrefOp(this.#promiseId);
-      const [rid, localAddr, remoteAddr] = await promise;
+      const { 0: rid, 1: localAddr, 2: remoteAddr } = await promise;
       this.#promiseId = null;
       if (this.addr.transport == "tcp") {
         localAddr.transport = "tcp";
@@ -229,21 +260,21 @@
       let remoteAddr;
       switch (this.addr.transport) {
         case "udp": {
-          [nread, remoteAddr] = await core.opAsync(
+          ({ 0: nread, 1: remoteAddr } = await core.opAsync(
             "op_net_recv_udp",
             this.rid,
             buf,
-          );
+          ));
           remoteAddr.transport = "udp";
           break;
         }
         case "unixpacket": {
           let path;
-          [nread, path] = await core.opAsync(
+          ({ 0: nread, 1: path } = await core.opAsync(
             "op_net_recv_unixpacket",
             this.rid,
             buf,
-          );
+          ));
           remoteAddr = { transport: "unixpacket", path };
           break;
         }
@@ -299,7 +330,7 @@
   function listen(args) {
     switch (args.transport ?? "tcp") {
       case "tcp": {
-        const [rid, addr] = ops.op_net_listen_tcp({
+        const { 0: rid, 1: addr } = ops.op_net_listen_tcp({
           hostname: args.hostname ?? "0.0.0.0",
           port: args.port,
         }, args.reusePort);
@@ -307,7 +338,7 @@
         return new Listener(rid, addr);
       }
       case "unix": {
-        const [rid, path] = ops.op_net_listen_unix(args.path);
+        const { 0: rid, 1: path } = ops.op_net_listen_unix(args.path);
         const addr = {
           transport: "unix",
           path,
@@ -323,7 +354,7 @@
     return function listenDatagram(args) {
       switch (args.transport) {
         case "udp": {
-          const [rid, addr] = udpOpFn(
+          const { 0: rid, 1: addr } = udpOpFn(
             {
               hostname: args.hostname ?? "127.0.0.1",
               port: args.port,
@@ -334,7 +365,7 @@
           return new Datagram(rid, addr);
         }
         case "unixpacket": {
-          const [rid, path] = unixOpFn(args.path);
+          const { 0: rid, 1: path } = unixOpFn(args.path);
           const addr = {
             transport: "unixpacket",
             path,
@@ -350,7 +381,7 @@
   async function connect(args) {
     switch (args.transport ?? "tcp") {
       case "tcp": {
-        const [rid, localAddr, remoteAddr] = await core.opAsync(
+        const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
           "op_net_connect_tcp",
           {
             hostname: args.hostname ?? "127.0.0.1",
@@ -362,7 +393,7 @@
         return new TcpConn(rid, remoteAddr, localAddr);
       }
       case "unix": {
-        const [rid, localAddr, remoteAddr] = await core.opAsync(
+        const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
           "op_net_connect_unix",
           args.path,
         );
@@ -377,15 +408,7 @@
     }
   }
 
-  function setup(unstable) {
-    if (!unstable) {
-      delete Listener.prototype.ref;
-      delete Listener.prototype.unref;
-    }
-  }
-
   window.__bootstrap.net = {
-    setup,
     connect,
     Conn,
     TcpConn,
