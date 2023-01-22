@@ -51,7 +51,7 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn create_function<'a>(
   env_ptr: *mut Env,
-  name: Option<v8::Local<'a, v8::String>>,
+  name: Option<v8::Local<v8::String>>,
   cb: napi_callback,
   cb_info: napi_callback_info,
 ) -> v8::Local<'a, v8::Function> {
