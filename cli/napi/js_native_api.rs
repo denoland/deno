@@ -597,7 +597,7 @@ fn napi_create_external_buffer(
 #[napi_sym::napi_sym]
 fn napi_create_function(
   env: *mut Env,
-  name: *const u8,
+  name: *const c_char,
   length: usize,
   cb: napi_callback,
   cb_info: napi_callback_info,
@@ -606,21 +606,17 @@ fn napi_create_function(
   check_env!(env);
   check_arg!(env, result);
   check_arg_option!(env, cb);
-  check_arg!(env, name);
 
   if length > INT_MAX as _ {
     return Err(Error::InvalidArg);
   }
 
-  let name = std::slice::from_raw_parts(name, length);
-  // If it ends with NULL
-  let name = if name[name.len() - 1] == 0 {
-    std::str::from_utf8_unchecked(&name[0..name.len() - 1])
-  } else {
-    std::str::from_utf8_unchecked(name)
-  };
+  let name = name
+    .as_ref()
+    .map(|_| check_new_from_utf8_len(env, name, length))
+    .transpose()?;
 
-  *result = create_function(env, Some(name), cb, cb_info).into();
+  *result = create_function(env, name, cb, cb_info).into();
   Ok(())
 }
 
