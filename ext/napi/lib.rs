@@ -678,7 +678,7 @@ where
         let nm = unsafe { &*nm };
         assert_eq!(nm.nm_version, 1);
         // SAFETY: we are going blind, calling the register function on the other side.
-        let exports = unsafe {
+        let maybe_exports = unsafe {
           (nm.nm_register_func)(
             env_ptr,
             std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
@@ -687,11 +687,20 @@ where
           )
         };
 
-        // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
-        // to a value, they have the same layout
-        let exports = unsafe {
-          std::mem::transmute::<napi_value, v8::Local<v8::Value>>(exports)
-        };
+        let exports = maybe_exports
+          .as_ref()
+          .map(|_| unsafe {
+            // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
+            // to a value, they have the same layout
+            std::mem::transmute::<napi_value, v8::Local<v8::Value>>(
+              maybe_exports,
+            )
+          })
+          .unwrap_or_else(|| {
+            // If the module didn't return anything, we use the exports object.
+            exports.into()
+          });
+
         Ok(serde_v8::Value { v8_value: exports })
       }
       None => {
@@ -704,17 +713,29 @@ where
               exports: napi_value,
             ) -> napi_value>(b"napi_register_module_v1")
             .expect("napi_register_module_v1 not found");
-          init(
+          let maybe_exports = init(
             env_ptr,
             std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
               exports.into(),
             ),
-          )
-        };
+          );
 
-        Ok(serde_v8::Value {
-          v8_value: exports.into(),
-        })
+          let exports = maybe_exports
+            .as_ref()
+            .map(|_| {
+              // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
+              // to a value, they have the same layout
+              std::mem::transmute::<napi_value, v8::Local<v8::Value>>(
+                maybe_exports,
+              )
+            })
+            .unwrap_or_else(|| {
+              // If the module didn't return anything, we use the exports object.
+              exports.into()
+            });
+
+          Ok(serde_v8::Value { v8_value: exports })
+        }
       }
     };
     // NAPI addons can't be unloaded, so we're going to "forget" the library
