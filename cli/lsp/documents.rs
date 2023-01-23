@@ -929,8 +929,8 @@ impl Documents {
     (*self.npm_reqs).clone()
   }
 
-  /// Returns if a @types/node package was injected into the package
-  /// requirements based on the state of the documents.
+  /// Returns if a @types/node package was injected into the npm
+  /// resolver based on the state of the documents.
   pub fn has_injected_types_node_package(&self) -> bool {
     self.has_injected_types_node_package
   }
@@ -1218,7 +1218,9 @@ impl Documents {
     }
 
     let mut npm_reqs = doc_analyzer.npm_reqs;
-    // ensure a @types/node package exists when any module uses a node: specifier
+    // Ensure a @types/node package exists when any module uses a node: specifier.
+    // Unlike on the command line, here we just add @types/node to the npm package
+    // requirements since this won't end up in the lockfile.
     self.has_injected_types_node_package = doc_analyzer
       .has_node_builtin_specifier
       && !npm_reqs.iter().any(|r| r.name == "@types/node");

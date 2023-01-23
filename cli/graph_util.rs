@@ -62,6 +62,7 @@ pub enum ModuleEntry {
 #[derive(Debug, Default)]
 pub struct GraphData {
   modules: HashMap<ModuleSpecifier, ModuleEntry>,
+  /// Specifiers that are built-in or external.
   external_specifiers: HashSet<ModuleSpecifier>,
   npm_packages: Vec<NpmPackageReq>,
   has_node_builtin_specifier: bool,
