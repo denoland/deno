@@ -1226,10 +1226,14 @@ fn napi_adjust_external_memory(
   adjusted_value: &mut i64,
 ) -> Result {
   check_env!(env);
+  check_arg!(env, adjusted_value);
+
   let env = unsafe { &mut *env };
   let isolate = &mut *env.isolate_ptr;
   *adjusted_value =
     isolate.adjust_amount_of_external_allocated_memory(change_in_bytes);
+
+  napi_clear_last_error(env);
   Ok(())
 }
 
