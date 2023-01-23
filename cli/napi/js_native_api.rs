@@ -1497,10 +1497,21 @@ fn napi_delete_reference(env: *mut Env, _nref: napi_ref) -> Result {
 }
 
 #[napi_sym::napi_sym]
-fn napi_detach_arraybuffer(_env: *mut Env, value: napi_value) -> Result {
+fn napi_detach_arraybuffer(env: *mut Env, value: napi_value) -> Result {
+  check_env!(env);
+
   let value = napi_value_unchecked(value);
-  let ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  ab.detach(None);
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(value)
+    .map_err(|_| Error::ArrayBufferExpected)?;
+
+  if !ab.is_detachable() {
+    return Err(Error::DetachableArraybufferExpected);
+  }
+
+  // Expected to crash for None.
+  ab.detach(None).unwrap();
+
+  napi_clear_last_error(env);
   Ok(())
 }
 
