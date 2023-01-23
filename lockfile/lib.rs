@@ -257,13 +257,13 @@ impl Lockfile {
       if package_info.integrity.as_str() != package.integrity {
         return Err(LockfileError(format!(
             "Integrity check failed for npm package: \"{}\". Unable to verify that the package
-  is the same as when the lockfile was generated.
-  
-  This could be caused by:
-    * the lock file may be corrupt
-    * the source itself may be corrupt
-  
-  Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
+is the same as when the lockfile was generated.
+
+This could be caused by:
+  * the lock file may be corrupt
+  * the source itself may be corrupt
+
+Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
             package.display_id, self.filename.display()
           )));
       }
