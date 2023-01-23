@@ -123,12 +123,19 @@ pub fn init_cleanup_hook(env: napi_env, exports: napi_value) {
 #[no_mangle]
 unsafe extern "C" fn napi_register_module_v1(
   env: napi_env,
-  exports: napi_value,
+  _: napi_value,
 ) -> napi_value {
   #[cfg(windows)]
   {
     napi_sys::setup();
   }
+
+  // We create a fresh exports object and leave the passed
+  // exports object empty.
+  //
+  // https://github.com/denoland/deno/issues/17349
+  let mut exports = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_object(env, &mut exports));
 
   strings::init(env, exports);
   numbers::init(env, exports);
