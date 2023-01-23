@@ -62,6 +62,7 @@ pub enum ModuleEntry {
 #[derive(Debug, Default)]
 pub struct GraphData {
   modules: HashMap<ModuleSpecifier, ModuleEntry>,
+  external_specifiers: HashSet<ModuleSpecifier>,
   npm_packages: Vec<NpmPackageReq>,
   has_node_builtin_specifier: bool,
   /// Map of first known referrer locations for each module. Used to enhance
@@ -92,8 +93,7 @@ impl GraphData {
     let mut has_npm_specifier_in_graph = false;
 
     for (specifier, result) in graph.specifiers() {
-      if NpmPackageReference::from_specifier(specifier).is_ok() {
-        has_npm_specifier_in_graph = true;
+      if self.modules.contains_key(specifier) {
         continue;
       }
 
@@ -101,17 +101,24 @@ impl GraphData {
         self.has_node_builtin_specifier = true;
       }
 
-      if self.modules.contains_key(specifier) {
-        continue;
-      }
-
       if let Some(found) = graph.redirects.get(specifier) {
         let module_entry = ModuleEntry::Redirect(found.clone());
         self.modules.insert(specifier.clone(), module_entry);
         continue;
       }
+
       match result {
-        Ok((_, _, media_type)) => {
+        Ok((_, module_kind, media_type)) => {
+          if matches!(module_kind, ModuleKind::External | ModuleKind::BuiltIn) {
+            if !has_npm_specifier_in_graph
+              && NpmPackageReference::from_specifier(specifier).is_ok()
+            {
+              has_npm_specifier_in_graph = true;
+            }
+            self.external_specifiers.insert(specifier.clone());
+            continue; // ignore npm and node specifiers
+          }
+
           let module = graph.get(specifier).unwrap();
           let code = match &module.maybe_source {
             Some(source) => source.clone(),
@@ -215,13 +222,14 @@ impl GraphData {
       }
     }
     while let Some(specifier) = visiting.pop_front() {
-      if NpmPackageReference::from_specifier(specifier).is_ok() {
-        continue; // skip analyzing npm specifiers
-      }
-
       let (specifier, entry) = match self.modules.get_key_value(specifier) {
         Some(pair) => pair,
-        None => return None,
+        None => {
+          if self.external_specifiers.contains(specifier) {
+            continue;
+          }
+          return None;
+        }
       };
       result.insert(specifier, entry);
       match entry {
@@ -304,6 +312,7 @@ impl GraphData {
     }
     Some(Self {
       modules,
+      external_specifiers: self.external_specifiers.clone(),
       has_node_builtin_specifier: self.has_node_builtin_specifier,
       npm_packages: self.npm_packages.clone(),
       referrer_map,

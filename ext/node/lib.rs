@@ -680,7 +680,7 @@ pub struct NodeModulePolyfill {
   /// Name of the module like "assert" or "timers/promises"
   pub name: &'static str,
 
-  /// Specifier relative to the root of `deno_std` repo, like "node/asser.ts"
+  /// Specifier relative to the root of `deno_std` repo, like "node/assert.ts"
   pub specifier: &'static str,
 }
 
