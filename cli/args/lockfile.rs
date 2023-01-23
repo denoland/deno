@@ -61,6 +61,8 @@ pub fn discover(
   Ok(Some(lockfile))
 }
 
+// NOTE(bartlomieju): we don't want a reverse mapping to be possible.
+#[allow(clippy::from_over_into)]
 impl Into<NpmPackageLockfileInfo> for NpmResolutionPackage {
   fn into(self) -> NpmPackageLockfileInfo {
     let dependencies = self

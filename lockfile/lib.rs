@@ -9,7 +9,6 @@ use anyhow::Error as AnyError;
 use ring::digest;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json;
 use std::path::PathBuf;
 
 pub struct NpmPackageLockfileInfo {
@@ -255,7 +254,7 @@ impl Lockfile {
     if let Some(package_info) =
       self.content.npm.packages.get(&package.serialized_id)
     {
-      if package_info.integrity.as_str() != &package.integrity {
+      if package_info.integrity.as_str() != package.integrity {
         return Err(LockfileError(format!(
             "Integrity check failed for npm package: \"{}\". Unable to verify that the package
   is the same as when the lockfile was generated.
@@ -285,7 +284,7 @@ impl Lockfile {
     self.content.npm.packages.insert(
       package_info.serialized_id.to_string(),
       NpmPackageInfo {
-        integrity: package_info.integrity.to_string(),
+        integrity: package_info.integrity,
         dependencies,
       },
     );
@@ -309,12 +308,7 @@ impl Lockfile {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::npm::NpmPackageId;
-  use crate::npm::NpmPackageVersionDistInfo;
-  use crate::npm::NpmVersion;
-  use serde_json;
   use serde_json::json;
-  use std::collections::HashMap;
   use std::fs::File;
   use std::io::prelude::*;
   use std::io::Write;
@@ -494,75 +488,43 @@ mod tests {
 
     let mut lockfile = Lockfile::new(file_path, false).unwrap();
 
-    let npm_package = NpmResolutionPackage {
-      id: NpmPackageId {
-        name: "nanoid".to_string(),
-        version: NpmVersion::parse("3.3.4").unwrap(),
-        peer_dependencies: Vec::new(),
-      },
-      copy_index: 0,
-      dist: NpmPackageVersionDistInfo::new(
-        "foo".to_string(),
-        "shasum".to_string(),
-        Some("sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==".to_string()),
-      ),
-      dependencies: HashMap::new(),
+    let npm_package = NpmPackageLockfileInfo {
+      display_id: "nanoid@3.3.4".to_string(),
+      serialized_id: "nanoid@3.3.4".to_string(),
+      integrity: "sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==".to_string(),
+      dependencies: vec![],
     };
-    let check_ok = lockfile.check_or_insert_npm_package(&npm_package);
+    let check_ok = lockfile.check_or_insert_npm_package(npm_package);
     assert!(check_ok.is_ok());
 
-    let npm_package = NpmResolutionPackage {
-      id: NpmPackageId {
-        name: "picocolors".to_string(),
-        version: NpmVersion::parse("1.0.0").unwrap(),
-        peer_dependencies: Vec::new(),
-      },
-      copy_index: 0,
-      dist: NpmPackageVersionDistInfo::new(
-        "foo".to_string(),
-        "shasum".to_string(),
-        Some("sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==".to_string()),
-      ),
-      dependencies: HashMap::new(),
+    let npm_package = NpmPackageLockfileInfo {
+      display_id: "picocolors@1.0.0".to_string(),
+      serialized_id: "picocolors@1.0.0".to_string(),
+      integrity: "sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==".to_string(),
+      dependencies: vec![],
     };
     // Integrity is borked in the loaded lockfile
-    let check_err = lockfile.check_or_insert_npm_package(&npm_package);
+    let check_err = lockfile.check_or_insert_npm_package(npm_package);
     assert!(check_err.is_err());
 
-    let npm_package = NpmResolutionPackage {
-      id: NpmPackageId {
-        name: "source-map-js".to_string(),
-        version: NpmVersion::parse("1.0.2").unwrap(),
-        peer_dependencies: Vec::new(),
-      },
-      copy_index: 0,
-      dist: NpmPackageVersionDistInfo::new(
-        "foo".to_string(),
-        "foo".to_string(),
-        Some("sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==".to_string()),
-      ),
-      dependencies: HashMap::new(),
+    let npm_package = NpmPackageLockfileInfo {
+      display_id: "source-map-js@1.0.2".to_string(),
+      serialized_id: "source-map-js@1.0.2".to_string(),
+      integrity: "sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==".to_string(),
+      dependencies: vec![],
     };
     // Not present in lockfile yet, should be inserted and check passed.
-    let check_ok = lockfile.check_or_insert_npm_package(&npm_package);
+    let check_ok = lockfile.check_or_insert_npm_package(npm_package);
     assert!(check_ok.is_ok());
 
-    let npm_package = NpmResolutionPackage {
-      id: NpmPackageId {
-        name: "source-map-js".to_string(),
-        version: NpmVersion::parse("1.0.2").unwrap(),
-        peer_dependencies: Vec::new(),
-      },
-      copy_index: 0,
-      dist: NpmPackageVersionDistInfo::new(
-        "foo".to_string(),
-        "foo".to_string(),
-        Some("sha512-foobar".to_string()),
-      ),
-      dependencies: HashMap::new(),
+    let npm_package = NpmPackageLockfileInfo {
+      display_id: "source-map-js@1.0.2".to_string(),
+      serialized_id: "source-map-js@1.0.2".to_string(),
+      integrity: "sha512-foobar".to_string(),
+      dependencies: vec![],
     };
     // Now present in lockfile, should file due to borked integrity
-    let check_err = lockfile.check_or_insert_npm_package(&npm_package);
+    let check_err = lockfile.check_or_insert_npm_package(npm_package);
     assert!(check_err.is_err());
   }
 }
