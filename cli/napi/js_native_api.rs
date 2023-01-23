@@ -1223,7 +1223,7 @@ fn napi_add_finalizer(
 fn napi_adjust_external_memory(
   env: *mut Env,
   change_in_bytes: i64,
-  adjusted_value: &mut i64,
+  adjusted_value: *mut i64,
 ) -> Result {
   check_env!(env);
   check_arg!(env, adjusted_value);
