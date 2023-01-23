@@ -893,8 +893,11 @@ fn diagnose_resolved(
             .is_err()
           {
             diagnostics.push(
-              DenoDiagnostic::NoCacheNpm(types_node_ref, specifier.clone())
-                .to_lsp_diagnostic(&range),
+              DenoDiagnostic::NoCacheNpm(
+                types_node_ref,
+                ModuleSpecifier::parse("npm:@types/node").unwrap(),
+              )
+              .to_lsp_diagnostic(&range),
             );
           }
         }
