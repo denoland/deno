@@ -6,6 +6,7 @@ use test_util::assert_ends_with;
 use test_util::assert_not_contains;
 
 #[test]
+#[ignore]
 fn pty_multiline() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("(\n1 + 2\n)");

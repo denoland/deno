@@ -863,7 +863,6 @@ mod tests {
   use crate::args::TsConfig;
   use deno_core::futures::future;
   use deno_core::OpState;
-  use deno_graph::ModuleKind;
   use std::fs;
 
   #[derive(Debug, Default)]
@@ -907,7 +906,7 @@ mod tests {
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let graph = deno_graph::create_graph(
-      vec![(specifier, ModuleKind::Esm)],
+      vec![specifier],
       &mut loader,
       deno_graph::GraphOptions {
         is_dynamic: false,
@@ -939,7 +938,7 @@ mod tests {
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let graph = deno_graph::create_graph(
-      vec![(specifier.clone(), ModuleKind::Esm)],
+      vec![specifier.clone()],
       &mut loader,
       deno_graph::GraphOptions {
         is_dynamic: false,

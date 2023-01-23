@@ -24,7 +24,6 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::ModuleSpecifier;
-use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
@@ -548,19 +547,9 @@ pub async fn run_benchmarks_with_watch(
       let mut modules_to_reload = if files_changed {
         Vec::new()
       } else {
-        bench_modules
-          .iter()
-          .map(|url| (url.clone(), ModuleKind::Esm))
-          .collect()
+        bench_modules.clone()
       };
-      let graph = ps
-        .create_graph(
-          bench_modules
-            .iter()
-            .map(|s| (s.clone(), ModuleKind::Esm))
-            .collect(),
-        )
-        .await?;
+      let graph = ps.create_graph(bench_modules.clone()).await?;
       graph_valid(&graph, !no_check, ps.options.check_js())?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
@@ -618,7 +607,7 @@ pub async fn run_benchmarks_with_watch(
             deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
           }) {
             if modules.contains(&path) {
-              modules_to_reload.push((specifier, ModuleKind::Esm));
+              modules_to_reload.push(specifier);
               break;
             }
           }
@@ -649,7 +638,7 @@ pub async fn run_benchmarks_with_watch(
     })
   };
 
-  let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
+  let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
     let permissions = &permissions;
     let bench_options = &bench_options;
     ps.borrow_mut().reset_for_file_watcher();
