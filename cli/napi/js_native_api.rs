@@ -2106,13 +2106,22 @@ fn napi_is_date(
 
 #[napi_sym::napi_sym]
 fn napi_is_detached_arraybuffer(
-  _env: *mut Env,
+  env: *mut Env,
   value: napi_value,
   result: *mut bool,
 ) -> Result {
+  check_env!(env);
+  check_arg!(env, result);
+
   let value = napi_value_unchecked(value);
-  let _ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  *result = _ab.was_detached();
+
+  *result = match v8::Local::<v8::ArrayBuffer>::try_from(value) {
+    Ok(array_buffer) => array_buffer.was_detached(),
+    Err(_) => false,
+  };
+
+  napi_clear_last_error(env);
+
   Ok(())
 }
 
