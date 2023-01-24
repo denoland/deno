@@ -4408,6 +4408,190 @@ fn lsp_npm_specifier_unopened_file() {
 }
 
 #[test]
+fn lsp_completions_node_specifier() {
+  let _g = http_server();
+  let mut client = init("initialize_params.json");
+  let diagnostics = CollectedDiagnostics(did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import fs from 'node:non-existent';\n\n",
+      }
+    }),
+  ));
+
+  let non_existent_diagnostics = diagnostics
+    .with_file_and_source("file:///a/file.ts", "deno")
+    .diagnostics
+    .into_iter()
+    .filter(|d| {
+      d.code == Some(lsp::NumberOrString::String("resolver-error".to_string()))
+    })
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(non_existent_diagnostics),
+    json!([
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 15
+          },
+          "end": {
+            "line": 0,
+            "character": 34
+          }
+        },
+        "severity": 1,
+        "code": "resolver-error",
+        "source": "deno",
+        "message": "Unknown Node built-in module: non-existent"
+      }
+    ])
+  );
+
+  // update to have node:fs import
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 16
+              },
+              "end": {
+                "line": 0,
+                "character": 33
+              }
+            },
+            "text": "node:fs"
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  let diagnostics = read_diagnostics(&mut client);
+  let cache_diagnostics = diagnostics
+    .with_file_and_source("file:///a/file.ts", "deno")
+    .diagnostics
+    .into_iter()
+    .filter(|d| {
+      d.code == Some(lsp::NumberOrString::String("no-cache-npm".to_string()))
+    })
+    .collect::<Vec<_>>();
+
+  assert_eq!(
+    json!(cache_diagnostics),
+    json!([
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 15
+          },
+          "end": {
+            "line": 0,
+            "character": 24
+          }
+        },
+        "data": {
+          "specifier": "npm:@types/node",
+        },
+        "severity": 1,
+        "code": "no-cache-npm",
+        "source": "deno",
+        "message": "Uncached or missing npm package: \"@types/node\"."
+      }
+    ])
+  );
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [
+          {
+            "uri": "npm:@types/node",
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 0
+              },
+              "end": {
+                "line": 2,
+                "character": 0
+              }
+            },
+            "text": "fs."
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  read_diagnostics(&mut client);
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 2,
+          "character": 3
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "."
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert!(list.items.iter().any(|i| i.label == "writeFile"));
+    assert!(list.items.iter().any(|i| i.label == "writeFileSync"));
+  } else {
+    panic!("unexpected response");
+  }
+
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_completions_registry() {
   let _g = http_server();
   let mut client = init("initialize_params_registry.json");

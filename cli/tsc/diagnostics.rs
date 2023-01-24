@@ -299,9 +299,11 @@ impl Diagnostic {
 
   fn fmt_related_information(&self, f: &mut fmt::Formatter) -> fmt::Result {
     if let Some(related_information) = self.related_information.as_ref() {
-      write!(f, "\n\n")?;
-      for info in related_information {
-        info.fmt_stack(f, 4)?;
+      if !related_information.is_empty() {
+        write!(f, "\n\n")?;
+        for info in related_information {
+          info.fmt_stack(f, 4)?;
+        }
       }
     }
 

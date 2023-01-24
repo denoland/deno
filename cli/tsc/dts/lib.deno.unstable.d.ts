@@ -95,9 +95,9 @@ declare namespace Deno {
   type NativeVoidType = "void";
 
   /** **UNSTABLE**: New API, yet to be vetted.
-   * 
+   *
    * The native struct type for interfacing with foreign functions.
-   * 
+   *
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
@@ -1640,7 +1640,8 @@ declare namespace Deno {
 
     /** How `stdin` of the spawned process should be handled.
      *
-     * Defaults to `"null"`. */
+     * Defaults to `"inherit"` for `output` & `outputSync`,
+     * and `"inherit"` for `spawn`. */
     stdin?: "piped" | "inherit" | "null";
     /** How `stdout` of the spawned process should be handled.
      *

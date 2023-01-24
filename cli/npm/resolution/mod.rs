@@ -28,7 +28,7 @@ mod specifier;
 
 use graph::Graph;
 pub use snapshot::NpmResolutionSnapshot;
-pub use specifier::resolve_npm_package_reqs;
+pub use specifier::resolve_graph_npm_info;
 pub use specifier::NpmPackageReference;
 pub use specifier::NpmPackageReq;
 
