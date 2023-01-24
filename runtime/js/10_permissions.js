@@ -183,18 +183,11 @@
     }
 
     query(desc) {
-      if (!isValidDescriptor(desc)) {
-        return PromiseReject(
-          new TypeError(
-            `The provided value "${desc?.name}" is not a valid permission name.`,
-          ),
-        );
+      try {
+        return PromiseResolve(this.querySync(desc));
+      } catch (error) {
+        return PromiseReject(error);
       }
-
-      formDescriptor(desc);
-
-      const state = opQuery(desc);
-      return PromiseResolve(cache(desc, state));
     }
 
     querySync(desc) {
@@ -211,18 +204,11 @@
     }
 
     revoke(desc) {
-      if (!isValidDescriptor(desc)) {
-        return PromiseReject(
-          new TypeError(
-            `The provided value "${desc?.name}" is not a valid permission name.`,
-          ),
-        );
+      try {
+        return PromiseResolve(this.revokeSync(desc));
+      } catch (error) {
+        return PromiseReject(error);
       }
-
-      formDescriptor(desc);
-
-      const state = opRevoke(desc);
-      return PromiseResolve(cache(desc, state));
     }
 
     revokeSync(desc) {
@@ -239,18 +225,11 @@
     }
 
     request(desc) {
-      if (!isValidDescriptor(desc)) {
-        return PromiseReject(
-          new TypeError(
-            `The provided value "${desc?.name}" is not a valid permission name.`,
-          ),
-        );
+      try {
+        return PromiseResolve(this.requestSync(desc));
+      } catch (error) {
+        return PromiseReject(error);
       }
-
-      formDescriptor(desc);
-
-      const state = opRequest(desc);
-      return PromiseResolve(cache(desc, state));
     }
 
     requestSync(desc) {
