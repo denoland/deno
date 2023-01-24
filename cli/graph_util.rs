@@ -346,13 +346,10 @@ impl GraphData {
           if check_types {
             if let Some(Resolved::Err(error)) = maybe_types {
               let range = error.range();
-              if !range.specifier.as_str().contains("$deno") {
-                return Some(Err(custom_error(
-                  get_error_class_name(&error.clone().into()),
-                  format!("{}\n    at {}", error, range),
-                )));
-              }
-              return Some(Err(error.clone().into()));
+              return Some(handle_check_error(
+                error.clone().into(),
+                Some(range),
+              ));
             }
           }
           for (_, dep) in dependencies.iter() {
@@ -365,31 +362,25 @@ impl GraphData {
               for resolved in resolutions {
                 if let Resolved::Err(error) = resolved {
                   let range = error.range();
-                  if !range.specifier.as_str().contains("$deno") {
-                    return Some(Err(custom_error(
-                      get_error_class_name(&error.clone().into()),
-                      format!("{}\n    at {}", error, range),
-                    )));
-                  }
-                  return Some(Err(error.clone().into()));
+                  return Some(handle_check_error(
+                    error.clone().into(),
+                    Some(range),
+                  ));
                 }
               }
             }
           }
         }
         ModuleEntry::Error(error) => {
-          if !roots.contains(specifier) {
-            if let Some(range) = self.referrer_map.get(specifier) {
-              if !range.specifier.as_str().contains("$deno") {
-                let message = error.to_string();
-                return Some(Err(custom_error(
-                  get_error_class_name(&error.clone().into()),
-                  format!("{}\n    at {}", message, range),
-                )));
-              }
-            }
-          }
-          return Some(Err(error.clone().into()));
+          let maybe_range = if roots.contains(specifier) {
+            None
+          } else {
+            self.referrer_map.get(specifier)
+          };
+          return Some(handle_check_error(
+            error.clone().into(),
+            maybe_range.map(|r| &**r),
+          ));
         }
         _ => {}
       }
@@ -628,4 +619,37 @@ pub fn error_for_any_npm_specifier(
   } else {
     Ok(())
   }
+}
+
+fn handle_check_error(
+  error: AnyError,
+  maybe_range: Option<&deno_graph::Range>,
+) -> Result<(), AnyError> {
+  use deno_graph::ResolutionError;
+  use deno_graph::SpecifierError;
+
+  let mut message = format!("{}", error);
+
+  if let Some(error) = error.downcast_ref::<ResolutionError>() {
+    if let ResolutionError::InvalidSpecifier {
+      error: SpecifierError::ImportPrefixMissing(specifier, _),
+      ..
+    } = error
+    {
+      if crate::node::resolve_builtin_node_module(specifier).is_ok() {
+        message.push_str(&format!(
+          "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{}\").",
+          specifier
+        ));
+      }
+    }
+  }
+
+  if let Some(range) = maybe_range {
+    if !range.specifier.as_str().contains("$deno") {
+      message.push_str(&format!("\n    at {}", range));
+    }
+  }
+
+  Err(custom_error(get_error_class_name(&error), message))
 }

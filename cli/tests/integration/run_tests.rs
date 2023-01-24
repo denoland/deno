@@ -12,6 +12,7 @@ use tokio::task::LocalSet;
 use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
+use util::env_vars_for_npm_tests_no_sync_download;
 
 itest!(stdout_write_all {
   args: "run --quiet run/stdout_write_all.ts",
@@ -3749,22 +3750,23 @@ fn stdio_streams_are_locked_in_permission_prompt() {
   });
 }
 
-itest!(run_node_builtin_modules_ts {
+itest!(node_builtin_modules_ts {
   args: "run --quiet run/node_builtin_modules/mod.ts",
   output: "run/node_builtin_modules/mod.ts.out",
-  envs: vec![(
-    "DENO_NODE_COMPAT_URL".to_string(),
-    test_util::std_file_url()
-  )],
+  envs: env_vars_for_npm_tests_no_sync_download(),
   exit_code: 0,
 });
 
-itest!(run_node_builtin_modules_js {
+itest!(node_builtin_modules_js {
   args: "run --quiet run/node_builtin_modules/mod.js",
   output: "run/node_builtin_modules/mod.js.out",
-  envs: vec![(
-    "DENO_NODE_COMPAT_URL".to_string(),
-    test_util::std_file_url()
-  )],
+  envs: env_vars_for_npm_tests_no_sync_download(),
   exit_code: 0,
+});
+
+itest!(node_prefix_missing {
+  args: "run --quiet run/node_prefix_missing/main.ts",
+  output: "run/node_prefix_missing/main.ts.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  exit_code: 1,
 });
