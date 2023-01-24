@@ -41,7 +41,7 @@ fn load_fixture_str(path: &str) -> String {
 
 fn init(init_path: &str) -> LspClient {
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, true).unwrap(); // todo: REVVVERRRT
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", load_fixture(init_path))
     .unwrap();
