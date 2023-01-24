@@ -460,7 +460,7 @@ impl ProcState {
           .ts_config,
         log_checks: true,
         reload: self.options.reload_flag()
-          && !roots.iter().all(|r| reload_exclusions.contains(&r)),
+          && !roots.iter().all(|r| reload_exclusions.contains(r)),
       };
       let check_cache =
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
