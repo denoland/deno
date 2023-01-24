@@ -597,7 +597,7 @@ fn napi_create_external_buffer(
 #[napi_sym::napi_sym]
 fn napi_create_function(
   env: *mut Env,
-  name: *const u8,
+  name: *const c_char,
   length: usize,
   cb: napi_callback,
   cb_info: napi_callback_info,
@@ -606,21 +606,17 @@ fn napi_create_function(
   check_env!(env);
   check_arg!(env, result);
   check_arg_option!(env, cb);
-  check_arg!(env, name);
 
   if length > INT_MAX as _ {
     return Err(Error::InvalidArg);
   }
 
-  let name = std::slice::from_raw_parts(name, length);
-  // If it ends with NULL
-  let name = if name[name.len() - 1] == 0 {
-    std::str::from_utf8_unchecked(&name[0..name.len() - 1])
-  } else {
-    std::str::from_utf8_unchecked(name)
-  };
+  let name = name
+    .as_ref()
+    .map(|_| check_new_from_utf8_len(env, name, length))
+    .transpose()?;
 
-  *result = create_function(env, Some(name), cb, cb_info).into();
+  *result = create_function(env, name, cb, cb_info).into();
   Ok(())
 }
 
@@ -1227,13 +1223,17 @@ fn napi_add_finalizer(
 fn napi_adjust_external_memory(
   env: *mut Env,
   change_in_bytes: i64,
-  adjusted_value: &mut i64,
+  adjusted_value: *mut i64,
 ) -> Result {
   check_env!(env);
+  check_arg!(env, adjusted_value);
+
   let env = unsafe { &mut *env };
   let isolate = &mut *env.isolate_ptr;
   *adjusted_value =
     isolate.adjust_amount_of_external_allocated_memory(change_in_bytes);
+
+  napi_clear_last_error(env);
   Ok(())
 }
 
@@ -1501,10 +1501,21 @@ fn napi_delete_reference(env: *mut Env, _nref: napi_ref) -> Result {
 }
 
 #[napi_sym::napi_sym]
-fn napi_detach_arraybuffer(_env: *mut Env, value: napi_value) -> Result {
+fn napi_detach_arraybuffer(env: *mut Env, value: napi_value) -> Result {
+  check_env!(env);
+
   let value = napi_value_unchecked(value);
-  let ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  ab.detach(None);
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(value)
+    .map_err(|_| Error::ArrayBufferExpected)?;
+
+  if !ab.is_detachable() {
+    return Err(Error::DetachableArraybufferExpected);
+  }
+
+  // Expected to crash for None.
+  ab.detach(None).unwrap();
+
+  napi_clear_last_error(env);
   Ok(())
 }
 
@@ -2099,13 +2110,22 @@ fn napi_is_date(
 
 #[napi_sym::napi_sym]
 fn napi_is_detached_arraybuffer(
-  _env: *mut Env,
+  env: *mut Env,
   value: napi_value,
   result: *mut bool,
 ) -> Result {
+  check_env!(env);
+  check_arg!(env, result);
+
   let value = napi_value_unchecked(value);
-  let _ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  *result = _ab.was_detached();
+
+  *result = match v8::Local::<v8::ArrayBuffer>::try_from(value) {
+    Ok(array_buffer) => array_buffer.was_detached(),
+    Err(_) => false,
+  };
+
+  napi_clear_last_error(env);
+
   Ok(())
 }
 

@@ -64,6 +64,18 @@ itest!(check_static_response_json {
   exit_code: 0,
 });
 
+itest!(check_node_builtin_modules_ts {
+  args: "check --quiet check/node_builtin_modules/mod.ts",
+  output: "check/node_builtin_modules/mod.ts.out",
+  exit_code: 1,
+});
+
+itest!(check_node_builtin_modules_js {
+  args: "check --quiet check/node_builtin_modules/mod.js",
+  output: "check/node_builtin_modules/mod.js.out",
+  exit_code: 1,
+});
+
 itest!(check_no_error_truncation {
     args: "check --quiet check/no_error_truncation/main.ts --config check/no_error_truncation/deno.json",
     output: "check/no_error_truncation/main.out",

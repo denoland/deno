@@ -532,8 +532,9 @@ impl ConfigFile {
       if checked.insert(ancestor.to_path_buf()) {
         for config_filename in CONFIG_FILE_NAMES {
           let f = ancestor.join(config_filename);
-          match ConfigFile::read(f) {
+          match ConfigFile::read(&f) {
             Ok(cf) => {
+              log::debug!("Config file found at '{}'", f.display());
               return Ok(Some(cf));
             }
             Err(e) => {

@@ -95,9 +95,9 @@ declare namespace Deno {
   type NativeVoidType = "void";
 
   /** **UNSTABLE**: New API, yet to be vetted.
-   * 
+   *
    * The native struct type for interfacing with foreign functions.
-   * 
+   *
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
@@ -1082,23 +1082,6 @@ declare namespace Deno {
     alpnProtocols?: string[];
   }
 
-  /** @category Network */
-  export interface Listener extends AsyncIterable<Conn> {
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Make the listener block the event loop from finishing.
-     *
-     * Note: the listener blocks the event loop from finishing by default.
-     * This method is only meaningful after `.unref()` is called.
-     */
-    ref(): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Make the listener not block the event loop from finishing.
-     */
-    unref(): void;
-  }
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Acquire an advisory file-system lock for the provided file.
@@ -1657,7 +1640,8 @@ declare namespace Deno {
 
     /** How `stdin` of the spawned process should be handled.
      *
-     * Defaults to `"null"`. */
+     * Defaults to `"inherit"` for `output` & `outputSync`,
+     * and `"inherit"` for `spawn`. */
     stdin?: "piped" | "inherit" | "null";
     /** How `stdout` of the spawned process should be handled.
      *
