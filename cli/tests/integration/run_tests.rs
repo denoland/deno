@@ -163,6 +163,11 @@ itest!(_033_import_map {
   output: "run/033_import_map.out",
 });
 
+itest!(_033_import_map_in_config_file {
+  args: "run --reload --config=import_maps/config.json import_maps/test.ts",
+  output: "run/033_import_map_in_config_file.out",
+});
+
 itest!(_033_import_map_remote {
   args:
     "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
