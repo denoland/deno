@@ -459,7 +459,7 @@ pub async fn upgrade(
         "Release notes: https://github.com/denoland/deno/releases/tag/v",
         &install_version,
       );
-        log::info!(
+      log::info!(
         "{}{}",
         "Blog post: https://deno.com/blog/v",
         get_minor_version(&install_version)
