@@ -558,6 +558,21 @@ fn _090_run_permissions_request() {
   ]);
 }
 
+#[test]
+fn _090_run_permissions_request_sync() {
+  let args = "run --quiet run/090_run_permissions_request_sync.ts";
+  use util::PtyData::*;
+  util::test_pty2(args, vec![
+    Output("⚠️  ️Deno requests run access to \"ls\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
+    Input("y\n"),
+    Output("⚠️  ️Deno requests run access to \"cat\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
+    Input("n\n"),
+    Output("granted\r\n"),
+    Output("prompt\r\n"),
+    Output("denied\r\n"),
+  ]);
+}
+
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",
@@ -2273,6 +2288,21 @@ mod permissions {
   }
 
   #[test]
+  fn _061_permissions_request_sync() {
+    let args = "run --quiet run/061_permissions_request_sync.ts";
+    use util::PtyData::*;
+    util::test_pty2(args, vec![
+    Output("⚠️  ️Deno requests read access to \"foo\". Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)] "),
+    Input("y\n"),
+    Output("⚠️  ️Deno requests read access to \"bar\". Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
+    Input("n\n"),
+    Output("granted\r\n"),
+    Output("prompt\r\n"),
+    Output("denied\r\n"),
+  ]);
+  }
+
+  #[test]
   fn _062_permissions_request_global() {
     let args = "run --quiet run/062_permissions_request_global.ts";
     use util::PtyData::*;
@@ -2285,13 +2315,36 @@ mod permissions {
     ]);
   }
 
+  #[test]
+  fn _062_permissions_request_global_sync() {
+    let args = "run --quiet run/062_permissions_request_global_sync.ts";
+    use util::PtyData::*;
+    util::test_pty2(args, vec![
+    Output("⚠️  ️Deno requests read access. Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)] "),
+    Input("y\n"),
+    Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
+    Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
+    Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
+  ]);
+  }
+
   itest!(_063_permissions_revoke {
     args: "run --allow-read=foo,bar run/063_permissions_revoke.ts",
     output: "run/063_permissions_revoke.ts.out",
   });
 
+  itest!(_063_permissions_revoke_sync {
+    args: "run --allow-read=foo,bar run/063_permissions_revoke_sync.ts",
+    output: "run/063_permissions_revoke.ts.out",
+  });
+
   itest!(_064_permissions_revoke_global {
     args: "run --allow-read=foo,bar run/064_permissions_revoke_global.ts",
+    output: "run/064_permissions_revoke_global.ts.out",
+  });
+
+  itest!(_064_permissions_revoke_global_sync {
+    args: "run --allow-read=foo,bar run/064_permissions_revoke_global_sync.ts",
     output: "run/064_permissions_revoke_global.ts.out",
   });
 
