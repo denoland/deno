@@ -87,19 +87,30 @@ pub struct CompletionsFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoverageFlags {
-  pub files: Vec<PathBuf>,
+  pub files: FileFlags,
   pub output: Option<PathBuf>,
-  pub ignore: Vec<PathBuf>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub lcov: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DocSourceFileFlag {
+  Builtin,
+  Path(String),
+}
+
+impl Default for DocSourceFileFlag {
+  fn default() -> Self {
+    Self::Builtin
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocFlags {
   pub private: bool,
   pub json: bool,
-  pub source_file: Option<String>,
+  pub source_file: DocSourceFileFlag,
   pub filter: Option<String>,
 }
 
@@ -120,6 +131,7 @@ pub struct FmtFlags {
   pub indent_width: Option<NonZeroU8>,
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
+  pub semi_colons: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -280,6 +292,15 @@ impl Default for ConfigFlag {
   }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CaData {
+  /// The string is a file path
+  File(String),
+  /// This variant is not exposed as an option in the CLI, it is used internally
+  /// for standalone binaries.
+  Bytes(Vec<u8>),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
@@ -297,7 +318,7 @@ pub struct Flags {
   pub allow_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
   pub ca_stores: Option<Vec<String>>,
-  pub ca_file: Option<String>,
+  pub ca_data: Option<CaData>,
   pub cache_blocklist: Vec<String>,
   /// This is not exposed as an option in the CLI, it is used internally when
   /// the language server is configured with an explicit cache option.
@@ -454,30 +475,30 @@ impl Flags {
   /// If it returns None, the config file shouldn't be discovered at all.
   pub fn config_path_args(&self) -> Option<Vec<PathBuf>> {
     use DenoSubcommand::*;
-    if let Fmt(FmtFlags { files, .. }) = &self.subcommand {
-      Some(files.include.clone())
-    } else if let Lint(LintFlags { files, .. }) = &self.subcommand {
-      Some(files.include.clone())
-    } else if let Run(RunFlags { script }) = &self.subcommand {
-      if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
-        if module_specifier.scheme() == "file"
-          || module_specifier.scheme() == "npm"
-        {
-          if let Ok(p) = module_specifier.to_file_path() {
-            Some(vec![p])
+
+    match &self.subcommand {
+      Fmt(FmtFlags { files, .. }) => Some(files.include.clone()),
+      Lint(LintFlags { files, .. }) => Some(files.include.clone()),
+      Run(RunFlags { script }) => {
+        if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
+          if module_specifier.scheme() == "file"
+            || module_specifier.scheme() == "npm"
+          {
+            if let Ok(p) = module_specifier.to_file_path() {
+              Some(vec![p])
+            } else {
+              Some(vec![])
+            }
           } else {
-            Some(vec![])
+            // When the entrypoint doesn't have file: scheme (it's the remote
+            // script), then we don't auto discover config file.
+            None
           }
         } else {
-          // When the entrypoint doesn't have file: scheme (it's the remote
-          // script), then we don't auto discover config file.
-          None
+          Some(vec![])
         }
-      } else {
-        Some(vec![])
       }
-    } else {
-      Some(vec![])
+      _ => Some(vec![]),
     }
   }
 
@@ -572,15 +593,15 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   if matches.is_present("unstable") {
     flags.unstable = true;
   }
-  if matches.is_present("log-level") {
-    flags.log_level = match matches.value_of("log-level").unwrap() {
-      "debug" => Some(Level::Debug),
-      "info" => Some(Level::Info),
-      _ => unreachable!(),
-    };
-  }
+
   if matches.is_present("quiet") {
     flags.log_level = Some(Level::Error);
+  } else {
+    match matches.value_of("log-level") {
+      Some("debug") => flags.log_level = Some(Level::Debug),
+      Some("info") => flags.log_level = Some(Level::Info),
+      _ => {}
+    }
   }
 
   match matches.subcommand() {
@@ -1193,6 +1214,13 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .possible_values(["always", "never", "preserve"])
         .help("Define how prose should be wrapped. Defaults to always."),
+    )
+    .arg(
+      Arg::new("options-semi")
+        .long("options-semi")
+        .takes_value(true)
+        .possible_values(["prefer", "asi"])
+        .help("Use semi colons. Defaults to prefer."),
     )
 }
 
@@ -2390,7 +2418,10 @@ fn completions_parse(
   mut app: clap::Command,
 ) {
   use clap_complete::generate;
-  use clap_complete::shells::{Bash, Fish, PowerShell, Zsh};
+  use clap_complete::shells::Bash;
+  use clap_complete::shells::Fish;
+  use clap_complete::shells::PowerShell;
+  use clap_complete::shells::Zsh;
   use clap_complete_fig::Fig;
 
   let mut buf: Vec<u8> = vec![];
@@ -2430,9 +2461,11 @@ fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let lcov = matches.is_present("lcov");
   let output = matches.value_of("output").map(PathBuf::from);
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
-    files,
+    files: FileFlags {
+      include: files,
+      ignore,
+    },
     output,
-    ignore,
     include,
     exclude,
     lcov,
@@ -2443,7 +2476,16 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
 
-  let source_file = matches.value_of("source_file").map(String::from);
+  let source_file = matches
+    .value_of("source_file")
+    .map(|value| {
+      if value == "--builtin" {
+        DocSourceFileFlag::Builtin
+      } else {
+        DocSourceFileFlag::Path(value.to_string())
+      }
+    })
+    .unwrap_or_default();
   let private = matches.is_present("private");
   let json = matches.is_present("json");
   let filter = matches.value_of("filter").map(String::from);
@@ -2534,11 +2576,10 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   } else {
     None
   };
-  let prose_wrap = if matches.is_present("options-prose-wrap") {
-    Some(matches.value_of("options-prose-wrap").unwrap().to_string())
-  } else {
-    None
-  };
+  let prose_wrap = matches
+    .value_of("options-prose-wrap")
+    .map(ToString::to_string);
+  let semi_colons = matches.value_of("options-semi").map(ToString::to_string);
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.is_present("check"),
@@ -2549,6 +2590,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     indent_width,
     single_quote,
     prose_wrap,
+    semi_colons,
   });
 }
 
@@ -2575,12 +2617,7 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
-  let root = if matches.is_present("root") {
-    let install_root = matches.value_of("root").unwrap();
-    Some(PathBuf::from(install_root))
-  } else {
-    None
-  };
+  let root = matches.value_of("root").map(PathBuf::from);
 
   let force = matches.is_present("force");
   let name = matches.value_of("name").map(|s| s.to_string());
@@ -2603,12 +2640,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn uninstall_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  let root = if matches.is_present("root") {
-    let install_root = matches.value_of("root").unwrap();
-    Some(PathBuf::from(install_root))
-  } else {
-    None
-  };
+  let root = matches.value_of("root").map(PathBuf::from);
 
   let name = matches.value_of("name").unwrap().to_string();
   flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
@@ -3078,7 +3110,10 @@ fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 }
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
+  flags.ca_data = matches
+    .value_of("cert")
+    .map(ToOwned::to_owned)
+    .map(CaData::File);
 }
 
 fn enable_testing_features_arg_parse(
@@ -3573,6 +3608,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         ..Flags::default()
       }
@@ -3594,6 +3630,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         ..Flags::default()
       }
@@ -3615,6 +3652,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         ..Flags::default()
       }
@@ -3636,6 +3674,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         watch: Some(vec![]),
         ..Flags::default()
@@ -3659,6 +3698,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
@@ -3689,6 +3729,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         watch: Some(vec![]),
         ..Flags::default()
@@ -3711,6 +3752,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -3740,6 +3782,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         watch: Some(vec![]),
@@ -3757,7 +3800,9 @@ mod tests {
       "4",
       "--options-single-quote",
       "--options-prose-wrap",
-      "never"
+      "never",
+      "--options-semi",
+      "asi"
     ]);
     assert_eq!(
       r.unwrap(),
@@ -3774,6 +3819,7 @@ mod tests {
           indent_width: Some(NonZeroU8::new(4).unwrap()),
           single_quote: Some(true),
           prose_wrap: Some("never".to_string()),
+          semi_colons: Some("asi".to_string()),
         }),
         ..Flags::default()
       }
@@ -4263,7 +4309,7 @@ mod tests {
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
-        ca_file: Some("example.crt".to_string()),
+        ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         v8_flags: svec!["--help", "--random-seed=1"],
@@ -4357,7 +4403,7 @@ mod tests {
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
-        ca_file: Some("example.crt".to_string()),
+        ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         v8_flags: svec!["--help", "--random-seed=1"],
@@ -4915,7 +4961,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Doc(DocFlags {
-          source_file: Some("script.ts".to_owned()),
+          source_file: DocSourceFileFlag::Path("script.ts".to_owned()),
           private: false,
           json: false,
           filter: None,
@@ -5023,7 +5069,7 @@ mod tests {
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
-        ca_file: Some("example.crt".to_string()),
+        ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
@@ -5595,7 +5641,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        ca_file: Some("example.crt".to_owned()),
+        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
@@ -5843,7 +5889,7 @@ mod tests {
           out_file: None,
         }),
         type_check_mode: TypeCheckMode::Local,
-        ca_file: Some("example.crt".to_owned()),
+        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
@@ -5862,7 +5908,7 @@ mod tests {
           version: None,
           output: None,
         }),
-        ca_file: Some("example.crt".to_owned()),
+        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
@@ -5884,7 +5930,7 @@ mod tests {
         subcommand: DenoSubcommand::Cache(CacheFlags {
           files: svec!["script.ts", "script_two.ts"],
         }),
-        ca_file: Some("example.crt".to_owned()),
+        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
@@ -5906,7 +5952,7 @@ mod tests {
           json: false,
           file: Some("https://example.com".to_string()),
         }),
-        ca_file: Some("example.crt".to_owned()),
+        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
@@ -5921,7 +5967,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: true,
-          source_file: Some("path/to/module.ts".to_string()),
+          source_file: DocSourceFileFlag::Path("path/to/module.ts".to_string()),
           filter: None,
         }),
         ..Flags::default()
@@ -5940,7 +5986,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
-          source_file: Some("path/to/module.ts".to_string()),
+          source_file: DocSourceFileFlag::Path("path/to/module.ts".to_string()),
           filter: Some("SomeClass.someField".to_string()),
         }),
         ..Flags::default()
@@ -5954,7 +6000,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
-          source_file: None,
+          source_file: Default::default(),
           filter: None,
         }),
         ..Flags::default()
@@ -5968,7 +6014,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: false,
           json: false,
-          source_file: Some("--builtin".to_string()),
+          source_file: DocSourceFileFlag::Builtin,
           filter: Some("Deno.Listener".to_string()),
         }),
         ..Flags::default()
@@ -5983,7 +6029,7 @@ mod tests {
         subcommand: DenoSubcommand::Doc(DocFlags {
           private: true,
           json: false,
-          source_file: Some("path/to/module.js".to_string()),
+          source_file: DocSourceFileFlag::Path("path/to/module.js".to_string()),
           filter: None,
         }),
         ..Flags::default()
@@ -6080,7 +6126,7 @@ mod tests {
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
-        ca_file: Some("example.crt".to_string()),
+        ca_data: Some(CaData::File("example.crt".to_string())),
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_read: Some(vec![]),
@@ -6100,9 +6146,11 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
-          files: vec![PathBuf::from("foo.json")],
+          files: FileFlags {
+            include: vec![PathBuf::from("foo.json")],
+            ignore: vec![],
+          },
           output: None,
-          ignore: vec![],
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           lcov: false,
@@ -6125,8 +6173,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Coverage(CoverageFlags {
-          files: vec![PathBuf::from("foo.json")],
-          ignore: vec![],
+          files: FileFlags {
+            include: vec![PathBuf::from("foo.json")],
+            ignore: vec![],
+          },
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
           lcov: true,

@@ -13,6 +13,7 @@ use super::tsc;
 use super::tsc::TsServer;
 
 use crate::args::LintOptions;
+use crate::node;
 use crate::npm::NpmPackageReference;
 use crate::tools::lint::get_configured_rules;
 
@@ -525,12 +526,10 @@ async fn generate_ts_diagnostics(
   let specifiers = snapshot
     .documents
     .documents(true, true)
-    .iter()
-    .map(|d| d.specifier().clone())
-    .collect::<Vec<_>>();
+    .into_iter()
+    .map(|d| d.specifier().clone());
   let (enabled_specifiers, disabled_specifiers) = specifiers
-    .iter()
-    .cloned()
+    .into_iter()
     .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
   let ts_diagnostics_map: TsDiagnosticsMap = if !enabled_specifiers.is_empty() {
     let req = tsc::RequestMethod::GetDiagnostics(enabled_specifiers);
@@ -616,6 +615,8 @@ pub enum DenoDiagnostic {
   },
   /// An error occurred when resolving the specifier string.
   ResolutionError(deno_graph::ResolutionError),
+  /// Invalid `node:` specifier.
+  InvalidNodeSpecifier(ModuleSpecifier),
 }
 
 impl DenoDiagnostic {
@@ -643,6 +644,7 @@ impl DenoDiagnostic {
         },
         ResolutionError::ResolverError { .. } => "resolver-error",
       },
+      Self::InvalidNodeSpecifier(_) => "resolver-error",
     }
   }
 
@@ -793,6 +795,7 @@ impl DenoDiagnostic {
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{}\" was redirected to \"{}\".", from, to), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => (lsp::DiagnosticSeverity::ERROR, err.to_string(), None),
+      Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
     };
     lsp::Diagnostic {
       range: *range,
@@ -871,6 +874,30 @@ fn diagnose_resolved(
             diagnostics.push(
               DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone())
                 .to_lsp_diagnostic(&range),
+            );
+          }
+        }
+      } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
+      {
+        if node::resolve_builtin_node_module(module_name).is_err() {
+          diagnostics.push(
+            DenoDiagnostic::InvalidNodeSpecifier(specifier.clone())
+              .to_lsp_diagnostic(&range),
+          );
+        } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+          // check that a @types/node package exists in the resolver
+          let types_node_ref =
+            NpmPackageReference::from_str("npm:@types/node").unwrap();
+          if npm_resolver
+            .resolve_package_folder_from_deno_module(&types_node_ref.req)
+            .is_err()
+          {
+            diagnostics.push(
+              DenoDiagnostic::NoCacheNpm(
+                types_node_ref,
+                ModuleSpecifier::parse("npm:@types/node").unwrap(),
+              )
+              .to_lsp_diagnostic(&range),
             );
           }
         }

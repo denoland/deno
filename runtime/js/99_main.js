@@ -52,7 +52,6 @@ delete Intl.v8BreakIterator;
   const quoteString = window.__bootstrap.console.quoteString;
   const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
-  const net = window.__bootstrap.net;
   const url = window.__bootstrap.url;
   const fetch = window.__bootstrap.fetch;
   const messagePort = window.__bootstrap.messagePort;
@@ -323,13 +322,13 @@ delete Intl.v8BreakIterator;
   function promiseRejectCallback(type, promise, reason) {
     switch (type) {
       case 0: {
-        ops.op_store_pending_promise_exception(promise, reason);
+        ops.op_store_pending_promise_rejection(promise, reason);
         ArrayPrototypePush(pendingRejections, promise);
         WeakMapPrototypeSet(pendingRejectionsReasons, promise, reason);
         break;
       }
       case 1: {
-        ops.op_remove_pending_promise_exception(promise);
+        ops.op_remove_pending_promise_rejection(promise);
         const index = ArrayPrototypeIndexOf(pendingRejections, promise);
         if (index > -1) {
           ArrayPrototypeSplice(pendingRejections, index, 1);
@@ -348,7 +347,7 @@ delete Intl.v8BreakIterator;
   function promiseRejectMacrotaskCallback() {
     while (pendingRejections.length > 0) {
       const promise = ArrayPrototypeShift(pendingRejections);
-      const hasPendingException = ops.op_has_pending_promise_exception(
+      const hasPendingException = ops.op_has_pending_promise_rejection(
         promise,
       );
       const reason = WeakMapPrototypeGet(pendingRejectionsReasons, promise);
@@ -369,7 +368,7 @@ delete Intl.v8BreakIterator;
 
       const errorEventCb = (event) => {
         if (event.error === reason) {
-          ops.op_remove_pending_promise_exception(promise);
+          ops.op_remove_pending_promise_rejection(promise);
         }
       };
       // Add a callback for "error" event - it will be dispatched
@@ -382,7 +381,7 @@ delete Intl.v8BreakIterator;
       // If event was not prevented (or "unhandledrejection" listeners didn't
       // throw) we will let Rust side handle it.
       if (rejectionEvent.defaultPrevented) {
-        ops.op_remove_pending_promise_exception(promise);
+        ops.op_remove_pending_promise_rejection(promise);
       }
     }
     return true;
@@ -397,7 +396,6 @@ delete Intl.v8BreakIterator;
 
     core.initializeAsyncOps();
     performance.setTimeOrigin(DateNow());
-    net.setup(runtimeOptions.unstableFlag);
 
     const consoleFromV8 = window.Deno.core.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
@@ -487,8 +485,14 @@ delete Intl.v8BreakIterator;
       },
     });
 
-    const finalDenoNs = {
+    // FIXME(bartlomieju): temporarily add whole `Deno.core` to
+    // `Deno[Deno.internal]` namespace. It should be removed and only necessary
+    // methods should be left there.
+    ObjectAssign(internals, {
       core,
+    });
+
+    const finalDenoNs = {
       internal: internalSymbol,
       [internalSymbol]: internals,
       resources: core.resources,
@@ -526,7 +530,6 @@ delete Intl.v8BreakIterator;
     // Setup `Deno` global - we're actually overriding already existing global
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-    ObjectFreeze(globalThis.Deno.core);
 
     util.log("args", runtimeOptions.args);
   }
@@ -542,7 +545,6 @@ delete Intl.v8BreakIterator;
 
     core.initializeAsyncOps();
     performance.setTimeOrigin(DateNow());
-    net.setup(runtimeOptions.unstableFlag);
 
     const consoleFromV8 = window.Deno.core.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
@@ -628,8 +630,14 @@ delete Intl.v8BreakIterator;
       },
     });
 
-    const finalDenoNs = {
+    // FIXME(bartlomieju): temporarily add whole `Deno.core` to
+    // `Deno[Deno.internal]` namespace. It should be removed and only necessary
+    // methods should be left there.
+    ObjectAssign(internals, {
       core,
+    });
+
+    const finalDenoNs = {
       internal: internalSymbol,
       [internalSymbol]: internals,
       resources: core.resources,
@@ -663,7 +671,6 @@ delete Intl.v8BreakIterator;
     // Setup `Deno` global - we're actually overriding already
     // existing global `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-    ObjectFreeze(globalThis.Deno.core);
   }
 
   ObjectDefineProperties(globalThis, {

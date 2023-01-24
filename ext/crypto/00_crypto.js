@@ -1307,12 +1307,10 @@
           }
 
           const hashAlgorithm = key[_algorithm].hash.name;
-          const saltLength = normalizedAlgorithm.saltLength;
           return await core.opAsync("op_crypto_verify_key", {
             key: keyData,
             algorithm: "RSA-PSS",
             hash: hashAlgorithm,
-            saltLength,
             signature,
           }, data);
         }

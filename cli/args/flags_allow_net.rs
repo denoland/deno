@@ -64,7 +64,8 @@ pub fn parse(paths: Vec<String>) -> clap::Result<Vec<String>> {
 
 #[cfg(test)]
 mod bare_port_tests {
-  use super::{BarePort, ParsePortError};
+  use super::BarePort;
+  use super::ParsePortError;
 
   #[test]
   fn bare_port_parsed() {

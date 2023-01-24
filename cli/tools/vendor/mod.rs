@@ -268,11 +268,8 @@ async fn create_graph(
   let entry_points = flags
     .specifiers
     .iter()
-    .map(|p| {
-      let url = resolve_url_or_path(p)?;
-      Ok((url, deno_graph::ModuleKind::Esm))
-    })
-    .collect::<Result<Vec<_>, AnyError>>()?;
+    .map(|p| resolve_url_or_path(p))
+    .collect::<Result<Vec<_>, _>>()?;
 
   ps.create_graph(entry_points).await
 }

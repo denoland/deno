@@ -2,7 +2,8 @@
 
 use crate::serde::Serialize;
 use crate::OpId;
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
+use std::cell::RefMut;
 
 // TODO(@AaronO): split into AggregateMetrics & PerOpMetrics
 #[derive(Clone, Default, Debug, Serialize)]
