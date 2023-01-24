@@ -34,13 +34,6 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-pub fn contains_specifier(
-  v: &[ModuleSpecifier],
-  specifier: &ModuleSpecifier,
-) -> bool {
-  v.iter().any(|s| s == specifier)
-}
-
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum ModuleEntry {
@@ -361,7 +354,7 @@ impl GraphData {
           }
         }
         ModuleEntry::Error(error) => {
-          if !contains_specifier(roots, specifier) {
+          if !roots.contains(specifier) {
             if let Some(range) = self.referrer_map.get(specifier) {
               if !range.specifier.as_str().contains("$deno") {
                 let message = error.to_string();

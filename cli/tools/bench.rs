@@ -4,7 +4,6 @@ use crate::args::BenchOptions;
 use crate::args::CliOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
-use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
@@ -648,7 +647,7 @@ pub async fn run_benchmarks_with_watch(
       let specifiers =
         collect_specifiers(&bench_options.files, is_supported_bench_path)?
           .into_iter()
-          .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
+          .filter(|specifier| modules_to_reload.contains(specifier))
           .collect::<Vec<ModuleSpecifier>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;

@@ -7,7 +7,6 @@ use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display;
 use crate::file_fetcher::File;
-use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
@@ -1479,9 +1478,7 @@ pub async fn run_tests_with_watch(
       )
       .await?
       .into_iter()
-      .filter(|(specifier, _)| {
-        contains_specifier(&modules_to_reload, specifier)
-      })
+      .filter(|(specifier, _)| modules_to_reload.contains(specifier))
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
