@@ -591,11 +591,7 @@ fn lsp_import_map_embedded_in_config_file() {
   let deno_import_map_jsonc =
     serde_json::to_vec_pretty(&load_fixture("deno.embedded_import_map.jsonc"))
       .unwrap();
-  fs::write(
-    temp_dir.path().join("deno.embedded_import_map.jsonc"),
-    deno_import_map_jsonc,
-  )
-  .unwrap();
+  temp_dir.write("deno.embedded_import_map.jsonc", deno_import_map_jsonc);
 
   params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
   if let Some(Value::Object(mut map)) = params.initialization_options {
