@@ -1116,7 +1116,9 @@ fn lock_file_lock_write() {
   "version": "2",
   "remote": {},
   "npm": {
-    "specifiers": { "cowsay@1.5.0": "cowsay@1.5.0" },
+    "specifiers": {
+      "cowsay@1.5.0": "cowsay@1.5.0"
+    },
     "packages": {
       "ansi-regex@3.0.1": {
         "integrity": "sha512-+O9Jct8wf++lXxxFc4hc8LsjaSq0HFzzL7cVsw8pRDIPdjKD2mT4ytDZlLuSBZ4cLKZFXIrMGO7DbQCtMJJMKw==",
@@ -1128,7 +1130,9 @@ fn lock_file_lock_write() {
       },
       "ansi-styles@4.3.0": {
         "integrity": "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==",
-        "dependencies": { "color-convert": "color-convert@2.0.1" }
+        "dependencies": {
+          "color-convert": "color-convert@2.0.1"
+        }
       },
       "camelcase@5.3.1": {
         "integrity": "sha512-L28STB170nwWS63UjtlEOE3dldQApaJXZkOI1uMFfzf3rRuPegHaHesyee+YxQ+W6SvRDQV6UrdOdRiR153wJg==",
@@ -1144,7 +1148,9 @@ fn lock_file_lock_write() {
       },
       "color-convert@2.0.1": {
         "integrity": "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==",
-        "dependencies": { "color-name": "color-name@1.1.4" }
+        "dependencies": {
+          "color-name": "color-name@1.1.4"
+        }
       },
       "color-name@1.1.4": {
         "integrity": "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==",
@@ -1192,15 +1198,21 @@ fn lock_file_lock_write() {
       },
       "locate-path@5.0.0": {
         "integrity": "sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g==",
-        "dependencies": { "p-locate": "p-locate@4.1.0" }
+        "dependencies": {
+          "p-locate": "p-locate@4.1.0"
+        }
       },
       "p-limit@2.3.0": {
         "integrity": "sha512-//88mFWSJx8lxCzwdAABTJL2MyWB12+eIY7MDL2SqLmAkeKU9qxRvWuSyTjm3FUmpBEMuFfckAIqEaVGUDxb6w==",
-        "dependencies": { "p-try": "p-try@2.2.0" }
+        "dependencies": {
+          "p-try": "p-try@2.2.0"
+        }
       },
       "p-locate@4.1.0": {
         "integrity": "sha512-R79ZZ/0wAxKGu3oYMlz8jy/kbhsNrS7SKZ7PxEHBgJ5+F2mtFW2fK2cOtBh1cHYkQsbzFV7I+EoRKe6Yt0oK7A==",
-        "dependencies": { "p-limit": "p-limit@2.3.0" }
+        "dependencies": {
+          "p-limit": "p-limit@2.3.0"
+        }
       },
       "p-try@2.2.0": {
         "integrity": "sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==",
@@ -1239,11 +1251,15 @@ fn lock_file_lock_write() {
       },
       "strip-ansi@4.0.0": {
         "integrity": "sha512-4XaJ2zQdCzROZDivEVIDPkcQn8LMFSa8kj8Gxb/Lnwzv9A8VctNZ+lfivC/sV3ivW8ElJTERXZoPBRrZKkNKow==",
-        "dependencies": { "ansi-regex": "ansi-regex@3.0.1" }
+        "dependencies": {
+          "ansi-regex": "ansi-regex@3.0.1"
+        }
       },
       "strip-ansi@6.0.1": {
         "integrity": "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==",
-        "dependencies": { "ansi-regex": "ansi-regex@5.0.1" }
+        "dependencies": {
+          "ansi-regex": "ansi-regex@5.0.1"
+        }
       },
       "strip-final-newline@2.0.0": {
         "integrity": "sha512-BrpvfNAE3dcvq7ll3xVumzjKjZQ5tI1sEUIKr3Uoks0XUl45St3FlatVqef9prk4jRDzhW6WZg+3bk93y6pLjA==",
@@ -1290,8 +1306,7 @@ fn lock_file_lock_write() {
       }
     }
   }
-}
-"#;
+}"#;
   temp_dir.write("deno.lock", lock_file_content);
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)

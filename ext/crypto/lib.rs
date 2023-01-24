@@ -34,17 +34,17 @@ use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
 use ring::signature::EcdsaVerificationAlgorithm;
 use ring::signature::KeyPair;
-use rsa::padding::PaddingScheme;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
-use rsa::PublicKey;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
 use sha1::Sha1;
-use sha2::Digest;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
+use signature::RandomizedSigner;
+use signature::Signer;
+use signature::Verifier;
 use std::convert::TryFrom;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -199,56 +199,33 @@ pub async fn op_crypto_sign_key(
 
   let signature = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
+      use rsa::pkcs1v15::SigningKey;
       let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
-      let (padding, hashed) = match args
+      match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let mut hasher = Sha1::new();
-          hasher.update(data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA1),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key = SigningKey::<Sha1>::new_with_prefix(private_key);
+          signing_key.sign(data)
         }
         CryptoHash::Sha256 => {
-          let mut hasher = Sha256::new();
-          hasher.update(data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA2_256),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key = SigningKey::<Sha256>::new_with_prefix(private_key);
+          signing_key.sign(data)
         }
         CryptoHash::Sha384 => {
-          let mut hasher = Sha384::new();
-          hasher.update(data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA2_384),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key = SigningKey::<Sha384>::new_with_prefix(private_key);
+          signing_key.sign(data)
         }
         CryptoHash::Sha512 => {
-          let mut hasher = Sha512::new();
-          hasher.update(data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA2_512),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key = SigningKey::<Sha512>::new_with_prefix(private_key);
+          signing_key.sign(data)
         }
-      };
-
-      private_key.sign(padding, &hashed)?
+      }
+      .to_vec()
     }
     Algorithm::RsaPss => {
+      use rsa::pss::SigningKey;
       let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
 
       let salt_len = args
@@ -257,46 +234,32 @@ pub async fn op_crypto_sign_key(
         as usize;
 
       let rng = OsRng;
-      let (padding, digest_in) = match args
+      match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let mut hasher = Sha1::new();
-          hasher.update(data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key =
+            SigningKey::<Sha1>::new_with_salt_len(private_key, salt_len);
+          signing_key.sign_with_rng(rng, data)
         }
         CryptoHash::Sha256 => {
-          let mut hasher = Sha256::new();
-          hasher.update(data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha256, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key =
+            SigningKey::<Sha256>::new_with_salt_len(private_key, salt_len);
+          signing_key.sign_with_rng(rng, data)
         }
         CryptoHash::Sha384 => {
-          let mut hasher = Sha384::new();
-          hasher.update(data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha384, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key =
+            SigningKey::<Sha384>::new_with_salt_len(private_key, salt_len);
+          signing_key.sign_with_rng(rng, data)
         }
         CryptoHash::Sha512 => {
-          let mut hasher = Sha512::new();
-          hasher.update(data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha512, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key =
+            SigningKey::<Sha512>::new_with_salt_len(private_key, salt_len);
+          signing_key.sign_with_rng(rng, data)
         }
-      };
-
-      // Sign data based on computed padding and return buffer
-      private_key.sign(padding, &digest_in)?
+      }
+      .to_vec()
     }
     Algorithm::Ecdsa => {
       let curve: &EcdsaSigningAlgorithm =
@@ -337,7 +300,6 @@ pub async fn op_crypto_sign_key(
 pub struct VerifyArg {
   key: KeyData,
   algorithm: Algorithm,
-  salt_length: Option<u32>,
   hash: Option<CryptoHash>,
   signature: ZeroCopyBuf,
   named_curve: Option<CryptoNamedCurve>,
@@ -353,102 +315,62 @@ pub async fn op_crypto_verify_key(
 
   let verification = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
+      use rsa::pkcs1v15::Signature;
+      use rsa::pkcs1v15::VerifyingKey;
       let public_key = read_rsa_public_key(args.key)?;
-      let (padding, hashed) = match args
+      let signature: Signature = args.signature.to_vec().into();
+      match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let mut hasher = Sha1::new();
-          hasher.update(data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA1),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key = VerifyingKey::<Sha1>::new_with_prefix(public_key);
+          verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha256 => {
-          let mut hasher = Sha256::new();
-          hasher.update(data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA2_256),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key =
+            VerifyingKey::<Sha256>::new_with_prefix(public_key);
+          verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha384 => {
-          let mut hasher = Sha384::new();
-          hasher.update(data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA2_384),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key =
+            VerifyingKey::<Sha384>::new_with_prefix(public_key);
+          verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha512 => {
-          let mut hasher = Sha512::new();
-          hasher.update(data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA2_512),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key =
+            VerifyingKey::<Sha512>::new_with_prefix(public_key);
+          verifying_key.verify(data, &signature).is_ok()
         }
-      };
-
-      public_key.verify(padding, &hashed, &args.signature).is_ok()
+      }
     }
     Algorithm::RsaPss => {
-      let salt_len = args
-        .salt_length
-        .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
-        as usize;
+      use rsa::pss::Signature;
+      use rsa::pss::VerifyingKey;
       let public_key = read_rsa_public_key(args.key)?;
+      let signature: Signature = args.signature.to_vec().into();
 
-      let rng = OsRng;
-      let (padding, hashed) = match args
+      match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let mut hasher = Sha1::new();
-          hasher.update(data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key: VerifyingKey<Sha1> = public_key.into();
+          verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha256 => {
-          let mut hasher = Sha256::new();
-          hasher.update(data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha256, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key: VerifyingKey<Sha256> = public_key.into();
+          verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha384 => {
-          let mut hasher = Sha384::new();
-          hasher.update(data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha384, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key: VerifyingKey<Sha384> = public_key.into();
+          verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha512 => {
-          let mut hasher = Sha512::new();
-          hasher.update(data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha512, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key: VerifyingKey<Sha512> = public_key.into();
+          verifying_key.verify(data, &signature).is_ok()
         }
-      };
-
-      public_key.verify(padding, &hashed, &args.signature).is_ok()
+      }
     }
     Algorithm::Hmac => {
       let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();

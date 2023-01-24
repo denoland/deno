@@ -12,6 +12,7 @@ use crate::args::FilesConfig;
 use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
+use crate::args::SemiColons;
 use crate::colors;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
@@ -20,6 +21,7 @@ use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
 use crate::util::text_encoding;
 use deno_ast::ParsedSource;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -92,8 +94,7 @@ pub async fn format(
       }
     }
   };
-  let deno_dir = cli_options.resolve_deno_dir()?;
-  let deno_dir = &deno_dir;
+  let deno_dir = &cli_options.resolve_deno_dir()?;
   let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async move {
     let incremental_cache = Arc::new(IncrementalCache::new(
       &deno_dir.fmt_incremental_cache_db_file_path(),
@@ -511,6 +512,17 @@ fn get_resolved_typescript_config(
     }
   }
 
+  if let Some(semi_colons) = options.semi_colons {
+    builder.semi_colons(match semi_colons {
+      SemiColons::Prefer => {
+        dprint_plugin_typescript::configuration::SemiColons::Prefer
+      }
+      SemiColons::Asi => {
+        dprint_plugin_typescript::configuration::SemiColons::Asi
+      }
+    });
+  }
+
   builder.build()
 }
 
@@ -575,7 +587,10 @@ fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let charset = text_encoding::detect_charset(&file_bytes);
-  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
+  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)
+    .map_err(|_| {
+      anyhow!("{} is not a valid UTF-8 file", file_path.display())
+    })?;
   let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);
   let text = if had_bom {
     text_encoding::strip_bom(&file_text).to_string()

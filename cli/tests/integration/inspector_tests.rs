@@ -211,7 +211,8 @@ fn assert_stderr(
 }
 
 fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
-  use std::sync::atomic::{AtomicU16, Ordering};
+  use std::sync::atomic::AtomicU16;
+  use std::sync::atomic::Ordering;
   static PORT: AtomicU16 = AtomicU16::new(9229);
   let port = PORT.fetch_add(1, Ordering::Relaxed);
   format!("{}=127.0.0.1:{}", flag_prefix, port)
@@ -317,7 +318,7 @@ async fn inspector_break_on_first_line() {
       "id":4,
       "method":"Runtime.evaluate",
       "params":{
-        "expression":"Deno.core.print(\"hello from the inspector\\n\")",
+        "expression":"Deno[Deno.internal].core.print(\"hello from the inspector\\n\")",
         "contextId":1,
         "includeCommandLineAPI":true,
         "silent":false,

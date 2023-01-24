@@ -278,7 +278,7 @@ where
     permissions.check(None)?;
   };
 
-  let symbol = PtrSymbol::new(pointer, &def);
+  let symbol = PtrSymbol::new(pointer, &def)?;
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
   let def_result = def.result.clone();
 
@@ -379,7 +379,7 @@ where
     permissions.check(None)?;
   };
 
-  let symbol = PtrSymbol::new(pointer, &def);
+  let symbol = PtrSymbol::new(pointer, &def)?;
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
 
   let out_buffer = out_buffer

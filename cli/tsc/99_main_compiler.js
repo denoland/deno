@@ -385,7 +385,7 @@ delete Object.prototype.__proto__;
   // paths must be either relative or absolute. Since
   // analysis in Rust operates on fully resolved URLs,
   // it makes sense to use the same scheme here.
-  const ASSETS = "asset:///";
+  const ASSETS_URL_PREFIX = "asset:///";
 
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
@@ -431,6 +431,7 @@ delete Object.prototype.__proto__;
     noEmit: true,
     strict: true,
     target: ts.ScriptTarget.ESNext,
+    lib: ["lib.deno.window.d.ts"],
   };
 
   // todo(dsherret): can we remove this and just use ts.OperationCanceledException?
@@ -546,10 +547,10 @@ delete Object.prototype.__proto__;
       return sourceFile;
     },
     getDefaultLibFileName() {
-      return `${ASSETS}/lib.esnext.d.ts`;
+      return `${ASSETS_URL_PREFIX}lib.esnext.d.ts`;
     },
     getDefaultLibLocation() {
-      return ASSETS;
+      return ASSETS_URL_PREFIX;
     },
     writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
       if (logDebug) {
@@ -854,25 +855,7 @@ delete Object.prototype.__proto__;
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
       ...program.getSemanticDiagnostics(),
-    ].filter((diagnostic) => {
-      if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
-        return false;
-      } else if (
-        diagnostic.code === 1259 &&
-        typeof diagnostic.messageText === "string" &&
-        diagnostic.messageText.startsWith(
-          "Module '\"deno:///missing_dependency.d.ts\"' can only be default-imported using the 'allowSyntheticDefaultImports' flag",
-        )
-      ) {
-        // For now, ignore diagnostics like:
-        // > TS1259 [ERROR]: Module '"deno:///missing_dependency.d.ts"' can only be default-imported using the 'allowSyntheticDefaultImports' flag
-        // This diagnostic has surfaced due to supporting node cjs imports because this module does `export =`.
-        // See discussion in https://github.com/microsoft/TypeScript/pull/51136
-        return false;
-      } else {
-        return true;
-      }
-    });
+    ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code));
 
     // emit the tsbuildinfo file
     // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
@@ -885,6 +868,20 @@ delete Object.prototype.__proto__;
       stats: performanceEnd(),
     });
     debug("<<< exec stop");
+  }
+
+  function getAssets() {
+    /** @type {{ specifier: string; text: string; }[]} */
+    const assets = [];
+    for (const sourceFile of sourceFileCache.values()) {
+      if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
+        assets.push({
+          specifier: sourceFile.fileName,
+          text: sourceFile.text,
+        });
+      }
+    }
+    return assets;
   }
 
   /**
@@ -935,16 +932,7 @@ delete Object.prototype.__proto__;
         );
       }
       case "getAssets": {
-        const assets = [];
-        for (const sourceFile of sourceFileCache.values()) {
-          if (sourceFile.fileName.startsWith(ASSETS)) {
-            assets.push({
-              specifier: sourceFile.fileName,
-              text: sourceFile.text,
-            });
-          }
-        }
-        return respond(id, assets);
+        return respond(id, getAssets());
       }
       case "getApplicableRefactors": {
         return respond(
@@ -1267,9 +1255,11 @@ delete Object.prototype.__proto__;
 
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.
-  /** @type {{ buildSpecifier: string; libs: string[] }} */
+  /** @type {{ buildSpecifier: string; libs: string[]; nodeBuiltInModuleNames: string[] }} */
+  const { buildSpecifier, libs, nodeBuiltInModuleNames } = ops.op_build_info();
 
-  const { buildSpecifier, libs } = ops.op_build_info();
+  ts.deno.setNodeBuiltInModuleNames(nodeBuiltInModuleNames);
+
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into
@@ -1281,7 +1271,10 @@ delete Object.prototype.__proto__;
     // we are caching in memory common type libraries that will be re-used by
     // tsc on when the snapshot is restored
     assert(
-      host.getSourceFile(`${ASSETS}${specifier}`, ts.ScriptTarget.ESNext),
+      host.getSourceFile(
+        `${ASSETS_URL_PREFIX}${specifier}`,
+        ts.ScriptTarget.ESNext,
+      ),
     );
   }
   // this helps ensure as much as possible is in memory that is re-usable
@@ -1292,12 +1285,16 @@ delete Object.prototype.__proto__;
     options: SNAPSHOT_COMPILE_OPTIONS,
     host,
   });
-  ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM);
+  assert(ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0);
+
+  // remove this now that we don't need it anymore for warming up tsc
+  sourceFileCache.delete(buildSpecifier);
 
   // exposes the two functions that are called by `tsc::exec()` when type
   // checking TypeScript.
   globalThis.startup = startup;
   globalThis.exec = exec;
+  globalThis.getAssets = getAssets;
 
   // exposes the functions that are called when the compiler is used as a
   // language service.

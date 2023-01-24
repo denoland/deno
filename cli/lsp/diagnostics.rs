@@ -13,6 +13,8 @@ use super::tsc;
 use super::tsc::TsServer;
 
 use crate::args::LintOptions;
+use crate::graph_util::enhanced_resolution_error_message;
+use crate::node;
 use crate::npm::NpmPackageReference;
 use crate::tools::lint::get_configured_rules;
 
@@ -24,7 +26,9 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_graph::ResolutionError;
 use deno_graph::Resolved;
+use deno_graph::SpecifierError;
 use deno_lint::rules::LintRule;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
@@ -525,12 +529,10 @@ async fn generate_ts_diagnostics(
   let specifiers = snapshot
     .documents
     .documents(true, true)
-    .iter()
-    .map(|d| d.specifier().clone())
-    .collect::<Vec<_>>();
+    .into_iter()
+    .map(|d| d.specifier().clone());
   let (enabled_specifiers, disabled_specifiers) = specifiers
-    .iter()
-    .cloned()
+    .into_iter()
     .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
   let ts_diagnostics_map: TsDiagnosticsMap = if !enabled_specifiers.is_empty() {
     let req = tsc::RequestMethod::GetDiagnostics(enabled_specifiers);
@@ -571,6 +573,12 @@ async fn generate_ts_diagnostics(
 #[serde(rename_all = "camelCase")]
 struct DiagnosticDataSpecifier {
   pub specifier: ModuleSpecifier,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticDataStrSpecifier {
+  pub specifier: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -616,13 +624,12 @@ pub enum DenoDiagnostic {
   },
   /// An error occurred when resolving the specifier string.
   ResolutionError(deno_graph::ResolutionError),
+  /// Invalid `node:` specifier.
+  InvalidNodeSpecifier(ModuleSpecifier),
 }
 
 impl DenoDiagnostic {
   fn code(&self) -> &str {
-    use deno_graph::ResolutionError;
-    use deno_graph::SpecifierError;
-
     match self {
       Self::DenoWarn(_) => "deno-warn",
       Self::ImportMapRemap { .. } => "import-map-remap",
@@ -643,6 +650,7 @@ impl DenoDiagnostic {
         },
         ResolutionError::ResolverError { .. } => "resolver-error",
       },
+      Self::InvalidNodeSpecifier(_) => "resolver-error",
     }
   }
 
@@ -747,6 +755,32 @@ impl DenoDiagnostic {
             ..Default::default()
           }
         }
+        "import-prefix-missing" => {
+          // if an import-prefix-missing diagnostic ends up here, then that currently
+          // will only ever occur for a possible "node:" specifier, so don't bother
+          // checking if it's actually a "node:"" specifier
+          let data = diagnostic
+            .data
+            .clone()
+            .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
+          let data: DiagnosticDataStrSpecifier = serde_json::from_value(data)?;
+          lsp::CodeAction {
+            title: format!("Update specifier to node:{}", data.specifier),
+            kind: Some(lsp::CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![diagnostic.clone()]),
+            edit: Some(lsp::WorkspaceEdit {
+              changes: Some(HashMap::from([(
+                specifier.clone(),
+                vec![lsp::TextEdit {
+                  new_text: format!("\"node:{}\"", data.specifier),
+                  range: diagnostic.range,
+                }],
+              )])),
+              ..Default::default()
+            }),
+            ..Default::default()
+          }
+        }
         _ => {
           return Err(anyhow!(
             "Unsupported diagnostic code (\"{}\") provided.",
@@ -762,17 +796,21 @@ impl DenoDiagnostic {
 
   /// Given a reference to the code from an LSP diagnostic, determine if the
   /// diagnostic is fixable or not
-  pub fn is_fixable(code: &Option<lsp::NumberOrString>) -> bool {
-    if let Some(lsp::NumberOrString::String(code)) = code {
-      matches!(
-        code.as_str(),
-        "import-map-remap"
-          | "no-cache"
-          | "no-cache-npm"
-          | "no-cache-data"
-          | "no-assert-type"
-          | "redirect"
-      )
+  pub fn is_fixable(diagnostic: &lsp_types::Diagnostic) -> bool {
+    if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
+      if code == "import-prefix-missing" {
+        diagnostic.data.is_some()
+      } else {
+        matches!(
+          code.as_str(),
+          "import-map-remap"
+            | "no-cache"
+            | "no-cache-npm"
+            | "no-cache-data"
+            | "no-assert-type"
+            | "redirect"
+        )
+      }
     } else {
       false
     }
@@ -792,7 +830,23 @@ impl DenoDiagnostic {
       Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: \"{}\".", pkg_ref.req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{}\" was redirected to \"{}\".", from, to), Some(json!({ "specifier": from, "redirect": to }))),
-      Self::ResolutionError(err) => (lsp::DiagnosticSeverity::ERROR, err.to_string(), None),
+      Self::ResolutionError(err) => (
+        lsp::DiagnosticSeverity::ERROR,
+        enhanced_resolution_error_message(err),
+        if let ResolutionError::InvalidSpecifier {
+          error: SpecifierError::ImportPrefixMissing(specifier, _),
+          ..
+        } = err {
+          if crate::node::resolve_builtin_node_module(specifier).is_ok() {
+            Some(json!({ "specifier": specifier }))
+          } else {
+            None
+          }
+        } else {
+          None
+        },
+      ),
+      Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
     };
     lsp::Diagnostic {
       range: *range,
@@ -871,6 +925,30 @@ fn diagnose_resolved(
             diagnostics.push(
               DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone())
                 .to_lsp_diagnostic(&range),
+            );
+          }
+        }
+      } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
+      {
+        if node::resolve_builtin_node_module(module_name).is_err() {
+          diagnostics.push(
+            DenoDiagnostic::InvalidNodeSpecifier(specifier.clone())
+              .to_lsp_diagnostic(&range),
+          );
+        } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+          // check that a @types/node package exists in the resolver
+          let types_node_ref =
+            NpmPackageReference::from_str("npm:@types/node").unwrap();
+          if npm_resolver
+            .resolve_package_folder_from_deno_module(&types_node_ref.req)
+            .is_err()
+          {
+            diagnostics.push(
+              DenoDiagnostic::NoCacheNpm(
+                types_node_ref,
+                ModuleSpecifier::parse("npm:@types/node").unwrap(),
+              )
+              .to_lsp_diagnostic(&range),
             );
           }
         }

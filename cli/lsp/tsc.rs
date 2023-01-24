@@ -208,7 +208,7 @@ impl AssetDocument {
 type AssetsMap = HashMap<ModuleSpecifier, AssetDocument>;
 
 fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
-  let assets = tsc::STATIC_ASSETS
+  let assets = tsc::LAZILY_LOADED_STATIC_ASSETS
     .iter()
     .map(|(k, v)| {
       let url_str = format!("asset:///{}", k);
@@ -216,7 +216,7 @@ fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
       let asset = AssetDocument::new(specifier.clone(), v);
       (specifier, asset)
     })
-    .collect();
+    .collect::<AssetsMap>();
   Arc::new(Mutex::new(assets))
 }
 
@@ -2728,28 +2728,29 @@ fn op_resolve(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
-
-  let result = if let Some(resolved) = state.state_snapshot.documents.resolve(
-    &args.specifiers,
-    &referrer,
-    state.state_snapshot.maybe_npm_resolver.as_ref(),
-  ) {
-    Ok(
-      resolved
-        .into_iter()
-        .map(|o| {
-          o.map(|(s, mt)| (s.to_string(), mt.as_ts_extension().to_string()))
-        })
-        .collect(),
-    )
-  } else {
-    Err(custom_error(
+  let result = match state.get_asset_or_document(&referrer) {
+    Some(referrer_doc) => {
+      let resolved = state.state_snapshot.documents.resolve(
+        args.specifiers,
+        &referrer_doc,
+        state.state_snapshot.maybe_npm_resolver.as_ref(),
+      );
+      Ok(
+        resolved
+          .into_iter()
+          .map(|o| {
+            o.map(|(s, mt)| (s.to_string(), mt.as_ts_extension().to_string()))
+          })
+          .collect(),
+      )
+    }
+    None => Err(custom_error(
       "NotFound",
       format!(
         "Error resolving. Referring specifier \"{}\" was not found.",
         args.base
       ),
-    ))
+    )),
   };
 
   state.performance.measure(mark);
@@ -2764,15 +2765,20 @@ fn op_respond(state: &mut OpState, args: Response) -> bool {
 }
 
 #[op]
-fn op_script_names(state: &mut OpState) -> Vec<ModuleSpecifier> {
+fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
-  state
-    .state_snapshot
-    .documents
-    .documents(true, true)
-    .into_iter()
-    .map(|d| d.specifier().clone())
-    .collect()
+  let documents = &state.state_snapshot.documents;
+  let open_docs = documents.documents(true, true);
+
+  let mut result = Vec::with_capacity(open_docs.len() + 1);
+
+  if documents.has_injected_types_node_package() {
+    // ensure this is first so it resolves the node types first
+    result.push("asset:///node_types.d.ts".to_string());
+  }
+
+  result.extend(open_docs.into_iter().map(|d| d.specifier().to_string()));
+  result
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -3455,6 +3461,8 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::text::LineIndex;
+  use crate::tsc::AssetText;
+  use pretty_assertions::assert_eq;
   use std::path::Path;
   use std::path::PathBuf;
   use test_util::TempDir;
@@ -3913,18 +3921,31 @@ mod tests {
       Default::default(),
     )
     .unwrap();
-    let assets = result.as_array().unwrap();
+    let assets: Vec<AssetText> = serde_json::from_value(result).unwrap();
+    let mut asset_names = assets
+      .iter()
+      .map(|a| {
+        a.specifier
+          .replace("asset:///lib.", "")
+          .replace(".d.ts", "")
+      })
+      .collect::<Vec<_>>();
+    let mut expected_asset_names: Vec<String> = serde_json::from_str(
+      include_str!(concat!(env!("OUT_DIR"), "/lib_file_names.json")),
+    )
+    .unwrap();
+
+    asset_names.sort();
+    expected_asset_names.sort();
 
     // You might have found this assertion starts failing after upgrading TypeScript.
-    // Just update the new number of assets (declaration files) for this number.
-    assert_eq!(assets.len(), 72);
+    // Ensure build.rs is updated so these match.
+    assert_eq!(asset_names, expected_asset_names);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;
     for asset in assets {
-      let obj = asset.as_object().unwrap();
-      let text = obj.get("text").unwrap().as_str().unwrap();
-      total_size += text.len();
+      total_size += asset.text.len();
     }
     assert!(total_size > 0);
     assert!(total_size < 2_000_000); // currently as of TS 4.6, it's 0.7MB

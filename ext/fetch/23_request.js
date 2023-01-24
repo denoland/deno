@@ -155,9 +155,11 @@
   /**
    * https://fetch.spec.whatwg.org/#concept-request-clone
    * @param {InnerRequest} request
+   * @param {boolean} skipBody
+   * @param {boolean} flash
    * @returns {InnerRequest}
    */
-  function cloneInnerRequest(request, skipBody = false) {
+  function cloneInnerRequest(request, skipBody = false, flash = false) {
     const headerList = ArrayPrototypeMap(
       request.headerList,
       (x) => [x[0], x[1]],
@@ -166,6 +168,19 @@
     let body = null;
     if (request.body !== null && !skipBody) {
       body = request.body.clone();
+    }
+
+    if (flash) {
+      return {
+        body,
+        methodCb: request.methodCb,
+        urlCb: request.urlCb,
+        headerList: request.headerList,
+        streamRid: request.streamRid,
+        serverId: request.serverId,
+        redirectMode: "follow",
+        redirectCount: 0,
+      };
     }
 
     return {
@@ -487,16 +502,30 @@
       }
       let newReq;
       if (this[_flash]) {
-        newReq = cloneInnerRequest(this[_flash]);
+        newReq = cloneInnerRequest(this[_flash], false, true);
       } else {
         newReq = cloneInnerRequest(this[_request]);
       }
       const newSignal = abortSignal.newSignal();
-      abortSignal.follow(newSignal, this[_signal]);
+
+      if (this[_signal]) {
+        abortSignal.follow(newSignal, this[_signal]);
+      }
+
+      if (this[_flash]) {
+        return fromInnerRequest(
+          newReq,
+          newSignal,
+          guardFromHeaders(this[_headers]),
+          true,
+        );
+      }
+
       return fromInnerRequest(
         newReq,
         newSignal,
         guardFromHeaders(this[_headers]),
+        false,
       );
     }
 
@@ -573,14 +602,22 @@
 
   /**
    * @param {InnerRequest} inner
+   * @param {AbortSignal} signal
    * @param {"request" | "immutable" | "request-no-cors" | "response" | "none"} guard
+   * @param {boolean} flash
    * @returns {Request}
    */
-  function fromInnerRequest(inner, signal, guard) {
+  function fromInnerRequest(inner, signal, guard, flash) {
     const request = webidl.createBranded(Request);
-    request[_request] = inner;
+    if (flash) {
+      request[_flash] = inner;
+    } else {
+      request[_request] = inner;
+    }
     request[_signal] = signal;
-    request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
+    request[_getHeaders] = flash
+      ? () => headersFromHeaderList(inner.headerList(), guard)
+      : () => headersFromHeaderList(inner.headerList, guard);
     return request;
   }
 
@@ -606,6 +643,7 @@
       body: body !== null ? new InnerBody(body) : null,
       methodCb,
       urlCb,
+      headerList: headersCb,
       streamRid,
       serverId,
       redirectMode: "follow",

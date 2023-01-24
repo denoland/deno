@@ -29,12 +29,7 @@ use tower_lsp::lsp_types::Range;
 /// Diagnostic error codes which actually are the same, and so when grouping
 /// fixes we treat them the same.
 static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
-  Lazy::new(|| {
-    ([("2339", "2339"), ("2345", "2339")])
-      .iter()
-      .cloned()
-      .collect()
-  });
+  Lazy::new(|| ([("2339", "2339"), ("2345", "2339")]).into_iter().collect());
 
 /// Fixes which help determine if there is a preferred fix when there are
 /// multiple fixes available.
@@ -54,8 +49,7 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
       ("addMissingAwait", (1, false)),
       ("fixImport", (0, true)),
     ])
-    .iter()
-    .cloned()
+    .into_iter()
     .collect()
   });
 

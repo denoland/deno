@@ -91,6 +91,7 @@ where
   }
 }
 
+pub type RealmIdx = usize;
 pub type PromiseId = i32;
 pub type OpAsyncFuture = OpCall<(PromiseId, OpId, OpResult)>;
 pub type OpFn =
@@ -156,7 +157,7 @@ pub struct OpCtx {
   pub decl: Rc<OpDecl>,
   pub runtime_state: Weak<RefCell<JsRuntimeState>>,
   // Index of the current realm into `JsRuntimeState::known_realms`.
-  pub realm_idx: usize,
+  pub realm_idx: RealmIdx,
 }
 
 /// Maintains the resources and ops inside a JS runtime.

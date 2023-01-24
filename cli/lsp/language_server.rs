@@ -8,7 +8,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-use deno_graph::ModuleKind;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
@@ -58,6 +57,7 @@ use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
 use crate::args::get_root_cert_store;
+use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::ConfigFile;
@@ -157,7 +157,7 @@ impl LanguageServer {
   ) -> LspResult<Option<Value>> {
     async fn create_graph_for_caching(
       cli_options: CliOptions,
-      roots: Vec<(ModuleSpecifier, ModuleKind)>,
+      roots: Vec<ModuleSpecifier>,
       open_docs: Vec<Document>,
     ) -> Result<(), AnyError> {
       let open_docs = open_docs
@@ -579,7 +579,7 @@ impl Inner {
     let root_cert_store = Some(get_root_cert_store(
       maybe_root_path,
       workspace_settings.certificate_stores,
-      workspace_settings.tls_certificate,
+      workspace_settings.tls_certificate.map(CaData::File),
     )?);
     let client = HttpClient::new(
       root_cert_store,
@@ -1368,7 +1368,7 @@ impl Inner {
             _ => false,
           },
           "deno-lint" => matches!(&d.code, Some(_)),
-          "deno" => diagnostics::DenoDiagnostic::is_fixable(&d.code),
+          "deno" => diagnostics::DenoDiagnostic::is_fixable(d),
           _ => false,
         },
         None => false,
@@ -2916,7 +2916,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
 struct PrepareCacheResult {
   cli_options: CliOptions,
-  roots: Vec<(ModuleSpecifier, ModuleKind)>,
+  roots: Vec<ModuleSpecifier>,
   open_docs: Vec<Document>,
   mark: PerformanceMark,
 }
@@ -2937,22 +2937,17 @@ impl Inner {
       params
         .uris
         .iter()
-        .map(|t| {
-          (
-            self.url_map.normalize_url(&t.uri),
-            deno_graph::ModuleKind::Esm,
-          )
-        })
+        .map(|t| self.url_map.normalize_url(&t.uri))
         .collect()
     } else {
-      vec![(referrer, deno_graph::ModuleKind::Esm)]
+      vec![referrer]
     };
 
     let mut cli_options = CliOptions::new(
       Flags {
         cache_path: self.maybe_cache_path.clone(),
         ca_stores: None,
-        ca_file: None,
+        ca_data: None,
         unsafely_ignore_certificate_errors: None,
         // this is to allow loading npm specifiers, so we can remove this
         // once stabilizing them

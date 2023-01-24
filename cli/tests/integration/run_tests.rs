@@ -12,6 +12,7 @@ use tokio::task::LocalSet;
 use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
+use util::env_vars_for_npm_tests_no_sync_download;
 
 itest!(stdout_write_all {
   args: "run --quiet run/stdout_write_all.ts",
@@ -2607,6 +2608,11 @@ itest!(config_auto_discovered_for_local_script {
   output_str: Some("ok\n"),
 });
 
+itest!(config_auto_discovered_for_local_script_log {
+  args: "run -L debug run/with_config/frontend_work.ts",
+  output: "run/with_config/auto_discovery_log.out",
+});
+
 itest!(no_config_auto_discovery_for_local_script {
   args: "run --quiet --no-config --check run/with_config/frontend_work.ts",
   output: "run/with_config/no_auto_discovery.out",
@@ -3695,11 +3701,12 @@ itest!(config_file_lock_true {
   exit_code: 10,
 });
 
-// Check https://github.com/denoland/deno_std/issues/2882
-itest!(flash_shutdown {
-  args: "run --unstable --allow-net run/flash_shutdown/main.ts",
-  exit_code: 0,
-});
+// TODO(bartlomieju): this test is flaky on CI, reenable it after debugging
+// // Check https://github.com/denoland/deno_std/issues/2882
+// itest!(flash_shutdown {
+//   args: "run --unstable --allow-net run/flash_shutdown/main.ts",
+//   exit_code: 0,
+// });
 
 itest!(permission_args {
   args: "run run/001_hello.js --allow-net",
@@ -3728,3 +3735,44 @@ fn file_fetcher_preserves_permissions() {
     assert_contains!(output, "true");
   });
 }
+
+#[test]
+fn stdio_streams_are_locked_in_permission_prompt() {
+  let _guard = util::http_server();
+  util::with_pty(&[
+    "repl",
+    "--allow-read=run/stdio_streams_are_locked_in_permission_prompt/worker.js,run/stdio_streams_are_locked_in_permission_prompt/text.txt"
+    ], |mut console| {
+    console.write_line(
+      r#"new Worker(`${Deno.cwd()}/run/stdio_streams_are_locked_in_permissions_prompt/worker.js`, { type: "module" });
+      await Deno.writeTextFile("./run/stdio_streams_are_locked_in_permissions_prompt/text.txt", "some code");"#,
+    );
+    console.write_line("y");
+    console.write_line("close();");
+    let output = console.read_all_output();
+
+    let expected_output = r#"\x1b[1;1H\x1b[0JAre you sure you want to continue?"#;
+    assert_eq!(output, expected_output);
+  });
+}
+
+itest!(node_builtin_modules_ts {
+  args: "run --quiet run/node_builtin_modules/mod.ts",
+  output: "run/node_builtin_modules/mod.ts.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  exit_code: 0,
+});
+
+itest!(node_builtin_modules_js {
+  args: "run --quiet run/node_builtin_modules/mod.js",
+  output: "run/node_builtin_modules/mod.js.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  exit_code: 0,
+});
+
+itest!(node_prefix_missing {
+  args: "run --quiet run/node_prefix_missing/main.ts",
+  output: "run/node_prefix_missing/main.ts.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  exit_code: 1,
+});
