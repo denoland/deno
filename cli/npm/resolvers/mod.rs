@@ -333,13 +333,6 @@ impl NpmPackageResolver {
   pub async fn inject_synthetic_types_node_package(
     &self,
   ) -> Result<(), AnyError> {
-    if self.no_npm {
-      return Err(custom_error(
-        "NoNpm",
-        "A node built-in specifier was used; but --no-npm is specified.",
-      ));
-    }
-
     // add and ensure this isn't added to the lockfile
     self
       .inner
