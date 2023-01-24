@@ -770,6 +770,9 @@ pub struct Documents {
   maybe_resolver: Option<CliResolver>,
   /// The npm package requirements.
   npm_reqs: Arc<HashSet<NpmPackageReq>>,
+  /// Gets if any document had a node: specifier such that a @types/node package
+  /// should be injected.
+  has_injected_types_node_package: bool,
   /// Resolves a specifier to its final redirected to specifier.
   specifier_resolver: Arc<SpecifierResolver>,
 }
@@ -785,6 +788,7 @@ impl Documents {
       imports: Default::default(),
       maybe_resolver: None,
       npm_reqs: Default::default(),
+      has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
     }
   }
@@ -876,7 +880,7 @@ impl Documents {
   ) -> bool {
     let maybe_resolver = self.get_maybe_resolver();
     let maybe_specifier = if let Some(resolver) = maybe_resolver {
-      resolver.resolve(specifier, referrer).to_result().ok()
+      resolver.resolve(specifier, referrer).ok()
     } else {
       deno_core::resolve_import(specifier, referrer.as_str()).ok()
     };
@@ -923,6 +927,12 @@ impl Documents {
   pub fn npm_package_reqs(&mut self) -> HashSet<NpmPackageReq> {
     self.calculate_dependents_if_dirty();
     (*self.npm_reqs).clone()
+  }
+
+  /// Returns if a @types/node package was injected into the npm
+  /// resolver based on the state of the documents.
+  pub fn has_injected_types_node_package(&self) -> bool {
+    self.has_injected_types_node_package
   }
 
   /// Return a document for the specifier.
@@ -985,11 +995,15 @@ impl Documents {
   /// tsc when type checking.
   pub fn resolve(
     &self,
-    specifiers: &[String],
-    referrer: &ModuleSpecifier,
+    specifiers: Vec<String>,
+    referrer_doc: &AssetOrDocument,
     maybe_npm_resolver: Option<&NpmPackageResolver>,
-  ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
-    let dependencies = self.get(referrer)?.0.dependencies.clone();
+  ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
+    let referrer = referrer_doc.specifier();
+    let dependencies = match referrer_doc {
+      AssetOrDocument::Asset(_) => None,
+      AssetOrDocument::Document(doc) => Some(doc.0.dependencies.clone()),
+    };
     let mut results = Vec::new();
     for specifier in specifiers {
       if let Some(npm_resolver) = maybe_npm_resolver {
@@ -997,7 +1011,7 @@ impl Documents {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
             node::node_resolve(
-              specifier,
+              &specifier,
               referrer,
               NodeResolutionMode::Types,
               npm_resolver,
@@ -1009,15 +1023,28 @@ impl Documents {
           continue;
         }
       }
-      // handle npm:<package> urls
+      if let Some(module_name) = specifier.strip_prefix("node:") {
+        if crate::node::resolve_builtin_node_module(module_name).is_ok() {
+          // return itself for node: specifiers because during type checking
+          // we resolve to the ambient modules in the @types/node package
+          // rather than deno_std/node
+          results.push(Some((
+            ModuleSpecifier::parse(&specifier).unwrap(),
+            MediaType::Dts,
+          )));
+          continue;
+        }
+      }
       if specifier.starts_with("asset:") {
-        if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
+        if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
           let media_type = MediaType::from(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
         }
-      } else if let Some(dep) = dependencies.deps.get(specifier) {
+      } else if let Some(dep) =
+        dependencies.as_ref().and_then(|d| d.deps.get(&specifier))
+      {
         if let Resolved::Ok { specifier, .. } = &dep.maybe_type {
           results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
         } else if let Resolved::Ok { specifier, .. } = &dep.maybe_code {
@@ -1026,12 +1053,12 @@ impl Documents {
           results.push(None);
         }
       } else if let Some(Resolved::Ok { specifier, .. }) =
-        self.resolve_imports_dependency(specifier)
+        self.resolve_imports_dependency(&specifier)
       {
         // clone here to avoid double borrow of self
         let specifier = specifier.clone();
         results.push(self.resolve_dependency(&specifier, maybe_npm_resolver));
-      } else if let Ok(npm_ref) = NpmPackageReference::from_str(specifier) {
+      } else if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
         results.push(maybe_npm_resolver.map(|npm_resolver| {
           NodeResolution::into_specifier_and_media_type(
             node_resolve_npm_reference(
@@ -1048,7 +1075,7 @@ impl Documents {
         results.push(None);
       }
     }
-    Some(results)
+    results
   }
 
   /// Update the location of the on disk cache for the document store.
@@ -1125,6 +1152,7 @@ impl Documents {
       analyzed_specifiers: HashSet<ModuleSpecifier>,
       pending_specifiers: VecDeque<ModuleSpecifier>,
       npm_reqs: HashSet<NpmPackageReq>,
+      has_node_builtin_specifier: bool,
     }
 
     impl DocAnalyzer {
@@ -1148,7 +1176,11 @@ impl Documents {
 
       fn analyze_doc(&mut self, specifier: &ModuleSpecifier, doc: &Document) {
         self.analyzed_specifiers.insert(specifier.clone());
-        for dependency in doc.dependencies().values() {
+        for (name, dependency) in doc.dependencies() {
+          if !self.has_node_builtin_specifier && name.starts_with("node:") {
+            self.has_node_builtin_specifier = true;
+          }
+
           if let Some(dep) = dependency.get_code() {
             self.add(dep, specifier);
           }
@@ -1185,8 +1217,19 @@ impl Documents {
       }
     }
 
+    let mut npm_reqs = doc_analyzer.npm_reqs;
+    // Ensure a @types/node package exists when any module uses a node: specifier.
+    // Unlike on the command line, here we just add @types/node to the npm package
+    // requirements since this won't end up in the lockfile.
+    self.has_injected_types_node_package = doc_analyzer
+      .has_node_builtin_specifier
+      && !npm_reqs.iter().any(|r| r.name == "@types/node");
+    if self.has_injected_types_node_package {
+      npm_reqs.insert(NpmPackageReq::from_str("@types/node").unwrap());
+    }
+
     self.dependents_map = Arc::new(doc_analyzer.dependents_map);
-    self.npm_reqs = Arc::new(doc_analyzer.npm_reqs);
+    self.npm_reqs = Arc::new(npm_reqs);
     self.dirty = false;
     file_system_docs.dirty = false;
   }
@@ -1318,7 +1361,7 @@ fn lsp_deno_graph_analyze(
       specifier,
       maybe_headers,
       content,
-      Some(&deno_graph::ModuleKind::Esm),
+      Some(deno_graph::ModuleKind::Esm),
       maybe_resolver,
       Some(&analyzer),
     ),

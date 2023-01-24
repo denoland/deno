@@ -373,6 +373,13 @@ pub enum ProseWrap {
   Preserve,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub enum SemiColons {
+  Prefer,
+  Asi,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
@@ -381,6 +388,7 @@ pub struct FmtOptionsConfig {
   pub indent_width: Option<u8>,
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<ProseWrap>,
+  pub semi_colons: Option<SemiColons>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -524,8 +532,9 @@ impl ConfigFile {
       if checked.insert(ancestor.to_path_buf()) {
         for config_filename in CONFIG_FILE_NAMES {
           let f = ancestor.join(config_filename);
-          match ConfigFile::read(f) {
+          match ConfigFile::read(&f) {
             Ok(cf) => {
+              log::debug!("Config file found at '{}'", f.display());
               return Ok(Some(cf));
             }
             Err(e) => {

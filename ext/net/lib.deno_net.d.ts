@@ -37,6 +37,17 @@ declare namespace Deno {
     readonly rid: number;
 
     [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
+
+    /**
+     * Make the listener block the event loop from finishing.
+     *
+     * Note: the listener blocks the event loop from finishing by default.
+     * This method is only meaningful after `.unref()` is called.
+     */
+    ref(): void;
+
+    /** Make the listener not block the event loop from finishing. */
+    unref(): void;
   }
 
   /** Specialized listener that accepts TLS connections.

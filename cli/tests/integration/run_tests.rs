@@ -2654,6 +2654,11 @@ itest!(config_auto_discovered_for_local_script {
   output_str: Some("ok\n"),
 });
 
+itest!(config_auto_discovered_for_local_script_log {
+  args: "run -L debug run/with_config/frontend_work.ts",
+  output: "run/with_config/auto_discovery_log.out",
+});
+
 itest!(no_config_auto_discovery_for_local_script {
   args: "run --quiet --no-config --check run/with_config/frontend_work.ts",
   output: "run/with_config/no_auto_discovery.out",
@@ -3796,3 +3801,23 @@ fn stdio_streams_are_locked_in_permission_prompt() {
     assert_eq!(output, expected_output);
   });
 }
+
+itest!(run_node_builtin_modules_ts {
+  args: "run --quiet run/node_builtin_modules/mod.ts",
+  output: "run/node_builtin_modules/mod.ts.out",
+  envs: vec![(
+    "DENO_NODE_COMPAT_URL".to_string(),
+    test_util::std_file_url()
+  )],
+  exit_code: 0,
+});
+
+itest!(run_node_builtin_modules_js {
+  args: "run --quiet run/node_builtin_modules/mod.js",
+  output: "run/node_builtin_modules/mod.js.out",
+  envs: vec![(
+    "DENO_NODE_COMPAT_URL".to_string(),
+    test_util::std_file_url()
+  )],
+  exit_code: 0,
+});

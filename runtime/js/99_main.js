@@ -52,7 +52,6 @@ delete Intl.v8BreakIterator;
   const quoteString = window.__bootstrap.console.quoteString;
   const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
-  const net = window.__bootstrap.net;
   const url = window.__bootstrap.url;
   const fetch = window.__bootstrap.fetch;
   const messagePort = window.__bootstrap.messagePort;
@@ -397,7 +396,6 @@ delete Intl.v8BreakIterator;
 
     core.initializeAsyncOps();
     performance.setTimeOrigin(DateNow());
-    net.setup(runtimeOptions.unstableFlag);
 
     const consoleFromV8 = window.Deno.core.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
@@ -487,8 +485,14 @@ delete Intl.v8BreakIterator;
       },
     });
 
-    const finalDenoNs = {
+    // FIXME(bartlomieju): temporarily add whole `Deno.core` to
+    // `Deno[Deno.internal]` namespace. It should be removed and only necessary
+    // methods should be left there.
+    ObjectAssign(internals, {
       core,
+    });
+
+    const finalDenoNs = {
       internal: internalSymbol,
       [internalSymbol]: internals,
       resources: core.resources,
@@ -526,7 +530,6 @@ delete Intl.v8BreakIterator;
     // Setup `Deno` global - we're actually overriding already existing global
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-    ObjectFreeze(globalThis.Deno.core);
 
     util.log("args", runtimeOptions.args);
   }
@@ -542,7 +545,6 @@ delete Intl.v8BreakIterator;
 
     core.initializeAsyncOps();
     performance.setTimeOrigin(DateNow());
-    net.setup(runtimeOptions.unstableFlag);
 
     const consoleFromV8 = window.Deno.core.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
@@ -628,8 +630,14 @@ delete Intl.v8BreakIterator;
       },
     });
 
-    const finalDenoNs = {
+    // FIXME(bartlomieju): temporarily add whole `Deno.core` to
+    // `Deno[Deno.internal]` namespace. It should be removed and only necessary
+    // methods should be left there.
+    ObjectAssign(internals, {
       core,
+    });
+
+    const finalDenoNs = {
       internal: internalSymbol,
       [internalSymbol]: internals,
       resources: core.resources,
@@ -663,7 +671,6 @@ delete Intl.v8BreakIterator;
     // Setup `Deno` global - we're actually overriding already
     // existing global `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-    ObjectFreeze(globalThis.Deno.core);
   }
 
   ObjectDefineProperties(globalThis, {

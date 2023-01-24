@@ -727,6 +727,25 @@ declare namespace Deno {
       name: string,
       fn: (t: TestContext) => void | Promise<void>,
     ): Promise<boolean>;
+
+    /** Run a sub step of the parent test or step. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     *
+     * The returned promise never rejects unless the arguments are invalid.
+     *
+     * If the test was ignored the promise returns `false`.
+     *
+     * ```ts
+     * Deno.test(async function aParentTest(t) {
+     *   console.log("before the step");
+     *   await t.step(function step1(t) {
+     *     console.log("current step:", t.name);
+     *   });
+     *   console.log("after the step");
+     * });
+     * ```
+     */
+    step(fn: (t: TestContext) => void | Promise<void>): Promise<boolean>;
   }
 
   /** @category Testing */
@@ -1557,7 +1576,7 @@ declare namespace Deno {
      *
      * It resolves with the updated offset.
      */
-    seek(offset: number, whence: SeekMode): Promise<number>;
+    seek(offset: number | bigint, whence: SeekMode): Promise<number>;
   }
 
   /**
@@ -1858,7 +1877,7 @@ declare namespace Deno {
    */
   export function seek(
     rid: number,
-    offset: number,
+    offset: number | bigint,
     whence: SeekMode,
   ): Promise<number>;
 
@@ -2222,7 +2241,7 @@ declare namespace Deno {
      * console.log(await file.seek(-2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
      * ```
      */
-    seek(offset: number, whence: SeekMode): Promise<number>;
+    seek(offset: number | bigint, whence: SeekMode): Promise<number>;
     /** Synchronously seek to the given `offset` under mode given by `whence`.
      * The new position within the resource (bytes from the start) is returned.
      *
@@ -2261,7 +2280,7 @@ declare namespace Deno {
      * file.close();
      * ```
      */
-    seekSync(offset: number, whence: SeekMode): number;
+    seekSync(offset: number | bigint, whence: SeekMode): number;
     /** Resolves to a {@linkcode Deno.FileInfo} for the file.
      *
      * ```ts

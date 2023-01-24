@@ -184,19 +184,6 @@ pub struct NpmPackageVersionDistInfo {
 }
 
 impl NpmPackageVersionDistInfo {
-  #[cfg(test)]
-  pub fn new(
-    tarball: String,
-    shasum: String,
-    integrity: Option<String>,
-  ) -> Self {
-    Self {
-      tarball,
-      shasum,
-      integrity,
-    }
-  }
-
   pub fn integrity(&self) -> Cow<String> {
     self
       .integrity
