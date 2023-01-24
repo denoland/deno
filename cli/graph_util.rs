@@ -27,7 +27,9 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::Range;
+use deno_graph::ResolutionError;
 use deno_graph::Resolved;
+use deno_graph::SpecifierError;
 use deno_runtime::permissions::PermissionsContainer;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -625,15 +627,29 @@ fn handle_check_error(
   error: AnyError,
   maybe_range: Option<&deno_graph::Range>,
 ) -> Result<(), AnyError> {
-  use deno_graph::ResolutionError;
-  use deno_graph::SpecifierError;
+  let mut message = if let Some(err) = error.downcast_ref::<ResolutionError>() {
+    enhanced_resolution_error_message(err)
+  } else {
+    format!("{}", error)
+  };
 
+  if let Some(range) = maybe_range {
+    if !range.specifier.as_str().contains("$deno") {
+      message.push_str(&format!("\n    at {}", range));
+    }
+  }
+
+  Err(custom_error(get_error_class_name(&error), message))
+}
+
+/// Adds more explanatory information to a resolution error.
+pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let mut message = format!("{}", error);
 
-  if let Some(ResolutionError::InvalidSpecifier {
+  if let ResolutionError::InvalidSpecifier {
     error: SpecifierError::ImportPrefixMissing(specifier, _),
     ..
-  }) = error.downcast_ref::<ResolutionError>()
+  } = error
   {
     if crate::node::resolve_builtin_node_module(specifier).is_ok() {
       message.push_str(&format!(
@@ -643,11 +659,5 @@ fn handle_check_error(
     }
   }
 
-  if let Some(range) = maybe_range {
-    if !range.specifier.as_str().contains("$deno") {
-      message.push_str(&format!("\n    at {}", range));
-    }
-  }
-
-  Err(custom_error(get_error_class_name(&error), message))
+  message
 }

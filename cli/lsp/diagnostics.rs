@@ -13,6 +13,7 @@ use super::tsc;
 use super::tsc::TsServer;
 
 use crate::args::LintOptions;
+use crate::graph_util::enhanced_resolution_error_message;
 use crate::node;
 use crate::npm::NpmPackageReference;
 use crate::tools::lint::get_configured_rules;
@@ -829,15 +830,22 @@ impl DenoDiagnostic {
       Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: \"{}\".", pkg_ref.req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{}\" was redirected to \"{}\".", from, to), Some(json!({ "specifier": from, "redirect": to }))),
-      Self::ResolutionError(err) => (lsp::DiagnosticSeverity::ERROR, err.to_string(), if let ResolutionError::InvalidSpecifier { error: SpecifierError::ImportPrefixMissing(specifier, _), .. } = err {
-        if crate::node::resolve_builtin_node_module(specifier).is_ok() {
-          Some(json!({ "specifier": specifier }))
+      Self::ResolutionError(err) => (
+        lsp::DiagnosticSeverity::ERROR,
+        enhanced_resolution_error_message(err),
+        if let ResolutionError::InvalidSpecifier {
+          error: SpecifierError::ImportPrefixMissing(specifier, _),
+          ..
+        } = err {
+          if crate::node::resolve_builtin_node_module(specifier).is_ok() {
+            Some(json!({ "specifier": specifier }))
+          } else {
+            None
+          }
         } else {
           None
-        }
-      } else {
-        None
-      }),
+        },
+      ),
       Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
     };
     lsp::Diagnostic {
