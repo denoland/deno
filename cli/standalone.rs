@@ -150,7 +150,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         deno_core::resolve_import(specifier, referrer.as_str())
           .map_err(|err| err.into())
       },
-      |r| r.resolve(specifier, &referrer).to_result(),
+      |r| r.resolve(specifier, &referrer),
     )
   }
 
