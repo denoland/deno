@@ -512,21 +512,6 @@ declare namespace Deno {
      *   },
      * });
      * ```
-     * 
-     * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-     *
-     * Deno.test({
-     *   name: "inherit",
-     *   permissions: {
-     *     net: "inherit",
-     *   },
-     *   fn() {
-     *     const status = Deno.permissions.querySync({ name: "net" })
-     *     assertEquals(status.state, "granted");
-     *   },
-     * });
-     * ```
      *
      * ```ts
      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
@@ -542,20 +527,6 @@ declare namespace Deno {
      *   },
      * });
      * ```
-     * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-     *
-     * Deno.test({
-     *   name: "true",
-     *   permissions: {
-     *     net: true,
-     *   },
-     *   fn() {
-     *     const status = Deno.permissions.querySync({ name: "net" });
-     *     assertEquals(status.state, "granted");
-     *   },
-     * });
-     * ```
      *
      * ```ts
      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
@@ -567,21 +538,6 @@ declare namespace Deno {
      *   },
      *   async fn() {
      *     const status = await Deno.permissions.query({ name: "net" });
-     *     assertEquals(status.state, "denied");
-     *   },
-     * });
-     * ```
-     * 
-     * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-     *
-     * Deno.test({
-     *   name: "false",
-     *   permissions: {
-     *     net: false,
-     *   },
-     *   fn() {
-     *     const status = Deno.permissions.querySync({ name: "net" });
      *     assertEquals(status.state, "denied");
      *   },
      * });
@@ -597,21 +553,6 @@ declare namespace Deno {
      *   },
      *   async fn() {
      *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
-     *     assertEquals(status.state, "granted");
-     *   },
-     * });
-     * ```
-     * 
-     * ```ts
-     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-     *
-     * Deno.test({
-     *   name: "localhost:8080",
-     *   permissions: {
-     *     net: ["localhost:8080"],
-     *   },
-     *   fn() {
-     *     const status = Deno.permissions.querySync({ name: "net", host: "localhost:8080" });
      *     assertEquals(status.state, "granted");
      *   },
      * });
