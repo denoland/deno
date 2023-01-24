@@ -588,9 +588,10 @@ fn lsp_import_map_embedded_in_config_file() {
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
 
-  let deno_import_map_jsonc =
-    serde_json::to_vec_pretty(&load_fixture("deno.embedded_import_map.jsonc"))
-      .unwrap();
+  let deno_import_map_jsonc = serde_json::to_string_pretty(&load_fixture(
+    "deno.embedded_import_map.jsonc",
+  ))
+  .unwrap();
   temp_dir.write("deno.embedded_import_map.jsonc", deno_import_map_jsonc);
 
   params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
@@ -602,7 +603,7 @@ fn lsp_import_map_embedded_in_config_file() {
     params.initialization_options = Some(Value::Object(map));
   }
   fs::create_dir(temp_dir.path().join("lib")).unwrap();
-  temp_dir.write("lib/b.ts"), r#"export const b = "b";"#);
+  temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let deno_exe = deno_exe_path();
   let mut client = LspClient::new(&deno_exe, false).unwrap();
