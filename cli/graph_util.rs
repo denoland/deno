@@ -630,18 +630,16 @@ fn handle_check_error(
 
   let mut message = format!("{}", error);
 
-  if let Some(error) = error.downcast_ref::<ResolutionError>() {
-    if let ResolutionError::InvalidSpecifier {
-      error: SpecifierError::ImportPrefixMissing(specifier, _),
-      ..
-    } = error
-    {
-      if crate::node::resolve_builtin_node_module(specifier).is_ok() {
-        message.push_str(&format!(
-          "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{}\").",
-          specifier
-        ));
-      }
+  if let Some(ResolutionError::InvalidSpecifier {
+    error: SpecifierError::ImportPrefixMissing(specifier, _),
+    ..
+  }) = error.downcast_ref::<ResolutionError>()
+  {
+    if crate::node::resolve_builtin_node_module(specifier).is_ok() {
+      message.push_str(&format!(
+        "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{}\").",
+        specifier
+      ));
     }
   }
 
