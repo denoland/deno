@@ -37,6 +37,40 @@ assertThrows(
   "Failed to register symbol non_existent_symbol",
 );
 
+assertThrows(() => {
+  Deno.dlopen(libPath, {
+    print_something: {
+      parameters: [],
+      result: { struct: [] }
+    },
+  }),
+  TypeError,
+  "Struct must have at least one field"
+});
+
+assertThrows(() => {
+  Deno.dlopen(libPath, {
+    print_something: {
+      parameters: [ { struct: [] } ],
+      result: "void",
+    },
+  }),
+  TypeError,
+  "Struct must have at least one field"
+});
+
+const Empty = { struct: [] }
+assertThrows(() => {
+  Deno.dlopen(libPath, {
+    print_something: {
+      parameters: [ { struct: [Empty] } ],
+      result: "void",
+    },
+  }),
+  TypeError,
+  "Struct must have at least one field"
+});
+
 const Point = ["f64", "f64"];
 const Size = ["f64", "f64"];
 const Rect = ["f64", "f64", "f64", "f64"];
