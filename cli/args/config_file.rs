@@ -3,6 +3,7 @@
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::TaskFlags;
+use crate::colors;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::specifier_parent;
 use crate::util::path::specifier_to_file_path;
@@ -668,18 +669,35 @@ impl ConfigFile {
     self.json.import_map.clone()
   }
 
+  /// This function prints a warning if "importMap" is used in the config file
+  /// and either "imports" or "scopes" configuration are specified.
   pub fn to_import_map(&self) -> Option<serde_json::Value> {
+    fn print_warning_if_needed(maybe_import_map_path: Option<&str>) {
+      if maybe_import_map_path.is_some() {
+        log::warn!("{} \"importMap\" setting is ignored when \"imports\" or \"scopes\" are specified in the config file.", colors::yellow("Warning"));
+      }
+    }
+
     match (&self.json.imports, &self.json.scopes) {
-      (Some(imports), Some(scopes)) => Some(json!({
-        "imports": imports.clone(),
-        "scopes": scopes.clone(),
-      })),
-      (Some(imports), None) => Some(json!({
-        "imports": imports.clone(),
-      })),
-      (None, Some(scopes)) => Some(json!({
-        "scopes": scopes.clone(),
-      })),
+      (Some(imports), Some(scopes)) => {
+        print_warning_if_needed(self.json.import_map.as_deref());
+        Some(json!({
+          "imports": imports.clone(),
+          "scopes": scopes.clone(),
+        }))
+      }
+      (Some(imports), None) => {
+        print_warning_if_needed(self.json.import_map.as_deref());
+        Some(json!({
+          "imports": imports.clone(),
+        }))
+      }
+      (None, Some(scopes)) => {
+        print_warning_if_needed(self.json.import_map.as_deref());
+        Some(json!({
+          "scopes": scopes.clone(),
+        }))
+      }
       _ => None,
     }
   }

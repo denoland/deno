@@ -789,17 +789,7 @@ pub fn import_map_from_value(
     specifier.as_str()
   );
   let result = import_map::parse_from_value(specifier, value)?;
-  if !result.diagnostics.is_empty() {
-    warn!(
-      "Import map diagnostics:\n{}",
-      result
-        .diagnostics
-        .into_iter()
-        .map(|d| format!("  - {}", d))
-        .collect::<Vec<_>>()
-        .join("\n")
-    );
-  }
+  print_import_map_diagnostics(&result.diagnostics);
   Ok(result.import_map)
 }
 
@@ -813,18 +803,21 @@ pub fn import_map_from_text(
     specifier.as_str()
   );
   let result = import_map::parse_from_json(specifier, json_text)?;
-  if !result.diagnostics.is_empty() {
+  print_import_map_diagnostics(&result.diagnostics);
+  Ok(result.import_map)
+}
+
+fn print_import_map_diagnostics(diagnostics: &[String]) {
+  if !diagnostics.is_empty() {
     warn!(
       "Import map diagnostics:\n{}",
-      result
-        .diagnostics
-        .into_iter()
+      diagnostics
+        .iter()
         .map(|d| format!("  - {}", d))
         .collect::<Vec<_>>()
         .join("\n")
     );
   }
-  Ok(result.import_map)
 }
 
 #[derive(Clone, Debug)]
