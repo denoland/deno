@@ -775,6 +775,7 @@ dependencies = [
  "deno_emit",
  "deno_graph",
  "deno_lint",
+ "deno_lockfile",
  "deno_runtime",
  "deno_task_shell",
  "dissimilar",
@@ -1110,6 +1111,17 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "deno_lockfile"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ring",
+ "serde",
+ "serde_json",
+ "test_util",
 ]
 
 [[package]]
