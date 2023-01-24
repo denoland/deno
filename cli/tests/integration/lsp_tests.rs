@@ -602,11 +602,7 @@ fn lsp_import_map_embedded_in_config_file() {
     params.initialization_options = Some(Value::Object(map));
   }
   fs::create_dir(temp_dir.path().join("lib")).unwrap();
-  fs::write(
-    temp_dir.path().join("lib").join("b.ts"),
-    r#"export const b = "b";"#,
-  )
-  .unwrap();
+  temp_dir.write("lib/b.ts"), r#"export const b = "b";"#);
 
   let deno_exe = deno_exe_path();
   let mut client = LspClient::new(&deno_exe, false).unwrap();
