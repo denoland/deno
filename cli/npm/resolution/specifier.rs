@@ -298,7 +298,7 @@ pub fn resolve_graph_npm_info(graph: &ModuleGraph) -> GraphNpmInfo {
   let root_specifiers = graph
     .roots
     .iter()
-    .map(|(url, _)| graph.resolve(url))
+    .map(|url| graph.resolve(url))
     .collect::<Vec<_>>();
   let mut seen = HashSet::new();
   let mut specifier_graph = SpecifierTree::default();
@@ -579,7 +579,6 @@ fn cmp_package_req(a: &NpmPackageReq, b: &NpmPackageReq) -> Ordering {
 
 #[cfg(test)]
 mod tests {
-  use deno_graph::ModuleKind;
   use pretty_assertions::assert_eq;
 
   use super::*;
@@ -993,16 +992,10 @@ mod tests {
     let analyzer = deno_graph::CapturingModuleAnalyzer::default();
     let graph = deno_graph::create_graph(
       vec![
-        (
-          ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
-          ModuleKind::Esm,
-        ),
-        (
-          // test redirect at root
-          ModuleSpecifier::parse("https://deno.land/x/module_redirect/mod.ts")
-            .unwrap(),
-          ModuleKind::Esm,
-        ),
+        ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
+        // test redirect at root
+        ModuleSpecifier::parse("https://deno.land/x/module_redirect/mod.ts")
+          .unwrap(),
       ],
       &mut loader,
       deno_graph::GraphOptions {

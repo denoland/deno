@@ -52,7 +52,6 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
-use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -326,10 +325,6 @@ impl ProcState {
     let has_root_npm_specifier = roots.iter().any(|r| {
       r.scheme() == "npm" && NpmPackageReference::from_specifier(r).is_ok()
     });
-    let roots = roots
-      .into_iter()
-      .map(|s| (s, ModuleKind::Esm))
-      .collect::<Vec<_>>();
 
     if !has_root_npm_specifier {
       let graph_data = self.graph_data.read();
@@ -459,11 +454,10 @@ impl ProcState {
     drop(_pb_clear_guard);
 
     // type check if necessary
-    let is_std_node = roots.len() == 1 && roots[0].0 == *node::MODULE_ALL_URL;
+    let is_std_node = roots.len() == 1 && roots[0] == *node::MODULE_ALL_URL;
     if self.options.type_check_mode() != TypeCheckMode::None && !is_std_node {
       log::debug!("Type checking.");
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
-      let roots = roots.clone();
       let options = check::CheckOptions {
         type_check_mode: self.options.type_check_mode(),
         debug: self.options.log_level() == Some(log::Level::Debug),
@@ -474,7 +468,7 @@ impl ProcState {
           .ts_config,
         log_checks: true,
         reload: self.options.reload_flag()
-          && !roots.iter().all(|r| reload_exclusions.contains(&r.0)),
+          && !roots.iter().all(|r| reload_exclusions.contains(r)),
       };
       let check_cache =
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
@@ -538,7 +532,7 @@ impl ProcState {
     }
 
     let node_std_graph = self
-      .create_graph(vec![(node::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
+      .create_graph(vec![node::MODULE_ALL_URL.clone()])
       .await?;
     self.graph_data.write().add_graph(&node_std_graph);
     self.node_std_graph_prepared.store(true, Ordering::Relaxed);
@@ -649,9 +643,7 @@ impl ProcState {
       let specifier = self
         .maybe_resolver
         .as_ref()
-        .and_then(|resolver| {
-          resolver.resolve(specifier, &referrer).to_result().ok()
-        })
+        .and_then(|resolver| resolver.resolve(specifier, &referrer).ok())
         .or_else(|| ModuleSpecifier::parse(specifier).ok());
       if let Some(specifier) = specifier {
         if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
@@ -668,7 +660,7 @@ impl ProcState {
     }
 
     if let Some(resolver) = &self.maybe_resolver {
-      resolver.resolve(specifier, &referrer).to_result()
+      resolver.resolve(specifier, &referrer)
     } else {
       deno_core::resolve_import(specifier, referrer.as_str())
         .map_err(|err| err.into())
@@ -718,7 +710,7 @@ impl ProcState {
 
   pub async fn create_graph(
     &self,
-    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+    roots: Vec<ModuleSpecifier>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let mut cache = self.create_graph_loader();
     self.create_graph_with_loader(roots, &mut cache).await
@@ -726,7 +718,7 @@ impl ProcState {
 
   pub async fn create_graph_with_loader(
     &self,
-    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+    roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;

@@ -25,7 +25,6 @@ use deno_graph::GraphImport;
 use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
-use deno_graph::ModuleKind;
 use deno_graph::Range;
 use deno_graph::Resolved;
 use deno_runtime::permissions::PermissionsContainer;
@@ -34,13 +33,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
-
-pub fn contains_specifier(
-  v: &[(ModuleSpecifier, ModuleKind)],
-  specifier: &ModuleSpecifier,
-) -> bool {
-  v.iter().any(|(s, _)| s == specifier)
-}
 
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
@@ -195,7 +187,7 @@ impl GraphData {
   /// Return `None` if any modules are not known.
   pub fn walk<'a>(
     &'a self,
-    roots: &[(ModuleSpecifier, ModuleKind)],
+    roots: &[ModuleSpecifier],
     follow_dynamic: bool,
     follow_type_only: bool,
     check_js: bool,
@@ -203,7 +195,7 @@ impl GraphData {
     let mut result = HashMap::<&'a ModuleSpecifier, &'a ModuleEntry>::new();
     let mut seen = HashSet::<&ModuleSpecifier>::new();
     let mut visiting = VecDeque::<&ModuleSpecifier>::new();
-    for (root, _) in roots {
+    for root in roots {
       seen.insert(root);
       visiting.push_back(root);
     }
@@ -295,10 +287,7 @@ impl GraphData {
 
   /// Clone part of `self`, containing only modules which are dependencies of
   /// `roots`. Returns `None` if any roots are not known.
-  pub fn graph_segment(
-    &self,
-    roots: &[(ModuleSpecifier, ModuleKind)],
-  ) -> Option<Self> {
+  pub fn graph_segment(&self, roots: &[ModuleSpecifier]) -> Option<Self> {
     let mut modules = HashMap::new();
     let mut referrer_map = HashMap::new();
     let entries = match self.walk(roots, true, true, true) {
@@ -328,7 +317,7 @@ impl GraphData {
   /// not known.
   pub fn check(
     &self,
-    roots: &[(ModuleSpecifier, ModuleKind)],
+    roots: &[ModuleSpecifier],
     follow_type_only: bool,
     check_js: bool,
   ) -> Option<Result<(), AnyError>> {
@@ -388,7 +377,7 @@ impl GraphData {
           }
         }
         ModuleEntry::Error(error) => {
-          if !contains_specifier(roots, specifier) {
+          if !roots.contains(specifier) {
             if let Some(range) = self.referrer_map.get(specifier) {
               if !range.specifier.as_str().contains("$deno") {
                 let message = error.to_string();
@@ -411,7 +400,7 @@ impl GraphData {
   /// Assumes that all of those modules are known.
   pub fn set_type_checked(
     &mut self,
-    roots: &[(ModuleSpecifier, ModuleKind)],
+    roots: &[ModuleSpecifier],
     lib: TsTypeLib,
   ) {
     let specifiers: Vec<ModuleSpecifier> =
@@ -431,10 +420,10 @@ impl GraphData {
   /// Check if `roots` are all marked as type checked under `lib`.
   pub fn is_type_checked(
     &self,
-    roots: &[(ModuleSpecifier, ModuleKind)],
+    roots: &[ModuleSpecifier],
     lib: &TsTypeLib,
   ) -> bool {
-    roots.iter().all(|(r, _)| {
+    roots.iter().all(|r| {
       let found = self.follow_redirect(r);
       match self.modules.get(&found) {
         Some(ModuleEntry::Module { checked_libs, .. }) => {
@@ -550,7 +539,7 @@ pub async fn create_graph_and_maybe_check(
   let analyzer = ps.parsed_source_cache.as_analyzer();
   let graph = Arc::new(
     deno_graph::create_graph(
-      vec![(root, deno_graph::ModuleKind::Esm)],
+      vec![root],
       &mut cache,
       deno_graph::GraphOptions {
         is_dynamic: false,

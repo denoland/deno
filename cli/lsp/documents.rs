@@ -880,7 +880,7 @@ impl Documents {
   ) -> bool {
     let maybe_resolver = self.get_maybe_resolver();
     let maybe_specifier = if let Some(resolver) = maybe_resolver {
-      resolver.resolve(specifier, referrer).to_result().ok()
+      resolver.resolve(specifier, referrer).ok()
     } else {
       deno_core::resolve_import(specifier, referrer.as_str()).ok()
     };
@@ -1361,7 +1361,7 @@ fn lsp_deno_graph_analyze(
       specifier,
       maybe_headers,
       content,
-      Some(&deno_graph::ModuleKind::Esm),
+      Some(deno_graph::ModuleKind::Esm),
       maybe_resolver,
       Some(&analyzer),
     ),
