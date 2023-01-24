@@ -107,7 +107,7 @@ impl Loader for FetchCacher {
           // the source code for "node:module" is built-in rather than
           // being from deno_std like the other modules
           return Box::pin(futures::future::ready(Ok(Some(
-            deno_graph::source::LoadResponse::BuiltIn {
+            deno_graph::source::LoadResponse::External {
               specifier: specifier.clone(),
             },
           ))));

@@ -25,6 +25,7 @@ use deno_graph::GraphImport;
 use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
+use deno_graph::ModuleKind;
 use deno_graph::Range;
 use deno_graph::Resolved;
 use deno_runtime::permissions::PermissionsContainer;
@@ -102,7 +103,7 @@ impl GraphData {
 
       match result {
         Ok((_, module_kind, media_type)) => {
-          if matches!(module_kind, ModuleKind::External | ModuleKind::BuiltIn) {
+          if module_kind == ModuleKind::External {
             if !has_npm_specifier_in_graph
               && NpmPackageReference::from_specifier(specifier).is_ok()
             {
