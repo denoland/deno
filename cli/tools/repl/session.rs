@@ -446,9 +446,7 @@ impl ReplSession {
           .proc_state
           .maybe_resolver
           .as_ref()
-          .and_then(|resolver| {
-            resolver.resolve(i, &self.referrer).to_result().ok()
-          })
+          .and_then(|resolver| resolver.resolve(i, &self.referrer).ok())
           .or_else(|| ModuleSpecifier::parse(i).ok())
           .and_then(|url| NpmPackageReference::from_specifier(&url).ok())
       })

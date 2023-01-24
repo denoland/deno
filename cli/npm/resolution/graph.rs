@@ -1081,7 +1081,7 @@ fn tag_to_version_info<'a>(
   // explicit version.
   if tag == "latest" && info.name == "@types/node" {
     return get_resolved_package_version_and_info(
-      &NpmVersionReq::parse("18.0.0 - 18.8.2").unwrap(),
+      &NpmVersionReq::parse("18.0.0 - 18.11.18").unwrap(),
       info,
       parent,
     );

@@ -28,7 +28,7 @@ mod specifier;
 
 use graph::Graph;
 pub use snapshot::NpmResolutionSnapshot;
-pub use specifier::resolve_npm_package_reqs;
+pub use specifier::resolve_graph_npm_info;
 pub use specifier::NpmPackageReference;
 pub use specifier::NpmPackageReq;
 
@@ -397,10 +397,13 @@ impl NpmResolution {
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
     let snapshot = self.snapshot.read();
     for (package_req, package_id) in snapshot.package_reqs.iter() {
-      lockfile.insert_npm_specifier(package_req, package_id);
+      lockfile.insert_npm_specifier(
+        package_req.to_string(),
+        package_id.as_serialized(),
+      );
     }
     for package in snapshot.all_packages() {
-      lockfile.check_or_insert_npm_package(&package)?;
+      lockfile.check_or_insert_npm_package(package.into())?;
     }
     Ok(())
   }

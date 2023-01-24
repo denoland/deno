@@ -68,7 +68,7 @@ impl CacheMetadata {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<Arc<HashMap<MetadataKey, String>>> {
-    if specifier.scheme() == "file" || specifier.scheme() == "npm" {
+    if matches!(specifier.scheme(), "file" | "npm" | "node") {
       return None;
     }
     let version = self

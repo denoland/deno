@@ -168,8 +168,15 @@ impl NpmVersionMatcher for NpmPackageReq {
   }
 }
 
-/// Resolves the npm package requirements from the graph attempting. The order
-/// returned is the order they should be resolved in.
+pub struct GraphNpmInfo {
+  /// The order of these package requirements is the order they
+  /// should be resolved in.
+  pub package_reqs: Vec<NpmPackageReq>,
+  /// Gets if the graph had a built-in node specifier (ex. `node:fs`).
+  pub has_node_builtin_specifier: bool,
+}
+
+/// Resolves npm specific information from the graph.
 ///
 /// This function will analyze the module graph for parent-most folder
 /// specifiers of all modules, then group npm specifiers together as found in
@@ -211,7 +218,7 @@ impl NpmVersionMatcher for NpmPackageReq {
 ///
 /// Then it would resolve the npm specifiers in each of those groups according
 /// to that tree going by tree depth.
-pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
+pub fn resolve_graph_npm_info(graph: &ModuleGraph) -> GraphNpmInfo {
   fn collect_specifiers<'a>(
     graph: &'a ModuleGraph,
     module: &'a deno_graph::Module,
@@ -248,6 +255,7 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     graph: &ModuleGraph,
     specifier_graph: &mut SpecifierTree,
     seen: &mut HashSet<ModuleSpecifier>,
+    has_node_builtin_specifier: &mut bool,
   ) {
     if !seen.insert(module.specifier.clone()) {
       return; // already visited
@@ -267,12 +275,22 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
           .dependencies
           .insert(get_folder_path_specifier(specifier));
       }
+
+      if !*has_node_builtin_specifier && specifier.scheme() == "node" {
+        *has_node_builtin_specifier = true;
+      }
     }
 
     // now visit all the dependencies
     for specifier in &specifiers {
       if let Some(module) = graph.get(specifier) {
-        analyze_module(module, graph, specifier_graph, seen);
+        analyze_module(
+          module,
+          graph,
+          specifier_graph,
+          seen,
+          has_node_builtin_specifier,
+        );
       }
     }
   }
@@ -280,13 +298,20 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
   let root_specifiers = graph
     .roots
     .iter()
-    .map(|(url, _)| graph.resolve(url))
+    .map(|url| graph.resolve(url))
     .collect::<Vec<_>>();
   let mut seen = HashSet::new();
   let mut specifier_graph = SpecifierTree::default();
+  let mut has_node_builtin_specifier = false;
   for root in &root_specifiers {
     if let Some(module) = graph.get(root) {
-      analyze_module(module, graph, &mut specifier_graph, &mut seen);
+      analyze_module(
+        module,
+        graph,
+        &mut specifier_graph,
+        &mut seen,
+        &mut has_node_builtin_specifier,
+      );
     }
   }
 
@@ -324,7 +349,10 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     }
   }
 
-  result
+  GraphNpmInfo {
+    has_node_builtin_specifier,
+    package_reqs: result,
+  }
 }
 
 fn get_folder_path_specifier(specifier: &ModuleSpecifier) -> ModuleSpecifier {
@@ -551,7 +579,6 @@ fn cmp_package_req(a: &NpmPackageReq, b: &NpmPackageReq) -> Ordering {
 
 #[cfg(test)]
 mod tests {
-  use deno_graph::ModuleKind;
   use pretty_assertions::assert_eq;
 
   use super::*;
@@ -965,16 +992,10 @@ mod tests {
     let analyzer = deno_graph::CapturingModuleAnalyzer::default();
     let graph = deno_graph::create_graph(
       vec![
-        (
-          ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
-          ModuleKind::Esm,
-        ),
-        (
-          // test redirect at root
-          ModuleSpecifier::parse("https://deno.land/x/module_redirect/mod.ts")
-            .unwrap(),
-          ModuleKind::Esm,
-        ),
+        ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
+        // test redirect at root
+        ModuleSpecifier::parse("https://deno.land/x/module_redirect/mod.ts")
+          .unwrap(),
       ],
       &mut loader,
       deno_graph::GraphOptions {
@@ -986,7 +1007,8 @@ mod tests {
       },
     )
     .await;
-    let reqs = resolve_npm_package_reqs(&graph)
+    let reqs = resolve_graph_npm_info(&graph)
+      .package_reqs
       .into_iter()
       .map(|r| r.to_string())
       .collect::<Vec<_>>();

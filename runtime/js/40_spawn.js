@@ -315,6 +315,7 @@
           ...(this.#options ?? {}),
           stdout: this.#options?.stdout ?? "inherit",
           stderr: this.#options?.stderr ?? "inherit",
+          stdin: this.#options?.stdin ?? "inherit",
         };
         return spawnChild(this.#command, options);
       }

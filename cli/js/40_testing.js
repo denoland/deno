@@ -1265,10 +1265,10 @@
        */
       origin: desc.origin,
       /**
-       * @param nameOrTestDefinition {string | TestStepDefinition}
-       * @param fn {(t: TestContext) => void | Promise<void>}
+       * @param nameOrFnOrOptions {string | TestStepDefinition | ((t: TestContext) => void | Promise<void>)}
+       * @param maybeFn {((t: TestContext) => void | Promise<void>) | undefined}
        */
-      async step(nameOrTestDefinition, fn) {
+      async step(nameOrFnOrOptions, maybeFn) {
         if (MapPrototypeGet(testStates, desc.id).finalized) {
           throw new Error(
             "Cannot run test step after parent scope has finished execution. " +
@@ -1277,16 +1277,29 @@
         }
 
         let stepDesc;
-        if (typeof nameOrTestDefinition === "string") {
-          if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, fn))) {
+        if (typeof nameOrFnOrOptions === "string") {
+          if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, maybeFn))) {
             throw new TypeError("Expected function for second argument.");
           }
           stepDesc = {
-            name: nameOrTestDefinition,
-            fn,
+            name: nameOrFnOrOptions,
+            fn: maybeFn,
           };
-        } else if (typeof nameOrTestDefinition === "object") {
-          stepDesc = nameOrTestDefinition;
+        } else if (typeof nameOrFnOrOptions === "function") {
+          if (!nameOrFnOrOptions.name) {
+            throw new TypeError("The step function must have a name.");
+          }
+          if (maybeFn != undefined) {
+            throw new TypeError(
+              "Unexpected second argument to TestContext.step()",
+            );
+          }
+          stepDesc = {
+            name: nameOrFnOrOptions.name,
+            fn: nameOrFnOrOptions,
+          };
+        } else if (typeof nameOrFnOrOptions === "object") {
+          stepDesc = nameOrFnOrOptions;
         } else {
           throw new TypeError(
             "Expected a test definition or name and function.",
