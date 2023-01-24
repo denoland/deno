@@ -678,29 +678,15 @@ impl ConfigFile {
       }
     }
 
-    match (&self.json.imports, &self.json.scopes) {
-      (Some(imports), Some(scopes)) => {
+    if self.json.imports.is_some() || self.json.scopes.is_some() {
         print_warning_if_needed(self.json.import_map.as_deref());
         Some(json!({
-          "imports": imports.clone(),
-          "scopes": scopes.clone(),
+          "imports": self.json.imports.clone(),
+          "scopes": self.json.scopes.clone(),
         }))
-      }
-      (Some(imports), None) => {
-        print_warning_if_needed(self.json.import_map.as_deref());
-        Some(json!({
-          "imports": imports.clone(),
-        }))
-      }
-      (None, Some(scopes)) => {
-        print_warning_if_needed(self.json.import_map.as_deref());
-        Some(json!({
-          "scopes": scopes.clone(),
-        }))
-      }
-      _ => None,
+    } else {
+      None
     }
-  }
 
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
     if let Some(config) = self.json.fmt.clone() {
