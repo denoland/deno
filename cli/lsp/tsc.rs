@@ -216,7 +216,7 @@ fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
       let asset = AssetDocument::new(specifier.clone(), v);
       (specifier, asset)
     })
-    .collect();
+    .collect::<AssetsMap>();
   Arc::new(Mutex::new(assets))
 }
 
@@ -2728,28 +2728,29 @@ fn op_resolve(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
-
-  let result = if let Some(resolved) = state.state_snapshot.documents.resolve(
-    &args.specifiers,
-    &referrer,
-    state.state_snapshot.maybe_npm_resolver.as_ref(),
-  ) {
-    Ok(
-      resolved
-        .into_iter()
-        .map(|o| {
-          o.map(|(s, mt)| (s.to_string(), mt.as_ts_extension().to_string()))
-        })
-        .collect(),
-    )
-  } else {
-    Err(custom_error(
+  let result = match state.get_asset_or_document(&referrer) {
+    Some(referrer_doc) => {
+      let resolved = state.state_snapshot.documents.resolve(
+        args.specifiers,
+        &referrer_doc,
+        state.state_snapshot.maybe_npm_resolver.as_ref(),
+      );
+      Ok(
+        resolved
+          .into_iter()
+          .map(|o| {
+            o.map(|(s, mt)| (s.to_string(), mt.as_ts_extension().to_string()))
+          })
+          .collect(),
+      )
+    }
+    None => Err(custom_error(
       "NotFound",
       format!(
         "Error resolving. Referring specifier \"{}\" was not found.",
         args.base
       ),
-    ))
+    )),
   };
 
   state.performance.measure(mark);
@@ -2764,15 +2765,20 @@ fn op_respond(state: &mut OpState, args: Response) -> bool {
 }
 
 #[op]
-fn op_script_names(state: &mut OpState) -> Vec<ModuleSpecifier> {
+fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
-  state
-    .state_snapshot
-    .documents
-    .documents(true, true)
-    .into_iter()
-    .map(|d| d.specifier().clone())
-    .collect()
+  let documents = &state.state_snapshot.documents;
+  let open_docs = documents.documents(true, true);
+
+  let mut result = Vec::with_capacity(open_docs.len() + 1);
+
+  if documents.has_injected_types_node_package() {
+    // ensure this is first so it resolves the node types first
+    result.push("asset:///node_types.d.ts".to_string());
+  }
+
+  result.extend(open_docs.into_iter().map(|d| d.specifier().to_string()));
+  result
 }
 
 #[derive(Debug, Deserialize, Serialize)]

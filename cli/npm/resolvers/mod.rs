@@ -95,59 +95,51 @@ impl NpmPackageResolver {
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
   ) -> Self {
-    Self::new_with_maybe_snapshot(
+    Self::new_inner(cache, api, no_npm, local_node_modules_path, None, None)
+  }
+
+  pub async fn new_with_maybe_lockfile(
+    cache: NpmCache,
+    api: RealNpmRegistryApi,
+    no_npm: bool,
+    local_node_modules_path: Option<PathBuf>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  ) -> Result<Self, AnyError> {
+    let maybe_snapshot = if let Some(lockfile) = &maybe_lockfile {
+      if lockfile.lock().overwrite {
+        None
+      } else {
+        Some(
+          NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &api)
+            .await
+            .with_context(|| {
+              format!(
+                "failed reading lockfile '{}'",
+                lockfile.lock().filename.display()
+              )
+            })?,
+        )
+      }
+    } else {
+      None
+    };
+    Ok(Self::new_inner(
       cache,
       api,
       no_npm,
       local_node_modules_path,
-      None,
-    )
+      maybe_snapshot,
+      maybe_lockfile,
+    ))
   }
 
-  /// This function will replace current resolver with a new one built from a
-  /// snapshot created out of the lockfile.
-  pub async fn add_lockfile_and_maybe_regenerate_snapshot(
-    &mut self,
-    lockfile: Arc<Mutex<Lockfile>>,
-  ) -> Result<(), AnyError> {
-    self.maybe_lockfile = Some(lockfile.clone());
-
-    if lockfile.lock().overwrite {
-      return Ok(());
-    }
-
-    let snapshot =
-      NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &self.api)
-        .await
-        .with_context(|| {
-          format!(
-            "failed reading lockfile '{}'",
-            lockfile.lock().filename.display()
-          )
-        })?;
-    if let Some(node_modules_folder) = &self.local_node_modules_path {
-      self.inner = Arc::new(LocalNpmPackageResolver::new(
-        self.cache.clone(),
-        self.api.clone(),
-        node_modules_folder.clone(),
-        Some(snapshot),
-      ));
-    } else {
-      self.inner = Arc::new(GlobalNpmPackageResolver::new(
-        self.cache.clone(),
-        self.api.clone(),
-        Some(snapshot),
-      ));
-    }
-    Ok(())
-  }
-
-  fn new_with_maybe_snapshot(
+  fn new_inner(
     cache: NpmCache,
     api: RealNpmRegistryApi,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
     initial_snapshot: Option<NpmResolutionSnapshot>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
     let process_npm_state = NpmProcessState::take();
     let local_node_modules_path = local_node_modules_path.or_else(|| {
@@ -177,7 +169,7 @@ impl NpmPackageResolver {
       local_node_modules_path,
       api,
       cache,
-      maybe_lockfile: None,
+      maybe_lockfile,
     }
   }
 
@@ -320,12 +312,13 @@ impl NpmPackageResolver {
 
   /// Gets a new resolver with a new snapshotted state.
   pub fn snapshotted(&self) -> Self {
-    Self::new_with_maybe_snapshot(
+    Self::new_inner(
       self.cache.clone(),
       self.api.clone(),
       self.no_npm,
       self.local_node_modules_path.clone(),
       Some(self.snapshot()),
+      None,
     )
   }
 
@@ -335,6 +328,19 @@ impl NpmPackageResolver {
 
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
     self.inner.lock(lockfile)
+  }
+
+  pub async fn inject_synthetic_types_node_package(
+    &self,
+  ) -> Result<(), AnyError> {
+    // add and ensure this isn't added to the lockfile
+    self
+      .inner
+      .add_package_reqs(vec![NpmPackageReq::from_str("@types/node").unwrap()])
+      .await?;
+    self.inner.cache_packages().await?;
+
+    Ok(())
   }
 }
 

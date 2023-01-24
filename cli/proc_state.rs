@@ -23,7 +23,7 @@ use crate::graph_util::ModuleEntry;
 use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
-use crate::npm::resolve_npm_package_reqs;
+use crate::npm::resolve_graph_npm_info;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
@@ -261,20 +261,16 @@ impl ProcState {
       http_client.clone(),
       progress_bar.clone(),
     );
-    let maybe_lockfile = lockfile.as_ref().cloned();
-    let mut npm_resolver = NpmPackageResolver::new(
+    let npm_resolver = NpmPackageResolver::new_with_maybe_lockfile(
       npm_cache.clone(),
       api,
       cli_options.no_npm(),
       cli_options
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
-    );
-    if let Some(lockfile) = maybe_lockfile {
-      npm_resolver
-        .add_lockfile_and_maybe_regenerate_snapshot(lockfile)
-        .await?;
-    }
+      lockfile.as_ref().cloned(),
+    )
+    .await?;
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
@@ -424,7 +420,7 @@ impl ProcState {
       graph_data.entries().map(|(s, _)| s).cloned().collect()
     };
 
-    let npm_package_reqs = {
+    let (npm_package_reqs, has_node_builtin_specifier) = {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph);
       let check_js = self.options.check_js();
@@ -435,12 +431,24 @@ impl ProcState {
           check_js,
         )
         .unwrap()?;
-      graph_data.npm_package_reqs().clone()
+      (
+        graph_data.npm_package_reqs().clone(),
+        graph_data.has_node_builtin_specifier(),
+      )
     };
 
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
       self.prepare_node_std_graph().await?;
+    }
+
+    if has_node_builtin_specifier
+      && self.options.type_check_mode() != TypeCheckMode::None
+    {
+      self
+        .npm_resolver
+        .inject_synthetic_types_node_package()
+        .await?;
     }
 
     drop(_pb_clear_guard);
@@ -614,6 +622,11 @@ impl ProcState {
       }
     }
 
+    // Built-in Node modules
+    if let Some(module_name) = specifier.strip_prefix("node:") {
+      return node::resolve_builtin_node_module(module_name);
+    }
+
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
     // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
     // but sadly that's not the case due to missing APIs in V8.
@@ -732,9 +745,20 @@ impl ProcState {
     .await;
 
     // add the found npm package requirements to the npm resolver and cache them
-    let npm_package_reqs = resolve_npm_package_reqs(&graph);
-    if !npm_package_reqs.is_empty() {
-      self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
+    let graph_npm_info = resolve_graph_npm_info(&graph);
+    if !graph_npm_info.package_reqs.is_empty() {
+      self
+        .npm_resolver
+        .add_package_reqs(graph_npm_info.package_reqs)
+        .await?;
+    }
+    if graph_npm_info.has_node_builtin_specifier
+      && self.options.type_check_mode() != TypeCheckMode::None
+    {
+      self
+        .npm_resolver
+        .inject_synthetic_types_node_package()
+        .await?;
     }
 
     Ok(graph)
