@@ -131,6 +131,7 @@ pub struct FmtFlags {
   pub indent_width: Option<NonZeroU8>,
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
+  pub semi_colons: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1213,6 +1214,13 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .possible_values(["always", "never", "preserve"])
         .help("Define how prose should be wrapped. Defaults to always."),
+    )
+    .arg(
+      Arg::new("options-semi")
+        .long("options-semi")
+        .takes_value(true)
+        .possible_values(["prefer", "asi"])
+        .help("Use semi colons. Defaults to prefer."),
     )
 }
 
@@ -2571,6 +2579,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let prose_wrap = matches
     .value_of("options-prose-wrap")
     .map(ToString::to_string);
+  let semi_colons = matches.value_of("options-semi").map(ToString::to_string);
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.is_present("check"),
@@ -2581,6 +2590,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     indent_width,
     single_quote,
     prose_wrap,
+    semi_colons,
   });
 }
 
@@ -3598,6 +3608,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         ..Flags::default()
       }
@@ -3619,6 +3630,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         ..Flags::default()
       }
@@ -3640,6 +3652,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         ..Flags::default()
       }
@@ -3661,6 +3674,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         watch: Some(vec![]),
         ..Flags::default()
@@ -3684,6 +3698,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
@@ -3714,6 +3729,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         watch: Some(vec![]),
         ..Flags::default()
@@ -3736,6 +3752,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -3765,6 +3782,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         watch: Some(vec![]),
@@ -3782,7 +3800,9 @@ mod tests {
       "4",
       "--options-single-quote",
       "--options-prose-wrap",
-      "never"
+      "never",
+      "--options-semi",
+      "asi"
     ]);
     assert_eq!(
       r.unwrap(),
@@ -3799,6 +3819,7 @@ mod tests {
           indent_width: Some(NonZeroU8::new(4).unwrap()),
           single_quote: Some(true),
           prose_wrap: Some("never".to_string()),
+          semi_colons: Some("asi".to_string()),
         }),
         ..Flags::default()
       }
