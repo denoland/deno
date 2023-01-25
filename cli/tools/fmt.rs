@@ -12,6 +12,7 @@ use crate::args::FilesConfig;
 use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
+use crate::args::SemiColons;
 use crate::colors;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
@@ -509,6 +510,17 @@ fn get_resolved_typescript_config(
         dprint_plugin_typescript::configuration::QuoteStyle::AlwaysSingle,
       );
     }
+  }
+
+  if let Some(semi_colons) = options.semi_colons {
+    builder.semi_colons(match semi_colons {
+      SemiColons::Prefer => {
+        dprint_plugin_typescript::configuration::SemiColons::Prefer
+      }
+      SemiColons::Asi => {
+        dprint_plugin_typescript::configuration::SemiColons::Asi
+      }
+    });
   }
 
   builder.build()

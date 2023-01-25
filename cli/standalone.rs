@@ -6,6 +6,7 @@ use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::ops;
 use crate::proc_state::ProcState;
+use crate::util::v8::construct_v8_flags;
 use crate::version;
 use crate::CliResolver;
 use deno_core::anyhow::Context;
@@ -38,7 +39,6 @@ use import_map::parse_from_json;
 use log::Level;
 use std::env::current_exe;
 use std::io::SeekFrom;
-use std::iter::once;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -248,12 +248,7 @@ pub async fn run(
     todo!("Workers are currently not supported in standalone binaries");
   });
 
-  // Keep in sync with `main.rs`.
-  v8_set_flags(
-    once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
-      .chain(metadata.v8_flags.iter().cloned())
-      .collect::<Vec<_>>(),
-  );
+  v8_set_flags(construct_v8_flags(&metadata.v8_flags, vec![]));
 
   let root_cert_store = ps.root_cert_store.clone();
 
