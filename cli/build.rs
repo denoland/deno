@@ -255,7 +255,7 @@ mod ts {
     create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
-      startup_snapshot: Some(deno_runtime::js::deno_base_snapshot()),
+      startup_snapshot: None,
       extensions: vec![Extension::builder("deno_tsc")
         .ops(vec![
           op_build_info::decl(),

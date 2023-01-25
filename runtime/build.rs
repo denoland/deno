@@ -11,7 +11,6 @@ mod not_docs {
   use deno_cache::SqliteBackedCache;
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
-  use deno_core::Snapshot;
 
   struct Permissions;
 
@@ -120,11 +119,7 @@ mod not_docs {
     }
   }
 
-  fn create_runtime_snapshot(
-    base_snapshot_path: PathBuf,
-    snapshot_path: PathBuf,
-    files: Vec<PathBuf>,
-  ) {
+  fn create_runtime_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
     let extensions_with_js: Vec<Extension> = vec![
       deno_webidl::init(),
       deno_console::init(),
@@ -155,29 +150,10 @@ mod not_docs {
       deno_flash::init::<Permissions>(false), // No --unstable
     ];
 
-    build_base_snapshot(base_snapshot_path.clone());
-    let base_snapshot = {
-      let snapshot = std::fs::read(&base_snapshot_path).unwrap();
-
-      let size =
-        u32::from_le_bytes(snapshot[0..4].try_into().unwrap()) as usize;
-      let mut vec = Vec::with_capacity(size);
-
-      // SAFETY: vec is allocated with exact snapshot size (+ alignment)
-      // SAFETY: non zeroed bytes are overwritten with decompressed snapshot
-      unsafe {
-        vec.set_len(size);
-      }
-
-      lzzzz::lz4::decompress(&snapshot[4..], &mut vec).unwrap();
-
-      vec.into_boxed_slice()
-    };
-
     create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
-      startup_snapshot: Some(Snapshot::Boxed(base_snapshot)),
+      startup_snapshot: None,
       extensions: vec![],
       extensions_with_js,
       additional_files: files,
@@ -192,29 +168,7 @@ mod not_docs {
     });
   }
 
-  pub fn build_base_snapshot(snapshot_path: PathBuf) {
-    create_snapshot(CreateSnapshotOptions {
-      cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-      snapshot_path,
-      startup_snapshot: None,
-      extensions: vec![],
-      extensions_with_js: vec![],
-      additional_files: vec![],
-      compression_cb: Some(Box::new(|vec, snapshot_slice| {
-        lzzzz::lz4_hc::compress_to_vec(
-          snapshot_slice,
-          vec,
-          lzzzz::lz4_hc::CLEVEL_MAX,
-        )
-        .expect("snapshot compression failed");
-      })),
-    });
-  }
-
-  pub fn build_snapshot(
-    base_snapshot_path: PathBuf,
-    runtime_snapshot_path: PathBuf,
-  ) {
+  pub fn build_snapshot(runtime_snapshot_path: PathBuf) {
     #[allow(unused_mut)]
     let mut js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js");
     #[cfg(not(feature = "snapshot_from_snapshot"))]
@@ -223,11 +177,7 @@ mod not_docs {
       let path = PathBuf::from(manifest);
       js_files.push(path.join("js").join("99_main.js"));
     }
-    create_runtime_snapshot(
-      base_snapshot_path,
-      runtime_snapshot_path,
-      js_files,
-    );
+    create_runtime_snapshot(runtime_snapshot_path, js_files);
   }
 }
 
@@ -239,7 +189,7 @@ fn main() {
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
-  let base_snapshot_path = o.join("BASE_SNAPSHOT.bin");
+  // Main snapshot
   let runtime_snapshot_path = o.join("RUNTIME_SNAPSHOT.bin");
 
   // If we're building on docs.rs we just create
@@ -247,15 +197,10 @@ fn main() {
   // doesn't actually compile on docs.rs
   if env::var_os("DOCS_RS").is_some() {
     let snapshot_slice = &[];
-    std::fs::write(&base_snapshot_path, snapshot_slice).unwrap();
-    let snapshot_slice = &[];
     std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
     return;
   }
 
   #[cfg(not(feature = "docsrs"))]
-  not_docs::build_base_snapshot(base_snapshot_path.clone());
-
-  #[cfg(not(feature = "docsrs"))]
-  not_docs::build_snapshot(base_snapshot_path, runtime_snapshot_path)
+  not_docs::build_snapshot(runtime_snapshot_path)
 }
