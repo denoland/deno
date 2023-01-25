@@ -1368,7 +1368,7 @@ impl Inner {
             _ => false,
           },
           "deno-lint" => matches!(&d.code, Some(_)),
-          "deno" => diagnostics::DenoDiagnostic::is_fixable(&d.code),
+          "deno" => diagnostics::DenoDiagnostic::is_fixable(d),
           _ => false,
         },
         None => false,
