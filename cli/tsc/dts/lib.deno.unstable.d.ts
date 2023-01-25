@@ -1409,71 +1409,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @deprecated Use the Deno.Command API instead.
-   *
-   * Options which can be set when calling {@linkcode Deno.spawn},
-   * {@linkcode Deno.spawnSync}, and {@linkcode Deno.spawnChild}.
-   *
-   * @category Sub Process
-   */
-  export interface SpawnOptions {
-    /** Arguments to pass to the process. */
-    args?: string[];
-    /**
-     * The working directory of the process.
-     *
-     * If not specified, the `cwd` of the parent process is used.
-     */
-    cwd?: string | URL;
-    /**
-     * Clear environmental variables from parent process.
-     *
-     * Doesn't guarantee that only `env` variables are present, as the OS may
-     * set environmental variables for processes.
-     *
-     * @default {false}
-     */
-    clearEnv?: boolean;
-    /** Environmental variables to pass to the subprocess. */
-    env?: Record<string, string>;
-    /**
-     * Sets the child process’s user ID. This translates to a setuid call in the
-     * child process. Failure in the set uid call will cause the spawn to fail.
-     */
-    uid?: number;
-    /** Similar to `uid`, but sets the group ID of the child process. */
-    gid?: number;
-    /**
-     * An {@linkcode AbortSignal} that allows closing the process using the
-     * corresponding {@linkcode AbortController} by sending the process a
-     * SIGTERM signal.
-     *
-     * Not supported in {@linkcode Deno.spawnSync}.
-     */
-    signal?: AbortSignal;
-
-    /** How `stdin` of the spawned process should be handled.
-     *
-     * Defaults to `"null"`. */
-    stdin?: "piped" | "inherit" | "null";
-    /** How `stdout` of the spawned process should be handled.
-     *
-     * Defaults to `"piped". */
-    stdout?: "piped" | "inherit" | "null";
-    /** How `stderr` of the spawned process should be handled.
-     *
-     * Defaults to `"piped"`. */
-    stderr?: "piped" | "inherit" | "null";
-
-    /** Skips quoting and escaping of the arguments on windows. This option
-     * is ignored on non-windows platforms.
-     *
-     * @default {false} */
-    windowsRawArguments?: boolean;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Create a child process.
    *
    * If any stdio options are not set to `"piped"`, accessing the corresponding
@@ -1634,7 +1569,7 @@ declare namespace Deno {
      * corresponding {@linkcode AbortController} by sending the process a
      * SIGTERM signal.
      *
-     * Not supported in {@linkcode Deno.spawnSync}.
+     * Not supported in {@linkcode Deno.Command.outputSync}.
      */
     signal?: AbortSignal;
 
