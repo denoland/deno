@@ -2,10 +2,12 @@
 
 mod config_file;
 mod flags;
+mod flags_allow_net;
+mod import_map;
 mod lockfile;
 
-mod flags_allow_net;
-
+pub use self::import_map::import_map_from_text;
+pub use self::import_map::import_map_from_value;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;

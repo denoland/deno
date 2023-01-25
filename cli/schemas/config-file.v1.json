@@ -198,7 +198,7 @@
       }
     },
     "importMap": {
-      "description": "The location of an import map to be used when resolving modules. If an import map is specified as a flag or using \"imports\" and \"scopes\" properties, they will override this value.",
+      "description": "The location of an import map to be used when resolving modules. If an import map is specified as an `--importmap` flag or using \"imports\" and \"scopes\" properties, they will override this value.",
       "type": "string"
     },
     "imports": {
