@@ -1423,17 +1423,55 @@ fn napi_define_properties(
   properties: *const napi_property_descriptor,
 ) -> Result {
   let env: &mut Env = env_ptr.as_mut().ok_or(Error::InvalidArg)?;
+  if property_count > 0 {
+    check_arg!(env, properties);
+  }
+
   let scope = &mut env.scope();
+
   let object = transmute::<napi_value, v8::Local<v8::Object>>(obj);
+  
   let properties = std::slice::from_raw_parts(properties, property_count);
   for property in properties {
     let name = if !property.utf8name.is_null() {
-      let name_str = CStr::from_ptr(property.utf8name);
-      let name_str = name_str.to_str().unwrap();
+      let name_str = CStr::from_ptr(property.utf8name).to_str().unwrap();
       v8::String::new(scope, name_str).unwrap()
     } else {
-      transmute::<napi_value, v8::Local<v8::String>>(property.name)
+      let property_value = napi_value_unchecked(property.name);
+      v8::Local::<v8::String>::try_from(property_value)
+        .map_err(|_| Error::NameExpected)?
     };
+
+    if !property.getter.is_null() || !property.setter.is_null() {
+      let local_getter: Option<v8::Local<v8::Function>> = if !property.getter.is_null()
+      {
+        Some(create_function(env_ptr, None, property.getter, property.data))
+      } else {
+        None
+      };
+      let local_setter: Option<v8::Local<v8::Function>> = if !property.setter.is_null()
+      {
+        Some(create_function(env_ptr, None, property.setter, property.data))
+      } else {
+        None
+      };
+
+      let mut accessor_property = v8::NONE;
+      if property.attributes & napi_enumerable == 0 {
+        accessor_property = accessor_property | v8::DONT_ENUM;
+      }
+      if property.attributes & napi_configurable == 0 {
+        accessor_property = accessor_property | v8::DONT_DELETE;
+      }
+
+      let proto = tpl.prototype_template(scope);
+      proto.set_accessor_property(
+        name.into(),
+        getter,
+        setter,
+        accessor_property,
+      );
+    }
 
     let method_ptr = property.method;
 

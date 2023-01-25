@@ -801,9 +801,6 @@
 
   // Native extension for .node
   Module._extensions[".node"] = function (module, filename) {
-    if (filename.endsWith("fsevents.node")) {
-      throw new Error("Using fsevents module is currently not supported");
-    }
     module.exports = ops.op_napi_open(filename);
   };
 
