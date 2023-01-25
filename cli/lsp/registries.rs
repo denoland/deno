@@ -442,7 +442,7 @@ impl ModuleRegistry {
       http_client,
       BlobStore::default(),
       None,
-    )?;
+    );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
     Ok(Self {

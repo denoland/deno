@@ -6,7 +6,7 @@ mod flags_allow_net;
 mod import_map;
 mod lockfile;
 
-pub use self::import_map::import_map_from_value;
+pub use self::import_map::resolve_import_map_from_specifier;
 use ::import_map::ImportMap;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
@@ -21,8 +21,6 @@ pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
 pub use config_file::TsTypeLib;
-use deno_core::serde_json;
-use deno_runtime::permissions::PermissionsContainer;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
@@ -574,35 +572,17 @@ impl CliOptions {
       Some(specifier) => specifier,
       None => return Ok(None),
     };
-    self
-      .resolve_import_map_from_specifier(&import_map_specifier, file_fetcher)
-      .await
-      .context(format!(
-        "Unable to load '{}' import map",
-        import_map_specifier
-      ))
-      .map(Some)
-  }
-
-  async fn resolve_import_map_from_specifier(
-    &self,
-    import_map_specifier: &ModuleSpecifier,
-    file_fetcher: &FileFetcher,
-  ) -> Result<ImportMap, AnyError> {
-    let import_map_config = self
-      .get_maybe_config_file()
-      .as_ref()
-      .filter(|c| c.specifier == *import_map_specifier);
-    let value: serde_json::Value = match import_map_config {
-      Some(config) => config.to_import_map_value(),
-      None => {
-        let file = file_fetcher
-          .fetch(import_map_specifier, PermissionsContainer::allow_all())
-          .await?;
-        serde_json::from_str(&file.source)?
-      }
-    };
-    import_map_from_value(import_map_specifier, value)
+    resolve_import_map_from_specifier(
+      &import_map_specifier,
+      self.get_maybe_config_file().as_ref(),
+      file_fetcher,
+    )
+    .await
+    .context(format!(
+      "Unable to load '{}' import map",
+      import_map_specifier
+    ))
+    .map(Some)
   }
 
   /// Overrides the import map specifier to use.

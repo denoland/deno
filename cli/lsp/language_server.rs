@@ -8,6 +8,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_runtime::deno_web::BlobStore;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
@@ -17,7 +18,6 @@ use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::fs;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types::request::*;
@@ -57,7 +57,7 @@ use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
 use crate::args::get_root_cert_store;
-use crate::args::import_map_from_value;
+use crate::args::resolve_import_map_from_specifier;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -67,7 +67,8 @@ use crate::args::FmtOptions;
 use crate::args::LintOptions;
 use crate::args::TsConfig;
 use crate::cache::DenoDir;
-use crate::file_fetcher::get_source_from_data_url;
+use crate::cache::HttpCache;
+use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_valid;
 use crate::http_util::HttpClient;
 use crate::npm::NpmCache;
@@ -108,10 +109,12 @@ pub struct Inner {
   pub client: Client,
   /// Configuration information.
   pub config: Config,
+  deps_http_cache: HttpCache,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
   pub documents: Documents,
+  http_client: HttpClient,
   /// Handles module registries, which allow discovery of modules
   module_registries: ModuleRegistry,
   /// The path to the module registries cache
@@ -123,7 +126,7 @@ pub struct Inner {
   /// options.
   maybe_config_file: Option<ConfigFile>,
   /// An optional import map which is used to resolve modules.
-  pub maybe_import_map: Option<Arc<ImportMap>>,
+  maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// Configuration for formatter which has been taken from specified config file.
@@ -324,7 +327,8 @@ impl Inner {
         .unwrap();
     let location = dir.deps_folder_path();
     let documents = Documents::new(&location);
-    let cache_metadata = cache::CacheMetadata::new(&location);
+    let deps_http_cache = HttpCache::new(&location);
+    let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
     let ts_server = Arc::new(TsServer::new(performance.clone()));
     let config = Config::new();
@@ -334,15 +338,17 @@ impl Inner {
       ts_server.clone(),
     );
     let assets = Assets::new(ts_server.clone());
-    let npm_resolver = create_lsp_npm_resolver(&dir, http_client);
+    let npm_resolver = create_lsp_npm_resolver(&dir, http_client.clone());
 
     Self {
       assets,
       cache_metadata,
       client,
       config,
+      deps_http_cache,
       diagnostics_server,
       documents,
+      http_client,
       maybe_cache_path: None,
       maybe_config_file: None,
       maybe_import_map: None,
@@ -581,15 +587,17 @@ impl Inner {
       workspace_settings.certificate_stores,
       workspace_settings.tls_certificate.map(CaData::File),
     )?);
-    let client = HttpClient::new(
+    let module_registries_location = dir.registries_folder_path();
+    self.http_client = HttpClient::new(
       root_cert_store,
       workspace_settings.unsafely_ignore_certificate_errors,
     )?;
-    let module_registries_location = dir.registries_folder_path();
-    self.module_registries =
-      ModuleRegistry::new(&module_registries_location, client.clone())?;
+    self.module_registries = ModuleRegistry::new(
+      &module_registries_location,
+      self.http_client.clone(),
+    )?;
     self.module_registries_location = module_registries_location;
-    self.npm_resolver = create_lsp_npm_resolver(&dir, client);
+    self.npm_resolver = create_lsp_npm_resolver(&dir, self.http_client.clone());
     // update the cache path
     let location = dir.deps_folder_path();
     self.documents.set_location(&location);
@@ -603,16 +611,13 @@ impl Inner {
 
     let maybe_import_map_url = self.resolve_import_map_specifier()?;
     if let Some(import_map_url) = maybe_import_map_url {
+      if import_map_url.scheme() != "data" {
+        lsp_log!("  Resolved import map: \"{}\"", import_map_url);
+      }
+
       let import_map = self
-        .resolve_import_map_from_specifier(&import_map_url)
-        .await
-        .map_err(|err| {
-          anyhow!(
-            "Failed to load the import map at: {}. {:#}",
-            import_map_url,
-            err
-          )
-        })?;
+        .fetch_import_map(&import_map_url, CacheSetting::RespectHeaders)
+        .await?;
       self.maybe_import_map_uri = Some(import_map_url);
       self.maybe_import_map = Some(Arc::new(import_map));
     } else {
@@ -621,6 +626,39 @@ impl Inner {
     }
     self.performance.measure(mark);
     Ok(())
+  }
+
+  async fn fetch_import_map(
+    &self,
+    import_map_url: &ModuleSpecifier,
+    cache_setting: CacheSetting,
+  ) -> Result<ImportMap, AnyError> {
+    resolve_import_map_from_specifier(
+      import_map_url,
+      self.maybe_config_file.as_ref(),
+      &self.create_file_fetcher(cache_setting),
+    )
+    .await
+    .map_err(|err| {
+      anyhow!(
+        "Failed to load the import map at: {}. {:#}",
+        import_map_url,
+        err
+      )
+    })
+  }
+
+  fn create_file_fetcher(&self, cache_setting: CacheSetting) -> FileFetcher {
+    let mut file_fetcher = FileFetcher::new(
+      self.deps_http_cache.clone(),
+      cache_setting,
+      true,
+      self.http_client.clone(),
+      BlobStore::default(),
+      None,
+    );
+    file_fetcher.set_download_log_level(super::logging::lsp_log_level());
+    file_fetcher
   }
 
   fn resolve_import_map_specifier(
@@ -700,33 +738,6 @@ impl Inner {
         None
       },
     )
-  }
-
-  async fn resolve_import_map_from_specifier(
-    &self,
-    import_map_url: &ModuleSpecifier,
-  ) -> Result<ImportMap, AnyError> {
-    let import_map_json: Value = if import_map_url.scheme() == "data" {
-      serde_json::from_str(&get_source_from_data_url(import_map_url)?.0)?
-    } else {
-      let import_map_path = specifier_to_file_path(import_map_url)?;
-      lsp_log!(
-        "  Resolved import map: \"{}\"",
-        import_map_path.to_string_lossy()
-      );
-      let import_map_config_file = self
-        .maybe_config_file
-        .as_ref()
-        .filter(|c| c.specifier == *import_map_url);
-      match import_map_config_file {
-        Some(c) => c.to_import_map_value(),
-        None => {
-          serde_json::from_str(&fs::read_to_string(import_map_path).await?)?
-        }
-      }
-    };
-
-    import_map_from_value(import_map_url, import_map_json)
   }
 
   pub fn update_debug_flag(&self) {
