@@ -131,6 +131,7 @@ pub struct FmtFlags {
   pub indent_width: Option<NonZeroU8>,
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
+  pub semi_colons: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -544,6 +545,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          (alternative to passing --no-prompt on invocation)
     DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
                          available
+    DENO_V8_FLAGS        Set V8 command line options
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     DENO_JOBS            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
@@ -1213,6 +1215,13 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .possible_values(["always", "never", "preserve"])
         .help("Define how prose should be wrapped. Defaults to always."),
+    )
+    .arg(
+      Arg::new("options-semi")
+        .long("options-semi")
+        .takes_value(true)
+        .possible_values(["prefer", "asi"])
+        .help("Use semi colons. Defaults to prefer."),
     )
 }
 
@@ -2107,7 +2116,8 @@ fn v8_flags_arg<'a>() -> Arg<'a> {
     .use_value_delimiter(true)
     .require_equals(true)
     .help("Set V8 command line options")
-    .long_help("To see a list of all available flags use --v8-flags=--help.")
+    .long_help("To see a list of all available flags use --v8-flags=--help.\
+    Any flags set with this flag are appended after the DENO_V8_FLAGS environmental variable")
 }
 
 fn seed_arg<'a>() -> Arg<'a> {
@@ -2571,6 +2581,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let prose_wrap = matches
     .value_of("options-prose-wrap")
     .map(ToString::to_string);
+  let semi_colons = matches.value_of("options-semi").map(ToString::to_string);
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.is_present("check"),
@@ -2581,6 +2592,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     indent_width,
     single_quote,
     prose_wrap,
+    semi_colons,
   });
 }
 
@@ -3598,6 +3610,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         ..Flags::default()
       }
@@ -3619,6 +3632,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         ..Flags::default()
       }
@@ -3640,6 +3654,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         ..Flags::default()
       }
@@ -3661,6 +3676,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         watch: Some(vec![]),
         ..Flags::default()
@@ -3684,6 +3700,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
@@ -3714,6 +3731,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         watch: Some(vec![]),
         ..Flags::default()
@@ -3736,6 +3754,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -3765,6 +3784,7 @@ mod tests {
           indent_width: None,
           single_quote: None,
           prose_wrap: None,
+          semi_colons: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         watch: Some(vec![]),
@@ -3782,7 +3802,9 @@ mod tests {
       "4",
       "--options-single-quote",
       "--options-prose-wrap",
-      "never"
+      "never",
+      "--options-semi",
+      "asi"
     ]);
     assert_eq!(
       r.unwrap(),
@@ -3799,6 +3821,7 @@ mod tests {
           indent_width: Some(NonZeroU8::new(4).unwrap()),
           single_quote: Some(true),
           prose_wrap: Some("never".to_string()),
+          semi_colons: Some("asi".to_string()),
         }),
         ..Flags::default()
       }

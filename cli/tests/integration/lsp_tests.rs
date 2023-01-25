@@ -4523,14 +4523,8 @@ fn lsp_completions_node_specifier() {
     json!([
       {
         "range": {
-          "start": {
-            "line": 0,
-            "character": 15
-          },
-          "end": {
-            "line": 0,
-            "character": 34
-          }
+          "start": { "line": 0, "character": 15 },
+          "end": { "line": 0, "character": 34 },
         },
         "severity": 1,
         "code": "resolver-error",
@@ -4540,7 +4534,7 @@ fn lsp_completions_node_specifier() {
     ])
   );
 
-  // update to have node:fs import
+  // update to have fs import
   client
     .write_notification(
       "textDocument/didChange",
@@ -4552,21 +4546,108 @@ fn lsp_completions_node_specifier() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 0,
-                "character": 16
-              },
-              "end": {
-                "line": 0,
-                "character": 33
-              }
+              "start": { "line": 0, "character": 16 },
+              "end": { "line": 0, "character": 33 },
             },
-            "text": "node:fs"
+            "text": "fs"
           }
         ]
       }),
     )
     .unwrap();
+  let diagnostics = read_diagnostics(&mut client);
+  let diagnostics = diagnostics
+    .with_file_and_source("file:///a/file.ts", "deno")
+    .diagnostics
+    .into_iter()
+    .filter(|d| {
+      d.code
+        == Some(lsp::NumberOrString::String(
+          "import-prefix-missing".to_string(),
+        ))
+    })
+    .collect::<Vec<_>>();
+
+  // get the quick fixes
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "range": {
+          "start": { "line": 0, "character": 16 },
+          "end": { "line": 0, "character": 18 },
+        },
+        "context": {
+          "diagnostics": json!(diagnostics),
+          "only": [
+            "quickfix"
+          ]
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!([{
+      "title": "Update specifier to node:fs",
+      "kind": "quickfix",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 15 },
+            "end": { "line": 0, "character": 19 }
+          },
+          "severity": 1,
+          "code": "import-prefix-missing",
+          "source": "deno",
+          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
+          "data": {
+            "specifier": "fs"
+          },
+        }
+      ],
+      "edit": {
+        "changes": {
+          "file:///a/file.ts": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 15 },
+                "end": { "line": 0, "character": 19 }
+              },
+              "newText": "\"node:fs\""
+            }
+          ]
+        }
+      }
+    }]))
+  );
+
+  // update to have node:fs import
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 3,
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 15 },
+              "end": { "line": 0, "character": 19 },
+            },
+            "text": "\"node:fs\"",
+          }
+        ]
+      }),
+    )
+    .unwrap();
+
   let diagnostics = read_diagnostics(&mut client);
   let cache_diagnostics = diagnostics
     .with_file_and_source("file:///a/file.ts", "deno")
@@ -4582,14 +4663,8 @@ fn lsp_completions_node_specifier() {
     json!([
       {
         "range": {
-          "start": {
-            "line": 0,
-            "character": 15
-          },
-          "end": {
-            "line": 0,
-            "character": 24
-          }
+          "start": { "line": 0, "character": 15 },
+          "end": { "line": 0, "character": 24 }
         },
         "data": {
           "specifier": "npm:@types/node",
@@ -4626,19 +4701,13 @@ fn lsp_completions_node_specifier() {
       json!({
         "textDocument": {
           "uri": "file:///a/file.ts",
-          "version": 2
+          "version": 4
         },
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 2,
-                "character": 0
-              },
-              "end": {
-                "line": 2,
-                "character": 0
-              }
+              "start": { "line": 2, "character": 0 },
+              "end": { "line": 2, "character": 0 }
             },
             "text": "fs."
           }
@@ -4655,10 +4724,7 @@ fn lsp_completions_node_specifier() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 2,
-          "character": 3
-        },
+        "position": { "line": 2, "character": 3 },
         "context": {
           "triggerKind": 2,
           "triggerCharacter": "."

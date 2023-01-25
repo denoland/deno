@@ -343,6 +343,14 @@
                 "never",
                 "preserve"
               ]
+            },
+            "semiColons": {
+              "description": "Whether to prefer using semicolons.",
+              "default": "prefer",
+              "enum": [
+                "prefer",
+                "asi"
+              ]
             }
           }
         }

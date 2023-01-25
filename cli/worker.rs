@@ -186,7 +186,7 @@ impl CliMainWorker {
     if self.ps.options.trace_ops() {
       self.worker.js_runtime.execute_script(
         &located_script_name!(),
-        "Deno.core.enableOpCallTracing();",
+        "Deno[Deno.internal].core.enableOpCallTracing();",
       )?;
     }
 
@@ -231,7 +231,7 @@ impl CliMainWorker {
 
     self.worker.execute_script(
       &located_script_name!(),
-      "Deno.core.enableOpCallTracing();",
+      "Deno[Deno.internal].core.enableOpCallTracing();",
     )?;
 
     if mode != TestMode::Documentation {

@@ -8,7 +8,7 @@ Deno.bench("date_now", { n: 5e5 }, () => {
 // Fast API calls
 {
   // deno-lint-ignore camelcase
-  const { op_add } = Deno.core.ops;
+  const { op_add } = Deno[Deno.internal].core.ops;
   // deno-lint-ignore no-inner-declarations
   function add(a, b) {
     return op_add(a, b);
@@ -22,7 +22,7 @@ Deno.bench("date_now", { n: 5e5 }, () => {
 }
 
 // deno-lint-ignore camelcase
-const { op_void_sync } = Deno.core.ops;
+const { op_void_sync } = Deno[Deno.internal].core.ops;
 function sync() {
   return op_void_sync();
 }
@@ -34,7 +34,7 @@ Deno.bench("op_void_sync", () => sync());
 Deno.bench(
   "op_void_async",
   { n: 1e6 },
-  () => Deno.core.opAsync("op_void_async"),
+  () => Deno[Deno.internal].core.opAsync("op_void_async"),
 );
 
 // A very lightweight op, that should be highly optimizable

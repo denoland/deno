@@ -318,7 +318,7 @@ async fn inspector_break_on_first_line() {
       "id":4,
       "method":"Runtime.evaluate",
       "params":{
-        "expression":"Deno.core.print(\"hello from the inspector\\n\")",
+        "expression":"Deno[Deno.internal].core.print(\"hello from the inspector\\n\")",
         "contextId":1,
         "includeCommandLineAPI":true,
         "silent":false,
