@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::import_map_from_text;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -138,7 +137,7 @@ impl ProcState {
     if let Ok(Some(import_map_path)) = ps
       .options
       .resolve_import_map_specifier()
-      .map(|ms| ms.and_then(|(ref s, _)| s.to_file_path().ok()))
+      .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
       files_to_watch_sender.send(vec![import_map_path])?;
     }
@@ -207,31 +206,10 @@ impl ProcState {
 
     let lockfile = cli_options.maybe_lock_file();
 
-    let maybe_import_map = {
-      let maybe_import_map_specifier =
-        cli_options.resolve_import_map_specifier()?;
-
-      if let Some((import_map_specifier, ignore_invalid_keys)) =
-        maybe_import_map_specifier
-      {
-        let file = file_fetcher
-          .fetch(&import_map_specifier, PermissionsContainer::allow_all())
-          .await
-          .context(format!(
-            "Unable to load '{}' import map",
-            import_map_specifier
-          ))?;
-        let import_map = import_map_from_text(
-          &import_map_specifier,
-          &file.source,
-          ignore_invalid_keys,
-        )?;
-        Some(Arc::new(import_map))
-      } else {
-        None
-      }
-    };
-
+    let maybe_import_map = cli_options
+      .resolve_import_map(&file_fetcher)
+      .await?
+      .map(Arc::new);
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 

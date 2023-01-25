@@ -676,6 +676,17 @@ impl ConfigFile {
     self.json.import_map.clone()
   }
 
+  pub fn to_import_map_value(&self) -> Value {
+    let mut value = serde_json::Map::with_capacity(2);
+    if let Some(imports) = &self.json.imports {
+      value.insert("imports".to_string(), imports.clone());
+    }
+    if let Some(scopes) = &self.json.scopes {
+      value.insert("scopes".to_string(), scopes.clone());
+    }
+    value.into()
+  }
+
   pub fn is_an_import_map(&self) -> bool {
     self.json.imports.is_some() || self.json.scopes.is_some()
   }

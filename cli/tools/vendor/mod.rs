@@ -111,7 +111,7 @@ fn validate_options(
   // check the import map
   if let Some(import_map_path) = options
     .resolve_import_map_specifier()?
-    .and_then(|(p, _)| specifier_to_file_path(&p).ok())
+    .and_then(|p| specifier_to_file_path(&p).ok())
     .and_then(|p| canonicalize_path(&p).ok())
   {
     // make the output directory in order to canonicalize it for the check below

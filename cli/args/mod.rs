@@ -6,7 +6,8 @@ mod flags_allow_net;
 mod import_map;
 mod lockfile;
 
-pub use self::import_map::import_map_from_text;
+pub use self::import_map::import_map_from_value;
+use ::import_map::ImportMap;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
@@ -21,6 +22,8 @@ pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
 pub use config_file::TsTypeLib;
+use deno_core::serde_json;
+use deno_runtime::permissions::PermissionsContainer;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
@@ -51,6 +54,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cache::DenoDir;
+use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
@@ -558,14 +562,53 @@ impl CliOptions {
   /// and a boolean indicating if unknown keys should not result in diagnostics.
   pub fn resolve_import_map_specifier(
     &self,
-  ) -> Result<Option<(ModuleSpecifier, bool)>, AnyError> {
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
     match self.overrides.import_map_specifier.clone() {
-      Some(maybe_path) => Ok(maybe_path.map(|p| (p, false))),
+      Some(maybe_path) => Ok(maybe_path),
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
         self.maybe_config_file.as_ref(),
       ),
     }
+  }
+
+  pub async fn resolve_import_map(
+    &self,
+    file_fetcher: &FileFetcher,
+  ) -> Result<Option<ImportMap>, AnyError> {
+    let import_map_specifier = match self.resolve_import_map_specifier()? {
+      Some(specifier) => specifier,
+      None => return Ok(None),
+    };
+    self
+      .resolve_import_map_from_specifier(&import_map_specifier, file_fetcher)
+      .await
+      .context(format!(
+        "Unable to load '{}' import map",
+        import_map_specifier
+      ))
+      .map(Some)
+  }
+
+  async fn resolve_import_map_from_specifier(
+    &self,
+    import_map_specifier: &ModuleSpecifier,
+    file_fetcher: &FileFetcher,
+  ) -> Result<ImportMap, AnyError> {
+    let import_map_config = self
+      .get_maybe_config_file()
+      .as_ref()
+      .filter(|c| c.specifier == *import_map_specifier);
+    let value: serde_json::Value = match import_map_config {
+      Some(config) => config.to_import_map_value(),
+      None => {
+        let file = file_fetcher
+          .fetch(import_map_specifier, PermissionsContainer::allow_all())
+          .await?;
+        serde_json::from_str(&file.source)?
+      }
+    };
+    import_map_from_value(import_map_specifier, value)
   }
 
   /// Overrides the import map specifier to use.
@@ -904,7 +947,7 @@ impl CliOptions {
 fn resolve_import_map_specifier(
   maybe_import_map_path: Option<&str>,
   maybe_config_file: Option<&ConfigFile>,
-) -> Result<Option<(ModuleSpecifier, bool)>, AnyError> {
+) -> Result<Option<ModuleSpecifier>, AnyError> {
   if let Some(import_map_path) = maybe_import_map_path {
     if let Some(config_file) = &maybe_config_file {
       if config_file.to_import_map_path().is_some() {
@@ -913,7 +956,7 @@ fn resolve_import_map_specifier(
     }
     let specifier = deno_core::resolve_url_or_path(import_map_path)
       .context(format!("Bad URL (\"{}\") for import map.", import_map_path))?;
-    return Ok(Some((specifier, false)));
+    return Ok(Some(specifier));
   } else if let Some(config_file) = &maybe_config_file {
     // if the config file is an import map we prefer to use it, over `importMap`
     // field
@@ -922,7 +965,7 @@ fn resolve_import_map_specifier(
         log::warn!("{} \"importMap\" setting is ignored when \"imports\" or \"scopes\" are specified in the config file.", colors::yellow("Warning"));
       }
 
-      return Ok(Some((config_file.specifier.clone(), true)));
+      return Ok(Some(config_file.specifier.clone()));
     }
 
     // when the import map is specifier in a config file, it needs to be
@@ -932,7 +975,7 @@ fn resolve_import_map_specifier(
     if let Some(import_map_path) = config_file.to_import_map_path() {
       // if the import map is an absolute URL, use it as is
       if let Ok(specifier) = deno_core::resolve_url(&import_map_path) {
-        return Ok(Some((specifier, false)));
+        return Ok(Some(specifier));
       }
       let specifier =
           // with local config files, it might be common to specify an import
@@ -957,7 +1000,7 @@ fn resolve_import_map_specifier(
                 import_map_path
               ))?
           };
-      return Ok(Some((specifier, false)));
+      return Ok(Some(specifier));
     }
   }
   Ok(None)
@@ -1008,10 +1051,7 @@ mod test {
     let actual = actual.unwrap();
     assert_eq!(
       actual,
-      Some((
-        ModuleSpecifier::parse("file:///deno/import_map.json").unwrap(),
-        false
-      ))
+      Some(ModuleSpecifier::parse("file:///deno/import_map.json").unwrap(),)
     );
   }
 
@@ -1028,10 +1068,9 @@ mod test {
     let actual = actual.unwrap();
     assert_eq!(
       actual,
-      Some((
-        ModuleSpecifier::parse("https://example.com/import_map.json").unwrap(),
-        false
-      ))
+      Some(
+        ModuleSpecifier::parse("https://example.com/import_map.json").unwrap()
+      )
     );
   }
 
@@ -1048,10 +1087,9 @@ mod test {
     let actual = actual.unwrap();
     assert_eq!(
       actual,
-      Some((
-        ModuleSpecifier::parse("https://example.com/import_map.json").unwrap(),
-        false
-      ))
+      Some(
+        ModuleSpecifier::parse("https://example.com/import_map.json").unwrap()
+      )
     );
   }
 
@@ -1071,7 +1109,7 @@ mod test {
       ModuleSpecifier::from_file_path(import_map_path).unwrap();
     assert!(actual.is_ok());
     let actual = actual.unwrap();
-    assert_eq!(actual, Some((expected_specifier, false)));
+    assert_eq!(actual, Some(expected_specifier));
   }
 
   #[test]
@@ -1086,7 +1124,7 @@ mod test {
     let actual = resolve_import_map_specifier(None, Some(&config_file));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
-    assert_eq!(actual, Some((config_specifier, true)));
+    assert_eq!(actual, Some(config_specifier));
   }
 
   #[test]
