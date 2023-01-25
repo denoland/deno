@@ -202,7 +202,7 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
+// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_045_proxy {
   args: "run -L debug --unstable --allow-net --allow-env --allow-run --allow-read --reload --quiet run/045_proxy_test.ts",
   output: "run/045_proxy_test.ts.out",
@@ -537,7 +537,7 @@ itest!(_088_dynamic_import_already_evaluating {
   output: "run/088_dynamic_import_already_evaluating.ts.out",
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
+// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(_089_run_allow_list {
   args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
   output: "run/089_run_allow_list.ts.out",
@@ -625,7 +625,7 @@ itest!(private_field_presence_no_check {
   output: "run/private_field_presence.ts.out",
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
+// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(lock_write_fetch {
   args:
     "run --quiet --allow-read --allow-write --allow-env --allow-run --unstable run/lock_write_fetch/main.ts",
@@ -1916,7 +1916,7 @@ fn dont_cache_on_check_fail() {
 mod permissions {
   use test_util as util;
 
-  // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
+  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
@@ -1935,7 +1935,7 @@ mod permissions {
     }
   }
 
-  // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
+  // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
   fn without_allow() {
     for permission in &util::PERMISSION_VARIANTS {
