@@ -325,7 +325,7 @@
             "semiColons": {
               "description": "Whether to prefer using semicolons.",
               "type": "boolean",
-              "default": false
+              "default": true
             }
           }
         }
