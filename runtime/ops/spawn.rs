@@ -223,12 +223,12 @@ fn create_command(
 
   #[cfg(unix)]
   if let Some(gid) = args.gid {
-    super::check_unstable(state, "Deno.Command.gid");
+    super::check_unstable(state, "Deno.CommandOptions.gid");
     command.gid(gid);
   }
   #[cfg(unix)]
   if let Some(uid) = args.uid {
-    super::check_unstable(state, "Deno.Command.uid");
+    super::check_unstable(state, "Deno.CommandOptions.uid");
     command.uid(uid);
   }
   #[cfg(unix)]
