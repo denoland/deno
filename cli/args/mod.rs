@@ -60,6 +60,13 @@ use self::config_file::LintConfig;
 use self::config_file::MaybeImportsResult;
 use self::config_file::TestConfig;
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum ImportMapConfig {
+  Flag(Url),
+  ConfigFileUrl(Url),
+  ConfigFileJson(Url, serde_json::Value),
+}
+
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CacheSetting {
@@ -559,6 +566,25 @@ impl CliOptions {
       .maybe_config_file
       .as_ref()
       .and_then(|f| f.to_import_map())
+  }
+
+  pub fn import_map_config(&self) -> Option<ImportMapConfig> {
+    if let Some(import_map_url) = self.flags.import_map_path.as_deref() {
+      Some(ImportMapConfig::Flag(import_map_url))
+    } else if let Some(config_file) = self.maybe_config_file.as_ref() {
+      if config_file.json.imports.is_some() || config_file.json.scopes.is_some()
+      {
+        Some(ImportMapConfig::ConfigFile(config_file.specifier.clone()))
+      } else if let Some(import_map_url) =
+        config_file.json.import_map.as_deref()
+      {
+        Some(ImportMapConfig::ConfigFileUrl(import_map_url))
+      } else {
+        None
+      }
+    } else {
+      None
+    }
   }
 
   /// Based on an optional command line import map path and an optional
