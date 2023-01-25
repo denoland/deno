@@ -19,10 +19,8 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::colors;
-use deno_runtime::permissions::PermissionsContainer;
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -166,22 +164,11 @@ async fn create_standalone_binary(
     Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
     None => None,
   };
-  let maybe_import_map: Option<(Url, String)> =
-    match ps.options.resolve_import_map_specifier()? {
-      None => None,
-      Some(import_map_specifier) => {
-        let file = ps
-          .file_fetcher
-          .fetch(&import_map_specifier, PermissionsContainer::allow_all())
-          .await
-          .context(format!(
-            "Unable to load '{}' import map",
-            import_map_specifier
-          ))?;
-
-        Some((import_map_specifier, file.source.to_string()))
-      }
-    };
+  let maybe_import_map = ps
+    .options
+    .resolve_import_map(&ps.file_fetcher)
+    .await?
+    .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
   let metadata = Metadata {
     argv: compile_flags.args.clone(),
     unstable: ps.options.unstable(),

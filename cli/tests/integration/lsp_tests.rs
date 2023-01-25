@@ -583,6 +583,93 @@ fn lsp_import_map_config_file() {
 }
 
 #[test]
+fn lsp_import_map_embedded_in_config_file() {
+  let temp_dir = TempDir::new();
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+
+  let deno_import_map_jsonc = serde_json::to_string_pretty(&load_fixture(
+    "deno.embedded_import_map.jsonc",
+  ))
+  .unwrap();
+  temp_dir.write("deno.embedded_import_map.jsonc", deno_import_map_jsonc);
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert(
+      "config".to_string(),
+      json!("./deno.embedded_import_map.jsonc"),
+    );
+    params.initialization_options = Some(Value::Object(map));
+  }
+  fs::create_dir(temp_dir.path().join("lib")).unwrap();
+  temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+  let uri = Url::from_file_path(temp_dir.path().join("a.ts")).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": uri
+        },
+        "position": {
+          "line": 2,
+          "character": 12
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value":"(alias) const b: \"b\"\nimport b"
+        },
+        ""
+      ],
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 12
+        },
+        "end": {
+          "line": 2,
+          "character": 13
+        }
+      }
+    }))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_deno_task() {
   let temp_dir = TempDir::new();
   let workspace_root = temp_dir.path().canonicalize().unwrap();
