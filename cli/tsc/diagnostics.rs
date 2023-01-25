@@ -31,7 +31,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "umask",
   "Child",
   "ChildProcess",
-  "spawnSync",
   "ChildStatus",
   "SpawnOutput",
   "command",
