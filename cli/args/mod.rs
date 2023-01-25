@@ -33,6 +33,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::rustls;
@@ -61,7 +62,7 @@ use self::config_file::MaybeImportsResult;
 use self::config_file::TestConfig;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-enum ImportMapConfig {
+pub enum ImportMapConfig {
   Flag(Url),
   ConfigFileUrl(Url),
   ConfigFileJson(Url, serde_json::Value),
@@ -569,22 +570,26 @@ impl CliOptions {
   }
 
   pub fn import_map_config(&self) -> Option<ImportMapConfig> {
-    if let Some(import_map_url) = self.flags.import_map_path.as_deref() {
-      Some(ImportMapConfig::Flag(import_map_url))
-    } else if let Some(config_file) = self.maybe_config_file.as_ref() {
-      if config_file.json.imports.is_some() || config_file.json.scopes.is_some()
-      {
-        Some(ImportMapConfig::ConfigFile(config_file.specifier.clone()))
-      } else if let Some(import_map_url) =
-        config_file.json.import_map.as_deref()
-      {
-        Some(ImportMapConfig::ConfigFileUrl(import_map_url))
-      } else {
-        None
-      }
-    } else {
-      None
-    }
+    todo!()
+
+    // if let Some(import_map_url) = self.flags.import_map_path.as_deref() {
+    //   Some(ImportMapConfig::Flag(import_map_url))
+    // } else if let Some(config_file) = self.maybe_config_file.as_ref() {
+    //   if config_file.json.imports.is_some() || config_file.json.scopes.is_some()
+    //   {
+    //     Some(ImportMapConfig::ConfigFileUrl(
+    //       config_file.specifier.clone(),
+    //     ))
+    //   } else if let Some(import_map_url) =
+    //     config_file.json.import_map.as_deref()
+    //   {
+    //     Some(ImportMapConfig::ConfigFileUrl(import_map_url))
+    //   } else {
+    //     None
+    //   }
+    // } else {
+    //   None
+    // }
   }
 
   /// Based on an optional command line import map path and an optional

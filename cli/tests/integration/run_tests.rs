@@ -169,6 +169,12 @@ itest!(_033_import_map_in_config_file {
   output: "run/033_import_map_in_config_file.out",
 });
 
+itest!(_033_import_map_in_flag_has_precedence {
+  args: "run --reload --import-map=import_maps/import_map_invalid.json --config=import_maps/config.json import_maps/test.ts",
+  output: "run/033_import_map_in_flag_has_precedence.out",
+  exit_code: 1,
+});
+
 itest!(_033_import_map_remote {
   args:
     "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
