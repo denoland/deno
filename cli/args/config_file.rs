@@ -3,7 +3,6 @@
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::TaskFlags;
-use crate::colors;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::specifier_parent;
 use crate::util::path::specifier_to_file_path;
