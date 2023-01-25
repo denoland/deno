@@ -681,26 +681,6 @@ impl ConfigFile {
     self.json.imports.is_some() || self.json.scopes.is_some()
   }
 
-  /// This function prints a warning if "importMap" is used in the config file
-  /// and either "imports" or "scopes" configuration are specified.
-  pub fn to_import_map(&self) -> Option<serde_json::Value> {
-    fn print_warning_if_needed(maybe_import_map_path: Option<&str>) {
-      if maybe_import_map_path.is_some() {
-        log::warn!("{} \"importMap\" setting is ignored when \"imports\" or \"scopes\" are specified in the config file.", colors::yellow("Warning"));
-      }
-    }
-
-    if self.json.imports.is_some() || self.json.scopes.is_some() {
-      print_warning_if_needed(self.json.import_map.as_deref());
-      Some(json!({
-        "imports": self.json.imports.clone(),
-        "scopes": self.json.scopes.clone(),
-      }))
-    } else {
-      None
-    }
-  }
-
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
     if let Some(config) = self.json.fmt.clone() {
       let fmt_config: SerializedFmtConfig = serde_json::from_value(config)
