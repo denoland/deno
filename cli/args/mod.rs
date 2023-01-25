@@ -15,7 +15,6 @@ pub use config_file::FmtOptionsConfig;
 pub use config_file::JsxImportSourceConfig;
 pub use config_file::LintRulesConfig;
 pub use config_file::ProseWrap;
-pub use config_file::SemiColons;
 pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
@@ -201,13 +200,8 @@ fn resolve_fmt_options(
       });
     }
 
-    if let Some(semi_colons) = &fmt_flags.semi_colons {
-      options.semi_colons = Some(match semi_colons.as_str() {
-        "prefer" => SemiColons::Prefer,
-        "asi" => SemiColons::Asi,
-        // validators in `flags.rs` makes other values unreachable
-        _ => unreachable!(),
-      });
+    if let Some(no_semis) = &fmt_flags.no_semicolons {
+      options.semi_colons = Some(!no_semis);
     }
   }
 
