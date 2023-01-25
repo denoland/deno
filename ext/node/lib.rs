@@ -19,6 +19,7 @@ pub mod errors;
 mod package_json;
 mod path;
 mod resolution;
+mod v8;
 
 pub use package_json::PackageJson;
 pub use path::PathClean;
@@ -33,6 +34,7 @@ pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolutionMode;
 pub use resolution::DEFAULT_CONDITIONS;
 use std::cell::RefCell;
+pub use v8::V8_ES_SHIM;
 
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
@@ -114,6 +116,7 @@ pub fn init<P: NodePermissions + 'static>(
       op_require_package_imports_resolve::decl::<P>(),
       op_require_break_on_next_statement::decl(),
     ])
+    .ops(v8::ops())
     .state(move |state| {
       if let Some(npm_resolver) = maybe_npm_resolver.clone() {
         state.put(npm_resolver);
@@ -854,7 +857,7 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
   },
   NodeModulePolyfill {
     name: "v8",
-    specifier: "node/v8.ts",
+    specifier: "[USE `deno_node::V8_ES_SHIM` to get this module]",
   },
   NodeModulePolyfill {
     name: "vm",

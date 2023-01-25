@@ -103,8 +103,8 @@ impl Loader for FetchCacher {
 
     let specifier =
       if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
-        if module_name == "module" {
-          // the source code for "node:module" is built-in rather than
+        if module_name == "module" || module_name == "v8" {
+          // the source code for modules is built-in rather than
           // being from deno_std like the other modules
           return Box::pin(futures::future::ready(Ok(Some(
             deno_graph::source::LoadResponse::External {
