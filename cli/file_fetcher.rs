@@ -193,8 +193,8 @@ impl FileFetcher {
     http_client: HttpClient,
     blob_store: BlobStore,
     progress_bar: Option<ProgressBar>,
-  ) -> Result<Self, AnyError> {
-    Ok(Self {
+  ) -> Self {
+    Self {
       auth_tokens: AuthTokens::new(env::var("DENO_AUTH_TOKENS").ok()),
       allow_remote,
       cache: Default::default(),
@@ -204,7 +204,7 @@ impl FileFetcher {
       blob_store,
       download_log_level: log::Level::Info,
       progress_bar,
-    })
+    }
   }
 
   /// Sets the log level to use when outputting the download message.
@@ -778,8 +778,7 @@ mod tests {
       HttpClient::new(None, None).unwrap(),
       blob_store.clone(),
       None,
-    )
-    .unwrap();
+    );
     (file_fetcher, temp_dir, blob_store)
   }
 
@@ -1215,8 +1214,7 @@ mod tests {
       HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
-    )
-    .unwrap();
+    );
     let result = file_fetcher
       .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
@@ -1241,8 +1239,7 @@ mod tests {
       HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
-    )
-    .unwrap();
+    );
     let specifier =
       resolve_url("http://localhost:4545/subdir/mismatch_ext.ts").unwrap();
     let cache_filename = file_fetcher_01
@@ -1267,8 +1264,7 @@ mod tests {
       HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
-    )
-    .unwrap();
+    );
     let result = file_fetcher_02
       .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
@@ -1409,8 +1405,7 @@ mod tests {
       HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
-    )
-    .unwrap();
+    );
     let specifier =
       resolve_url("http://localhost:4548/subdir/mismatch_ext.ts").unwrap();
     let redirected_specifier =
@@ -1438,8 +1433,7 @@ mod tests {
       HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
-    )
-    .unwrap();
+    );
     let result = file_fetcher_02
       .fetch(&redirected_specifier, PermissionsContainer::allow_all())
       .await;
@@ -1538,8 +1532,7 @@ mod tests {
       HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
-    )
-    .unwrap();
+    );
     let specifier =
       resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
@@ -1564,8 +1557,7 @@ mod tests {
       HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
-    )
-    .unwrap();
+    );
     let file_fetcher_02 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Use,
@@ -1573,8 +1565,7 @@ mod tests {
       HttpClient::new(None, None).unwrap(),
       BlobStore::default(),
       None,
-    )
-    .unwrap();
+    );
     let specifier =
       resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 

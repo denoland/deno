@@ -182,6 +182,13 @@ itest!(_033_import_map_remote {
   http_server: true,
 });
 
+itest!(_033_import_map_data_uri {
+  args:
+    "run --quiet --reload --import-map=data:application/json;charset=utf-8;base64,ewogICJpbXBvcnRzIjogewogICAgInRlc3Rfc2VydmVyLyI6ICJodHRwOi8vbG9jYWxob3N0OjQ1NDUvIgogIH0KfQ== run/import_maps/test_data.ts",
+  output: "run/import_maps/test_data.ts.out",
+  http_server: true,
+});
+
 itest!(onload {
   args: "run --quiet --reload run/onload/main.ts",
   output: "run/onload/main.out",

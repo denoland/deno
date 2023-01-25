@@ -202,7 +202,7 @@ impl ProcState {
       http_client.clone(),
       blob_store.clone(),
       Some(progress_bar.clone()),
-    )?;
+    );
 
     let lockfile = cli_options.maybe_lock_file();
 
