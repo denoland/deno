@@ -1234,7 +1234,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .require_equals(true)
         .possible_values(["true", "false"])
-        .help("Don't use semi colons except where necessary."),
+        .help("Don't use semicolons except where necessary."),
     )
 }
 
