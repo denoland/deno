@@ -166,8 +166,19 @@ fn get_minor_version(version: &str) -> &str {
   version.rsplitn(2, '.').collect::<Vec<&str>>()[1]
 }
 
-fn has_same_minor_version(current_version: &str, new_version: &str) -> bool {
-  get_minor_version(current_version) == get_minor_version(new_version)
+fn print_release_notes(current_version: &str, new_version: &str) {
+  if get_minor_version(current_version) != get_minor_version(new_version) {
+    log::info!(
+      "{}{}",
+      "Release notes: https://github.com/denoland/deno/releases/tag/v",
+      &new_version,
+    );
+    log::info!(
+      "{}{}",
+      "Blog post: https://deno.com/blog/v",
+      get_minor_version(new_version)
+    );
+  }
 }
 
 pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
@@ -213,20 +224,7 @@ pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
           "{}",
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
-        eprint!(
-          "{}{}",
-          colors::yellow(
-            "Release notes: https://github.com/denoland/deno/releases/tag/v"
-          ),
-          colors::yellow(&upgrade_version),
-        );
-        if !has_same_minor_version(&version::deno(), &upgrade_version) {
-          eprint!(
-            "{}{}",
-            colors::yellow("Blog post: https://deno.com/blog/v"),
-            colors::yellow(get_minor_version(&upgrade_version)),
-          );
-        }
+        print_release_notes(&version::deno(), &upgrade_version);
       }
 
       update_checker.store_prompted();
@@ -312,16 +310,6 @@ pub async fn upgrade(
         && current_is_passed
       {
         log::info!("Version {} is already installed", crate::version::deno());
-        log::info!(
-          "{}{}",
-          "Release notes: https://github.com/denoland/deno/releases/tag/v",
-          crate::version::deno(),
-        );
-        log::info!(
-          "{}{}",
-          "Blog post: https://deno.com/blog/v",
-          get_minor_version(&crate::version::deno())
-        );
         return Ok(());
       } else {
         passed_version
@@ -359,18 +347,6 @@ pub async fn upgrade(
             crate::version::deno()
           }
         );
-        if !upgrade_flags.canary {
-          log::info!(
-            "{}{}",
-            "Release notes: https://github.com/denoland/deno/releases/tag/v",
-            crate::version::deno(),
-          );
-          log::info!(
-            "{}{}",
-            "Blog post: https://deno.com/blog/v",
-            get_minor_version(&crate::version::deno())
-          );
-        }
         return Ok(());
       } else {
         log::info!("Found latest version {}", latest_version);
@@ -408,16 +384,9 @@ pub async fn upgrade(
   if upgrade_flags.dry_run {
     fs::remove_file(&new_exe_path)?;
     log::info!("Upgraded successfully (dry run)");
-    log::info!(
-      "{}{}",
-      "Release notes: https://github.com/denoland/deno/releases/tag/v",
-      install_version,
-    );
-    log::info!(
-      "{}{}",
-      "Blog post: https://deno.com/blog/v",
-      get_minor_version(&install_version)
-    );
+    if !upgrade_flags.canary {
+      print_release_notes(&version::deno(), &install_version);
+    }
   } else {
     let output_exe_path =
       upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
@@ -449,16 +418,9 @@ pub async fn upgrade(
       }
     }
     log::info!("Upgraded successfully");
-    log::info!(
-      "{}{}",
-      "Release notes: https://github.com/denoland/deno/releases/tag/v",
-      &install_version,
-    );
-    log::info!(
-      "{}{}",
-      "Blog post: https://deno.com/blog/v",
-      get_minor_version(&install_version)
-    );
+    if !upgrade_flags.canary {
+      print_release_notes(&version::deno(), &install_version);
+    }
   }
 
   Ok(())
