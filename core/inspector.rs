@@ -117,6 +117,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   where
     Self: Sized,
   {
+    // SAFETY: this pointer is valid for the whole lifetime of inspector
     unsafe { std::ptr::addr_of!((*this).v8_inspector_client) }
   }
 
@@ -660,6 +661,7 @@ impl v8::inspector::ChannelImpl for InspectorSession {
   where
     Self: Sized,
   {
+    // SAFETY: this pointer is valid for the whole lifetime of inspector
     unsafe { std::ptr::addr_of!((*this).v8_channel) }
   }
 
