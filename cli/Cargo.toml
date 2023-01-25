@@ -73,7 +73,7 @@ eszip = "=0.33.0"
 fancy-regex = "=0.10.0"
 flate2.workspace = true
 http.workspace = true
-import_map = "=0.14.0"
+import_map = "=0.15.0"
 indexmap = "=1.9.2"
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc.workspace = true

@@ -677,6 +677,10 @@ impl ConfigFile {
     self.json.import_map.clone()
   }
 
+  pub fn is_an_import_map(&self) -> bool {
+    self.json.imports.is_some() || self.json.scopes.is_some()
+  }
+
   /// This function prints a warning if "importMap" is used in the config file
   /// and either "imports" or "scopes" configuration are specified.
   pub fn to_import_map(&self) -> Option<serde_json::Value> {

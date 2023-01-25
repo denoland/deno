@@ -44,7 +44,7 @@ pub async fn bundle(
       if let Ok(Some(import_map_path)) = ps
         .options
         .resolve_import_map_specifier()
-        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+        .map(|ms| ms.and_then(|(ref s, _)| s.to_file_path().ok()))
       {
         paths_to_watch.push(import_map_path);
       }

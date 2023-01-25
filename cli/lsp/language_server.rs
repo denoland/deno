@@ -58,7 +58,6 @@ use super::tsc::TsServer;
 use super::urls;
 use crate::args::get_root_cert_store;
 use crate::args::import_map_from_text;
-use crate::args::import_map_from_value;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -618,17 +617,20 @@ impl Inner {
         }
       }
       if let Ok(url) = Url::from_file_path(&import_map_str) {
-        Some(url)
+        Some((url, false))
       } else if import_map_str.starts_with("data:") {
-        Some(Url::parse(&import_map_str).map_err(|_| {
+        let import_map_url = Url::parse(&import_map_str).map_err(|_| {
           anyhow!("Bad data url for import map: {}", import_map_str)
-        })?)
+        })?;
+        Some((import_map_url, false))
       } else if let Some(root_uri) = &self.config.root_uri {
         let root_path = specifier_to_file_path(root_uri)?;
         let import_map_path = root_path.join(&import_map_str);
-        Some(Url::from_file_path(import_map_path).map_err(|_| {
-          anyhow!("Bad file path for import map: {}", import_map_str)
-        })?)
+        let import_map_url =
+          Url::from_file_path(import_map_path).map_err(|_| {
+            anyhow!("Bad file path for import map: {}", import_map_str)
+          })?;
+        Some((import_map_url, false))
       } else {
         return Err(anyhow!(
           "The path to the import map (\"{}\") is not resolvable.",
@@ -636,18 +638,13 @@ impl Inner {
         ));
       }
     } else if let Some(config_file) = &self.maybe_config_file {
-      if let Some(import_map_json) = config_file.to_import_map() {
+      if config_file.is_an_import_map() {
         lsp_log!(
           "Setting import map defined in configuration file: \"{}\"",
           config_file.specifier
         );
         let import_map_url = config_file.specifier.clone();
-        let import_map =
-          import_map_from_value(&import_map_url, import_map_json)?;
-        self.maybe_import_map_uri = Some(import_map_url);
-        self.maybe_import_map = Some(Arc::new(import_map));
-        self.performance.measure(mark);
-        return Ok(());
+        Some((import_map_url, true))
       } else if let Some(import_map_path) = config_file.to_import_map_path() {
         lsp_log!(
           "Setting import map from configuration file: \"{}\"",
@@ -668,14 +665,14 @@ impl Inner {
               config_file.specifier.as_str(),
             )?
           };
-        Some(specifier)
+        Some((specifier, false))
       } else {
         None
       }
     } else {
       None
     };
-    if let Some(import_map_url) = maybe_import_map_url {
+    if let Some((import_map_url, ignore_unknown_keys)) = maybe_import_map_url {
       let import_map_json = if import_map_url.scheme() == "data" {
         get_source_from_data_url(&import_map_url)?.0
       } else {
@@ -692,7 +689,11 @@ impl Inner {
           )
         })?
       };
-      let import_map = import_map_from_text(&import_map_url, &import_map_json)?;
+      let import_map = import_map_from_text(
+        &import_map_url,
+        &import_map_json,
+        ignore_unknown_keys,
+      )?;
       self.maybe_import_map_uri = Some(import_map_url);
       self.maybe_import_map = Some(Arc::new(import_map));
     } else {

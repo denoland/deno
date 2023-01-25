@@ -169,7 +169,7 @@ async fn create_standalone_binary(
   let maybe_import_map: Option<(Url, String)> =
     match ps.options.resolve_import_map_specifier()? {
       None => None,
-      Some(import_map_specifier) => {
+      Some((import_map_specifier, _ignore_unknown_keys)) => {
         let file = ps
           .file_fetcher
           .fetch(&import_map_specifier, PermissionsContainer::allow_all())
