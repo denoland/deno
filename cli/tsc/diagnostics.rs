@@ -29,7 +29,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "removeSignalListener",
   "shutdown",
   "umask",
-  "spawnChild",
   "Child",
   "ChildProcess",
   "spawnSync",
