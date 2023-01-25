@@ -117,7 +117,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   where
     Self: Sized,
   {
-    unsafe { std::ptr::addr_of!((*this).v8_inspector_client) }
+    std::ptr::addr_of!((*this).v8_inspector_client)
   }
 
   fn base_mut(&mut self) -> &mut v8::inspector::V8InspectorClientBase {
@@ -660,7 +660,7 @@ impl v8::inspector::ChannelImpl for InspectorSession {
   where
     Self: Sized,
   {
-    unsafe { std::ptr::addr_of!((*this).v8_channel) }
+    std::ptr::addr_of!((*this).v8_channel)
   }
 
   fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
