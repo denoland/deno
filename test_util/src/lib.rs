@@ -1981,10 +1981,9 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       {
         use std::os::unix::process::ExitStatusExt;
         let signal = status.signal().unwrap();
-        println!("OUTPUT\n{}\nOUTPUT", actual);
+        println!("OUTPUT\n{actual}\nOUTPUT");
         panic!(
-          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
-          self.exit_code, signal
+          "process terminated by signal, expected exit code: {self.exit_code:?}, actual signal: {signal:?}",
         );
       }
       #[cfg(not(unix))]
