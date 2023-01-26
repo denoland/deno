@@ -441,6 +441,20 @@ declare namespace Deno {
   export function osRelease(): string;
 
   /**
+   * Returns the Operating System uptime in number of seconds.
+   *
+   * ```ts
+   * console.log(Deno.osUptime());
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Runtime Environment
+   */
+  export function osUptime(): number;
+
+  /**
    * Options which define the permissions within a test or worker context.
    *
    * `"inherit"` ensures that all permissions of the parent process will be
