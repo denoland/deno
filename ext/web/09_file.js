@@ -577,7 +577,7 @@
      * @returns {AsyncGenerator<Uint8Array>}
      */
     async *stream() {
-      yield core.opAsync("op_blob_read_part", this._id);
+      yield core.ops.op_blob_read_part(this._id);
 
       // let position = 0;
       // const end = this.size;
@@ -585,7 +585,7 @@
       //   const size = MathMin(end - position, 65536);
       //   const chunk = this.slice(position, position + size);
       //   position += chunk.size;
-      //   yield core.opAsync("op_blob_read_part", chunk._id);
+      //   yield core.ops.op_blob_read_part(chunk._id);
       // }
     }
   }

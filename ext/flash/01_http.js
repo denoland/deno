@@ -222,8 +222,7 @@
     }
 
     if (nwritten < responseLen) {
-      core.opAsync(
-        "op_flash_respond_async",
+      core.ops.op_flash_respond_async(
         server,
         requestId,
         response.slice(nwritten),
@@ -346,8 +345,7 @@
           const reader = respBody.getReader(); // Aquire JS lock.
           try {
             PromisePrototypeThen(
-              core.opAsync(
-                "op_flash_write_resource",
+              core.ops.op_flash_write_resource(
                 http1Response(
                   method,
                   innerResp.status ?? 200,
@@ -411,11 +409,7 @@
       }
 
       if (ws) {
-        const wsRid = await core.opAsync(
-          "op_flash_upgrade_websocket",
-          serverId,
-          i,
-        );
+        const wsRid = await core.ops.op_flash_upgrade_websocket(serverId, i);
         ws[_rid] = wsRid;
         ws[_protocol] = resp.headers.get("sec-websocket-protocol");
 
@@ -494,11 +488,11 @@
       }
 
       const serverId = opFn(listenOpts);
-      const serverPromise = core.opAsync("op_flash_drive_server", serverId);
+      const serverPromise = core.ops.op_flash_drive_server(serverId);
 
       PromisePrototypeCatch(
         PromisePrototypeThen(
-          core.opAsync("op_flash_wait_for_listening", serverId),
+          core.ops.op_flash_wait_for_listening(serverId),
           (port) => {
             onListen({ hostname: listenOpts.hostname, port });
           },
@@ -519,7 +513,7 @@
             return;
           }
           server.closed = true;
-          await core.opAsync("op_flash_close_server", serverId);
+          await core.ops.op_flash_close_server(serverId);
           await server.finished;
         },
         async serve() {
@@ -531,7 +525,7 @@
 
             let tokens = nextRequestSync();
             if (tokens === 0) {
-              tokens = await core.opAsync("op_flash_next_async", serverId);
+              tokens = await core.ops.op_flash_next_async(serverId);
               if (server.closed) {
                 break;
               }
@@ -645,8 +639,7 @@
           shutdown,
         );
         if (nwritten > 0) {
-          return core.opAsync(
-            "op_flash_respond_chunked",
+          return core.ops.op_flash_respond_chunked(
             serverId,
             token,
             chunk,
@@ -657,8 +650,7 @@
       }
 
       function respondChunked(token, chunk, shutdown) {
-        return core.opAsync(
-          "op_flash_respond_chunked",
+        return core.ops.op_flash_respond_chunked(
           serverId,
           token,
           chunk,
@@ -713,8 +705,7 @@
           // This is the largest possible size for a single packet on a TLS
           // stream.
           const chunk = new Uint8Array(16 * 1024 + 256);
-          const read = await core.opAsync(
-            "op_flash_read_body",
+          const read = await core.ops.op_flash_read_body(
             serverId,
             token,
             chunk,

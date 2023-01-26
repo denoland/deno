@@ -32,7 +32,7 @@
         prefix,
         context: "Argument 1",
       });
-      const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
+      const cacheId = await core.ops.op_cache_storage_open(cacheName);
       const cache = webidl.createBranded(Cache);
       cache[_id] = cacheId;
       return cache;
@@ -46,7 +46,7 @@
         prefix,
         context: "Argument 1",
       });
-      return await core.opAsync("op_cache_storage_has", cacheName);
+      return await core.ops.op_cache_storage_has(cacheName);
     }
 
     async delete(cacheName) {
@@ -57,7 +57,7 @@
         prefix,
         context: "Argument 1",
       });
-      return await core.opAsync("op_cache_storage_delete", cacheName);
+      return await core.ops.op_cache_storage_delete(cacheName);
     }
   }
 
@@ -133,18 +133,15 @@
       reqUrl.hash = "";
 
       // Step 9-11.
-      const rid = await core.opAsync(
-        "op_cache_put",
-        {
-          cacheId: this[_id],
-          requestUrl: reqUrl.toString(),
-          responseHeaders: innerResponse.headerList,
-          requestHeaders: innerRequest.headerList,
-          responseHasBody: innerResponse.body !== null,
-          responseStatus: innerResponse.status,
-          responseStatusText: innerResponse.statusMessage,
-        },
-      );
+      const rid = await core.ops.op_cache_put({
+        cacheId: this[_id],
+        requestUrl: reqUrl.toString(),
+        responseHeaders: innerResponse.headerList,
+        requestHeaders: innerRequest.headerList,
+        responseHasBody: innerResponse.body !== null,
+        responseStatus: innerResponse.status,
+        responseStatusText: innerResponse.statusMessage,
+      });
       if (reader) {
         try {
           while (true) {
@@ -202,7 +199,7 @@
       ) {
         r = new Request(request);
       }
-      return await core.opAsync("op_cache_delete", {
+      return await core.ops.op_cache_delete({
         cacheId: this[_id],
         requestUrl: r.url,
       });
@@ -246,14 +243,11 @@
         const url = new URL(r.url);
         url.hash = "";
         const innerRequest = toInnerRequest(r);
-        const matchResult = await core.opAsync(
-          "op_cache_match",
-          {
-            cacheId: this[_id],
-            requestUrl: url.toString(),
-            requestHeaders: innerRequest.headerList,
-          },
-        );
+        const matchResult = await core.ops.op_cache_match({
+          cacheId: this[_id],
+          requestUrl: url.toString(),
+          requestHeaders: innerRequest.headerList,
+        });
         if (matchResult) {
           const { 0: meta, 1: responseBodyRid } = matchResult;
           let body = null;

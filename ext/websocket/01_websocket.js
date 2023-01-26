@@ -236,8 +236,7 @@
       }
 
       PromisePrototypeThen(
-        core.opAsync(
-          "op_ws_create",
+        core.ops.op_ws_create(
           "new WebSocket()",
           wsURL.href,
           ArrayPrototypeJoin(protocols, ", "),
@@ -249,7 +248,7 @@
 
           if (this[_readyState] === CLOSING) {
             PromisePrototypeThen(
-              core.opAsync("op_ws_close", this[_rid]),
+              core.ops.op_ws_close(this[_rid]),
               () => {
                 this[_readyState] = CLOSED;
 
@@ -303,7 +302,7 @@
       const sendTypedArray = (ta) => {
         this[_bufferedAmount] += ta.byteLength;
         PromisePrototypeThen(
-          core.opAsync("op_ws_send", this[_rid], {
+          core.ops.op_ws_send(this[_rid], {
             kind: "binary",
             value: ta,
           }),
@@ -327,7 +326,7 @@
         const d = core.encode(string);
         this[_bufferedAmount] += d.byteLength;
         PromisePrototypeThen(
-          core.opAsync("op_ws_send", this[_rid], {
+          core.ops.op_ws_send(this[_rid], {
             kind: "text",
             value: string,
           }),
@@ -382,7 +381,7 @@
         this[_readyState] = CLOSING;
 
         PromisePrototypeCatch(
-          core.opAsync("op_ws_close", this[_rid], code, reason),
+          core.ops.op_ws_close(this[_rid], code, reason),
           (err) => {
             this[_readyState] = CLOSED;
 
@@ -402,10 +401,7 @@
 
     async [_eventLoop]() {
       while (this[_readyState] !== CLOSED) {
-        const { kind, value } = await core.opAsync(
-          "op_ws_next_event",
-          this[_rid],
-        );
+        const { kind, value } = await core.ops.op_ws_next_event(this[_rid]);
 
         switch (kind) {
           case "string": {
@@ -436,7 +432,7 @@
             break;
           }
           case "ping": {
-            core.opAsync("op_ws_send", this[_rid], {
+            core.ops.op_ws_send(this[_rid], {
               kind: "pong",
             });
             break;
@@ -453,8 +449,7 @@
 
             if (prevState === OPEN) {
               try {
-                await core.opAsync(
-                  "op_ws_close",
+                await core.ops.op_ws_close(
                   this[_rid],
                   value.code,
                   value.reason,
@@ -495,14 +490,14 @@
         clearTimeout(this[_idleTimeoutTimeout]);
         this[_idleTimeoutTimeout] = setTimeout(async () => {
           if (this[_readyState] === OPEN) {
-            await core.opAsync("op_ws_send", this[_rid], {
+            await core.ops.op_ws_send(this[_rid], {
               kind: "ping",
             });
             this[_idleTimeoutTimeout] = setTimeout(async () => {
               if (this[_readyState] === OPEN) {
                 this[_readyState] = CLOSING;
                 const reason = "No response from ping frame.";
-                await core.opAsync("op_ws_close", this[_rid], 1001, reason);
+                await core.ops.op_ws_close(this[_rid], 1001, reason);
                 this[_readyState] = CLOSED;
 
                 const errEvent = new ErrorEvent("error", {

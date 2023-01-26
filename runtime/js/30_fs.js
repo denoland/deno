@@ -23,7 +23,7 @@
   }
 
   async function chmod(path, mode) {
-    await core.opAsync("op_chmod_async", pathFromURL(path), mode);
+    await core.ops.op_chmod_async(pathFromURL(path), mode);
   }
 
   function chownSync(
@@ -39,12 +39,7 @@
     uid,
     gid,
   ) {
-    await core.opAsync(
-      "op_chown_async",
-      pathFromURL(path),
-      uid,
-      gid,
-    );
+    await core.ops.op_chown_async(pathFromURL(path), uid, gid);
   }
 
   function copyFileSync(
@@ -61,8 +56,7 @@
     fromPath,
     toPath,
   ) {
-    await core.opAsync(
-      "op_copy_file_async",
+    await core.ops.op_copy_file_async(
       pathFromURL(fromPath),
       pathFromURL(toPath),
     );
@@ -81,7 +75,7 @@
   }
 
   function makeTempDir(options = {}) {
-    return core.opAsync("op_make_temp_dir_async", options);
+    return core.ops.op_make_temp_dir_async(options);
   }
 
   function makeTempFileSync(options = {}) {
@@ -89,7 +83,7 @@
   }
 
   function makeTempFile(options = {}) {
-    return core.opAsync("op_make_temp_file_async", options);
+    return core.ops.op_make_temp_file_async(options);
   }
 
   function mkdirArgs(path, options) {
@@ -113,7 +107,7 @@
     path,
     options,
   ) {
-    await core.opAsync("op_mkdir_async", mkdirArgs(path, options));
+    await core.ops.op_mkdir_async(mkdirArgs(path, options));
   }
 
   function readDirSync(path) {
@@ -123,10 +117,7 @@
   }
 
   function readDir(path) {
-    const array = core.opAsync(
-      "op_read_dir_async",
-      pathFromURL(path),
-    );
+    const array = core.ops.op_read_dir_async(pathFromURL(path));
     return {
       async *[SymbolAsyncIterator]() {
         yield* await array;
@@ -139,7 +130,7 @@
   }
 
   function readLink(path) {
-    return core.opAsync("op_read_link_async", pathFromURL(path));
+    return core.ops.op_read_link_async(pathFromURL(path));
   }
 
   function realPathSync(path) {
@@ -147,7 +138,7 @@
   }
 
   function realPath(path) {
-    return core.opAsync("op_realpath_async", pathFromURL(path));
+    return core.ops.op_realpath_async(pathFromURL(path));
   }
 
   function removeSync(
@@ -164,11 +155,7 @@
     path,
     options = {},
   ) {
-    await core.opAsync(
-      "op_remove_async",
-      pathFromURL(path),
-      !!options.recursive,
-    );
+    await core.ops.op_remove_async(pathFromURL(path), !!options.recursive);
   }
 
   function renameSync(oldpath, newpath) {
@@ -179,11 +166,7 @@
   }
 
   async function rename(oldpath, newpath) {
-    await core.opAsync(
-      "op_rename_async",
-      pathFromURL(oldpath),
-      pathFromURL(newpath),
-    );
+    await core.ops.op_rename_async(pathFromURL(oldpath), pathFromURL(newpath));
   }
 
   // Extract the FsStat object from the encoded buffer.
@@ -293,11 +276,11 @@
   }
 
   async function fstat(rid) {
-    return parseFileInfo(await core.opAsync("op_fstat_async", rid));
+    return parseFileInfo(await core.ops.op_fstat_async(rid));
   }
 
   async function lstat(path) {
-    const res = await core.opAsync("op_stat_async", {
+    const res = await core.ops.op_stat_async({
       path: pathFromURL(path),
       lstat: true,
     });
@@ -314,7 +297,7 @@
   }
 
   async function stat(path) {
-    const res = await core.opAsync("op_stat_async", {
+    const res = await core.ops.op_stat_async({
       path: pathFromURL(path),
       lstat: false,
     });
@@ -343,7 +326,7 @@
   }
 
   async function ftruncate(rid, len) {
-    await core.opAsync("op_ftruncate_async", rid, coerceLen(len));
+    await core.ops.op_ftruncate_async(rid, coerceLen(len));
   }
 
   function truncateSync(path, len) {
@@ -351,7 +334,7 @@
   }
 
   async function truncate(path, len) {
-    await core.opAsync("op_truncate_async", path, coerceLen(len));
+    await core.ops.op_truncate_async(path, coerceLen(len));
   }
 
   function umask(mask) {
@@ -363,7 +346,7 @@
   }
 
   async function link(oldpath, newpath) {
-    await core.opAsync("op_link_async", oldpath, newpath);
+    await core.ops.op_link_async(oldpath, newpath);
   }
 
   function toUnixTimeFromEpoch(value) {
@@ -404,8 +387,7 @@
   ) {
     const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
     const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
-    await core.opAsync(
-      "op_futime_async",
+    await core.ops.op_futime_async(
       rid,
       atimeSec,
       atimeNsec,
@@ -437,8 +419,7 @@
   ) {
     const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
     const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
-    await core.opAsync(
-      "op_utime_async",
+    await core.ops.op_utime_async(
       pathFromURL(path),
       atimeSec,
       atimeNsec,
@@ -464,8 +445,7 @@
     newpath,
     options,
   ) {
-    await core.opAsync(
-      "op_symlink_async",
+    await core.ops.op_symlink_async(
       pathFromURL(oldpath),
       pathFromURL(newpath),
       options?.type,
@@ -477,7 +457,7 @@
   }
 
   async function fdatasync(rid) {
-    await core.opAsync("op_fdatasync_async", rid);
+    await core.ops.op_fdatasync_async(rid);
   }
 
   function fsyncSync(rid) {
@@ -485,7 +465,7 @@
   }
 
   async function fsync(rid) {
-    await core.opAsync("op_fsync_async", rid);
+    await core.ops.op_fsync_async(rid);
   }
 
   function flockSync(rid, exclusive) {
@@ -493,7 +473,7 @@
   }
 
   async function flock(rid, exclusive) {
-    await core.opAsync("op_flock_async", rid, exclusive === true);
+    await core.ops.op_flock_async(rid, exclusive === true);
   }
 
   function funlockSync(rid) {
@@ -501,7 +481,7 @@
   }
 
   async function funlock(rid) {
-    await core.opAsync("op_funlock_async", rid);
+    await core.ops.op_funlock_async(rid);
   }
 
   window.__bootstrap.fs = {

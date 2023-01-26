@@ -235,8 +235,7 @@
         context: "Argument 1",
       });
 
-      const { err, ...data } = await core.opAsync(
-        "op_webgpu_request_adapter",
+      const { err, ...data } = await core.ops.op_webgpu_request_adapter(
         options.powerPreference,
         options.forceFallbackAdapter,
       );
@@ -329,8 +328,7 @@
       }
       // TODO(lucacasonato): validate requiredLimits
 
-      const { rid, features, limits } = await core.opAsync(
-        "op_webgpu_request_device",
+      const { rid, features, limits } = await core.ops.op_webgpu_request_device(
         this[_adapter].rid,
         descriptor.label,
         requiredFeatures,
@@ -367,10 +365,7 @@
         architecture,
         device,
         description,
-      } = await core.opAsync(
-        "op_webgpu_request_adapter_info",
-        this[_adapter].rid,
-      );
+      } = await core.ops.op_webgpu_request_adapter_info(this[_adapter].rid);
 
       const adapterInfo = webidl.createBranded(GPUAdapterInfo);
       adapterInfo[_vendor] = unmaskHints.includes("vendor") ? vendor : "";
@@ -1841,8 +1836,7 @@
       this[_mapMode] = mode;
       this[_state] = "mapping pending";
       const promise = PromisePrototypeThen(
-        core.opAsync(
-          "op_webgpu_buffer_get_map_async",
+        core.ops.op_webgpu_buffer_get_map_async(
           bufferRid,
           device.rid,
           mode,

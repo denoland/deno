@@ -146,7 +146,7 @@
       const onAbort = () => this.kill("SIGTERM");
       signal?.[add](onAbort);
 
-      const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
+      const waitPromise = core.ops.op_spawn_wait(this.#rid);
       this.#waitPromiseId = waitPromise[promiseIdSymbol];
       this.#status = PromisePrototypeThen(waitPromise, (res) => {
         this.#rid = null;

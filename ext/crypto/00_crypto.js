@@ -467,8 +467,7 @@
 
       algorithm = normalizeAlgorithm(algorithm, "digest");
 
-      const result = await core.opAsync(
-        "op_crypto_subtle_digest",
+      const result = await core.ops.op_crypto_subtle_digest(
         algorithm.name,
         data,
       );
@@ -591,7 +590,7 @@
 
           // 3-5.
           const hashAlgorithm = key[_algorithm].hash.name;
-          const plainText = await core.opAsync("op_crypto_decrypt", {
+          const plainText = await core.ops.op_crypto_decrypt({
             key: keyData,
             algorithm: "RSA-OAEP",
             hash: hashAlgorithm,
@@ -612,7 +611,7 @@
             );
           }
 
-          const plainText = await core.opAsync("op_crypto_decrypt", {
+          const plainText = await core.ops.op_crypto_decrypt({
             key: keyData,
             algorithm: "AES-CBC",
             iv: normalizedAlgorithm.iv,
@@ -644,7 +643,7 @@
           }
 
           // 3.
-          const cipherText = await core.opAsync("op_crypto_decrypt", {
+          const cipherText = await core.ops.op_crypto_decrypt({
             key: keyData,
             algorithm: "AES-CTR",
             keyLength: key[_algorithm].length,
@@ -708,7 +707,7 @@
           }
 
           // 5-8.
-          const plaintext = await core.opAsync("op_crypto_decrypt", {
+          const plaintext = await core.ops.op_crypto_decrypt({
             key: keyData,
             algorithm: "AES-GCM",
             length: key[_algorithm].length,
@@ -786,7 +785,7 @@
 
           // 2.
           const hashAlgorithm = key[_algorithm].hash.name;
-          const signature = await core.opAsync("op_crypto_sign_key", {
+          const signature = await core.ops.op_crypto_sign_key({
             key: keyData,
             algorithm: "RSASSA-PKCS1-v1_5",
             hash: hashAlgorithm,
@@ -805,7 +804,7 @@
 
           // 2.
           const hashAlgorithm = key[_algorithm].hash.name;
-          const signature = await core.opAsync("op_crypto_sign_key", {
+          const signature = await core.ops.op_crypto_sign_key({
             key: keyData,
             algorithm: "RSA-PSS",
             hash: hashAlgorithm,
@@ -830,7 +829,7 @@
             throw new DOMException("Curve not supported", "NotSupportedError");
           }
 
-          const signature = await core.opAsync("op_crypto_sign_key", {
+          const signature = await core.ops.op_crypto_sign_key({
             key: keyData,
             algorithm: "ECDSA",
             hash: hashAlgorithm,
@@ -842,7 +841,7 @@
         case "HMAC": {
           const hashAlgorithm = key[_algorithm].hash.name;
 
-          const signature = await core.opAsync("op_crypto_sign_key", {
+          const signature = await core.ops.op_crypto_sign_key({
             key: keyData,
             algorithm: "HMAC",
             hash: hashAlgorithm,
@@ -1291,7 +1290,7 @@
           }
 
           const hashAlgorithm = key[_algorithm].hash.name;
-          return await core.opAsync("op_crypto_verify_key", {
+          return await core.ops.op_crypto_verify_key({
             key: keyData,
             algorithm: "RSASSA-PKCS1-v1_5",
             hash: hashAlgorithm,
@@ -1307,7 +1306,7 @@
           }
 
           const hashAlgorithm = key[_algorithm].hash.name;
-          return await core.opAsync("op_crypto_verify_key", {
+          return await core.ops.op_crypto_verify_key({
             key: keyData,
             algorithm: "RSA-PSS",
             hash: hashAlgorithm,
@@ -1316,7 +1315,7 @@
         }
         case "HMAC": {
           const hash = key[_algorithm].hash.name;
-          return await core.opAsync("op_crypto_verify_key", {
+          return await core.ops.op_crypto_verify_key({
             key: keyData,
             algorithm: "HMAC",
             hash,
@@ -1335,7 +1334,7 @@
           const hash = normalizedAlgorithm.hash.name;
 
           // 3-8.
-          return await core.opAsync("op_crypto_verify_key", {
+          return await core.ops.op_crypto_verify_key({
             key: keyData,
             algorithm: "ECDSA",
             hash,
@@ -1723,14 +1722,11 @@
         }
 
         // 2.
-        const keyData = await core.opAsync(
-          "op_crypto_generate_key",
-          {
-            algorithm: "RSA",
-            modulusLength: normalizedAlgorithm.modulusLength,
-            publicExponent: normalizedAlgorithm.publicExponent,
-          },
-        );
+        const keyData = await core.ops.op_crypto_generate_key({
+          algorithm: "RSA",
+          modulusLength: normalizedAlgorithm.modulusLength,
+          publicExponent: normalizedAlgorithm.publicExponent,
+        });
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
           type: "private",
@@ -1783,14 +1779,11 @@
         }
 
         // 2.
-        const keyData = await core.opAsync(
-          "op_crypto_generate_key",
-          {
-            algorithm: "RSA",
-            modulusLength: normalizedAlgorithm.modulusLength,
-            publicExponent: normalizedAlgorithm.publicExponent,
-          },
-        );
+        const keyData = await core.ops.op_crypto_generate_key({
+          algorithm: "RSA",
+          modulusLength: normalizedAlgorithm.modulusLength,
+          publicExponent: normalizedAlgorithm.publicExponent,
+        });
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
           type: "private",
@@ -1847,7 +1840,7 @@
             namedCurve,
           )
         ) {
-          const keyData = await core.opAsync("op_crypto_generate_key", {
+          const keyData = await core.ops.op_crypto_generate_key({
             algorithm: "EC",
             namedCurve,
           });
@@ -1907,7 +1900,7 @@
             namedCurve,
           )
         ) {
-          const keyData = await core.opAsync("op_crypto_generate_key", {
+          const keyData = await core.ops.op_crypto_generate_key({
             algorithm: "EC",
             namedCurve,
           });
@@ -2091,7 +2084,7 @@
         }
 
         // 3-4.
-        const keyData = await core.opAsync("op_crypto_generate_key", {
+        const keyData = await core.ops.op_crypto_generate_key({
           algorithm: "HMAC",
           hash: normalizedAlgorithm.hash.name,
           length,
@@ -4294,7 +4287,7 @@
     }
 
     // 3.
-    const keyData = await core.opAsync("op_crypto_generate_key", {
+    const keyData = await core.ops.op_crypto_generate_key({
       algorithm: "AES",
       length: normalizedAlgorithm.length,
     });
@@ -4343,7 +4336,7 @@
 
         normalizedAlgorithm.salt = copyBuffer(normalizedAlgorithm.salt);
 
-        const buf = await core.opAsync("op_crypto_derive_bits", {
+        const buf = await core.ops.op_crypto_derive_bits({
           key: keyData,
           algorithm: "PBKDF2",
           hash: normalizedAlgorithm.hash.name,
@@ -4392,7 +4385,7 @@
           const publicKeyhandle = publicKey[_handle];
           const publicKeyData = WeakMapPrototypeGet(KEY_STORE, publicKeyhandle);
 
-          const buf = await core.opAsync("op_crypto_derive_bits", {
+          const buf = await core.ops.op_crypto_derive_bits({
             key: baseKeyData,
             publicKey: publicKeyData,
             algorithm: "ECDH",
@@ -4425,7 +4418,7 @@
 
         normalizedAlgorithm.info = copyBuffer(normalizedAlgorithm.info);
 
-        const buf = await core.opAsync("op_crypto_derive_bits", {
+        const buf = await core.ops.op_crypto_derive_bits({
           key: keyDerivationKey,
           algorithm: "HKDF",
           hash: normalizedAlgorithm.hash.name,
@@ -4508,7 +4501,7 @@
 
         // 3-5.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const cipherText = await core.opAsync("op_crypto_encrypt", {
+        const cipherText = await core.ops.op_crypto_encrypt({
           key: keyData,
           algorithm: "RSA-OAEP",
           hash: hashAlgorithm,
@@ -4530,7 +4523,7 @@
         }
 
         // 2.
-        const cipherText = await core.opAsync("op_crypto_encrypt", {
+        const cipherText = await core.ops.op_crypto_encrypt({
           key: keyData,
           algorithm: "AES-CBC",
           length: key[_algorithm].length,
@@ -4562,7 +4555,7 @@
         }
 
         // 3.
-        const cipherText = await core.opAsync("op_crypto_encrypt", {
+        const cipherText = await core.ops.op_crypto_encrypt({
           key: keyData,
           algorithm: "AES-CTR",
           keyLength: key[_algorithm].length,
@@ -4629,7 +4622,7 @@
           );
         }
         // 6-7.
-        const cipherText = await core.opAsync("op_crypto_encrypt", {
+        const cipherText = await core.ops.op_crypto_encrypt({
           key: keyData,
           algorithm: "AES-GCM",
           length: key[_algorithm].length,

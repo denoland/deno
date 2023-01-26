@@ -22,8 +22,7 @@
     }
 
     try {
-      const read = await core.opAsync(
-        "op_readfile_async",
+      const read = await core.ops.op_readfile_async(
         pathFromURL(path),
         cancelRid,
       );
@@ -53,8 +52,7 @@
     }
 
     try {
-      const read = await core.opAsync(
-        "op_readfile_text_async",
+      const read = await core.ops.op_readfile_text_async(
         pathFromURL(path),
         cancelRid,
       );

@@ -51,8 +51,7 @@
           signal: options.signal,
         });
       } else {
-        await core.opAsync(
-          "op_write_file_async",
+        await core.ops.op_write_file_async(
           pathFromURL(path),
           options.mode,
           options.append ?? false,

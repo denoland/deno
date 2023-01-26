@@ -149,8 +149,7 @@
         };
         options.signal?.[add](abort);
         PromisePrototypeThen(
-          core.opAsync(
-            "op_ws_create",
+          core.ops.op_ws_create(
             "new WebSocketStream()",
             this[_url],
             options.protocols
@@ -163,13 +162,12 @@
             options.signal?.[remove](abort);
             if (this[_earlyClose]) {
               PromisePrototypeThen(
-                core.opAsync("op_ws_close", create.rid),
+                core.ops.op_ws_close(create.rid),
                 () => {
                   PromisePrototypeThen(
                     (async () => {
                       while (true) {
-                        const { kind } = await core.opAsync(
-                          "op_ws_next_event",
+                        const { kind } = await core.ops.op_ws_next_event(
                           create.rid,
                         );
 
@@ -203,14 +201,14 @@
               const writable = new WritableStream({
                 write: async (chunk) => {
                   if (typeof chunk === "string") {
-                    await core.opAsync("op_ws_send", this[_rid], {
+                    await core.ops.op_ws_send(this[_rid], {
                       kind: "text",
                       value: chunk,
                     });
                   } else if (
                     ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
                   ) {
-                    await core.opAsync("op_ws_send", this[_rid], {
+                    await core.ops.op_ws_send(this[_rid], {
                       kind: "binary",
                       value: chunk,
                     }, chunk);
@@ -238,8 +236,7 @@
                 },
               });
               const pull = async (controller) => {
-                const { kind, value } = await core.opAsync(
-                  "op_ws_next_event",
+                const { kind, value } = await core.ops.op_ws_next_event(
                   this[_rid],
                 );
 
@@ -253,7 +250,7 @@
                     break;
                   }
                   case "ping": {
-                    await core.opAsync("op_ws_send", this[_rid], {
+                    await core.ops.op_ws_send(this[_rid], {
                       kind: "pong",
                     });
                     await pull(controller);
@@ -397,7 +394,7 @@
         this[_earlyClose] = true;
       } else if (this[_closed].state === "pending") {
         PromisePrototypeThen(
-          core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
+          core.ops.op_ws_close(this[_rid], code, closeInfo.reason),
           () => {
             setTimeout(() => {
               this[_closeSent].resolve(new Date().getTime());

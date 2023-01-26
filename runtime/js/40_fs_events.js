@@ -25,7 +25,7 @@
 
     async next() {
       try {
-        const value = await core.opAsync("op_fs_events_poll", this.rid);
+        const value = await core.ops.op_fs_events_poll(this.rid);
         return value
           ? { value, done: false }
           : { value: undefined, done: true };

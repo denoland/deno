@@ -85,7 +85,7 @@
    * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number }>}
    */
   function opFetchSend(rid) {
-    return core.opAsync("op_fetch_send", rid);
+    return core.ops.op_fetch_send(rid);
   }
 
   /**

@@ -814,7 +814,7 @@
       // fast path, read whole body in a single op call
       try {
         readableStreamDisturb(stream);
-        const promise = core.opAsync("op_read_all", resourceBacking.rid);
+        const promise = core.ops.op_read_all(resourceBacking.rid);
         if (readableStreamIsUnrefable(stream)) {
           const promiseId = stream[promiseIdSymbol] = promise[promiseIdSymbol];
           if (stream[_isUnref]) core.unrefOp(promiseId);

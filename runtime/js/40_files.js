@@ -28,7 +28,7 @@
     offset,
     whence,
   ) {
-    return core.opAsync("op_seek_async", { rid, offset, whence });
+    return core.ops.op_seek_async({ rid, offset, whence });
   }
 
   function openSync(
@@ -52,12 +52,7 @@
   ) {
     if (options) checkOpenOptions(options);
     const mode = options?.mode;
-    const rid = await core.opAsync(
-      "op_open_async",
-      pathFromURL(path),
-      options,
-      mode,
-    );
+    const rid = await core.ops.op_open_async(pathFromURL(path), options, mode);
 
     return new FsFile(rid);
   }

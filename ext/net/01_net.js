@@ -32,7 +32,7 @@
   }
 
   function resolveDns(query, recordType, options) {
-    return core.opAsync("op_dns_resolve", { query, recordType, options });
+    return core.ops.op_dns_resolve({ query, recordType, options });
   }
 
   class Conn {
@@ -165,10 +165,10 @@
       let promise;
       switch (this.addr.transport) {
         case "tcp":
-          promise = core.opAsync("op_net_accept_tcp", this.rid);
+          promise = core.ops.op_net_accept_tcp(this.rid);
           break;
         case "unix":
-          promise = core.opAsync("op_net_accept_unix", this.rid);
+          promise = core.ops.op_net_accept_unix(this.rid);
           break;
         default:
           throw new Error(`Unsupported transport: ${this.addr.transport}`);
@@ -260,8 +260,7 @@
       let remoteAddr;
       switch (this.addr.transport) {
         case "udp": {
-          ({ 0: nread, 1: remoteAddr } = await core.opAsync(
-            "op_net_recv_udp",
+          ({ 0: nread, 1: remoteAddr } = await core.ops.op_net_recv_udp(
             this.rid,
             buf,
           ));
@@ -270,8 +269,7 @@
         }
         case "unixpacket": {
           let path;
-          ({ 0: nread, 1: path } = await core.opAsync(
-            "op_net_recv_unixpacket",
+          ({ 0: nread, 1: path } = await core.ops.op_net_recv_unixpacket(
             this.rid,
             buf,
           ));
@@ -288,19 +286,12 @@
     async send(p, opts) {
       switch (this.addr.transport) {
         case "udp":
-          return await core.opAsync(
-            "op_net_send_udp",
-            this.rid,
-            { hostname: opts.hostname ?? "127.0.0.1", port: opts.port },
-            p,
-          );
+          return await core.ops.op_net_send_udp(this.rid, {
+            hostname: opts.hostname ?? "127.0.0.1",
+            port: opts.port,
+          }, p);
         case "unixpacket":
-          return await core.opAsync(
-            "op_net_send_unixpacket",
-            this.rid,
-            opts.path,
-            p,
-          );
+          return await core.ops.op_net_send_unixpacket(this.rid, opts.path, p);
         default:
           throw new Error(`Unsupported transport: ${this.addr.transport}`);
       }
@@ -381,22 +372,18 @@
   async function connect(args) {
     switch (args.transport ?? "tcp") {
       case "tcp": {
-        const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
-          "op_net_connect_tcp",
-          {
+        const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.ops
+          .op_net_connect_tcp({
             hostname: args.hostname ?? "127.0.0.1",
             port: args.port,
-          },
-        );
+          });
         localAddr.transport = "tcp";
         remoteAddr.transport = "tcp";
         return new TcpConn(rid, remoteAddr, localAddr);
       }
       case "unix": {
-        const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
-          "op_net_connect_unix",
-          args.path,
-        );
+        const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.ops
+          .op_net_connect_unix(args.path);
         return new UnixConn(
           rid,
           { transport: "unix", path: remoteAddr },

@@ -137,10 +137,7 @@
           if (this[_id] === null) break;
           let data;
           try {
-            data = await core.opAsync(
-              "op_message_port_recv_message",
-              this[_id],
-            );
+            data = await core.ops.op_message_port_recv_message(this[_id]);
           } catch (err) {
             if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) break;
             throw err;

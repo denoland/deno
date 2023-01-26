@@ -28,7 +28,7 @@
 
   async function recv() {
     while (channels.length > 0) {
-      const message = await core.opAsync("op_broadcast_recv", rid);
+      const message = await core.ops.op_broadcast_recv(rid);
 
       if (message === null) {
         break;
@@ -124,7 +124,7 @@
       // Send to listeners in other VMs.
       defer(() => {
         if (!this[_closed]) {
-          core.opAsync("op_broadcast_send", rid, this[_name], data);
+          core.ops.op_broadcast_send(rid, this[_name], data);
         }
       });
     }

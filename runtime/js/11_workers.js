@@ -53,11 +53,11 @@
   }
 
   function hostRecvCtrl(id) {
-    return core.opAsync("op_host_recv_ctrl", id);
+    return core.ops.op_host_recv_ctrl(id);
   }
 
   function hostRecvMessage(id) {
-    return core.opAsync("op_host_recv_message", id);
+    return core.ops.op_host_recv_message(id);
   }
 
   class Worker extends EventTarget {

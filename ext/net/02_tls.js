@@ -8,11 +8,11 @@
   const { TypeError } = window.__bootstrap.primordials;
 
   function opStartTls(args) {
-    return core.opAsync("op_tls_start", args);
+    return core.ops.op_tls_start(args);
   }
 
   function opTlsHandshake(rid) {
-    return core.opAsync("op_tls_handshake", rid);
+    return core.ops.op_tls_handshake(rid);
   }
 
   class TlsConn extends Conn {
@@ -34,11 +34,14 @@
     if (transport !== "tcp") {
       throw new TypeError(`Unsupported transport: '${transport}'`);
     }
-    const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
-      "op_net_connect_tls",
-      { hostname, port },
-      { certFile, caCerts, certChain, privateKey, alpnProtocols },
-    );
+    const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.ops
+      .op_net_connect_tls({ hostname, port }, {
+        certFile,
+        caCerts,
+        certChain,
+        privateKey,
+        alpnProtocols,
+      });
     localAddr.transport = "tcp";
     remoteAddr.transport = "tcp";
     return new TlsConn(rid, remoteAddr, localAddr);
@@ -46,10 +49,8 @@
 
   class TlsListener extends Listener {
     async accept() {
-      const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.opAsync(
-        "op_net_accept_tls",
-        this.rid,
-      );
+      const { 0: rid, 1: localAddr, 2: remoteAddr } = await core.ops
+        .op_net_accept_tls(this.rid);
       localAddr.transport = "tcp";
       remoteAddr.transport = "tcp";
       return new TlsConn(rid, remoteAddr, localAddr);

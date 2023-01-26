@@ -200,8 +200,7 @@
     call(...parameters) {
       if (this.definition.nonblocking) {
         if (this.#structSize === null) {
-          return core.opAsync(
-            "op_ffi_call_ptr_nonblocking",
+          return core.ops.op_ffi_call_ptr_nonblocking(
             this.pointer,
             this.definition,
             parameters,
@@ -209,8 +208,7 @@
         } else {
           const buffer = new Uint8Array(this.#structSize);
           return PromisePrototypeThen(
-            core.opAsync(
-              "op_ffi_call_ptr_nonblocking",
+            core.ops.op_ffi_call_ptr_nonblocking(
               this.pointer,
               this.definition,
               parameters,
@@ -335,10 +333,7 @@
 
     ref() {
       if (this.#refcount++ === 0) {
-        this.#refpromise = core.opAsync(
-          "op_ffi_unsafe_callback_ref",
-          this.#rid,
-        );
+        this.#refpromise = core.ops.op_ffi_unsafe_callback_ref(this.#rid);
       }
       return this.#refcount;
     }
@@ -415,8 +410,7 @@
               value: (...parameters) => {
                 if (isStructResult) {
                   const buffer = new Uint8Array(structSize);
-                  const ret = core.opAsync(
-                    "op_ffi_call_nonblocking",
+                  const ret = core.ops.op_ffi_call_nonblocking(
                     this.#rid,
                     symbol,
                     parameters,
@@ -427,8 +421,7 @@
                     () => buffer,
                   );
                 } else {
-                  return core.opAsync(
-                    "op_ffi_call_nonblocking",
+                  return core.ops.op_ffi_call_nonblocking(
                     this.#rid,
                     symbol,
                     parameters,

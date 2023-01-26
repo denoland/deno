@@ -26,7 +26,7 @@
   }
 
   function opRunStatus(rid) {
-    return core.opAsync("op_run_status", rid);
+    return core.ops.op_run_status(rid);
   }
 
   function opRun(request) {

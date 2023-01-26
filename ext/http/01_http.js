@@ -89,7 +89,7 @@
     async nextRequest() {
       let nextRequest;
       try {
-        nextRequest = await core.opAsync("op_http_accept", this.#rid);
+        nextRequest = await core.ops.op_http_accept(this.#rid);
       } catch (error) {
         this.close();
         // A connection error seen here would cause disrupted responses to throw
@@ -242,8 +242,7 @@
           ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
         );
         try {
-          await core.opAsync(
-            "op_http_write_headers",
+          await core.ops.op_http_write_headers(
             streamRid,
             innerResp.status ?? 200,
             innerResp.headerList,
@@ -283,8 +282,7 @@
             }
             reader = respBody.getReader(); // Aquire JS lock.
             try {
-              await core.opAsync(
-                "op_http_write_resource",
+              await core.ops.op_http_write_resource(
                 streamRid,
                 resourceBacking.rid,
               );
@@ -313,7 +311,7 @@
                 break;
               }
               try {
-                await core.opAsync("op_http_write", streamRid, value);
+                await core.ops.op_http_write(streamRid, value);
               } catch (error) {
                 const connError = httpConn[connErrorSymbol];
                 if (
@@ -332,7 +330,7 @@
 
           if (success) {
             try {
-              await core.opAsync("op_http_shutdown", streamRid);
+              await core.ops.op_http_shutdown(streamRid);
             } catch (error) {
               await reader.cancel(error);
               throw error;
@@ -342,7 +340,7 @@
 
         const deferred = request[_deferred];
         if (deferred) {
-          const res = await core.opAsync("op_http_upgrade", streamRid);
+          const res = await core.ops.op_http_upgrade(streamRid);
           let conn;
           if (res.connType === "tcp") {
             conn = new TcpConn(res.connRid, remoteAddr, localAddr);
@@ -358,10 +356,7 @@
         }
         const ws = resp[_ws];
         if (ws) {
-          const wsRid = await core.opAsync(
-            "op_http_upgrade_websocket",
-            streamRid,
-          );
+          const wsRid = await core.ops.op_http_upgrade_websocket(streamRid);
           ws[_rid] = wsRid;
           ws[_protocol] = resp.headers.get("sec-websocket-protocol");
 
