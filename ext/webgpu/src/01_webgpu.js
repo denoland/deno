@@ -41,6 +41,7 @@
     Uint32Array,
     Uint32ArrayPrototype,
     Uint8Array,
+    WeakRef,
   } = window.__bootstrap.primordials;
 
   const _rid = Symbol("[[rid]]");
@@ -1024,13 +1025,13 @@
       for (let i = 0; i < descriptor.entries.length; ++i) {
         const entry = descriptor.entries[i];
 
-        let i = 0;
-        if (entry.buffer) i++;
-        if (entry.sampler) i++;
-        if (entry.texture) i++;
-        if (entry.storageTexture) i++;
+        let j = 0;
+        if (entry.buffer) j++;
+        if (entry.sampler) j++;
+        if (entry.texture) j++;
+        if (entry.storageTexture) j++;
 
-        if (i !== 1) {
+        if (j !== 1) {
           throw new Error(); // TODO(@crowlKats): correct error
         }
       }
@@ -1920,7 +1921,7 @@
         throw new DOMException(`${prefix}: invalid state.`, "OperationError");
       }
       for (let i = 0; i < mappedRanges.length; ++i) {
-        const [buffer, _rid, start] = mappedRanges[i];
+        const { 0: buffer, /* 1: rid, */ 2: start } = mappedRanges[i];
         // TODO(lucacasonato): is this logic correct?
         const end = start + buffer.byteLength;
         if (
@@ -1989,7 +1990,7 @@
           throw new DOMException(`${prefix}: invalid state.`, "OperationError");
         }
         for (let i = 0; i < mappedRanges.length; ++i) {
-          const [buffer, mappedRid] = mappedRanges[i];
+          const { 0: buffer, 1: mappedRid } = mappedRanges[i];
           const { err } = ops.op_webgpu_buffer_unmap(
             bufferRid,
             mappedRid,
@@ -5203,12 +5204,12 @@
 
     get type() {
       webidl.assertBranded(this, GPUQuerySetPrototype);
-      this[_type]();
+      return this[_type]();
     }
 
     get count() {
       webidl.assertBranded(this, GPUQuerySetPrototype);
-      this[_count]();
+      return this[_count]();
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
