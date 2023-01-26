@@ -329,10 +329,11 @@
     return SafeIterator;
   };
 
-  primordials.SafeArrayIterator = createSafeIterator(
+  const SafeArrayIterator = createSafeIterator(
     primordials.ArrayPrototypeSymbolIterator,
     primordials.ArrayIteratorPrototypeNext,
   );
+  primordials.SafeArrayIterator = SafeArrayIterator;
   primordials.SafeSetIterator = createSafeIterator(
     primordials.SetPrototypeSymbolIterator,
     primordials.SetIteratorPrototypeNext,
@@ -481,14 +482,16 @@
     // prototype to user-land.
     new Promise((a, b) =>
       SafePromise.all(
-        ArrayPrototypeMap(
-          values,
-          (p) => {
-            if (ObjectPrototypeIsPrototypeOf(PromisePrototype, p)) {
-              return new SafePromise((c, d) => PromisePrototypeThen(p, c, d));
-            }
-            return p;
-          },
+        new SafeArrayIterator(
+          ArrayPrototypeMap(
+            values,
+            (p) => {
+              if (ObjectPrototypeIsPrototypeOf(PromisePrototype, p)) {
+                return new SafePromise((c, d) => PromisePrototypeThen(p, c, d));
+              }
+              return p;
+            },
+          ),
         ),
       ).then(a, b)
     );
