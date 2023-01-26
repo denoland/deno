@@ -27,7 +27,6 @@
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeThen,
-    ReflectApply,
     SafePromisePrototypeFinally,
     StringPrototypeSlice,
     SymbolFor,
