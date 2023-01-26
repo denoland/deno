@@ -39,7 +39,8 @@ fn napi_cancel_async_work(
 /// Frees a previously allocated work object.
 #[napi_sym::napi_sym]
 fn napi_delete_async_work(_env: &mut Env, work: napi_async_work) -> Result {
-  let work = Box::from_raw(work as *mut AsyncWork);
+  #[allow(clippy::from_raw_with_void_ptr)]
+  let work = Box::from_raw(work);
   drop(work);
 
   Ok(())
