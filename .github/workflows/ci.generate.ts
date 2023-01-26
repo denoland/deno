@@ -1,6 +1,6 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import * as yaml from "https://deno.land/std@0.171.0/encoding/yaml.ts";
+import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
 const windowsRunnerCondition =
   "github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022'";
@@ -86,7 +86,7 @@ const installRustStep = {
 const installPythonSteps = [{
   name: "Install Python",
   uses: "actions/setup-python@v4",
-  with: { "python-version": 3.8 },
+  with: { "python-version": 3.11 },
 }, {
   name: "Remove unused versions of Python",
   if: "startsWith(matrix.os, 'windows')",
