@@ -424,6 +424,7 @@ pub async fn upgrade(
     }
   }
 
+  drop(temp_dir); // delete the temp dir
   Ok(())
 }
 
