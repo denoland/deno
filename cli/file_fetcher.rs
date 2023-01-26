@@ -154,7 +154,7 @@ fn get_validated_scheme(
 /// the value of a content type header.
 pub fn map_content_type(
   specifier: &ModuleSpecifier,
-  maybe_content_type: Option<String>,
+  maybe_content_type: Option<&String>,
 ) -> (MediaType, Option<String>) {
   if let Some(content_type) = maybe_content_type {
     let mut content_types = content_type.split(';');
@@ -226,7 +226,7 @@ impl FileFetcher {
         .ok_or_else(|| {
           generic_error("Cannot convert specifier to cached filename.")
         })?;
-    let maybe_content_type = headers.get("content-type").cloned();
+    let maybe_content_type = headers.get("content-type");
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
     let source = get_source_from_bytes(bytes, maybe_charset)?;
@@ -308,8 +308,7 @@ impl FileFetcher {
     }
 
     let (source, content_type) = get_source_from_data_url(specifier)?;
-    let (media_type, _) =
-      map_content_type(specifier, Some(content_type.clone()));
+    let (media_type, _) = map_content_type(specifier, Some(&content_type));
 
     let local =
       self
@@ -372,7 +371,7 @@ impl FileFetcher {
     let bytes = blob.read_all().await?;
 
     let (media_type, maybe_charset) =
-      map_content_type(specifier, Some(content_type.clone()));
+      map_content_type(specifier, Some(&content_type));
     let source = get_source_from_bytes(bytes, maybe_charset)?;
 
     let local =
@@ -1028,7 +1027,7 @@ mod tests {
     for (specifier, maybe_content_type, media_type, maybe_charset) in fixtures {
       let specifier = resolve_url_or_path(specifier).unwrap();
       assert_eq!(
-        map_content_type(&specifier, maybe_content_type),
+        map_content_type(&specifier, maybe_content_type.as_ref()),
         (media_type, maybe_charset)
       );
     }

@@ -107,7 +107,7 @@ impl LspUrlMap {
             .map_err(|e| uri_error(format!("{:?}", e)))?;
           let mime = data_url.mime_type();
           let (media_type, _) =
-            map_content_type(specifier, Some(format!("{}", mime)));
+            map_content_type(specifier, Some(&format!("{}", mime)));
           let extension = if media_type == MediaType::Unknown {
             ""
           } else {

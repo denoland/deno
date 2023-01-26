@@ -1528,7 +1528,7 @@ impl Inner {
         .extend(refactor_info.to_code_actions(&specifier, &params.range));
     }
     all_actions.extend(
-      refactor::prune_invalid_actions(&refactor_actions, 5)
+      refactor::prune_invalid_actions(refactor_actions, 5)
         .into_iter()
         .map(CodeActionOrCommand::CodeAction),
     );
