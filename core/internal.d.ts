@@ -951,20 +951,13 @@ declare namespace __bootstrap {
     export const PromiseLength: typeof Promise.length;
     export const PromiseName: typeof Promise.name;
     export const PromisePrototype: typeof Promise.prototype;
-    export const PromiseAll: typeof Promise.all;
-    export const PromiseRace: typeof Promise.race;
     export const PromiseResolve: typeof Promise.resolve;
     export const PromiseReject: typeof Promise.reject;
-    export const PromiseAllSettled: typeof Promise.allSettled;
-    export const PromiseAny: typeof Promise.any;
     export const PromisePrototypeThen: UncurryThis<
       typeof Promise.prototype.then
     >;
     export const PromisePrototypeCatch: UncurryThis<
       typeof Promise.prototype.catch
-    >;
-    export const PromisePrototypeFinally: UncurryThis<
-      typeof Promise.prototype.finally
     >;
 
     // abstract intrinsic objects

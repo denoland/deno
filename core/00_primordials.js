@@ -580,6 +580,17 @@
   // This is because the identifier `eval` is somewhat treated as a keyword
   primordials.indirectEval = eval;
 
+  // Removing unsafe functions
+  [
+    "PromiseAll",
+    "PromiseAllSettled",
+    "PromiseAny",
+    "PromiseRace",
+    "PromisePrototypeFinally",
+  ].forEach((name) => {
+    delete primordials[name];
+  });
+
   ObjectSetPrototypeOf(primordials, null);
   ObjectFreeze(primordials);
 
