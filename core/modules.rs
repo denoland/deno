@@ -51,7 +51,7 @@ pub(crate) fn validate_import_assertions(
     if key == "type" && !SUPPORTED_TYPE_ASSERTIONS.contains(&value.as_str()) {
       let message = v8::String::new(
         scope,
-        &format!("\"{}\" is not a valid module type.", value),
+        &format!("\"{value}\" is not a valid module type."),
       )
       .unwrap();
       let exception = v8::Exception::type_error(scope, message);
@@ -318,8 +318,7 @@ impl ModuleLoader for FsModuleLoader {
     async move {
       let path = module_specifier.to_file_path().map_err(|_| {
         generic_error(format!(
-          "Provided module specifier \"{}\" is not a file URL.",
-          module_specifier
+          "Provided module specifier \"{module_specifier}\" is not a file URL."
         ))
       })?;
       let module_type = if let Some(extension) = path.extension() {
@@ -1483,6 +1482,7 @@ import "/a.js";
     let a_id_fut = runtime.load_main_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
     let l = loads.lock();
@@ -1662,6 +1662,7 @@ import "/a.js";
     runtime.instantiate_module(mod_a).unwrap();
     assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(mod_a);
     assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 1);
   }
@@ -2042,6 +2043,7 @@ import "/a.js";
       let result = runtime.load_main_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
+      #[allow(clippy::let_underscore_future)]
       let _ = runtime.mod_evaluate(circular1_id);
       runtime.run_event_loop(false).await.unwrap();
 
@@ -2122,6 +2124,7 @@ import "/a.js";
       let result = runtime.load_main_module(&spec, None).await;
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
+      #[allow(clippy::let_underscore_future)]
       let _ = runtime.mod_evaluate(redirect1_id);
       runtime.run_event_loop(false).await.unwrap();
       let l = loads.lock();
@@ -2280,6 +2283,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
@@ -2397,6 +2401,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
@@ -2412,6 +2417,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       .boxed_local();
     let side_id = futures::executor::block_on(side_id_fut).unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(side_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
   }
@@ -2440,6 +2446,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
         .boxed_local();
       let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
+      #[allow(clippy::let_underscore_future)]
       let _ = runtime.mod_evaluate(main_id);
       futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
       runtime.snapshot()
@@ -2479,6 +2486,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
         .boxed_local();
       let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
+      #[allow(clippy::let_underscore_future)]
       let _ = runtime.mod_evaluate(main_id);
       futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
       runtime.snapshot()

@@ -375,8 +375,7 @@ impl Inner {
     self.get_maybe_asset_or_document(specifier).map_or_else(
       || {
         Err(LspError::invalid_params(format!(
-          "Unable to find asset or document for: {}",
-          specifier
+          "Unable to find asset or document for: {specifier}"
         )))
       },
       Ok,
@@ -1296,7 +1295,7 @@ impl Inner {
         Ok(Some(text_edits))
       }
     } else {
-      self.client.show_message(MessageType::WARNING, format!("Unable to format \"{}\". Likely due to unrecoverable syntax errors in the file.", specifier)).await;
+      self.client.show_message(MessageType::WARNING, format!("Unable to format \"{specifier}\". Likely due to unrecoverable syntax errors in the file.")).await;
       Ok(None)
     }
   }
@@ -1354,7 +1353,7 @@ impl Inner {
       };
       let value =
         if let Some(docs) = self.module_registries.get_hover(&dep).await {
-          format!("{}\n\n---\n\n{}", value, docs)
+          format!("{value}\n\n---\n\n{docs}")
         } else {
           value
         };

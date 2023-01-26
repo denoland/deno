@@ -122,7 +122,7 @@ impl CliModuleLoader {
             )?
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
-            panic!("Unexpected media type {} for {}", media_type, found_url)
+            panic!("Unexpected media type {media_type} for {found_url}")
           }
         };
 
@@ -136,7 +136,7 @@ impl CliModuleLoader {
         })
       }
       _ => {
-        let mut msg = format!("Loading unprepared module: {}", specifier);
+        let mut msg = format!("Loading unprepared module: {specifier}");
         if let Some(referrer) = maybe_referrer {
           msg = format!("{}, imported from: {}", msg, referrer.as_str());
         }

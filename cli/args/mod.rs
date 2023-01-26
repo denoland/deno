@@ -90,7 +90,7 @@ impl CacheSetting {
         if list.iter().any(|i| i == "npm:") {
           return false;
         }
-        let specifier = format!("npm:{}", package_name);
+        let specifier = format!("npm:{package_name}");
         if list.contains(&specifier) {
           return false;
         }
@@ -491,7 +491,7 @@ impl CliOptions {
         format!("for: {}", insecure_allowlist.join(", "))
       };
       let msg =
-        format!("DANGER: TLS certificate validation is disabled {}", domains);
+        format!("DANGER: TLS certificate validation is disabled {domains}");
       // use eprintln instead of log::warn so this always gets shown
       eprintln!("{}", colors::yellow(msg));
     }
@@ -579,8 +579,7 @@ impl CliOptions {
     )
     .await
     .context(format!(
-      "Unable to load '{}' import map",
-      import_map_specifier
+      "Unable to load '{import_map_specifier}' import map"
     ))
     .map(Some)
   }
@@ -929,7 +928,7 @@ fn resolve_import_map_specifier(
       }
     }
     let specifier = deno_core::resolve_url_or_path(import_map_path)
-      .context(format!("Bad URL (\"{}\") for import map.", import_map_path))?;
+      .context(format!("Bad URL (\"{import_map_path}\") for import map."))?;
     return Ok(Some(specifier));
   } else if let Some(config_file) = &maybe_config_file {
     // if the config file is an import map we prefer to use it, over `importMap`
@@ -970,8 +969,7 @@ fn resolve_import_map_specifier(
           } else {
             deno_core::resolve_import(&import_map_path, config_file.specifier.as_str())
               .context(format!(
-                "Bad URL (\"{}\") for import map.",
-                import_map_path
+                "Bad URL (\"{import_map_path}\") for import map."
               ))?
           };
       return Ok(Some(specifier));

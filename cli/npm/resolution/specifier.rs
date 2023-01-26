@@ -47,7 +47,7 @@ impl NpmPackageReference {
     let parts = specifier.split('/').collect::<Vec<_>>();
     let name_part_len = if specifier.starts_with('@') { 2 } else { 1 };
     if parts.len() < name_part_len {
-      return Err(generic_error(format!("Not a valid package: {}", specifier)));
+      return Err(generic_error(format!("Not a valid package: {specifier}")));
     }
     let name_parts = &parts[0..name_part_len];
     let last_name_part = &name_parts[name_part_len - 1];
@@ -81,8 +81,7 @@ impl NpmPackageReference {
       if let Some(at_index) = sub_path.rfind('@') {
         let (new_sub_path, version) = sub_path.split_at(at_index);
         let msg = format!(
-          "Invalid package specifier 'npm:{}/{}'. Did you mean to write 'npm:{}{}/{}'?",
-          name, sub_path, name, version, new_sub_path
+          "Invalid package specifier 'npm:{name}/{sub_path}'. Did you mean to write 'npm:{name}{version}/{new_sub_path}'?"
         );
         return Err(generic_error(msg));
       }
@@ -90,8 +89,7 @@ impl NpmPackageReference {
 
     if name.is_empty() {
       let msg = format!(
-        "Invalid npm specifier '{}'. Did not contain a package name.",
-        original_text
+        "Invalid npm specifier '{original_text}'. Did not contain a package name."
       );
       return Err(generic_error(msg));
     }
@@ -133,7 +131,7 @@ impl std::fmt::Display for NpmPackageReq {
 impl NpmPackageReq {
   pub fn from_str(text: &str) -> Result<Self, AnyError> {
     // probably should do something more targeted in the future
-    let reference = NpmPackageReference::from_str(&format!("npm:{}", text))?;
+    let reference = NpmPackageReference::from_str(&format!("npm:{text}"))?;
     Ok(reference.req)
   }
 }
@@ -163,7 +161,7 @@ impl NpmVersionMatcher for NpmPackageReq {
     self
       .version_req
       .as_ref()
-      .map(|v| format!("{}", v))
+      .map(|v| format!("{v}"))
       .unwrap_or_else(|| "non-prerelease".to_string())
   }
 }

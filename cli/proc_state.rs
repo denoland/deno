@@ -559,7 +559,7 @@ impl ProcState {
             permissions,
           ))
           .with_context(|| {
-            format!("Could not resolve '{}' from '{}'.", specifier, referrer)
+            format!("Could not resolve '{specifier}' from '{referrer}'.")
           });
       }
 
@@ -581,7 +581,7 @@ impl ProcState {
             {
               return Err(custom_error(
                 "NotSupported",
-                format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {})", found_referrer),
+                format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {found_referrer})"),
               ));
             }
 
@@ -592,7 +592,7 @@ impl ProcState {
                 &self.npm_resolver,
                 permissions,
               ))
-              .with_context(|| format!("Could not resolve '{}'.", reference));
+              .with_context(|| format!("Could not resolve '{reference}'."));
           } else {
             return Ok(specifier.clone());
           }
@@ -639,7 +639,7 @@ impl ProcState {
               &self.npm_resolver,
               permissions,
             ))
-            .with_context(|| format!("Could not resolve '{}'.", reference));
+            .with_context(|| format!("Could not resolve '{reference}'."));
         }
       }
     }

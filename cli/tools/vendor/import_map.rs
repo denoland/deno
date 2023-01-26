@@ -322,7 +322,7 @@ fn handle_remote_dep_specifier(
   if is_remote_specifier_text(text) {
     let base_specifier = mappings.base_specifier(specifier);
     if !text.starts_with(base_specifier.as_str()) {
-      panic!("Expected {} to start with {}", text, base_specifier);
+      panic!("Expected {text} to start with {base_specifier}");
     }
 
     let sub_path = &text[base_specifier.as_str().len()..];

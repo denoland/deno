@@ -673,7 +673,7 @@ fn assign_underscore_error() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  println!("{}", out);
+  println!("{out}");
   assert_ends_with!(
     out,
     "Last thrown error is no longer saved to _error.\n1\nUncaught 2\n1\n"

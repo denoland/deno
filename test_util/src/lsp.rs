@@ -170,8 +170,8 @@ impl Drop for LspClient {
         self.child.kill().unwrap();
         let _ = self.child.wait();
       }
-      Ok(Some(status)) => panic!("deno lsp exited unexpectedly {}", status),
-      Err(e) => panic!("pebble error: {}", e),
+      Ok(Some(status)) => panic!("deno lsp exited unexpectedly {status}"),
+      Err(e) => panic!("pebble error: {e}"),
     }
   }
 }

@@ -256,14 +256,13 @@ impl NpmPackageResolver {
         .iter()
         .collect::<HashSet<_>>() // prevent duplicates
         .iter()
-        .map(|p| format!("\"{}\"", p))
+        .map(|p| format!("\"{p}\""))
         .collect::<Vec<_>>()
         .join(", ");
       return Err(custom_error(
         "NoNpm",
         format!(
-          "Following npm specifiers were requested: {}; but --no-npm is specified.",
-          fmt_reqs
+          "Following npm specifiers were requested: {fmt_reqs}; but --no-npm is specified."
         ),
       ));
     }

@@ -247,7 +247,7 @@ impl NpmResolutionSnapshot {
       // collect the specifiers to version mappings
       for (key, value) in &lockfile.content.npm.specifiers {
         let package_req = NpmPackageReq::from_str(key)
-          .with_context(|| format!("Unable to parse npm specifier: {}", key))?;
+          .with_context(|| format!("Unable to parse npm specifier: {key}"))?;
         let package_id = NpmPackageId::from_serialized(value)?;
         package_reqs.insert(package_req, package_id.clone());
         verify_ids.insert(package_id.clone());
