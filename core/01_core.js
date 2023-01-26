@@ -245,10 +245,6 @@
     }
   }
 
-  function opAsync(opName, ...args) {
-    return ReflectApply(ops[opName], ops, args);
-  }
-
   function refOp(promiseId) {
     if (!hasPromise(promiseId)) {
       return;
