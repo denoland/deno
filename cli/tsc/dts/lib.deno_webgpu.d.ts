@@ -140,9 +140,6 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
   readonly lost: Promise<GPUDeviceLostInfo>;
   pushErrorScope(filter: GPUErrorFilter): undefined;
   popErrorScope(): Promise<GPUError | null>;
-  onuncapturederror:
-    | ((this: GPUDevice, ev: GPUUncapturedErrorEvent) => any)
-    | null;
 
   readonly features: GPUSupportedFeatures;
   readonly limits: GPUSupportedLimits;
