@@ -1983,7 +1983,8 @@ impl<'a> CheckOutputIntegrationTest<'a> {
         let signal = status.signal().unwrap();
         println!("OUTPUT\n{actual}\nOUTPUT");
         panic!(
-          "process terminated by signal, expected exit code: {self.exit_code:?}, actual signal: {signal:?}",
+          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
+          self.exit_code, signal,
         );
       }
       #[cfg(not(unix))]
