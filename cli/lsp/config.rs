@@ -560,8 +560,7 @@ impl Config {
       for (workspace, folder) in workspace_folders {
         if let Ok(settings) = client.specifier_configuration(&folder.uri).await
         {
-          if self.update_enabled_paths_entry(&workspace, settings.enable_paths)
-          {
+          if self.update_enabled_paths_entry(workspace, settings.enable_paths) {
             touched = true;
           }
         }
@@ -569,7 +568,7 @@ impl Config {
       touched
     } else if let Some(root_uri) = self.root_uri.clone() {
       self.update_enabled_paths_entry(
-        &root_uri,
+        root_uri,
         self.settings.workspace.enable_paths.clone(),
       )
     } else {
@@ -580,10 +579,10 @@ impl Config {
   /// Update a specific entry in the enabled paths for a given workspace.
   fn update_enabled_paths_entry(
     &mut self,
-    workspace: &ModuleSpecifier,
+    workspace: ModuleSpecifier,
     enabled_paths: Vec<String>,
   ) -> bool {
-    let workspace = ensure_directory_specifier(workspace.clone());
+    let workspace = ensure_directory_specifier(workspace);
     let key = workspace.to_string();
     let mut touched = false;
     if !enabled_paths.is_empty() {

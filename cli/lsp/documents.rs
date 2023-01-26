@@ -718,8 +718,7 @@ impl FileSystemDocuments {
     } else {
       let cache_filename = cache.get_cache_filename(specifier)?;
       let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
-      let maybe_content_type =
-        specifier_metadata.headers.get("content-type").cloned();
+      let maybe_content_type = specifier_metadata.headers.get("content-type");
       let maybe_headers = Some(&specifier_metadata.headers);
       let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
       let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
@@ -1055,9 +1054,7 @@ impl Documents {
       } else if let Some(Resolved::Ok { specifier, .. }) =
         self.resolve_imports_dependency(&specifier)
       {
-        // clone here to avoid double borrow of self
-        let specifier = specifier.clone();
-        results.push(self.resolve_dependency(&specifier, maybe_npm_resolver));
+        results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
       } else if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
         results.push(maybe_npm_resolver.map(|npm_resolver| {
           NodeResolution::into_specifier_and_media_type(

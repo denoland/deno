@@ -151,7 +151,7 @@ pub async fn get_import_completions(
     specifier,
     &text,
     &range,
-    maybe_import_map.clone(),
+    &maybe_import_map,
     documents,
   ) {
     // completions for import map specifiers
@@ -262,7 +262,7 @@ fn get_import_map_completions(
   specifier: &ModuleSpecifier,
   text: &str,
   range: &lsp::Range,
-  maybe_import_map: Option<Arc<ImportMap>>,
+  maybe_import_map: &Option<Arc<ImportMap>>,
   documents: &Documents,
 ) -> Option<lsp::CompletionList> {
   if !text.is_empty() {
@@ -324,7 +324,7 @@ fn get_import_map_completions(
             new_text: label.clone(),
           }));
           items.push(lsp::CompletionItem {
-            label: label.clone(),
+            label,
             kind,
             detail: Some("(import map)".to_string()),
             sort_text: Some("1".to_string()),
@@ -523,12 +523,7 @@ mod tests {
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(
-        specifier.clone(),
-        *version,
-        *language_id,
-        (*source).into(),
-      );
+      documents.open(specifier, *version, *language_id, (*source).into());
     }
     let http_cache = HttpCache::new(location);
     for (specifier, source) in source_fixtures {
