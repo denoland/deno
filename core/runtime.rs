@@ -266,7 +266,7 @@ pub struct RuntimeOptions {
   pub startup_snapshot: Option<Snapshot>,
 
   /// Prepare runtime to take snapshot of loaded code.
-  /// The snapshot is determinstic and uses predictable random numbers.
+  /// The snapshot is deterministic and uses predictable random numbers.
   pub will_snapshot: bool,
 
   /// Isolate creation parameters.
