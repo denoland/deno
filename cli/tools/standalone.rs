@@ -118,7 +118,7 @@ async fn get_base_binary(
     &temp_dir,
   )?;
   let base_binary = tokio::fs::read(base_binary_path).await?;
-  drop(temp_dir);
+  drop(temp_dir); // delete the temp dir
   Ok(base_binary)
 }
 

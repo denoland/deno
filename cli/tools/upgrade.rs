@@ -515,7 +515,7 @@ pub fn unpack_into_dir(
     "zip" => {
       fs::write(&archive_path, &archive_data)?;
       Command::new("unzip")
-        .current_dir(&temp_dir_path)
+        .current_dir(temp_dir_path)
         .arg(&archive_path)
         .spawn()
         .map_err(|err| {
