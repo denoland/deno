@@ -102,8 +102,8 @@ pub fn op_webgpu_create_compute_pipeline(
     GPUPipelineLayoutOrGPUAutoLayoutMode::Layout(_) => None,
     GPUPipelineLayoutOrGPUAutoLayoutMode::Auto(GPUAutoLayoutMode::Auto) => {
       Some(wgpu_core::device::ImplicitPipelineIds {
-        root_id: std::marker::PhantomData,
-        group_ids: &[std::marker::PhantomData; MAX_BIND_GROUPS],
+        root_id: (),
+        group_ids: &[(); MAX_BIND_GROUPS],
       })
     }
   };
@@ -111,7 +111,7 @@ pub fn op_webgpu_create_compute_pipeline(
   let (compute_pipeline, maybe_err) = gfx_select!(device => instance.device_create_compute_pipeline(
     device,
     &descriptor,
-    std::marker::PhantomData,
+    (),
     implicit_pipelines
   ));
 
@@ -142,7 +142,7 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
     .get::<WebGpuComputePipeline>(compute_pipeline_rid)?;
   let compute_pipeline = compute_pipeline_resource.0;
 
-  let (bind_group_layout, maybe_err) = gfx_select!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(compute_pipeline, index, std::marker::PhantomData));
+  let (bind_group_layout, maybe_err) = gfx_select!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(compute_pipeline, index, ()));
 
   let label = gfx_select!(bind_group_layout => instance.bind_group_layout_label(bind_group_layout));
 
@@ -376,8 +376,8 @@ pub fn op_webgpu_create_render_pipeline(
     GPUPipelineLayoutOrGPUAutoLayoutMode::Layout(_) => None,
     GPUPipelineLayoutOrGPUAutoLayoutMode::Auto(GPUAutoLayoutMode::Auto) => {
       Some(wgpu_core::device::ImplicitPipelineIds {
-        root_id: std::marker::PhantomData,
-        group_ids: &[std::marker::PhantomData; MAX_BIND_GROUPS],
+        root_id: (),
+        group_ids: &[(); MAX_BIND_GROUPS],
       })
     }
   };
@@ -385,7 +385,7 @@ pub fn op_webgpu_create_render_pipeline(
   let (render_pipeline, maybe_err) = gfx_select!(device => instance.device_create_render_pipeline(
     device,
     &descriptor,
-    std::marker::PhantomData,
+    (),
     implicit_pipelines
   ));
 
@@ -408,7 +408,7 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
     .get::<WebGpuRenderPipeline>(render_pipeline_rid)?;
   let render_pipeline = render_pipeline_resource.0;
 
-  let (bind_group_layout, maybe_err) = gfx_select!(render_pipeline => instance.render_pipeline_get_bind_group_layout(render_pipeline, index, std::marker::PhantomData));
+  let (bind_group_layout, maybe_err) = gfx_select!(render_pipeline => instance.render_pipeline_get_bind_group_layout(render_pipeline, index, ()));
 
   let label = gfx_select!(bind_group_layout => instance.bind_group_layout_label(bind_group_layout));
 
