@@ -29,6 +29,8 @@
 // benchmark all changes made in performance-sensitive areas of the codebase.
 // See: https://github.com/nodejs/node/pull/38248
 
+// deno-lint-ignore-file prefer-primordials
+
 "use strict";
 
 (() => {
