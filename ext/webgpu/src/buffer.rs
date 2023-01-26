@@ -156,7 +156,8 @@ pub fn op_webgpu_buffer_get_mapped_range(
     ))
     .map_err(|e| DomExceptionOperationError::new(&e.to_string()))?;
 
-  // SAFETY:
+  // TODO(crowlKats):
+  #[allow(clippy::undocumented_unsafe_blocks)]
   let slice = unsafe {
     std::slice::from_raw_parts_mut(slice_pointer, range_size as usize)
   };
@@ -184,7 +185,8 @@ pub fn op_webgpu_buffer_unmap(
   let buffer = buffer_resource.0;
 
   if let Some(buf) = buf {
-    // SAFETY:
+    // TODO(crowlKats):
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let slice = unsafe {
       std::slice::from_raw_parts_mut(mapped_resource.0, mapped_resource.1)
     };

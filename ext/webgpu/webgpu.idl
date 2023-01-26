@@ -371,12 +371,6 @@ enum GPUTextureFormat {
 };
 
 [Exposed=(Window, DedicatedWorker), SecureContext]
-interface GPUExternalTexture {
-    readonly attribute boolean expired;
-};
-GPUExternalTexture includes GPUObjectBase;
-
-[Exposed=(Window, DedicatedWorker), SecureContext]
 interface GPUSampler {
 };
 GPUSampler includes GPUObjectBase;
