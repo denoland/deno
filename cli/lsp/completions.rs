@@ -151,7 +151,7 @@ pub async fn get_import_completions(
     specifier,
     &text,
     &range,
-    &maybe_import_map,
+    maybe_import_map.clone(),
     documents,
   ) {
     // completions for import map specifiers
@@ -262,7 +262,7 @@ fn get_import_map_completions(
   specifier: &ModuleSpecifier,
   text: &str,
   range: &lsp::Range,
-  maybe_import_map: &Option<Arc<ImportMap>>,
+  maybe_import_map: Option<Arc<ImportMap>>,
   documents: &Documents,
 ) -> Option<lsp::CompletionList> {
   if !text.is_empty() {
