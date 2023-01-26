@@ -377,7 +377,8 @@ pub async fn upgrade(
 
   log::info!("Deno is upgrading to version {}", &install_version);
 
-  let new_exe_path = unpack(archive_data, cfg!(windows))?;
+  let temp_dir = secure_tempfile::TempDir::new()?;
+  let new_exe_path = unpack_into_dir(archive_data, cfg!(windows), &temp_dir)?;
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
@@ -423,6 +424,7 @@ pub async fn upgrade(
     }
   }
 
+  drop(temp_dir); // delete the temp dir
   Ok(())
 }
 
@@ -469,18 +471,16 @@ async fn download_package(
   }
 }
 
-pub fn unpack(
+pub fn unpack_into_dir(
   archive_data: Vec<u8>,
   is_windows: bool,
+  temp_dir: &secure_tempfile::TempDir,
 ) -> Result<PathBuf, std::io::Error> {
   const EXE_NAME: &str = "deno";
-  // We use into_path so that the tempdir is not automatically deleted. This is
-  // useful for debugging upgrade, but also so this function can return a path
-  // to the newly uncompressed file without fear of the tempdir being deleted.
-  let temp_dir = secure_tempfile::TempDir::new()?.into_path();
+  let temp_dir_path = temp_dir.path();
   let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir.join(EXE_NAME).with_extension("zip");
-  let exe_path = temp_dir.join(EXE_NAME).with_extension(exe_ext);
+  let archive_path = temp_dir_path.join(EXE_NAME).with_extension("zip");
+  let exe_path = temp_dir_path.join(EXE_NAME).with_extension(exe_ext);
   assert!(!exe_path.exists());
 
   let archive_ext = Path::new(&*ARCHIVE_NAME)
@@ -509,14 +509,14 @@ pub fn unpack(
         .arg("-Path")
         .arg(format!("'{}'", &archive_path.to_str().unwrap()))
         .arg("-DestinationPath")
-        .arg(format!("'{}'", &temp_dir.to_str().unwrap()))
+        .arg(format!("'{}'", &temp_dir_path.to_str().unwrap()))
         .spawn()?
         .wait()?
     }
     "zip" => {
       fs::write(&archive_path, &archive_data)?;
       Command::new("unzip")
-        .current_dir(&temp_dir)
+        .current_dir(temp_dir_path)
         .arg(&archive_path)
         .spawn()
         .map_err(|err| {
