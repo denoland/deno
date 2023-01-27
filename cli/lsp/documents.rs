@@ -1442,6 +1442,7 @@ fn lsp_deno_graph_analyze(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use import_map::ImportMap;
   use test_util::TempDir;
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
@@ -1536,5 +1537,86 @@ console.log(b, "hello deno");
     // At this point the document will be in both documents and the shared file system documents.
     // Now make sure that the original documents doesn't return both copies
     assert_eq!(documents.documents(false, false).len(), 1);
+  }
+
+  #[test]
+  fn test_documents_refresh_dependencies_config_change() {
+    // it should never happen that a user of this API causes this to happen,
+    // but we'll guard against it anyway
+    let temp_dir = TempDir::new();
+    let (mut documents, documents_path) = setup(&temp_dir);
+    fs::create_dir_all(&documents_path).unwrap();
+
+    let file1_path = documents_path.join("file1.ts");
+    let file1_specifier = ModuleSpecifier::from_file_path(&file1_path).unwrap();
+    fs::write(&file1_path, "").unwrap();
+
+    let file2_path = documents_path.join("file2.ts");
+    let file2_specifier = ModuleSpecifier::from_file_path(&file2_path).unwrap();
+    fs::write(&file2_path, "").unwrap();
+
+    let file3_path = documents_path.join("file3.ts");
+    let file3_specifier = ModuleSpecifier::from_file_path(&file3_path).unwrap();
+    fs::write(&file3_path, "").unwrap();
+
+    // set the initial import map and point to file 2
+    {
+      let mut import_map = ImportMap::new(
+        ModuleSpecifier::from_file_path(documents_path.join("import_map.json"))
+          .unwrap(),
+      );
+      import_map
+        .imports_mut()
+        .append("test".to_string(), "./file2.ts".to_string())
+        .unwrap();
+
+      documents.update_config(Some(Arc::new(import_map)), None);
+
+      // open the document
+      let document = documents.open(
+        file1_specifier.clone(),
+        1,
+        LanguageId::TypeScript,
+        "import {} from 'test';".into(),
+      );
+
+      assert_eq!(
+        document
+          .dependencies()
+          .get("test")
+          .unwrap()
+          .maybe_code
+          .maybe_specifier()
+          .map(ToOwned::to_owned),
+        Some(file2_specifier),
+      );
+    }
+
+    // now point at file 3
+    {
+      let mut import_map = ImportMap::new(
+        ModuleSpecifier::from_file_path(documents_path.join("import_map.json"))
+          .unwrap(),
+      );
+      import_map
+        .imports_mut()
+        .append("test".to_string(), "./file3.ts".to_string())
+        .unwrap();
+
+      documents.update_config(Some(Arc::new(import_map)), None);
+
+      // check the document's dependencies
+      let document = documents.get(&file1_specifier).unwrap();
+      assert_eq!(
+        document
+          .dependencies()
+          .get("test")
+          .unwrap()
+          .maybe_code
+          .maybe_specifier()
+          .map(ToOwned::to_owned),
+        Some(file3_specifier),
+      );
+    }
   }
 }
