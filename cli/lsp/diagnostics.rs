@@ -13,6 +13,7 @@ use super::tsc;
 use super::tsc::TsServer;
 
 use crate::args::LintOptions;
+use crate::graph_util;
 use crate::graph_util::enhanced_resolution_error_message;
 use crate::node;
 use crate::npm::NpmPackageReference;
@@ -641,15 +642,25 @@ impl DenoDiagnostic {
       Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
       Self::Redirect { .. } => "redirect",
-      Self::ResolutionError(err) => match err {
-        ResolutionError::InvalidDowngrade { .. } => "invalid-downgrade",
-        ResolutionError::InvalidLocalImport { .. } => "invalid-local-import",
-        ResolutionError::InvalidSpecifier { error, .. } => match error {
-          SpecifierError::ImportPrefixMissing(_, _) => "import-prefix-missing",
-          SpecifierError::InvalidUrl(_) => "invalid-url",
-        },
-        ResolutionError::ResolverError { .. } => "resolver-error",
-      },
+      Self::ResolutionError(err) => {
+        if graph_util::get_resolution_error_bare_node_specifier(err).is_some() {
+          "import-node-prefix-missing"
+        } else {
+          match err {
+            ResolutionError::InvalidDowngrade { .. } => "invalid-downgrade",
+            ResolutionError::InvalidLocalImport { .. } => {
+              "invalid-local-import"
+            }
+            ResolutionError::InvalidSpecifier { error, .. } => match error {
+              SpecifierError::ImportPrefixMissing(_, _) => {
+                "import-prefix-missing"
+              }
+              SpecifierError::InvalidUrl(_) => "invalid-url",
+            },
+            ResolutionError::ResolverError { .. } => "resolver-error",
+          }
+        }
+      }
       Self::InvalidNodeSpecifier(_) => "resolver-error",
     }
   }
@@ -752,10 +763,7 @@ impl DenoDiagnostic {
             ..Default::default()
           }
         }
-        "import-prefix-missing" => {
-          // if an import-prefix-missing diagnostic ends up here, then that currently
-          // will only ever occur for a possible "node:" specifier, so don't bother
-          // checking if it's actually a "node:"" specifier
+        "import-node-prefix-missing" => {
           let data = diagnostic
             .data
             .clone()
@@ -795,19 +803,16 @@ impl DenoDiagnostic {
   /// diagnostic is fixable or not
   pub fn is_fixable(diagnostic: &lsp_types::Diagnostic) -> bool {
     if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
-      if code == "import-prefix-missing" {
-        diagnostic.data.is_some()
-      } else {
-        matches!(
-          code.as_str(),
-          "import-map-remap"
-            | "no-cache"
-            | "no-cache-npm"
-            | "no-cache-data"
-            | "no-assert-type"
-            | "redirect"
-        )
-      }
+      matches!(
+        code.as_str(),
+        "import-map-remap"
+          | "no-cache"
+          | "no-cache-npm"
+          | "no-cache-data"
+          | "no-assert-type"
+          | "redirect"
+          | "import-node-prefix-missing"
+      )
     } else {
       false
     }
@@ -830,18 +835,8 @@ impl DenoDiagnostic {
       Self::ResolutionError(err) => (
         lsp::DiagnosticSeverity::ERROR,
         enhanced_resolution_error_message(err),
-        if let ResolutionError::InvalidSpecifier {
-          error: SpecifierError::ImportPrefixMissing(specifier, _),
-          ..
-        } = err {
-          if crate::node::resolve_builtin_node_module(specifier).is_ok() {
-            Some(json!({ "specifier": specifier }))
-          } else {
-            None
-          }
-        } else {
-          None
-        },
+        graph_util::get_resolution_error_bare_node_specifier(err)
+          .map(|specifier| json!({ "specifier": specifier }))
       ),
       Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
     };
