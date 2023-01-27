@@ -299,14 +299,12 @@ impl Document {
     // we only ever do `Document::new` on on disk resources that are supposed to
     // be diagnosable, unlike `Document::open`, so it is safe to unconditionally
     // parse the module.
-    let parsed_source_result =
-      parse_source(&specifier, text_info.clone(), maybe_headers.as_ref());
-    let maybe_module = Some(analyze_module(
+    let (maybe_parsed_source, maybe_module) = parse_and_analyze_module(
       &specifier,
-      &parsed_source_result,
+      text_info.clone(),
       maybe_headers.as_ref(),
       maybe_resolver,
-    ));
+    );
     let dependencies =
       Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
     let line_index = Arc::new(LineIndex::new(text_info.text_str()));
@@ -319,7 +317,7 @@ impl Document {
       maybe_lsp_version: None,
       maybe_module,
       maybe_navigation_tree: Mutex::new(None),
-      maybe_parsed_source: Some(parsed_source_result),
+      maybe_parsed_source,
       text_info,
       specifier,
     }))
