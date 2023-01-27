@@ -31,6 +31,7 @@ use deno_graph::ResolutionError;
 use deno_graph::Resolved;
 use deno_graph::SpecifierError;
 use deno_runtime::permissions::PermissionsContainer;
+use import_map::ImportMapError;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -646,17 +647,93 @@ fn handle_check_error(
 pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   let mut message = format!("{error}");
 
+  if let Some(specifier) = get_resolution_error_bare_node_specifier(error) {
+    message.push_str(&format!(
+        "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
+      ));
+  }
+
+  message
+}
+
+pub fn get_resolution_error_bare_node_specifier(
+  error: &ResolutionError,
+) -> Option<&str> {
+  get_resolution_error_bare_specifier(error).filter(|specifier| {
+    crate::node::resolve_builtin_node_module(specifier).is_ok()
+  })
+}
+
+fn get_resolution_error_bare_specifier(
+  error: &ResolutionError,
+) -> Option<&str> {
   if let ResolutionError::InvalidSpecifier {
     error: SpecifierError::ImportPrefixMissing(specifier, _),
     ..
   } = error
   {
-    if crate::node::resolve_builtin_node_module(specifier).is_ok() {
-      message.push_str(&format!(
-        "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
-      ));
+    Some(specifier.as_str())
+  } else if let ResolutionError::ResolverError { error, .. } = error {
+    if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) =
+      error.downcast_ref::<ImportMapError>()
+    {
+      Some(specifier.as_str())
+    } else {
+      None
+    }
+  } else {
+    None
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::sync::Arc;
+
+  use deno_ast::ModuleSpecifier;
+  use deno_graph::Position;
+  use deno_graph::Range;
+  use deno_graph::ResolutionError;
+  use deno_graph::SpecifierError;
+
+  use crate::graph_util::get_resolution_error_bare_node_specifier;
+
+  #[test]
+  fn import_map_node_resolution_error() {
+    let cases = vec![("fs", Some("fs")), ("other", None)];
+    for (input, output) in cases {
+      let import_map = import_map::ImportMap::new(
+        ModuleSpecifier::parse("file:///deno.json").unwrap(),
+      );
+      let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
+      let err = import_map.resolve(input, &specifier).err().unwrap();
+      let err = ResolutionError::ResolverError {
+        error: Arc::new(err.into()),
+        specifier: input.to_string(),
+        range: Range {
+          specifier,
+          start: Position::zeroed(),
+          end: Position::zeroed(),
+        },
+      };
+      assert_eq!(get_resolution_error_bare_node_specifier(&err), output);
     }
   }
 
-  message
+  #[test]
+  fn bare_specifier_node_resolution_error() {
+    let cases = vec![("process", Some("process")), ("other", None)];
+    for (input, output) in cases {
+      let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
+      let err = ResolutionError::InvalidSpecifier {
+        range: Range {
+          specifier,
+          start: Position::zeroed(),
+          end: Position::zeroed(),
+        },
+        error: SpecifierError::ImportPrefixMissing(input.to_string(), None),
+      };
+      assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);
+    }
+  }
 }
