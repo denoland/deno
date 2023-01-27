@@ -36,7 +36,7 @@ pub fn init(env: napi_env, exports: napi_value) {
 
   let properties = &[
     napi_property_descriptor {
-      utf8name: "test_property_rw".as_ptr() as *const c_char,
+      utf8name: "test_property_rw\0".as_ptr() as *const c_char,
       name: ptr::null_mut(),
       method: None,
       getter: None,
@@ -46,7 +46,7 @@ pub fn init(env: napi_env, exports: napi_value) {
       value: number,
     },
     napi_property_descriptor {
-      utf8name: "test_property_r".as_ptr() as *const c_char,
+      utf8name: "test_property_r\0".as_ptr() as *const c_char,
       name: ptr::null_mut(),
       method: None,
       getter: None,
