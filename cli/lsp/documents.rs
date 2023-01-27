@@ -6,7 +6,9 @@ use super::tsc;
 use super::tsc::AssetDocument;
 
 use crate::args::ConfigFile;
+use crate::args::JsxImportSourceConfig;
 use crate::cache::CachedUrlMetadata;
+use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
@@ -786,6 +788,9 @@ pub struct Documents {
   open_docs: HashMap<ModuleSpecifier, Document>,
   /// Documents stored on the file system.
   file_system_docs: Arc<Mutex<FileSystemDocuments>>,
+  /// Hash of the config used for resolution. When the hash changes we update
+  /// dependencies.
+  resolver_config_hash: u64,
   /// Any imports to the context supplied by configuration files. This is like
   /// the imports into the a module graph in CLI.
   imports: Arc<HashMap<ModuleSpecifier, GraphImport>>,
@@ -809,6 +814,7 @@ impl Documents {
       dependents_map: Default::default(),
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
+      resolver_config_hash: 0,
       imports: Default::default(),
       maybe_resolver: None,
       npm_reqs: Default::default(),
@@ -1137,8 +1143,27 @@ impl Documents {
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
   ) {
+    fn calculate_resolver_config_hash(
+      maybe_import_map: Option<&import_map::ImportMap>,
+      maybe_jsx_config: Option<&JsxImportSourceConfig>,
+    ) -> u64 {
+      let mut hasher = FastInsecureHasher::default();
+      if let Some(import_map) = maybe_import_map {
+        hasher.write_str(&import_map.to_json());
+        hasher.write_str(import_map.base_url().as_str());
+      }
+      if let Some(jsx_config) = maybe_jsx_config {
+        hasher.write_hashable(&jsx_config);
+      }
+      hasher.finish()
+    }
+
     let maybe_jsx_config =
       maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
+    let new_resolver_config_hash = calculate_resolver_config_hash(
+      maybe_import_map.as_deref(),
+      maybe_jsx_config.as_ref(),
+    );
     self.maybe_resolver =
       CliResolver::maybe_new(maybe_jsx_config, maybe_import_map);
     self.imports = Arc::new(
@@ -1160,8 +1185,13 @@ impl Documents {
         HashMap::new()
       },
     );
-    // todo(THIS PR): conditionally do this based on if a hash of the resolver has changed
-    self.refresh_dependencies();
+
+    // only refresh the dependencies if the underlying configuration has changed
+    if self.resolver_config_hash != new_resolver_config_hash {
+      self.refresh_dependencies();
+      self.resolver_config_hash = new_resolver_config_hash;
+    }
+
     self.dirty = true;
   }
 
