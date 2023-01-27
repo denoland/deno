@@ -272,6 +272,7 @@ struct DocumentInner {
   dependencies: Arc<DocumentDependencies>,
   fs_version: String,
   line_index: Arc<LineIndex>,
+  maybe_headers: Option<HashMap<String, String>>,
   maybe_language_id: Option<LanguageId>,
   maybe_lsp_version: Option<i32>,
   maybe_module: MaybeModuleResult,
@@ -290,8 +291,8 @@ impl Document {
   fn new(
     specifier: ModuleSpecifier,
     fs_version: String,
-    maybe_headers: Option<&HashMap<String, String>>,
-    content: Arc<str>,
+    maybe_headers: Option<HashMap<String, String>>,
+    text_info: SourceTextInfo,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
   ) -> Self {
     // we only ever do `Document::new` on on disk resources that are supposed to
@@ -299,19 +300,18 @@ impl Document {
     // parse the module.
     let (maybe_module, maybe_parsed_source) = lsp_deno_graph_analyze(
       &specifier,
-      content.clone(),
-      maybe_headers,
+      text_info.text(),
+      maybe_headers.as_ref(),
       maybe_resolver,
     );
     let dependencies =
       Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
-    // todo(dsherret): retrieve this from the parsed source if it exists
-    let text_info = SourceTextInfo::new(content);
     let line_index = Arc::new(LineIndex::new(text_info.text_str()));
     Self(Arc::new(DocumentInner {
       dependencies,
       fs_version,
       line_index,
+      maybe_headers,
       maybe_language_id: None,
       maybe_lsp_version: None,
       maybe_module,
@@ -320,6 +320,19 @@ impl Document {
       text_info,
       specifier,
     }))
+  }
+
+  fn with_new_resolver(
+    &self,
+    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+  ) -> Self {
+    Self::new(
+      self.0.specifier.clone(),
+      self.0.fs_version.clone(),
+      self.0.maybe_headers.clone(),
+      self.0.text_info.clone(),
+      maybe_resolver,
+    )
   }
 
   fn open(
@@ -350,6 +363,7 @@ impl Document {
       line_index,
       maybe_language_id: Some(language_id),
       maybe_lsp_version: Some(version),
+      maybe_headers: maybe_headers.map(ToOwned::to_owned),
       maybe_module,
       maybe_navigation_tree: Mutex::new(None),
       maybe_parsed_source,
@@ -420,6 +434,7 @@ impl Document {
       dependencies,
       text_info,
       line_index,
+      maybe_headers: self.0.maybe_headers.clone(),
       maybe_module,
       maybe_parsed_source,
       maybe_lsp_version: Some(version),
@@ -712,27 +727,37 @@ impl FileSystemDocuments {
         specifier.clone(),
         fs_version,
         None,
-        content.into(),
+        SourceTextInfo::from_string(content),
         maybe_resolver,
       )
     } else {
       let cache_filename = cache.get_cache_filename(specifier)?;
       let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
       let maybe_content_type = specifier_metadata.headers.get("content-type");
-      let maybe_headers = Some(&specifier_metadata.headers);
       let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
+      let maybe_headers = Some(specifier_metadata.headers);
       let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
       Document::new(
         specifier.clone(),
         fs_version,
         maybe_headers,
-        content.into(),
+        SourceTextInfo::from_string(content),
         maybe_resolver,
       )
     };
     self.dirty = true;
     self.docs.insert(specifier.clone(), doc.clone());
     Some(doc)
+  }
+
+  pub fn refresh_dependencies(
+    &mut self,
+    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+  ) {
+    for doc in self.docs.values_mut() {
+      *doc = doc.with_new_resolver(maybe_resolver);
+    }
+    self.dirty = true;
   }
 }
 
@@ -1112,7 +1137,6 @@ impl Documents {
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
   ) {
-    // TODO(@kitsonk) update resolved dependencies?
     let maybe_jsx_config =
       maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
     self.maybe_resolver =
@@ -1136,7 +1160,21 @@ impl Documents {
         HashMap::new()
       },
     );
+    // todo(THIS PR): conditionally do this based on if a hash of the resolver has changed
+    self.refresh_dependencies();
     self.dirty = true;
+  }
+
+  fn refresh_dependencies(&mut self) {
+    let maybe_resolver =
+      self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
+    for doc in self.open_docs.values_mut() {
+      *doc = doc.with_new_resolver(maybe_resolver);
+    }
+    self
+      .file_system_docs
+      .lock()
+      .refresh_dependencies(maybe_resolver);
   }
 
   /// Iterate through the documents, building a map where the key is a unique
