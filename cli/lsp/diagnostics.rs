@@ -764,9 +764,6 @@ impl DenoDiagnostic {
           }
         }
         "import-node-prefix-missing" => {
-          // if one of these diagnostics ends up here, then that currently
-          // will only ever occur for a possible "node:" specifier, so don't bother
-          // checking if it's actually a "node:"" specifier
           let data = diagnostic
             .data
             .clone()
