@@ -93,18 +93,18 @@ fn format_frame(frame: &JsStackFrame) -> String {
     if let Some(function_name) = &frame.function_name {
       if let Some(type_name) = &frame.type_name {
         if !function_name.starts_with(type_name) {
-          write!(formatted_method, "{}.", type_name).unwrap();
+          write!(formatted_method, "{type_name}.").unwrap();
         }
       }
       formatted_method += function_name;
       if let Some(method_name) = &frame.method_name {
         if !function_name.ends_with(method_name) {
-          write!(formatted_method, " [as {}]", method_name).unwrap();
+          write!(formatted_method, " [as {method_name}]").unwrap();
         }
       }
     } else {
       if let Some(type_name) = &frame.type_name {
-        write!(formatted_method, "{}.", type_name).unwrap();
+        write!(formatted_method, "{type_name}.").unwrap();
       }
       if let Some(method_name) = &frame.method_name {
         formatted_method += method_name
@@ -149,7 +149,7 @@ fn format_maybe_source_line(
     return "".to_string();
   }
   if source_line.contains("Couldn't format source line: ") {
-    return format!("\n{}", source_line);
+    return format!("\n{source_line}");
   }
 
   let mut s = String::new();
@@ -178,7 +178,7 @@ fn format_maybe_source_line(
 
   let indent = format!("{:indent$}", "", indent = level);
 
-  format!("\n{}{}\n{}{}", indent, source_line, indent, color_underline)
+  format!("\n{indent}{source_line}\n{indent}{color_underline}")
 }
 
 fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
@@ -227,7 +227,7 @@ fn format_aggregated_error(
     );
 
     for line in error_string.trim_start_matches("Uncaught ").lines() {
-      write!(s, "\n    {}", line).unwrap();
+      write!(s, "\n    {line}").unwrap();
     }
   }
 

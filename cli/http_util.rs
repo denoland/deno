@@ -59,8 +59,7 @@ pub fn resolve_redirect_from_response(
     Ok(new_url)
   } else {
     Err(generic_error(format!(
-      "Redirection from '{}' did not provide location header",
-      request_url
+      "Redirection from '{request_url}' did not provide location header"
     )))
   }
 }
@@ -290,7 +289,7 @@ impl HttpClient {
         "Bad response: {:?}{}",
         status,
         match maybe_response_text {
-          Some(text) => format!("\n\n{}", text),
+          Some(text) => format!("\n\n{text}"),
           None => String::new(),
         }
       );

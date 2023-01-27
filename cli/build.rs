@@ -130,7 +130,7 @@ mod ts {
     for name in libs.iter() {
       println!(
         "cargo:rerun-if-changed={}",
-        path_dts.join(format!("lib.{}.d.ts", name)).display()
+        path_dts.join(format!("lib.{name}.d.ts")).display()
       );
     }
     println!(
@@ -229,7 +229,7 @@ mod ts {
             PathBuf::from(op_crate_lib).canonicalize()?
             // otherwise we are will generate the path ourself
           } else {
-            path_dts.join(format!("lib.{}.d.ts", lib))
+            path_dts.join(format!("lib.{lib}.d.ts"))
           };
           let data = std::fs::read_to_string(path)?;
           Ok(json!({
@@ -431,7 +431,7 @@ fn main() {
   // op_fetch_asset::trace_serializer();
 
   if let Ok(c) = env::var("DENO_CANARY") {
-    println!("cargo:rustc-env=DENO_CANARY={}", c);
+    println!("cargo:rustc-env=DENO_CANARY={c}");
   }
   println!("cargo:rerun-if-env-changed=DENO_CANARY");
 

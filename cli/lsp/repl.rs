@@ -188,7 +188,7 @@ impl ReplLanguageServer {
     let new_text = if new_text.ends_with('\n') {
       new_text.to_string()
     } else {
-      format!("{}\n", new_text)
+      format!("{new_text}\n")
     };
     self.document_version += 1;
     let current_line_count =

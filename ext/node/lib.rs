@@ -69,7 +69,7 @@ pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
     .unwrap()
     .as_secs();
   // use a changing variable name to make it hard to depend on this
-  format!("__DENO_NODE_GLOBAL_THIS_{}__", seconds)
+  format!("__DENO_NODE_GLOBAL_THIS_{seconds}__")
 });
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -497,7 +497,7 @@ where
 
   if request == pkg_name {
     // pass
-  } else if request.starts_with(&format!("{}/", pkg_name)) {
+  } else if request.starts_with(&format!("{pkg_name}/")) {
     expansion += &request[pkg_name.len()..];
   } else {
     return Ok(None);
@@ -579,7 +579,7 @@ where
     let referrer = Url::from_file_path(parent_path).unwrap();
     resolution::package_exports_resolve(
       &pkg.path,
-      format!(".{}", expansion),
+      format!(".{expansion}"),
       exports,
       &referrer,
       NodeModuleKind::Cjs,

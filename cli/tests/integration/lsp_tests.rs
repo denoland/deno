@@ -103,7 +103,7 @@ pub fn ensure_directory_specifier(
 ) -> ModuleSpecifier {
   let path = specifier.path();
   if !path.ends_with('/') {
-    let new_path = format!("{}/", path);
+    let new_path = format!("{path}/");
     specifier.set_path(&new_path);
   }
   specifier

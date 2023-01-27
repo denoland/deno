@@ -419,10 +419,7 @@ impl ReplSession {
       .text;
 
     let value = self
-      .evaluate_expression(&format!(
-        "'use strict'; void 0;\n{}",
-        transpiled_src
-      ))
+      .evaluate_expression(&format!("'use strict'; void 0;\n{transpiled_src}"))
       .await?;
 
     Ok(TsEvaluateResponse {

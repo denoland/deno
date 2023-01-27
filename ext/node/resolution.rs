@@ -117,7 +117,7 @@ pub fn with_known_extension(path: &Path, ext: &str) -> PathBuf {
     Some(period_index) => &file_name[..period_index],
     None => &file_name,
   };
-  path.with_file_name(format!("{}.{}", file_name, ext))
+  path.with_file_name(format!("{file_name}.{ext}"))
 }
 
 fn to_specifier_display_string(url: &ModuleSpecifier) -> String {
@@ -350,7 +350,7 @@ fn resolve_package_target_string(
             .replace(&target, |_caps: &regex::Captures| subpath.clone())
             .to_string()
         } else {
-          format!("{}{}", target, subpath)
+          format!("{target}{subpath}")
         };
         let package_json_url =
           ModuleSpecifier::from_file_path(package_json_path).unwrap();
@@ -404,7 +404,7 @@ fn resolve_package_target_string(
     let request = if pattern {
       match_.replace('*', &subpath)
     } else {
-      format!("{}{}", match_, subpath)
+      format!("{match_}{subpath}")
     };
     return Err(throw_invalid_subpath(
       request,
@@ -915,7 +915,7 @@ pub fn legacy_main_resolve(
         .path
         .parent()
         .unwrap()
-        .join(format!("{}{}", main, ending))
+        .join(format!("{main}{ending}"))
         .clean();
       if file_exists(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()

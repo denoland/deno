@@ -735,7 +735,7 @@ mod tests {
     let mut op = Op::new(item, attrs);
     let mut optimizer = Optimizer::new();
     if let Err(e) = optimizer.analyze(&mut op) {
-      let e_str = format!("{:?}", e);
+      let e_str = format!("{e:?}");
       if update_expected {
         std::fs::write(input.with_extension("expected"), e_str)
           .expect("Failed to write expected file");
@@ -748,11 +748,11 @@ mod tests {
     if update_expected {
       std::fs::write(
         input.with_extension("expected"),
-        format!("{:#?}", optimizer),
+        format!("{optimizer:#?}"),
       )
       .expect("Failed to write expected file");
     } else {
-      assert_eq!(format!("{:#?}", optimizer), expected);
+      assert_eq!(format!("{optimizer:#?}"), expected);
     }
   }
 }

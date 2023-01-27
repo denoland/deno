@@ -32,7 +32,7 @@ fn gen_checksum(v: &[impl AsRef<[u8]>]) -> String {
   let out: Vec<String> = digest
     .as_ref()
     .iter()
-    .map(|byte| format!("{:02x}", byte))
+    .map(|byte| format!("{byte:02x}"))
     .collect();
   out.join("")
 }

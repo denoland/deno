@@ -45,7 +45,7 @@ pub fn range_error(message: impl Into<Cow<'static, str>>) -> Error {
 }
 
 pub fn invalid_hostname(hostname: &str) -> Error {
-  type_error(format!("Invalid hostname: '{}'", hostname))
+  type_error(format!("Invalid hostname: '{hostname}'"))
 }
 
 pub fn uri_error(message: impl Into<Cow<'static, str>>) -> Error {
@@ -109,7 +109,7 @@ pub fn to_v8_error<'a>(
   let cb = cb.open(tc_scope);
   let this = v8::undefined(tc_scope).into();
   let class = v8::String::new(tc_scope, get_class(error)).unwrap();
-  let message = v8::String::new(tc_scope, &format!("{:#}", error)).unwrap();
+  let message = v8::String::new(tc_scope, &format!("{error:#}")).unwrap();
   let mut args = vec![class.into(), message.into()];
   if let Some(code) = crate::error_codes::get_error_code(error) {
     args.push(v8::String::new(tc_scope, code).unwrap().into());
@@ -339,11 +339,11 @@ impl JsError {
       let message_prop = e.message.clone().unwrap_or_default();
       let exception_message = exception_message.unwrap_or_else(|| {
         if !name.is_empty() && !message_prop.is_empty() {
-          format!("Uncaught {}: {}", name, message_prop)
+          format!("Uncaught {name}: {message_prop}")
         } else if !name.is_empty() {
-          format!("Uncaught {}", name)
+          format!("Uncaught {name}")
         } else if !message_prop.is_empty() {
-          format!("Uncaught {}", message_prop)
+          format!("Uncaught {message_prop}")
         } else {
           "Uncaught".to_string()
         }
@@ -509,7 +509,7 @@ fn format_source_loc(
 ) -> String {
   let line_number = line_number;
   let column_number = column_number;
-  format!("{}:{}:{}", file_name, line_number, column_number)
+  format!("{file_name}:{line_number}:{column_number}")
 }
 
 impl Display for JsError {
@@ -517,7 +517,7 @@ impl Display for JsError {
     if let Some(stack) = &self.stack {
       let stack_lines = stack.lines();
       if stack_lines.count() > 1 {
-        return write!(f, "{}", stack);
+        return write!(f, "{stack}");
       }
     }
     write!(f, "{}", self.exception_message)?;
@@ -527,7 +527,7 @@ impl Display for JsError {
         (&frame.file_name, frame.line_number, frame.column_number)
       {
         let source_loc = format_source_loc(f_, l, c);
-        write!(f, "\n    at {}", source_loc)?;
+        write!(f, "\n    at {source_loc}")?;
       }
     }
     Ok(())
@@ -568,8 +568,8 @@ pub(crate) fn to_v8_type_error(
 /// of `instanceof`. `Value::is_native_error()` also checks for static class
 /// inheritance rather than just scanning the prototype chain, which doesn't
 /// work with our WebIDL implementation of `DOMException`.
-pub(crate) fn is_instance_of_error<'s>(
-  scope: &mut v8::HandleScope<'s>,
+pub(crate) fn is_instance_of_error(
+  scope: &mut v8::HandleScope,
   value: v8::Local<v8::Value>,
 ) -> bool {
   if !value.is_object() {
@@ -603,8 +603,8 @@ pub(crate) fn is_instance_of_error<'s>(
 /// NOTE: There is currently no way to detect `AggregateError` via `rusty_v8`,
 /// as v8 itself doesn't expose `v8__Exception__AggregateError`,
 /// and we cannot create bindings for it. This forces us to rely on `name` inference.
-pub(crate) fn is_aggregate_error<'s>(
-  scope: &mut v8::HandleScope<'s>,
+pub(crate) fn is_aggregate_error(
+  scope: &mut v8::HandleScope,
   value: v8::Local<v8::Value>,
 ) -> bool {
   let mut maybe_prototype = Some(value);

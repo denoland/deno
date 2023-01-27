@@ -277,8 +277,7 @@ fn validate(input: &str) -> ValidationResult {
             | (Some(Token::DollarLBrace), Token::RBrace) => {}
             (Some(left), _) => {
               return ValidationResult::Invalid(Some(format!(
-                "Mismatched pairs: {:?} is not properly closed",
-                left
+                "Mismatched pairs: {left:?} is not properly closed"
               )))
             }
             (None, _) => {
@@ -460,7 +459,7 @@ impl ReplEditor {
       }
 
       self.errored_on_history_save.store(true, Relaxed);
-      eprintln!("Unable to save history file: {}", e);
+      eprintln!("Unable to save history file: {e}");
     }
   }
 

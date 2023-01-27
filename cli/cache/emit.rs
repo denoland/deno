@@ -90,7 +90,7 @@ impl EmitCache {
     if let Err(err) = self.set_emit_code_result(specifier, source_hash, code) {
       // should never error here, but if it ever does don't fail
       if cfg!(debug_assertions) {
-        panic!("Error saving emit data ({}): {}", specifier, err);
+        panic!("Error saving emit data ({specifier}): {err}");
       } else {
         log::debug!("Error saving emit data({}): {}", specifier, err);
       }

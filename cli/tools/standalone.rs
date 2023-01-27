@@ -94,7 +94,7 @@ async fn get_base_binary(
   }
 
   let target = target.unwrap_or_else(|| env!("TARGET").to_string());
-  let binary_name = format!("deno-{}.zip", target);
+  let binary_name = format!("deno-{target}.zip");
 
   let binary_path_suffix = if crate::version::is_canary() {
     format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
@@ -127,7 +127,7 @@ async fn download_base_binary(
   output_directory: &Path,
   binary_path_suffix: &str,
 ) -> Result<(), AnyError> {
-  let download_url = format!("https://dl.deno.land/{}", binary_path_suffix);
+  let download_url = format!("https://dl.deno.land/{binary_path_suffix}");
   let maybe_bytes = {
     let progress_bars = ProgressBar::new(ProgressBarStyle::DownloadBars);
     let progress = progress_bars.update(&download_url);
@@ -164,7 +164,7 @@ async fn create_standalone_binary(
 
   let ca_data = match ps.options.ca_data() {
     Some(CaData::File(ca_file)) => {
-      Some(fs::read(ca_file).with_context(|| format!("Reading: {}", ca_file))?)
+      Some(fs::read(ca_file).with_context(|| format!("Reading: {ca_file}"))?)
     }
     Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
     None => None,
