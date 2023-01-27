@@ -1161,6 +1161,7 @@ impl Inner {
         self.maybe_import_map.clone(),
         self.maybe_config_file.as_ref(),
       );
+      self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate_all();
       self.restart_ts_server().await;
       self.send_diagnostics_update();

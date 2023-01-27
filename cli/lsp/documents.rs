@@ -32,6 +32,7 @@ use deno_core::futures::future;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
+use deno_graph::DefaultParsedSourceStore;
 use deno_graph::GraphImport;
 use deno_graph::Resolved;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -247,7 +248,7 @@ struct DocumentDependencies {
 }
 
 impl DocumentDependencies {
-  pub fn from_maybe_module(maybe_module: &MaybeModuleResult) -> Self {
+  pub fn from_maybe_module(maybe_module: &Option<ModuleResult>) -> Self {
     if let Some(Ok(module)) = &maybe_module {
       Self::from_module(module)
     } else {
@@ -263,10 +264,8 @@ impl DocumentDependencies {
   }
 }
 
-type MaybeModuleResult =
-  Option<Result<deno_graph::Module, deno_graph::ModuleGraphError>>;
-type MaybeParsedSourceResult =
-  Option<Result<ParsedSource, deno_ast::Diagnostic>>;
+type ModuleResult = Result<deno_graph::Module, deno_graph::ModuleGraphError>;
+type ParsedSourceResult = Result<ParsedSource, deno_ast::Diagnostic>;
 
 #[derive(Debug)]
 struct DocumentInner {
@@ -277,11 +276,11 @@ struct DocumentInner {
   maybe_headers: Option<HashMap<String, String>>,
   maybe_language_id: Option<LanguageId>,
   maybe_lsp_version: Option<i32>,
-  maybe_module: MaybeModuleResult,
+  maybe_module: Option<ModuleResult>,
   // this is a lazily constructed value based on the state of the document,
   // so having a mutex to hold it is ok
   maybe_navigation_tree: Mutex<Option<Arc<tsc::NavigationTree>>>,
-  maybe_parsed_source: MaybeParsedSourceResult,
+  maybe_parsed_source: Option<ParsedSourceResult>,
   specifier: ModuleSpecifier,
   text_info: SourceTextInfo,
 }
@@ -300,12 +299,14 @@ impl Document {
     // we only ever do `Document::new` on on disk resources that are supposed to
     // be diagnosable, unlike `Document::open`, so it is safe to unconditionally
     // parse the module.
-    let (maybe_module, maybe_parsed_source) = lsp_deno_graph_analyze(
+    let parsed_source_result =
+      parse_source(&specifier, text_info.clone(), maybe_headers.as_ref());
+    let maybe_module = Some(analyze_module(
       &specifier,
-      text_info.text(),
+      &parsed_source_result,
       maybe_headers.as_ref(),
       maybe_resolver,
-    );
+    ));
     let dependencies =
       Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
     let line_index = Arc::new(LineIndex::new(text_info.text_str()));
@@ -318,23 +319,43 @@ impl Document {
       maybe_lsp_version: None,
       maybe_module,
       maybe_navigation_tree: Mutex::new(None),
-      maybe_parsed_source,
+      maybe_parsed_source: Some(parsed_source_result),
       text_info,
       specifier,
     }))
   }
 
-  fn with_new_resolver(
+  fn maybe_with_new_resolver(
     &self,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
-  ) -> Self {
-    Self::new(
-      self.0.specifier.clone(),
-      self.0.fs_version.clone(),
-      self.0.maybe_headers.clone(),
-      self.0.text_info.clone(),
+  ) -> Option<Self> {
+    let parsed_source_result = match &self.0.maybe_parsed_source {
+      Some(parsed_source_result) => parsed_source_result.clone(),
+      None => return None, // nothing to change
+    };
+    let maybe_module = Some(analyze_module(
+      &self.0.specifier,
+      &parsed_source_result,
+      self.0.maybe_headers.as_ref(),
       maybe_resolver,
-    )
+    ));
+    let dependencies =
+      Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
+    Some(Self(Arc::new(DocumentInner {
+      // updated properties
+      dependencies,
+      maybe_module,
+      maybe_navigation_tree: Mutex::new(None),
+      maybe_parsed_source: Some(parsed_source_result),
+      // maintain - this should all be copies/clones
+      fs_version: self.0.fs_version.clone(),
+      line_index: self.0.line_index.clone(),
+      maybe_headers: self.0.maybe_headers.clone(),
+      maybe_language_id: self.0.maybe_language_id,
+      maybe_lsp_version: self.0.maybe_lsp_version,
+      text_info: self.0.text_info.clone(),
+      specifier: self.0.specifier.clone(),
+    })))
   }
 
   fn open(
@@ -345,10 +366,11 @@ impl Document {
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
   ) -> Self {
     let maybe_headers = language_id.as_headers();
-    let (maybe_module, maybe_parsed_source) = if language_id.is_diagnosable() {
-      lsp_deno_graph_analyze(
+    let text_info = SourceTextInfo::new(content);
+    let (maybe_parsed_source, maybe_module) = if language_id.is_diagnosable() {
+      parse_and_analyze_module(
         &specifier,
-        content.clone(),
+        text_info.clone(),
         maybe_headers,
         maybe_resolver,
       )
@@ -357,8 +379,7 @@ impl Document {
     };
     let dependencies =
       Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
-    let source = SourceTextInfo::new(content);
-    let line_index = Arc::new(LineIndex::new(source.text_str()));
+    let line_index = Arc::new(LineIndex::new(text_info.text_str()));
     Self(Arc::new(DocumentInner {
       dependencies,
       fs_version: "1".to_string(),
@@ -369,7 +390,7 @@ impl Document {
       maybe_module,
       maybe_navigation_tree: Mutex::new(None),
       maybe_parsed_source,
-      text_info: source,
+      text_info,
       specifier,
     }))
   }
@@ -396,8 +417,8 @@ impl Document {
         index_valid = IndexValid::UpTo(0);
       }
     }
-    let content: Arc<str> = content.into();
-    let (maybe_module, maybe_parsed_source) = if self
+    let text_info = SourceTextInfo::from_string(content);
+    let (maybe_parsed_source, maybe_module) = if self
       .0
       .maybe_language_id
       .as_ref()
@@ -409,9 +430,9 @@ impl Document {
         .maybe_language_id
         .as_ref()
         .and_then(|li| li.as_headers());
-      lsp_deno_graph_analyze(
+      parse_and_analyze_module(
         &self.0.specifier,
-        content.clone(),
+        text_info.clone(),
         maybe_headers,
         maybe_resolver,
       )
@@ -423,7 +444,6 @@ impl Document {
     } else {
       self.0.dependencies.clone() // use the last known good
     };
-    let text_info = SourceTextInfo::new(content);
     let line_index = if index_valid == IndexValid::All {
       line_index
     } else {
@@ -757,7 +777,9 @@ impl FileSystemDocuments {
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
   ) {
     for doc in self.docs.values_mut() {
-      *doc = doc.with_new_resolver(maybe_resolver);
+      if let Some(new_doc) = doc.maybe_with_new_resolver(maybe_resolver) {
+        *doc = new_doc;
+      }
     }
     self.dirty = true;
   }
@@ -1199,7 +1221,9 @@ impl Documents {
     let maybe_resolver =
       self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
     for doc in self.open_docs.values_mut() {
-      *doc = doc.with_new_resolver(maybe_resolver);
+      if let Some(new_doc) = doc.maybe_with_new_resolver(maybe_resolver) {
+        *doc = new_doc;
+      }
     }
     self
       .file_system_docs
@@ -1381,62 +1405,82 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   }
 }
 
-/// The default parser from `deno_graph` does not include the configuration
-/// options we require for the lsp.
-#[derive(Debug, Default)]
-struct LspModuleParser;
-
-impl deno_graph::ModuleParser for LspModuleParser {
-  fn parse_module(
-    &self,
-    specifier: &deno_graph::ModuleSpecifier,
-    source: Arc<str>,
-    media_type: MediaType,
-  ) -> deno_core::anyhow::Result<ParsedSource, deno_ast::Diagnostic> {
-    deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: specifier.to_string(),
-      text_info: SourceTextInfo::new(source),
-      media_type,
-      capture_tokens: true,
-      scope_analysis: true,
-      maybe_syntax: None,
-    })
-  }
-}
-
-fn lsp_deno_graph_analyze(
+fn parse_and_analyze_module(
   specifier: &ModuleSpecifier,
-  content: Arc<str>,
+  text_info: SourceTextInfo,
   maybe_headers: Option<&HashMap<String, String>>,
   maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
-) -> (MaybeModuleResult, MaybeParsedSourceResult) {
-  use deno_graph::ModuleParser;
-
-  let analyzer = deno_graph::CapturingModuleAnalyzer::new(
-    Some(Box::<LspModuleParser>::default()),
-    None,
-  );
-  let parsed_source_result = analyzer.parse_module(
+) -> (Option<ParsedSourceResult>, Option<ModuleResult>) {
+  let parsed_source_result = parse_source(specifier, text_info, maybe_headers);
+  let module_result = analyze_module(
     specifier,
-    content.clone(),
-    MediaType::from_specifier_and_headers(specifier, maybe_headers),
+    &parsed_source_result,
+    maybe_headers,
+    maybe_resolver,
   );
-  let module_result = match &parsed_source_result {
-    Ok(_) => deno_graph::parse_module(
-      specifier,
-      maybe_headers,
-      content,
-      Some(deno_graph::ModuleKind::Esm),
-      maybe_resolver,
-      Some(&analyzer),
-    ),
+  (Some(parsed_source_result), Some(module_result))
+}
+
+fn parse_source(
+  specifier: &ModuleSpecifier,
+  text_info: SourceTextInfo,
+  maybe_headers: Option<&HashMap<String, String>>,
+) -> ParsedSourceResult {
+  deno_ast::parse_module(deno_ast::ParseParams {
+    specifier: specifier.to_string(),
+    text_info,
+    media_type: MediaType::from_specifier_and_headers(specifier, maybe_headers),
+    capture_tokens: true,
+    scope_analysis: true,
+    maybe_syntax: None,
+  })
+}
+
+fn analyze_module(
+  specifier: &ModuleSpecifier,
+  parsed_source_result: &ParsedSourceResult,
+  maybe_headers: Option<&HashMap<String, String>>,
+  maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+) -> ModuleResult {
+  use deno_graph::ParsedSourceStore;
+
+  struct UnreachableParser;
+
+  impl deno_graph::ModuleParser for UnreachableParser {
+    fn parse_module(
+      &self,
+      _specifier: &deno_graph::ModuleSpecifier,
+      _source: Arc<str>,
+      _media_type: MediaType,
+    ) -> deno_core::anyhow::Result<ParsedSource, deno_ast::Diagnostic> {
+      // should have re-used the parsed source from the store
+      unreachable!()
+    }
+  }
+
+  match parsed_source_result {
+    Ok(parsed_source) => {
+      let store = DefaultParsedSourceStore::default();
+      store.set_parsed_source(specifier.clone(), parsed_source.clone());
+      let analyzer = deno_graph::CapturingModuleAnalyzer::new(
+        // should never parse because it will get the parsed source from the store
+        Some(Box::new(UnreachableParser)),
+        Some(Box::new(store)),
+      );
+      deno_graph::parse_module(
+        specifier,
+        maybe_headers,
+        parsed_source.text_info().text(),
+        Some(deno_graph::ModuleKind::Esm),
+        maybe_resolver,
+        Some(&analyzer),
+      )
+    }
     Err(err) => Err(deno_graph::ModuleGraphError::ParseErr(
       specifier.clone(),
       err.clone(),
     )),
-  };
-
-  (Some(module_result), Some(parsed_source_result))
+  }
 }
 
 #[cfg(test)]
