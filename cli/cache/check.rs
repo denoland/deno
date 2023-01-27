@@ -192,7 +192,7 @@ fn create_tables(
       |row| row.get(0),
     )
     .ok();
-  if data_cli_version != Some(cli_version.to_string()) {
+  if data_cli_version.as_deref() != Some(&cli_version) {
     conn.execute("DELETE FROM checkcache", params![])?;
     conn.execute("DELETE FROM tsbuildinfo", params![])?;
     let mut stmt = conn
