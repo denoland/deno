@@ -324,7 +324,7 @@ fn get_import_map_completions(
             new_text: label.clone(),
           }));
           items.push(lsp::CompletionItem {
-            label: label.clone(),
+            label,
             kind,
             detail: Some("(import map)".to_string()),
             sort_text: Some("1".to_string()),
@@ -523,12 +523,7 @@ mod tests {
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(
-        specifier.clone(),
-        *version,
-        *language_id,
-        (*source).into(),
-      );
+      documents.open(specifier, *version, *language_id, (*source).into());
     }
     let http_cache = HttpCache::new(location);
     for (specifier, source) in source_fixtures {
