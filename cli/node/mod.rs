@@ -65,7 +65,7 @@ impl NodeResolution {
         if specifier.starts_with("node:") {
           ModuleSpecifier::parse(&specifier).unwrap()
         } else {
-          ModuleSpecifier::parse(&format!("node:{}", specifier)).unwrap()
+          ModuleSpecifier::parse(&format!("node:{specifier}")).unwrap()
         }
       }
     }
@@ -146,8 +146,7 @@ pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
   }
 
   Err(generic_error(format!(
-    "Unknown built-in \"node:\" module: {}",
-    specifier
+    "Unknown built-in \"node:\" module: {specifier}"
   )))
 }
 
@@ -235,8 +234,7 @@ pub async fn initialize_binary_command(
       Object.defineProperty(process.argv, "0", {{
         get: () => binaryName,
       }});
-    }})('{}');"#,
-    binary_name,
+    }})('{binary_name}');"#,
   );
 
   let value =
@@ -333,7 +331,7 @@ pub fn node_resolve_npm_reference(
     &reference
       .sub_path
       .as_ref()
-      .map(|s| format!("./{}", s))
+      .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string()),
     &package_folder,
     node_module_kind,
@@ -343,7 +341,7 @@ pub fn node_resolve_npm_reference(
     permissions,
   )
   .with_context(|| {
-    format!("Error resolving package config for '{}'", reference)
+    format!("Error resolving package config for '{reference}'")
   })?;
   let resolved_path = match maybe_resolved_path {
     Some(resolved_path) => resolved_path,
@@ -425,7 +423,7 @@ fn resolve_bin_entry_value<'a>(
         .map(|o| {
           o.keys()
             .into_iter()
-            .map(|k| format!(" * npm:{}/{}", pkg_req, k))
+            .map(|k| format!(" * npm:{pkg_req}/{k}"))
             .collect::<Vec<_>>()
         })
         .unwrap_or_default();
@@ -546,8 +544,7 @@ pub fn url_to_node_resolution(
     Ok(NodeResolution::Esm(url))
   } else if url_str.ends_with(".ts") {
     Err(generic_error(format!(
-      "TypeScript files are not supported in npm packages: {}",
-      url
+      "TypeScript files are not supported in npm packages: {url}"
     )))
   } else {
     Ok(NodeResolution::CommonJs(url))
@@ -681,15 +678,13 @@ fn add_export(
     // so assign it to a temporary variable that won't have a conflict, then re-export
     // it as a string
     source.push(format!(
-      "const __deno_export_{}__ = {};",
-      temp_var_count, initializer
+      "const __deno_export_{temp_var_count}__ = {initializer};"
     ));
     source.push(format!(
-      "export {{ __deno_export_{}__ as \"{}\" }};",
-      temp_var_count, name
+      "export {{ __deno_export_{temp_var_count}__ as \"{name}\" }};"
     ));
   } else {
-    source.push(format!("export const {} = {};", name, initializer));
+    source.push(format!("export const {name} = {initializer};"));
   }
 }
 
@@ -838,7 +833,7 @@ pub fn translate_cjs_to_esm(
       add_export(
         &mut source,
         export,
-        &format!("mod[\"{}\"]", export),
+        &format!("mod[\"{export}\"]"),
         &mut temp_var_count,
       );
     }
@@ -975,7 +970,7 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
 fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
   url
     .to_file_path()
-    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {}", url))
+    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {url}"))
 }
 
 fn to_file_path_string(url: &ModuleSpecifier) -> String {

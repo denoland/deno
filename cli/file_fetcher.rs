@@ -88,7 +88,7 @@ impl FileCache {
 /// Fetch a source file from the local file system.
 fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let local = specifier.to_file_path().map_err(|_| {
-    uri_error(format!("Invalid file path.\n  Specifier: {}", specifier))
+    uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
   })?;
   let bytes = fs::read(&local)?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
@@ -111,13 +111,13 @@ pub fn get_source_from_data_url(
   specifier: &ModuleSpecifier,
 ) -> Result<(String, String), AnyError> {
   let data_url = DataUrl::process(specifier.as_str())
-    .map_err(|e| uri_error(format!("{:?}", e)))?;
+    .map_err(|e| uri_error(format!("{e:?}")))?;
   let mime = data_url.mime_type();
   let charset = mime.get_parameter("charset").map(|v| v.to_string());
   let (bytes, _) = data_url
     .decode_to_vec()
-    .map_err(|e| uri_error(format!("{:?}", e)))?;
-  Ok((get_source_from_bytes(bytes, charset)?, format!("{}", mime)))
+    .map_err(|e| uri_error(format!("{e:?}")))?;
+  Ok((get_source_from_bytes(bytes, charset)?, format!("{mime}")))
 }
 
 /// Given a vector of bytes and optionally a charset, decode the bytes to a
@@ -142,8 +142,7 @@ fn get_validated_scheme(
   let scheme = specifier.scheme();
   if !SUPPORTED_SCHEMES.contains(&scheme) {
     Err(generic_error(format!(
-      "Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}",
-      scheme, specifier, SUPPORTED_SCHEMES
+      "Unsupported scheme \"{scheme}\" for module \"{specifier}\". Supported schemes: {SUPPORTED_SCHEMES:#?}"
     )))
   } else {
     Ok(scheme.to_string())
@@ -301,8 +300,7 @@ impl FileFetcher {
       return Err(custom_error(
         "NotCached",
         format!(
-          "Specifier not found in cache: \"{}\", --cached-only is specified.",
-          specifier
+          "Specifier not found in cache: \"{specifier}\", --cached-only is specified."
         ),
       ));
     }
@@ -349,8 +347,7 @@ impl FileFetcher {
       return Err(custom_error(
         "NotCached",
         format!(
-          "Specifier not found in cache: \"{}\", --cached-only is specified.",
-          specifier
+          "Specifier not found in cache: \"{specifier}\", --cached-only is specified."
         ),
       ));
     }
@@ -362,7 +359,7 @@ impl FileFetcher {
         .ok_or_else(|| {
           custom_error(
             "NotFound",
-            format!("Blob URL not found: \"{}\".", specifier),
+            format!("Blob URL not found: \"{specifier}\"."),
           )
         })?
     };
@@ -435,8 +432,7 @@ impl FileFetcher {
       return futures::future::err(custom_error(
         "NotCached",
         format!(
-          "Specifier not found in cache: \"{}\", --cached-only is specified.",
-          specifier
+          "Specifier not found in cache: \"{specifier}\", --cached-only is specified."
         ),
       ))
       .boxed();
@@ -580,7 +576,7 @@ impl FileFetcher {
     } else if !self.allow_remote {
       Err(custom_error(
         "NoRemote",
-        format!("A remote specifier was requested: \"{}\", but --no-remote is specified.", specifier),
+        format!("A remote specifier was requested: \"{specifier}\", but --no-remote is specified."),
       ))
     } else {
       let result = self
@@ -818,19 +814,19 @@ mod tests {
     charset: &str,
     expected: &str,
   ) {
-    let url_str = format!("http://127.0.0.1:4545/encoding/{}", fixture);
+    let url_str = format!("http://127.0.0.1:4545/encoding/{fixture}");
     let specifier = resolve_url(&url_str).unwrap();
     let (file, headers) = test_fetch_remote(&specifier).await;
     assert_eq!(&*file.source, expected);
     assert_eq!(file.media_type, MediaType::TypeScript);
     assert_eq!(
       headers.get("content-type").unwrap(),
-      &format!("application/typescript;charset={}", charset)
+      &format!("application/typescript;charset={charset}")
     );
   }
 
   async fn test_fetch_local_encoded(charset: &str, expected: String) {
-    let p = test_util::testdata_path().join(format!("encoding/{}.ts", charset));
+    let p = test_util::testdata_path().join(format!("encoding/{charset}.ts"));
     let specifier = resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let (file, _) = test_fetch(&specifier).await;
     assert_eq!(&*file.source, expected);
@@ -2016,7 +2012,7 @@ mod tests {
     )
     .await;
 
-    println!("{:?}", result);
+    println!("{result:?}");
     if let Ok(FetchOnceResult::Code(body, _headers)) = result {
       assert!(!body.is_empty());
     } else {

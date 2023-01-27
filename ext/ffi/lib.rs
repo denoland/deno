@@ -60,8 +60,7 @@ fn check_unstable(state: &OpState, api_name: &str) {
 
   if !unstable.0 {
     eprintln!(
-      "Unstable API '{}'. The --unstable flag must be provided.",
-      api_name
+      "Unstable API '{api_name}'. The --unstable flag must be provided."
     );
     std::process::exit(70);
   }

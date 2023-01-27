@@ -413,7 +413,7 @@ impl CoverageReporter for LcovCoverageReporter {
       .ok()
       .and_then(|p| p.to_str().map(|p| p.to_string()))
       .unwrap_or_else(|| coverage_report.url.to_string());
-    writeln!(out_writer, "SF:{}", file_path)?;
+    writeln!(out_writer, "SF:{file_path}")?;
 
     for function in &coverage_report.named_functions {
       writeln!(
@@ -433,13 +433,13 @@ impl CoverageReporter for LcovCoverageReporter {
     }
 
     let functions_found = coverage_report.named_functions.len();
-    writeln!(out_writer, "FNF:{}", functions_found)?;
+    writeln!(out_writer, "FNF:{functions_found}")?;
     let functions_hit = coverage_report
       .named_functions
       .iter()
       .filter(|f| f.execution_count > 0)
       .count();
-    writeln!(out_writer, "FNH:{}", functions_hit)?;
+    writeln!(out_writer, "FNH:{functions_hit}")?;
 
     for branch in &coverage_report.branches {
       let taken = if let Some(taken) = &branch.taken {
@@ -459,10 +459,10 @@ impl CoverageReporter for LcovCoverageReporter {
     }
 
     let branches_found = coverage_report.branches.len();
-    writeln!(out_writer, "BRF:{}", branches_found)?;
+    writeln!(out_writer, "BRF:{branches_found}")?;
     let branches_hit =
       coverage_report.branches.iter().filter(|b| b.is_hit).count();
-    writeln!(out_writer, "BRH:{}", branches_hit)?;
+    writeln!(out_writer, "BRH:{branches_hit}")?;
     for (index, count) in &coverage_report.found_lines {
       writeln!(out_writer, "DA:{},{}", index + 1, count)?;
     }
@@ -472,10 +472,10 @@ impl CoverageReporter for LcovCoverageReporter {
       .iter()
       .filter(|(_, count)| *count != 0)
       .count();
-    writeln!(out_writer, "LH:{}", lines_hit)?;
+    writeln!(out_writer, "LH:{lines_hit}")?;
 
     let lines_found = coverage_report.found_lines.len();
-    writeln!(out_writer, "LF:{}", lines_found)?;
+    writeln!(out_writer, "LF:{lines_found}")?;
 
     writeln!(out_writer, "end_of_record")?;
     Ok(())
@@ -664,7 +664,7 @@ pub async fn cover_files(
       ps.file_fetcher
         .fetch_cached(&module_specifier, 10)
         .with_context(|| {
-          format!("Failed to fetch \"{}\" from cache.", module_specifier)
+          format!("Failed to fetch \"{module_specifier}\" from cache.")
         })?
     };
     let file = maybe_file.ok_or_else(|| {

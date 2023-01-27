@@ -577,7 +577,7 @@ mod internal {
     pub fn add(self, mode: BorrowMode) -> BorrowCount {
       match self.try_add(mode) {
         Some(value) => value,
-        None => panic!("Can't add {:?} to {:?}", mode, self),
+        None => panic!("Can't add {mode:?} to {self:?}"),
       }
     }
 
@@ -596,7 +596,7 @@ mod internal {
     pub fn remove(self, mode: BorrowMode) -> BorrowCount {
       match self.try_remove(mode) {
         Some(value) => value,
-        None => panic!("Can't remove {:?} from {:?}", mode, self),
+        None => panic!("Can't remove {mode:?} from {self:?}"),
       }
     }
   }

@@ -222,7 +222,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGIO" => Ok(29),
     "SIGPWR" => Ok(30),
     "SIGSYS" => Ok(31),
-    _ => Err(type_error(format!("Invalid signal : {}", s))),
+    _ => Err(type_error(format!("Invalid signal : {s}"))),
   }
 }
 
@@ -260,7 +260,7 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
     29 => Ok("SIGIO"),
     30 => Ok("SIGPWR"),
     31 => Ok("SIGSYS"),
-    _ => Err(type_error(format!("Invalid signal : {}", s))),
+    _ => Err(type_error(format!("Invalid signal : {s}"))),
   }
 }
 
@@ -468,8 +468,7 @@ fn op_signal_bind(
   let signo = signal_str_to_int(&sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
     return Err(type_error(format!(
-      "Binding to signal '{}' is not allowed",
-      sig
+      "Binding to signal '{sig}' is not allowed",
     )));
   }
   let resource = SignalStreamResource {

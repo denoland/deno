@@ -323,7 +323,7 @@ impl PrettyTestReporter {
     if url.scheme() == "file" {
       if let Some(mut r) = self.cwd.make_relative(&url) {
         if !r.starts_with("../") {
-          r = format!("./{}", r);
+          r = format!("./{r}");
         }
         return r;
       }
@@ -513,7 +513,7 @@ impl PrettyTestReporter {
       );
       print!(" {} ...", root.name);
       for name in ancestor_names {
-        print!(" {} ...", name);
+        print!(" {name} ...");
       }
       print!(" {} ...", description.name);
       self.in_new_line = false;
@@ -584,7 +584,7 @@ impl PrettyTestReporter {
       }
       println!("{}\n", colors::white_bold_on_red(" FAILURES "));
       for failure_title in failure_titles {
-        println!("{}", failure_title);
+        println!("{failure_title}");
       }
     }
 
@@ -600,7 +600,7 @@ impl PrettyTestReporter {
       } else if count == 1 {
         " (1 step)".to_string()
       } else {
-        format!(" ({} steps)", count)
+        format!(" ({count} steps)")
       }
     };
 

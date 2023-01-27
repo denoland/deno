@@ -394,7 +394,7 @@ fn get_local_completions(
           let filter_text = if full_text.starts_with(current) {
             Some(full_text)
           } else {
-            Some(format!("{}{}", current, label))
+            Some(format!("{current}{label}"))
           };
           match de.file_type() {
             Ok(file_type) if file_type.is_dir() => Some(lsp::CompletionItem {

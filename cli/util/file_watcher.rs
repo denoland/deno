@@ -74,7 +74,7 @@ where
   if let Err(err) = result {
     let error_string = match err.downcast_ref::<JsError>() {
       Some(e) => format_js_error(e),
-      None => format!("{:?}", err),
+      None => format!("{err:?}"),
     };
     eprintln!(
       "{}: {}",
@@ -130,7 +130,7 @@ pub struct PrintConfig {
 fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
     if clear_screen && atty::is(atty::Stream::Stderr) {
-      eprint!("{}", CLEAR_SCREEN);
+      eprint!("{CLEAR_SCREEN}");
     }
     info!(
       "{} File change detected! Restarting!",

@@ -30,7 +30,7 @@ fn main() {
 
     let v = exec(scope, "32");
     let x32: u64 = serde_v8::from_v8(scope, v).unwrap();
-    println!("x32 = {}", x32);
+    println!("x32 = {x32}");
 
     let v = exec(scope, "({a: 1, b: 3, c: 'ignored'})");
     let mop: MathOp = serde_v8::from_v8(scope, v).unwrap();
@@ -41,15 +41,15 @@ fn main() {
 
     let v = exec(scope, "[1,2,3,4,5]");
     let arr: Vec<u64> = serde_v8::from_v8(scope, v).unwrap();
-    println!("arr = {:?}", arr);
+    println!("arr = {arr:?}");
 
     let v = exec(scope, "['hello', 'world']");
     let hi: Vec<String> = serde_v8::from_v8(scope, v).unwrap();
-    println!("hi = {:?}", hi);
+    println!("hi = {hi:?}");
 
     let v: v8::Local<v8::Value> = v8::Number::new(scope, 12345.0).into();
     let x: f64 = serde_v8::from_v8(scope, v).unwrap();
-    println!("x = {}", x);
+    println!("x = {x}");
   }
 
   // SAFETY: all isolates have been destroyed, so we can now safely let V8 clean

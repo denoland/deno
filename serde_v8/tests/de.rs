@@ -292,7 +292,7 @@ impl<'de> serde::de::Visitor<'de> for StructVisitor {
       match key.as_ref() {
         "a" => payload.a = map.next_value()?,
         "b" => payload.b = map.next_value()?,
-        f => panic!("Unknown field {}", f),
+        f => panic!("Unknown field {f}"),
       }
     }
     Ok(payload)

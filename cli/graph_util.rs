@@ -630,12 +630,12 @@ fn handle_check_error(
   let mut message = if let Some(err) = error.downcast_ref::<ResolutionError>() {
     enhanced_resolution_error_message(err)
   } else {
-    format!("{}", error)
+    format!("{error}")
   };
 
   if let Some(range) = maybe_range {
     if !range.specifier.as_str().contains("$deno") {
-      message.push_str(&format!("\n    at {}", range));
+      message.push_str(&format!("\n    at {range}"));
     }
   }
 
@@ -644,7 +644,7 @@ fn handle_check_error(
 
 /// Adds more explanatory information to a resolution error.
 pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
-  let mut message = format!("{}", error);
+  let mut message = format!("{error}");
 
   if let ResolutionError::InvalidSpecifier {
     error: SpecifierError::ImportPrefixMissing(specifier, _),
@@ -653,8 +653,7 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   {
     if crate::node::resolve_builtin_node_module(specifier).is_ok() {
       message.push_str(&format!(
-        "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{}\").",
-        specifier
+        "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
       ));
     }
   }

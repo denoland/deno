@@ -838,7 +838,7 @@ impl Documents {
         || {
           Err(custom_error(
             "NotFound",
-            format!("The specifier \"{}\" was not found.", specifier),
+            format!("The specifier \"{specifier}\" was not found."),
           ))
         },
         Ok,
@@ -862,7 +862,7 @@ impl Documents {
       } else {
         return Err(custom_error(
           "NotFound",
-          format!("The specifier \"{}\" was not found.", specifier),
+          format!("The specifier \"{specifier}\" was not found."),
         ));
       }
     }
@@ -1100,7 +1100,7 @@ impl Documents {
       } else {
         return Err(custom_error(
           "NotFound",
-          format!("Specifier not found {}", specifier),
+          format!("Specifier not found {specifier}"),
         ));
       }
     }

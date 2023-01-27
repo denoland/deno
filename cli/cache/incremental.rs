@@ -185,7 +185,7 @@ impl SqlIncrementalCache {
       Ok(option) => option,
       Err(err) => {
         if cfg!(debug_assertions) {
-          panic!("Error retrieving hash: {}", err);
+          panic!("Error retrieving hash: {err}");
         } else {
           // fail silently when not debugging
           None

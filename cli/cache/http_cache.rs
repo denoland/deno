@@ -35,7 +35,7 @@ fn base_url_to_filename(url: &Url) -> Option<PathBuf> {
     "http" | "https" => {
       let host = url.host_str().unwrap();
       let host_port = match url.port() {
-        Some(port) => format!("{}_PORT{}", host, port),
+        Some(port) => format!("{host}_PORT{port}"),
         None => host.to_string(),
       };
       out.push(host_port);
@@ -128,8 +128,7 @@ impl HttpCache {
       io::Error::new(
         e.kind(),
         format!(
-          "Could not create remote modules cache location: {:?}\nCheck the permission of the directory.",
-          path
+          "Could not create remote modules cache location: {path:?}\nCheck the permission of the directory."
         ),
       )
     })
@@ -231,7 +230,7 @@ mod tests {
     headers.insert("etag".to_string(), "as5625rqdsfb".to_string());
     let content = b"Hello world";
     let r = cache.set(&url, headers, content);
-    eprintln!("result {:?}", r);
+    eprintln!("result {r:?}");
     assert!(r.is_ok());
     let r = cache.get(&url);
     assert!(r.is_ok());

@@ -435,12 +435,11 @@ impl JsRuntime {
         match err {
           v8::DataError::BadType { actual, expected } => {
             panic!(
-              "Invalid type for snapshot data: expected {}, got {}",
-              expected, actual
+              "Invalid type for snapshot data: expected {expected}, got {actual}"
             );
           }
           v8::DataError::NoData { expected } => {
-            panic!("No data for snapshot data: expected {}", expected);
+            panic!("No data for snapshot data: expected {expected}");
           }
         }
       }
@@ -1528,8 +1527,8 @@ impl JsRuntimeState {
   }
 }
 
-pub(crate) fn exception_to_err_result<'s, T>(
-  scope: &mut v8::HandleScope<'s>,
+pub(crate) fn exception_to_err_result<T>(
+  scope: &mut v8::HandleScope,
   exception: v8::Local<v8::Value>,
   in_promise: bool,
 ) -> Result<T, Error> {
@@ -3393,6 +3392,7 @@ pub mod tests {
     )
     .unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(module_id);
 
     let module_namespace = runtime.get_module_namespace(module_id).unwrap();
@@ -3570,6 +3570,7 @@ pub mod tests {
       };
       assert_eq!(i, id);
 
+      #[allow(clippy::let_underscore_future)]
       let _ = runtime.mod_evaluate(id);
       futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
@@ -3622,6 +3623,7 @@ pub mod tests {
     )
     .unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
@@ -3820,7 +3822,7 @@ Deno.core.initializeAsyncOps();
 
       match runtime.poll_value(&promise, cx) {
         Poll::Ready(Ok(_)) => {}
-        Poll::Ready(Err(err)) => panic!("{:?}", err),
+        Poll::Ready(Err(err)) => panic!("{err:?}"),
         _ => panic!(),
       }
     })
@@ -4344,9 +4346,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
                 globalThis.rejectValue = `{realm_name}/${{reason}}`;
               }});
               Deno.core.ops.op_void_async().then(() => Promise.reject({number}));
-            "#,
-            realm_name=realm_name,
-            number=number
+            "#
           ),
         )
         .unwrap();
@@ -4362,7 +4362,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       let reject_value = v8::Local::new(scope, reject_value);
       assert!(reject_value.is_string());
       let reject_value_string = reject_value.to_rust_string_lossy(scope);
-      assert_eq!(reject_value_string, format!("{}/{}", realm_name, number));
+      assert_eq!(reject_value_string, format!("{realm_name}/{number}"));
     }
   }
 

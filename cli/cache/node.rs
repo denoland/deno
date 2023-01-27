@@ -108,7 +108,7 @@ impl NodeAnalysisCache {
           Err(err) => {
             // should never error here, but if it ever does don't fail
             if cfg!(debug_assertions) {
-              panic!("Error creating node analysis cache: {:#}", err);
+              panic!("Error creating node analysis cache: {err:#}");
             } else {
               log::debug!("Error creating node analysis cache: {:#}", err);
               None
@@ -124,7 +124,7 @@ impl NodeAnalysisCache {
       Err(err) => {
         // should never error here, but if it ever does don't fail
         if cfg!(debug_assertions) {
-          panic!("Error using esm analysis: {:#}", err);
+          panic!("Error using esm analysis: {err:#}");
         } else {
           log::debug!("Error using esm analysis: {:#}", err);
         }

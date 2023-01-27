@@ -373,7 +373,7 @@ pub async fn upgrade(
 
   let archive_data = download_package(client, &download_url)
     .await
-    .with_context(|| format!("Failed downloading {}", download_url))?;
+    .with_context(|| format!("Failed downloading {download_url}"))?;
 
   log::info!("Deno is upgrading to version {}", &install_version);
 
@@ -531,7 +531,7 @@ pub fn unpack_into_dir(
         })?
         .wait()?
     }
-    ext => panic!("Unsupported archive type: '{}'", ext),
+    ext => panic!("Unsupported archive type: '{ext}'"),
   };
   assert!(unpack_status.success());
   assert!(exe_path.exists());

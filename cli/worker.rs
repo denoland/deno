@@ -791,10 +791,10 @@ mod tests {
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
-      eprintln!("execute_mod err {:?}", err);
+      eprintln!("execute_mod err {err:?}");
     }
     if let Err(e) = worker.run_event_loop(false).await {
-      panic!("Future got unexpected error: {:?}", e);
+      panic!("Future got unexpected error: {e:?}");
     }
   }
 
@@ -808,10 +808,10 @@ mod tests {
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
-      eprintln!("execute_mod err {:?}", err);
+      eprintln!("execute_mod err {err:?}");
     }
     if let Err(e) = worker.run_event_loop(false).await {
-      panic!("Future got unexpected error: {:?}", e);
+      panic!("Future got unexpected error: {e:?}");
     }
   }
 
