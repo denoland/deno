@@ -338,7 +338,7 @@ impl ProcState {
       root_permissions,
       dynamic_permissions,
       if self.options.get_maybe_package_json().is_some() {
-        Some(roots[0].0.clone())
+        Some(roots[0].clone())
       } else {
         None
       },
@@ -432,7 +432,7 @@ impl ProcState {
       )
     };
 
-    eprintln!("npm package reqs {:?}", npm_package_reqs);
+    eprintln!("npm package reqs {npm_package_reqs:?}");
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
       self.prepare_node_std_graph().await?;

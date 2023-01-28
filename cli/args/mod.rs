@@ -23,7 +23,6 @@ pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
 pub use config_file::TsTypeLib;
-use deno_core::resolve_url_or_path;
 use deno_runtime::deno_node::PackageJson;
 pub use flags::*;
 pub use lockfile::Lockfile;
@@ -702,14 +701,6 @@ impl CliOptions {
     )
   }
 
-  pub fn main_module(&self) -> Option<ModuleSpecifier> {
-    if let DenoSubcommand::Run(run_flags) = &self.flags.subcommand {
-      Some(resolve_url_or_path(&run_flags.script).unwrap())
-    } else {
-      None
-    }
-  }
-
   /// Resolves the storage key to use based on the current flags, config, or main module.
   pub fn resolve_storage_key(
     &self,
@@ -766,10 +757,6 @@ impl CliOptions {
       .maybe_config_file
       .as_ref()
       .and_then(|c| c.to_maybe_jsx_import_source_config())
-  }
-
-  pub fn node(&self) -> bool {
-    self.flags.node
   }
 
   /// Return any imports that should be brought into the scope of the module
