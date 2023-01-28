@@ -211,7 +211,7 @@ fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
   let assets = tsc::LAZILY_LOADED_STATIC_ASSETS
     .iter()
     .map(|(k, v)| {
-      let url_str = format!("asset:///{}", k);
+      let url_str = format!("asset:///{k}");
       let specifier = resolve_url(&url_str).unwrap();
       let asset = AssetDocument::new(specifier.clone(), v);
       (specifier, asset)
@@ -384,9 +384,9 @@ fn get_tag_documentation(
   let maybe_text = get_tag_body_text(tag, language_server);
   if let Some(text) = maybe_text {
     if text.contains('\n') {
-      format!("{}  \n{}", label, text)
+      format!("{label}  \n{text}")
     } else {
-      format!("{} - {}", label, text)
+      format!("{label} - {text}")
     }
   } else {
     label
@@ -397,7 +397,7 @@ fn make_codeblock(text: &str) -> String {
   if CODEBLOCK_RE.is_match(text) {
     text.to_string()
   } else {
-    format!("```\n{}\n```", text)
+    format!("```\n{text}\n```")
   }
 }
 
@@ -700,9 +700,9 @@ fn display_parts_to_string(
                   .unwrap_or_else(|| "".to_string())
               });
               let link_str = if link.linkcode {
-                format!("[`{}`]({})", link_text, specifier)
+                format!("[`{link_text}`]({specifier})")
               } else {
-                format!("[{}]({})", link_text, specifier)
+                format!("[{link_text}]({specifier})")
               };
               out.push(link_str);
             }
@@ -785,8 +785,7 @@ impl QuickInfo {
         .join("  \n\n");
       if !tags_preview.is_empty() {
         parts.push(lsp::MarkedString::from_markdown(format!(
-          "\n\n{}",
-          tags_preview
+          "\n\n{tags_preview}"
         )));
       }
     }
@@ -1984,7 +1983,7 @@ impl CompletionEntryDetails {
           .map(|tag_info| get_tag_documentation(tag_info, language_server))
           .collect::<Vec<String>>()
           .join("");
-        value = format!("{}\n\n{}", value, tag_documentation);
+        value = format!("{value}\n\n{tag_documentation}");
       }
       Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
         kind: lsp::MarkupKind::Markdown,
@@ -2486,7 +2485,7 @@ impl SignatureHelpItem {
     let documentation =
       display_parts_to_string(&self.documentation, language_server);
     lsp::SignatureInformation {
-      label: format!("{}{}{}", prefix_text, params_text, suffix_text),
+      label: format!("{prefix_text}{params_text}{suffix_text}"),
       documentation: Some(lsp::Documentation::MarkupContent(
         lsp::MarkupContent {
           kind: lsp::MarkupKind::Markdown,
@@ -2844,7 +2843,7 @@ fn start(
     .clone()
     .unwrap_or_else(|| Url::parse("cache:///").unwrap());
   let init_config = json!({ "debug": debug, "rootUri": root_uri });
-  let init_src = format!("globalThis.serverInit({});", init_config);
+  let init_src = format!("globalThis.serverInit({init_config});");
 
   runtime.execute_script(&located_script_name!(), &init_src)?;
   Ok(())
@@ -3433,7 +3432,7 @@ pub fn request(
     (state.performance.clone(), method.to_value(state, id))
   };
   let mark = performance.mark("request", Some(request_params.clone()));
-  let request_src = format!("globalThis.serverRequest({});", request_params);
+  let request_src = format!("globalThis.serverRequest({request_params});");
   runtime.execute_script(&located_script_name!(), &request_src)?;
 
   let op_state = runtime.op_state();

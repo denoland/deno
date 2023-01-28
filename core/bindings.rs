@@ -613,8 +613,7 @@ pub fn module_resolve_callback<'s>(
   }
 
   let msg = format!(
-    r#"Cannot resolve module "{}" from "{}""#,
-    specifier_str, referrer_name
+    r#"Cannot resolve module "{specifier_str}" from "{referrer_name}""#
   );
   throw_type_error(scope, msg);
   None

@@ -471,7 +471,7 @@ fn op_serialize(
         if buf.was_detached() {
           return Err(custom_error(
             "DOMExceptionOperationError",
-            format!("ArrayBuffer at index {} is already detached", index),
+            format!("ArrayBuffer at index {index} is already detached"),
           ));
         }
 
@@ -593,8 +593,8 @@ fn op_get_promise_details<'a>(
 }
 
 #[op(v8)]
-fn op_set_promise_hooks<'a>(
-  scope: &mut v8::HandleScope<'a>,
+fn op_set_promise_hooks(
+  scope: &mut v8::HandleScope,
   init_cb: serde_v8::Value,
   before_cb: serde_v8::Value,
   after_cb: serde_v8::Value,

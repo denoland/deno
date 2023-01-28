@@ -408,15 +408,7 @@
     }
   }
 
-  function setup(unstable) {
-    if (!unstable) {
-      delete Listener.prototype.ref;
-      delete Listener.prototype.unref;
-    }
-  }
-
   window.__bootstrap.net = {
-    setup,
     connect,
     Conn,
     TcpConn,

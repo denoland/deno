@@ -98,7 +98,7 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
   lib_names
     .into_iter()
     .map(|name| {
-      let asset_url = format!("asset:///lib.{}.d.ts", name);
+      let asset_url = format!("asset:///lib.{name}.d.ts");
       assets.remove(&asset_url).unwrap()
     })
     .collect::<Vec<_>>()
@@ -204,7 +204,7 @@ impl fmt::Display for Stats {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     writeln!(f, "Compilation statistics:")?;
     for (key, value) in self.0.clone() {
-      writeln!(f, "  {}: {}", key, value)?;
+      writeln!(f, "  {key}: {value}")?;
     }
 
     Ok(())
@@ -838,7 +838,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     "rootNames": root_names,
   });
   let request_str = request_value.to_string();
-  let exec_source = format!("globalThis.exec({})", request_str);
+  let exec_source = format!("globalThis.exec({request_str})");
 
   runtime
     .execute_script(&located_script_name!(), startup_source)
@@ -885,7 +885,6 @@ mod tests {
   use crate::args::TsConfig;
   use deno_core::futures::future;
   use deno_core::OpState;
-  use deno_graph::ModuleKind;
   use std::fs;
 
   #[derive(Debug, Default)]
@@ -929,7 +928,7 @@ mod tests {
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let graph = deno_graph::create_graph(
-      vec![(specifier, ModuleKind::Esm)],
+      vec![specifier],
       &mut loader,
       deno_graph::GraphOptions {
         is_dynamic: false,
@@ -961,7 +960,7 @@ mod tests {
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let graph = deno_graph::create_graph(
-      vec![(specifier.clone(), ModuleKind::Esm)],
+      vec![specifier.clone()],
       &mut loader,
       deno_graph::GraphOptions {
         is_dynamic: false,

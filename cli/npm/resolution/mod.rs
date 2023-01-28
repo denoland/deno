@@ -112,7 +112,7 @@ impl NpmPackageId {
       let (input, version) = parse_version(input)?;
       match NpmVersion::parse(version) {
         Ok(version) => Ok((input, (name.to_string(), version))),
-        Err(err) => ParseError::fail(at_version_input, format!("{:#}", err)),
+        Err(err) => ParseError::fail(at_version_input, format!("{err:#}")),
       }
     }
 
@@ -173,7 +173,7 @@ impl NpmPackageId {
     }
 
     with_failure_handling(parse_id_at_level(0))(id)
-      .with_context(|| format!("Invalid npm package id '{}'.", id))
+      .with_context(|| format!("Invalid npm package id '{id}'."))
   }
 
   pub fn display(&self) -> String {
@@ -397,10 +397,13 @@ impl NpmResolution {
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
     let snapshot = self.snapshot.read();
     for (package_req, package_id) in snapshot.package_reqs.iter() {
-      lockfile.insert_npm_specifier(package_req, package_id);
+      lockfile.insert_npm_specifier(
+        package_req.to_string(),
+        package_id.as_serialized(),
+      );
     }
     for package in snapshot.all_packages() {
-      lockfile.check_or_insert_npm_package(&package)?;
+      lockfile.check_or_insert_npm_package(package.into())?;
     }
     Ok(())
   }

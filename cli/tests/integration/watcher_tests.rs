@@ -74,14 +74,14 @@ fn child_lines(
     .lines()
     .map(|r| {
       let line = r.unwrap();
-      eprintln!("STDOUT: {}", line);
+      eprintln!("STDOUT: {line}");
       line
     });
   let stderr_lines = std::io::BufReader::new(child.stderr.take().unwrap())
     .lines()
     .map(|r| {
       let line = r.unwrap();
-      eprintln!("STDERR: {}", line);
+      eprintln!("STDERR: {line}");
       line
     });
   (stdout_lines, stderr_lines)

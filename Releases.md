@@ -6,6 +6,40 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.30.0 / 2023.01.25
+
+- feat(cli): add `DENO_V8_FLAGS` env var (#17313)
+- feat(fmt): add ability to configure semicolons (#17292)
+- feat(fmt): make semi-colon option a boolean (#17527)
+- feat(runtime): add bigint to seek typings (#17314)
+- feat(runtime/command): make stdin default to inherit for spawn() (#17334)
+- feat(runtime/os): add `Deno.env.has()` (#17315)
+- feat(upgrade): link to release notes & blog post (#17073)
+- feat: Add sync APIs for "Deno.permissions" (#17019)
+- feat: ES module snapshotting (#17460)
+- feat: Stabilize Deno.Listener.ref/unref (#17477)
+- feat: allow first arg in test step to be a function (#17096)
+- feat: allow passing a ReadableStream to Deno.writeFile/Deno.writeTextFile
+  (#17329)
+- feat: embed import map in the config file (#17478)
+- feat: log detection of config file (#17338)
+- feat: suggest adding a "node:" prefix for bare specifiers that look like
+  built-in Node modules (#17519)
+- feat: support node built-in module imports (#17264)
+- fix(ext/ffi): disallow empty ffi structs (#17487)
+- fix(napi) use c_char instead of hardcoding i8 to avoid incompatibility with
+  aarch64 (#17458)
+- fix(napi): correctly handle name in napi_create_function (#17489)
+- fix(napi): don't hold on to borrow during iteration (#17461)
+- fix(napi): handle return value from initializer (#17502)
+- fix(napi): improve napi_adjust_external_memory (#17501)
+- fix(napi): improve napi_detach_arraybuffer (#17499)
+- fix(napi): improve napi_is_detached_arraybuffer (#17498)
+- fix(upgrade): don't display release information for canary (#17516)
+- fix: remove leftover Deno.spawn references (#17524)
+- fix: support import map specified as data uri (#17531)
+- fix: update expected output for config auto-discovery debug log (#17514)
+
 ### 1.29.4 / 2023.01.16
 
 - feat(core): Reland support for async ops in realms (#17204)

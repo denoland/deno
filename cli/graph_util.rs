@@ -27,20 +27,16 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::Range;
+use deno_graph::ResolutionError;
 use deno_graph::Resolved;
+use deno_graph::SpecifierError;
 use deno_runtime::permissions::PermissionsContainer;
+use import_map::ImportMapError;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
-
-pub fn contains_specifier(
-  v: &[(ModuleSpecifier, ModuleKind)],
-  specifier: &ModuleSpecifier,
-) -> bool {
-  v.iter().any(|(s, _)| s == specifier)
-}
 
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
@@ -62,6 +58,8 @@ pub enum ModuleEntry {
 #[derive(Debug, Default)]
 pub struct GraphData {
   modules: HashMap<ModuleSpecifier, ModuleEntry>,
+  /// Specifiers that are built-in or external.
+  external_specifiers: HashSet<ModuleSpecifier>,
   npm_packages: Vec<NpmPackageReq>,
   has_node_builtin_specifier: bool,
   /// Map of first known referrer locations for each module. Used to enhance
@@ -92,8 +90,7 @@ impl GraphData {
     let mut has_npm_specifier_in_graph = false;
 
     for (specifier, result) in graph.specifiers() {
-      if NpmPackageReference::from_specifier(specifier).is_ok() {
-        has_npm_specifier_in_graph = true;
+      if self.modules.contains_key(specifier) {
         continue;
       }
 
@@ -101,17 +98,24 @@ impl GraphData {
         self.has_node_builtin_specifier = true;
       }
 
-      if self.modules.contains_key(specifier) {
-        continue;
-      }
-
       if let Some(found) = graph.redirects.get(specifier) {
         let module_entry = ModuleEntry::Redirect(found.clone());
         self.modules.insert(specifier.clone(), module_entry);
         continue;
       }
+
       match result {
-        Ok((_, _, media_type)) => {
+        Ok((_, module_kind, media_type)) => {
+          if module_kind == ModuleKind::External {
+            if !has_npm_specifier_in_graph
+              && NpmPackageReference::from_specifier(specifier).is_ok()
+            {
+              has_npm_specifier_in_graph = true;
+            }
+            self.external_specifiers.insert(specifier.clone());
+            continue; // ignore npm and node specifiers
+          }
+
           let module = graph.get(specifier).unwrap();
           let code = match &module.maybe_source {
             Some(source) => source.clone(),
@@ -187,7 +191,7 @@ impl GraphData {
   /// Return `None` if any modules are not known.
   pub fn walk<'a>(
     &'a self,
-    roots: &[(ModuleSpecifier, ModuleKind)],
+    roots: &[ModuleSpecifier],
     follow_dynamic: bool,
     follow_type_only: bool,
     check_js: bool,
@@ -195,7 +199,7 @@ impl GraphData {
     let mut result = HashMap::<&'a ModuleSpecifier, &'a ModuleEntry>::new();
     let mut seen = HashSet::<&ModuleSpecifier>::new();
     let mut visiting = VecDeque::<&ModuleSpecifier>::new();
-    for (root, _) in roots {
+    for root in roots {
       seen.insert(root);
       visiting.push_back(root);
     }
@@ -215,16 +219,12 @@ impl GraphData {
       }
     }
     while let Some(specifier) = visiting.pop_front() {
-      if NpmPackageReference::from_specifier(specifier).is_ok() {
-        continue; // skip analyzing npm specifiers
-      } else if specifier.scheme() == "node" {
-        continue; // skip analyzing node builtins
-      }
-
       let (specifier, entry) = match self.modules.get_key_value(specifier) {
         Some(pair) => pair,
         None => {
-          eprintln!("Missing module: {}", specifier);
+          if self.external_specifiers.contains(specifier) {
+            continue;
+          }
           return None;
         }
       };
@@ -291,10 +291,7 @@ impl GraphData {
 
   /// Clone part of `self`, containing only modules which are dependencies of
   /// `roots`. Returns `None` if any roots are not known.
-  pub fn graph_segment(
-    &self,
-    roots: &[(ModuleSpecifier, ModuleKind)],
-  ) -> Option<Self> {
+  pub fn graph_segment(&self, roots: &[ModuleSpecifier]) -> Option<Self> {
     let mut modules = HashMap::new();
     let mut referrer_map = HashMap::new();
     let entries = match self.walk(roots, true, true, true) {
@@ -309,6 +306,7 @@ impl GraphData {
     }
     Some(Self {
       modules,
+      external_specifiers: self.external_specifiers.clone(),
       has_node_builtin_specifier: self.has_node_builtin_specifier,
       npm_packages: self.npm_packages.clone(),
       referrer_map,
@@ -323,7 +321,7 @@ impl GraphData {
   /// not known.
   pub fn check(
     &self,
-    roots: &[(ModuleSpecifier, ModuleKind)],
+    roots: &[ModuleSpecifier],
     follow_type_only: bool,
     check_js: bool,
   ) -> Option<Result<(), AnyError>> {
@@ -351,13 +349,10 @@ impl GraphData {
           if check_types {
             if let Some(Resolved::Err(error)) = maybe_types {
               let range = error.range();
-              if !range.specifier.as_str().contains("$deno") {
-                return Some(Err(custom_error(
-                  get_error_class_name(&error.clone().into()),
-                  format!("{}\n    at {}", error, range),
-                )));
-              }
-              return Some(Err(error.clone().into()));
+              return Some(handle_check_error(
+                error.clone().into(),
+                Some(range),
+              ));
             }
           }
           for (_, dep) in dependencies.iter() {
@@ -370,31 +365,25 @@ impl GraphData {
               for resolved in resolutions {
                 if let Resolved::Err(error) = resolved {
                   let range = error.range();
-                  if !range.specifier.as_str().contains("$deno") {
-                    return Some(Err(custom_error(
-                      get_error_class_name(&error.clone().into()),
-                      format!("{}\n    at {}", error, range),
-                    )));
-                  }
-                  return Some(Err(error.clone().into()));
+                  return Some(handle_check_error(
+                    error.clone().into(),
+                    Some(range),
+                  ));
                 }
               }
             }
           }
         }
         ModuleEntry::Error(error) => {
-          if !contains_specifier(roots, specifier) {
-            if let Some(range) = self.referrer_map.get(specifier) {
-              if !range.specifier.as_str().contains("$deno") {
-                let message = error.to_string();
-                return Some(Err(custom_error(
-                  get_error_class_name(&error.clone().into()),
-                  format!("{}\n    at {}", message, range),
-                )));
-              }
-            }
-          }
-          return Some(Err(error.clone().into()));
+          let maybe_range = if roots.contains(specifier) {
+            None
+          } else {
+            self.referrer_map.get(specifier)
+          };
+          return Some(handle_check_error(
+            error.clone().into(),
+            maybe_range.map(|r| &**r),
+          ));
         }
         _ => {}
       }
@@ -406,7 +395,7 @@ impl GraphData {
   /// Assumes that all of those modules are known.
   pub fn set_type_checked(
     &mut self,
-    roots: &[(ModuleSpecifier, ModuleKind)],
+    roots: &[ModuleSpecifier],
     lib: TsTypeLib,
   ) {
     let specifiers: Vec<ModuleSpecifier> =
@@ -426,10 +415,10 @@ impl GraphData {
   /// Check if `roots` are all marked as type checked under `lib`.
   pub fn is_type_checked(
     &self,
-    roots: &[(ModuleSpecifier, ModuleKind)],
+    roots: &[ModuleSpecifier],
     lib: &TsTypeLib,
   ) -> bool {
-    roots.iter().all(|(r, _)| {
+    roots.iter().all(|r| {
       let found = self.follow_redirect(r);
       match self.modules.get(&found) {
         Some(ModuleEntry::Module { checked_libs, .. }) => {
@@ -545,7 +534,7 @@ pub async fn create_graph_and_maybe_check(
   let analyzer = ps.parsed_source_cache.as_analyzer();
   let graph = Arc::new(
     deno_graph::create_graph(
-      vec![(root, deno_graph::ModuleKind::Esm)],
+      vec![root],
       &mut cache,
       deno_graph::GraphOptions {
         is_dynamic: false,
@@ -632,5 +621,119 @@ pub fn error_for_any_npm_specifier(
     bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", npm_specifier)
   } else {
     Ok(())
+  }
+}
+
+fn handle_check_error(
+  error: AnyError,
+  maybe_range: Option<&deno_graph::Range>,
+) -> Result<(), AnyError> {
+  let mut message = if let Some(err) = error.downcast_ref::<ResolutionError>() {
+    enhanced_resolution_error_message(err)
+  } else {
+    format!("{error}")
+  };
+
+  if let Some(range) = maybe_range {
+    if !range.specifier.as_str().contains("$deno") {
+      message.push_str(&format!("\n    at {range}"));
+    }
+  }
+
+  Err(custom_error(get_error_class_name(&error), message))
+}
+
+/// Adds more explanatory information to a resolution error.
+pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
+  let mut message = format!("{error}");
+
+  if let Some(specifier) = get_resolution_error_bare_node_specifier(error) {
+    message.push_str(&format!(
+        "\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
+      ));
+  }
+
+  message
+}
+
+pub fn get_resolution_error_bare_node_specifier(
+  error: &ResolutionError,
+) -> Option<&str> {
+  get_resolution_error_bare_specifier(error).filter(|specifier| {
+    crate::node::resolve_builtin_node_module(specifier).is_ok()
+  })
+}
+
+fn get_resolution_error_bare_specifier(
+  error: &ResolutionError,
+) -> Option<&str> {
+  if let ResolutionError::InvalidSpecifier {
+    error: SpecifierError::ImportPrefixMissing(specifier, _),
+    ..
+  } = error
+  {
+    Some(specifier.as_str())
+  } else if let ResolutionError::ResolverError { error, .. } = error {
+    if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) =
+      error.downcast_ref::<ImportMapError>()
+    {
+      Some(specifier.as_str())
+    } else {
+      None
+    }
+  } else {
+    None
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::sync::Arc;
+
+  use deno_ast::ModuleSpecifier;
+  use deno_graph::Position;
+  use deno_graph::Range;
+  use deno_graph::ResolutionError;
+  use deno_graph::SpecifierError;
+
+  use crate::graph_util::get_resolution_error_bare_node_specifier;
+
+  #[test]
+  fn import_map_node_resolution_error() {
+    let cases = vec![("fs", Some("fs")), ("other", None)];
+    for (input, output) in cases {
+      let import_map = import_map::ImportMap::new(
+        ModuleSpecifier::parse("file:///deno.json").unwrap(),
+      );
+      let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
+      let err = import_map.resolve(input, &specifier).err().unwrap();
+      let err = ResolutionError::ResolverError {
+        error: Arc::new(err.into()),
+        specifier: input.to_string(),
+        range: Range {
+          specifier,
+          start: Position::zeroed(),
+          end: Position::zeroed(),
+        },
+      };
+      assert_eq!(get_resolution_error_bare_node_specifier(&err), output);
+    }
+  }
+
+  #[test]
+  fn bare_specifier_node_resolution_error() {
+    let cases = vec![("process", Some("process")), ("other", None)];
+    for (input, output) in cases {
+      let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
+      let err = ResolutionError::InvalidSpecifier {
+        range: Range {
+          specifier,
+          start: Position::zeroed(),
+          end: Position::zeroed(),
+        },
+        error: SpecifierError::ImportPrefixMissing(input.to_string(), None),
+      };
+      assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);
+    }
   }
 }

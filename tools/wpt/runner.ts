@@ -185,9 +185,9 @@ async function generateBundle(location: URL): Promise<string> {
 
   return scriptContents.map(([url, contents]) => `
 (function() {
-  const [_,err] = Deno.core.evalContext(${JSON.stringify(contents)}, ${
-    JSON.stringify(url)
-  });
+  const [_,err] = Deno[Deno.internal].core.evalContext(${
+    JSON.stringify(contents)
+  }, ${JSON.stringify(url)});
   if (err !== null) {
     throw err?.thrown;
   }

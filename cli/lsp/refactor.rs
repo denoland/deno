@@ -157,7 +157,7 @@ pub struct RefactorCodeActionData {
 }
 
 pub fn prune_invalid_actions(
-  actions: &[lsp::CodeAction],
+  actions: Vec<lsp::CodeAction>,
   number_of_invalid: usize,
 ) -> Vec<lsp::CodeAction> {
   let mut available_actions = Vec::<lsp::CodeAction>::new();
@@ -165,7 +165,7 @@ pub fn prune_invalid_actions(
   let mut invalid_uncommon_actions = Vec::<lsp::CodeAction>::new();
   for action in actions {
     if action.disabled.is_none() {
-      available_actions.push(action.clone());
+      available_actions.push(action);
       continue;
     }
 
@@ -175,12 +175,12 @@ pub fn prune_invalid_actions(
     if action_kind.starts_with(EXTRACT_CONSTANT.kind.as_str())
       || action_kind.starts_with(EXTRACT_FUNCTION.kind.as_str())
     {
-      invalid_common_actions.push(action.clone());
+      invalid_common_actions.push(action);
       continue;
     }
 
     // These are the remaining refactors that we can show if we haven't reached the max limit with just common refactors.
-    invalid_uncommon_actions.push(action.clone());
+    invalid_uncommon_actions.push(action);
   }
 
   let mut prioritized_actions = Vec::<lsp::CodeAction>::new();

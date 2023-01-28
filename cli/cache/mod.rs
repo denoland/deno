@@ -65,8 +65,7 @@ impl FetchCacher {
 
 impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
-    let scheme = specifier.scheme();
-    if scheme == "npm" || scheme == "node" {
+    if matches!(specifier.scheme(), "npm" | "node") {
       return None;
     }
 
@@ -105,7 +104,8 @@ impl Loader for FetchCacher {
     let specifier =
       if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
         if module_name == "module" {
-          // We use the built-in module for "module", so resolve it as external
+          // the source code for "node:module" is built-in rather than
+          // being from deno_std like the other modules
           return Box::pin(futures::future::ready(Ok(Some(
             deno_graph::source::LoadResponse::External {
               specifier: specifier.clone(),

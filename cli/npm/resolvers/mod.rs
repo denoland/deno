@@ -256,14 +256,13 @@ impl NpmPackageResolver {
         .iter()
         .collect::<HashSet<_>>() // prevent duplicates
         .iter()
-        .map(|p| format!("\"{}\"", p))
+        .map(|p| format!("\"{p}\""))
         .collect::<Vec<_>>()
         .join(", ");
       return Err(custom_error(
         "NoNpm",
         format!(
-          "Following npm specifiers were requested: {}; but --no-npm is specified.",
-          fmt_reqs
+          "Following npm specifiers were requested: {fmt_reqs}; but --no-npm is specified."
         ),
       ));
     }
@@ -333,13 +332,6 @@ impl NpmPackageResolver {
   pub async fn inject_synthetic_types_node_package(
     &self,
   ) -> Result<(), AnyError> {
-    if self.no_npm {
-      return Err(custom_error(
-        "NoNpm",
-        "A node built-in specifier was used; but --no-npm is specified.",
-      ));
-    }
-
     // add and ensure this isn't added to the lockfile
     self
       .inner

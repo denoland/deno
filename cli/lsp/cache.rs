@@ -55,9 +55,9 @@ pub struct CacheMetadata {
 }
 
 impl CacheMetadata {
-  pub fn new(location: &Path) -> Self {
+  pub fn new(cache: HttpCache) -> Self {
     Self {
-      cache: HttpCache::new(location),
+      cache,
       metadata: Default::default(),
     }
   }

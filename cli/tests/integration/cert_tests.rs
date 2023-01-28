@@ -112,6 +112,40 @@ fn cafile_fetch() {
   assert_eq!(out, "");
 }
 
+#[test]
+fn cafile_compile() {
+  let _g = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("cert.exe")
+  } else {
+    dir.path().join("cert")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--cert")
+    .arg("./tls/RootCA.pem")
+    .arg("--allow-net")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cert/cafile_ts_fetch.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"[WILDCARD]\nHello\n")
+}
+
 #[flaky_test::flaky_test]
 fn cafile_install_remote_module() {
   let _g = util::http_server();

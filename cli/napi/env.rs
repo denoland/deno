@@ -34,8 +34,7 @@ pub unsafe extern "C" fn napi_fatal_error(
     std::str::from_utf8(slice).unwrap()
   };
   panic!(
-    "Fatal exception triggered by napi_fatal_error!\nLocation: {:?}\n{}",
-    location, message
+    "Fatal exception triggered by napi_fatal_error!\nLocation: {location:?}\n{message}"
   );
 }
 
@@ -46,10 +45,7 @@ fn napi_fatal_exception(env: *mut Env, value: napi_value) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
   let error = value.to_rust_string_lossy(&mut env.scope());
-  panic!(
-    "Fatal exception triggered by napi_fatal_exception!\n{}",
-    error
-  );
+  panic!("Fatal exception triggered by napi_fatal_exception!\n{error}");
 }
 
 #[napi_sym::napi_sym]

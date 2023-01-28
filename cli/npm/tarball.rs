@@ -154,12 +154,12 @@ mod test {
       verify_tarball_integrity(package, &Vec::new(), "sha512-test")
         .unwrap_err()
         .to_string(),
-      format!("Tarball checksum did not match what was provided by npm registry for package@1.0.0.\n\nExpected: test\nActual: {}", actual_checksum),
+      format!("Tarball checksum did not match what was provided by npm registry for package@1.0.0.\n\nExpected: test\nActual: {actual_checksum}"),
     );
     assert!(verify_tarball_integrity(
       package,
       &Vec::new(),
-      &format!("sha512-{}", actual_checksum)
+      &format!("sha512-{actual_checksum}")
     )
     .is_ok());
   }

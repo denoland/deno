@@ -574,6 +574,23 @@ Deno.test({ permissions: { read: true } }, async function seekStart() {
   file.close();
 });
 
+Deno.test({ permissions: { read: true } }, async function seekStartBigInt() {
+  const filename = "cli/tests/testdata/assets/hello.txt";
+  const file = await Deno.open(filename);
+  const seekPosition = 6n;
+  // Deliberately move 1 step forward
+  await file.read(new Uint8Array(1)); // "H"
+  // Skipping "Hello "
+  // seeking from beginning of a file plus seekPosition
+  const cursorPosition = await file.seek(seekPosition, Deno.SeekMode.Start);
+  assertEquals(seekPosition, BigInt(cursorPosition));
+  const buf = new Uint8Array(6);
+  await file.read(buf);
+  const decoded = new TextDecoder().decode(buf);
+  assertEquals(decoded, "world!");
+  file.close();
+});
+
 Deno.test({ permissions: { read: true } }, function seekSyncStart() {
   const filename = "cli/tests/testdata/assets/hello.txt";
   const file = Deno.openSync(filename);

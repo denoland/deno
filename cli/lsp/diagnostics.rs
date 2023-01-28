@@ -13,6 +13,8 @@ use super::tsc;
 use super::tsc::TsServer;
 
 use crate::args::LintOptions;
+use crate::graph_util;
+use crate::graph_util::enhanced_resolution_error_message;
 use crate::node;
 use crate::npm::NpmPackageReference;
 use crate::tools::lint::get_configured_rules;
@@ -25,7 +27,9 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_graph::ResolutionError;
 use deno_graph::Resolved;
+use deno_graph::SpecifierError;
 use deno_lint::rules::LintRule;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
@@ -574,6 +578,12 @@ struct DiagnosticDataSpecifier {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct DiagnosticDataStrSpecifier {
+  pub specifier: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct DiagnosticDataRedirect {
   pub redirect: ModuleSpecifier,
 }
@@ -621,9 +631,6 @@ pub enum DenoDiagnostic {
 
 impl DenoDiagnostic {
   fn code(&self) -> &str {
-    use deno_graph::ResolutionError;
-    use deno_graph::SpecifierError;
-
     match self {
       Self::DenoWarn(_) => "deno-warn",
       Self::ImportMapRemap { .. } => "import-map-remap",
@@ -635,15 +642,25 @@ impl DenoDiagnostic {
       Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
       Self::Redirect { .. } => "redirect",
-      Self::ResolutionError(err) => match err {
-        ResolutionError::InvalidDowngrade { .. } => "invalid-downgrade",
-        ResolutionError::InvalidLocalImport { .. } => "invalid-local-import",
-        ResolutionError::InvalidSpecifier { error, .. } => match error {
-          SpecifierError::ImportPrefixMissing(_, _) => "import-prefix-missing",
-          SpecifierError::InvalidUrl(_) => "invalid-url",
-        },
-        ResolutionError::ResolverError { .. } => "resolver-error",
-      },
+      Self::ResolutionError(err) => {
+        if graph_util::get_resolution_error_bare_node_specifier(err).is_some() {
+          "import-node-prefix-missing"
+        } else {
+          match err {
+            ResolutionError::InvalidDowngrade { .. } => "invalid-downgrade",
+            ResolutionError::InvalidLocalImport { .. } => {
+              "invalid-local-import"
+            }
+            ResolutionError::InvalidSpecifier { error, .. } => match error {
+              SpecifierError::ImportPrefixMissing(_, _) => {
+                "import-prefix-missing"
+              }
+              SpecifierError::InvalidUrl(_) => "invalid-url",
+            },
+            ResolutionError::ResolverError { .. } => "resolver-error",
+          }
+        }
+      }
       Self::InvalidNodeSpecifier(_) => "resolver-error",
     }
   }
@@ -664,17 +681,14 @@ impl DenoDiagnostic {
           let DiagnosticDataImportMapRemap { from, to } =
             serde_json::from_value(data)?;
           lsp::CodeAction {
-            title: format!(
-              "Update \"{}\" to \"{}\" to use import map.",
-              from, to
-            ),
+            title: format!("Update \"{from}\" to \"{to}\" to use import map."),
             kind: Some(lsp::CodeActionKind::QUICKFIX),
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
                 specifier.clone(),
                 vec![lsp::TextEdit {
-                  new_text: format!("\"{}\"", to),
+                  new_text: format!("\"{to}\""),
                   range: diagnostic.range,
                 }],
               )])),
@@ -749,6 +763,29 @@ impl DenoDiagnostic {
             ..Default::default()
           }
         }
+        "import-node-prefix-missing" => {
+          let data = diagnostic
+            .data
+            .clone()
+            .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
+          let data: DiagnosticDataStrSpecifier = serde_json::from_value(data)?;
+          lsp::CodeAction {
+            title: format!("Update specifier to node:{}", data.specifier),
+            kind: Some(lsp::CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![diagnostic.clone()]),
+            edit: Some(lsp::WorkspaceEdit {
+              changes: Some(HashMap::from([(
+                specifier.clone(),
+                vec![lsp::TextEdit {
+                  new_text: format!("\"node:{}\"", data.specifier),
+                  range: diagnostic.range,
+                }],
+              )])),
+              ..Default::default()
+            }),
+            ..Default::default()
+          }
+        }
         _ => {
           return Err(anyhow!(
             "Unsupported diagnostic code (\"{}\") provided.",
@@ -764,8 +801,8 @@ impl DenoDiagnostic {
 
   /// Given a reference to the code from an LSP diagnostic, determine if the
   /// diagnostic is fixable or not
-  pub fn is_fixable(code: &Option<lsp::NumberOrString>) -> bool {
-    if let Some(lsp::NumberOrString::String(code)) = code {
+  pub fn is_fixable(diagnostic: &lsp_types::Diagnostic) -> bool {
+    if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
       matches!(
         code.as_str(),
         "import-map-remap"
@@ -774,6 +811,7 @@ impl DenoDiagnostic {
           | "no-cache-data"
           | "no-assert-type"
           | "redirect"
+          | "import-node-prefix-missing"
       )
     } else {
       false
@@ -785,16 +823,21 @@ impl DenoDiagnostic {
   pub fn to_lsp_diagnostic(&self, range: &lsp::Range) -> lsp::Diagnostic {
     let (severity, message, data) = match self {
       Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
-      Self::ImportMapRemap { from, to } => (lsp::DiagnosticSeverity::HINT, format!("The import specifier can be remapped to \"{}\" which will resolve it via the active import map.", to), Some(json!({ "from": from, "to": to }))),
-      Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{}\".", assert_type), None),
+      Self::ImportMapRemap { from, to } => (lsp::DiagnosticSeverity::HINT, format!("The import specifier can be remapped to \"{to}\" which will resolve it via the active import map."), Some(json!({ "from": from, "to": to }))),
+      Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{assert_type}\"."), None),
       Self::NoAssertType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(), None),
-      Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{}\".", specifier), Some(json!({ "specifier": specifier }))),
+      Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{specifier}\"."), Some(json!({ "specifier": specifier }))),
       Self::NoCacheBlob => (lsp::DiagnosticSeverity::ERROR, "Uncached blob URL.".to_string(), None),
       Self::NoCacheData(specifier) => (lsp::DiagnosticSeverity::ERROR, "Uncached data URL.".to_string(), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: \"{}\".", pkg_ref.req), Some(json!({ "specifier": specifier }))),
-      Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier), None),
-      Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{}\" was redirected to \"{}\".", from, to), Some(json!({ "specifier": from, "redirect": to }))),
-      Self::ResolutionError(err) => (lsp::DiagnosticSeverity::ERROR, err.to_string(), None),
+      Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{specifier}\".\n  Please check the file path."), None),
+      Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
+      Self::ResolutionError(err) => (
+        lsp::DiagnosticSeverity::ERROR,
+        enhanced_resolution_error_message(err),
+        graph_util::get_resolution_error_bare_node_specifier(err)
+          .map(|specifier| json!({ "specifier": specifier }))
+      ),
       Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
     };
     lsp::Diagnostic {
@@ -893,8 +936,11 @@ fn diagnose_resolved(
             .is_err()
           {
             diagnostics.push(
-              DenoDiagnostic::NoCacheNpm(types_node_ref, specifier.clone())
-                .to_lsp_diagnostic(&range),
+              DenoDiagnostic::NoCacheNpm(
+                types_node_ref,
+                ModuleSpecifier::parse("npm:@types/node").unwrap(),
+              )
+              .to_lsp_diagnostic(&range),
             );
           }
         }
