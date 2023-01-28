@@ -469,6 +469,21 @@ async fn create_main_worker_internal(
     (main_module, false)
   };
 
+  // Check if there's an import map and if so, eagerly download all `npm:`
+  // packages.
+  if let Some(import_map) = &ps.maybe_import_map {
+    let mut package_refs = vec![];
+    for entry in import_map.imports().entries() {
+      if let Some(raw_value) = entry.raw_value {
+        if raw_value.starts_with("npm:") {
+          let package_ref = NpmPackageReference::from_str(raw_value)?;
+          package_refs.push(package_ref.req.clone());
+        }
+      }
+    }
+    ps.npm_resolver.add_package_reqs(package_refs).await?;
+  }
+
   let module_loader = CliModuleLoader::new(
     ps.clone(),
     PermissionsContainer::allow_all(),

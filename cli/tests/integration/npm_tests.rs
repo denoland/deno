@@ -195,11 +195,18 @@ itest!(cached_only {
 });
 
 itest!(import_map {
-    args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
-    output: "npm/import_map/main.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-  });
+  args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
+  output: "npm/import_map/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(import_map_eager_download {
+  args: "run --allow-read --allow-env --import-map npm/import_map_eager_download/import_map.json npm/import_map_eager_download/main.js",
+  output: "npm/import_map_eager_download/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
 
 itest!(lock_file {
     args: "run --allow-read --allow-env --lock npm/lock_file/lock.json npm/lock_file/main.js",
