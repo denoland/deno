@@ -66,7 +66,7 @@ data-url.workspace = true
 dissimilar = "=1.0.4"
 dprint-plugin-json = "=0.17.0"
 dprint-plugin-markdown = "=0.15.2"
-dprint-plugin-typescript = "=0.80.2"
+dprint-plugin-typescript = "=0.81.1"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
 eszip = "=0.33.0"
