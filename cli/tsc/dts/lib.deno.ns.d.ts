@@ -3341,7 +3341,7 @@ declare namespace Deno {
     /** If set to `true`, will append to a file instead of overwriting previous
      * contents.
      *
-     * @∂efault {false} */
+     * @default {false} */
     append?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
      * exist at the specified path.
@@ -3351,7 +3351,7 @@ declare namespace Deno {
     /** If set to `true`, no file, directory, or symlink is allowed to exist at
      * the target location. When createNew is set to `true`, `create` is ignored.
      *
-     * @∂efault {false} */
+     * @default {false} */
     createNew?: boolean;
     /** Permissions always applied to file. */
     mode?: number;

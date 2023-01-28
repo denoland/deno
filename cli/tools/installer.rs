@@ -201,7 +201,9 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
   }
 
   // There might be some extra files to delete
-  for ext in ["tsconfig.json", "lock.json"] {
+  // Note: tsconfig.json is legacy. We renamed it to deno.json.
+  // Remove cleaning it up after January 2024
+  for ext in ["tsconfig.json", "deno.json", "lock.json"] {
     let file_path = file_path.with_extension(ext);
     if file_path.exists() {
       fs::remove_file(&file_path)?;
@@ -398,7 +400,7 @@ fn resolve_shim_data(
   }
 
   if let ConfigFlag::Path(config_path) = &flags.config_flag {
-    let copy_path = get_hidden_file_with_ext(&file_path, "tsconfig.json");
+    let copy_path = get_hidden_file_with_ext(&file_path, "deno.json");
     executable_args.push("--config".to_string());
     executable_args.push(copy_path.to_str().unwrap().to_string());
     extra_files.push((
@@ -961,7 +963,7 @@ mod tests {
     );
     assert!(result.is_ok());
 
-    let config_file_name = ".echo_test.tsconfig.json";
+    let config_file_name = ".echo_test.deno.json";
 
     let file_path = bin_dir.join(config_file_name);
     assert!(file_path.exists());
@@ -1144,6 +1146,11 @@ mod tests {
 
     // create extra files
     {
+      let file_path = file_path.with_extension("deno.json");
+      File::create(file_path).unwrap();
+    }
+    {
+      // legacy tsconfig.json, make sure it's cleaned up for now
       let file_path = file_path.with_extension("tsconfig.json");
       File::create(file_path).unwrap();
     }
@@ -1157,6 +1164,7 @@ mod tests {
 
     assert!(!file_path.exists());
     assert!(!file_path.with_extension("tsconfig.json").exists());
+    assert!(!file_path.with_extension("deno.json").exists());
     assert!(!file_path.with_extension("lock.json").exists());
 
     if cfg!(windows) {
