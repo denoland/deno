@@ -1161,7 +1161,9 @@ impl Inner {
         self.maybe_import_map.clone(),
         self.maybe_config_file.as_ref(),
       );
+      self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate_all();
+      self.restart_ts_server().await;
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -3024,15 +3026,19 @@ impl Inner {
     // the language server for TypeScript (as it might hold to some stale
     // documents).
     self.diagnostics_server.invalidate_all();
+    self.restart_ts_server().await;
+    self.send_diagnostics_update();
+    self.send_testing_update();
+
+    self.performance.measure(mark);
+  }
+
+  async fn restart_ts_server(&self) {
     let _: bool = self
       .ts_server
       .request(self.snapshot(), tsc::RequestMethod::Restart)
       .await
       .unwrap();
-    self.send_diagnostics_update();
-    self.send_testing_update();
-
-    self.performance.measure(mark);
   }
 
   fn get_performance(&self) -> Value {

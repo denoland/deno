@@ -508,15 +508,11 @@ fn lsp_import_map_config_file() {
     map.insert("config".to_string(), json!("./deno.import_map.jsonc"));
     params.initialization_options = Some(Value::Object(map));
   }
-  let import_map =
-    serde_json::to_vec_pretty(&load_fixture("import-map.json")).unwrap();
-  fs::write(temp_dir.path().join("import-map.json"), import_map).unwrap();
-  fs::create_dir(temp_dir.path().join("lib")).unwrap();
-  fs::write(
-    temp_dir.path().join("lib").join("b.ts"),
-    r#"export const b = "b";"#,
-  )
-  .unwrap();
+  let import_map_text =
+    serde_json::to_string_pretty(&load_fixture("import-map.json")).unwrap();
+  temp_dir.write("import-map.json", import_map_text);
+  temp_dir.create_dir_all("lib");
+  temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let deno_exe = deno_exe_path();
   let mut client = LspClient::new(&deno_exe, false).unwrap();
