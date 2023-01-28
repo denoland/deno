@@ -97,16 +97,16 @@ impl Loader for FetchCacher {
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
   ) -> LoadFuture {
-    if let Some(package_json_main_module) = &self.package_json_main_module {
-      eprintln!("returning external {} {}", specifier.as_str(), is_dynamic);
-      if specifier == package_json_main_module {
-        return Box::pin(futures::future::ready(Ok(Some(
-          deno_graph::source::LoadResponse::External {
-            specifier: specifier.clone(),
-          },
-        ))));
-      }
-    }
+    // if let Some(package_json_main_module) = &self.package_json_main_module {
+    //   eprintln!("returning external {} {}", specifier.as_str(), is_dynamic);
+    //   if specifier == package_json_main_module {
+    //     return Box::pin(futures::future::ready(Ok(Some(
+    //       deno_graph::source::LoadResponse::External {
+    //         specifier: specifier.clone(),
+    //       },
+    //     ))));
+    //   }
+    // }
 
     if specifier.scheme() == "npm" {
       return Box::pin(futures::future::ready(
