@@ -8,6 +8,8 @@ mod lockfile;
 
 pub use self::import_map::resolve_import_map_from_specifier;
 use ::import_map::ImportMap;
+
+use crate::util::fs::canonicalize_path;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
@@ -21,6 +23,8 @@ pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
 pub use config_file::TsTypeLib;
+use deno_core::resolve_url_or_path;
+use deno_runtime::deno_node::PackageJson;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
@@ -42,11 +46,13 @@ use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -59,6 +65,64 @@ use self::config_file::FmtConfig;
 use self::config_file::LintConfig;
 use self::config_file::MaybeImportsResult;
 use self::config_file::TestConfig;
+
+fn discover_package_json(
+  flags: &Flags,
+) -> Result<Option<PackageJson>, AnyError> {
+  fn discover_from(
+    start: &Path,
+    checked: &mut HashSet<PathBuf>,
+  ) -> Result<Option<PackageJson>, AnyError> {
+    for ancestor in start.ancestors() {
+      if checked.insert(ancestor.to_path_buf()) {
+        let f = ancestor.join("package.json");
+        match PackageJson::load_skip_read_permission(f) {
+          Ok(cf) => {
+            return Ok(Some(cf));
+          }
+          Err(e) => {
+            if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
+              use std::io::ErrorKind::*;
+              match ioerr.kind() {
+                InvalidInput | PermissionDenied | NotFound => {
+                  // ok keep going
+                }
+                _ => {
+                  return Err(e); // Unknown error. Stop.
+                }
+              }
+            } else {
+              return Err(e); // Parse error or something else. Stop.
+            }
+          }
+        }
+      }
+    }
+    Ok(None)
+  }
+
+  let mut checked = HashSet::new();
+  if let Some(package_json_arg) = flags.package_json_args() {
+    if let Some(pjson) = discover_from(&package_json_arg, &mut checked)? {
+      return Ok(Some(pjson));
+    }
+  }
+
+  // attempt to resolve the config file from the task subcommand's
+  // `--cwd` when specified
+  if let crate::args::DenoSubcommand::Task(TaskFlags {
+    cwd: Some(path), ..
+  }) = &flags.subcommand
+  {
+    let task_cwd = canonicalize_path(&PathBuf::from(path))?;
+    if let Some(path) = discover_from(&task_cwd, &mut checked)? {
+      return Ok(Some(path));
+    }
+  };
+  // From CWD walk up to root looking for deno.json or deno.jsonc
+  let cwd = std::env::current_dir()?;
+  discover_from(&cwd, &mut checked)
+}
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -472,6 +536,7 @@ pub struct CliOptions {
   // application need not concern itself with, so keep these private
   flags: Flags,
   maybe_config_file: Option<ConfigFile>,
+  maybe_package_json: Option<PackageJson>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
 }
@@ -481,6 +546,7 @@ impl CliOptions {
     flags: Flags,
     maybe_config_file: Option<ConfigFile>,
     maybe_lockfile: Option<Lockfile>,
+    maybe_package_json: Option<PackageJson>,
   ) -> Self {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
@@ -501,6 +567,7 @@ impl CliOptions {
     Self {
       maybe_config_file,
       maybe_lockfile,
+      maybe_package_json,
       flags,
       overrides: Default::default(),
     }
@@ -508,9 +575,15 @@ impl CliOptions {
 
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let maybe_config_file = ConfigFile::discover(&flags)?;
+    let maybe_package_json = discover_package_json(&flags)?;
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
-    Ok(Self::new(flags, maybe_config_file, maybe_lock_file))
+    Ok(Self::new(
+      flags,
+      maybe_config_file,
+      maybe_lock_file,
+      maybe_package_json,
+    ))
   }
 
   pub fn maybe_config_file_specifier(&self) -> Option<ModuleSpecifier> {
@@ -629,6 +702,14 @@ impl CliOptions {
     )
   }
 
+  pub fn main_module(&self) -> Option<ModuleSpecifier> {
+    if let DenoSubcommand::Run(run_flags) = &self.flags.subcommand {
+      Some(resolve_url_or_path(&run_flags.script).unwrap())
+    } else {
+      None
+    }
+  }
+
   /// Resolves the storage key to use based on the current flags, config, or main module.
   pub fn resolve_storage_key(
     &self,
@@ -709,6 +790,10 @@ impl CliOptions {
 
   pub fn get_maybe_config_file(&self) -> &Option<ConfigFile> {
     &self.maybe_config_file
+  }
+
+  pub fn get_maybe_package_json(&self) -> &Option<PackageJson> {
+    &self.maybe_package_json
   }
 
   pub fn resolve_fmt_options(

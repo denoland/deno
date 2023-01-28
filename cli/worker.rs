@@ -67,15 +67,10 @@ impl CliMainWorker {
       self.maybe_setup_coverage_collector().await?;
     log::debug!("main_module {}", self.main_module);
 
-    if self.ps.options.node() {
-      // We're in Node compat mode, try to find `package.json` and load it.
-      let package_json = PackageJson::load_skip_read_permission(
-        std::env::current_dir().unwrap().join("package.json"),
-      )
-      .context("Unable to load package.json from CWD")?;
-
+    if let Some(package_json) = self.ps.options.get_maybe_package_json() {
       self.is_main_cjs = package_json.typ != "module";
 
+      // TODO(bartlomieju): could be extracted into a helper function
       if let Some(deps) = &package_json.dependencies {
         let mut reqs = vec![];
         for (key, value) in deps {

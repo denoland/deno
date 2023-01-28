@@ -3008,6 +3008,8 @@ impl Inner {
       self.maybe_config_file.clone(),
       // TODO(#16510): add support for lockfile
       None,
+      // TODO(bartlomieju):
+      None,
     );
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 

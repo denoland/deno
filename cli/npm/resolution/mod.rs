@@ -309,6 +309,9 @@ impl NpmResolution {
       } else {
         let api = self.api.clone();
         let package_name = package_req.name.clone();
+        if package_name == "." {
+          panic!();
+        }
         unresolved_tasks.push(tokio::task::spawn(async move {
           // This is ok to call because api will internally cache
           // the package information in memory.

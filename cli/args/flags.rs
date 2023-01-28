@@ -504,6 +504,21 @@ impl Flags {
     }
   }
 
+  pub fn package_json_args(&self) -> Option<PathBuf> {
+    use DenoSubcommand::*;
+
+    if let Run(RunFlags { script }) = &self.subcommand {
+      if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
+        if module_specifier.scheme() == "file" {
+          let p = module_specifier.to_file_path().unwrap();
+          return Some(p);
+        }
+      }
+    }
+
+    None
+  }
+
   pub fn has_permission(&self) -> bool {
     self.allow_all
       || self.allow_hrtime
