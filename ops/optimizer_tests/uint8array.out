@@ -171,8 +171,8 @@ fn op_import_spki_x25519_fast_fn<'scope>(
 ) -> bool {
     use deno_core::v8;
     use deno_core::_ops;
-    let key_data = unsafe { &*key_data }.get_storage_if_aligned().unwrap_unchecked();
-    let out = unsafe { &*out }.get_storage_if_aligned().unwrap_unchecked();
+    let key_data = unsafe { (&*key_data).get_storage_if_aligned().unwrap_unchecked() };
+    let out = unsafe { (&*out).get_storage_if_aligned().unwrap_unchecked() };
     let result = op_import_spki_x25519::call(key_data, out);
     result
 }
