@@ -1,9 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use deno_ast::swc::parser::error::SyntaxError;
+use deno_ast::swc::parser::token::BinOpToken;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
+use deno_ast::view::AssignOp;
 use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -16,15 +18,19 @@ use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
 use rustyline::Cmd;
 use rustyline::CompletionType;
+use rustyline::ConditionalEventHandler;
 use rustyline::Config;
 use rustyline::Context;
 use rustyline::Editor;
+use rustyline::Event;
+use rustyline::EventContext;
 use rustyline::EventHandler;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
-use rustyline::{ConditionalEventHandler, Event, EventContext, RepeatCount};
-use rustyline_derive::{Helper, Hinter};
+use rustyline::RepeatCount;
+use rustyline_derive::Helper;
+use rustyline_derive::Hinter;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -229,58 +235,79 @@ impl Validator for EditorHelper {
     &self,
     ctx: &mut ValidationContext,
   ) -> Result<ValidationResult, ReadlineError> {
-    let mut stack: Vec<Token> = Vec::new();
-    let mut in_template = false;
+    Ok(validate(ctx.input()))
+  }
+}
 
-    for item in deno_ast::lex(ctx.input(), deno_ast::MediaType::TypeScript) {
-      if let deno_ast::TokenOrComment::Token(token) = item.inner {
-        match token {
-          Token::BackQuote => in_template = !in_template,
-          Token::LParen
-          | Token::LBracket
-          | Token::LBrace
-          | Token::DollarLBrace => stack.push(token),
-          Token::RParen | Token::RBracket | Token::RBrace => {
-            match (stack.pop(), token) {
-              (Some(Token::LParen), Token::RParen)
-              | (Some(Token::LBracket), Token::RBracket)
-              | (Some(Token::LBrace), Token::RBrace)
-              | (Some(Token::DollarLBrace), Token::RBrace) => {}
-              (Some(left), _) => {
-                return Ok(ValidationResult::Invalid(Some(format!(
-                  "Mismatched pairs: {:?} is not properly closed",
-                  left
-                ))))
-              }
-              (None, _) => {
-                // While technically invalid when unpaired, it should be V8's task to output error instead.
-                // Thus marked as valid with no info.
-                return Ok(ValidationResult::Valid(None));
-              }
-            }
+fn validate(input: &str) -> ValidationResult {
+  let line_info = text_lines::TextLines::new(input);
+  let mut stack: Vec<Token> = Vec::new();
+  let mut in_template = false;
+  let mut div_token_count_on_current_line = 0;
+  let mut last_line_index = 0;
+
+  for item in deno_ast::lex(input, deno_ast::MediaType::TypeScript) {
+    let current_line_index = line_info.line_index(item.range.start);
+    if current_line_index != last_line_index {
+      div_token_count_on_current_line = 0;
+      last_line_index = current_line_index;
+    }
+    if let deno_ast::TokenOrComment::Token(token) = item.inner {
+      match token {
+        Token::BinOp(BinOpToken::Div)
+        | Token::AssignOp(AssignOp::DivAssign) => {
+          // it's too complicated to write code to detect regular expression literals
+          // which are no longer tokenized, so if a `/` or `/=` happens twice on the same
+          // line, then we bail
+          div_token_count_on_current_line += 1;
+          if div_token_count_on_current_line >= 2 {
+            return ValidationResult::Valid(None);
           }
-          Token::Error(error) => {
-            match error.kind() {
-              // If there is unterminated template, it continues to read input.
-              SyntaxError::UnterminatedTpl => {}
-              _ => {
-                // If it failed parsing, it should be V8's task to output error instead.
-                // Thus marked as valid with no info.
-                return Ok(ValidationResult::Valid(None));
-              }
-            }
-          }
-          _ => {}
         }
+        Token::BackQuote => in_template = !in_template,
+        Token::LParen
+        | Token::LBracket
+        | Token::LBrace
+        | Token::DollarLBrace => stack.push(token),
+        Token::RParen | Token::RBracket | Token::RBrace => {
+          match (stack.pop(), token) {
+            (Some(Token::LParen), Token::RParen)
+            | (Some(Token::LBracket), Token::RBracket)
+            | (Some(Token::LBrace), Token::RBrace)
+            | (Some(Token::DollarLBrace), Token::RBrace) => {}
+            (Some(left), _) => {
+              return ValidationResult::Invalid(Some(format!(
+                "Mismatched pairs: {left:?} is not properly closed"
+              )))
+            }
+            (None, _) => {
+              // While technically invalid when unpaired, it should be V8's task to output error instead.
+              // Thus marked as valid with no info.
+              return ValidationResult::Valid(None);
+            }
+          }
+        }
+        Token::Error(error) => {
+          match error.kind() {
+            // If there is unterminated template, it continues to read input.
+            SyntaxError::UnterminatedTpl => {}
+            _ => {
+              // If it failed parsing, it should be V8's task to output error instead.
+              // Thus marked as valid with no info.
+              return ValidationResult::Valid(None);
+            }
+          }
+        }
+        _ => {}
       }
     }
-
-    if !stack.is_empty() || in_template {
-      return Ok(ValidationResult::Incomplete);
-    }
-
-    Ok(ValidationResult::Valid(None))
   }
+
+  if !stack.is_empty() || in_template {
+    return ValidationResult::Incomplete;
+  }
+
+  ValidationResult::Valid(None)
 }
 
 impl Highlighter for EditorHelper {
@@ -372,6 +399,7 @@ pub struct ReplEditor {
   inner: Arc<Mutex<Editor<EditorHelper>>>,
   history_file_path: PathBuf,
   errored_on_history_save: Arc<AtomicBool>,
+  should_exit_on_interrupt: Arc<AtomicBool>,
 }
 
 impl ReplEditor {
@@ -395,6 +423,13 @@ impl ReplEditor {
       KeyEvent(KeyCode::Tab, Modifiers::NONE),
       EventHandler::Conditional(Box::new(TabEventHandler)),
     );
+    let should_exit_on_interrupt = Arc::new(AtomicBool::new(false));
+    editor.bind_sequence(
+      KeyEvent(KeyCode::Char('r'), Modifiers::CTRL),
+      EventHandler::Conditional(Box::new(ReverseSearchHistoryEventHandler {
+        should_exit_on_interrupt: should_exit_on_interrupt.clone(),
+      })),
+    );
 
     let history_file_dir = history_file_path.parent().unwrap();
     std::fs::create_dir_all(history_file_dir).with_context(|| {
@@ -408,6 +443,7 @@ impl ReplEditor {
       inner: Arc::new(Mutex::new(editor)),
       history_file_path,
       errored_on_history_save: Arc::new(AtomicBool::new(false)),
+      should_exit_on_interrupt,
     })
   }
 
@@ -423,8 +459,33 @@ impl ReplEditor {
       }
 
       self.errored_on_history_save.store(true, Relaxed);
-      eprintln!("Unable to save history file: {}", e);
+      eprintln!("Unable to save history file: {e}");
     }
+  }
+
+  pub fn should_exit_on_interrupt(&self) -> bool {
+    self.should_exit_on_interrupt.load(Relaxed)
+  }
+
+  pub fn set_should_exit_on_interrupt(&self, yes: bool) {
+    self.should_exit_on_interrupt.store(yes, Relaxed);
+  }
+}
+
+/// Command to reverse search history , same as rustyline default C-R but that resets repl should_exit flag to false
+struct ReverseSearchHistoryEventHandler {
+  should_exit_on_interrupt: Arc<AtomicBool>,
+}
+impl ConditionalEventHandler for ReverseSearchHistoryEventHandler {
+  fn handle(
+    &self,
+    _: &Event,
+    _: RepeatCount,
+    _: bool,
+    _: &EventContext,
+  ) -> Option<Cmd> {
+    self.should_exit_on_interrupt.store(false, Relaxed);
+    Some(Cmd::ReverseSearchHistory)
   }
 }
 
@@ -464,5 +525,26 @@ impl ConditionalEventHandler for TabEventHandler {
     } else {
       None // default complete
     }
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use rustyline::validate::ValidationResult;
+
+  use super::validate;
+
+  #[test]
+  fn validate_only_one_forward_slash_per_line() {
+    let code = r#"function test(arr){
+if( arr.length <= 1) return arr.map(a => a / 2)
+let left = test( arr.slice( 0 , arr.length/2 ) )"#;
+    assert!(matches!(validate(code), ValidationResult::Incomplete));
+  }
+
+  #[test]
+  fn validate_regex_looking_code() {
+    let code = r#"/testing/;"#;
+    assert!(matches!(validate(code), ValidationResult::Valid(_)));
   }
 }

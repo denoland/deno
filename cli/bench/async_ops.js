@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 const queueMicrotask = globalThis.queueMicrotask || process.nextTick;
 let [total, count] = typeof Deno !== "undefined"
   ? Deno.args
@@ -16,5 +16,5 @@ async function bench(fun) {
   if (--total) queueMicrotask(() => bench(fun));
 }
 
-const { ops } = Deno.core;
+const { ops } = Deno[Deno.internal].core;
 bench(() => ops.op_void_async());

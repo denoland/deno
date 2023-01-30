@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::sync::Arc;
 
@@ -6,7 +6,6 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
-use deno_graph::ModuleKind;
 use deno_runtime::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -55,10 +54,10 @@ pub struct CheckResult {
 /// It is expected that it is determined if a check and/or emit is validated
 /// before the function is called.
 pub fn check(
-  roots: &[(ModuleSpecifier, ModuleKind)],
+  roots: &[ModuleSpecifier],
   graph_data: Arc<RwLock<GraphData>>,
   cache: &TypeCheckCache,
-  npm_resolver: NpmPackageResolver,
+  npm_resolver: &NpmPackageResolver,
   options: CheckOptions,
 ) -> Result<CheckResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
@@ -78,11 +77,11 @@ pub fn check(
 
   let root_names = get_tsc_roots(&segment_graph_data, check_js);
   if options.log_checks {
-    for (root, _) in roots {
-      let root_str = root.to_string();
+    for root in roots {
+      let root_str = root.as_str();
       // `$deno` specifiers are internal, don't print them.
       if !root_str.contains("$deno") {
-        log::info!("{} {}", colors::green("Check"), root);
+        log::info!("{} {}", colors::green("Check"), root_str);
       }
     }
   }
@@ -92,7 +91,7 @@ pub fn check(
   let maybe_tsbuildinfo = if options.reload {
     None
   } else {
-    cache.get_tsbuildinfo(&roots[0].0)
+    cache.get_tsbuildinfo(&roots[0])
   };
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
@@ -116,12 +115,20 @@ pub fn check(
   let diagnostics = if options.type_check_mode == TypeCheckMode::Local {
     response.diagnostics.filter(|d| {
       if let Some(file_name) = &d.file_name {
-        !file_name.starts_with("http")
-          && ModuleSpecifier::parse(file_name)
+        if !file_name.starts_with("http") {
+          if ModuleSpecifier::parse(file_name)
             .map(|specifier| !npm_resolver.in_npm_package(&specifier))
             .unwrap_or(true)
+          {
+            Some(d.clone())
+          } else {
+            None
+          }
+        } else {
+          None
+        }
       } else {
-        true
+        Some(d.clone())
       }
     })
   } else {
@@ -129,7 +136,7 @@ pub fn check(
   };
 
   if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
-    cache.set_tsbuildinfo(&roots[0].0, &tsbuildinfo);
+    cache.set_tsbuildinfo(&roots[0], &tsbuildinfo);
   }
 
   if diagnostics.is_empty() {
@@ -225,10 +232,16 @@ fn get_tsc_roots(
   graph_data: &GraphData,
   check_js: bool,
 ) -> Vec<(ModuleSpecifier, MediaType)> {
-  graph_data
-    .entries()
-    .into_iter()
-    .filter_map(|(specifier, module_entry)| match module_entry {
+  let mut result = Vec::new();
+  if graph_data.has_node_builtin_specifier() {
+    // inject a specifier that will resolve node types
+    result.push((
+      ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
+      MediaType::Dts,
+    ));
+  }
+  result.extend(graph_data.entries().into_iter().filter_map(
+    |(specifier, module_entry)| match module_entry {
       ModuleEntry::Module {
         media_type, code, ..
       } => match media_type {
@@ -245,8 +258,9 @@ fn get_tsc_roots(
         _ => None,
       },
       _ => None,
-    })
-    .collect()
+    },
+  ));
+  result
 }
 
 /// Matches the `@ts-check` pragma.

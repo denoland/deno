@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -14,7 +14,6 @@ use deno_graph::Dependency;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
-use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::colors;
 
@@ -34,7 +33,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
-    let graph = ps.create_graph(vec![(specifier, ModuleKind::Esm)]).await?;
+    let graph = ps.create_graph(vec![specifier]).await?;
 
     if info_flags.json {
       let mut json_graph = json!(graph);
@@ -70,7 +69,7 @@ fn print_cache_info(
 
   if let Some(location) = &location {
     origin_dir =
-      origin_dir.join(&checksum::gen(&[location.to_string().as_bytes()]));
+      origin_dir.join(checksum::gen(&[location.to_string().as_bytes()]));
   }
 
   let local_storage_dir = origin_dir.join("local_storage");
@@ -267,10 +266,7 @@ fn print_tree_node<TWrite: Write>(
       writeln!(
         writer,
         "{} {}",
-        colors::gray(format!(
-          "{}{}─{}",
-          prefix, sibling_connector, child_connector
-        )),
+        colors::gray(format!("{prefix}{sibling_connector}─{child_connector}")),
         child.text
       )?;
       let child_prefix = format!(
@@ -395,7 +391,7 @@ impl<'a> GraphDisplayContext<'a> {
       );
     }
 
-    let root_specifier = self.graph.resolve(&self.graph.roots[0].0);
+    let root_specifier = self.graph.resolve(&self.graph.roots[0]);
     match self.graph.try_get(&root_specifier) {
       Ok(Some(root)) => {
         if let Some(cache_info) = root.maybe_cache_info.as_ref() {
@@ -526,11 +522,9 @@ impl<'a> GraphDisplayContext<'a> {
         Specifier(_) => specifier_str,
       };
       let maybe_size = match &package_or_specifier {
-        Package(package) => self
-          .npm_info
-          .package_sizes
-          .get(&package.id)
-          .map(|s| *s as u64),
+        Package(package) => {
+          self.npm_info.package_sizes.get(&package.id).copied()
+        }
         Specifier(_) => module
           .maybe_source
           .as_ref()

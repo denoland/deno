@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
@@ -11,7 +11,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::sync::Arc;
 
 mod check;
@@ -42,17 +42,17 @@ pub const CACHE_PERM: u32 = 0o644;
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
   emit_cache: EmitCache,
-  dynamic_permissions: Permissions,
+  dynamic_permissions: PermissionsContainer,
   file_fetcher: Arc<FileFetcher>,
-  root_permissions: Permissions,
+  root_permissions: PermissionsContainer,
 }
 
 impl FetchCacher {
   pub fn new(
     emit_cache: EmitCache,
     file_fetcher: FileFetcher,
-    root_permissions: Permissions,
-    dynamic_permissions: Permissions,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
   ) -> Self {
     let file_fetcher = Arc::new(file_fetcher);
 
@@ -67,7 +67,7 @@ impl FetchCacher {
 
 impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
-    if specifier.scheme() == "npm" {
+    if matches!(specifier.scheme(), "npm" | "node") {
       return None;
     }
 
@@ -103,8 +103,27 @@ impl Loader for FetchCacher {
       ));
     }
 
-    let specifier = specifier.clone();
-    let mut permissions = if is_dynamic {
+    let specifier =
+      if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
+        if module_name == "module" {
+          // the source code for "node:module" is built-in rather than
+          // being from deno_std like the other modules
+          return Box::pin(futures::future::ready(Ok(Some(
+            deno_graph::source::LoadResponse::External {
+              specifier: specifier.clone(),
+            },
+          ))));
+        }
+
+        match crate::node::resolve_builtin_node_module(module_name) {
+          Ok(specifier) => specifier,
+          Err(err) => return Box::pin(futures::future::ready(Err(err))),
+        }
+      } else {
+        specifier.clone()
+      };
+
+    let permissions = if is_dynamic {
       self.dynamic_permissions.clone()
     } else {
       self.root_permissions.clone()
@@ -113,7 +132,7 @@ impl Loader for FetchCacher {
 
     async move {
       file_fetcher
-        .fetch(&specifier, &mut permissions)
+        .fetch(&specifier, permissions)
         .await
         .map_or_else(
           |err| {

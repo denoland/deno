@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::collectors::TestCollector;
 use super::definitions::TestDefinitions;
@@ -105,7 +105,10 @@ impl TestServer {
                   if let Some(Ok(parsed_source)) =
                     document.maybe_parsed_source()
                   {
-                    let mut collector = TestCollector::new(specifier.clone());
+                    let mut collector = TestCollector::new(
+                      specifier.clone(),
+                      parsed_source.text_info().clone(),
+                    );
                     parsed_source.module().visit_with(&mut collector);
                     let test_definitions = TestDefinitions {
                       discovered: collector.take(),

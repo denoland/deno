@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -28,7 +28,7 @@ mod specifier;
 
 use graph::Graph;
 pub use snapshot::NpmResolutionSnapshot;
-pub use specifier::resolve_npm_package_reqs;
+pub use specifier::resolve_graph_npm_info;
 pub use specifier::NpmPackageReference;
 pub use specifier::NpmPackageReq;
 
@@ -112,7 +112,7 @@ impl NpmPackageId {
       let (input, version) = parse_version(input)?;
       match NpmVersion::parse(version) {
         Ok(version) => Ok((input, (name.to_string(), version))),
-        Err(err) => ParseError::fail(at_version_input, format!("{:#}", err)),
+        Err(err) => ParseError::fail(at_version_input, format!("{err:#}")),
       }
     }
 
@@ -173,7 +173,7 @@ impl NpmPackageId {
     }
 
     with_failure_handling(parse_id_at_level(0))(id)
-      .with_context(|| format!("Invalid npm package id '{}'.", id))
+      .with_context(|| format!("Invalid npm package id '{id}'."))
   }
 
   pub fn display(&self) -> String {
@@ -210,7 +210,7 @@ impl NpmResolutionPackage {
 pub struct NpmResolution {
   api: RealNpmRegistryApi,
   snapshot: RwLock<NpmResolutionSnapshot>,
-  update_sempahore: tokio::sync::Semaphore,
+  update_semaphore: tokio::sync::Semaphore,
 }
 
 impl std::fmt::Debug for NpmResolution {
@@ -230,7 +230,7 @@ impl NpmResolution {
     Self {
       api,
       snapshot: RwLock::new(initial_snapshot.unwrap_or_default()),
-      update_sempahore: tokio::sync::Semaphore::new(1),
+      update_semaphore: tokio::sync::Semaphore::new(1),
     }
   }
 
@@ -239,7 +239,7 @@ impl NpmResolution {
     package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
-    let _permit = self.update_sempahore.acquire().await.unwrap();
+    let _permit = self.update_semaphore.acquire().await?;
     let snapshot = self.snapshot.read().clone();
 
     let snapshot = self
@@ -255,7 +255,7 @@ impl NpmResolution {
     package_reqs: HashSet<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
-    let _permit = self.update_sempahore.acquire().await.unwrap();
+    let _permit = self.update_semaphore.acquire().await?;
     let snapshot = self.snapshot.read().clone();
 
     let has_removed_package = !snapshot
@@ -382,10 +382,6 @@ impl NpmResolution {
       .cloned()
   }
 
-  pub fn all_packages(&self) -> Vec<NpmResolutionPackage> {
-    self.snapshot.read().all_packages()
-  }
-
   pub fn all_packages_partitioned(&self) -> NpmPackagesPartitioned {
     self.snapshot.read().all_packages_partitioned()
   }
@@ -398,16 +394,16 @@ impl NpmResolution {
     self.snapshot.read().clone()
   }
 
-  pub fn lock(
-    &self,
-    lockfile: &mut Lockfile,
-    snapshot: &NpmResolutionSnapshot,
-  ) -> Result<(), AnyError> {
+  pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+    let snapshot = self.snapshot.read();
     for (package_req, package_id) in snapshot.package_reqs.iter() {
-      lockfile.insert_npm_specifier(package_req, package_id);
+      lockfile.insert_npm_specifier(
+        package_req.to_string(),
+        package_id.as_serialized(),
+      );
     }
-    for package in self.all_packages() {
-      lockfile.check_or_insert_npm_package(&package)?;
+    for package in snapshot.all_packages() {
+      lockfile.check_or_insert_npm_package(package.into())?;
     }
     Ok(())
   }

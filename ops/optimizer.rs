@@ -1,16 +1,34 @@
-/// Optimizer for #[op]
-use crate::Op;
-use pmutil::{q, Quote};
-use proc_macro2::TokenStream;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+//! Optimizer for #[op]
+
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Formatter;
-use syn::{
-  parse_quote, punctuated::Punctuated, token::Colon2,
-  AngleBracketedGenericArguments, FnArg, GenericArgument, PatType, Path,
-  PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypePtr,
-  TypeReference, TypeSlice, TypeTuple,
-};
+
+use pmutil::q;
+use pmutil::Quote;
+use proc_macro2::TokenStream;
+
+use syn::parse_quote;
+use syn::punctuated::Punctuated;
+use syn::token::Colon2;
+use syn::AngleBracketedGenericArguments;
+use syn::FnArg;
+use syn::GenericArgument;
+use syn::PatType;
+use syn::Path;
+use syn::PathArguments;
+use syn::PathSegment;
+use syn::ReturnType;
+use syn::Signature;
+use syn::Type;
+use syn::TypePath;
+use syn::TypePtr;
+use syn::TypeReference;
+use syn::TypeSlice;
+use syn::TypeTuple;
+
+use crate::Op;
 
 #[derive(Debug)]
 pub(crate) enum BailoutReason {
@@ -20,19 +38,11 @@ pub(crate) enum BailoutReason {
 }
 
 #[derive(Debug, PartialEq)]
-enum StringType {
-  Cow,
-  Ref,
-  Owned,
-}
-
-#[derive(Debug, PartialEq)]
 enum TransformKind {
   // serde_v8::Value
   V8Value,
   SliceU32(bool),
   SliceU8(bool),
-  SeqOneByteString(StringType),
   PtrU8,
   WasmMemory,
 }
@@ -55,13 +65,6 @@ impl Transform {
   fn slice_u8(index: usize, is_mut: bool) -> Self {
     Transform {
       kind: TransformKind::SliceU8(is_mut),
-      index,
-    }
-  }
-
-  fn seq_one_byte_string(index: usize, is_ref: StringType) -> Self {
-    Transform {
-      kind: TransformKind::SeqOneByteString(is_ref),
       index,
     }
   }
@@ -123,6 +126,10 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u32> };
 
         q!(Vars { var: &ident }, {
+          // V8 guarantees that ArrayBuffers are always 4-byte aligned
+          // (seems to be always 8-byte aligned on 64-bit machines)
+          // but Deno FFI makes it possible to create ArrayBuffers at any
+          // alignment. Thus this check is needed.
           let var = match unsafe { &*var }.get_storage_if_aligned() {
             Some(v) => v,
             None => {
@@ -138,32 +145,14 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
 
         q!(Vars { var: &ident }, {
-          let var = match unsafe { &*var }.get_storage_if_aligned() {
-            Some(v) => v,
-            None => {
-              unsafe { &mut *fast_api_callback_options }.fallback = true;
-              return Default::default();
-            }
-          };
+          // SAFETY: U8 slice is always byte-aligned.
+          let var =
+            unsafe { (&*var).get_storage_if_aligned().unwrap_unchecked() };
         })
-      }
-      // &str
-      TransformKind::SeqOneByteString(str_ty) => {
-        *ty = parse_quote! { *const #core::v8::fast_api::FastApiOneByteString };
-        match str_ty {
-          StringType::Ref => q!(Vars { var: &ident }, {
-            let var = unsafe { &*var }.as_str();
-          }),
-          StringType::Cow => q!(Vars { var: &ident }, {
-            let var = ::std::borrow::Cow::Borrowed(unsafe { &*var }.as_str());
-          }),
-          StringType::Owned => q!(Vars { var: &ident }, {
-            let var = unsafe { &*var }.as_str().to_owned();
-          }),
-        }
       }
       TransformKind::WasmMemory => {
         // Note: `ty` is correctly set to __opts by the fast call tier.
+        // U8 slice is always byte-aligned.
         q!(Vars { var: &ident, core }, {
           let var = unsafe {
             &*(__opts.wasm_memory
@@ -178,13 +167,10 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
 
         q!(Vars { var: &ident }, {
-          let var = match unsafe { &*var }.get_storage_if_aligned() {
-            Some(v) => v.as_ptr(),
-            None => {
-              unsafe { &mut *fast_api_callback_options }.fallback = true;
-              return Default::default();
-            }
-          };
+          // SAFETY: U8 slice is always byte-aligned.
+          let var =
+            unsafe { (&*var).get_storage_if_aligned().unwrap_unchecked() }
+              .as_ptr();
         })
       }
     }
@@ -228,7 +214,6 @@ pub(crate) enum FastValue {
   V8Value,
   Uint8Array,
   Uint32Array,
-  SeqOneByteString,
 }
 
 impl Default for FastValue {
@@ -486,7 +471,6 @@ impl Optimizer {
                         match segment {
                           // Is `T` a u8?
                           PathSegment { ident, .. } if ident == "u8" => {
-                            self.needs_fast_callback_option = true;
                             assert!(self
                               .transforms
                               .insert(index, Transform::wasm_memory(index))
@@ -581,58 +565,10 @@ impl Optimizer {
                 }
               }
             }
-            // Cow<'_, str>
-            PathSegment {
-              ident, arguments, ..
-            } if ident == "Cow" => {
-              if let PathArguments::AngleBracketed(
-                AngleBracketedGenericArguments { args, .. },
-              ) = arguments
-              {
-                assert_eq!(args.len(), 2);
-
-                let ty = &args[1];
-                match ty {
-                  GenericArgument::Type(Type::Path(TypePath {
-                    path: Path { segments, .. },
-                    ..
-                  })) => {
-                    let segment = single_segment(segments)?;
-                    match segment {
-                      PathSegment { ident, .. } if ident == "str" => {
-                        self.fast_parameters.push(FastValue::SeqOneByteString);
-                        assert!(self
-                          .transforms
-                          .insert(
-                            index,
-                            Transform::seq_one_byte_string(
-                              index,
-                              StringType::Cow
-                            )
-                          )
-                          .is_none());
-                      }
-                      _ => return Err(BailoutReason::FastUnsupportedParamType),
-                    }
-                  }
-                  _ => return Err(BailoutReason::FastUnsupportedParamType),
-                }
-              }
-            }
             // Is `T` a fast scalar?
             PathSegment { ident, .. } => {
               if let Some(val) = get_fast_scalar(ident.to_string().as_str()) {
                 self.fast_parameters.push(val);
-              } else if ident == "String" {
-                // Is `T` an owned String?
-                self.fast_parameters.push(FastValue::SeqOneByteString);
-                assert!(self
-                  .transforms
-                  .insert(
-                    index,
-                    Transform::seq_one_byte_string(index, StringType::Owned)
-                  )
-                  .is_none());
               } else {
                 return Err(BailoutReason::FastUnsupportedParamType);
               }
@@ -655,17 +591,6 @@ impl Optimizer {
               {
                 self.has_ref_opstate = true;
               }
-              // Is `T` a str?
-              PathSegment { ident, .. } if ident == "str" => {
-                self.fast_parameters.push(FastValue::SeqOneByteString);
-                assert!(self
-                  .transforms
-                  .insert(
-                    index,
-                    Transform::seq_one_byte_string(index, StringType::Ref)
-                  )
-                  .is_none());
-              }
               _ => return Err(BailoutReason::FastUnsupportedParamType),
             }
           }
@@ -680,7 +605,6 @@ impl Optimizer {
               match segment {
                 // Is `T` a u8?
                 PathSegment { ident, .. } if ident == "u8" => {
-                  self.needs_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint8Array);
                   assert!(self
                     .transforms
@@ -717,7 +641,6 @@ impl Optimizer {
             match segment {
               // Is `T` a u8?
               PathSegment { ident, .. } if ident == "u8" => {
-                self.needs_fast_callback_option = true;
                 self.fast_parameters.push(FastValue::Uint8Array);
                 assert!(self
                   .transforms
@@ -763,7 +686,8 @@ fn double_segment(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{Attributes, Op};
+  use crate::Attributes;
+  use crate::Op;
   use std::path::PathBuf;
   use syn::parse_quote;
 
@@ -806,7 +730,7 @@ mod tests {
     let mut op = Op::new(item, attrs);
     let mut optimizer = Optimizer::new();
     if let Err(e) = optimizer.analyze(&mut op) {
-      let e_str = format!("{:?}", e);
+      let e_str = format!("{e:?}");
       if update_expected {
         std::fs::write(input.with_extension("expected"), e_str)
           .expect("Failed to write expected file");
@@ -819,11 +743,11 @@ mod tests {
     if update_expected {
       std::fs::write(
         input.with_extension("expected"),
-        format!("{:#?}", optimizer),
+        format!("{optimizer:#?}"),
       )
       .expect("Failed to write expected file");
     } else {
-      assert_eq!(format!("{:#?}", optimizer), expected);
+      assert_eq!(format!("{optimizer:#?}"), expected);
     }
   }
 }

@@ -1,18 +1,20 @@
-use async_trait::async_trait;
-use deno_core::error::type_error;
-use deno_core::op;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::parking_lot::Mutex;
-use deno_core::url::Url;
-use deno_core::ZeroCopyBuf;
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
+use deno_core::ZeroCopyBuf;
+use serde::Deserialize;
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::Location;
@@ -47,13 +49,10 @@ impl BlobStore {
     parts.remove(id)
   }
 
-  pub fn get_object_url(
-    &self,
-    mut url: Url,
-  ) -> Result<Option<Arc<Blob>>, AnyError> {
+  pub fn get_object_url(&self, mut url: Url) -> Option<Arc<Blob>> {
     let blob_store = self.object_urls.lock();
     url.set_fragment(None);
-    Ok(blob_store.get(&url).cloned())
+    blob_store.get(&url).cloned()
   }
 
   pub fn insert_object_url(
@@ -67,7 +66,7 @@ impl BlobStore {
       "null".to_string()
     };
     let id = Uuid::new_v4();
-    let url = Url::parse(&format!("blob:{}/{}", origin, id)).unwrap();
+    let url = Url::parse(&format!("blob:{origin}/{id}")).unwrap();
 
     let mut blob_store = self.object_urls.lock();
     blob_store.insert(url.clone(), Arc::new(blob));
@@ -252,9 +251,9 @@ pub fn op_blob_create_object_url(
 #[op]
 pub fn op_blob_revoke_object_url(
   state: &mut deno_core::OpState,
-  url: &str,
+  url: String,
 ) -> Result<(), AnyError> {
-  let url = Url::parse(url)?;
+  let url = Url::parse(&url)?;
   let blob_store = state.borrow::<BlobStore>();
   blob_store.remove_object_url(&url);
   Ok(())
@@ -285,7 +284,7 @@ pub fn op_blob_from_object_url(
   let blob_store = state.try_borrow::<BlobStore>().ok_or_else(|| {
     type_error("Blob URLs are not supported in this context.")
   })?;
-  if let Some(blob) = blob_store.get_object_url(url)? {
+  if let Some(blob) = blob_store.get_object_url(url) {
     let parts = blob
       .parts
       .iter()

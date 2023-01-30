@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -10,6 +10,7 @@
   const {
     ArrayPrototypeMap,
     ObjectEntries,
+    ObjectPrototypeIsPrototypeOf,
     String,
     TypeError,
     PromisePrototypeThen,
@@ -21,6 +22,7 @@
     readableStreamForRidUnrefable,
     readableStreamForRidUnrefableRef,
     readableStreamForRidUnrefableUnref,
+    ReadableStreamPrototype,
     writableStreamForRid,
   } = window.__bootstrap.streams;
 
@@ -65,7 +67,9 @@
   }
 
   function collectOutput(readableStream) {
-    if (!(readableStream instanceof ReadableStream)) {
+    if (
+      !(ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, readableStream))
+    ) {
       return null;
     }
 
@@ -168,7 +172,7 @@
         );
       }
 
-      const [status, stdout, stderr] = await SafePromiseAll([
+      const { 0: status, 1: stdout, 2: stderr } = await SafePromiseAll([
         this.#status,
         collectOutput(this.#stdout),
         collectOutput(this.#stderr),
@@ -311,6 +315,7 @@
           ...(this.#options ?? {}),
           stdout: this.#options?.stdout ?? "inherit",
           stderr: this.#options?.stderr ?? "inherit",
+          stdin: this.#options?.stdin ?? "inherit",
         };
         return spawnChild(this.#command, options);
       }

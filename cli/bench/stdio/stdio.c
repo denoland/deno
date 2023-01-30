@@ -1,5 +1,5 @@
 // From https://github.com/just-js/benchmarks/tree/main/01-stdio
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 #include <stdlib.h>
 #include <stdio.h>

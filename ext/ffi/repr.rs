@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::check_unstable;
 use crate::FfiPermissions;
@@ -301,9 +301,7 @@ where
   }
 
   // SAFETY: ptr and offset are user provided.
-  Ok(unsafe {
-    ptr::read_unaligned::<u32>(ptr.add(offset) as *const u32) as u32
-  })
+  Ok(unsafe { ptr::read_unaligned::<u32>(ptr.add(offset) as *const u32) })
 }
 
 #[op(fast)]
@@ -327,9 +325,7 @@ where
   }
 
   // SAFETY: ptr and offset are user provided.
-  Ok(unsafe {
-    ptr::read_unaligned::<i32>(ptr.add(offset) as *const i32) as i32
-  })
+  Ok(unsafe { ptr::read_unaligned::<i32>(ptr.add(offset) as *const i32) })
 }
 
 #[op]

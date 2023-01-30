@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod common;
 mod global;
@@ -11,6 +11,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
@@ -94,59 +95,51 @@ impl NpmPackageResolver {
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
   ) -> Self {
-    Self::new_with_maybe_snapshot(
+    Self::new_inner(cache, api, no_npm, local_node_modules_path, None, None)
+  }
+
+  pub async fn new_with_maybe_lockfile(
+    cache: NpmCache,
+    api: RealNpmRegistryApi,
+    no_npm: bool,
+    local_node_modules_path: Option<PathBuf>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  ) -> Result<Self, AnyError> {
+    let maybe_snapshot = if let Some(lockfile) = &maybe_lockfile {
+      if lockfile.lock().overwrite {
+        None
+      } else {
+        Some(
+          NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &api)
+            .await
+            .with_context(|| {
+              format!(
+                "failed reading lockfile '{}'",
+                lockfile.lock().filename.display()
+              )
+            })?,
+        )
+      }
+    } else {
+      None
+    };
+    Ok(Self::new_inner(
       cache,
       api,
       no_npm,
       local_node_modules_path,
-      None,
-    )
+      maybe_snapshot,
+      maybe_lockfile,
+    ))
   }
 
-  /// This function will replace current resolver with a new one built from a
-  /// snapshot created out of the lockfile.
-  pub async fn add_lockfile_and_maybe_regenerate_snapshot(
-    &mut self,
-    lockfile: Arc<Mutex<Lockfile>>,
-  ) -> Result<(), AnyError> {
-    self.maybe_lockfile = Some(lockfile.clone());
-
-    if lockfile.lock().overwrite {
-      return Ok(());
-    }
-
-    let snapshot =
-      NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &self.api)
-        .await
-        .with_context(|| {
-          format!(
-            "failed reading lockfile '{}'",
-            lockfile.lock().filename.display()
-          )
-        })?;
-    if let Some(node_modules_folder) = &self.local_node_modules_path {
-      self.inner = Arc::new(LocalNpmPackageResolver::new(
-        self.cache.clone(),
-        self.api.clone(),
-        node_modules_folder.clone(),
-        Some(snapshot),
-      ));
-    } else {
-      self.inner = Arc::new(GlobalNpmPackageResolver::new(
-        self.cache.clone(),
-        self.api.clone(),
-        Some(snapshot),
-      ));
-    }
-    Ok(())
-  }
-
-  fn new_with_maybe_snapshot(
+  fn new_inner(
     cache: NpmCache,
     api: RealNpmRegistryApi,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
     initial_snapshot: Option<NpmResolutionSnapshot>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
     let process_npm_state = NpmProcessState::take();
     let local_node_modules_path = local_node_modules_path.or_else(|| {
@@ -176,7 +169,7 @@ impl NpmPackageResolver {
       local_node_modules_path,
       api,
       cache,
-      maybe_lockfile: None,
+      maybe_lockfile,
     }
   }
 
@@ -263,19 +256,19 @@ impl NpmPackageResolver {
         .iter()
         .collect::<HashSet<_>>() // prevent duplicates
         .iter()
-        .map(|p| format!("\"{}\"", p))
+        .map(|p| format!("\"{p}\""))
         .collect::<Vec<_>>()
         .join(", ");
       return Err(custom_error(
         "NoNpm",
         format!(
-          "Following npm specifiers were requested: {}; but --no-npm is specified.",
-          fmt_reqs
+          "Following npm specifiers were requested: {fmt_reqs}; but --no-npm is specified."
         ),
       ));
     }
 
     self.inner.add_package_reqs(packages).await?;
+    self.inner.cache_packages().await?;
 
     // If there's a lock file, update it with all discovered npm packages
     if let Some(lockfile_mutex) = &self.maybe_lockfile {
@@ -287,6 +280,8 @@ impl NpmPackageResolver {
   }
 
   /// Sets package requirements to the resolver, removing old requirements and adding new ones.
+  ///
+  /// This will retrieve and resolve package information, but not cache any package files.
   pub async fn set_package_reqs(
     &self,
     packages: HashSet<NpmPackageReq>,
@@ -316,12 +311,13 @@ impl NpmPackageResolver {
 
   /// Gets a new resolver with a new snapshotted state.
   pub fn snapshotted(&self) -> Self {
-    Self::new_with_maybe_snapshot(
+    Self::new_inner(
       self.cache.clone(),
       self.api.clone(),
       self.no_npm,
       self.local_node_modules_path.clone(),
       Some(self.snapshot()),
+      None,
     )
   }
 
@@ -331,6 +327,19 @@ impl NpmPackageResolver {
 
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
     self.inner.lock(lockfile)
+  }
+
+  pub async fn inject_synthetic_types_node_package(
+    &self,
+  ) -> Result<(), AnyError> {
+    // add and ensure this isn't added to the lockfile
+    self
+      .inner
+      .add_package_reqs(vec![NpmPackageReq::from_str("@types/node").unwrap()])
+      .await?;
+    self.inner.cache_packages().await?;
+
+    Ok(())
   }
 }
 
@@ -355,7 +364,7 @@ impl RequireNpmResolver for NpmPackageResolver {
 
   fn in_npm_package(&self, path: &Path) -> bool {
     let specifier =
-      match ModuleSpecifier::from_file_path(&path.to_path_buf().clean()) {
+      match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
         Ok(p) => p,
         Err(_) => return false,
       };
@@ -364,13 +373,17 @@ impl RequireNpmResolver for NpmPackageResolver {
       .is_ok()
   }
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
-    self.inner.ensure_read_permission(path)
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    self.inner.ensure_read_permission(permissions, path)
   }
 }
 
 fn path_to_specifier(path: &Path) -> Result<ModuleSpecifier, AnyError> {
-  match ModuleSpecifier::from_file_path(&path.to_path_buf().clean()) {
+  match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
     Ok(specifier) => Ok(specifier),
     Err(()) => bail!("Could not convert '{}' to url.", path.display()),
   }

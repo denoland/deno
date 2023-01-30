@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::ConfigFlag;
 use crate::args::Flags;
@@ -28,6 +28,7 @@ use std::path::PathBuf;
 pub type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
 
+#[derive(Hash)]
 pub struct JsxImportSourceConfig {
   pub default_specifier: Option<String>,
   pub module: String,
@@ -71,7 +72,7 @@ pub struct IgnoredCompilerOptions {
 impl fmt::Display for IgnoredCompilerOptions {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let mut codes = self.items.clone();
-    codes.sort();
+    codes.sort_unstable();
     if let Some(specifier) = &self.maybe_specifier {
       write!(f, "Unsupported compiler options in \"{}\".\n  The following options were ignored:\n    {}", specifier, codes.join(", "))
     } else {
@@ -130,7 +131,6 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "noEmit",
   "noEmitHelpers",
   "noEmitOnError",
-  "noErrorTruncation",
   "noLib",
   "noResolve",
   "out",
@@ -164,7 +164,7 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
 /// A function that works like JavaScript's `Object.assign()`.
 pub fn json_merge(a: &mut Value, b: &Value) {
   match (a, b) {
-    (&mut Value::Object(ref mut a), &Value::Object(ref b)) => {
+    (&mut Value::Object(ref mut a), Value::Object(b)) => {
       for (k, v) in b {
         json_merge(a.entry(k.clone()).or_insert(Value::Null), v);
       }
@@ -214,7 +214,7 @@ impl TsConfig {
   }
 
   pub fn as_bytes(&self) -> Vec<u8> {
-    let map = self.0.as_object().unwrap();
+    let map = self.0.as_object().expect("invalid tsconfig");
     let ordered: BTreeMap<_, _> = map.iter().collect();
     let value = json!(ordered);
     value.to_string().as_bytes().to_owned()
@@ -296,43 +296,45 @@ impl SerializedFilesConfig {
       include: self
         .include
         .into_iter()
-        .map(|p| config_dir.join(&p))
-        .collect::<Result<Vec<ModuleSpecifier>, _>>()?,
+        .map(|p| {
+          let url = config_dir.join(&p)?;
+          specifier_to_file_path(&url)
+        })
+        .collect::<Result<Vec<_>, _>>()?,
       exclude: self
         .exclude
         .into_iter()
-        .map(|p| config_dir.join(&p))
-        .collect::<Result<Vec<ModuleSpecifier>, _>>()?,
+        .map(|p| {
+          let url = config_dir.join(&p)?;
+          specifier_to_file_path(&url)
+        })
+        .collect::<Result<Vec<_>, _>>()?,
     })
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FilesConfig {
-  pub include: Vec<ModuleSpecifier>,
-  pub exclude: Vec<ModuleSpecifier>,
+  pub include: Vec<PathBuf>,
+  pub exclude: Vec<PathBuf>,
 }
 
 impl FilesConfig {
   /// Gets if the provided specifier is allowed based on the includes
   /// and excludes in the configuration file.
   pub fn matches_specifier(&self, specifier: &ModuleSpecifier) -> bool {
+    let file_path = match specifier_to_file_path(specifier) {
+      Ok(file_path) => file_path,
+      Err(_) => return false,
+    };
     // Skip files which is in the exclude list.
-    let specifier_text = specifier.as_str();
-    if self
-      .exclude
-      .iter()
-      .any(|i| specifier_text.starts_with(i.as_str()))
-    {
+    if self.exclude.iter().any(|i| file_path.starts_with(i)) {
       return false;
     }
 
     // Ignore files not in the include list if it's not empty.
     self.include.is_empty()
-      || self
-        .include
-        .iter()
-        .any(|i| specifier_text.starts_with(i.as_str()))
+      || self.include.iter().any(|i| file_path.starts_with(i))
   }
 }
 
@@ -380,6 +382,7 @@ pub struct FmtOptionsConfig {
   pub indent_width: Option<u8>,
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<ProseWrap>,
+  pub semi_colons: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -463,6 +466,8 @@ pub enum LockConfig {
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
   pub import_map: Option<String>,
+  pub imports: Option<Value>,
+  pub scopes: Option<Value>,
   pub lint: Option<Value>,
   pub fmt: Option<Value>,
   pub tasks: Option<Value>,
@@ -523,8 +528,9 @@ impl ConfigFile {
       if checked.insert(ancestor.to_path_buf()) {
         for config_filename in CONFIG_FILE_NAMES {
           let f = ancestor.join(config_filename);
-          match ConfigFile::read(f) {
+          match ConfigFile::read(&f) {
             Ok(cf) => {
+              log::debug!("Config file found at '{}'", f.display());
               return Ok(Some(cf));
             }
             Err(e) => {
@@ -593,7 +599,7 @@ impl ConfigFile {
 
   pub fn from_specifier(specifier: &ModuleSpecifier) -> Result<Self, AnyError> {
     let config_path = specifier_to_file_path(specifier)?;
-    let config_text = match std::fs::read_to_string(&config_path) {
+    let config_text = match std::fs::read_to_string(config_path) {
       Ok(text) => text,
       Err(err) => bail!(
         "Error reading config file {}: {}",
@@ -662,6 +668,31 @@ impl ConfigFile {
 
   pub fn to_import_map_path(&self) -> Option<String> {
     self.json.import_map.clone()
+  }
+
+  pub fn to_import_map_value(&self) -> Value {
+    let mut value = serde_json::Map::with_capacity(2);
+    if let Some(imports) = &self.json.imports {
+      value.insert("imports".to_string(), imports.clone());
+    }
+    if let Some(scopes) = &self.json.scopes {
+      value.insert("scopes".to_string(), scopes.clone());
+    }
+    value.into()
+  }
+
+  pub fn is_an_import_map(&self) -> bool {
+    self.json.imports.is_some() || self.json.scopes.is_some()
+  }
+
+  pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
+    if let Some(config) = self.json.fmt.clone() {
+      let fmt_config: SerializedFmtConfig = serde_json::from_value(config)
+        .context("Failed to parse \"fmt\" configuration")?;
+      Ok(Some(fmt_config.into_resolved(&self.specifier)?))
+    } else {
+      Ok(None)
+    }
   }
 
   pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
@@ -766,16 +797,6 @@ impl ConfigFile {
       default_specifier: compiler_options.jsx_import_source,
       module,
     })
-  }
-
-  pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
-    if let Some(config) = self.json.fmt.clone() {
-      let fmt_config: SerializedFmtConfig = serde_json::from_value(config)
-        .context("Failed to parse \"fmt\" configuration")?;
-      Ok(Some(fmt_config.into_resolved(&self.specifier)?))
-    } else {
-      Ok(None)
-    }
   }
 
   pub fn resolve_tasks_config(
@@ -1069,13 +1090,10 @@ mod tests {
       .to_lint_config()
       .expect("error parsing lint object")
       .expect("lint object should be defined");
-    assert_eq!(
-      lint_config.files.include,
-      vec![config_dir.join("src/").unwrap()]
-    );
+    assert_eq!(lint_config.files.include, vec![PathBuf::from("/deno/src/")]);
     assert_eq!(
       lint_config.files.exclude,
-      vec![config_dir.join("src/testdata/").unwrap()]
+      vec![PathBuf::from("/deno/src/testdata/")]
     );
     assert_eq!(
       lint_config.rules.include,
@@ -1091,13 +1109,10 @@ mod tests {
       .to_fmt_config()
       .expect("error parsing fmt object")
       .expect("fmt object should be defined");
-    assert_eq!(
-      fmt_config.files.include,
-      vec![config_dir.join("src/").unwrap()]
-    );
+    assert_eq!(fmt_config.files.include, vec![PathBuf::from("/deno/src/")]);
     assert_eq!(
       fmt_config.files.exclude,
-      vec![config_dir.join("src/testdata/").unwrap()]
+      vec![PathBuf::from("/deno/src/testdata/")],
     );
     assert_eq!(fmt_config.options.use_tabs, Some(true));
     assert_eq!(fmt_config.options.line_width, Some(80));
@@ -1191,6 +1206,8 @@ mod tests {
     let expected_exclude = ModuleSpecifier::from_file_path(
       testdata.join("fmt/with_config/subdir/b.ts"),
     )
+    .unwrap()
+    .to_file_path()
     .unwrap();
     assert_eq!(fmt_config.files.exclude, vec![expected_exclude]);
 

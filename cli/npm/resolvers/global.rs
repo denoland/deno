@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! Code for global npm cache resolution.
 
@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
 use crate::args::Lockfile;
@@ -138,11 +139,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     packages: Vec<NpmPackageReq>,
   ) -> BoxFuture<'static, Result<(), AnyError>> {
     let resolver = self.clone();
-    async move {
-      resolver.resolution.add_package_reqs(packages).await?;
-      cache_packages_in_resolver(&resolver).await
-    }
-    .boxed()
+    async move { resolver.resolution.add_package_reqs(packages).await }.boxed()
   }
 
   fn set_package_reqs(
@@ -150,16 +147,21 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     packages: HashSet<NpmPackageReq>,
   ) -> BoxFuture<'static, Result<(), AnyError>> {
     let resolver = self.clone();
-    async move {
-      resolver.resolution.set_package_reqs(packages).await?;
-      cache_packages_in_resolver(&resolver).await
-    }
-    .boxed()
+    async move { resolver.resolution.set_package_reqs(packages).await }.boxed()
   }
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
+  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>> {
+    let resolver = self.clone();
+    async move { cache_packages_in_resolver(&resolver).await }.boxed()
+  }
+
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
-    ensure_registry_read_permission(&registry_path, path)
+    ensure_registry_read_permission(permissions, &registry_path, path)
   }
 
   fn snapshot(&self) -> NpmResolutionSnapshot {
@@ -167,8 +169,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
   }
 
   fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
-    let snapshot = self.resolution.snapshot();
-    self.resolution.lock(lockfile, &snapshot)
+    self.resolution.lock(lockfile)
   }
 }
 

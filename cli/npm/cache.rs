@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::fs;
@@ -216,7 +216,7 @@ impl ReadonlyNpmCache {
       let encoded_name = mixed_case_package_name_encode(name);
       // Using the encoded directory may have a collision with an actual package name
       // so prefix it with an underscore since npm packages can't start with that
-      dir.join(format!("_{}", encoded_name))
+      dir.join(format!("_{encoded_name}"))
     } else {
       // ensure backslashes are used on windows
       for part in name.split('/') {

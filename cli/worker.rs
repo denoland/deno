@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -16,7 +18,7 @@ use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -100,7 +102,7 @@ impl CliMainWorker {
         .await?;
     }
 
-    Ok(self.worker.get_exit_code())
+    Ok(self.worker.exit_code())
   }
 
   pub async fn run_for_watcher(self) -> Result<(), AnyError> {
@@ -182,14 +184,10 @@ impl CliMainWorker {
     // Enable op call tracing in core to enable better debugging of op sanitizer
     // failures.
     if self.ps.options.trace_ops() {
-      self
-        .worker
-        .js_runtime
-        .execute_script(
-          &located_script_name!(),
-          "Deno.core.enableOpCallTracing();",
-        )
-        .unwrap();
+      self.worker.js_runtime.execute_script(
+        &located_script_name!(),
+        "Deno[Deno.internal].core.enableOpCallTracing();",
+      )?;
     }
 
     let mut maybe_coverage_collector =
@@ -231,13 +229,10 @@ impl CliMainWorker {
   ) -> Result<(), AnyError> {
     self.enable_test();
 
-    self
-      .worker
-      .execute_script(
-        &located_script_name!(),
-        "Deno.core.enableOpCallTracing();",
-      )
-      .unwrap();
+    self.worker.execute_script(
+      &located_script_name!(),
+      "Deno[Deno.internal].core.enableOpCallTracing();",
+    )?;
 
     if mode != TestMode::Documentation {
       // We execute the module module as a side module so that import.meta.main is not set.
@@ -309,7 +304,11 @@ impl CliMainWorker {
 
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
     self.ps.prepare_node_std_graph().await?;
-    node::initialize_runtime(&mut self.worker.js_runtime).await?;
+    node::initialize_runtime(
+      &mut self.worker.js_runtime,
+      self.ps.options.node_modules_dir(),
+    )
+    .await?;
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
       if let Ok(pkg_ref) = NpmPackageReference::from_str(&flags.script) {
         // if the user ran a binary command, we'll need to set process.argv[0]
@@ -406,7 +405,7 @@ impl CliMainWorker {
 pub async fn create_main_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
-  permissions: Permissions,
+  permissions: PermissionsContainer,
 ) -> Result<CliMainWorker, AnyError> {
   create_main_worker_internal(
     ps,
@@ -422,7 +421,7 @@ pub async fn create_main_worker(
 pub async fn create_main_worker_for_test_or_bench(
   ps: &ProcState,
   main_module: ModuleSpecifier,
-  permissions: Permissions,
+  permissions: PermissionsContainer,
   custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
 ) -> Result<CliMainWorker, AnyError> {
@@ -440,7 +439,7 @@ pub async fn create_main_worker_for_test_or_bench(
 async fn create_main_worker_internal(
   ps: &ProcState,
   main_module: ModuleSpecifier,
-  permissions: Permissions,
+  permissions: PermissionsContainer,
   mut custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
   bench_or_test: bool,
@@ -455,6 +454,7 @@ async fn create_main_worker_internal(
       &package_ref.req,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
+      &mut PermissionsContainer::allow_all(),
     )?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
@@ -469,7 +469,11 @@ async fn create_main_worker_internal(
     (main_module, false)
   };
 
-  let module_loader = CliModuleLoader::new(ps.clone());
+  let module_loader = CliModuleLoader::new(
+    ps.clone(),
+    PermissionsContainer::allow_all(),
+    permissions.clone(),
+  );
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
 
@@ -519,6 +523,7 @@ async fn create_main_worker_internal(
       inspect: ps.options.is_inspecting(),
     },
     extensions,
+    extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: ps
       .options
@@ -621,7 +626,11 @@ fn create_web_worker_pre_execute_module_callback(
     let fut = async move {
       // this will be up to date after pre-load
       if ps.npm_resolver.has_packages() {
-        node::initialize_runtime(&mut worker.js_runtime).await?;
+        node::initialize_runtime(
+          &mut worker.js_runtime,
+          ps.options.node_modules_dir(),
+        )
+        .await?;
       }
 
       Ok(worker)
@@ -640,6 +649,7 @@ fn create_web_worker_callback(
     let module_loader = CliModuleLoader::new_for_worker(
       ps.clone(),
       args.parent_permissions.clone(),
+      args.permissions.clone(),
     );
     let create_web_worker_cb =
       create_web_worker_callback(ps.clone(), stdio.clone());
@@ -719,13 +729,15 @@ fn create_web_worker_callback(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::{resolve_url_or_path, FsModuleLoader};
+  use deno_core::resolve_url_or_path;
+  use deno_core::FsModuleLoader;
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_runtime::deno_web::BlobStore;
+  use deno_runtime::permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
     let main_module = resolve_url_or_path("./hello.js").unwrap();
-    let permissions = Permissions::default();
+    let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
@@ -744,6 +756,7 @@ mod tests {
         inspect: false,
       },
       extensions: vec![],
+      extensions_with_js: vec![],
       startup_snapshot: Some(crate::js::deno_isolate_init()),
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
@@ -778,10 +791,10 @@ mod tests {
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
-      eprintln!("execute_mod err {:?}", err);
+      eprintln!("execute_mod err {err:?}");
     }
     if let Err(e) = worker.run_event_loop(false).await {
-      panic!("Future got unexpected error: {:?}", e);
+      panic!("Future got unexpected error: {e:?}");
     }
   }
 
@@ -795,10 +808,10 @@ mod tests {
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
-      eprintln!("execute_mod err {:?}", err);
+      eprintln!("execute_mod err {err:?}");
     }
     if let Err(e) = worker.run_event_loop(false).await {
-      panic!("Future got unexpected error: {:?}", e);
+      panic!("Future got unexpected error: {e:?}");
     }
   }
 

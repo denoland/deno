@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -209,7 +211,7 @@ impl ParsedSourceCacheModuleAnalyzer {
     stmt.execute(params![
       specifier.as_str(),
       &media_type.to_string(),
-      &source_hash.to_string(),
+      &source_hash,
       &serde_json::to_string(&module_info)?,
     ])?;
     Ok(())
@@ -288,7 +290,7 @@ fn create_tables(
       |row| row.get(0),
     )
     .ok();
-  if data_cli_version != Some(cli_version.to_string()) {
+  if data_cli_version.as_deref() != Some(&cli_version) {
     conn.execute("DELETE FROM moduleinfocache", params![])?;
     let mut stmt = conn
       .prepare("INSERT OR REPLACE INTO info (key, value) VALUES (?1, ?2)")?;
