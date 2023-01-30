@@ -61,6 +61,14 @@ async function patchCargo() {
         .replace(
           /^repository.workspace = true/m,
           `repository = "https://github.com/gfx-rs/wgpu"`,
+        )
+        .replace(
+          /^serde = { workspace = true, features = ["derive"] }/m,
+          `serde.workspace = true`,
+        )
+        .replace(
+          /^tokio = { workspace = true, features = ["full"] }/m,
+          `tokio.workspace = true`,
         ),
   );
 

@@ -16,8 +16,8 @@ surface = ["wgpu-core/raw-window-handle", "dep:raw-window-handle"]
 [dependencies]
 deno_core.workspace = true
 raw-window-handle = { workspace = true, optional = true }
-serde = { workspace = true, features = ["derive"] }
-tokio = { workspace = true, features = ["full"] }
+serde.workspace = true
+tokio.workspace = true
 wgpu-types = { workspace = true, features = ["trace", "replay", "serde"] }
 
 [dependencies.wgpu-core]
