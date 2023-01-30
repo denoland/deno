@@ -2629,8 +2629,7 @@ pub fn queue_fast_async_op(
     None => unreachable!(),
   };
 
-  let mut state = runtime_state.borrow_mut();
-  state.pending_ops.push(OpCall::lazy(op));
+  runtime_state.borrow_mut().pending_ops.push(OpCall::lazy(op));
 }
 
 #[inline]
@@ -2684,12 +2683,10 @@ pub fn queue_async_op(
     }
     EagerPollResult::Ready(op) => {
       let ready = OpCall::ready(op);
-      let mut state = runtime_state.borrow_mut();
-      state.pending_ops.push(ready);
+      runtime_state.borrow_mut().pending_ops.push(ready);
     }
     EagerPollResult::Pending(op) => {
-      let mut state = runtime_state.borrow_mut();
-      state.pending_ops.push(op);
+      runtime_state.borrow_mut().pending_ops.push(op);
     }
   }
 }
