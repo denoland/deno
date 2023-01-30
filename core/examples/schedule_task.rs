@@ -65,7 +65,7 @@ fn main() {
 #[op]
 fn op_schedule_task(state: &mut OpState, i: u8) -> Result<(), Error> {
   let tx = state.borrow_mut::<mpsc::UnboundedSender<Task>>();
-  tx.unbounded_send(Box::new(move || println!("Hello, world! x{}", i)))
+  tx.unbounded_send(Box::new(move || println!("Hello, world! x{i}")))
     .expect("unbounded_send failed");
   Ok(())
 }

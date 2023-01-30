@@ -183,7 +183,7 @@ fn format_markdown(
           dprint_plugin_json::format_text(text, &json_config)
         } else {
           let fake_filename =
-            PathBuf::from(format!("deno_fmt_stdin.{}", extension));
+            PathBuf::from(format!("deno_fmt_stdin.{extension}"));
           let mut codeblock_config =
             get_resolved_typescript_config(fmt_options);
           codeblock_config.line_width = line_width;
@@ -287,13 +287,13 @@ async fn check_source_files(
           warn!("Error checking: {}", file_path.to_string_lossy());
           warn!(
             "{}",
-            format!("{}", e)
+            format!("{e}")
               .split('\n')
               .map(|l| {
                 if l.trim().is_empty() {
                   String::new()
                 } else {
-                  format!("  {}", l)
+                  format!("  {l}")
                 }
               })
               .collect::<Vec<_>>()
@@ -317,8 +317,7 @@ async fn check_source_files(
   } else {
     let not_formatted_files_str = files_str(not_formatted_files_count);
     Err(generic_error(format!(
-      "Found {} not formatted {} in {}",
-      not_formatted_files_count, not_formatted_files_str, checked_files_str,
+      "Found {not_formatted_files_count} not formatted {not_formatted_files_str} in {checked_files_str}",
     )))
   }
 }
@@ -369,7 +368,7 @@ async fn format_source_files(
         Err(e) => {
           let _g = output_lock.lock();
           eprintln!("Error formatting: {}", file_path.to_string_lossy());
-          eprintln!("   {}", e);
+          eprintln!("   {e}");
         }
       }
       Ok(())
@@ -719,7 +718,7 @@ mod test {
       &PathBuf::from("mod.ts"),
       "1",
       &Default::default(),
-      |_, file_text, _| Ok(Some(format!("1{}", file_text))),
+      |_, file_text, _| Ok(Some(format!("1{file_text}"))),
     )
     .unwrap();
   }

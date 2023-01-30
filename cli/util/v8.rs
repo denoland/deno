@@ -36,7 +36,7 @@ pub fn init_v8_flags(v8_flags: &[String], env_v8_flags: Vec<String>) {
     .collect::<Vec<_>>();
   if !unrecognized_v8_flags.is_empty() {
     for f in unrecognized_v8_flags {
-      eprintln!("error: V8 did not recognize flag '{}'", f);
+      eprintln!("error: V8 did not recognize flag '{f}'");
     }
     eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
     std::process::exit(1);

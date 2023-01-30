@@ -266,10 +266,7 @@ fn print_tree_node<TWrite: Write>(
       writeln!(
         writer,
         "{} {}",
-        colors::gray(format!(
-          "{}{}─{}",
-          prefix, sibling_connector, child_connector
-        )),
+        colors::gray(format!("{prefix}{sibling_connector}─{child_connector}")),
         child.text
       )?;
       let child_prefix = format!(

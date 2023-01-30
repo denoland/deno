@@ -1942,9 +1942,9 @@ mod permissions {
         .current_dir(&util::testdata_path())
         .arg("run")
         .arg("--unstable")
-        .arg(format!("--allow-{0}", permission))
+        .arg(format!("--allow-{permission}"))
         .arg("run/permission_test.ts")
-        .arg(format!("{0}Required", permission))
+        .arg(format!("{permission}Required"))
         .spawn()
         .unwrap()
         .wait()
@@ -1959,10 +1959,7 @@ mod permissions {
     for permission in &util::PERMISSION_VARIANTS {
       let (_, err) = util::run_and_collect_output(
         false,
-        &format!(
-          "run --unstable run/permission_test.ts {0}Required",
-          permission
-        ),
+        &format!("run --unstable run/permission_test.ts {permission}Required"),
         None,
         None,
         false,
@@ -2100,7 +2097,7 @@ mod permissions {
       let status = util::deno_cmd()
         .current_dir(&util::testdata_path())
         .arg("run")
-        .arg(format!("--allow-{0}={1},{2}", permission, test_dir, js_dir))
+        .arg(format!("--allow-{permission}={test_dir},{js_dir}"))
         .arg("run/complex_permissions_test.ts")
         .arg(permission)
         .arg("run/complex_permissions_test.ts")
@@ -2119,7 +2116,7 @@ mod permissions {
       let status = util::deno_cmd()
         .current_dir(&util::testdata_path())
         .arg("run")
-        .arg(format!("--allow-{0}=.", permission))
+        .arg(format!("--allow-{permission}=."))
         .arg("run/complex_permissions_test.ts")
         .arg(permission)
         .arg("run/complex_permissions_test.ts")
@@ -2138,7 +2135,7 @@ mod permissions {
       let status = util::deno_cmd()
         .current_dir(&util::testdata_path())
         .arg("run")
-        .arg(format!("--allow-{0}=tls/../", permission))
+        .arg(format!("--allow-{permission}=tls/../"))
         .arg("run/complex_permissions_test.ts")
         .arg(permission)
         .arg("run/complex_permissions_test.ts")
@@ -3251,7 +3248,7 @@ fn basic_auth_tokens() {
   assert!(stdout_str.is_empty());
 
   let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
-  eprintln!("{}", stderr_str);
+  eprintln!("{stderr_str}");
 
   assert!(stderr_str
     .contains("Module not found \"http://127.0.0.1:4554/run/001_hello.js\"."));
@@ -3269,7 +3266,7 @@ fn basic_auth_tokens() {
     .unwrap();
 
   let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
-  eprintln!("{}", stderr_str);
+  eprintln!("{stderr_str}");
 
   assert!(output.status.success());
 
@@ -3354,7 +3351,7 @@ async fn test_resolve_dns() {
       .unwrap();
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
-    println!("{}", err);
+    println!("{err}");
     assert!(output.status.success());
     assert!(err.starts_with("Check file"));
 

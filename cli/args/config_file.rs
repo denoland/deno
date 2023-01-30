@@ -28,6 +28,7 @@ use std::path::PathBuf;
 pub type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
 
+#[derive(Hash)]
 pub struct JsxImportSourceConfig {
   pub default_specifier: Option<String>,
   pub module: String,
@@ -163,7 +164,7 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
 /// A function that works like JavaScript's `Object.assign()`.
 pub fn json_merge(a: &mut Value, b: &Value) {
   match (a, b) {
-    (&mut Value::Object(ref mut a), &Value::Object(ref b)) => {
+    (&mut Value::Object(ref mut a), Value::Object(b)) => {
       for (k, v) in b {
         json_merge(a.entry(k.clone()).or_insert(Value::Null), v);
       }

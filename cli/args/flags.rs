@@ -1904,7 +1904,7 @@ fn permission_args(app: Command) -> Command {
         .validator(|keys| {
           for key in keys.split(',') {
             if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
-              return Err(format!("invalid key \"{}\"", key));
+              return Err(format!("invalid key \"{key}\""));
             }
           }
           Ok(())
@@ -3164,7 +3164,7 @@ fn seed_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
     let seed = seed_string.parse::<u64>().unwrap();
     flags.seed = Some(seed);
 
-    flags.v8_flags.push(format!("--random-seed={}", seed));
+    flags.v8_flags.push(format!("--random-seed={seed}"));
   }
 }
 
@@ -3293,7 +3293,7 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
       }
       out.push(full_url);
     } else {
-      panic!("Bad Url: {}", urlstr);
+      panic!("Bad Url: {urlstr}");
     }
   }
   out

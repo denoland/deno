@@ -219,7 +219,7 @@ pub fn print_rules_list(json: bool) {
       })
       .collect();
     let json_str = serde_json::to_string_pretty(&json_rules).unwrap();
-    println!("{}", json_str);
+    println!("{json_str}");
   } else {
     // The rules should still be printed even if `--quiet` option is enabled,
     // so use `println!` here instead of `info!`.
@@ -345,12 +345,12 @@ impl LintReporter for PrettyLintReporter {
       )),
     );
 
-    eprintln!("{}\n", message);
+    eprintln!("{message}\n");
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
-    eprintln!("Error linting: {}", file_path);
-    eprintln!("   {}", err);
+    eprintln!("Error linting: {file_path}");
+    eprintln!("   {err}");
   }
 
   fn close(&mut self, check_count: usize) {
@@ -393,8 +393,8 @@ impl LintReporter for CompactLintReporter {
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
-    eprintln!("Error linting: {}", file_path);
-    eprintln!("   {}", err);
+    eprintln!("Error linting: {file_path}");
+    eprintln!("   {err}");
   }
 
   fn close(&mut self, check_count: usize) {

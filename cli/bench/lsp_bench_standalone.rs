@@ -55,7 +55,7 @@ fn incremental_change_wait(bench: &mut Bencher) {
 
   let mut document_version: u64 = 0;
   bench.iter(|| {
-    let text = format!("m{:05}", document_version);
+    let text = format!("m{document_version:05}");
     client
       .write_notification(
         "textDocument/didChange",

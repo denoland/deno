@@ -9,22 +9,27 @@
     SyntaxError,
     TypeError,
     URIError,
-    Map,
     Array,
+    ArrayFrom,
     ArrayPrototypeFill,
+    ArrayPrototypeJoin,
     ArrayPrototypePush,
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
+    Function,
     Promise,
+    ObjectAssign,
     ObjectFromEntries,
+    ObjectPrototypeHasOwnProperty,
+    Map,
     MapPrototypeGet,
     MapPrototypeHas,
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeThen,
-    PromisePrototypeFinally,
+    ReflectApply,
+    SafePromisePrototypeFinally,
     StringPrototypeSlice,
-    ObjectAssign,
     SymbolFor,
     setQueueMicrotask,
   } = window.__bootstrap.primordials;
@@ -212,11 +217,17 @@
     }
 
     // { <name>: <argc>, ... }
-    for (const ele of Object.entries(ops.asyncOpsInfo())) {
-      if (!ele) continue;
-      const [name, argc] = ele;
+    const info = ops.asyncOpsInfo();
+    for (const name in info) {
+      if (!ObjectPrototypeHasOwnProperty(info, name)) {
+        continue;
+      }
+      const argc = info[name];
       const op = ops[name];
-      const args = Array.from({ length: argc }, (_, i) => `arg${i}`).join(", ");
+      const args = ArrayPrototypeJoin(
+        ArrayFrom({ length: argc }, (_, i) => `arg${i}`),
+        ", ",
+      );
       ops[name] = genAsyncOp(op, name, args);
     }
   }
@@ -225,7 +236,7 @@
     if (opCallTracingEnabled) {
       const stack = StringPrototypeSlice(new Error().stack, 6);
       MapPrototypeSet(opCallTraces, promiseId, { opName, stack });
-      return PromisePrototypeFinally(
+      return SafePromisePrototypeFinally(
         p,
         () => MapPrototypeDelete(opCallTraces, promiseId),
       );
@@ -235,7 +246,7 @@
   }
 
   function opAsync(opName, ...args) {
-    return ops[opName](...args);
+    return ReflectApply(ops[opName], ops, args);
   }
 
   function refOp(promiseId) {
@@ -257,7 +268,7 @@
   }
 
   function metrics() {
-    const [aggregate, perOps] = ops.op_metrics();
+    const { 0: aggregate, 1: perOps } = ops.op_metrics();
     aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
       ops.op_op_names(),
       (opName, opId) => [opName, perOps[opId]],
