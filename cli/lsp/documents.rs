@@ -1185,7 +1185,7 @@ impl Documents {
       maybe_jsx_config.as_ref(),
     );
     self.maybe_resolver =
-      CliResolver::maybe_new(maybe_jsx_config, maybe_import_map);
+      CliResolver::maybe_new(maybe_jsx_config, maybe_import_map, None);
     self.imports = Arc::new(
       if let Some(Ok(Some(imports))) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())

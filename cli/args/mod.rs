@@ -45,13 +45,11 @@ use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use std::collections::BTreeMap;
-use std::collections::HashSet;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -68,59 +66,23 @@ use self::config_file::TestConfig;
 fn discover_package_json(
   flags: &Flags,
 ) -> Result<Option<PackageJson>, AnyError> {
-  fn discover_from(
-    start: &Path,
-    checked: &mut HashSet<PathBuf>,
-  ) -> Result<Option<PackageJson>, AnyError> {
-    for ancestor in start.ancestors() {
-      if checked.insert(ancestor.to_path_buf()) {
-        let f = ancestor.join("package.json");
-        match PackageJson::load_skip_read_permission(f) {
-          Ok(cf) => {
-            return Ok(Some(cf));
-          }
-          Err(e) => {
-            if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
-              use std::io::ErrorKind::*;
-              match ioerr.kind() {
-                InvalidInput | PermissionDenied | NotFound => {
-                  // ok keep going
-                }
-                _ => {
-                  return Err(e); // Unknown error. Stop.
-                }
-              }
-            } else {
-              return Err(e); // Parse error or something else. Stop.
-            }
-          }
-        }
-      }
-    }
-    Ok(None)
-  }
-
-  let mut checked = HashSet::new();
   if let Some(package_json_arg) = flags.package_json_args() {
-    if let Some(pjson) = discover_from(&package_json_arg, &mut checked)? {
-      return Ok(Some(pjson));
-    }
-  }
-
-  // attempt to resolve the config file from the task subcommand's
-  // `--cwd` when specified
-  if let crate::args::DenoSubcommand::Task(TaskFlags {
-    cwd: Some(path), ..
+    let pjson_path = package_json_arg.join("package.json");
+    let pjson = PackageJson::load_skip_read_permission(pjson_path)?;
+    return Ok(Some(pjson));
+  } else if let crate::args::DenoSubcommand::Task(TaskFlags {
+    cwd: Some(path),
+    ..
   }) = &flags.subcommand
   {
+    // attempt to resolve the config file from the task subcommand's
+    // `--cwd` when specified
     let task_cwd = canonicalize_path(&PathBuf::from(path))?;
-    if let Some(path) = discover_from(&task_cwd, &mut checked)? {
-      return Ok(Some(path));
-    }
-  };
-  // From CWD walk up to root looking for deno.json or deno.jsonc
-  let cwd = std::env::current_dir()?;
-  discover_from(&cwd, &mut checked)
+    let pjson_path = task_cwd.join("package.json");
+    let pjson = PackageJson::load_skip_read_permission(pjson_path)?;
+    return Ok(Some(pjson));
+  }
+  Ok(None)
 }
 
 /// Indicates how cached source files should be handled.
@@ -574,7 +536,11 @@ impl CliOptions {
 
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let maybe_config_file = ConfigFile::discover(&flags)?;
-    let maybe_package_json = discover_package_json(&flags)?;
+    let maybe_package_json = if maybe_config_file.is_none() {
+      discover_package_json(&flags)?
+    } else {
+      None
+    };
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
     Ok(Self::new(
@@ -779,8 +745,8 @@ impl CliOptions {
     &self.maybe_config_file
   }
 
-  pub fn get_maybe_package_json(&self) -> &Option<PackageJson> {
-    &self.maybe_package_json
+  pub fn get_maybe_package_json(&self) -> Option<PackageJson> {
+    self.maybe_package_json.clone()
   }
 
   pub fn resolve_fmt_options(

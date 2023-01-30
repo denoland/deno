@@ -184,6 +184,7 @@ impl ProcState {
     let maybe_cli_resolver = CliResolver::maybe_new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
+      cli_options.get_maybe_package_json(),
     );
     let maybe_resolver = maybe_cli_resolver.map(Arc::new);
 
@@ -685,6 +686,7 @@ impl ProcState {
     let maybe_cli_resolver = CliResolver::maybe_new(
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
+      self.options.get_maybe_package_json(),
     );
     let maybe_graph_resolver =
       maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
