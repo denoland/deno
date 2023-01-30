@@ -2629,7 +2629,10 @@ pub fn queue_fast_async_op(
     None => unreachable!(),
   };
 
-  runtime_state.borrow_mut().pending_ops.push(OpCall::lazy(op));
+  runtime_state
+    .borrow_mut()
+    .pending_ops
+    .push(OpCall::lazy(op));
 }
 
 #[inline]
