@@ -335,9 +335,6 @@ impl RealNpmRegistryApiInner {
         maybe_package_info = self.load_file_cached_package_info(name);
       }
 
-      if name == "." {
-        panic!();
-      }
       if maybe_package_info.is_none() {
         maybe_package_info = self
           .load_package_info_from_registry(name)

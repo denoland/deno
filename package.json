@@ -1,8 +1,0 @@
-{
-  "name": "foobar",
-  "version": "0.0.1",
-  "type": "module",
-  "dependencies": {
-    "cowsay": "^1.5.0"
-  }
-}

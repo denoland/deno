@@ -508,6 +508,7 @@ impl Flags {
     if let Run(RunFlags { script }) = &self.subcommand {
       if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
         if module_specifier.scheme() == "file" {
+          // TODO(bartlomieju): probably not safe with all these unwraps here
           let p = module_specifier
             .to_file_path()
             .unwrap()
@@ -1548,7 +1549,6 @@ fn run_subcommand<'a>() -> Command<'a> {
     )
     .arg(no_clear_screen_arg())
     .trailing_var_arg(true)
-    .arg(Arg::new("node").long("node"))
     .arg(script_arg().required(true))
     .about("Run a JavaScript or TypeScript program")
     .long_about(
