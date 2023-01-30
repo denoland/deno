@@ -5,8 +5,6 @@
   const core = window.Deno.core;
   const ops = core.ops;
   const {
-    ArrayPrototypePush,
-    ArrayPrototypeShift,
     FunctionPrototypeCall,
     Map,
     MapPrototypeDelete,
