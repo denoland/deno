@@ -4,6 +4,7 @@ use crate::colors;
 use dissimilar::diff as difference;
 use dissimilar::Chunk;
 use std::fmt::Write as _;
+use std::num::NonZeroUsize;
 
 /// Print diff of the same file_path, before and after formatting.
 ///
@@ -27,8 +28,8 @@ pub fn diff(orig_text: &str, edit_text: &str) -> String {
 struct DiffBuilder {
   output: String,
   line_number_width: usize,
-  orig_line: usize,
-  edit_line: usize,
+  orig_line: NonZeroUsize,
+  edit_line: NonZeroUsize,
   orig: String,
   edit: String,
   has_changes: bool,
@@ -38,8 +39,8 @@ impl DiffBuilder {
   pub fn build(orig_text: &str, edit_text: &str) -> String {
     let mut diff_builder = DiffBuilder {
       output: String::new(),
-      orig_line: 1,
-      edit_line: 1,
+      orig_line: NonZeroUsize::new(1).unwrap(),
+      edit_line: NonZeroUsize::new(1).unwrap(),
       orig: String::new(),
       edit: String::new(),
       has_changes: false,
@@ -100,12 +101,18 @@ impl DiffBuilder {
     if self.has_changes {
       self.write_line_diff();
 
-      self.orig_line += self.orig.split('\n').count();
-      self.edit_line += self.edit.split('\n').count();
+      self
+        .orig_line
+        .checked_add(self.orig.split('\n').count())
+        .unwrap();
+      self
+        .edit_line
+        .checked_add(self.edit.split('\n').count())
+        .unwrap();
       self.has_changes = false;
     } else {
-      self.orig_line += 1;
-      self.edit_line += 1;
+      self.orig_line.checked_add(1).unwrap();
+      self.edit_line.checked_add(1).unwrap();
     }
 
     self.orig.clear();
@@ -118,7 +125,7 @@ impl DiffBuilder {
       write!(
         self.output,
         "{:width$}{} ",
-        self.orig_line + i,
+        self.orig_line.get() + i,
         colors::gray(" |"),
         width = self.line_number_width
       )
@@ -133,7 +140,7 @@ impl DiffBuilder {
       write!(
         self.output,
         "{:width$}{} ",
-        self.edit_line + i,
+        self.edit_line.get() + i,
         colors::gray(" |"),
         width = self.line_number_width
       )
