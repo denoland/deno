@@ -13,6 +13,7 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Duration;
+use wgpu_core::resource::BufferAccessResult;
 
 use super::error::DomExceptionOperationError;
 use super::error::WebGpuResult;
@@ -57,7 +58,7 @@ pub fn op_webgpu_create_buffer(
   gfx_put!(device => instance.device_create_buffer(
     device,
     &descriptor,
-    std::marker::PhantomData
+    ()
   ) => state, WebGpuBuffer)
 }
 
@@ -70,7 +71,7 @@ pub async fn op_webgpu_buffer_get_map_async(
   offset: u64,
   size: u64,
 ) -> Result<WebGpuResult, AnyError> {
-  let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
+  let (sender, receiver) = oneshot::channel::<BufferAccessResult>();
 
   let device;
   {
@@ -85,12 +86,7 @@ pub async fn op_webgpu_buffer_get_map_async(
     device = device_resource.0;
 
     let callback = Box::new(move |status| {
-      sender
-        .send(match status {
-          wgpu_core::resource::BufferMapAsyncStatus::Success => Ok(()),
-          _ => unreachable!(), // TODO
-        })
-        .unwrap();
+      sender.send(status).unwrap();
     });
 
     // TODO(lucacasonato): error handling
@@ -120,7 +116,8 @@ pub async fn op_webgpu_buffer_get_map_async(
       {
         let state = state.borrow();
         let instance = state.borrow::<super::Instance>();
-        gfx_select!(device => instance.device_poll(device, wgpu_types::Maintain::Wait)).unwrap();
+        gfx_select!(device => instance.device_poll(device, wgpu_types::Maintain::Wait))
+                    .unwrap();
       }
       tokio::time::sleep(Duration::from_millis(10)).await;
     }

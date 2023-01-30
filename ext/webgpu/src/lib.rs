@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+#![warn(unsafe_op_in_unsafe_fn)]
+
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
@@ -25,13 +27,22 @@ mod macros {
   macro_rules! gfx_select {
     ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {
       match $id.backend() {
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(
+            all(not(target_arch = "wasm32"), not(target_os = "ios"), not(target_os = "macos")),
+            feature = "vulkan-portability"
+        ))]
         wgpu_types::Backend::Vulkan => $global.$method::<wgpu_core::api::Vulkan>( $($param),* ),
-        #[cfg(target_os = "macos")]
+        #[cfg(all(not(target_arch = "wasm32"), any(target_os = "ios", target_os = "macos")))]
         wgpu_types::Backend::Metal => $global.$method::<wgpu_core::api::Metal>( $($param),* ),
-        #[cfg(windows)]
+        #[cfg(all(not(target_arch = "wasm32"), windows))]
         wgpu_types::Backend::Dx12 => $global.$method::<wgpu_core::api::Dx12>( $($param),* ),
-        #[cfg(all(unix, not(target_os = "macos")))]
+        #[cfg(all(not(target_arch = "wasm32"), windows))]
+        wgpu_types::Backend::Dx11 => $global.$method::<wgpu_core::api::Dx11>( $($param),* ),
+        #[cfg(any(
+            all(unix, not(target_os = "macos"), not(target_os = "ios")),
+            feature = "angle",
+            target_arch = "wasm32"
+        ))]
         wgpu_types::Backend::Gl => $global.$method::<wgpu_core::api::Gles>( $($param),+ ),
         other => panic!("Unexpected backend {:?}", other),
       }
@@ -65,6 +76,8 @@ pub mod queue;
 pub mod render_pass;
 pub mod sampler;
 pub mod shader;
+#[cfg(feature = "surface")]
+pub mod surface;
 pub mod texture;
 
 pub struct Unstable(pub bool);
@@ -79,7 +92,8 @@ fn check_unstable(state: &OpState, api_name: &str) {
   }
 }
 
-type Instance = wgpu_core::hub::Global<wgpu_core::hub::IdentityManagerFactory>;
+pub type Instance =
+  wgpu_core::hub::Global<wgpu_core::hub::IdentityManagerFactory>;
 
 struct WebGpuAdapter(wgpu_core::id::AdapterId);
 impl Resource for WebGpuAdapter {
@@ -127,9 +141,6 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
 
   if features.contains(wgpu_types::Features::DEPTH_CLIP_CONTROL) {
     return_features.push("depth-clip-control");
-  }
-  if features.contains(wgpu_types::Features::DEPTH24UNORM_STENCIL8) {
-    return_features.push("depth24unorm-stencil8");
   }
   if features.contains(wgpu_types::Features::DEPTH32FLOAT_STENCIL8) {
     return_features.push("depth32float-stencil8");
@@ -243,7 +254,10 @@ pub async fn op_webgpu_request_adapter(
     state.put(wgpu_core::hub::Global::new(
       "webgpu",
       wgpu_core::hub::IdentityManagerFactory,
-      backends,
+      wgpu_types::InstanceDescriptor {
+        backends,
+        dx12_shader_compiler: wgpu_types::Dx12Compiler::Fxc,
+      },
     ));
     state.borrow::<Instance>()
   };
@@ -255,9 +269,7 @@ pub async fn op_webgpu_request_adapter(
   };
   let res = instance.request_adapter(
     &descriptor,
-    wgpu_core::instance::AdapterInputs::Mask(backends, |_| {
-      std::marker::PhantomData
-    }),
+    wgpu_core::instance::AdapterInputs::Mask(backends, |_| ()),
   );
 
   let adapter = match res {
@@ -293,10 +305,6 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
     features.set(
       wgpu_types::Features::DEPTH_CLIP_CONTROL,
       required_features.0.contains("depth-clip-control"),
-    );
-    features.set(
-      wgpu_types::Features::DEPTH24UNORM_STENCIL8,
-      required_features.0.contains("depth24unorm-stencil8"),
     );
     features.set(
       wgpu_types::Features::DEPTH32FLOAT_STENCIL8,
@@ -427,7 +435,7 @@ pub async fn op_webgpu_request_device(
     adapter,
     &descriptor,
     std::env::var("DENO_WEBGPU_TRACE").ok().as_ref().map(std::path::Path::new),
-    std::marker::PhantomData
+    ()
   ));
   if let Some(err) = maybe_err {
     return Err(DomExceptionOperationError::new(&err.to_string()).into());
@@ -553,7 +561,7 @@ pub fn op_webgpu_create_query_set(
   gfx_put!(device => instance.device_create_query_set(
     device,
     &descriptor,
-    std::marker::PhantomData
+    ()
   ) => state, WebGpuQuerySet)
 }
 

@@ -126,6 +126,10 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u32> };
 
         q!(Vars { var: &ident }, {
+          // V8 guarantees that ArrayBuffers are always 4-byte aligned
+          // (seems to be always 8-byte aligned on 64-bit machines)
+          // but Deno FFI makes it possible to create ArrayBuffers at any
+          // alignment. Thus this check is needed.
           let var = match unsafe { &*var }.get_storage_if_aligned() {
             Some(v) => v,
             None => {
@@ -141,17 +145,14 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
 
         q!(Vars { var: &ident }, {
-          let var = match unsafe { &*var }.get_storage_if_aligned() {
-            Some(v) => v,
-            None => {
-              unsafe { &mut *fast_api_callback_options }.fallback = true;
-              return Default::default();
-            }
-          };
+          // SAFETY: U8 slice is always byte-aligned.
+          let var =
+            unsafe { (&*var).get_storage_if_aligned().unwrap_unchecked() };
         })
       }
       TransformKind::WasmMemory => {
         // Note: `ty` is correctly set to __opts by the fast call tier.
+        // U8 slice is always byte-aligned.
         q!(Vars { var: &ident, core }, {
           let var = unsafe {
             &*(__opts.wasm_memory
@@ -166,13 +167,10 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
 
         q!(Vars { var: &ident }, {
-          let var = match unsafe { &*var }.get_storage_if_aligned() {
-            Some(v) => v.as_ptr(),
-            None => {
-              unsafe { &mut *fast_api_callback_options }.fallback = true;
-              return Default::default();
-            }
-          };
+          // SAFETY: U8 slice is always byte-aligned.
+          let var =
+            unsafe { (&*var).get_storage_if_aligned().unwrap_unchecked() }
+              .as_ptr();
         })
       }
     }
@@ -473,7 +471,6 @@ impl Optimizer {
                         match segment {
                           // Is `T` a u8?
                           PathSegment { ident, .. } if ident == "u8" => {
-                            self.needs_fast_callback_option = true;
                             assert!(self
                               .transforms
                               .insert(index, Transform::wasm_memory(index))
@@ -608,7 +605,6 @@ impl Optimizer {
               match segment {
                 // Is `T` a u8?
                 PathSegment { ident, .. } if ident == "u8" => {
-                  self.needs_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint8Array);
                   assert!(self
                     .transforms
@@ -645,7 +641,6 @@ impl Optimizer {
             match segment {
               // Is `T` a u8?
               PathSegment { ident, .. } if ident == "u8" => {
-                self.needs_fast_callback_option = true;
                 self.fast_parameters.push(FastValue::Uint8Array);
                 assert!(self
                   .transforms

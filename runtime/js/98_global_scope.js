@@ -144,8 +144,10 @@
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
+    GPUAdapterInfo: util.nonEnumerable(webgpu.GPUAdapterInfo),
     GPUSupportedLimits: util.nonEnumerable(webgpu.GPUSupportedLimits),
     GPUSupportedFeatures: util.nonEnumerable(webgpu.GPUSupportedFeatures),
+    GPUDeviceLostInfo: util.nonEnumerable(webgpu.GPUDeviceLostInfo),
     GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
     GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
     GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),
@@ -170,6 +172,7 @@
     GPURenderBundleEncoder: util.nonEnumerable(webgpu.GPURenderBundleEncoder),
     GPURenderBundle: util.nonEnumerable(webgpu.GPURenderBundle),
     GPUQuerySet: util.nonEnumerable(webgpu.GPUQuerySet),
+    GPUError: util.nonEnumerable(webgpu.GPUError),
     GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
     GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
   };

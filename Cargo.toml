@@ -121,6 +121,11 @@ url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 uuid = { version = "=1.1.2", features = ["v4"] }
 zstd = "=0.11.2"
 
+# webgpu
+raw-window-handle = "0.5.0"
+wgpu-core = "0.15"
+wgpu-types = "0.15"
+
 # macros
 proc-macro2 = "1"
 quote = "1"

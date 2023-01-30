@@ -24,7 +24,6 @@ struct CjsAnalysisData {
   pub reexports: Vec<String>,
 }
 
-#[derive(Clone)]
 pub struct NodeAnalysisCache {
   db_file_path: Option<PathBuf>,
   inner: Arc<Mutex<Option<Option<NodeAnalysisCacheInner>>>>,
