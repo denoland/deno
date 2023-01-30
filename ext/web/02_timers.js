@@ -37,36 +37,12 @@
   // ---------------------------------------------------------------------------
 
   /**
-   * The task queue corresponding to the timer task source.
-   *
-   * @type { {action: () => void, nestingLevel: number}[] }
-   */
-  const timerTasks = [];
-
-  /**
    * The current task's timer nesting level, or zero if we're not currently
    * running a timer task (since the minimum nesting level is 1).
    *
    * @type {number}
    */
   let timerNestingLevel = 0;
-
-  function handleTimerMacrotask() {
-    if (timerTasks.length === 0) {
-      return true;
-    }
-
-    const task = ArrayPrototypeShift(timerTasks);
-
-    timerNestingLevel = task.nestingLevel;
-
-    try {
-      task.action();
-    } finally {
-      timerNestingLevel = 0;
-    }
-    return timerTasks.length === 0;
-  }
 
   // ---------------------------------------------------------------------------
 
@@ -183,7 +159,7 @@
     // 13. Run steps after a timeout given global, "setTimeout/setInterval",
     // timeout, completionStep, and id.
     runAfterTimeout(
-      () => ArrayPrototypePush(timerTasks, task),
+      task,
       timeout,
       timerInfo,
     );
@@ -196,7 +172,7 @@
   /**
    * @typedef ScheduledTimer
    * @property {number} millis
-   * @property {() => void} cb
+   * @property {{ action: () => void, nestingLevel: number }} task
    * @property {boolean} resolved
    * @property {ScheduledTimer | null} prev
    * @property {ScheduledTimer | null} next
@@ -209,12 +185,11 @@
   const scheduledTimers = { head: null, tail: null };
 
   /**
-   * @param {() => void} cb Will be run after the timeout, if it hasn't been
-   * cancelled.
+   * @param {{ action: () => void, nestingLevel: number }} task
    * @param {number} millis
    * @param {{ cancelRid: number, isRef: boolean, promiseId: number }} timerInfo
    */
-  function runAfterTimeout(cb, millis, timerInfo) {
+  function runAfterTimeout(task, millis, timerInfo) {
     const cancelRid = timerInfo.cancelRid;
     const sleepPromise = core.opAsync("op_sleep", millis, cancelRid);
     timerInfo.promiseId =
@@ -226,7 +201,7 @@
     /** @type {ScheduledTimer} */
     const timerObject = {
       millis,
-      cb,
+      task,
       resolved: false,
       prev: scheduledTimers.tail,
       next: null,
@@ -272,7 +247,13 @@
         while (currentEntry !== null) {
           if (currentEntry.millis < lowestUnresolvedTimeout) {
             if (currentEntry.resolved) {
-              currentEntry.cb();
+              const task = currentEntry.task;
+              timerNestingLevel = task.nestingLevel;
+              try {
+                task.action();
+              } finally {
+                timerNestingLevel = 0;
+              }
               removeFromScheduledTimers(currentEntry);
             } else {
               lowestUnresolvedTimeout = currentEntry.millis;
@@ -367,7 +348,6 @@
     setInterval,
     clearTimeout,
     clearInterval,
-    handleTimerMacrotask,
     opNow,
     refTimer,
     unrefTimer,

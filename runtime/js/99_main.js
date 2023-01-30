@@ -234,7 +234,6 @@ delete Intl.v8BreakIterator;
   }
 
   function runtimeStart(runtimeOptions, source) {
-    core.setMacrotaskCallback(timers.handleTimerMacrotask);
     core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
     core.setWasmStreamingCallback(fetch.handleWasmStreaming);
     core.setReportExceptionCallback(reportException);
