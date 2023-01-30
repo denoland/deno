@@ -4,17 +4,16 @@ use crate::args::BenchOptions;
 use crate::args::CliOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
+use crate::display::write_json_to_stdout;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
-use crate::util::display::write_json_to_stdout;
 use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_supported_ext;
-use crate::util::path::specifier_to_file_path;
 use crate::version::get_user_agent;
 use crate::worker::create_main_worker_for_test_or_bench;
 
@@ -42,9 +41,8 @@ use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 struct BenchSpecifierOptions {
-  filter: Option<String>,
-  json: bool,
   filter: TestFilter,
+  json: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
@@ -590,9 +588,8 @@ pub async fn run_benchmarks(
     &permissions,
     specifiers,
     BenchSpecifierOptions {
-      filter: bench_flags.filter,
-      json: bench_flags.json,
       filter: TestFilter::from_flag(&bench_options.filter),
+      json: bench_options.json,
     },
   )
   .await?;
@@ -739,7 +736,7 @@ pub async fn run_benchmarks_with_watch(
         specifiers,
         BenchSpecifierOptions {
           filter: TestFilter::from_flag(&bench_options.filter),
-          json: bench_flags.json,
+          json: bench_options.json,
         },
       )
       .await?;
