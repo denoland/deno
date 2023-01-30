@@ -32,6 +32,7 @@ const {
   ObjectEntries,
   RegExpPrototypeTest,
   SafeArrayIterator,
+  SafeRegExp,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -88,7 +89,7 @@ function fillHeaders(headers, object) {
 
 // Regex matching illegal chars in a header value
 // deno-lint-ignore no-control-regex
-const ILLEGAL_VALUE_CHARS = /[\x00\x0A\x0D]/;
+const ILLEGAL_VALUE_CHARS = new SafeRegExp(/[\x00\x0A\x0D]/);
 
 /**
  * https://fetch.spec.whatwg.org/#concept-headers-append

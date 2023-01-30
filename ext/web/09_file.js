@@ -29,6 +29,7 @@ const {
   RegExpPrototypeTest,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
+  SafeRegExp,
   StringPrototypeCharAt,
   StringPrototypeToLowerCase,
   StringPrototypeSlice,
@@ -149,7 +150,7 @@ function processBlobParts(parts, endings) {
  */
 function normalizeType(str) {
   let normalizedType = str;
-  if (!RegExpPrototypeTest(/^[\x20-\x7E]*$/, str)) {
+  if (!RegExpPrototypeTest(new SafeRegExp(/^[\x20-\x7E]*$/), str)) {
     normalizedType = "";
   }
   return StringPrototypeToLowerCase(normalizedType);

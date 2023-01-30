@@ -49,13 +49,13 @@ const {
   TypeError,
   NumberIsInteger,
   NumberParseInt,
-  RegExp,
   RegExpPrototype,
   RegExpPrototypeTest,
   RegExpPrototypeToString,
   SafeArrayIterator,
   SafeStringIterator,
   SafeSet,
+  SafeRegExp,
   SetPrototype,
   SetPrototypeEntries,
   SetPrototypeGetSize,
@@ -747,7 +747,7 @@ function quoteString(string) {
   const quote =
     ArrayPrototypeFind(QUOTES, (c) => !StringPrototypeIncludes(string, c)) ??
       QUOTES[0];
-  const escapePattern = new RegExp(`(?=[${quote}\\\\])`, "g");
+  const escapePattern = new SafeRegExp(`(?=[${quote}\\\\])`, "g");
   string = StringPrototypeReplace(string, escapePattern, "\\");
   string = replaceEscapeSequences(string);
   return `${quote}${string}${quote}`;
@@ -767,11 +767,11 @@ function replaceEscapeSequences(string) {
   return StringPrototypeReplace(
     StringPrototypeReplace(
       string,
-      /([\b\f\n\r\t\v])/g,
+      new SafeRegExp(/([\b\f\n\r\t\v])/g),
       (c) => escapeMap[c],
     ),
     // deno-lint-ignore no-control-regex
-    /[\x00-\x1f\x7f-\x9f]/g,
+    new SafeRegExp(/[\x00-\x1f\x7f-\x9f]/g),
     (c) =>
       "\\x" +
       StringPrototypePadStart(
@@ -784,7 +784,7 @@ function replaceEscapeSequences(string) {
 
 // Surround a string with quotes when it is required (e.g the string not a valid identifier).
 function maybeQuoteString(string) {
-  if (RegExpPrototypeTest(/^[a-zA-Z_][a-zA-Z_0-9]*$/, string)) {
+  if (RegExpPrototypeTest(new SafeRegExp(/^[a-zA-Z_][a-zA-Z_0-9]*$/), string)) {
     return replaceEscapeSequences(string);
   }
 
@@ -797,7 +797,12 @@ function maybeQuoteSymbol(symbol) {
     return SymbolPrototypeToString(symbol);
   }
 
-  if (RegExpPrototypeTest(/^[a-zA-Z_][a-zA-Z_.0-9]*$/, symbol.description)) {
+  if (
+    RegExpPrototypeTest(
+      new SafeRegExp(/^[a-zA-Z_][a-zA-Z_.0-9]*$/),
+      symbol.description,
+    )
+  ) {
     return SymbolPrototypeToString(symbol);
   }
 
@@ -1012,7 +1017,7 @@ function inspectError(value, cyan) {
     const stackLines = StringPrototypeSplit(value.stack, "\n");
     while (true) {
       const line = ArrayPrototypeShift(stackLines);
-      if (RegExpPrototypeTest(/\s+at/, line)) {
+      if (RegExpPrototypeTest(new SafeRegExp(/\s+at/), line)) {
         ArrayPrototypeUnshift(stackLines, line);
         break;
       } else if (typeof line === "undefined") {
@@ -1028,7 +1033,7 @@ function inspectError(value, cyan) {
         (error) =>
           StringPrototypeReplace(
             inspectArgs([error]),
-            /^(?!\s*$)/gm,
+            new SafeRegExp(/^(?!\s*$)/gm),
             StringPrototypeRepeat(" ", 4),
           ),
       ),
@@ -1524,7 +1529,7 @@ function parseCssColor(colorString) {
     colorString = MapPrototypeGet(colorKeywords, colorString);
   }
   // deno-fmt-ignore
-  const hashMatch = StringPrototypeMatch(colorString, /^#([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})?$/);
+  const hashMatch = StringPrototypeMatch(colorString, new SafeRegExp(/^#([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})?$/));
   if (hashMatch != null) {
     return [
       Number(`0x${hashMatch[1]}`),
@@ -1533,7 +1538,7 @@ function parseCssColor(colorString) {
     ];
   }
   // deno-fmt-ignore
-  const smallHashMatch = StringPrototypeMatch(colorString, /^#([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])?$/);
+  const smallHashMatch = StringPrototypeMatch(colorString, new SafeRegExp(/^#([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])?$/));
   if (smallHashMatch != null) {
     return [
       Number(`0x${smallHashMatch[1]}0`),
@@ -1542,7 +1547,7 @@ function parseCssColor(colorString) {
     ];
   }
   // deno-fmt-ignore
-  const rgbMatch = StringPrototypeMatch(colorString, /^rgba?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
+  const rgbMatch = StringPrototypeMatch(colorString, new SafeRegExp(/^rgba?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/));
   if (rgbMatch != null) {
     return [
       MathRound(MathMax(0, MathMin(255, Number(rgbMatch[1])))),
@@ -1551,7 +1556,7 @@ function parseCssColor(colorString) {
     ];
   }
   // deno-fmt-ignore
-  const hslMatch = StringPrototypeMatch(colorString, /^hsla?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)%\s*,\s*([+\-]?\d*\.?\d+)%\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
+  const hslMatch = StringPrototypeMatch(colorString, new SafeRegExp(/^hsla?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)%\s*,\s*([+\-]?\d*\.?\d+)%\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/));
   if (hslMatch != null) {
     // https://www.rapidtables.com/convert/color/hsl-to-rgb.html
     let h = Number(hslMatch[1]) % 360;
@@ -1665,7 +1670,7 @@ function parseCss(cssString) {
       }
     } else if (key == "text-decoration-line") {
       css.textDecorationLine = [];
-      const lineTypes = StringPrototypeSplit(value, /\s+/g);
+      const lineTypes = StringPrototypeSplit(value, new SafeRegExp(/\s+/g));
       for (let i = 0; i < lineTypes.length; ++i) {
         const lineType = lineTypes[i];
         if (
@@ -1685,7 +1690,7 @@ function parseCss(cssString) {
     } else if (key == "text-decoration") {
       css.textDecorationColor = null;
       css.textDecorationLine = [];
-      const args = StringPrototypeSplit(value, /\s+/g);
+      const args = StringPrototypeSplit(value, new SafeRegExp(/\s+/g));
       for (let i = 0; i < args.length; ++i) {
         const arg = args[i];
         const maybeColor = parseCssColor(arg);

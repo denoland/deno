@@ -27,6 +27,7 @@ const {
   MapPrototypeSet,
   MathRandom,
   ObjectPrototypeIsPrototypeOf,
+  SafeRegExp,
   Symbol,
   StringFromCharCode,
   StringPrototypeTrim,
@@ -285,8 +286,10 @@ const escape = (str, isFilename) => {
   };
 
   return StringPrototypeReplace(
-    isFilename ? str : StringPrototypeReplace(str, /\r?\n|\r/g, "\r\n"),
-    /([\n\r"])/g,
+    isFilename
+      ? str
+      : StringPrototypeReplace(str, new SafeRegExp(/\r?\n|\r/g), "\r\n"),
+    new SafeRegExp(/([\n\r"])/g),
     (c) => escapeMap[c],
   );
 };
@@ -313,7 +316,11 @@ function formDataToBlob(formData) {
       ArrayPrototypePush(
         chunks,
         prefix + escape(name) + '"' + CRLF + CRLF +
-          StringPrototypeReplace(value, /\r(?!\n)|(?<!\r)\n/g, CRLF) + CRLF,
+          StringPrototypeReplace(
+            value,
+            new SafeRegExp(/\r(?!\n)|(?<!\r)\n/g),
+            CRLF,
+          ) + CRLF,
       );
     } else {
       ArrayPrototypePush(

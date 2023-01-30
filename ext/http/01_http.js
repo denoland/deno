@@ -45,6 +45,7 @@ const {
   Error,
   ObjectPrototypeIsPrototypeOf,
   SafeSetIterator,
+  SafeRegExp,
   Set,
   SetPrototypeAdd,
   SetPrototypeDelete,
@@ -393,7 +394,7 @@ function upgradeWebSocket(request, options = {}) {
   const upgrade = request.headers.get("upgrade");
   const upgradeHasWebSocketOption = upgrade !== null &&
     ArrayPrototypeSome(
-      StringPrototypeSplit(upgrade, /\s*,\s*/),
+      StringPrototypeSplit(upgrade, new SafeRegExp(/\s*,\s*/)),
       (option) => StringPrototypeToLowerCase(option) === "websocket",
     );
   if (!upgradeHasWebSocketOption) {
@@ -405,7 +406,7 @@ function upgradeWebSocket(request, options = {}) {
   const connection = request.headers.get("connection");
   const connectionHasUpgradeOption = connection !== null &&
     ArrayPrototypeSome(
-      StringPrototypeSplit(connection, /\s*,\s*/),
+      StringPrototypeSplit(connection, new SafeRegExp(/\s*,\s*/)),
       (option) => StringPrototypeToLowerCase(option) === "upgrade",
     );
   if (!connectionHasUpgradeOption) {

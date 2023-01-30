@@ -17,6 +17,7 @@ const {
   NumberPrototypeToString,
   RegExp,
   SafeArrayIterator,
+  SafeRegExp,
   String,
   StringPrototypeCharAt,
   StringPrototypeCharCodeAt,
@@ -67,7 +68,7 @@ const HTTP_TOKEN_CODE_POINT = [
   "\u007E",
   ...new SafeArrayIterator(ASCII_ALPHANUMERIC),
 ];
-const HTTP_TOKEN_CODE_POINT_RE = new RegExp(
+const HTTP_TOKEN_CODE_POINT_RE = new SafeRegExp(
   `^[${regexMatcher(HTTP_TOKEN_CODE_POINT)}]+$`,
 );
 const HTTP_QUOTED_STRING_TOKEN_POINT = [
@@ -75,27 +76,27 @@ const HTTP_QUOTED_STRING_TOKEN_POINT = [
   "\u0020-\u007E",
   "\u0080-\u00FF",
 ];
-const HTTP_QUOTED_STRING_TOKEN_POINT_RE = new RegExp(
+const HTTP_QUOTED_STRING_TOKEN_POINT_RE = new SafeRegExp(
   `^[${regexMatcher(HTTP_QUOTED_STRING_TOKEN_POINT)}]+$`,
 );
 const HTTP_TAB_OR_SPACE_MATCHER = regexMatcher(HTTP_TAB_OR_SPACE);
-const HTTP_TAB_OR_SPACE_PREFIX_RE = new RegExp(
+const HTTP_TAB_OR_SPACE_PREFIX_RE = new SafeRegExp(
   `^[${HTTP_TAB_OR_SPACE_MATCHER}]+`,
   "g",
 );
-const HTTP_TAB_OR_SPACE_SUFFIX_RE = new RegExp(
+const HTTP_TAB_OR_SPACE_SUFFIX_RE = new SafeRegExp(
   `[${HTTP_TAB_OR_SPACE_MATCHER}]+$`,
   "g",
 );
 const HTTP_WHITESPACE_MATCHER = regexMatcher(HTTP_WHITESPACE);
-const HTTP_BETWEEN_WHITESPACE = new RegExp(
+const HTTP_BETWEEN_WHITESPACE = new SafeRegExp(
   `^[${HTTP_WHITESPACE_MATCHER}]*(.*?)[${HTTP_WHITESPACE_MATCHER}]*$`,
 );
-const HTTP_WHITESPACE_PREFIX_RE = new RegExp(
+const HTTP_WHITESPACE_PREFIX_RE = new SafeRegExp(
   `^[${HTTP_WHITESPACE_MATCHER}]+`,
   "g",
 );
-const HTTP_WHITESPACE_SUFFIX_RE = new RegExp(
+const HTTP_WHITESPACE_SUFFIX_RE = new SafeRegExp(
   `[${HTTP_WHITESPACE_MATCHER}]+$`,
   "g",
 );
@@ -157,7 +158,7 @@ function collectSequenceOfCodepoints(input, position, condition) {
 function byteUpperCase(s) {
   return StringPrototypeReplace(
     String(s),
-    /[a-z]/g,
+    new SafeRegExp(/[a-z]/g),
     function byteUpperCaseReplace(c) {
       return StringPrototypeToUpperCase(c);
     },
