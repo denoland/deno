@@ -11,11 +11,13 @@ use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
+use crate::util::display::write_json_to_stdout;
 use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_supported_ext;
 use crate::util::path::specifier_to_file_path;
+use crate::version::get_user_agent;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
@@ -64,7 +66,7 @@ pub enum BenchEvent {
   Result(usize, BenchResult),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BenchResult {
   Ok(BenchStats),
@@ -116,7 +118,7 @@ fn create_reporter(
   json: bool,
 ) -> Box<dyn BenchReporter + Send> {
   if json {
-    return Box::new(JsonReporter::new(show_output));
+    return Box::new(JsonReporter::new());
   }
   Box::new(ConsoleReporter::new(show_output))
 }
@@ -131,160 +133,71 @@ pub trait BenchReporter {
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult);
 }
 
-struct JsonReporter {
-  name: String,
-  show_output: bool,
-  has_ungrouped: bool,
+#[derive(Debug, Serialize)]
+struct JsonReporterResult {
+  runtime: String,
+  cpu: String,
+  origin: String,
   group: Option<String>,
+  name: String,
   baseline: bool,
-  group_measurements: Vec<(BenchDescription, BenchStats)>,
-  options: Option<mitata::reporter::Options>,
+  result: BenchResult,
 }
 
-impl JsonReporter {
-  fn new(show_output: bool) -> Self {
+impl JsonReporterResult {
+  fn new(
+    origin: String,
+    group: Option<String>,
+    name: String,
+    baseline: bool,
+    result: BenchResult,
+  ) -> Self {
     Self {
-      show_output,
-      group: None,
-      options: None,
-      baseline: false,
-      name: String::new(),
-      has_ungrouped: false,
-      group_measurements: Vec::new(),
+      runtime: format!("{} {}", get_user_agent(), env!("TARGET")),
+      cpu: mitata::cpu::name(),
+      origin,
+      group,
+      name,
+      baseline,
+      result,
     }
+  }
+}
+
+#[derive(Debug, Serialize)]
+struct JsonReporter(Vec<JsonReporterResult>);
+impl JsonReporter {
+  fn new() -> Self {
+    Self(vec![])
   }
 }
 
 impl BenchReporter for JsonReporter {
+  fn report_group_summary(&mut self) {}
   #[cold]
-  fn report_plan(&mut self, plan: &BenchPlan) {
-    self.report_group_summary();
-    self.group = None;
-    self.baseline = false;
-    self.name = String::new();
-    self.group_measurements.clear();
-    self.options = Some(mitata::reporter::Options::new(
-      &plan.names.iter().map(|x| x.as_str()).collect::<Vec<&str>>(),
-    ));
+  fn report_plan(&mut self, _plan: &BenchPlan) {}
 
-    let options = self.options.as_mut().unwrap();
-
-    options.percentiles = true;
-  }
-  fn report_register(&mut self, desc: &BenchDescription) {
-    todo!()
-  }
-
-  fn report_wait(&mut self, desc: &BenchDescription) {
-    self.name = desc.name.clone();
-
-    match &desc.group {
-      None => {
-        self.has_ungrouped = true;
-      }
-
-      Some(group) => {
-        if self.group.is_none()
-          && self.has_ungrouped
-          && self.group_measurements.is_empty()
-        {
-          println!();
-        }
-
-        if self.group.is_none() || group != self.group.as_ref().unwrap() {
-          self.report_group_summary();
-        }
-
-        if (self.group.is_none() && self.has_ungrouped)
-          || (self.group.is_some() && self.group_measurements.is_empty())
-        {
-          println!();
-        }
-
-        self.group = Some(group.clone());
-      }
+  fn report_end(&mut self, _report: &BenchReport) {
+    match write_json_to_stdout(self) {
+      Ok(_) => (),
+      Err(e) => println!("{}", e),
     }
   }
+
+  fn report_register(&mut self, _desc: &BenchDescription) {}
+
+  fn report_wait(&mut self, _desc: &BenchDescription) {}
+
+  fn report_output(&mut self, _output: &str) {}
 
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
-    let options = self.options.as_ref().unwrap();
-
-    match result {
-      BenchResult::Ok(stats) => {
-        let mut desc = desc.clone();
-
-        if desc.baseline && !self.baseline {
-          self.baseline = true;
-        } else {
-          desc.baseline = false;
-        }
-
-        self.group_measurements.push((desc, stats.clone()));
-      }
-
-      BenchResult::Failed(js_error) => {
-        println!(
-          "{}",
-          mitata::reporter::benchmark_error(
-            &desc.name,
-            &mitata::reporter::Error {
-              stack: None,
-              message: format_test_error(js_error),
-            },
-            options
-          )
-        )
-      }
-    };
-  }
-
-  fn report_output(&mut self, output: &str) {
-    if self.show_output {
-      println!("{}", output);
-    }
-  }
-
-  fn report_group_summary(&mut self) {
-    let options = match self.options.as_ref() {
-      None => return,
-      Some(options) => options,
-    };
-
-    if 2 <= self.group_measurements.len()
-      && (self.group.is_some() || (self.group.is_none() && self.baseline))
-    {
-      println!(
-        "\n{}",
-        mitata::reporter::summary(
-          &self
-            .group_measurements
-            .iter()
-            .map(|(d, s)| mitata::reporter::GroupBenchmark {
-              name: d.name.clone(),
-              baseline: d.baseline,
-              group: d.group.as_deref().unwrap_or("").to_owned(),
-
-              stats: mitata::reporter::BenchmarkStats {
-                avg: s.avg,
-                min: s.min,
-                max: s.max,
-                p75: s.p75,
-                p99: s.p99,
-                p995: s.p995,
-              },
-            })
-            .collect::<Vec<mitata::reporter::GroupBenchmark>>(),
-          options
-        )
-      );
-    }
-
-    self.baseline = false;
-    self.group_measurements.clear();
-  }
-
-  fn report_end(&mut self, report: &BenchReport) {
-    self.report_group_summary();
+    self.0.push(JsonReporterResult::new(
+      desc.origin.clone(),
+      desc.group.clone(),
+      desc.name.clone(),
+      desc.baseline,
+      result.clone(),
+    ));
   }
 }
 
