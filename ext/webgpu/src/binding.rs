@@ -199,7 +199,7 @@ pub fn op_webgpu_create_bind_group_layout(
   gfx_put!(device => instance.device_create_bind_group_layout(
     device,
     &descriptor,
-    std::marker::PhantomData
+    ()
   ) => state, WebGpuBindGroupLayout)
 }
 
@@ -234,7 +234,7 @@ pub fn op_webgpu_create_pipeline_layout(
   gfx_put!(device => instance.device_create_pipeline_layout(
     device,
     &descriptor,
-    std::marker::PhantomData
+    ()
   ) => state, super::pipeline::WebGpuPipelineLayout)
 }
 
@@ -317,6 +317,6 @@ pub fn op_webgpu_create_bind_group(
   gfx_put!(device => instance.device_create_bind_group(
     device,
     &descriptor,
-    std::marker::PhantomData
+    ()
   ) => state, WebGpuBindGroup)
 }

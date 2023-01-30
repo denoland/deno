@@ -34,6 +34,7 @@ pub struct CreateTextureArgs {
   dimension: wgpu_types::TextureDimension,
   format: wgpu_types::TextureFormat,
   usage: u32,
+  view_formats: Vec<wgpu_types::TextureFormat>,
 }
 
 #[op]
@@ -55,12 +56,13 @@ pub fn op_webgpu_create_texture(
     dimension: args.dimension,
     format: args.format,
     usage: wgpu_types::TextureUsages::from_bits_truncate(args.usage),
+    view_formats: args.view_formats,
   };
 
   gfx_put!(device => instance.device_create_texture(
     device,
     &descriptor,
-    std::marker::PhantomData
+    ()
   ) => state, WebGpuTexture)
 }
 
@@ -109,6 +111,6 @@ pub fn op_webgpu_create_texture_view(
   gfx_put!(texture => instance.texture_create_view(
     texture,
     &descriptor,
-    std::marker::PhantomData
+    ()
   ) => state, WebGpuTextureView)
 }
