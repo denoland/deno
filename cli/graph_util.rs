@@ -90,7 +90,7 @@ impl GraphData {
     let mut has_npm_specifier_in_graph = false;
 
     for (specifier, result) in graph.specifiers() {
-      if self.modules.contains_key(specifier) {
+      if !reload && self.modules.contains_key(specifier) {
         continue;
       }
 
