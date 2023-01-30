@@ -80,7 +80,6 @@ fn discover_package_json(
             return Ok(Some(cf));
           }
           Err(e) => {
-            eprintln!("err {:#?}", e);
             if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
               use std::io::ErrorKind::*;
               match ioerr.kind() {

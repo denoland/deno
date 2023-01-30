@@ -65,32 +65,6 @@ impl CliMainWorker {
       self.maybe_setup_coverage_collector().await?;
     log::debug!("main_module {}", self.main_module);
 
-    if let Some(package_json) = self.ps.options.get_maybe_package_json() {
-      self.is_main_cjs = package_json.typ != "module";
-
-      // TODO(bartlomieju): could be extracted into a helper function
-      if let Some(deps) = &package_json.dependencies {
-        let mut reqs = vec![];
-        for (key, value) in deps {
-          let npm_ref =
-            NpmPackageReference::from_str(&format!("npm:{key}@{value}"))
-              .unwrap();
-          reqs.push(npm_ref.req);
-        }
-        self.ps.npm_resolver.add_package_reqs(reqs).await?;
-      }
-      if let Some(deps) = &package_json.dev_dependencies {
-        let mut reqs = vec![];
-        for (key, value) in deps {
-          let npm_ref =
-            NpmPackageReference::from_str(&format!("npm:{key}@{value}"))
-              .unwrap();
-          reqs.push(npm_ref.req);
-        }
-        self.ps.npm_resolver.add_package_reqs(reqs).await?;
-      }
-    }
-
     if self.is_main_cjs {
       self.ps.prepare_node_std_graph().await?;
       self.initialize_main_module_for_node().await?;

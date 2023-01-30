@@ -831,7 +831,7 @@ pub fn get_closest_package_json(
   PackageJson::load(npm_resolver, permissions, package_json_path)
 }
 
-pub fn get_closest_package_json_path(
+fn get_closest_package_json_path(
   url: &ModuleSpecifier,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {

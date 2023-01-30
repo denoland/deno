@@ -306,20 +306,10 @@ impl ProcState {
       self.file_fetcher.clone(),
       root_permissions,
       dynamic_permissions,
-      if self.options.get_maybe_package_json().is_some() {
-        Some(roots[0].clone())
-      } else {
-        None
-      },
     );
     let maybe_imports = self.options.to_maybe_imports()?;
-    let mut maybe_resolver =
+    let maybe_resolver =
       self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
-
-    if self.options.get_maybe_package_json().is_some() {
-      maybe_resolver =
-        Some(crate::resolver::BareSpecifierResolver.as_graph_resolver())
-    }
 
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
@@ -405,7 +395,6 @@ impl ProcState {
       )
     };
 
-    eprintln!("npm package reqs {npm_package_reqs:?}");
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
       self.prepare_node_std_graph().await?;
@@ -675,7 +664,6 @@ impl ProcState {
       self.file_fetcher.clone(),
       PermissionsContainer::allow_all(),
       PermissionsContainer::allow_all(),
-      None,
     )
   }
 

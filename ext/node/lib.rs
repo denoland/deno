@@ -23,7 +23,6 @@ mod resolution;
 pub use package_json::PackageJson;
 pub use path::PathClean;
 pub use resolution::get_closest_package_json;
-pub use resolution::get_closest_package_json_path;
 pub use resolution::get_package_scope_config;
 pub use resolution::legacy_main_resolve;
 pub use resolution::package_exports_resolve;

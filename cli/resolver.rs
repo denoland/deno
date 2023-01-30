@@ -2,7 +2,6 @@
 
 use deno_core::error::AnyError;
 use deno_core::resolve_import;
-use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Resolver;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
@@ -71,37 +70,6 @@ impl Resolver for CliResolver {
         .map_err(|err| err.into())
     } else {
       resolve_import(specifier, referrer.as_str()).map_err(|err| err.into())
-    }
-  }
-}
-
-#[derive(Debug)]
-pub struct BareSpecifierResolver;
-
-impl BareSpecifierResolver {
-  pub fn as_graph_resolver(&self) -> &dyn Resolver {
-    self
-  }
-}
-
-impl Resolver for BareSpecifierResolver {
-  fn resolve(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    match resolve_import(specifier, referrer.as_str()) {
-      Ok(specifier) => Ok(specifier),
-      Err(err) => match err {
-        ModuleResolutionError::ImportPrefixMissing(_, _) => Ok(
-          resolve_import(
-            format!("npm:{specifier}").as_str(),
-            referrer.as_str(),
-          )
-          .unwrap(),
-        ),
-        _ => Err(err.into()),
-      },
     }
   }
 }
