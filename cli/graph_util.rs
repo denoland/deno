@@ -71,7 +71,7 @@ pub struct GraphData {
 
 impl GraphData {
   /// Store data from `graph` into `self`.
-  pub fn add_graph(&mut self, graph: &ModuleGraph) {
+  pub fn add_graph(&mut self, graph: &ModuleGraph, reload: bool) {
     for graph_import in &graph.imports {
       for dep in graph_import.dependencies.values() {
         for resolved in [&dep.maybe_code, &dep.maybe_type] {
@@ -90,7 +90,7 @@ impl GraphData {
     let mut has_npm_specifier_in_graph = false;
 
     for (specifier, result) in graph.specifiers() {
-      if self.modules.contains_key(specifier) {
+      if !reload && self.modules.contains_key(specifier) {
         continue;
       }
 
@@ -477,7 +477,7 @@ impl GraphData {
 impl From<&ModuleGraph> for GraphData {
   fn from(graph: &ModuleGraph) -> Self {
     let mut graph_data = GraphData::default();
-    graph_data.add_graph(graph);
+    graph_data.add_graph(graph, false);
     graph_data
   }
 }
@@ -549,7 +549,7 @@ pub async fn create_graph_and_maybe_check(
 
   let check_js = ps.options.check_js();
   let mut graph_data = GraphData::default();
-  graph_data.add_graph(&graph);
+  graph_data.add_graph(&graph, false);
   graph_data
     .check(
       &graph.roots,
