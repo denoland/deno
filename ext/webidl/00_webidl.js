@@ -509,7 +509,9 @@ ArrayPrototypeForEach(
   ],
   (func) => {
     const name = func.name;
-    const article = RegExpPrototypeTest(new SafeRegExp(/^[AEIOU]/), name) ? "an" : "a";
+    const article = RegExpPrototypeTest(new SafeRegExp(/^[AEIOU]/), name)
+      ? "an"
+      : "a";
     converters[name] = (V, opts = {}) => {
       if (!ArrayBufferIsView(V) || typedArrayNameGetter.call(V) !== name) {
         throw makeException(

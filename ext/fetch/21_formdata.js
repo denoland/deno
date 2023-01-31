@@ -292,10 +292,10 @@ function escape(str, isFilename) {
     isFilename
       ? str
       : StringPrototypeReplace(str, ESCAPE_FILENAME_PATTERN, "\r\n"),
-      ESCAPE_PATTERN,
+    ESCAPE_PATTERN,
     (c) => ESCAPE_MAP[c],
   );
-};
+}
 
 const FORM_DETA_SERIALIZE_PATTERN = new SafeRegExp(/\r(?!\n)|(?<!\r)\n/g);
 

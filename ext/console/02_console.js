@@ -1538,10 +1538,18 @@ const colorKeywords = new Map([
   ["rebeccapurple", "#663399"],
 ]);
 
-const HASH_PATTERN = new SafeRegExp(/^#([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})?$/);
-const SMALL_HASH_PATTERN = new SafeRegExp(/^#([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])?$/);
-const RGB_PATTERN = new SafeRegExp(/^rgba?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
-const HSL_PATTERN = new SafeRegExp(/^hsla?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)%\s*,\s*([+\-]?\d*\.?\d+)%\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
+const HASH_PATTERN = new SafeRegExp(
+  /^#([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})?$/,
+);
+const SMALL_HASH_PATTERN = new SafeRegExp(
+  /^#([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])?$/,
+);
+const RGB_PATTERN = new SafeRegExp(
+  /^rgba?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/,
+);
+const HSL_PATTERN = new SafeRegExp(
+  /^hsla?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)%\s*,\s*([+\-]?\d*\.?\d+)%\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/,
+);
 
 function parseCssColor(colorString) {
   if (MapPrototypeHas(colorKeywords, colorString)) {

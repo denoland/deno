@@ -328,7 +328,9 @@ Deno.test(function headersInitMultiple() {
 Deno.test(function headerInitWithPrototypePollution() {
   const originalExec = RegExp.prototype.exec;
   try {
-    RegExp.prototype.exec = () => { throw Error() };
+    RegExp.prototype.exec = () => {
+      throw Error();
+    };
     new Headers([
       ["X-Deno", "foo"],
       ["X-Deno", "bar"],

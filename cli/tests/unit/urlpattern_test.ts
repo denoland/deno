@@ -47,7 +47,9 @@ Deno.test(function urlPatternFromInit() {
 Deno.test(function urlPatternWithPrototypePollution() {
   const originalExec = RegExp.prototype.exec;
   try {
-    RegExp.prototype.exec = () => { throw Error() };
+    RegExp.prototype.exec = () => {
+      throw Error();
+    };
     const pattern = new URLPattern({
       pathname: "/foo/:bar",
     });
