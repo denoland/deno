@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;

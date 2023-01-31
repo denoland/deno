@@ -81,7 +81,7 @@ impl Ord for NpmDependencyEntry {
       Ordering::Equal => other
         .version_req
         .version_text()
-        .cmp(&self.version_req.version_text()),
+        .cmp(self.version_req.version_text()),
       ordering => ordering,
     }
   }
