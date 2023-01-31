@@ -2258,8 +2258,7 @@ impl JsRuntime {
     {
       let mut state = self.state.borrow_mut();
 
-      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
-      {
+      if let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx) {
         let (realm_idx, promise_id, op_id, resp) = item;
         state.op_state.borrow().tracker.track_async_completed(op_id);
         responses_per_realm[realm_idx].push((promise_id, resp));
@@ -2356,8 +2355,7 @@ impl JsRuntime {
       let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
       let mut realm_state = realm_state_rc.borrow_mut();
 
-      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
-      {
+      if let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx) {
         let (realm_idx, promise_id, op_id, mut resp) = item;
         debug_assert_eq!(
           state.known_realms[realm_idx],
