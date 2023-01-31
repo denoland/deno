@@ -134,7 +134,7 @@
               rid = await ridPromise;
             }
             while (true) {
-              const [value, done] = await core.opAsync(
+              const { 0: value, 1: done } = await core.opAsync(
                 "op_read_dir_async_next",
                 rid,
               );
