@@ -33,7 +33,7 @@ impl std::fmt::Display for SpecifierVersionReq {
 impl SpecifierVersionReq {
   pub fn parse(text: &str) -> Result<Self, AnyError> {
     with_failure_handling(parse_npm_specifier)(text).with_context(|| {
-      format!("Invalid npm specifier version requirement '{}'.", text)
+      format!("Invalid npm specifier version requirement '{text}'.")
     })
   }
 
@@ -143,7 +143,7 @@ fn nr(input: &str) -> ParseResult<u64> {
       Err(err) => {
         return ParseError::fail(
           input,
-          format!("Error parsing '{}' to u64.\n\n{:#}", result, err),
+          format!("Error parsing '{result}' to u64.\n\n{err:#}"),
         )
       }
     };

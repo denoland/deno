@@ -488,7 +488,7 @@ where
     .lookup(query, record_type)
     .await
     .map_err(|e| {
-      let message = format!("{}", e);
+      let message = format!("{e}");
       match e.kind() {
         ResolveErrorKind::NoRecordsFound { .. } => {
           custom_error("NotFound", message)

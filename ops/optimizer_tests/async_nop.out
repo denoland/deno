@@ -43,6 +43,7 @@ impl op_void_async {
                 as *const deno_core::_ops::OpCtx)
         };
         let op_id = ctx.id;
+        let realm_idx = ctx.realm_idx;
         let promise_id = args.get(0);
         let promise_id = deno_core::v8::Local::<
             deno_core::v8::Integer,
@@ -71,7 +72,12 @@ impl op_void_async {
             async move {
                 let result = Self::call().await;
                 let result = Ok(result);
-                (promise_id, op_id, deno_core::_ops::to_op_result(get_class, result))
+                (
+                    realm_idx,
+                    promise_id,
+                    op_id,
+                    deno_core::_ops::to_op_result(get_class, result),
+                )
             },
         );
     }
@@ -111,11 +117,12 @@ fn op_void_async_fast_fn<'scope>(
     let __op_id = __ctx.id;
     let __state = ::std::cell::RefCell::borrow(&__ctx.state);
     __state.tracker.track_async(__op_id);
+    let realm_idx = __ctx.realm_idx;
     let result = _ops::queue_fast_async_op(
         __ctx,
         async move {
             let result = result.await;
-            (__promise_id, __op_id, _ops::OpResult::Ok(result.into()))
+            (realm_idx, __promise_id, __op_id, _ops::OpResult::Ok(result.into()))
         },
     );
     result

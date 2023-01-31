@@ -1,12 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::env;
-use std::path::Path;
+
 use std::path::PathBuf;
 
 // This is a shim that allows to generate documentation on docs.rs
 #[cfg(not(feature = "docsrs"))]
 mod not_docs {
+  use std::path::Path;
+
   use super::*;
   use deno_cache::SqliteBackedCache;
   use deno_core::snapshot_util::*;
@@ -198,7 +200,6 @@ fn main() {
   if env::var_os("DOCS_RS").is_some() {
     let snapshot_slice = &[];
     std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
-    return;
   }
 
   #[cfg(not(feature = "docsrs"))]

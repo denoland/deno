@@ -74,7 +74,7 @@ where
   if let Err(err) = result {
     let error_string = match err.downcast_ref::<JsError>() {
       Some(e) => format_js_error(e),
-      None => format!("{:?}", err),
+      None => format!("{err:?}"),
     };
     eprintln!(
       "{}: {}",
@@ -130,7 +130,7 @@ pub struct PrintConfig {
 fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
     if clear_screen && atty::is(atty::Stream::Stderr) {
-      eprint!("{}", CLEAR_SCREEN);
+      eprint!("{CLEAR_SCREEN}");
     }
     info!(
       "{} File change detected! Restarting!",
@@ -322,13 +322,13 @@ where
         continue;
       },
       _ = operation_future => {
-        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
         // TODO(bartlomieju): print exit code here?
         info!(
           "{} {} finished. Restarting on file change...",
           colors::intense_blue("Watcher"),
           job_name,
         );
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
       },
     };
 

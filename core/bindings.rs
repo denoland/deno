@@ -16,6 +16,7 @@ use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
 use crate::runtime::SnapshotOptions;
+use crate::JsRealm;
 use crate::JsRuntime;
 
 pub fn external_references(
@@ -453,15 +454,17 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   // SAFETY: `CallbackScope` can be safely constructed from `&PromiseRejectMessage`
   let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let mut context_state = context_state_rc.borrow_mut();
 
-  if let Some(js_promise_reject_cb) = state.js_promise_reject_cb.clone() {
+  if let Some(js_promise_reject_cb) = context_state.js_promise_reject_cb.clone()
+  {
+    drop(context_state);
+
     let tc_scope = &mut v8::TryCatch::new(scope);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
     let promise = message.get_promise();
-    drop(state); // Drop borrow, callbacks can call back into runtime.
 
     let reason = match message.get_event() {
       PromiseRejectWithNoHandler
@@ -484,6 +487,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       };
 
     if has_unhandled_rejection_handler {
+      let state_rc = JsRuntime::state(tc_scope);
       let mut state = state_rc.borrow_mut();
       if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
         if !pending_mod_evaluate.has_evaluated {
@@ -500,12 +504,14 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       PromiseRejectWithNoHandler => {
         let error = message.get_value().unwrap();
         let error_global = v8::Global::new(scope, error);
-        state
-          .pending_promise_exceptions
+        context_state
+          .pending_promise_rejections
           .insert(promise_global, error_global);
       }
       PromiseHandlerAddedAfterReject => {
-        state.pending_promise_exceptions.remove(&promise_global);
+        context_state
+          .pending_promise_rejections
+          .remove(&promise_global);
       }
       PromiseRejectAfterResolved => {}
       PromiseResolveAfterResolved => {
@@ -607,8 +613,7 @@ pub fn module_resolve_callback<'s>(
   }
 
   let msg = format!(
-    r#"Cannot resolve module "{}" from "{}""#,
-    specifier_str, referrer_name
+    r#"Cannot resolve module "{specifier_str}" from "{referrer_name}""#
   );
   throw_type_error(scope, msg);
   None

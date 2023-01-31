@@ -1,16 +1,34 @@
-/// Optimizer for #[op]
-use crate::Op;
-use pmutil::{q, Quote};
-use proc_macro2::TokenStream;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+//! Optimizer for #[op]
+
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Formatter;
-use syn::{
-  parse_quote, punctuated::Punctuated, token::Colon2,
-  AngleBracketedGenericArguments, FnArg, GenericArgument, PatType, Path,
-  PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypePtr,
-  TypeReference, TypeSlice, TypeTuple,
-};
+
+use pmutil::q;
+use pmutil::Quote;
+use proc_macro2::TokenStream;
+
+use syn::parse_quote;
+use syn::punctuated::Punctuated;
+use syn::token::Colon2;
+use syn::AngleBracketedGenericArguments;
+use syn::FnArg;
+use syn::GenericArgument;
+use syn::PatType;
+use syn::Path;
+use syn::PathArguments;
+use syn::PathSegment;
+use syn::ReturnType;
+use syn::Signature;
+use syn::Type;
+use syn::TypePath;
+use syn::TypePtr;
+use syn::TypeReference;
+use syn::TypeSlice;
+use syn::TypeTuple;
+
+use crate::Op;
 
 #[derive(Debug)]
 pub(crate) enum BailoutReason {
@@ -108,6 +126,10 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u32> };
 
         q!(Vars { var: &ident }, {
+          // V8 guarantees that ArrayBuffers are always 4-byte aligned
+          // (seems to be always 8-byte aligned on 64-bit machines)
+          // but Deno FFI makes it possible to create ArrayBuffers at any
+          // alignment. Thus this check is needed.
           let var = match unsafe { &*var }.get_storage_if_aligned() {
             Some(v) => v,
             None => {
@@ -123,17 +145,14 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
 
         q!(Vars { var: &ident }, {
-          let var = match unsafe { &*var }.get_storage_if_aligned() {
-            Some(v) => v,
-            None => {
-              unsafe { &mut *fast_api_callback_options }.fallback = true;
-              return Default::default();
-            }
-          };
+          // SAFETY: U8 slice is always byte-aligned.
+          let var =
+            unsafe { (&*var).get_storage_if_aligned().unwrap_unchecked() };
         })
       }
       TransformKind::WasmMemory => {
         // Note: `ty` is correctly set to __opts by the fast call tier.
+        // U8 slice is always byte-aligned.
         q!(Vars { var: &ident, core }, {
           let var = unsafe {
             &*(__opts.wasm_memory
@@ -148,13 +167,10 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
 
         q!(Vars { var: &ident }, {
-          let var = match unsafe { &*var }.get_storage_if_aligned() {
-            Some(v) => v.as_ptr(),
-            None => {
-              unsafe { &mut *fast_api_callback_options }.fallback = true;
-              return Default::default();
-            }
-          };
+          // SAFETY: U8 slice is always byte-aligned.
+          let var =
+            unsafe { (&*var).get_storage_if_aligned().unwrap_unchecked() }
+              .as_ptr();
         })
       }
     }
@@ -455,7 +471,6 @@ impl Optimizer {
                         match segment {
                           // Is `T` a u8?
                           PathSegment { ident, .. } if ident == "u8" => {
-                            self.needs_fast_callback_option = true;
                             assert!(self
                               .transforms
                               .insert(index, Transform::wasm_memory(index))
@@ -590,7 +605,6 @@ impl Optimizer {
               match segment {
                 // Is `T` a u8?
                 PathSegment { ident, .. } if ident == "u8" => {
-                  self.needs_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint8Array);
                   assert!(self
                     .transforms
@@ -627,7 +641,6 @@ impl Optimizer {
             match segment {
               // Is `T` a u8?
               PathSegment { ident, .. } if ident == "u8" => {
-                self.needs_fast_callback_option = true;
                 self.fast_parameters.push(FastValue::Uint8Array);
                 assert!(self
                   .transforms
@@ -673,7 +686,8 @@ fn double_segment(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{Attributes, Op};
+  use crate::Attributes;
+  use crate::Op;
   use std::path::PathBuf;
   use syn::parse_quote;
 
@@ -716,7 +730,7 @@ mod tests {
     let mut op = Op::new(item, attrs);
     let mut optimizer = Optimizer::new();
     if let Err(e) = optimizer.analyze(&mut op) {
-      let e_str = format!("{:?}", e);
+      let e_str = format!("{e:?}");
       if update_expected {
         std::fs::write(input.with_extension("expected"), e_str)
           .expect("Failed to write expected file");
@@ -729,11 +743,11 @@ mod tests {
     if update_expected {
       std::fs::write(
         input.with_extension("expected"),
-        format!("{:#?}", optimizer),
+        format!("{optimizer:#?}"),
       )
       .expect("Failed to write expected file");
     } else {
-      assert_eq!(format!("{:#?}", optimizer), expected);
+      assert_eq!(format!("{optimizer:#?}"), expected);
     }
   }
 }

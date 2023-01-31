@@ -1,4 +1,4 @@
-[WILDCARD]
+Bundle file:///[WILDCARD]/subdir/shebang_file.js
 #!/usr/bin/env -S deno run --allow-read
 // deno-fmt-ignore-file
 // deno-lint-ignore-file

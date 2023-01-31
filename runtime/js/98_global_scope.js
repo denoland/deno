@@ -144,8 +144,10 @@
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
+    GPUAdapterInfo: util.nonEnumerable(webgpu.GPUAdapterInfo),
     GPUSupportedLimits: util.nonEnumerable(webgpu.GPUSupportedLimits),
     GPUSupportedFeatures: util.nonEnumerable(webgpu.GPUSupportedFeatures),
+    GPUDeviceLostInfo: util.nonEnumerable(webgpu.GPUDeviceLostInfo),
     GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
     GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
     GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),
@@ -170,6 +172,7 @@
     GPURenderBundleEncoder: util.nonEnumerable(webgpu.GPURenderBundleEncoder),
     GPURenderBundle: util.nonEnumerable(webgpu.GPURenderBundle),
     GPUQuerySet: util.nonEnumerable(webgpu.GPUQuerySet),
+    GPUError: util.nonEnumerable(webgpu.GPUError),
     GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
     GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
   };
@@ -296,31 +299,15 @@
     Location: location.locationConstructorDescriptor,
     location: location.locationDescriptor,
     Window: globalInterfaces.windowConstructorDescriptor,
-    window: util.readOnly(globalThis),
-    self: util.writable(globalThis),
+    window: util.getterOnly(() => globalThis),
+    self: util.getterOnly(() => globalThis),
     Navigator: util.nonEnumerable(Navigator),
-    navigator: {
-      configurable: true,
-      enumerable: true,
-      get: () => navigator,
-    },
+    navigator: util.getterOnly(() => navigator),
     alert: util.writable(prompt.alert),
     confirm: util.writable(prompt.confirm),
     prompt: util.writable(prompt.prompt),
-    localStorage: {
-      configurable: true,
-      enumerable: true,
-      get: webStorage.localStorage,
-      // Makes this reassignable to make astro work
-      set: () => {},
-    },
-    sessionStorage: {
-      configurable: true,
-      enumerable: true,
-      get: webStorage.sessionStorage,
-      // Makes this reassignable to make astro work
-      set: () => {},
-    },
+    localStorage: util.getterOnly(webStorage.localStorage),
+    sessionStorage: util.getterOnly(webStorage.sessionStorage),
     Storage: util.nonEnumerable(webStorage.Storage),
   };
 
@@ -331,12 +318,8 @@
     DedicatedWorkerGlobalScope:
       globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
     WorkerNavigator: util.nonEnumerable(WorkerNavigator),
-    navigator: {
-      configurable: true,
-      enumerable: true,
-      get: () => workerNavigator,
-    },
-    self: util.readOnly(globalThis),
+    navigator: util.getterOnly(() => workerNavigator),
+    self: util.getterOnly(() => globalThis),
   };
 
   window.__bootstrap.globalScope = {

@@ -36,8 +36,7 @@ impl UnstableChecker {
   pub fn check_unstable(&self, api_name: &str) {
     if !self.unstable {
       eprintln!(
-        "Unstable API '{}'. The --unstable flag must be provided.",
-        api_name
+        "Unstable API '{api_name}'. The --unstable flag must be provided."
       );
       std::process::exit(70);
     }

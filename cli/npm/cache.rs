@@ -216,7 +216,7 @@ impl ReadonlyNpmCache {
       let encoded_name = mixed_case_package_name_encode(name);
       // Using the encoded directory may have a collision with an actual package name
       // so prefix it with an underscore since npm packages can't start with that
-      dir.join(format!("_{}", encoded_name))
+      dir.join(format!("_{encoded_name}"))
     } else {
       // ensure backslashes are used on windows
       for part in name.split('/') {

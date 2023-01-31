@@ -30,6 +30,7 @@ declare global {
       function setIsNodeSourceFileCallback(
         callback: (sourceFile: SourceFile) => boolean,
       );
+      function setNodeBuiltInModuleNames(names: string[]);
     }
   }
 

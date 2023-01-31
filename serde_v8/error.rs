@@ -1,7 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use std::fmt::{self, Display};
+use std::fmt::Display;
+use std::fmt::{self};
 
-use serde::{de, ser};
+use serde::de;
+use serde::ser;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -43,7 +45,7 @@ impl Display for Error {
   fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
     match self {
       Error::Message(msg) => formatter.write_str(msg),
-      err => formatter.write_str(format!("serde_v8 error: {:?}", err).as_ref()),
+      err => formatter.write_str(format!("serde_v8 error: {err:?}").as_ref()),
     }
   }
 }

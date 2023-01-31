@@ -169,8 +169,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
   }
 
   fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
-    let snapshot = self.resolution.snapshot();
-    self.resolution.lock(lockfile, &snapshot)
+    self.resolution.lock(lockfile)
   }
 }
 
