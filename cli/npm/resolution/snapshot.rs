@@ -20,6 +20,7 @@ use crate::npm::registry::NpmPackageVersionDistInfo;
 use crate::npm::registry::NpmRegistryApi;
 use crate::npm::registry::RealNpmRegistryApi;
 use crate::semver::VersionMatcher;
+use crate::semver::VersionReq;
 
 use super::NpmPackageId;
 use super::NpmPackageReq;
@@ -159,12 +160,8 @@ impl NpmResolutionSnapshot {
 
     // TODO(bartlomieju): this should use a reverse lookup table in the
     // snapshot instead of resolving best version again.
-    let req = NpmPackageReq {
-      name: name.to_string(),
-      version_req: None,
-    };
-
-    if let Some(id) = self.resolve_best_package_id(name, &req) {
+    let any_version_req = VersionReq::parse_from_npm("*").unwrap();
+    if let Some(id) = self.resolve_best_package_id(name, &any_version_req) {
       if let Some(pkg) = self.packages.get(&id) {
         return Ok(pkg);
       }

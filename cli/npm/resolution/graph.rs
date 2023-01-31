@@ -14,6 +14,7 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
 use log::debug;
+use once_cell::sync::Lazy;
 
 use crate::npm::cache::should_sync_download;
 use crate::npm::registry::NpmDependencyEntry;
@@ -30,6 +31,9 @@ use super::snapshot::SnapshotPackageCopyIndexResolver;
 use super::NpmPackageId;
 use super::NpmPackageReq;
 use super::NpmResolutionPackage;
+
+pub static LATEST_VERSION_REQ: Lazy<VersionReq> =
+  Lazy::new(|| VersionReq::parse_from_specifier("latest").unwrap());
 
 /// A memory efficient path of visited name and versions in the graph
 /// which is used to detect cycles.
@@ -478,7 +482,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   ) -> Result<(), AnyError> {
     let (_, node) = self.resolve_node_from_info(
       &package_req.name,
-      package_req,
+      package_req
+        .version_req
+        .as_ref()
+        .unwrap_or(&*LATEST_VERSION_REQ),
       package_info,
       None,
     )?;
@@ -1128,7 +1135,11 @@ mod test {
       )]),
     };
     let result = get_resolved_package_version_and_info(
-      &package_ref.req,
+      package_ref
+        .req
+        .version_req
+        .as_ref()
+        .unwrap_or(&*LATEST_VERSION_REQ),
       &package_info,
       None,
     );
@@ -1157,7 +1168,11 @@ mod test {
       )]),
     };
     let result = get_resolved_package_version_and_info(
-      &package_ref.req,
+      package_ref
+        .req
+        .version_req
+        .as_ref()
+        .unwrap_or(&*LATEST_VERSION_REQ),
       &package_info,
       None,
     );

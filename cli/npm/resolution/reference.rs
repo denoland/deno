@@ -5,8 +5,6 @@ use deno_core::error::AnyError;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::semver::Version;
-use crate::semver::VersionMatcher;
 use crate::semver::VersionReq;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -124,33 +122,6 @@ impl NpmPackageReq {
     // probably should do something more targeted in the future
     let reference = NpmPackageReference::from_str(&format!("npm:{text}"))?;
     Ok(reference.req)
-  }
-}
-
-impl VersionMatcher for NpmPackageReq {
-  fn tag(&self) -> Option<&str> {
-    match &self.version_req {
-      Some(version_req) => version_req.tag(),
-      None => Some("latest"),
-    }
-  }
-
-  fn matches(&self, version: &Version) -> bool {
-    match self.version_req.as_ref() {
-      Some(req) => {
-        assert_eq!(self.tag(), None);
-        req.matches(version)
-      }
-      None => version.pre.is_empty(),
-    }
-  }
-
-  fn version_text(&self) -> String {
-    self
-      .version_req
-      .as_ref()
-      .map(|v| format!("{v}"))
-      .unwrap_or_else(|| "non-prerelease".to_string())
   }
 }
 
