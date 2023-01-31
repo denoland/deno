@@ -1,6 +1,5 @@
 Download http://localhost:4545/npm/registry/chalk
 Download http://localhost:4545/npm/registry/chalk/chalk-5.0.1.tgz
-Check [WILDCARD]/std/node/module_all.ts
 running 1 test from ./npm/esm/test.js
 test ...
 ------- output -------

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
 use super::cache;
@@ -12,9 +12,12 @@ use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
 
-use crate::args::LintConfig;
-use crate::diagnostics;
+use crate::args::LintOptions;
+use crate::graph_util;
+use crate::graph_util::enhanced_resolution_error_message;
+use crate::node;
 use crate::npm::NpmPackageReference;
+use crate::tools::lint::get_configured_rules;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -24,7 +27,10 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_graph::ResolutionError;
 use deno_graph::Resolved;
+use deno_graph::SpecifierError;
+use deno_lint::rules::LintRule;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
 use std::collections::HashMap;
@@ -37,13 +43,13 @@ use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
 pub type SnapshotForDiagnostics =
-  (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);
+  (Arc<StateSnapshot>, Arc<ConfigSnapshot>, LintOptions);
 pub type DiagnosticRecord =
   (ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>);
 pub type DiagnosticVec = Vec<DiagnosticRecord>;
 type DiagnosticMap =
   HashMap<ModuleSpecifier, (Option<i32>, Vec<lsp::Diagnostic>)>;
-type TsDiagnosticsMap = HashMap<String, Vec<diagnostics::Diagnostic>>;
+type TsDiagnosticsMap = HashMap<String, Vec<crate::tsc::Diagnostic>>;
 type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp::Diagnostic>>;
 
 #[derive(Clone)]
@@ -199,7 +205,7 @@ impl DiagnosticsServer {
           match rx.recv().await {
             // channel has closed
             None => break,
-            Some((snapshot, config, maybe_lint_config)) => {
+            Some((snapshot, config, lint_options)) => {
               // cancel the previous run
               token.cancel();
               token = CancellationToken::new();
@@ -301,7 +307,7 @@ impl DiagnosticsServer {
                   let diagnostics = generate_lint_diagnostics(
                     &snapshot,
                     &config,
-                    maybe_lint_config,
+                    &lint_options,
                     token.clone(),
                   )
                   .await;
@@ -335,25 +341,25 @@ impl DiagnosticsServer {
   }
 }
 
-impl<'a> From<&'a diagnostics::DiagnosticCategory> for lsp::DiagnosticSeverity {
-  fn from(category: &'a diagnostics::DiagnosticCategory) -> Self {
+impl<'a> From<&'a crate::tsc::DiagnosticCategory> for lsp::DiagnosticSeverity {
+  fn from(category: &'a crate::tsc::DiagnosticCategory) -> Self {
     match category {
-      diagnostics::DiagnosticCategory::Error => lsp::DiagnosticSeverity::ERROR,
-      diagnostics::DiagnosticCategory::Warning => {
+      crate::tsc::DiagnosticCategory::Error => lsp::DiagnosticSeverity::ERROR,
+      crate::tsc::DiagnosticCategory::Warning => {
         lsp::DiagnosticSeverity::WARNING
       }
-      diagnostics::DiagnosticCategory::Suggestion => {
+      crate::tsc::DiagnosticCategory::Suggestion => {
         lsp::DiagnosticSeverity::HINT
       }
-      diagnostics::DiagnosticCategory::Message => {
+      crate::tsc::DiagnosticCategory::Message => {
         lsp::DiagnosticSeverity::INFORMATION
       }
     }
   }
 }
 
-impl<'a> From<&'a diagnostics::Position> for lsp::Position {
-  fn from(pos: &'a diagnostics::Position) -> Self {
+impl<'a> From<&'a crate::tsc::Position> for lsp::Position {
+  fn from(pos: &'a crate::tsc::Position) -> Self {
     Self {
       line: pos.line as u32,
       character: pos.character as u32,
@@ -361,7 +367,7 @@ impl<'a> From<&'a diagnostics::Position> for lsp::Position {
   }
 }
 
-fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
+fn get_diagnostic_message(diagnostic: &crate::tsc::Diagnostic) -> String {
   if let Some(message) = diagnostic.message_text.clone() {
     message
   } else if let Some(message_chain) = diagnostic.message_chain.clone() {
@@ -372,8 +378,8 @@ fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
 }
 
 fn to_lsp_range(
-  start: &diagnostics::Position,
-  end: &diagnostics::Position,
+  start: &crate::tsc::Position,
+  end: &crate::tsc::Position,
 ) -> lsp::Range {
   lsp::Range {
     start: start.into(),
@@ -382,7 +388,7 @@ fn to_lsp_range(
 }
 
 fn to_lsp_related_information(
-  related_information: &Option<Vec<diagnostics::Diagnostic>>,
+  related_information: &Option<Vec<crate::tsc::Diagnostic>>,
 ) -> Option<Vec<lsp::DiagnosticRelatedInformation>> {
   related_information.as_ref().map(|related| {
     related
@@ -408,7 +414,7 @@ fn to_lsp_related_information(
 }
 
 fn ts_json_to_diagnostics(
-  diagnostics: Vec<diagnostics::Diagnostic>,
+  diagnostics: Vec<crate::tsc::Diagnostic>,
 ) -> Vec<lsp::Diagnostic> {
   diagnostics
     .iter()
@@ -444,12 +450,12 @@ fn ts_json_to_diagnostics(
 async fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
   config: &ConfigSnapshot,
-  maybe_lint_config: Option<LintConfig>,
+  lint_options: &LintOptions,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let documents = snapshot.documents.documents(true, true);
   let workspace_settings = config.settings.workspace.clone();
-
+  let lint_rules = get_configured_rules(lint_options.rules.clone());
   let mut diagnostics_vec = Vec::new();
   if workspace_settings.lint {
     for document in documents {
@@ -471,7 +477,8 @@ async fn generate_lint_diagnostics(
         version,
         generate_document_lint_diagnostics(
           config,
-          &maybe_lint_config,
+          lint_options,
+          lint_rules.clone(),
           &document,
         ),
       ));
@@ -482,23 +489,21 @@ async fn generate_lint_diagnostics(
 
 fn generate_document_lint_diagnostics(
   config: &ConfigSnapshot,
-  maybe_lint_config: &Option<LintConfig>,
+  lint_options: &LintOptions,
+  lint_rules: Vec<Arc<dyn LintRule>>,
   document: &Document,
 ) -> Vec<lsp::Diagnostic> {
   if !config.specifier_enabled(document.specifier()) {
     return Vec::new();
   }
-  if let Some(lint_config) = &maybe_lint_config {
-    if !lint_config.files.matches_specifier(document.specifier()) {
-      return Vec::new();
-    }
+  if !lint_options.files.matches_specifier(document.specifier()) {
+    return Vec::new();
   }
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
-      if let Ok(references) = analysis::get_lint_references(
-        &parsed_source,
-        maybe_lint_config.as_ref(),
-      ) {
+      if let Ok(references) =
+        analysis::get_lint_references(&parsed_source, lint_rules)
+      {
         references
           .into_iter()
           .map(|r| r.to_diagnostic())
@@ -525,12 +530,10 @@ async fn generate_ts_diagnostics(
   let specifiers = snapshot
     .documents
     .documents(true, true)
-    .iter()
-    .map(|d| d.specifier().clone())
-    .collect::<Vec<_>>();
+    .into_iter()
+    .map(|d| d.specifier().clone());
   let (enabled_specifiers, disabled_specifiers) = specifiers
-    .iter()
-    .cloned()
+    .into_iter()
     .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
   let ts_diagnostics_map: TsDiagnosticsMap = if !enabled_specifiers.is_empty() {
     let req = tsc::RequestMethod::GetDiagnostics(enabled_specifiers);
@@ -571,6 +574,12 @@ async fn generate_ts_diagnostics(
 #[serde(rename_all = "camelCase")]
 struct DiagnosticDataSpecifier {
   pub specifier: ModuleSpecifier,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticDataStrSpecifier {
+  pub specifier: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -616,13 +625,12 @@ pub enum DenoDiagnostic {
   },
   /// An error occurred when resolving the specifier string.
   ResolutionError(deno_graph::ResolutionError),
+  /// Invalid `node:` specifier.
+  InvalidNodeSpecifier(ModuleSpecifier),
 }
 
 impl DenoDiagnostic {
   fn code(&self) -> &str {
-    use deno_graph::ResolutionError;
-    use deno_graph::SpecifierError;
-
     match self {
       Self::DenoWarn(_) => "deno-warn",
       Self::ImportMapRemap { .. } => "import-map-remap",
@@ -634,15 +642,26 @@ impl DenoDiagnostic {
       Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
       Self::Redirect { .. } => "redirect",
-      Self::ResolutionError(err) => match err {
-        ResolutionError::InvalidDowngrade { .. } => "invalid-downgrade",
-        ResolutionError::InvalidLocalImport { .. } => "invalid-local-import",
-        ResolutionError::InvalidSpecifier { error, .. } => match error {
-          SpecifierError::ImportPrefixMissing(_, _) => "import-prefix-missing",
-          SpecifierError::InvalidUrl(_) => "invalid-url",
-        },
-        ResolutionError::ResolverError { .. } => "resolver-error",
-      },
+      Self::ResolutionError(err) => {
+        if graph_util::get_resolution_error_bare_node_specifier(err).is_some() {
+          "import-node-prefix-missing"
+        } else {
+          match err {
+            ResolutionError::InvalidDowngrade { .. } => "invalid-downgrade",
+            ResolutionError::InvalidLocalImport { .. } => {
+              "invalid-local-import"
+            }
+            ResolutionError::InvalidSpecifier { error, .. } => match error {
+              SpecifierError::ImportPrefixMissing(_, _) => {
+                "import-prefix-missing"
+              }
+              SpecifierError::InvalidUrl(_) => "invalid-url",
+            },
+            ResolutionError::ResolverError { .. } => "resolver-error",
+          }
+        }
+      }
+      Self::InvalidNodeSpecifier(_) => "resolver-error",
     }
   }
 
@@ -662,17 +681,14 @@ impl DenoDiagnostic {
           let DiagnosticDataImportMapRemap { from, to } =
             serde_json::from_value(data)?;
           lsp::CodeAction {
-            title: format!(
-              "Update \"{}\" to \"{}\" to use import map.",
-              from, to
-            ),
+            title: format!("Update \"{from}\" to \"{to}\" to use import map."),
             kind: Some(lsp::CodeActionKind::QUICKFIX),
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
                 specifier.clone(),
                 vec![lsp::TextEdit {
-                  new_text: format!("\"{}\"", to),
+                  new_text: format!("\"{to}\""),
                   range: diagnostic.range,
                 }],
               )])),
@@ -747,6 +763,29 @@ impl DenoDiagnostic {
             ..Default::default()
           }
         }
+        "import-node-prefix-missing" => {
+          let data = diagnostic
+            .data
+            .clone()
+            .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
+          let data: DiagnosticDataStrSpecifier = serde_json::from_value(data)?;
+          lsp::CodeAction {
+            title: format!("Update specifier to node:{}", data.specifier),
+            kind: Some(lsp::CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![diagnostic.clone()]),
+            edit: Some(lsp::WorkspaceEdit {
+              changes: Some(HashMap::from([(
+                specifier.clone(),
+                vec![lsp::TextEdit {
+                  new_text: format!("\"node:{}\"", data.specifier),
+                  range: diagnostic.range,
+                }],
+              )])),
+              ..Default::default()
+            }),
+            ..Default::default()
+          }
+        }
         _ => {
           return Err(anyhow!(
             "Unsupported diagnostic code (\"{}\") provided.",
@@ -762,8 +801,8 @@ impl DenoDiagnostic {
 
   /// Given a reference to the code from an LSP diagnostic, determine if the
   /// diagnostic is fixable or not
-  pub fn is_fixable(code: &Option<lsp::NumberOrString>) -> bool {
-    if let Some(lsp::NumberOrString::String(code)) = code {
+  pub fn is_fixable(diagnostic: &lsp_types::Diagnostic) -> bool {
+    if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
       matches!(
         code.as_str(),
         "import-map-remap"
@@ -772,6 +811,7 @@ impl DenoDiagnostic {
           | "no-cache-data"
           | "no-assert-type"
           | "redirect"
+          | "import-node-prefix-missing"
       )
     } else {
       false
@@ -783,16 +823,22 @@ impl DenoDiagnostic {
   pub fn to_lsp_diagnostic(&self, range: &lsp::Range) -> lsp::Diagnostic {
     let (severity, message, data) = match self {
       Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
-      Self::ImportMapRemap { from, to } => (lsp::DiagnosticSeverity::HINT, format!("The import specifier can be remapped to \"{}\" which will resolve it via the active import map.", to), Some(json!({ "from": from, "to": to }))),
-      Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{}\".", assert_type), None),
+      Self::ImportMapRemap { from, to } => (lsp::DiagnosticSeverity::HINT, format!("The import specifier can be remapped to \"{to}\" which will resolve it via the active import map."), Some(json!({ "from": from, "to": to }))),
+      Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{assert_type}\"."), None),
       Self::NoAssertType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(), None),
-      Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{}\".", specifier), Some(json!({ "specifier": specifier }))),
+      Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{specifier}\"."), Some(json!({ "specifier": specifier }))),
       Self::NoCacheBlob => (lsp::DiagnosticSeverity::ERROR, "Uncached blob URL.".to_string(), None),
       Self::NoCacheData(specifier) => (lsp::DiagnosticSeverity::ERROR, "Uncached data URL.".to_string(), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: \"{}\".", pkg_ref.req), Some(json!({ "specifier": specifier }))),
-      Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier), None),
-      Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{}\" was redirected to \"{}\".", from, to), Some(json!({ "specifier": from, "redirect": to }))),
-      Self::ResolutionError(err) => (lsp::DiagnosticSeverity::ERROR, err.to_string(), None),
+      Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{specifier}\".\n  Please check the file path."), None),
+      Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
+      Self::ResolutionError(err) => (
+        lsp::DiagnosticSeverity::ERROR,
+        enhanced_resolution_error_message(err),
+        graph_util::get_resolution_error_bare_node_specifier(err)
+          .map(|specifier| json!({ "specifier": specifier }))
+      ),
+      Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
     };
     lsp::Diagnostic {
       range: *range,
@@ -871,6 +917,30 @@ fn diagnose_resolved(
             diagnostics.push(
               DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone())
                 .to_lsp_diagnostic(&range),
+            );
+          }
+        }
+      } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
+      {
+        if node::resolve_builtin_node_module(module_name).is_err() {
+          diagnostics.push(
+            DenoDiagnostic::InvalidNodeSpecifier(specifier.clone())
+              .to_lsp_diagnostic(&range),
+          );
+        } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+          // check that a @types/node package exists in the resolver
+          let types_node_ref =
+            NpmPackageReference::from_str("npm:@types/node").unwrap();
+          if npm_resolver
+            .resolve_package_folder_from_deno_module(&types_node_ref.req)
+            .is_err()
+          {
+            diagnostics.push(
+              DenoDiagnostic::NoCacheNpm(
+                types_node_ref,
+                ModuleSpecifier::parse("npm:@types/node").unwrap(),
+              )
+              .to_lsp_diagnostic(&range),
             );
           }
         }
@@ -1011,7 +1081,7 @@ mod tests {
       documents.open(
         specifier.clone(),
         *version,
-        language_id.clone(),
+        *language_id,
         (*source).into(),
       );
     }
@@ -1081,7 +1151,7 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &enabled_config,
-        None,
+        &Default::default(),
         Default::default(),
       )
       .await;
@@ -1122,7 +1192,7 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &disabled_config,
-        None,
+        &Default::default(),
         Default::default(),
       )
       .await;

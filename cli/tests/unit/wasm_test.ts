@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 // The following blob can be created by taking the following s-expr and pass

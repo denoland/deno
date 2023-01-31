@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -7,8 +7,6 @@
 
   __bootstrap.denoNs = {
     metrics: core.metrics,
-    test: __bootstrap.testing.test,
-    bench: __bootstrap.testing.bench,
     Process: __bootstrap.process.Process,
     run: __bootstrap.process.run,
     isatty: __bootstrap.tty.isatty,
@@ -31,7 +29,7 @@
     makeTempDir: __bootstrap.fs.makeTempDir,
     makeTempFileSync: __bootstrap.fs.makeTempFileSync,
     makeTempFile: __bootstrap.fs.makeTempFile,
-    memoryUsage: core.memoryUsage,
+    memoryUsage: () => core.ops.op_runtime_memory_usage(),
     mkdirSync: __bootstrap.fs.mkdirSync,
     mkdir: __bootstrap.fs.mkdir,
     chdir: __bootstrap.fs.chdir,
@@ -121,6 +119,7 @@
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
     osRelease: __bootstrap.os.osRelease,
+    osUptime: __bootstrap.os.osUptime,
     hostname: __bootstrap.os.hostname,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,
@@ -146,9 +145,7 @@
     funlock: __bootstrap.fs.funlock,
     funlockSync: __bootstrap.fs.funlockSync,
     Child: __bootstrap.spawn.Child,
-    spawnChild: __bootstrap.spawn.spawnChild,
-    spawn: __bootstrap.spawn.spawn,
-    spawnSync: __bootstrap.spawn.spawnSync,
+    ChildProcess: __bootstrap.spawn.ChildProcess,
     Command: __bootstrap.spawn.Command,
     serve: __bootstrap.flash.serve,
     upgradeHttp: __bootstrap.http.upgradeHttp,

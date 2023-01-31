@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -13,7 +13,7 @@ use deno_core::parking_lot::Mutex;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::lockfile::Lockfile;
+use crate::args::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::registry::NpmPackageVersionDistInfo;
@@ -247,7 +247,7 @@ impl NpmResolutionSnapshot {
       // collect the specifiers to version mappings
       for (key, value) in &lockfile.content.npm.specifiers {
         let package_req = NpmPackageReq::from_str(key)
-          .with_context(|| format!("Unable to parse npm specifier: {}", key))?;
+          .with_context(|| format!("Unable to parse npm specifier: {key}"))?;
         let package_id = NpmPackageId::from_serialized(value)?;
         package_reqs.insert(package_req, package_id.clone());
         verify_ids.insert(package_id.clone());
@@ -275,11 +275,7 @@ impl NpmResolutionSnapshot {
           id: package_id.clone(),
           copy_index: copy_index_resolver.resolve(&package_id),
           // temporary dummy value
-          dist: NpmPackageVersionDistInfo {
-            tarball: "foobar".to_string(),
-            shasum: "foobar".to_string(),
-            integrity: Some("foobar".to_string()),
-          },
+          dist: NpmPackageVersionDistInfo::default(),
           dependencies,
         };
 

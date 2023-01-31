@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -32,8 +32,12 @@ impl NpmPackageReference {
   }
 
   pub fn from_str(specifier: &str) -> Result<NpmPackageReference, AnyError> {
+    let original_text = specifier;
     let specifier = match specifier.strip_prefix("npm:") {
-      Some(s) => s,
+      Some(s) => {
+        // Strip leading slash, which might come from import map
+        s.strip_prefix('/').unwrap_or(s)
+      }
       None => {
         // don't allocate a string here and instead use a static string
         // because this is hit a lot when a url is not an npm specifier
@@ -43,7 +47,7 @@ impl NpmPackageReference {
     let parts = specifier.split('/').collect::<Vec<_>>();
     let name_part_len = if specifier.starts_with('@') { 2 } else { 1 };
     if parts.len() < name_part_len {
-      return Err(generic_error(format!("Not a valid package: {}", specifier)));
+      return Err(generic_error(format!("Not a valid package: {specifier}")));
     }
     let name_parts = &parts[0..name_part_len];
     let last_name_part = &name_parts[name_part_len - 1];
@@ -65,18 +69,29 @@ impl NpmPackageReference {
     let sub_path = if parts.len() == name_parts.len() {
       None
     } else {
-      Some(parts[name_part_len..].join("/"))
+      let sub_path = parts[name_part_len..].join("/");
+      if sub_path.is_empty() {
+        None
+      } else {
+        Some(sub_path)
+      }
     };
 
     if let Some(sub_path) = &sub_path {
       if let Some(at_index) = sub_path.rfind('@') {
         let (new_sub_path, version) = sub_path.split_at(at_index);
         let msg = format!(
-          "Invalid package specifier 'npm:{}/{}'. Did you mean to write 'npm:{}{}/{}'?",
-          name, sub_path, name, version, new_sub_path
+          "Invalid package specifier 'npm:{name}/{sub_path}'. Did you mean to write 'npm:{name}{version}/{new_sub_path}'?"
         );
         return Err(generic_error(msg));
       }
+    }
+
+    if name.is_empty() {
+      let msg = format!(
+        "Invalid npm specifier '{original_text}'. Did not contain a package name."
+      );
+      return Err(generic_error(msg));
     }
 
     Ok(NpmPackageReference {
@@ -115,8 +130,8 @@ impl std::fmt::Display for NpmPackageReq {
 
 impl NpmPackageReq {
   pub fn from_str(text: &str) -> Result<Self, AnyError> {
-    // probably should do something more targetted in the future
-    let reference = NpmPackageReference::from_str(&format!("npm:{}", text))?;
+    // probably should do something more targeted in the future
+    let reference = NpmPackageReference::from_str(&format!("npm:{text}"))?;
     Ok(reference.req)
   }
 }
@@ -146,13 +161,20 @@ impl NpmVersionMatcher for NpmPackageReq {
     self
       .version_req
       .as_ref()
-      .map(|v| format!("{}", v))
+      .map(|v| format!("{v}"))
       .unwrap_or_else(|| "non-prerelease".to_string())
   }
 }
 
-/// Resolves the npm package requirements from the graph attempting. The order
-/// returned is the order they should be resolved in.
+pub struct GraphNpmInfo {
+  /// The order of these package requirements is the order they
+  /// should be resolved in.
+  pub package_reqs: Vec<NpmPackageReq>,
+  /// Gets if the graph had a built-in node specifier (ex. `node:fs`).
+  pub has_node_builtin_specifier: bool,
+}
+
+/// Resolves npm specific information from the graph.
 ///
 /// This function will analyze the module graph for parent-most folder
 /// specifiers of all modules, then group npm specifiers together as found in
@@ -194,7 +216,7 @@ impl NpmVersionMatcher for NpmPackageReq {
 ///
 /// Then it would resolve the npm specifiers in each of those groups according
 /// to that tree going by tree depth.
-pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
+pub fn resolve_graph_npm_info(graph: &ModuleGraph) -> GraphNpmInfo {
   fn collect_specifiers<'a>(
     graph: &'a ModuleGraph,
     module: &'a deno_graph::Module,
@@ -231,6 +253,7 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     graph: &ModuleGraph,
     specifier_graph: &mut SpecifierTree,
     seen: &mut HashSet<ModuleSpecifier>,
+    has_node_builtin_specifier: &mut bool,
   ) {
     if !seen.insert(module.specifier.clone()) {
       return; // already visited
@@ -250,21 +273,43 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
           .dependencies
           .insert(get_folder_path_specifier(specifier));
       }
+
+      if !*has_node_builtin_specifier && specifier.scheme() == "node" {
+        *has_node_builtin_specifier = true;
+      }
     }
 
     // now visit all the dependencies
     for specifier in &specifiers {
       if let Some(module) = graph.get(specifier) {
-        analyze_module(module, graph, specifier_graph, seen);
+        analyze_module(
+          module,
+          graph,
+          specifier_graph,
+          seen,
+          has_node_builtin_specifier,
+        );
       }
     }
   }
 
+  let root_specifiers = graph
+    .roots
+    .iter()
+    .map(|url| graph.resolve(url))
+    .collect::<Vec<_>>();
   let mut seen = HashSet::new();
   let mut specifier_graph = SpecifierTree::default();
-  for (root, _) in graph.roots.iter() {
+  let mut has_node_builtin_specifier = false;
+  for root in &root_specifiers {
     if let Some(module) = graph.get(root) {
-      analyze_module(module, graph, &mut specifier_graph, &mut seen);
+      analyze_module(
+        module,
+        graph,
+        &mut specifier_graph,
+        &mut seen,
+        &mut has_node_builtin_specifier,
+      );
     }
   }
 
@@ -272,7 +317,7 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
   let mut pending_specifiers = VecDeque::new();
   let mut result = Vec::new();
 
-  for (specifier, _) in &graph.roots {
+  for specifier in &root_specifiers {
     match NpmPackageReference::from_specifier(specifier) {
       Ok(npm_ref) => result.push(npm_ref.req),
       Err(_) => {
@@ -302,7 +347,10 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
     }
   }
 
-  result
+  GraphNpmInfo {
+    has_node_builtin_specifier,
+    package_reqs: result,
+  }
 }
 
 fn get_folder_path_specifier(specifier: &ModuleSpecifier) -> ModuleSpecifier {
@@ -529,7 +577,6 @@ fn cmp_package_req(a: &NpmPackageReq, b: &NpmPackageReq) -> Ordering {
 
 #[cfg(test)]
 mod tests {
-  use deno_graph::ModuleKind;
   use pretty_assertions::assert_eq;
 
   use super::*;
@@ -630,6 +677,54 @@ mod tests {
         .unwrap()
         .to_string(),
       "Not a valid package: @package"
+    );
+
+    // should parse leading slash
+    assert_eq!(
+      NpmPackageReference::from_str("npm:/@package/test/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: None,
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+    assert_eq!(
+      NpmPackageReference::from_str("npm:/test").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: None,
+        },
+        sub_path: None,
+      }
+    );
+    assert_eq!(
+      NpmPackageReference::from_str("npm:/test/").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: None,
+        },
+        sub_path: None,
+      }
+    );
+
+    // should error for no name
+    assert_eq!(
+      NpmPackageReference::from_str("npm:/")
+        .err()
+        .unwrap()
+        .to_string(),
+      "Invalid npm specifier 'npm:/'. Did not contain a package name."
+    );
+    assert_eq!(
+      NpmPackageReference::from_str("npm://test")
+        .err()
+        .unwrap()
+        .to_string(),
+      "Invalid npm specifier 'npm://test'. Did not contain a package name."
     );
   }
 
@@ -868,27 +963,50 @@ mod tests {
             )]),
           },
         ),
+        // redirect module
+        (
+          "https://deno.land/x/module_redirect/mod.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_redirect@0.0.1/mod.ts".to_string(),
+            content: concat!(
+              "import 'npm:package-a@module_redirect';",
+              // try another redirect here
+              "import 'https://deno.land/x/module_redirect/other.ts';",
+            ).to_string(),
+            maybe_headers: None,
+          }
+        ),
+        (
+          "https://deno.land/x/module_redirect/other.ts".to_string(),
+          deno_graph::source::Source::Module {
+            specifier: "https://deno.land/x/module_redirect@0.0.1/other.ts".to_string(),
+            content: "import 'npm:package-b@module_redirect';".to_string(),
+            maybe_headers: None,
+          }
+        ),
       ],
       Vec::new(),
     );
     let analyzer = deno_graph::CapturingModuleAnalyzer::default();
     let graph = deno_graph::create_graph(
-      vec![(
+      vec![
         ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
-        ModuleKind::Esm,
-      )],
+        // test redirect at root
+        ModuleSpecifier::parse("https://deno.land/x/module_redirect/mod.ts")
+          .unwrap(),
+      ],
       &mut loader,
       deno_graph::GraphOptions {
         is_dynamic: false,
         imports: None,
         resolver: None,
-        locker: None,
         module_analyzer: Some(&analyzer),
         reporter: None,
       },
     )
     .await;
-    let reqs = resolve_npm_package_reqs(&graph)
+    let reqs = resolve_graph_npm_info(&graph)
+      .package_reqs
       .into_iter()
       .map(|r| r.to_string())
       .collect::<Vec<_>>();
@@ -898,6 +1016,8 @@ mod tests {
       vec![
         "package-a@local_module_a",
         "package-b@local_module_a",
+        "package-a@module_redirect",
+        "package-b@module_redirect",
         "package-b@local_module_b",
         "package-data@local_module_b",
         "package-a@module_a",

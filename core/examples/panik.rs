@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 //!  This example shows that op-panics currently result in UB (likely "failed to initiate panic")
 //!  without a custom panic hook that aborts the process or -C panic=abort.
 //!
@@ -24,8 +24,9 @@ fn main() {
     panic!("panik !!!")
   }
 
-  let extensions =
-    vec![Extension::builder().ops(vec![op_panik::decl()]).build()];
+  let extensions = vec![Extension::builder("my_ext")
+    .ops(vec![op_panik::decl()])
+    .build()];
   let mut rt = JsRuntime::new(RuntimeOptions {
     extensions,
     ..Default::default()

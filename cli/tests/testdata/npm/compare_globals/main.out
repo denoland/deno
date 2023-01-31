@@ -3,6 +3,5 @@ Download http://localhost:4545/npm/registry/@types/node
 Download http://localhost:4545/npm/registry/@denotest/globals/1.0.0.tgz
 Download http://localhost:4545/npm/registry/@types/node/node-18.8.2.tgz
 Check file:///[WILDCARD]/npm/compare_globals/main.ts
-Check file:///[WILDCARD]/std/node/module_all.ts
 true
 []

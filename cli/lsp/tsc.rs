@@ -1,7 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::code_lens;
-use super::completions::relative_specifier;
 use super::config;
 use super::documents::AssetOrDocument;
 use super::language_server;
@@ -19,9 +18,10 @@ use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::args::TsConfig;
-use crate::fs_util::specifier_to_file_path;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
+use crate::util::path::relative_specifier;
+use crate::util::path::specifier_to_file_path;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
@@ -208,15 +208,15 @@ impl AssetDocument {
 type AssetsMap = HashMap<ModuleSpecifier, AssetDocument>;
 
 fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
-  let assets = tsc::STATIC_ASSETS
+  let assets = tsc::LAZILY_LOADED_STATIC_ASSETS
     .iter()
     .map(|(k, v)| {
-      let url_str = format!("asset:///{}", k);
+      let url_str = format!("asset:///{k}");
       let specifier = resolve_url(&url_str).unwrap();
       let asset = AssetDocument::new(specifier.clone(), v);
       (specifier, asset)
     })
-    .collect();
+    .collect::<AssetsMap>();
   Arc::new(Mutex::new(assets))
 }
 
@@ -384,9 +384,9 @@ fn get_tag_documentation(
   let maybe_text = get_tag_body_text(tag, language_server);
   if let Some(text) = maybe_text {
     if text.contains('\n') {
-      format!("{}  \n{}", label, text)
+      format!("{label}  \n{text}")
     } else {
-      format!("{} - {}", label, text)
+      format!("{label} - {text}")
     }
   } else {
     label
@@ -397,7 +397,7 @@ fn make_codeblock(text: &str) -> String {
   if CODEBLOCK_RE.is_match(text) {
     text.to_string()
   } else {
-    format!("```\n{}\n```", text)
+    format!("```\n{text}\n```")
   }
 }
 
@@ -700,9 +700,9 @@ fn display_parts_to_string(
                   .unwrap_or_else(|| "".to_string())
               });
               let link_str = if link.linkcode {
-                format!("[`{}`]({})", link_text, specifier)
+                format!("[`{link_text}`]({specifier})")
               } else {
-                format!("[{}]({})", link_text, specifier)
+                format!("[{link_text}]({specifier})")
               };
               out.push(link_str);
             }
@@ -785,8 +785,7 @@ impl QuickInfo {
         .join("  \n\n");
       if !tags_preview.is_empty() {
         parts.push(lsp::MarkedString::from_markdown(format!(
-          "\n\n{}",
-          tags_preview
+          "\n\n{tags_preview}"
         )));
       }
     }
@@ -907,7 +906,7 @@ pub struct NavigateToItem {
 impl NavigateToItem {
   pub fn to_symbol_information(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
     let specifier = normalize_specifier(&self.file_name).ok()?;
     let asset_or_doc =
@@ -1969,7 +1968,7 @@ impl CompletionEntryDetails {
     let detail = if original_item.detail.is_some() {
       original_item.detail.clone()
     } else if !self.display_parts.is_empty() {
-      Some(replace_links(&display_parts_to_string(
+      Some(replace_links(display_parts_to_string(
         &self.display_parts,
         language_server,
       )))
@@ -1984,7 +1983,7 @@ impl CompletionEntryDetails {
           .map(|tag_info| get_tag_documentation(tag_info, language_server))
           .collect::<Vec<String>>()
           .join("");
-        value = format!("{}\n\n{}", value, tag_documentation);
+        value = format!("{value}\n\n{tag_documentation}");
       }
       Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
         kind: lsp::MarkupKind::Markdown,
@@ -2007,6 +2006,10 @@ impl CompletionEntryDetails {
       documentation,
       command,
       additional_text_edits,
+      // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
+      // but when `completionItem/resolve` is called, we get a list of commit chars
+      // even though we might have returned an empty list in `completion` request.
+      commit_characters: None,
       ..original_item.clone()
     })
   }
@@ -2098,11 +2101,13 @@ fn update_import_statement(
     {
       if let Ok(import_specifier) = normalize_specifier(&import_data.file_name)
       {
-        let new_module_specifier =
-          relative_specifier(&import_specifier, &item_data.specifier);
-        text_edit.new_text = text_edit
-          .new_text
-          .replace(&import_data.module_specifier, &new_module_specifier);
+        if let Some(new_module_specifier) =
+          relative_specifier(&item_data.specifier, &import_specifier)
+        {
+          text_edit.new_text = text_edit
+            .new_text
+            .replace(&import_data.module_specifier, &new_module_specifier);
+        }
       }
     }
   }
@@ -2203,7 +2208,7 @@ impl CompletionEntry {
           return Some(insert_text.clone());
         }
       } else {
-        return Some(self.name.replace('#', ""));
+        return None;
       }
     }
 
@@ -2480,7 +2485,7 @@ impl SignatureHelpItem {
     let documentation =
       display_parts_to_string(&self.documentation, language_server);
     lsp::SignatureInformation {
-      label: format!("{}{}{}", prefix_text, params_text, suffix_text),
+      label: format!("{prefix_text}{params_text}{suffix_text}"),
       documentation: Some(lsp::Documentation::MarkupContent(
         lsp::MarkupContent {
           kind: lsp::MarkupKind::Markdown,
@@ -2722,28 +2727,29 @@ fn op_resolve(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
-
-  let result = if let Some(resolved) = state.state_snapshot.documents.resolve(
-    args.specifiers,
-    &referrer,
-    state.state_snapshot.maybe_npm_resolver.as_ref(),
-  ) {
-    Ok(
-      resolved
-        .into_iter()
-        .map(|o| {
-          o.map(|(s, mt)| (s.to_string(), mt.as_ts_extension().to_string()))
-        })
-        .collect(),
-    )
-  } else {
-    Err(custom_error(
+  let result = match state.get_asset_or_document(&referrer) {
+    Some(referrer_doc) => {
+      let resolved = state.state_snapshot.documents.resolve(
+        args.specifiers,
+        &referrer_doc,
+        state.state_snapshot.maybe_npm_resolver.as_ref(),
+      );
+      Ok(
+        resolved
+          .into_iter()
+          .map(|o| {
+            o.map(|(s, mt)| (s.to_string(), mt.as_ts_extension().to_string()))
+          })
+          .collect(),
+      )
+    }
+    None => Err(custom_error(
       "NotFound",
       format!(
         "Error resolving. Referring specifier \"{}\" was not found.",
         args.base
       ),
-    ))
+    )),
   };
 
   state.performance.measure(mark);
@@ -2758,15 +2764,20 @@ fn op_respond(state: &mut OpState, args: Response) -> bool {
 }
 
 #[op]
-fn op_script_names(state: &mut OpState) -> Vec<ModuleSpecifier> {
+fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
-  state
-    .state_snapshot
-    .documents
-    .documents(true, true)
-    .into_iter()
-    .map(|d| d.specifier().clone())
-    .collect()
+  let documents = &state.state_snapshot.documents;
+  let open_docs = documents.documents(true, true);
+
+  let mut result = Vec::with_capacity(open_docs.len() + 1);
+
+  if documents.has_injected_types_node_package() {
+    // ensure this is first so it resolves the node types first
+    result.push("asset:///node_types.d.ts".to_string());
+  }
+
+  result.extend(open_docs.into_iter().map(|d| d.specifier().to_string()));
+  result
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -2799,7 +2810,7 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
 }
 
 fn init_extension(performance: Arc<Performance>) -> Extension {
-  Extension::builder()
+  Extension::builder("deno_tsc")
     .ops(vec![
       op_exists::decl(),
       op_is_cancelled::decl(),
@@ -2832,7 +2843,7 @@ fn start(
     .clone()
     .unwrap_or_else(|| Url::parse("cache:///").unwrap());
   let init_config = json!({ "debug": debug, "rootUri": root_uri });
-  let init_src = format!("globalThis.serverInit({});", init_config);
+  let init_src = format!("globalThis.serverInit({init_config});");
 
   runtime.execute_script(&located_script_name!(), &init_src)?;
   Ok(())
@@ -3421,7 +3432,7 @@ pub fn request(
     (state.performance.clone(), method.to_value(state, id))
   };
   let mark = performance.mark("request", Some(request_params.clone()));
-  let request_src = format!("globalThis.serverRequest({});", request_params);
+  let request_src = format!("globalThis.serverRequest({request_params});");
   runtime.execute_script(&located_script_name!(), &request_src)?;
 
   let op_state = runtime.op_state();
@@ -3443,12 +3454,14 @@ pub fn request(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::http_cache::HttpCache;
+  use crate::cache::HttpCache;
   use crate::http_util::HeadersMap;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::text::LineIndex;
+  use crate::tsc::AssetText;
+  use pretty_assertions::assert_eq;
   use std::path::Path;
   use std::path::PathBuf;
   use test_util::TempDir;
@@ -3464,7 +3477,7 @@ mod tests {
       documents.open(
         specifier.clone(),
         *version,
-        language_id.clone(),
+        *language_id,
         (*source).into(),
       );
     }
@@ -3907,18 +3920,31 @@ mod tests {
       Default::default(),
     )
     .unwrap();
-    let assets = result.as_array().unwrap();
+    let assets: Vec<AssetText> = serde_json::from_value(result).unwrap();
+    let mut asset_names = assets
+      .iter()
+      .map(|a| {
+        a.specifier
+          .replace("asset:///lib.", "")
+          .replace(".d.ts", "")
+      })
+      .collect::<Vec<_>>();
+    let mut expected_asset_names: Vec<String> = serde_json::from_str(
+      include_str!(concat!(env!("OUT_DIR"), "/lib_file_names.json")),
+    )
+    .unwrap();
+
+    asset_names.sort();
+    expected_asset_names.sort();
 
     // You might have found this assertion starts failing after upgrading TypeScript.
-    // Just update the new number of assets (declaration files) for this number.
-    assert_eq!(assets.len(), 71);
+    // Ensure build.rs is updated so these match.
+    assert_eq!(asset_names, expected_asset_names);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;
     for asset in assets {
-      let obj = asset.as_object().unwrap();
-      let text = obj.get("text").unwrap().as_str().unwrap();
-      total_size += text.len();
+      total_size += asset.text.len();
     }
     assert!(total_size > 0);
     assert!(total_size < 2_000_000); // currently as of TS 4.6, it's 0.7MB
@@ -4058,7 +4084,7 @@ mod tests {
       ..Default::default()
     };
     let actual = fixture.get_filter_text();
-    assert_eq!(actual, Some("abc".to_string()));
+    assert_eq!(actual, None);
 
     let fixture = CompletionEntry {
       kind: ScriptElementKind::MemberVariableElement,
@@ -4126,7 +4152,7 @@ mod tests {
     assert!(result.is_ok());
     let response: CompletionInfo =
       serde_json::from_value(result.unwrap()).unwrap();
-    assert_eq!(response.entries.len(), 19);
+    assert_eq!(response.entries.len(), 22);
     let result = request(
       &mut runtime,
       state_snapshot,

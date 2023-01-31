@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -14,15 +14,12 @@ use deno_graph::Dependency;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
-use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::colors;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
-use crate::checksum;
 use crate::display;
-use crate::lsp;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
@@ -30,12 +27,13 @@ use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolutionPackage;
 use crate::npm::NpmResolutionSnapshot;
 use crate::proc_state::ProcState;
+use crate::util::checksum;
 
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
-    let graph = ps.create_graph(vec![(specifier, ModuleKind::Esm)]).await?;
+    let graph = ps.create_graph(vec![specifier]).await?;
 
     if info_flags.json {
       let mut json_graph = json!(graph);
@@ -48,7 +46,11 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     }
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&ps, info_flags.json, ps.options.location_flag())?;
+    print_cache_info(
+      &ps,
+      info_flags.json,
+      ps.options.location_flag().as_ref(),
+    )?;
   }
   Ok(())
 }
@@ -58,24 +60,23 @@ fn print_cache_info(
   json: bool,
   location: Option<&deno_core::url::Url>,
 ) -> Result<(), AnyError> {
-  let deno_dir = &state.dir.root;
+  let deno_dir = &state.dir.root_path_for_display();
   let modules_cache = &state.file_fetcher.get_http_cache_location();
   let npm_cache = &state.npm_cache.as_readonly().get_cache_location();
   let typescript_cache = &state.dir.gen_cache.location;
-  let registry_cache =
-    &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
-  let mut origin_dir = state.dir.root.join("location_data");
+  let registry_cache = &state.dir.registries_folder_path();
+  let mut origin_dir = state.dir.origin_data_folder_path();
 
   if let Some(location) = &location {
     origin_dir =
-      origin_dir.join(&checksum::gen(&[location.to_string().as_bytes()]));
+      origin_dir.join(checksum::gen(&[location.to_string().as_bytes()]));
   }
 
   let local_storage_dir = origin_dir.join("local_storage");
 
   if json {
     let mut output = json!({
-      "denoDir": deno_dir,
+      "denoDir": deno_dir.to_string(),
       "modulesCache": modules_cache,
       "npmCache": npm_cache,
       "typescriptCache": typescript_cache,
@@ -89,11 +90,7 @@ fn print_cache_info(
 
     display::write_json_to_stdout(&output)
   } else {
-    println!(
-      "{} {}",
-      colors::bold("DENO_DIR location:"),
-      deno_dir.display()
-    );
+    println!("{} {}", colors::bold("DENO_DIR location:"), deno_dir);
     println!(
       "{} {}",
       colors::bold("Remote modules cache:"),
@@ -269,10 +266,7 @@ fn print_tree_node<TWrite: Write>(
       writeln!(
         writer,
         "{} {}",
-        colors::gray(format!(
-          "{}{}─{}",
-          prefix, sibling_connector, child_connector
-        )),
+        colors::gray(format!("{prefix}{sibling_connector}─{child_connector}")),
         child.text
       )?;
       let child_prefix = format!(
@@ -317,7 +311,7 @@ impl NpmInfo {
     }
 
     for (specifier, _) in graph.specifiers() {
-      if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+      if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
         info
           .specifiers
           .insert(specifier.clone(), reference.req.clone());
@@ -397,7 +391,7 @@ impl<'a> GraphDisplayContext<'a> {
       );
     }
 
-    let root_specifier = self.graph.resolve(&self.graph.roots[0].0);
+    let root_specifier = self.graph.resolve(&self.graph.roots[0]);
     match self.graph.try_get(&root_specifier) {
       Ok(Some(root)) => {
         if let Some(cache_info) = root.maybe_cache_info.as_ref() {
@@ -427,9 +421,8 @@ impl<'a> GraphDisplayContext<'a> {
           }
         }
         writeln!(writer, "{} {}", colors::bold("type:"), root.media_type)?;
-        let modules = self.graph.modules();
         let total_modules_size =
-          modules.iter().map(|m| m.size() as f64).sum::<f64>();
+          self.graph.modules().map(|m| m.size() as f64).sum::<f64>();
         let total_npm_package_size = self
           .npm_info
           .package_sizes
@@ -437,7 +430,8 @@ impl<'a> GraphDisplayContext<'a> {
           .map(|s| *s as f64)
           .sum::<f64>();
         let total_size = total_modules_size + total_npm_package_size;
-        let dep_count = modules.len() - 1 + self.npm_info.packages.len()
+        let dep_count = self.graph.modules().count() - 1
+          + self.npm_info.packages.len()
           - self.npm_info.resolved_reqs.len();
         writeln!(
           writer,
@@ -528,11 +522,9 @@ impl<'a> GraphDisplayContext<'a> {
         Specifier(_) => specifier_str,
       };
       let maybe_size = match &package_or_specifier {
-        Package(package) => self
-          .npm_info
-          .package_sizes
-          .get(&package.id)
-          .map(|s| *s as u64),
+        Package(package) => {
+          self.npm_info.package_sizes.get(&package.id).copied()
+        }
         Specifier(_) => module
           .maybe_source
           .as_ref()
@@ -601,9 +593,6 @@ impl<'a> GraphDisplayContext<'a> {
   ) -> TreeNode {
     self.seen.insert(specifier.to_string());
     match err {
-      ModuleGraphError::InvalidSource(_, _) => {
-        self.build_error_msg(specifier, "(invalid source)")
-      }
       ModuleGraphError::InvalidTypeAssertion { .. } => {
         self.build_error_msg(specifier, "(invalid import assertion)")
       }

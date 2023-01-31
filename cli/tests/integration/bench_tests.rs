@@ -1,6 +1,5 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
 use deno_core::url::Url;
 use test_util as util;
 
@@ -159,6 +158,24 @@ itest!(check_local_by_default2 {
   output: "bench/check_local_by_default2.out",
   http_server: true,
   exit_code: 1,
+});
+
+itest!(bench_with_config {
+  args: "bench --config bench/collect/deno.jsonc bench/collect",
+  exit_code: 0,
+  output: "bench/collect.out",
+});
+
+itest!(bench_with_config2 {
+  args: "bench --config bench/collect/deno2.jsonc bench/collect",
+  exit_code: 0,
+  output: "bench/collect2.out",
+});
+
+itest!(bench_with_malformed_config {
+  args: "bench --config bench/collect/deno.malformed.jsonc",
+  exit_code: 1,
+  output: "bench/collect_with_malformed_config.out",
 });
 
 #[test]

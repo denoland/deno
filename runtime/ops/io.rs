@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
@@ -16,7 +16,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -36,48 +35,49 @@ use tokio::process;
 use std::os::unix::io::FromRawFd;
 
 #[cfg(windows)]
-use {
-  std::os::windows::io::FromRawHandle,
-  winapi::um::{processenv::GetStdHandle, winbase},
-};
+use std::os::windows::io::FromRawHandle;
+#[cfg(windows)]
+use winapi::um::processenv::GetStdHandle;
+#[cfg(windows)]
+use winapi::um::winbase;
 
 // Store the stdio fd/handles in global statics in order to keep them
 // alive for the duration of the application since the last handle/fd
 // being dropped will close the corresponding pipe.
 #[cfg(unix)]
-static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdin
   unsafe { StdFile::from_raw_fd(0) }
 });
 #[cfg(unix)]
-static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdout
   unsafe { StdFile::from_raw_fd(1) }
 });
 #[cfg(unix)]
-static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stderr
   unsafe { StdFile::from_raw_fd(2) }
 });
 
 #[cfg(windows)]
-static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdin
   unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE)) }
 });
 #[cfg(windows)]
-static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdout
   unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE)) }
 });
 #[cfg(windows)]
-static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
+pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stderr
   unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE)) }
 });
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_io")
     .ops(vec![op_read_sync::decl(), op_write_sync::decl()])
     .build()
 }
@@ -115,7 +115,7 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
   // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
   let stdio = Rc::new(RefCell::new(Some(stdio)));
 
-  Extension::builder()
+  Extension::builder("deno_stdio")
     .middleware(|op| match op.name {
       "op_print" => op_print::decl(),
       _ => op,
@@ -683,32 +683,32 @@ pub fn op_print(
   })
 }
 
-#[op]
+#[op(fast)]
 fn op_read_sync(
   state: &mut OpState,
-  rid: ResourceId,
-  mut buf: ZeroCopyBuf,
+  rid: u32,
+  buf: &mut [u8],
 ) -> Result<u32, AnyError> {
   StdFileResource::with_resource(state, rid, move |resource| {
     resource.with_inner_and_metadata(|inner, _| {
       inner
-        .read(&mut buf)
+        .read(buf)
         .map(|n: usize| n as u32)
         .map_err(AnyError::from)
     })
   })
 }
 
-#[op]
+#[op(fast)]
 fn op_write_sync(
   state: &mut OpState,
-  rid: ResourceId,
-  buf: ZeroCopyBuf,
+  rid: u32,
+  buf: &mut [u8],
 ) -> Result<u32, AnyError> {
   StdFileResource::with_resource(state, rid, move |resource| {
     resource.with_inner_and_metadata(|inner, _| {
       inner
-        .write_and_maybe_flush(&buf)
+        .write_and_maybe_flush(buf)
         .map(|nwritten: usize| nwritten as u32)
         .map_err(AnyError::from)
     })

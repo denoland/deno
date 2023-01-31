@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -27,9 +27,8 @@
   } = window.__bootstrap.webSocket;
   const { _ws } = window.__bootstrap.http;
   const {
-    Function,
     ObjectPrototypeIsPrototypeOf,
-    Promise,
+    PromisePrototype,
     PromisePrototypeCatch,
     PromisePrototypeThen,
     SafePromiseAll,
@@ -140,7 +139,8 @@
     // status-line = HTTP-version SP status-code SP reason-phrase CRLF
     // Date header: https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.2
     let str = `HTTP/1.1 ${status} ${statusCodes[status]}\r\nDate: ${date}\r\n`;
-    for (const [name, value] of headerList) {
+    for (let i = 0; i < headerList.length; ++i) {
+      const { 0: name, 1: value } = headerList[i];
       // header-field   = field-name ":" OWS field-value OWS
       str += `${name}: ${value}\r\n`;
     }
@@ -243,6 +243,7 @@
     i,
     respondFast,
     respondChunked,
+    tryRespondChunked,
   ) {
     // there might've been an HTTP upgrade.
     if (resp === undefined) {
@@ -326,7 +327,7 @@
       );
     }
 
-    (async () => {
+    return (async () => {
       if (!ws) {
         if (hasBody && body[_state] !== "closed") {
           // TODO(@littledivy): Optimize by draining in a single op.
@@ -371,6 +372,9 @@
           }
         } else {
           const reader = respBody.getReader();
+
+          // Best case: sends headers + first chunk in a single go.
+          const { value, done } = await reader.read();
           writeFixedResponse(
             serverId,
             i,
@@ -385,14 +389,23 @@
             false,
             respondFast,
           );
-          while (true) {
-            const { value, done } = await reader.read();
-            await respondChunked(
-              i,
-              value,
-              done,
-            );
-            if (done) break;
+
+          await tryRespondChunked(
+            i,
+            value,
+            done,
+          );
+
+          if (!done) {
+            while (true) {
+              const chunk = await reader.read();
+              await respondChunked(
+                i,
+                chunk.value,
+                chunk.done,
+              );
+              if (chunk.done) break;
+            }
           }
         }
       }
@@ -426,10 +439,10 @@
     return async function serve(arg1, arg2) {
       let options = undefined;
       let handler = undefined;
-      if (arg1 instanceof Function) {
+      if (typeof arg1 === "function") {
         handler = arg1;
         options = arg2;
-      } else if (arg2 instanceof Function) {
+      } else if (typeof arg2 === "function") {
         handler = arg2;
         options = arg1;
       } else {
@@ -443,7 +456,7 @@
         }
         handler = options.handler;
       }
-      if (!(handler instanceof Function)) {
+      if (typeof handler !== "function") {
         throw new TypeError("A handler function must be provided.");
       }
       if (options === undefined) {
@@ -557,7 +570,7 @@
               let resp;
               try {
                 resp = handler(req);
-                if (resp instanceof Promise) {
+                if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
                   PromisePrototypeCatch(
                     PromisePrototypeThen(
                       resp,
@@ -572,11 +585,11 @@
                           i,
                           respondFast,
                           respondChunked,
+                          tryRespondChunked,
                         ),
                     ),
                     onError,
                   );
-                  continue;
                 } else if (typeof resp?.then === "function") {
                   resp.then((resp) =>
                     handleResponse(
@@ -589,25 +602,26 @@
                       i,
                       respondFast,
                       respondChunked,
+                      tryRespondChunked,
                     )
                   ).catch(onError);
-                  continue;
+                } else {
+                  handleResponse(
+                    req,
+                    resp,
+                    body,
+                    hasBody,
+                    method,
+                    serverId,
+                    i,
+                    respondFast,
+                    respondChunked,
+                    tryRespondChunked,
+                  ).catch(onError);
                 }
               } catch (e) {
                 resp = await onError(e);
               }
-
-              handleResponse(
-                req,
-                resp,
-                body,
-                hasBody,
-                method,
-                serverId,
-                i,
-                respondFast,
-                respondChunked,
-              );
             }
 
             offset += tokens;
@@ -623,9 +637,28 @@
         once: true,
       });
 
+      function tryRespondChunked(token, chunk, shutdown) {
+        const nwritten = core.ops.op_try_flash_respond_chunked(
+          serverId,
+          token,
+          chunk ?? new Uint8Array(),
+          shutdown,
+        );
+        if (nwritten > 0) {
+          return core.opAsync(
+            "op_flash_respond_chunked",
+            serverId,
+            token,
+            chunk,
+            shutdown,
+            nwritten,
+          );
+        }
+      }
+
       function respondChunked(token, chunk, shutdown) {
         return core.opAsync(
-          "op_flash_respond_chuncked",
+          "op_flash_respond_chunked",
           serverId,
           token,
           chunk,

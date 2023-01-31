@@ -1,14 +1,14 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
 use deno_core::resolve_import;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::ResolveResponse;
 use deno_graph::source::Resolver;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use import_map::ImportMap;
 use std::sync::Arc;
 
-use crate::args::config_file::JsxImportSourceConfig;
+use crate::args::JsxImportSourceConfig;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
@@ -63,19 +63,13 @@ impl Resolver for CliResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> ResolveResponse {
+  ) -> Result<ModuleSpecifier, AnyError> {
     if let Some(import_map) = &self.maybe_import_map {
-      match import_map.resolve(specifier, referrer) {
-        Ok(resolved_specifier) => {
-          ResolveResponse::Specifier(resolved_specifier)
-        }
-        Err(err) => ResolveResponse::Err(err.into()),
-      }
+      import_map
+        .resolve(specifier, referrer)
+        .map_err(|err| err.into())
     } else {
-      match resolve_import(specifier, referrer.as_str()) {
-        Ok(specifier) => ResolveResponse::Specifier(specifier),
-        Err(err) => ResolveResponse::Err(err.into()),
-      }
+      resolve_import(specifier, referrer.as_str()).map_err(|err| err.into())
     }
   }
 }

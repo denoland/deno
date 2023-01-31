@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -65,16 +65,19 @@
         componentsBuf.buffer,
       );
     }
-    return getSerialization(status, href);
+    return getSerialization(status, href, maybeBase);
   }
 
-  function getSerialization(status, href) {
+  function getSerialization(status, href, maybeBase) {
     if (status === 0) {
       return href;
     } else if (status === 1) {
       return core.ops.op_url_get_serialization();
     } else {
-      throw new TypeError("Invalid URL");
+      throw new TypeError(
+        `Invalid URL: '${href}'` +
+          (maybeBase ? ` with base '${maybeBase}'` : ""),
+      );
     }
   }
 
@@ -192,7 +195,9 @@
         context: "Argument 1",
       });
       const values = [];
-      for (const entry of this[_list]) {
+      const entries = this[_list];
+      for (let i = 0; i < entries.length; ++i) {
+        const entry = entries[i];
         if (entry[0] === name) {
           ArrayPrototypePush(values, entry[1]);
         }
@@ -212,7 +217,9 @@
         prefix,
         context: "Argument 1",
       });
-      for (const entry of this[_list]) {
+      const entries = this[_list];
+      for (let i = 0; i < entries.length; ++i) {
+        const entry = entries[i];
         if (entry[0] === name) {
           return entry[1];
         }
@@ -375,16 +382,16 @@
     }
 
     #updateComponents() {
-      [
-        this.#schemeEnd,
-        this.#usernameEnd,
-        this.#hostStart,
-        this.#hostEnd,
-        this.#port,
-        this.#pathStart,
-        this.#queryStart,
-        this.#fragmentStart,
-      ] = componentsBuf;
+      ({
+        0: this.#schemeEnd,
+        1: this.#usernameEnd,
+        2: this.#hostStart,
+        3: this.#hostEnd,
+        4: this.#port,
+        5: this.#pathStart,
+        6: this.#queryStart,
+        7: this.#fragmentStart,
+      } = componentsBuf);
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
