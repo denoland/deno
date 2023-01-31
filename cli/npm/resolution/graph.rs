@@ -20,9 +20,10 @@ use crate::npm::registry::NpmDependencyEntry;
 use crate::npm::registry::NpmDependencyEntryKind;
 use crate::npm::registry::NpmPackageInfo;
 use crate::npm::registry::NpmPackageVersionInfo;
-use crate::npm::semver::NpmVersion;
-use crate::npm::semver::NpmVersionReq;
+use crate::npm::semver::parse_npm_version;
+use crate::npm::semver::parse_npm_version_req;
 use crate::npm::NpmRegistryApi;
+use crate::semver::Version;
 
 use super::snapshot::NpmResolutionSnapshot;
 use super::snapshot::SnapshotPackageCopyIndexResolver;
@@ -448,8 +449,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     &self,
     package_info: &NpmPackageInfo,
     version_matcher: &impl NpmVersionMatcher,
-  ) -> Result<Option<NpmVersion>, AnyError> {
-    let mut maybe_best_version: Option<&NpmVersion> = None;
+  ) -> Result<Option<Version>, AnyError> {
+    let mut maybe_best_version: Option<&Version> = None;
     if let Some(ids) = self.graph.packages_by_name.get(&package_info.name) {
       for version in ids.iter().map(|id| &id.version) {
         if version_req_satisfies(version_matcher, version, package_info, None)?
@@ -996,7 +997,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
 #[derive(Clone)]
 struct VersionAndInfo<'a> {
-  version: NpmVersion,
+  version: Version,
   info: &'a NpmPackageVersionInfo,
 }
 
@@ -1010,7 +1011,7 @@ fn get_resolved_package_version_and_info<'a>(
   } else {
     let mut maybe_best_version: Option<VersionAndInfo> = None;
     for version_info in info.versions.values() {
-      let version = NpmVersion::parse(&version_info.version)?;
+      let version = parse_npm_version(&version_info.version)?;
       if version_matcher.matches(&version) {
         let is_best_version = maybe_best_version
           .as_ref()
@@ -1054,7 +1055,7 @@ fn get_resolved_package_version_and_info<'a>(
 
 fn version_req_satisfies(
   matcher: &impl NpmVersionMatcher,
-  version: &NpmVersion,
+  version: &Version,
   package_info: &NpmPackageInfo,
   parent: Option<&NpmPackageId>,
 ) -> Result<bool, AnyError> {
@@ -1081,7 +1082,7 @@ fn tag_to_version_info<'a>(
   // explicit version.
   if tag == "latest" && info.name == "@types/node" {
     return get_resolved_package_version_and_info(
-      &NpmVersionReq::parse("18.0.0 - 18.11.18").unwrap(),
+      &parse_npm_version_req("18.0.0 - 18.11.18").unwrap(),
       info,
       parent,
     );
@@ -1090,7 +1091,7 @@ fn tag_to_version_info<'a>(
   if let Some(version) = info.dist_tags.get(tag) {
     match info.versions.get(version) {
       Some(info) => Ok(VersionAndInfo {
-        version: NpmVersion::parse(version)?,
+        version: parse_npm_version(version)?,
         info,
       }),
       None => {

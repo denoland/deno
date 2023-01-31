@@ -6,10 +6,11 @@ use monch::*;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::semver::Partial;
+use crate::semver::VersionRange;
+use crate::semver::XRange;
+
 use super::is_valid_npm_tag;
-use super::range::Partial;
-use super::range::VersionRange;
-use super::range::XRange;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 enum SpecifierVersionReqInner {
@@ -198,7 +199,7 @@ fn part(input: &str) -> ParseResult<&str> {
 
 #[cfg(test)]
 mod tests {
-  use crate::npm::semver::NpmVersion;
+  use crate::npm::semver::parse_npm_version;
 
   use super::*;
 
@@ -213,7 +214,7 @@ mod tests {
       self
         .0
         .range()
-        .map(|r| r.satisfies(&NpmVersion::parse(version).unwrap()))
+        .map(|r| r.satisfies(&parse_npm_version(version).unwrap()))
         .unwrap_or(false)
     }
   }

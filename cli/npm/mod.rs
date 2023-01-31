@@ -7,8 +7,6 @@ mod resolvers;
 mod semver;
 mod tarball;
 
-#[cfg(test)]
-pub use self::semver::NpmVersion;
 pub use cache::NpmCache;
 #[cfg(test)]
 pub use registry::NpmPackageVersionDistInfo;
@@ -20,4 +18,5 @@ pub use resolution::NpmPackageReference;
 pub use resolution::NpmPackageReq;
 pub use resolution::NpmResolutionPackage;
 pub use resolution::NpmResolutionSnapshot;
+pub use resolution::NpmVersionMatcher;
 pub use resolvers::NpmPackageResolver;

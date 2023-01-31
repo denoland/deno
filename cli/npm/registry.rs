@@ -25,13 +25,14 @@ use serde::Serialize;
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
+use crate::npm::semver::parse_npm_version_req;
+use crate::semver::Version;
+use crate::semver::VersionReq;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
 use super::resolution::NpmVersionMatcher;
-use super::semver::NpmVersion;
-use super::semver::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
@@ -61,11 +62,11 @@ pub struct NpmDependencyEntry {
   pub kind: NpmDependencyEntryKind,
   pub bare_specifier: String,
   pub name: String,
-  pub version_req: NpmVersionReq,
+  pub version_req: VersionReq,
   /// When the dependency is also marked as a peer dependency,
   /// use this entry to resolve the dependency when it can't
   /// be resolved as a peer dependency.
-  pub peer_dep_version_req: Option<NpmVersionReq>,
+  pub peer_dep_version_req: Option<VersionReq>,
 }
 
 impl PartialOrd for NpmDependencyEntry {
@@ -129,7 +130,7 @@ impl NpmPackageVersionInfo {
           (entry.0.clone(), entry.1.clone())
         };
       let version_req =
-        NpmVersionReq::parse(&version_req).with_context(|| {
+        parse_npm_version_req(&version_req).with_context(|| {
           format!(
             "error parsing version requirement for dependency: {bare_specifier}@{version_req}"
           )
@@ -217,7 +218,7 @@ pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
   fn package_version_info(
     &self,
     name: &str,
-    version: &NpmVersion,
+    version: &Version,
   ) -> BoxFuture<'static, Result<Option<NpmPackageVersionInfo>, AnyError>> {
     let api = self.clone();
     let name = name.to_string();
