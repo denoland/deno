@@ -53,14 +53,13 @@ pub fn resolve_redirect_from_response(
 ) -> Result<Url, AnyError> {
   debug_assert!(response.status().is_redirection());
   if let Some(location) = response.headers().get(LOCATION) {
-    let location_string = location.to_str().unwrap();
+    let location_string = location.to_str()?;
     log::debug!("Redirecting to {:?}...", &location_string);
     let new_url = resolve_url_from_location(request_url, location_string);
     Ok(new_url)
   } else {
     Err(generic_error(format!(
-      "Redirection from '{}' did not provide location header",
-      request_url
+      "Redirection from '{request_url}' did not provide location header"
     )))
   }
 }
@@ -290,7 +289,7 @@ impl HttpClient {
         "Bad response: {:?}{}",
         status,
         match maybe_response_text {
-          Some(text) => format!("\n\n{}", text),
+          Some(text) => format!("\n\n{text}"),
           None => String::new(),
         }
       );

@@ -13,7 +13,11 @@
   };
 
   function setBuildInfo(target) {
-    const [arch, vendor, os, env] = StringPrototypeSplit(target, "-", 4);
+    const { 0: arch, 1: vendor, 2: os, 3: env } = StringPrototypeSplit(
+      target,
+      "-",
+      4,
+    );
     build.target = target;
     build.arch = arch;
     build.vendor = vendor;

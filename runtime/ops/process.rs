@@ -294,7 +294,8 @@ async fn op_run_status(
 #[cfg(unix)]
 pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   let signo = super::signal::signal_str_to_int(signal)?;
-  use nix::sys::signal::{kill as unix_kill, Signal};
+  use nix::sys::signal::kill as unix_kill;
+  use nix::sys::signal::Signal;
   use nix::unistd::Pid;
   let sig = Signal::try_from(signo)?;
   unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(AnyError::from)
@@ -316,7 +317,7 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use winapi::um::winnt::PROCESS_TERMINATE;
 
   if !matches!(signal, "SIGKILL" | "SIGTERM") {
-    Err(type_error(format!("Invalid signal: {}", signal)))
+    Err(type_error(format!("Invalid signal: {signal}")))
   } else if pid <= 0 {
     Err(type_error("Invalid pid"))
   } else {

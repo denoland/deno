@@ -12,7 +12,8 @@ use deno_fetch::reqwest;
 use deno_web::BlobStore;
 use deno_websocket::DomExceptionNetworkError;
 use hyper::body::Bytes;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::task::JoinHandle;
 
 // TODO(andreubotella) Properly parse the MIME type
@@ -57,8 +58,7 @@ pub fn op_worker_sync_fetch(
     let runtime = tokio::runtime::Builder::new_current_thread()
       .enable_io()
       .enable_time()
-      .build()
-      .unwrap();
+      .build()?;
 
     let handles: Vec<_> = scripts
       .into_iter()
@@ -92,7 +92,7 @@ pub fn op_worker_sync_fetch(
             }
             "data" => {
               let data_url = DataUrl::process(&script)
-                .map_err(|e| type_error(format!("{:?}", e)))?;
+                .map_err(|e| type_error(format!("{e:?}")))?;
 
               let mime_type = {
                 let mime = data_url.mime_type();
@@ -101,7 +101,7 @@ pub fn op_worker_sync_fetch(
 
               let (body, _) = data_url
                 .decode_to_vec()
-                .map_err(|e| type_error(format!("{:?}", e)))?;
+                .map_err(|e| type_error(format!("{e:?}")))?;
 
               (Bytes::from(body), Some(mime_type), script)
             }
@@ -132,7 +132,7 @@ pub fn op_worker_sync_fetch(
               Some(mime_type) => {
                 return Err(
                   DomExceptionNetworkError {
-                    msg: format!("Invalid MIME type {:?}.", mime_type),
+                    msg: format!("Invalid MIME type {mime_type:?}."),
                   }
                   .into(),
                 )

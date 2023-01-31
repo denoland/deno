@@ -34,52 +34,52 @@ const headerDict: Record<string, string> = {
 };
 // deno-lint-ignore no-explicit-any
 const headerSeq: any[] = [];
-for (const name in headerDict) {
-  headerSeq.push([name, headerDict[name]]);
+for (const [name, value] of Object.entries(headerDict)) {
+  headerSeq.push([name, value]);
 }
 
 Deno.test(function newHeaderWithSequence() {
   const headers = new Headers(headerSeq);
-  for (const name in headerDict) {
-    assertEquals(headers.get(name), String(headerDict[name]));
+  for (const [name, value] of Object.entries(headerDict)) {
+    assertEquals(headers.get(name), String(value));
   }
   assertEquals(headers.get("length"), null);
 });
 
 Deno.test(function newHeaderWithRecord() {
   const headers = new Headers(headerDict);
-  for (const name in headerDict) {
-    assertEquals(headers.get(name), String(headerDict[name]));
+  for (const [name, value] of Object.entries(headerDict)) {
+    assertEquals(headers.get(name), String(value));
   }
 });
 
 Deno.test(function newHeaderWithHeadersInstance() {
   const headers = new Headers(headerDict);
   const headers2 = new Headers(headers);
-  for (const name in headerDict) {
-    assertEquals(headers2.get(name), String(headerDict[name]));
+  for (const [name, value] of Object.entries(headerDict)) {
+    assertEquals(headers2.get(name), String(value));
   }
 });
 
 Deno.test(function headerAppendSuccess() {
   const headers = new Headers();
-  for (const name in headerDict) {
-    headers.append(name, headerDict[name]);
-    assertEquals(headers.get(name), String(headerDict[name]));
+  for (const [name, value] of Object.entries(headerDict)) {
+    headers.append(name, value);
+    assertEquals(headers.get(name), String(value));
   }
 });
 
 Deno.test(function headerSetSuccess() {
   const headers = new Headers();
-  for (const name in headerDict) {
-    headers.set(name, headerDict[name]);
-    assertEquals(headers.get(name), String(headerDict[name]));
+  for (const [name, value] of Object.entries(headerDict)) {
+    headers.set(name, value);
+    assertEquals(headers.get(name), String(value));
   }
 });
 
 Deno.test(function headerHasSuccess() {
   const headers = new Headers(headerDict);
-  for (const name in headerDict) {
+  for (const name of Object.keys(headerDict)) {
     assert(headers.has(name), "headers has name " + name);
     assert(
       !headers.has("nameNotInHeaders"),
@@ -90,7 +90,7 @@ Deno.test(function headerHasSuccess() {
 
 Deno.test(function headerDeleteSuccess() {
   const headers = new Headers(headerDict);
-  for (const name in headerDict) {
+  for (const name of Object.keys(headerDict)) {
     assert(headers.has(name), "headers have a header: " + name);
     headers.delete(name);
     assert(!headers.has(name), "headers do not have anymore a header: " + name);
@@ -99,8 +99,8 @@ Deno.test(function headerDeleteSuccess() {
 
 Deno.test(function headerGetSuccess() {
   const headers = new Headers(headerDict);
-  for (const name in headerDict) {
-    assertEquals(headers.get(name), String(headerDict[name]));
+  for (const [name, value] of Object.entries(headerDict)) {
+    assertEquals(headers.get(name), String(value));
     assertEquals(headers.get("nameNotInHeaders"), null);
   }
 });

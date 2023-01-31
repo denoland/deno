@@ -22,7 +22,6 @@ pub fn op_webgpu_create_shader_module(
   device_rid: ResourceId,
   label: Option<String>,
   code: String,
-  _source_map: Option<()>, // not yet implemented
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -41,6 +40,6 @@ pub fn op_webgpu_create_shader_module(
     device,
     &descriptor,
     source,
-    std::marker::PhantomData
+    ()
   ) => state, WebGpuShaderModule)
 }

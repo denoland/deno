@@ -17,6 +17,7 @@ mod ts {
   use deno_core::error::AnyError;
   use deno_core::op;
   use deno_core::OpState;
+  use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
   use regex::Regex;
   use serde::Deserialize;
   use serde_json::json;
@@ -94,6 +95,7 @@ mod ts {
       "es2018.regexp",
       "es2019.array",
       "es2019",
+      "es2019.intl",
       "es2019.object",
       "es2019.string",
       "es2019.symbol",
@@ -116,6 +118,7 @@ mod ts {
       "es2022.error",
       "es2022.intl",
       "es2022.object",
+      "es2022.sharedmemory",
       "es2022.string",
       "esnext",
       "esnext.array",
@@ -127,7 +130,7 @@ mod ts {
     for name in libs.iter() {
       println!(
         "cargo:rerun-if-changed={}",
-        path_dts.join(format!("lib.{}.d.ts", name)).display()
+        path_dts.join(format!("lib.{name}.d.ts")).display()
       );
     }
     println!(
@@ -150,13 +153,28 @@ mod ts {
       build_libs.push(op_lib.to_owned());
     }
 
+    // used in the tests to verify that after snapshotting it has the same number
+    // of lib files loaded and hasn't included any ones lazily loaded from Rust
+    std::fs::write(
+      PathBuf::from(env::var_os("OUT_DIR").unwrap())
+        .join("lib_file_names.json"),
+      serde_json::to_string(&build_libs).unwrap(),
+    )
+    .unwrap();
+
     #[op]
     fn op_build_info(state: &mut OpState) -> Value {
       let build_specifier = "asset:///bootstrap.ts";
+
+      let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
+        .iter()
+        .map(|s| s.name)
+        .collect::<Vec<&str>>();
       let build_libs = state.borrow::<Vec<&str>>();
       json!({
         "buildSpecifier": build_specifier,
         "libs": build_libs,
+        "nodeBuiltInModuleNames": node_built_in_module_names,
       })
     }
 
@@ -196,7 +214,7 @@ mod ts {
       // we need a basic file to send to tsc to warm it up.
       if args.specifier == build_specifier {
         Ok(json!({
-          "data": r#"console.log("hello deno!");"#,
+          "data": r#"Deno.writeTextFile("hello.txt", "hello deno!");"#,
           "version": "1",
           // this corresponds to `ts.ScriptKind.TypeScript`
           "scriptKind": 3
@@ -208,10 +226,10 @@ mod ts {
           // if it comes from an op crate, we were supplied with the path to the
           // file.
           let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
-            PathBuf::from(op_crate_lib).canonicalize().unwrap()
+            PathBuf::from(op_crate_lib).canonicalize()?
             // otherwise we are will generate the path ourself
           } else {
-            path_dts.join(format!("lib.{}.d.ts", lib))
+            path_dts.join(format!("lib.{lib}.d.ts"))
           };
           let data = std::fs::read_to_string(path)?;
           Ok(json!({
@@ -413,7 +431,7 @@ fn main() {
   // op_fetch_asset::trace_serializer();
 
   if let Ok(c) = env::var("DENO_CANARY") {
-    println!("cargo:rustc-env=DENO_CANARY={}", c);
+    println!("cargo:rustc-env=DENO_CANARY={c}");
   }
   println!("cargo:rerun-if-env-changed=DENO_CANARY");
 
@@ -422,51 +440,6 @@ fn main() {
 
   println!("cargo:rustc-env=TS_VERSION={}", ts::version());
   println!("cargo:rerun-if-env-changed=TS_VERSION");
-
-  println!(
-    "cargo:rustc-env=DENO_CONSOLE_LIB_PATH={}",
-    deno_console::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_URL_LIB_PATH={}",
-    deno_url::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_WEB_LIB_PATH={}",
-    deno_web::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_FETCH_LIB_PATH={}",
-    deno_fetch::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_WEBGPU_LIB_PATH={}",
-    deno_webgpu_get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_WEBSOCKET_LIB_PATH={}",
-    deno_websocket::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_WEBSTORAGE_LIB_PATH={}",
-    deno_webstorage::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_CACHE_LIB_PATH={}",
-    deno_cache::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_CRYPTO_LIB_PATH={}",
-    deno_crypto::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_BROADCAST_CHANNEL_LIB_PATH={}",
-    deno_broadcast_channel::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_NET_LIB_PATH={}",
-    deno_net::get_declaration().display()
-  );
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());

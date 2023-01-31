@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -172,7 +172,7 @@
         );
       }
 
-      const [status, stdout, stderr] = await SafePromiseAll([
+      const { 0: status, 1: stdout, 2: stderr } = await SafePromiseAll([
         this.#status,
         collectOutput(this.#stdout),
         collectOutput(this.#stderr),
@@ -315,6 +315,7 @@
           ...(this.#options ?? {}),
           stdout: this.#options?.stdout ?? "inherit",
           stderr: this.#options?.stderr ?? "inherit",
+          stdin: this.#options?.stdin ?? "inherit",
         };
         return spawnChild(this.#command, options);
       }

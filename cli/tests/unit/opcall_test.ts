@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import { assert, assertStringIncludes, unreachable } from "./test_util.ts";
 
 Deno.test(async function sendAsyncStackTrace() {
@@ -20,17 +22,13 @@ Deno.test(async function sendAsyncStackTrace() {
   }
 });
 
-declare global {
-  namespace Deno {
-    // deno-lint-ignore no-explicit-any, no-var
-    var core: any;
-  }
-}
+// @ts-ignore This is not publicly typed namespace, but it's there for sure.
+const core = Deno[Deno.internal].core;
 
 Deno.test(async function opsAsyncBadResource() {
   try {
     const nonExistingRid = 9999;
-    await Deno.core.read(
+    await core.read(
       nonExistingRid,
       new Uint8Array(0),
     );
@@ -44,7 +42,10 @@ Deno.test(async function opsAsyncBadResource() {
 Deno.test(function opsSyncBadResource() {
   try {
     const nonExistingRid = 9999;
-    Deno.core.ops.op_read_sync(nonExistingRid, new Uint8Array(0));
+    core.ops.op_read_sync(
+      nonExistingRid,
+      new Uint8Array(0),
+    );
   } catch (e) {
     if (!(e instanceof Deno.errors.BadResource)) {
       throw e;
