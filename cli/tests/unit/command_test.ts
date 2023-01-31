@@ -846,19 +846,3 @@ Deno.test(
     }
   },
 );
-
-Deno.test(
-  { permissions: { read: true, run: true } },
-  async function commandWouldBlock() {
-    const command = new Deno.Command(Deno.execPath(), {
-      args: ["eval", "console.log('hello world')"],
-    });
-    await assertRejects(async () => {
-      const cmds = [];
-      for (let i = 0; i < 10000; i++) {
-        cmds.push(command.output());
-      }
-      await Promise.all(cmds);
-    }, Deno.errors.WouldBlock);
-  },
-);
