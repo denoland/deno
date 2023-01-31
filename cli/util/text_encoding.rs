@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use encoding_rs::*;
 use std::borrow::Cow;
@@ -39,7 +39,7 @@ pub fn convert_to_utf8<'a>(
       .ok_or_else(|| ErrorKind::InvalidData.into()),
     None => Err(Error::new(
       ErrorKind::InvalidInput,
-      format!("Unsupported charset: {}", charset),
+      format!("Unsupported charset: {charset}"),
     )),
   }
 }

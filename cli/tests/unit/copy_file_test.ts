@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 function readFileString(filename: string | URL): string {
@@ -207,5 +207,32 @@ Deno.test(
     await assertRejects(async () => {
       await Deno.copyFile("/from.txt", "/to.txt");
     }, Deno.errors.PermissionDenied);
+  },
+);
+
+function copyFileSyncMode(content: string): void {
+  const tempDir = Deno.makeTempDirSync();
+  const fromFilename = tempDir + "/from.txt";
+  const toFilename = tempDir + "/to.txt";
+  Deno.writeTextFileSync(fromFilename, content);
+  Deno.chmodSync(fromFilename, 0o100755);
+
+  Deno.copyFileSync(fromFilename, toFilename);
+  const toStat = Deno.statSync(toFilename);
+  assertEquals(toStat.mode!, 0o100755);
+}
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  function copyFileSyncChmod() {
+    // this Tests different optimization paths on MacOS:
+    //
+    // < 128 KB clonefile() w/ fallback to copyfile()
+    // > 128 KB
+    copyFileSyncMode("Hello world!");
+    copyFileSyncMode("Hello world!".repeat(128 * 1024));
   },
 );

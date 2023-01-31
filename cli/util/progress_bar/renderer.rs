@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::time::Duration;
 
@@ -23,7 +23,7 @@ pub struct ProgressData {
   pub duration: Duration,
 }
 
-pub trait ProgressBarRenderer: Send + std::fmt::Debug {
+pub trait ProgressBarRenderer: Send + Sync + std::fmt::Debug {
   fn render(&self, data: ProgressData) -> String;
 }
 
@@ -75,9 +75,7 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
       ));
     }
     text.push_str(&elapsed_text);
-    let max_width =
-      std::cmp::max(10, std::cmp::min(75, data.terminal_width as i32 - 5))
-        as usize;
+    let max_width = (data.terminal_width as i32 - 5).clamp(10, 75) as usize;
     let same_line_text_width =
       elapsed_text.len() + total_text_max_width + bytes_text_max_width + 3; // space, open and close brace
     let total_bars = if same_line_text_width > max_width {
@@ -156,7 +154,7 @@ fn get_elapsed_text(elapsed: Duration) -> String {
   let elapsed_secs = elapsed.as_secs();
   let seconds = elapsed_secs % 60;
   let minutes = elapsed_secs / 60;
-  format!("[{:0>2}:{:0>2}]", minutes, seconds)
+  format!("[{minutes:0>2}:{seconds:0>2}]")
 }
 
 #[cfg(test)]

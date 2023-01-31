@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides feature to upgrade deno executable
 
@@ -7,7 +7,6 @@ use crate::args::UpgradeFlags;
 use crate::colors;
 use crate::http_util::HttpClient;
 use crate::proc_state::ProcState;
-use crate::util::display::human_download_size;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
@@ -17,7 +16,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
-use deno_core::futures::StreamExt;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
@@ -164,6 +162,25 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
   }
 }
 
+fn get_minor_version(version: &str) -> &str {
+  version.rsplitn(2, '.').collect::<Vec<&str>>()[1]
+}
+
+fn print_release_notes(current_version: &str, new_version: &str) {
+  if get_minor_version(current_version) != get_minor_version(new_version) {
+    log::info!(
+      "{}{}",
+      "Release notes: https://github.com/denoland/deno/releases/tag/v",
+      &new_version,
+    );
+    log::info!(
+      "{}{}",
+      "Blog post: https://deno.com/blog/v",
+      get_minor_version(new_version)
+    );
+  }
+}
+
 pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
   if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
     return;
@@ -201,12 +218,13 @@ pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
           "{} {} → {} ",
           colors::green("A new release of Deno is available:"),
           colors::cyan(version::deno()),
-          colors::cyan(upgrade_version)
+          colors::cyan(&upgrade_version)
         );
         eprintln!(
           "{}",
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
+        print_release_notes(&version::deno(), &upgrade_version);
       }
 
       update_checker.store_prompted();
@@ -265,7 +283,7 @@ pub async fn upgrade(
     ), current_exe_path.display());
   }
 
-  let client = ps.http_client.clone();
+  let client = &ps.http_client;
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
@@ -300,10 +318,10 @@ pub async fn upgrade(
     None => {
       let latest_version = if upgrade_flags.canary {
         log::info!("Looking up latest canary version");
-        get_latest_canary_version(&client).await?
+        get_latest_canary_version(client).await?
       } else {
         log::info!("Looking up latest version");
-        get_latest_release_version(&client).await?
+        get_latest_release_version(client).await?
       };
 
       let current_is_most_recent = if upgrade_flags.canary {
@@ -353,17 +371,23 @@ pub async fn upgrade(
     )
   };
 
-  let archive_data = download_package(&client, &download_url).await?;
+  let archive_data = download_package(client, &download_url)
+    .await
+    .with_context(|| format!("Failed downloading {download_url}"))?;
 
   log::info!("Deno is upgrading to version {}", &install_version);
 
-  let new_exe_path = unpack(archive_data, cfg!(windows))?;
+  let temp_dir = secure_tempfile::TempDir::new()?;
+  let new_exe_path = unpack_into_dir(archive_data, cfg!(windows), &temp_dir)?;
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
   if upgrade_flags.dry_run {
     fs::remove_file(&new_exe_path)?;
     log::info!("Upgraded successfully (dry run)");
+    if !upgrade_flags.canary {
+      print_release_notes(&version::deno(), &install_version);
+    }
   } else {
     let output_exe_path =
       upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
@@ -379,13 +403,14 @@ pub async fn upgrade(
         return Err(err).with_context(|| {
           format!(
             concat!(
-              "Access denied: Could not replace the deno executable. This may be ",
-              "because an existing deno process is running. Please ensure there ",
-              "are no running deno processes (ex. Stop-Process -Name deno ; deno {}), ",
-              "close any editors before upgrading, and ensure you have sufficient ",
-              "permission to '{}'."
+              "Could not replace the deno executable. This may be because an ",
+              "existing deno process is running. Please ensure there are no ",
+              "running deno processes (ex. Stop-Process -Name deno ; deno {}), ",
+              "close any editors before upgrading, and ensure you have ",
+              "sufficient permission to '{}'."
             ),
-            std::env::args().collect::<Vec<_>>().join(" "),
+            // skip the first argument, which is the executable path
+            std::env::args().skip(1).collect::<Vec<_>>().join(" "),
             output_exe_path.display(),
           )
         });
@@ -394,30 +419,32 @@ pub async fn upgrade(
       }
     }
     log::info!("Upgraded successfully");
+    if !upgrade_flags.canary {
+      print_release_notes(&version::deno(), &install_version);
+    }
   }
 
+  drop(temp_dir); // delete the temp dir
   Ok(())
 }
 
 async fn get_latest_release_version(
   client: &HttpClient,
 ) -> Result<String, AnyError> {
-  let res = client
-    .get("https://dl.deno.land/release-latest.txt")
-    .send()
+  let text = client
+    .download_text("https://dl.deno.land/release-latest.txt")
     .await?;
-  let version = res.text().await?.trim().to_string();
+  let version = text.trim().to_string();
   Ok(version.replace('v', ""))
 }
 
 async fn get_latest_canary_version(
   client: &HttpClient,
 ) -> Result<String, AnyError> {
-  let res = client
-    .get("https://dl.deno.land/canary-latest.txt")
-    .send()
+  let text = client
+    .download_text("https://dl.deno.land/canary-latest.txt")
     .await?;
-  let version = res.text().await?.trim().to_string();
+  let version = text.trim().to_string();
   Ok(version)
 }
 
@@ -426,62 +453,34 @@ async fn download_package(
   download_url: &str,
 ) -> Result<Vec<u8>, AnyError> {
   log::info!("Downloading {}", &download_url);
-
-  let res = client.get(download_url).send().await?;
-
-  if res.status().is_success() {
-    let total_size = res.content_length().unwrap();
-    let mut current_size = 0;
-    let mut data = Vec::with_capacity(total_size as usize);
-    let mut stream = res.bytes_stream();
-    let mut skip_print = 0;
+  let maybe_bytes = {
     let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
+    // provide an empty string here in order to prefer the downloading
+    // text above which will stay alive after the progress bars are complete
     let progress = progress_bar.update("");
-    progress.set_total_size(total_size);
-    while let Some(item) = stream.next().await {
-      let bytes = item?;
-      current_size += bytes.len() as u64;
-      data.extend_from_slice(&bytes);
-      if progress_bar.is_enabled() {
-        progress.set_position(current_size);
-      } else if skip_print == 0 {
-        log::info!(
-          "{} / {} ({:^5.1}%)",
-          human_download_size(current_size, total_size),
-          human_download_size(total_size, total_size),
-          (current_size as f64 / total_size as f64) * 100.0,
-        );
-        skip_print = 10;
-      } else {
-        skip_print -= 1;
-      }
+    client
+      .download_with_progress(download_url, &progress)
+      .await?
+  };
+  match maybe_bytes {
+    Some(bytes) => Ok(bytes),
+    None => {
+      log::info!("Download could not be found, aborting");
+      std::process::exit(1)
     }
-    drop(progress);
-    log::info!(
-      "{} / {} (100.0%)",
-      human_download_size(current_size, total_size),
-      human_download_size(total_size, total_size)
-    );
-
-    Ok(data)
-  } else {
-    log::info!("Download could not be found, aborting");
-    std::process::exit(1)
   }
 }
 
-pub fn unpack(
+pub fn unpack_into_dir(
   archive_data: Vec<u8>,
   is_windows: bool,
+  temp_dir: &secure_tempfile::TempDir,
 ) -> Result<PathBuf, std::io::Error> {
   const EXE_NAME: &str = "deno";
-  // We use into_path so that the tempdir is not automatically deleted. This is
-  // useful for debugging upgrade, but also so this function can return a path
-  // to the newly uncompressed file without fear of the tempdir being deleted.
-  let temp_dir = secure_tempfile::TempDir::new()?.into_path();
+  let temp_dir_path = temp_dir.path();
   let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir.join(EXE_NAME).with_extension("zip");
-  let exe_path = temp_dir.join(EXE_NAME).with_extension(exe_ext);
+  let archive_path = temp_dir_path.join(EXE_NAME).with_extension("zip");
+  let exe_path = temp_dir_path.join(EXE_NAME).with_extension(exe_ext);
   assert!(!exe_path.exists());
 
   let archive_ext = Path::new(&*ARCHIVE_NAME)
@@ -510,14 +509,14 @@ pub fn unpack(
         .arg("-Path")
         .arg(format!("'{}'", &archive_path.to_str().unwrap()))
         .arg("-DestinationPath")
-        .arg(format!("'{}'", &temp_dir.to_str().unwrap()))
+        .arg(format!("'{}'", &temp_dir_path.to_str().unwrap()))
         .spawn()?
         .wait()?
     }
     "zip" => {
       fs::write(&archive_path, &archive_data)?;
       Command::new("unzip")
-        .current_dir(&temp_dir)
+        .current_dir(temp_dir_path)
         .arg(&archive_path)
         .spawn()
         .map_err(|err| {
@@ -532,7 +531,7 @@ pub fn unpack(
         })?
         .wait()?
     }
-    ext => panic!("Unsupported archive type: '{}'", ext),
+    ext => panic!("Unsupported archive type: '{ext}'"),
   };
   assert!(unpack_status.success());
   assert!(exe_path.exists());

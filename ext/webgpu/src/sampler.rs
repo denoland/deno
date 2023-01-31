@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -65,6 +65,6 @@ pub fn op_webgpu_create_sampler(
   gfx_put!(device => instance.device_create_sampler(
     device,
     &descriptor,
-    std::marker::PhantomData
+    ()
   ) => state, WebGpuSampler)
 }

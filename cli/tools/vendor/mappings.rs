@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -133,10 +133,7 @@ impl Mappings {
       self
         .mappings
         .get(specifier)
-        .as_ref()
-        .unwrap_or_else(|| {
-          panic!("Could not find local path for {}", specifier)
-        })
+        .unwrap_or_else(|| panic!("Could not find local path for {specifier}"))
         .to_path_buf()
     }
   }
@@ -164,7 +161,7 @@ impl Mappings {
       .iter()
       .find(|s| child_specifier.as_str().starts_with(s.as_str()))
       .unwrap_or_else(|| {
-        panic!("Could not find base specifier for {}", child_specifier)
+        panic!("Could not find base specifier for {child_specifier}")
       })
   }
 

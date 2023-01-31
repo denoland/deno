@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod blob;
 mod compression;
@@ -62,7 +62,8 @@ pub fn init<P: TimersPermission + 'static>(
   blob_store: BlobStore,
   maybe_location: Option<Url>,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl", "deno_console", "deno_url"])
     .js(include_js_files!(
       prefix "deno:ext/web",
       "00_infra.js",
@@ -129,25 +130,27 @@ pub fn init<P: TimersPermission + 'static>(
 #[op]
 fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {
   let mut s = input.into_bytes();
-  let decoded_len = forgiving_base64_decode(&mut s)?;
+  let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
   Ok(s.into())
 }
 
 #[op]
 fn op_base64_atob(mut s: ByteString) -> Result<ByteString, AnyError> {
-  let decoded_len = forgiving_base64_decode(&mut s)?;
+  let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
   Ok(s)
 }
 
 /// See <https://infra.spec.whatwg.org/#forgiving-base64>
 #[inline]
-fn forgiving_base64_decode(input: &mut [u8]) -> Result<usize, AnyError> {
+fn forgiving_base64_decode_inplace(
+  input: &mut [u8],
+) -> Result<usize, AnyError> {
   let error: _ =
     || DomExceptionInvalidCharacterError::new("Failed to decode base64");
-  let decoded = base64_simd::Base64::forgiving_decode_inplace(input)
-    .map_err(|_| error())?;
+  let decoded =
+    base64_simd::forgiving_decode_inplace(input).map_err(|_| error())?;
   Ok(decoded.len())
 }
 
@@ -164,8 +167,7 @@ fn op_base64_btoa(s: ByteString) -> String {
 /// See <https://infra.spec.whatwg.org/#forgiving-base64>
 #[inline]
 fn forgiving_base64_encode(s: &[u8]) -> String {
-  const BASE64_STANDARD: base64_simd::Base64 = base64_simd::Base64::STANDARD;
-  BASE64_STANDARD.encode_to_boxed_str(s).into_string()
+  base64_simd::STANDARD.encode_to_string(s)
 }
 
 #[op]
@@ -173,8 +175,7 @@ fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
   let encoding = Encoding::for_label_no_replacement(label.as_bytes())
     .ok_or_else(|| {
       range_error(format!(
-        "The encoding label provided ('{}') is invalid.",
-        label
+        "The encoding label provided ('{label}') is invalid."
       ))
     })?;
   Ok(encoding.name().to_lowercase())
@@ -222,8 +223,7 @@ fn op_encoding_decode_single(
 ) -> Result<U16String, AnyError> {
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
-      "The encoding label provided ('{}') is invalid.",
-      label
+      "The encoding label provided ('{label}') is invalid."
     ))
   })?;
 
@@ -270,14 +270,13 @@ fn op_encoding_decode_single(
 #[op]
 fn op_encoding_new_decoder(
   state: &mut OpState,
-  label: &str,
+  label: String,
   fatal: bool,
   ignore_bom: bool,
 ) -> Result<ResourceId, AnyError> {
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
-      "The encoding label provided ('{}') is invalid.",
-      label
+      "The encoding label provided ('{label}') is invalid."
     ))
   })?;
 
@@ -352,43 +351,25 @@ impl Resource for TextDecoderResource {
   }
 }
 
-#[op]
+#[op(v8)]
 fn op_encoding_encode_into(
-  input: Cow<'_, str>,
+  scope: &mut v8::HandleScope,
+  input: serde_v8::Value,
   buffer: &mut [u8],
   out_buf: &mut [u32],
-) {
-  // Since `input` is already UTF-8, we can simply find the last UTF-8 code
-  // point boundary from input that fits in `buffer`, and copy the bytes up to
-  // that point.
-  let boundary = if buffer.len() >= input.len() {
-    input.len()
-  } else {
-    let mut boundary = buffer.len();
+) -> Result<(), AnyError> {
+  let s = v8::Local::<v8::String>::try_from(input.v8_value)?;
 
-    // The maximum length of a UTF-8 code point is 4 bytes.
-    for _ in 0..4 {
-      if input.is_char_boundary(boundary) {
-        break;
-      }
-      debug_assert!(boundary > 0);
-      boundary -= 1;
-    }
-
-    debug_assert!(input.is_char_boundary(boundary));
-    boundary
-  };
-
-  buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
-
-  // The `read` output parameter is measured in UTF-16 code units.
-  out_buf[0] = match input {
-    // Borrowed Cow strings are zero-copy views into the V8 heap.
-    // Thus, they are guarantee to be SeqOneByteString.
-    Cow::Borrowed(v) => v[..boundary].len() as u32,
-    Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
-  };
-  out_buf[1] = boundary as u32;
+  let mut nchars = 0;
+  out_buf[1] = s.write_utf8(
+    scope,
+    buffer,
+    Some(&mut nchars),
+    v8::WriteOptions::NO_NULL_TERMINATION
+      | v8::WriteOptions::REPLACE_INVALID_UTF8,
+  ) as u32;
+  out_buf[0] = nchars as u32;
+  Ok(())
 }
 
 #[op(v8)]

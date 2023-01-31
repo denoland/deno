@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -26,6 +26,7 @@
     MapPrototypeSet,
     MathCeil,
     ObjectKeys,
+    ObjectPrototypeHasOwnProperty,
     ObjectPrototypeIsPrototypeOf,
     Promise,
     SafeArrayIterator,
@@ -167,6 +168,9 @@
 
       const details = [];
       for (const key in post.ops) {
+        if (!ObjectPrototypeHasOwnProperty(post.ops, key)) {
+          continue;
+        }
         const preOp = pre.ops[key] ??
           { opsDispatchedAsync: 0, opsCompletedAsync: 0 };
         const postOp = post.ops[key];
@@ -1069,7 +1073,7 @@
     if (shuffle !== null) {
       // http://en.wikipedia.org/wiki/Linear_congruential_generator
       // Use BigInt for everything because the random seed is u64.
-      const nextInt = (function (state) {
+      const nextInt = function (state) {
         const m = 0x80000000n;
         const a = 1103515245n;
         const c = 12345n;
@@ -1077,7 +1081,7 @@
         return function (max) {
           return state = ((a * state + c) % m) % BigInt(max);
         };
-      }(BigInt(shuffle)));
+      }(BigInt(shuffle));
 
       for (let i = filtered.length - 1; i > 0; i--) {
         const j = nextInt(i);
@@ -1261,10 +1265,10 @@
        */
       origin: desc.origin,
       /**
-       * @param nameOrTestDefinition {string | TestStepDefinition}
-       * @param fn {(t: TestContext) => void | Promise<void>}
+       * @param nameOrFnOrOptions {string | TestStepDefinition | ((t: TestContext) => void | Promise<void>)}
+       * @param maybeFn {((t: TestContext) => void | Promise<void>) | undefined}
        */
-      async step(nameOrTestDefinition, fn) {
+      async step(nameOrFnOrOptions, maybeFn) {
         if (MapPrototypeGet(testStates, desc.id).finalized) {
           throw new Error(
             "Cannot run test step after parent scope has finished execution. " +
@@ -1273,16 +1277,29 @@
         }
 
         let stepDesc;
-        if (typeof nameOrTestDefinition === "string") {
-          if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, fn))) {
+        if (typeof nameOrFnOrOptions === "string") {
+          if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, maybeFn))) {
             throw new TypeError("Expected function for second argument.");
           }
           stepDesc = {
-            name: nameOrTestDefinition,
-            fn,
+            name: nameOrFnOrOptions,
+            fn: maybeFn,
           };
-        } else if (typeof nameOrTestDefinition === "object") {
-          stepDesc = nameOrTestDefinition;
+        } else if (typeof nameOrFnOrOptions === "function") {
+          if (!nameOrFnOrOptions.name) {
+            throw new TypeError("The step function must have a name.");
+          }
+          if (maybeFn != undefined) {
+            throw new TypeError(
+              "Unexpected second argument to TestContext.step()",
+            );
+          }
+          stepDesc = {
+            name: nameOrFnOrOptions.name,
+            fn: nameOrFnOrOptions,
+          };
+        } else if (typeof nameOrFnOrOptions === "object") {
+          stepDesc = nameOrFnOrOptions;
         } else {
           throw new TypeError(
             "Expected a test definition or name and function.",

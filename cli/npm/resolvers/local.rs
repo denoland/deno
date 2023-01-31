@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! Code for local node_modules resolution.
 
@@ -19,6 +19,7 @@ use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_runtime::deno_core::futures;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use tokio::task::JoinHandle;
@@ -174,7 +175,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
         }
       }
 
-      // if doing type resolution, check for the existance of a @types package
+      // if doing type resolution, check for the existence of a @types package
       if mode.is_types() && !name.starts_with("@types/") {
         let sub_dir =
           join_package_name(current_folder, &types_package_name(name));
@@ -219,7 +220,6 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let resolver = self.clone();
     async move {
       resolver.resolution.add_package_reqs(packages).await?;
-      sync_resolver_with_fs(&resolver).await?;
       Ok(())
     }
     .boxed()
@@ -232,14 +232,30 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let resolver = self.clone();
     async move {
       resolver.resolution.set_package_reqs(packages).await?;
+      Ok(())
+    }
+    .boxed()
+  }
+
+  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>> {
+    let resolver = self.clone();
+    async move {
       sync_resolver_with_fs(&resolver).await?;
       Ok(())
     }
     .boxed()
   }
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
-    ensure_registry_read_permission(&self.root_node_modules_path, path)
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    ensure_registry_read_permission(
+      permissions,
+      &self.root_node_modules_path,
+      path,
+    )
   }
 
   fn snapshot(&self) -> NpmResolutionSnapshot {
@@ -247,7 +263,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
   }
 
   fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
-    self.resolution.lock(lockfile, &self.snapshot())
+    self.resolution.lock(lockfile)
   }
 }
 
@@ -342,7 +358,7 @@ async fn sync_resolution_with_fs(
   for package in &package_partitions.copy_packages {
     let package_cache_folder_id = package.get_package_cache_folder_id();
     let destination_path = deno_local_registry_dir
-      .join(&get_package_folder_id_folder_name(&package_cache_folder_id));
+      .join(get_package_folder_id_folder_name(&package_cache_folder_id));
     let initialized_file = destination_path.join(".initialized");
     if !initialized_file.exists() {
       let sub_node_modules = destination_path.join("node_modules");
@@ -352,7 +368,7 @@ async fn sync_resolution_with_fs(
       })?;
       let source_path = join_package_name(
         &deno_local_registry_dir
-          .join(&get_package_folder_id_folder_name(
+          .join(get_package_folder_id_folder_name(
             &package_cache_folder_id.with_no_count(),
           ))
           .join("node_modules"),
@@ -372,7 +388,7 @@ async fn sync_resolution_with_fs(
   // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
   for package in &all_packages {
     let sub_node_modules = deno_local_registry_dir
-      .join(&get_package_folder_id_folder_name(
+      .join(get_package_folder_id_folder_name(
         &package.get_package_cache_folder_id(),
       ))
       .join("node_modules");
@@ -419,7 +435,7 @@ async fn sync_resolution_with_fs(
     let package = snapshot.package_from_id(&package_id).unwrap();
     let local_registry_package_path = join_package_name(
       &deno_local_registry_dir
-        .join(&get_package_folder_id_folder_name(
+        .join(get_package_folder_id_folder_name(
           &package.get_package_cache_folder_id(),
         ))
         .join("node_modules"),

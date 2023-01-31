@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! The documentation for the inspector API is sparse, but these are helpful:
 //! <https://chromedevtools.github.io/devtools-protocol/>
@@ -696,7 +696,8 @@ pub struct LocalInspectorSession {
   v8_session_rx: UnboundedReceiver<InspectorMsg>,
   response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
   next_message_id: i32,
-  notification_queue: Vec<Value>,
+  notification_tx: UnboundedSender<Value>,
+  notification_rx: Option<UnboundedReceiver<Value>>,
 }
 
 impl LocalInspectorSession {
@@ -707,19 +708,20 @@ impl LocalInspectorSession {
     let response_tx_map = HashMap::new();
     let next_message_id = 0;
 
-    let notification_queue = Vec::new();
+    let (notification_tx, notification_rx) = mpsc::unbounded::<Value>();
 
     Self {
       v8_session_tx,
       v8_session_rx,
       response_tx_map,
       next_message_id,
-      notification_queue,
+      notification_tx,
+      notification_rx: Some(notification_rx),
     }
   }
 
-  pub fn notifications(&mut self) -> Vec<Value> {
-    self.notification_queue.split_off(0)
+  pub fn take_notification_rx(&mut self) -> UnboundedReceiver<Value> {
+    self.notification_rx.take().unwrap()
   }
 
   pub async fn post_message<T: serde::Serialize>(
@@ -795,7 +797,8 @@ impl LocalInspectorSession {
         .unwrap();
     } else {
       let message = serde_json::from_str(&inspector_msg.content).unwrap();
-      self.notification_queue.push(message);
+      // Ignore if the receiver has been dropped.
+      let _ = self.notification_tx.unbounded_send(message);
     }
   }
 }

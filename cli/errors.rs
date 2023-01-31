@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! There are many types of errors in Deno:
 //! - AnyError: a generic wrapper that can encapsulate any type of error.
@@ -65,9 +65,7 @@ pub fn get_error_class_name(e: &AnyError) -> &'static str {
       eprintln!(
         "Error '{}' contains boxed error of unknown type:{}",
         e,
-        e.chain()
-          .map(|e| format!("\n  {:?}", e))
-          .collect::<String>()
+        e.chain().map(|e| format!("\n  {e:?}")).collect::<String>()
       );
       "Error"
     })

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 
@@ -188,7 +188,7 @@ impl ReplLanguageServer {
     let new_text = if new_text.ends_with('\n') {
       new_text.to_string()
     } else {
-      format!("{}\n", new_text)
+      format!("{new_text}\n")
     };
     self.document_version += 1;
     let current_line_count =

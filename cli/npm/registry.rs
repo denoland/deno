@@ -1,5 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -130,8 +131,7 @@ impl NpmPackageVersionInfo {
       let version_req =
         NpmVersionReq::parse(&version_req).with_context(|| {
           format!(
-            "error parsing version requirement for dependency: {}@{}",
-            bare_specifier, version_req
+            "error parsing version requirement for dependency: {bare_specifier}@{version_req}"
           )
         })?;
       Ok(NpmDependencyEntry {
@@ -178,8 +178,18 @@ impl NpmPackageVersionInfo {
 pub struct NpmPackageVersionDistInfo {
   /// URL to the tarball.
   pub tarball: String,
-  pub shasum: String,
-  pub integrity: Option<String>,
+  shasum: String,
+  integrity: Option<String>,
+}
+
+impl NpmPackageVersionDistInfo {
+  pub fn integrity(&self) -> Cow<String> {
+    self
+      .integrity
+      .as_ref()
+      .map(Cow::Borrowed)
+      .unwrap_or_else(|| Cow::Owned(format!("sha1-{}", self.shasum)))
+  }
 }
 
 pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
@@ -358,10 +368,7 @@ impl RealNpmRegistryApiInner {
       Ok(value) => value,
       Err(err) => {
         if cfg!(debug_assertions) {
-          panic!(
-            "error loading cached npm package info for {}: {:#}",
-            name, err
-          );
+          panic!("error loading cached npm package info for {name}: {err:#}");
         } else {
           None
         }
@@ -404,10 +411,7 @@ impl RealNpmRegistryApiInner {
       self.save_package_info_to_file_cache_result(name, package_info)
     {
       if cfg!(debug_assertions) {
-        panic!(
-          "error saving cached npm package info for {}: {:#}",
-          name, err
-        );
+        panic!("error saving cached npm package info for {name}: {err:#}");
       }
     }
   }
@@ -432,8 +436,7 @@ impl RealNpmRegistryApiInner {
       return Err(custom_error(
         "NotCached",
         format!(
-          "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
-          name
+          "An npm specifier not found in cache: \"{name}\", --cached-only is specified."
         )
       ));
     }

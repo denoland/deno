@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -96,6 +96,13 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * The native struct type for interfacing with foreign functions.
+   *
+   */
+  type NativeStructType = { readonly struct: readonly NativeType[] };
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * All supported types for interfacing with foreign functions.
    *
    * @category FFI
@@ -106,7 +113,8 @@ declare namespace Deno {
     | NativeBooleanType
     | NativePointerType
     | NativeBufferType
-    | NativeFunctionType;
+    | NativeFunctionType
+    | NativeStructType;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -136,7 +144,9 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  type ToNativeType<T extends NativeType = NativeType> = ToNativeTypeMap[T];
+  type ToNativeType<T extends NativeType = NativeType> = T extends
+    NativeStructType ? BufferSource
+    : ToNativeTypeMap[Exclude<T, NativeStructType>];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -153,7 +163,8 @@ declare namespace Deno {
    * @category FFI
    */
   type ToNativeResultType<T extends NativeResultType = NativeResultType> =
-    ToNativeResultTypeMap[T];
+    T extends NativeStructType ? BufferSource
+    : ToNativeResultTypeMap[Exclude<T, NativeStructType>];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -193,7 +204,9 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  type FromNativeType<T extends NativeType = NativeType> = FromNativeTypeMap[T];
+  type FromNativeType<T extends NativeType = NativeType> = T extends
+    NativeStructType ? Uint8Array
+    : FromNativeTypeMap[Exclude<T, NativeStructType>];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -212,7 +225,8 @@ declare namespace Deno {
    * @category FFI
    */
   type FromNativeResultType<T extends NativeResultType = NativeResultType> =
-    FromNativeResultTypeMap[T];
+    T extends NativeStructType ? Uint8Array
+    : FromNativeResultTypeMap[Exclude<T, NativeStructType>];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1068,23 +1082,6 @@ declare namespace Deno {
     alpnProtocols?: string[];
   }
 
-  /** @category Network */
-  export interface Listener extends AsyncIterable<Conn> {
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Make the listener block the event loop from finishing.
-     *
-     * Note: the listener blocks the event loop from finishing by default.
-     * This method is only meaningful after `.unref()` is called.
-     */
-    ref(): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Make the listener not block the event loop from finishing.
-     */
-    unref(): void;
-  }
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Acquire an advisory file-system lock for the provided file.
@@ -1429,71 +1426,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @deprecated Use the Deno.Command API instead.
-   *
-   * Options which can be set when calling {@linkcode Deno.spawn},
-   * {@linkcode Deno.spawnSync}, and {@linkcode Deno.spawnChild}.
-   *
-   * @category Sub Process
-   */
-  export interface SpawnOptions {
-    /** Arguments to pass to the process. */
-    args?: string[];
-    /**
-     * The working directory of the process.
-     *
-     * If not specified, the `cwd` of the parent process is used.
-     */
-    cwd?: string | URL;
-    /**
-     * Clear environmental variables from parent process.
-     *
-     * Doesn't guarantee that only `env` variables are present, as the OS may
-     * set environmental variables for processes.
-     *
-     * @default {false}
-     */
-    clearEnv?: boolean;
-    /** Environmental variables to pass to the subprocess. */
-    env?: Record<string, string>;
-    /**
-     * Sets the child process’s user ID. This translates to a setuid call in the
-     * child process. Failure in the set uid call will cause the spawn to fail.
-     */
-    uid?: number;
-    /** Similar to `uid`, but sets the group ID of the child process. */
-    gid?: number;
-    /**
-     * An {@linkcode AbortSignal} that allows closing the process using the
-     * corresponding {@linkcode AbortController} by sending the process a
-     * SIGTERM signal.
-     *
-     * Not supported in {@linkcode Deno.spawnSync}.
-     */
-    signal?: AbortSignal;
-
-    /** How `stdin` of the spawned process should be handled.
-     *
-     * Defaults to `"null"`. */
-    stdin?: "piped" | "inherit" | "null";
-    /** How `stdout` of the spawned process should be handled.
-     *
-     * Defaults to `"piped". */
-    stdout?: "piped" | "inherit" | "null";
-    /** How `stderr` of the spawned process should be handled.
-     *
-     * Defaults to `"piped"`. */
-    stderr?: "piped" | "inherit" | "null";
-
-    /** Skips quoting and escaping of the arguments on windows. This option
-     * is ignored on non-windows platforms.
-     *
-     * @default {false} */
-    windowsRawArguments?: boolean;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Create a child process.
    *
    * If any stdio options are not set to `"piped"`, accessing the corresponding
@@ -1654,13 +1586,14 @@ declare namespace Deno {
      * corresponding {@linkcode AbortController} by sending the process a
      * SIGTERM signal.
      *
-     * Not supported in {@linkcode Deno.spawnSync}.
+     * Not supported in {@linkcode Deno.Command.outputSync}.
      */
     signal?: AbortSignal;
 
     /** How `stdin` of the spawned process should be handled.
      *
-     * Defaults to `"null"`. */
+     * Defaults to `"inherit"` for `output` & `outputSync`,
+     * and `"inherit"` for `spawn`. */
     stdin?: "piped" | "inherit" | "null";
     /** How `stdout` of the spawned process should be handled.
      *
@@ -1708,6 +1641,21 @@ declare namespace Deno {
     /** The buffered output from the child process' `stderr`. */
     readonly stderr: Uint8Array;
   }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Returns the Operating System uptime in number of seconds.
+   *
+   * ```ts
+   * console.log(Deno.osUptime());
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Runtime Environment
+   */
+  export function osUptime(): number;
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.

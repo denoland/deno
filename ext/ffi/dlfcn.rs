@@ -1,6 +1,7 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::check_unstable;
+use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
 use crate::turbocall;
@@ -45,14 +46,13 @@ impl DynamicLibraryResource {
     match unsafe { self.lib.symbol::<*const c_void>(&symbol) } {
       Ok(value) => Ok(Ok(value)),
       Err(err) => Err(generic_error(format!(
-        "Failed to register symbol {}: {}",
-        symbol, err
+        "Failed to register symbol {symbol}: {err}"
       ))),
     }?
   }
 }
 
-pub fn needs_unwrap(rv: NativeType) -> bool {
+pub fn needs_unwrap(rv: &NativeType) -> bool {
   matches!(
     rv,
     NativeType::Function
@@ -65,7 +65,7 @@ pub fn needs_unwrap(rv: NativeType) -> bool {
   )
 }
 
-fn is_i64(rv: NativeType) -> bool {
+fn is_i64(rv: &NativeType) -> bool {
   matches!(rv, NativeType::I64 | NativeType::ISize)
 }
 
@@ -155,8 +155,7 @@ where
           match unsafe { resource.lib.symbol::<*const c_void>(symbol) } {
             Ok(value) => Ok(value),
             Err(err) => Err(generic_error(format!(
-              "Failed to register symbol {}: {}",
-              symbol, err
+              "Failed to register symbol {symbol}: {err}"
             ))),
           }?;
         let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
@@ -165,8 +164,9 @@ where
             .parameters
             .clone()
             .into_iter()
-            .map(libffi::middle::Type::from),
-          foreign_fn.result.into(),
+            .map(libffi::middle::Type::try_from)
+            .collect::<Result<Vec<_>, _>>()?,
+          foreign_fn.result.clone().try_into()?,
         );
 
         let func_key = v8::String::new(scope, &symbol_key).unwrap();
@@ -216,11 +216,24 @@ fn make_sync_fn<'s>(
       // SAFETY: The pointer will not be deallocated until the function is
       // garbage collected.
       let symbol = unsafe { &*(external.value() as *const Symbol) };
-      let needs_unwrap = match needs_unwrap(symbol.result_type) {
+      let needs_unwrap = match needs_unwrap(&symbol.result_type) {
         true => Some(args.get(symbol.parameter_types.len() as i32)),
         false => None,
       };
-      match crate::call::ffi_call_sync(scope, args, symbol) {
+      let out_buffer = match symbol.result_type {
+        NativeType::Struct(_) => {
+          let argc = args.length();
+          out_buffer_as_ptr(
+            scope,
+            Some(
+              v8::Local::<v8::TypedArray>::try_from(args.get(argc - 1))
+                .unwrap(),
+            ),
+          )
+        }
+        _ => None,
+      };
+      match crate::call::ffi_call_sync(scope, args, symbol, out_buffer) {
         Ok(result) => {
           match needs_unwrap {
             Some(v) => {
@@ -228,7 +241,7 @@ fn make_sync_fn<'s>(
               let backing_store =
                 view.buffer(scope).unwrap().get_backing_store();
 
-              if is_i64(symbol.result_type) {
+              if is_i64(&symbol.result_type) {
                 // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
                 // it points to a fixed continuous slice of bytes on the heap.
                 let bs = unsafe {
@@ -251,8 +264,9 @@ fn make_sync_fn<'s>(
               }
             }
             None => {
-              // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-              let result = unsafe { result.to_v8(scope, symbol.result_type) };
+              let result =
+                // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+                unsafe { result.to_v8(scope, symbol.result_type.clone()) };
               rv.set(result.v8_value);
             }
           }

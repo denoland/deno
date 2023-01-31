@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
@@ -156,14 +156,15 @@
 
   function concatBuffers(buffers) {
     let totalLen = 0;
-    for (const buf of buffers) {
-      totalLen += buf.byteLength;
+    for (let i = 0; i < buffers.length; ++i) {
+      totalLen += buffers[i].byteLength;
     }
 
     const contents = new Uint8Array(totalLen);
 
     let n = 0;
-    for (const buf of buffers) {
+    for (let i = 0; i < buffers.length; ++i) {
+      const buf = buffers[i];
       TypedArrayPrototypeSet(contents, buf, n);
       n += buf.byteLength;
     }

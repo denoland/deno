@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -13,7 +13,11 @@
   };
 
   function setBuildInfo(target) {
-    const [arch, vendor, os, env] = StringPrototypeSplit(target, "-", 4);
+    const { 0: arch, 1: vendor, 2: os, 3: env } = StringPrototypeSplit(
+      target,
+      "-",
+      4,
+    );
     build.target = target;
     build.arch = arch;
     build.vendor = vendor;
