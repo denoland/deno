@@ -19,11 +19,11 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::registry::NpmPackageVersionDistInfo;
 use crate::npm::registry::NpmRegistryApi;
 use crate::npm::registry::RealNpmRegistryApi;
+use crate::semver::NpmVersionMatcher;
 
 use super::NpmPackageId;
 use super::NpmPackageReq;
 use super::NpmResolutionPackage;
-use super::NpmVersionMatcher;
 
 /// Packages partitioned by if they are "copy" packages or not.
 pub struct NpmPackagesPartitioned {

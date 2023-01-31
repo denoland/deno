@@ -25,14 +25,13 @@ use serde::Serialize;
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
-use crate::npm::semver::parse_npm_version_req;
+use crate::semver::NpmVersionMatcher;
 use crate::semver::Version;
 use crate::semver::VersionReq;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
-use super::resolution::NpmVersionMatcher;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
@@ -130,7 +129,7 @@ impl NpmPackageVersionInfo {
           (entry.0.clone(), entry.1.clone())
         };
       let version_req =
-        parse_npm_version_req(&version_req).with_context(|| {
+        VersionReq::parse_npm(&version_req).with_context(|| {
           format!(
             "error parsing version requirement for dependency: {bare_specifier}@{version_req}"
           )

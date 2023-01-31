@@ -3,21 +3,29 @@
 use std::cmp::Ordering;
 use std::fmt;
 
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use monch::*;
 use serde::Deserialize;
 use serde::Serialize;
 
+mod npm;
 mod range;
+mod specifier;
 
-use crate::npm::NpmVersionMatcher;
-
+use self::npm::parse_npm_version_req;
 pub use self::range::Partial;
 pub use self::range::VersionBoundKind;
 pub use self::range::VersionRange;
 pub use self::range::VersionRangeSet;
 pub use self::range::XRange;
+use self::specifier::parse_version_req_from_specifier;
+
+/// The version matcher used for npm schemed urls is more strict than
+/// the one used by npm packages and so we represent either via a trait.
+pub trait NpmVersionMatcher {
+  fn tag(&self) -> Option<&str>;
+  fn matches(&self, version: &Version) -> bool;
+  fn version_text(&self) -> String;
+}
 
 #[derive(
   Clone, Debug, PartialEq, Eq, Default, Hash, Serialize, Deserialize,
@@ -28,6 +36,12 @@ pub struct Version {
   pub patch: u64,
   pub pre: Vec<String>,
   pub build: Vec<String>,
+}
+
+impl Version {
+  pub fn parse_npm(text: &str) -> Result<Version, AnyError> {
+    npm::parse_npm_version(text)
+  }
 }
 
 impl fmt::Display for Version {
@@ -125,6 +139,11 @@ impl std::cmp::Ord for Version {
   }
 }
 
+pub(super) fn is_valid_tag(value: &str) -> bool {
+  // we use the same rules as npm tags
+  npm::is_valid_npm_tag(value)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RangeSetOrTag {
   RangeSet(VersionRangeSet),
@@ -147,6 +166,15 @@ impl VersionReq {
     Self { raw_text, inner }
   }
 
+  pub fn parse_from_specifier(specifier: &str) -> Result<Self, AnyError> {
+    parse_version_req_from_specifier(specifier)
+  }
+
+  pub fn parse_npm(text: &str) -> Result<Self, AnyError> {
+    parse_npm_version_req(text)
+  }
+
+  #[cfg(test)]
   pub fn inner(&self) -> &RangeSetOrTag {
     &self.inner
   }

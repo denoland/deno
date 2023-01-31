@@ -119,14 +119,12 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
 
 #[cfg(test)]
 mod test {
-  use crate::npm::semver::parse_npm_version;
-
   use super::*;
 
   #[test]
   pub fn test_verify_tarball() {
     let package_name = "package".to_string();
-    let package_version = parse_npm_version("1.0.0").unwrap();
+    let package_version = Version::parse_npm("1.0.0").unwrap();
     let package = (package_name.as_str(), &package_version);
     let actual_checksum =
       "z4phnx7vul3xvchq1m2ab9yg5aulvxxcg/spidns6c5h0ne8xyxysp+dgnkhfuwvy7kxvudbeoglodj6+sfapg==";

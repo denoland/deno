@@ -4,7 +4,6 @@ mod cache;
 mod registry;
 mod resolution;
 mod resolvers;
-mod semver;
 mod tarball;
 
 pub use cache::NpmCache;
@@ -18,5 +17,4 @@ pub use resolution::NpmPackageReference;
 pub use resolution::NpmPackageReq;
 pub use resolution::NpmResolutionPackage;
 pub use resolution::NpmResolutionSnapshot;
-pub use resolution::NpmVersionMatcher;
 pub use resolvers::NpmPackageResolver;

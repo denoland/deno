@@ -1,28 +1,17 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::fmt;
-
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use monch::*;
-use serde::Deserialize;
-use serde::Serialize;
 
-use crate::semver::Partial;
-use crate::semver::RangeSetOrTag;
-use crate::semver::Version;
-use crate::semver::VersionBoundKind;
-use crate::semver::VersionRange;
-use crate::semver::VersionRangeSet;
-use crate::semver::VersionReq;
-use crate::semver::XRange;
-
-pub use self::specifier::SpecifierVersionReq;
-
-mod specifier;
-
-// A lot of the below is a re-implementation of parts of https://github.com/npm/node-semver
-// which is Copyright (c) Isaac Z. Schlueter and Contributors (ISC License)
+use super::Partial;
+use super::RangeSetOrTag;
+use super::Version;
+use super::VersionBoundKind;
+use super::VersionRange;
+use super::VersionRangeSet;
+use super::VersionReq;
+use super::XRange;
 
 pub fn is_valid_npm_tag(value: &str) -> bool {
   // a valid tag is anything that doesn't get url encoded
@@ -31,6 +20,9 @@ pub fn is_valid_npm_tag(value: &str) -> bool {
     .chars()
     .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '~'))
 }
+
+// A lot of the below is a re-implementation of parts of https://github.com/npm/node-semver
+// which is Copyright (c) Isaac Z. Schlueter and Contributors (ISC License)
 
 pub fn parse_npm_version(text: &str) -> Result<Version, AnyError> {
   let text = text.trim();
@@ -419,7 +411,7 @@ mod tests {
   use pretty_assertions::assert_eq;
   use std::cmp::Ordering;
 
-  use crate::npm::NpmVersionMatcher;
+  use crate::semver::NpmVersionMatcher;
 
   use super::*;
 

@@ -20,17 +20,16 @@ use crate::npm::registry::NpmDependencyEntry;
 use crate::npm::registry::NpmDependencyEntryKind;
 use crate::npm::registry::NpmPackageInfo;
 use crate::npm::registry::NpmPackageVersionInfo;
-use crate::npm::semver::parse_npm_version;
-use crate::npm::semver::parse_npm_version_req;
 use crate::npm::NpmRegistryApi;
+use crate::semver::NpmVersionMatcher;
 use crate::semver::Version;
+use crate::semver::VersionReq;
 
 use super::snapshot::NpmResolutionSnapshot;
 use super::snapshot::SnapshotPackageCopyIndexResolver;
 use super::NpmPackageId;
 use super::NpmPackageReq;
 use super::NpmResolutionPackage;
-use super::NpmVersionMatcher;
 
 /// A memory efficient path of visited name and versions in the graph
 /// which is used to detect cycles.
@@ -1011,7 +1010,7 @@ fn get_resolved_package_version_and_info<'a>(
   } else {
     let mut maybe_best_version: Option<VersionAndInfo> = None;
     for version_info in info.versions.values() {
-      let version = parse_npm_version(&version_info.version)?;
+      let version = Version::parse_npm(&version_info.version)?;
       if version_matcher.matches(&version) {
         let is_best_version = maybe_best_version
           .as_ref()
@@ -1082,7 +1081,7 @@ fn tag_to_version_info<'a>(
   // explicit version.
   if tag == "latest" && info.name == "@types/node" {
     return get_resolved_package_version_and_info(
-      &parse_npm_version_req("18.0.0 - 18.11.18").unwrap(),
+      &VersionReq::parse_npm("18.0.0 - 18.11.18").unwrap(),
       info,
       parent,
     );
@@ -1091,7 +1090,7 @@ fn tag_to_version_info<'a>(
   if let Some(version) = info.dist_tags.get(tag) {
     match info.versions.get(version) {
       Some(info) => Ok(VersionAndInfo {
-        version: parse_npm_version(version)?,
+        version: Version::parse_npm(version)?,
         info,
       }),
       None => {

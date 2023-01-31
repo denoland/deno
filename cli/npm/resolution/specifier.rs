@@ -9,10 +9,11 @@ use deno_ast::ModuleSpecifier;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolved;
 
-use super::super::semver::SpecifierVersionReq;
+use crate::semver::NpmVersionMatcher;
+use crate::semver::VersionReq;
+
 use super::NpmPackageReference;
 use super::NpmPackageReq;
-use super::NpmVersionMatcher;
 
 pub struct GraphNpmInfo {
   /// The order of these package requirements is the order they
@@ -385,10 +386,7 @@ fn cmp_folder_specifiers(a: &ModuleSpecifier, b: &ModuleSpecifier) -> Ordering {
 // duplicate packages (so sort None last since it's `*`), but
 // mostly to create some determinism around how these are resolved.
 fn cmp_package_req(a: &NpmPackageReq, b: &NpmPackageReq) -> Ordering {
-  fn cmp_specifier_version_req(
-    a: &SpecifierVersionReq,
-    b: &SpecifierVersionReq,
-  ) -> Ordering {
+  fn cmp_specifier_version_req(a: &VersionReq, b: &VersionReq) -> Ordering {
     match a.tag() {
       Some(a_tag) => match b.tag() {
         Some(b_tag) => b_tag.cmp(a_tag), // sort descending

@@ -5,10 +5,9 @@ use deno_core::error::AnyError;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::super::semver::SpecifierVersionReq;
+use crate::semver::NpmVersionMatcher;
 use crate::semver::Version;
-
-use super::NpmVersionMatcher;
+use crate::semver::VersionReq;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NpmPackageReference {
@@ -47,7 +46,7 @@ impl NpmPackageReference {
     {
       let version = &last_name_part[at_index + 1..];
       let last_name_part = &last_name_part[..at_index];
-      let version_req = SpecifierVersionReq::parse(version)
+      let version_req = VersionReq::parse_from_specifier(version)
         .with_context(|| "Invalid version requirement.")?;
       let name = if name_part_len == 1 {
         last_name_part.to_string()
@@ -108,7 +107,7 @@ impl std::fmt::Display for NpmPackageReference {
 )]
 pub struct NpmPackageReq {
   pub name: String,
-  pub version_req: Option<SpecifierVersionReq>,
+  pub version_req: Option<VersionReq>,
 }
 
 impl std::fmt::Display for NpmPackageReq {
@@ -140,10 +139,7 @@ impl NpmVersionMatcher for NpmPackageReq {
     match self.version_req.as_ref() {
       Some(req) => {
         assert_eq!(self.tag(), None);
-        match req.range() {
-          Some(range) => range.satisfies(version),
-          None => false,
-        }
+        req.matches(version)
       }
       None => version.pre.is_empty(),
     }
@@ -182,7 +178,7 @@ mod tests {
       NpmPackageReference {
         req: NpmPackageReq {
           name: "@package/test".to_string(),
-          version_req: Some(SpecifierVersionReq::parse("1").unwrap()),
+          version_req: Some(VersionReq::parse_from_specifier("1").unwrap()),
         },
         sub_path: None,
       }
@@ -193,7 +189,7 @@ mod tests {
       NpmPackageReference {
         req: NpmPackageReq {
           name: "@package/test".to_string(),
-          version_req: Some(SpecifierVersionReq::parse("~1.1").unwrap()),
+          version_req: Some(VersionReq::parse_from_specifier("~1.1").unwrap()),
         },
         sub_path: Some("sub_path".to_string()),
       }
@@ -226,7 +222,7 @@ mod tests {
       NpmPackageReference {
         req: NpmPackageReq {
           name: "test".to_string(),
-          version_req: Some(SpecifierVersionReq::parse("^1.2").unwrap()),
+          version_req: Some(VersionReq::parse_from_specifier("^1.2").unwrap()),
         },
         sub_path: None,
       }
@@ -237,7 +233,7 @@ mod tests {
       NpmPackageReference {
         req: NpmPackageReq {
           name: "test".to_string(),
-          version_req: Some(SpecifierVersionReq::parse("~1.1").unwrap()),
+          version_req: Some(VersionReq::parse_from_specifier("~1.1").unwrap()),
         },
         sub_path: Some("sub_path".to_string()),
       }

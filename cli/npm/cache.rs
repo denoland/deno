@@ -24,7 +24,6 @@ use crate::util::path::root_url_to_safe_local_dirname;
 use crate::util::progress_bar::ProgressBar;
 
 use super::registry::NpmPackageVersionDistInfo;
-use super::semver::parse_npm_version;
 use super::tarball::verify_and_extract_tarball;
 
 /// For some of the tests, we want downloading of packages
@@ -306,7 +305,7 @@ impl ReadonlyNpmCache {
       };
     Some(NpmPackageCacheFolderId {
       name,
-      version: parse_npm_version(version).ok()?,
+      version: Version::parse_npm(version).ok()?,
       copy_index,
     })
   }
@@ -518,7 +517,6 @@ mod test {
 
   use super::ReadonlyNpmCache;
   use crate::npm::cache::NpmPackageCacheFolderId;
-  use crate::npm::semver::parse_npm_version;
   use crate::semver::Version;
 
   #[test]
@@ -532,7 +530,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "json".to_string(),
-          version: parse_npm_version("1.2.5").unwrap(),
+          version: Version::parse_npm("1.2.5").unwrap(),
           copy_index: 0,
         },
         &registry_url,
@@ -547,7 +545,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "json".to_string(),
-          version: parse_npm_version("1.2.5").unwrap(),
+          version: Version::parse_npm("1.2.5").unwrap(),
           copy_index: 1,
         },
         &registry_url,
@@ -562,7 +560,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "JSON".to_string(),
-          version: parse_npm_version("2.1.5").unwrap(),
+          version: Version::parse_npm("2.1.5").unwrap(),
           copy_index: 0,
         },
         &registry_url,
@@ -577,7 +575,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "@types/JSON".to_string(),
-          version: parse_npm_version("2.1.5").unwrap(),
+          version: Version::parse_npm("2.1.5").unwrap(),
           copy_index: 0,
         },
         &registry_url,

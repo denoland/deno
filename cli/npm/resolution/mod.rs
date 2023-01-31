@@ -11,7 +11,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::args::Lockfile;
-use crate::npm::semver::parse_npm_version;
 
 use self::graph::GraphDependencyResolver;
 use self::snapshot::NpmPackagesPartitioned;
@@ -33,16 +32,6 @@ pub use reference::NpmPackageReference;
 pub use reference::NpmPackageReq;
 pub use snapshot::NpmResolutionSnapshot;
 pub use specifier::resolve_graph_npm_info;
-
-// todo(THIS PR): remove this
-
-/// The version matcher used for npm schemed urls is more strict than
-/// the one used by npm packages and so we represent either via a trait.
-pub trait NpmVersionMatcher {
-  fn tag(&self) -> Option<&str>;
-  fn matches(&self, version: &Version) -> bool;
-  fn version_text(&self) -> String;
-}
 
 #[derive(
   Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize,
@@ -112,7 +101,7 @@ impl NpmPackageId {
       let (input, _) = ch('@')(input)?;
       let at_version_input = input;
       let (input, version) = parse_version(input)?;
-      match parse_npm_version(version) {
+      match Version::parse_npm(version) {
         Ok(version) => Ok((input, (name.to_string(), version))),
         Err(err) => ParseError::fail(at_version_input, format!("{err:#}")),
       }
@@ -419,30 +408,30 @@ mod tests {
   fn serialize_npm_package_id() {
     let id = NpmPackageId {
       name: "pkg-a".to_string(),
-      version: parse_npm_version("1.2.3").unwrap(),
+      version: Version::parse_npm("1.2.3").unwrap(),
       peer_dependencies: vec![
         NpmPackageId {
           name: "pkg-b".to_string(),
-          version: parse_npm_version("3.2.1").unwrap(),
+          version: Version::parse_npm("3.2.1").unwrap(),
           peer_dependencies: vec![
             NpmPackageId {
               name: "pkg-c".to_string(),
-              version: parse_npm_version("1.3.2").unwrap(),
+              version: Version::parse_npm("1.3.2").unwrap(),
               peer_dependencies: vec![],
             },
             NpmPackageId {
               name: "pkg-d".to_string(),
-              version: parse_npm_version("2.3.4").unwrap(),
+              version: Version::parse_npm("2.3.4").unwrap(),
               peer_dependencies: vec![],
             },
           ],
         },
         NpmPackageId {
           name: "pkg-e".to_string(),
-          version: parse_npm_version("2.3.1").unwrap(),
+          version: Version::parse_npm("2.3.1").unwrap(),
           peer_dependencies: vec![NpmPackageId {
             name: "pkg-f".to_string(),
-            version: parse_npm_version("2.3.1").unwrap(),
+            version: Version::parse_npm("2.3.1").unwrap(),
             peer_dependencies: vec![],
           }],
         },
