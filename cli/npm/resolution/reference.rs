@@ -5,8 +5,8 @@ use deno_core::error::AnyError;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::semver::NpmVersionMatcher;
 use crate::semver::Version;
+use crate::semver::VersionMatcher;
 use crate::semver::VersionReq;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -127,7 +127,7 @@ impl NpmPackageReq {
   }
 }
 
-impl NpmVersionMatcher for NpmPackageReq {
+impl VersionMatcher for NpmPackageReq {
   fn tag(&self) -> Option<&str> {
     match &self.version_req {
       Some(version_req) => version_req.tag(),

@@ -169,7 +169,7 @@ fn part(input: &str) -> ParseResult<&str> {
 
 #[cfg(test)]
 mod tests {
-  use crate::semver::NpmVersionMatcher;
+  use crate::semver::VersionMatcher;
 
   use super::super::Version;
   use super::*;
@@ -182,7 +182,7 @@ mod tests {
     }
 
     fn matches(&self, version: &str) -> bool {
-      self.0.matches(&Version::parse_npm(version).unwrap())
+      self.0.matches(&Version::parse_from_npm(version).unwrap())
     }
   }
 

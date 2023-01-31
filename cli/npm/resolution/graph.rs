@@ -21,8 +21,8 @@ use crate::npm::registry::NpmDependencyEntryKind;
 use crate::npm::registry::NpmPackageInfo;
 use crate::npm::registry::NpmPackageVersionInfo;
 use crate::npm::NpmRegistryApi;
-use crate::semver::NpmVersionMatcher;
 use crate::semver::Version;
+use crate::semver::VersionMatcher;
 use crate::semver::VersionReq;
 
 use super::snapshot::NpmResolutionSnapshot;
@@ -419,7 +419,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
   fn resolve_best_package_version_and_info<'info>(
     &self,
-    version_matcher: &impl NpmVersionMatcher,
+    version_matcher: &impl VersionMatcher,
     package_info: &'info NpmPackageInfo,
   ) -> Result<VersionAndInfo<'info>, AnyError> {
     if let Some(version) =
@@ -447,7 +447,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   fn resolve_best_package_version(
     &self,
     package_info: &NpmPackageInfo,
-    version_matcher: &impl NpmVersionMatcher,
+    version_matcher: &impl VersionMatcher,
   ) -> Result<Option<Version>, AnyError> {
     let mut maybe_best_version: Option<&Version> = None;
     if let Some(ids) = self.graph.packages_by_name.get(&package_info.name) {
@@ -557,7 +557,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   fn resolve_node_from_info(
     &mut self,
     pkg_req_name: &str,
-    version_matcher: &impl NpmVersionMatcher,
+    version_matcher: &impl VersionMatcher,
     package_info: &NpmPackageInfo,
     parent_id: Option<&NpmPackageId>,
   ) -> Result<(NpmPackageId, Arc<Mutex<Node>>), AnyError> {
@@ -1001,7 +1001,7 @@ struct VersionAndInfo<'a> {
 }
 
 fn get_resolved_package_version_and_info<'a>(
-  version_matcher: &impl NpmVersionMatcher,
+  version_matcher: &impl VersionMatcher,
   info: &'a NpmPackageInfo,
   parent: Option<&NpmPackageId>,
 ) -> Result<VersionAndInfo<'a>, AnyError> {
@@ -1010,7 +1010,7 @@ fn get_resolved_package_version_and_info<'a>(
   } else {
     let mut maybe_best_version: Option<VersionAndInfo> = None;
     for version_info in info.versions.values() {
-      let version = Version::parse_npm(&version_info.version)?;
+      let version = Version::parse_from_npm(&version_info.version)?;
       if version_matcher.matches(&version) {
         let is_best_version = maybe_best_version
           .as_ref()
@@ -1053,7 +1053,7 @@ fn get_resolved_package_version_and_info<'a>(
 }
 
 fn version_req_satisfies(
-  matcher: &impl NpmVersionMatcher,
+  matcher: &impl VersionMatcher,
   version: &Version,
   package_info: &NpmPackageInfo,
   parent: Option<&NpmPackageId>,
@@ -1081,7 +1081,7 @@ fn tag_to_version_info<'a>(
   // explicit version.
   if tag == "latest" && info.name == "@types/node" {
     return get_resolved_package_version_and_info(
-      &VersionReq::parse_npm("18.0.0 - 18.11.18").unwrap(),
+      &VersionReq::parse_from_npm("18.0.0 - 18.11.18").unwrap(),
       info,
       parent,
     );
@@ -1090,7 +1090,7 @@ fn tag_to_version_info<'a>(
   if let Some(version) = info.dist_tags.get(tag) {
     match info.versions.get(version) {
       Some(info) => Ok(VersionAndInfo {
-        version: Version::parse_npm(version)?,
+        version: Version::parse_from_npm(version)?,
         info,
       }),
       None => {

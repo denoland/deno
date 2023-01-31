@@ -21,7 +21,7 @@ use self::specifier::parse_version_req_from_specifier;
 
 /// The version matcher used for npm schemed urls is more strict than
 /// the one used by npm packages and so we represent either via a trait.
-pub trait NpmVersionMatcher {
+pub trait VersionMatcher {
   fn tag(&self) -> Option<&str>;
   fn matches(&self, version: &Version) -> bool;
   fn version_text(&self) -> String;
@@ -39,7 +39,7 @@ pub struct Version {
 }
 
 impl Version {
-  pub fn parse_npm(text: &str) -> Result<Version, AnyError> {
+  pub fn parse_from_npm(text: &str) -> Result<Version, AnyError> {
     npm::parse_npm_version(text)
   }
 }
@@ -170,7 +170,7 @@ impl VersionReq {
     parse_version_req_from_specifier(specifier)
   }
 
-  pub fn parse_npm(text: &str) -> Result<Self, AnyError> {
+  pub fn parse_from_npm(text: &str) -> Result<Self, AnyError> {
     parse_npm_version_req(text)
   }
 
@@ -180,7 +180,7 @@ impl VersionReq {
   }
 }
 
-impl NpmVersionMatcher for VersionReq {
+impl VersionMatcher for VersionReq {
   fn tag(&self) -> Option<&str> {
     match &self.inner {
       RangeSetOrTag::RangeSet(_) => None,

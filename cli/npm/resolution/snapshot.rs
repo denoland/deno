@@ -19,7 +19,7 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::registry::NpmPackageVersionDistInfo;
 use crate::npm::registry::NpmRegistryApi;
 use crate::npm::registry::RealNpmRegistryApi;
-use crate::semver::NpmVersionMatcher;
+use crate::semver::VersionMatcher;
 
 use super::NpmPackageId;
 use super::NpmPackageReq;
@@ -201,7 +201,7 @@ impl NpmResolutionSnapshot {
   pub fn resolve_best_package_id(
     &self,
     name: &str,
-    version_matcher: &impl NpmVersionMatcher,
+    version_matcher: &impl VersionMatcher,
   ) -> Option<NpmPackageId> {
     // todo(dsherret): this is not exactly correct because some ids
     // will be better than others due to peer dependencies

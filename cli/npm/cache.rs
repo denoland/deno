@@ -305,7 +305,7 @@ impl ReadonlyNpmCache {
       };
     Some(NpmPackageCacheFolderId {
       name,
-      version: Version::parse_npm(version).ok()?,
+      version: Version::parse_from_npm(version).ok()?,
       copy_index,
     })
   }
@@ -530,7 +530,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "json".to_string(),
-          version: Version::parse_npm("1.2.5").unwrap(),
+          version: Version::parse_from_npm("1.2.5").unwrap(),
           copy_index: 0,
         },
         &registry_url,
@@ -545,7 +545,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "json".to_string(),
-          version: Version::parse_npm("1.2.5").unwrap(),
+          version: Version::parse_from_npm("1.2.5").unwrap(),
           copy_index: 1,
         },
         &registry_url,
@@ -560,7 +560,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "JSON".to_string(),
-          version: Version::parse_npm("2.1.5").unwrap(),
+          version: Version::parse_from_npm("2.1.5").unwrap(),
           copy_index: 0,
         },
         &registry_url,
@@ -575,7 +575,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "@types/JSON".to_string(),
-          version: Version::parse_npm("2.1.5").unwrap(),
+          version: Version::parse_from_npm("2.1.5").unwrap(),
           copy_index: 0,
         },
         &registry_url,

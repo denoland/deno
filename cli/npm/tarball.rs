@@ -124,7 +124,7 @@ mod test {
   #[test]
   pub fn test_verify_tarball() {
     let package_name = "package".to_string();
-    let package_version = Version::parse_npm("1.0.0").unwrap();
+    let package_version = Version::parse_from_npm("1.0.0").unwrap();
     let package = (package_name.as_str(), &package_version);
     let actual_checksum =
       "z4phnx7vul3xvchq1m2ab9yg5aulvxxcg/spidns6c5h0ne8xyxysp+dgnkhfuwvy7kxvudbeoglodj6+sfapg==";

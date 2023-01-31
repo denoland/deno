@@ -25,8 +25,8 @@ use serde::Serialize;
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
-use crate::semver::NpmVersionMatcher;
 use crate::semver::Version;
+use crate::semver::VersionMatcher;
 use crate::semver::VersionReq;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
@@ -129,7 +129,7 @@ impl NpmPackageVersionInfo {
           (entry.0.clone(), entry.1.clone())
         };
       let version_req =
-        VersionReq::parse_npm(&version_req).with_context(|| {
+        VersionReq::parse_from_npm(&version_req).with_context(|| {
           format!(
             "error parsing version requirement for dependency: {bare_specifier}@{version_req}"
           )
