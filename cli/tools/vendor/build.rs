@@ -204,19 +204,15 @@ fn build_proxy_module_source(
 
   // for simplicity, always include the `export *` statement as it won't error
   // even when the module does not contain a named export
-  writeln!(text, "export * from \"{}\";", relative_specifier).unwrap();
+  writeln!(text, "export * from \"{relative_specifier}\";").unwrap();
 
   // add a default export if one exists in the module
   if let Some(parsed_source) =
     parsed_source_cache.get_parsed_source_from_module(module)?
   {
     if has_default_export(&parsed_source) {
-      writeln!(
-        text,
-        "export {{ default }} from \"{}\";",
-        relative_specifier
-      )
-      .unwrap();
+      writeln!(text, "export {{ default }} from \"{relative_specifier}\";")
+        .unwrap();
     }
   }
 
@@ -813,7 +809,7 @@ mod test {
         loader.add("https://localhost/mod.ts", "console.log(6);");
         loader.add("https://localhost/other.ts", "import './mod.ts';");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .unwrap();
@@ -860,7 +856,7 @@ mod test {
         loader.add("https://remote/mod.ts", "import 'twind';");
         loader.add("https://localhost/twind.ts", "export class Test {}");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .unwrap();
@@ -909,7 +905,7 @@ mod test {
           &[("content-type", "application/typescript")],
         );
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .unwrap();
@@ -954,7 +950,7 @@ mod test {
         loader.add("https://localhost/mod.ts", "import '/logger.ts?test';");
         loader.add("https://localhost/logger.ts?test", "export class Logger {}");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .unwrap();
@@ -996,7 +992,7 @@ mod test {
         loader.add("/vendor/deno.land/std/mod.ts", "export function f() {}");
         loader.add("https://deno.land/std/mod.ts", "export function f() {}");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .err()
@@ -1026,7 +1022,7 @@ mod test {
       .with_loader(|loader| {
         loader.add("/mod.ts", "console.log(5);");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .err()
@@ -1056,7 +1052,7 @@ mod test {
       .with_loader(|loader| {
         loader.add("/mod.ts", "console.log(5);");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .err()
@@ -1087,7 +1083,7 @@ mod test {
         loader.add("/mod.ts", "import 'http/mod.ts';");
         loader.add("https://deno.land/std/http/mod.ts", "console.log(5);");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .unwrap();

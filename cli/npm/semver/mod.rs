@@ -53,7 +53,7 @@ impl fmt::Display for NpmVersion {
         if i > 0 {
           write!(f, ".")?;
         }
-        write!(f, "{}", part)?;
+        write!(f, "{part}")?;
       }
     }
     if !self.build.is_empty() {
@@ -62,7 +62,7 @@ impl fmt::Display for NpmVersion {
         if i > 0 {
           write!(f, ".")?;
         }
-        write!(f, "{}", part)?;
+        write!(f, "{part}")?;
       }
     }
     Ok(())
@@ -143,7 +143,7 @@ impl NpmVersion {
   pub fn parse(text: &str) -> Result<Self, AnyError> {
     let text = text.trim();
     with_failure_handling(parse_npm_version)(text)
-      .with_context(|| format!("Invalid npm version '{}'.", text))
+      .with_context(|| format!("Invalid npm version '{text}'."))
   }
 }
 
@@ -218,7 +218,7 @@ impl NpmVersionReq {
   pub fn parse(text: &str) -> Result<Self, AnyError> {
     let text = text.trim();
     with_failure_handling(parse_npm_version_req)(text)
-      .with_context(|| format!("Invalid npm version requirement '{}'.", text))
+      .with_context(|| format!("Invalid npm version requirement '{text}'."))
   }
 }
 
@@ -523,7 +523,7 @@ fn nr(input: &str) -> ParseResult<u64> {
     Err(err) => {
       return ParseError::fail(
         input,
-        format!("Error parsing '{}' to u64.\n\n{:#}", result, err),
+        format!("Error parsing '{result}' to u64.\n\n{err:#}"),
       )
     }
   };
@@ -984,9 +984,7 @@ mod tests {
       let version = NpmVersion::parse(version_text).unwrap();
       assert!(
         req.matches(&version),
-        "Checking {} satisfies {}",
-        req_text,
-        version_text
+        "Checking {req_text} satisfies {version_text}"
       );
     }
   }
@@ -1083,9 +1081,7 @@ mod tests {
       let version = NpmVersion::parse(version_text).unwrap();
       assert!(
         !req.matches(&version),
-        "Checking {} not satisfies {}",
-        req_text,
-        version_text
+        "Checking {req_text} not satisfies {version_text}"
       );
     }
   }

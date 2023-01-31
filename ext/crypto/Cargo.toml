@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.97.0"
+version = "0.100.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -33,12 +33,13 @@ p256 = { version = "0.11.1", features = ["ecdh"] }
 p384 = "0.11.1"
 rand.workspace = true
 ring = { workspace = true, features = ["std"] }
-rsa = { version = "=0.7.0-pre", default-features = false, features = ["std"] }
+rsa = { version = "0.7.0", default-features = false, features = ["std"] }
 sec1 = "0.3.0"
 serde.workspace = true
 serde_bytes.workspace = true
-sha-1 = "0.10.0"
+sha1 = { version = "0.10.5", features = ["oid"] }
 sha2.workspace = true
+signature = "1.6.4"
 spki = "0.6.0"
 tokio.workspace = true
 uuid.workspace = true

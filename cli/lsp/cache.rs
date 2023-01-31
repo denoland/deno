@@ -55,9 +55,9 @@ pub struct CacheMetadata {
 }
 
 impl CacheMetadata {
-  pub fn new(location: &Path) -> Self {
+  pub fn new(cache: HttpCache) -> Self {
     Self {
-      cache: HttpCache::new(location),
+      cache,
       metadata: Default::default(),
     }
   }
@@ -68,7 +68,7 @@ impl CacheMetadata {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<Arc<HashMap<MetadataKey, String>>> {
-    if specifier.scheme() == "file" || specifier.scheme() == "npm" {
+    if matches!(specifier.scheme(), "file" | "npm" | "node") {
       return None;
     }
     let version = self

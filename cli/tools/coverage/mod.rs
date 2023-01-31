@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CoverageFlags;
+use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::colors;
 use crate::emit::get_source_hash;
@@ -23,7 +24,9 @@ use regex::Regex;
 use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
-use std::io::{self, Error, Write};
+use std::io::Error;
+use std::io::Write;
+use std::io::{self};
 use std::path::PathBuf;
 use text_lines::TextLines;
 use uuid::Uuid;
@@ -410,7 +413,7 @@ impl CoverageReporter for LcovCoverageReporter {
       .ok()
       .and_then(|p| p.to_str().map(|p| p.to_string()))
       .unwrap_or_else(|| coverage_report.url.to_string());
-    writeln!(out_writer, "SF:{}", file_path)?;
+    writeln!(out_writer, "SF:{file_path}")?;
 
     for function in &coverage_report.named_functions {
       writeln!(
@@ -430,13 +433,13 @@ impl CoverageReporter for LcovCoverageReporter {
     }
 
     let functions_found = coverage_report.named_functions.len();
-    writeln!(out_writer, "FNF:{}", functions_found)?;
+    writeln!(out_writer, "FNF:{functions_found}")?;
     let functions_hit = coverage_report
       .named_functions
       .iter()
       .filter(|f| f.execution_count > 0)
       .count();
-    writeln!(out_writer, "FNH:{}", functions_hit)?;
+    writeln!(out_writer, "FNH:{functions_hit}")?;
 
     for branch in &coverage_report.branches {
       let taken = if let Some(taken) = &branch.taken {
@@ -456,10 +459,10 @@ impl CoverageReporter for LcovCoverageReporter {
     }
 
     let branches_found = coverage_report.branches.len();
-    writeln!(out_writer, "BRF:{}", branches_found)?;
+    writeln!(out_writer, "BRF:{branches_found}")?;
     let branches_hit =
       coverage_report.branches.iter().filter(|b| b.is_hit).count();
-    writeln!(out_writer, "BRH:{}", branches_hit)?;
+    writeln!(out_writer, "BRH:{branches_hit}")?;
     for (index, count) in &coverage_report.found_lines {
       writeln!(out_writer, "DA:{},{}", index + 1, count)?;
     }
@@ -469,10 +472,10 @@ impl CoverageReporter for LcovCoverageReporter {
       .iter()
       .filter(|(_, count)| *count != 0)
       .count();
-    writeln!(out_writer, "LH:{}", lines_hit)?;
+    writeln!(out_writer, "LH:{lines_hit}")?;
 
     let lines_found = coverage_report.found_lines.len();
-    writeln!(out_writer, "LF:{}", lines_found)?;
+    writeln!(out_writer, "LF:{lines_found}")?;
 
     writeln!(out_writer, "end_of_record")?;
     Ok(())
@@ -555,8 +558,7 @@ impl CoverageReporter for PrettyCoverageReporter {
 }
 
 fn collect_coverages(
-  files: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
+  files: FileFlags,
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
   let file_paths = FileCollector::new(|file_path| {
@@ -564,8 +566,8 @@ fn collect_coverages(
   })
   .ignore_git_folder()
   .ignore_node_modules()
-  .add_ignore_paths(&ignore)
-  .collect_files(&files)?;
+  .add_ignore_paths(&files.ignore)
+  .collect_files(&files.include)?;
 
   for file_path in file_paths {
     let json = fs::read_to_string(file_path.as_path())?;
@@ -609,14 +611,13 @@ pub async fn cover_files(
   flags: Flags,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
-  if coverage_flags.files.is_empty() {
+  if coverage_flags.files.include.is_empty() {
     return Err(generic_error("No matching coverage profiles found"));
   }
 
   let ps = ProcState::build(flags).await?;
 
-  let script_coverages =
-    collect_coverages(coverage_flags.files, coverage_flags.ignore)?;
+  let script_coverages = collect_coverages(coverage_flags.files)?;
   let script_coverages = filter_coverages(
     script_coverages,
     coverage_flags.include,
@@ -663,7 +664,7 @@ pub async fn cover_files(
       ps.file_fetcher
         .fetch_cached(&module_specifier, 10)
         .with_context(|| {
-          format!("Failed to fetch \"{}\" from cache.", module_specifier)
+          format!("Failed to fetch \"{module_specifier}\" from cache.")
         })?
     };
     let file = maybe_file.ok_or_else(|| {

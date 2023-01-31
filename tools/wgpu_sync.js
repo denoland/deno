@@ -3,9 +3,9 @@
 
 import { join, ROOT_PATH } from "./util.js";
 
-const COMMIT = "076df1a56812eee01614b7a3a4c88798012e79ab";
+const COMMIT = "659f6977051345e4e06ab4832c6f7d268f25a1ad";
 const REPO = "gfx-rs/wgpu";
-const V_WGPU = "0.13";
+const V_WGPU = "0.15";
 const TARGET_DIR = join(ROOT_PATH, "ext", "webgpu");
 
 async function bash(subcmd, opts = {}) {
@@ -59,21 +59,25 @@ async function patchCargo() {
       data
         .replace(/^version = .*/m, `version = "${vDenoWebgpu}"`)
         .replace(
-          /^wgpu-core \= .*$/gm,
-          `wgpu-core = { version = "${V_WGPU}", features = ["trace", "replay", "serde"] }`,
+          /^repository.workspace = true/m,
+          `repository = "https://github.com/gfx-rs/wgpu"`,
         )
         .replace(
-          /^wgpu-types \= .*$/gm,
-          `wgpu-types = { version = "${V_WGPU}", features = ["trace", "replay", "serde"] }`,
+          /^serde = { workspace = true, features = ["derive"] }/m,
+          `serde.workspace = true`,
+        )
+        .replace(
+          /^tokio = { workspace = true, features = ["full"] }/m,
+          `tokio.workspace = true`,
         ),
-    // .replace(
-    //   /^wgpu-core \= .*$/gm,
-    //   `wgpu-core = { git = "https://github.com/${REPO}", rev = "${COMMIT}", features = ["trace", "replay", "serde"] }`,
-    // )
-    // .replace(
-    //   /^wgpu-types \= .*$/gm,
-    //   `wgpu-types = { git = "https://github.com/${REPO}", rev = "${COMMIT}", features = ["trace", "replay", "serde"] }`,
-    // )
+  );
+
+  await patchFile(
+    join(ROOT_PATH, "Cargo.toml"),
+    (data) =>
+      data
+        .replace(/^wgpu-core = .*/m, `wgpu-core = "${V_WGPU}"`)
+        .replace(/^wgpu-types = .*/m, `wgpu-types = "${V_WGPU}"`),
   );
 }
 

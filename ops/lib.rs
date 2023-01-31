@@ -2,15 +2,24 @@
 
 use attrs::Attributes;
 use once_cell::sync::Lazy;
-use optimizer::{BailoutReason, Optimizer};
+use optimizer::BailoutReason;
+use optimizer::Optimizer;
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
+use proc_macro2::Span;
+use proc_macro2::TokenStream as TokenStream2;
+use quote::quote;
+use quote::ToTokens;
 use regex::Regex;
-use syn::{
-  parse, parse_macro_input, punctuated::Punctuated, token::Comma, FnArg,
-  GenericParam, Ident, ItemFn, Lifetime, LifetimeDef,
-};
+use syn::parse;
+use syn::parse_macro_input;
+use syn::punctuated::Punctuated;
+use syn::token::Comma;
+use syn::FnArg;
+use syn::GenericParam;
+use syn::Ident;
+use syn::ItemFn;
+use syn::Lifetime;
+use syn::LifetimeDef;
 
 mod attrs;
 mod deno;
@@ -200,7 +209,7 @@ fn codegen_v8_async(
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
-  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 1);
+  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 1, true);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let (pre_result, mut result_fut) = match asyncness {
@@ -221,7 +230,7 @@ fn codegen_v8_async(
         quote! {
           let result = match result {
             Ok(fut) => fut.await,
-            Err(e) => return (promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
+            Err(e) => return (realm_idx, promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
           };
         }
       } else {
@@ -240,6 +249,7 @@ fn codegen_v8_async(
         as *const #core::_ops::OpCtx)
       };
       let op_id = ctx.id;
+      let realm_idx = ctx.realm_idx;
 
       let promise_id = args.get(0);
       let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
@@ -267,7 +277,7 @@ fn codegen_v8_async(
       #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
         let result = #result_fut
         #result_wrapper
-        (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
+        (realm_idx, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
       });
     },
     argc,
@@ -320,7 +330,7 @@ fn codegen_v8_sync(
     .collect::<Vec<_>>();
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
-  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 0);
+  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 0, false);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
@@ -370,6 +380,7 @@ fn codegen_args(
   f: &syn::ItemFn,
   rust_i0: usize, // Index of first generic arg in rust
   v8_i0: usize,   // Index of first generic arg in v8/js
+  asyncness: bool,
 ) -> ArgumentDecl {
   let inputs = &f.sig.inputs.iter().skip(rust_i0).enumerate();
   let ident_seq: TokenStream2 = inputs
@@ -382,7 +393,7 @@ fn codegen_args(
   let decls: TokenStream2 = inputs
     .clone()
     .map(|(i, arg)| {
-      codegen_arg(core, arg, format!("arg_{i}").as_ref(), v8_i0 + i)
+      codegen_arg(core, arg, format!("arg_{i}").as_ref(), v8_i0 + i, asyncness)
     })
     .collect();
   (decls, ident_seq, inputs.len())
@@ -393,6 +404,7 @@ fn codegen_arg(
   arg: &syn::FnArg,
   name: &str,
   idx: usize,
+  asyncness: bool,
 ) -> TokenStream2 {
   let ident = quote::format_ident!("{name}");
   let (pat, ty) = match arg {
@@ -434,12 +446,14 @@ fn codegen_arg(
   match is_ref_slice(&**ty) {
     None => {}
     Some(SliceType::U32Mut) => {
+      assert!(!asyncness, "Memory slices are not allowed in async ops");
       let blck = codegen_u32_mut_slice(core, idx);
       return quote! {
         let #ident = #blck;
       };
     }
     Some(_) => {
+      assert!(!asyncness, "Memory slices are not allowed in async ops");
       let blck = codegen_u8_slice(core, idx);
       return quote! {
         let #ident = #blck;
@@ -746,7 +760,8 @@ fn exclude_lifetime_params(
 
 #[cfg(test)]
 mod tests {
-  use crate::{Attributes, Op};
+  use crate::Attributes;
+  use crate::Op;
   use std::path::PathBuf;
 
   #[testing_macros::fixture("optimizer_tests/**/*.rs")]

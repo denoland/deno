@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_webidl"
-version = "0.83.0"
+version = "0.86.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,3 +15,10 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+
+[dev-dependencies]
+deno_bench_util.workspace = true
+
+[[bench]]
+name = "dict"
+harness = false

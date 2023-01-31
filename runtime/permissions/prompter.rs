@@ -182,29 +182,34 @@ impl PermissionPrompter for TtyPrompter {
 
     // Clear n-lines in terminal and move cursor to the beginning of the line.
     fn clear_n_lines(n: usize) {
-      eprint!("\x1B[{}A\x1B[0J", n);
+      eprint!("\x1B[{n}A\x1B[0J");
     }
 
     // For security reasons we must consume everything in stdin so that previously
     // buffered data cannot effect the prompt.
     if let Err(err) = clear_stdin() {
-      eprintln!("Error clearing stdin for permission prompt. {:#}", err);
+      eprintln!("Error clearing stdin for permission prompt. {err:#}");
       return PromptResponse::Deny; // don't grant permission if this fails
     }
 
+    // Lock stdio streams, so no other output is written while the prompt is
+    // displayed.
+    let _stdout_guard = std::io::stdout().lock();
+    let _stderr_guard = std::io::stderr().lock();
+
     // print to stderr so that if stdout is piped this is still displayed.
     const OPTS: &str = "[y/n] (y = yes, allow; n = no, deny)";
-    eprint!("{}  ┌ ", PERMISSION_EMOJI);
+    eprint!("{PERMISSION_EMOJI}  ┌ ");
     eprint!("{}", colors::bold("Deno requests "));
     eprint!("{}", colors::bold(message));
     eprintln!("{}", colors::bold("."));
     if let Some(api_name) = api_name {
-      eprintln!("   ├ Requested by `{}` API", api_name);
+      eprintln!("   ├ Requested by `{api_name}` API");
     }
-    let msg = format!("Run again with --allow-{} to bypass this prompt.", name);
+    let msg = format!("Run again with --allow-{name} to bypass this prompt.");
     eprintln!("   ├ {}", colors::italic(&msg));
     eprint!("   └ {}", colors::bold("Allow?"));
-    eprint!(" {} > ", OPTS);
+    eprint!(" {OPTS} > ");
     let value = loop {
       let mut input = String::new();
       let stdin = std::io::stdin();
@@ -219,13 +224,13 @@ impl PermissionPrompter for TtyPrompter {
       match ch.to_ascii_lowercase() {
         'y' => {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
-          let msg = format!("Granted {}.", message);
+          let msg = format!("Granted {message}.");
           eprintln!("✅ {}", colors::bold(&msg));
           break PromptResponse::Allow;
         }
         'n' => {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
-          let msg = format!("Denied {}.", message);
+          let msg = format!("Denied {message}.");
           eprintln!("❌ {}", colors::bold(&msg));
           break PromptResponse::Deny;
         }
@@ -233,10 +238,13 @@ impl PermissionPrompter for TtyPrompter {
           // If we don't get a recognized option try again.
           clear_n_lines(1);
           eprint!("   └ {}", colors::bold("Unrecognized option. Allow?"));
-          eprint!(" {} > ", OPTS);
+          eprint!(" {OPTS} > ");
         }
       };
     };
+
+    drop(_stdout_guard);
+    drop(_stderr_guard);
 
     value
   }

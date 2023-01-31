@@ -131,8 +131,7 @@ impl NpmPackageVersionInfo {
       let version_req =
         NpmVersionReq::parse(&version_req).with_context(|| {
           format!(
-            "error parsing version requirement for dependency: {}@{}",
-            bare_specifier, version_req
+            "error parsing version requirement for dependency: {bare_specifier}@{version_req}"
           )
         })?;
       Ok(NpmDependencyEntry {
@@ -184,19 +183,6 @@ pub struct NpmPackageVersionDistInfo {
 }
 
 impl NpmPackageVersionDistInfo {
-  #[cfg(test)]
-  pub fn new(
-    tarball: String,
-    shasum: String,
-    integrity: Option<String>,
-  ) -> Self {
-    Self {
-      tarball,
-      shasum,
-      integrity,
-    }
-  }
-
   pub fn integrity(&self) -> Cow<String> {
     self
       .integrity
@@ -382,10 +368,7 @@ impl RealNpmRegistryApiInner {
       Ok(value) => value,
       Err(err) => {
         if cfg!(debug_assertions) {
-          panic!(
-            "error loading cached npm package info for {}: {:#}",
-            name, err
-          );
+          panic!("error loading cached npm package info for {name}: {err:#}");
         } else {
           None
         }
@@ -428,10 +411,7 @@ impl RealNpmRegistryApiInner {
       self.save_package_info_to_file_cache_result(name, package_info)
     {
       if cfg!(debug_assertions) {
-        panic!(
-          "error saving cached npm package info for {}: {:#}",
-          name, err
-        );
+        panic!("error saving cached npm package info for {name}: {err:#}");
       }
     }
   }
@@ -456,8 +436,7 @@ impl RealNpmRegistryApiInner {
       return Err(custom_error(
         "NotCached",
         format!(
-          "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
-          name
+          "An npm specifier not found in cache: \"{name}\", --cached-only is specified."
         )
       ));
     }

@@ -337,7 +337,7 @@ fn seek_helper(args: SeekArgs) -> Result<(u32, SeekFrom), AnyError> {
     1 => SeekFrom::Current(offset),
     2 => SeekFrom::End(offset),
     _ => {
-      return Err(type_error(format!("Invalid seek mode: {}", whence)));
+      return Err(type_error(format!("Invalid seek mode: {whence}")));
     }
   };
 
@@ -542,7 +542,7 @@ fn op_chdir(state: &mut OpState, directory: String) -> Result<(), AnyError> {
     .borrow_mut::<PermissionsContainer>()
     .check_read(&d, "Deno.chdir()")?;
   set_current_dir(&d).map_err(|err| {
-    Error::new(err.kind(), format!("{}, chdir '{}'", err, directory))
+    Error::new(err.kind(), format!("{err}, chdir '{directory}'"))
   })?;
   Ok(())
 }
@@ -679,7 +679,9 @@ fn op_chown_sync(
   #[cfg(unix)]
   {
     use crate::errors::get_nix_error_class;
-    use nix::unistd::{chown, Gid, Uid};
+    use nix::unistd::chown;
+    use nix::unistd::Gid;
+    use nix::unistd::Uid;
     let nix_uid = uid.map(Uid::from_raw);
     let nix_gid = gid.map(Gid::from_raw);
     chown(&path, nix_uid, nix_gid).map_err(|err| {
@@ -717,7 +719,9 @@ async fn op_chown_async(
     #[cfg(unix)]
     {
       use crate::errors::get_nix_error_class;
-      use nix::unistd::{chown, Gid, Uid};
+      use nix::unistd::chown;
+      use nix::unistd::Gid;
+      use nix::unistd::Uid;
       let nix_uid = uid.map(Uid::from_raw);
       let nix_gid = gid.map(Gid::from_raw);
       chown(&path, nix_uid, nix_gid).map_err(|err| {
@@ -881,6 +885,8 @@ fn op_copy_file_sync(
     use libc::unlink;
     use std::ffi::CString;
     use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::fs::PermissionsExt;
 
     let from = CString::new(from).unwrap();
     let to = CString::new(to).unwrap();
@@ -909,8 +915,23 @@ fn op_copy_file_sync(
         let mut buf = [0u8; 128 * 1024];
         let mut from_file =
           std::fs::File::open(&from_path).map_err(err_mapper)?;
-        let mut to_file =
-          std::fs::File::create(&to_path).map_err(err_mapper)?;
+        let perm = from_file.metadata().map_err(err_mapper)?.permissions();
+
+        let mut to_file = std::fs::OpenOptions::new()
+          // create the file with the correct mode right away
+          .mode(perm.mode())
+          .write(true)
+          .create(true)
+          .truncate(true)
+          .open(&to_path)
+          .map_err(err_mapper)?;
+        let writer_metadata = to_file.metadata()?;
+        if writer_metadata.is_file() {
+          // Set the correct file permissions, in case the file already existed.
+          // Don't set the permissions on already existing non-files like
+          // pipes/FIFOs or device nodes.
+          to_file.set_permissions(perm)?;
+        }
         loop {
           let nread = from_file.read(&mut buf).map_err(err_mapper)?;
           if nread == 0 {
@@ -1471,7 +1492,8 @@ fn op_symlink_sync(
   }
   #[cfg(not(unix))]
   {
-    use std::os::windows::fs::{symlink_dir, symlink_file};
+    use std::os::windows::fs::symlink_dir;
+    use std::os::windows::fs::symlink_file;
 
     match _type {
       Some(ty) => match ty.as_ref() {
@@ -1725,7 +1747,7 @@ fn make_temp(
   let mut rng = thread_rng();
   loop {
     let unique = rng.gen::<u32>();
-    buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
+    buf.set_file_name(format!("{prefix_}{unique:08x}{suffix_}"));
     let r = if is_dir {
       #[allow(unused_mut)]
       let mut builder = std::fs::DirBuilder::new();

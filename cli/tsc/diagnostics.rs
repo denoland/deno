@@ -29,12 +29,8 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "removeSignalListener",
   "shutdown",
   "umask",
-  "spawnChild",
   "Child",
   "ChildProcess",
-  "spawn",
-  "spawnSync",
-  "SpawnOptions",
   "ChildStatus",
   "SpawnOutput",
   "command",
@@ -147,7 +143,7 @@ impl From<i64> for DiagnosticCategory {
       1 => DiagnosticCategory::Error,
       2 => DiagnosticCategory::Suggestion,
       3 => DiagnosticCategory::Message,
-      _ => panic!("Unknown value: {}", value),
+      _ => panic!("Unknown value: {value}"),
     }
   }
 }
@@ -216,7 +212,7 @@ impl Diagnostic {
     };
 
     if !category.is_empty() {
-      write!(f, "{}[{}]: ", code, category)
+      write!(f, "{code}[{category}]: ")
     } else {
       Ok(())
     }
@@ -299,9 +295,11 @@ impl Diagnostic {
 
   fn fmt_related_information(&self, f: &mut fmt::Formatter) -> fmt::Result {
     if let Some(related_information) = self.related_information.as_ref() {
-      write!(f, "\n\n")?;
-      for info in related_information {
-        info.fmt_stack(f, 4)?;
+      if !related_information.is_empty() {
+        write!(f, "\n\n")?;
+        for info in related_information {
+          info.fmt_stack(f, 4)?;
+        }
       }
     }
 
@@ -377,12 +375,12 @@ impl fmt::Display for Diagnostics {
       if i > 0 {
         write!(f, "\n\n")?;
       }
-      write!(f, "{}", item)?;
+      write!(f, "{item}")?;
       i += 1;
     }
 
     if i > 1 {
-      write!(f, "\n\nFound {} errors.", i)?;
+      write!(f, "\n\nFound {i} errors.")?;
     }
 
     Ok(())

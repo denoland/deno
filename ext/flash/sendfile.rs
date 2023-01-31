@@ -1,11 +1,12 @@
-// Forked from https://github.com/Thomasdezeeuw/sendfile/blob/024f82cd4dede9048392a5bd6d8afcd4d5aa83d5/src/lib.rs
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Forked from https://github.com/Thomasdezeeuw/sendfile/blob/024f82cd4dede9048392a5bd6d8afcd4d5aa83d5/src/lib.rs
 
 use std::future::Future;
 use std::io;
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
-use std::task::{self, Poll};
+use std::task::Poll;
+use std::task::{self};
 
 pub struct SendFile {
   pub io: (RawFd, RawFd),
