@@ -151,6 +151,8 @@ function collectSequenceOfCodepoints(input, position, condition) {
   return { result: StringPrototypeSlice(input, start, position), position };
 }
 
+const LOWERCASE_PATTERN = new SafeRegExp(/[a-z]/g);
+
 /**
  * @param {string} s
  * @returns {string}
@@ -158,7 +160,7 @@ function collectSequenceOfCodepoints(input, position, condition) {
 function byteUpperCase(s) {
   return StringPrototypeReplace(
     String(s),
-    new SafeRegExp(/[a-z]/g),
+    LOWERCASE_PATTERN,
     function byteUpperCaseReplace(c) {
       return StringPrototypeToUpperCase(c);
     },

@@ -390,11 +390,13 @@ function createRespondWith(
 
 const _ws = Symbol("[[associated_ws]]");
 
+const COMMA_WITH_SPACE_PATTERN = new SafeRegExp(/\s*,\s*/);
+
 function upgradeWebSocket(request, options = {}) {
   const upgrade = request.headers.get("upgrade");
   const upgradeHasWebSocketOption = upgrade !== null &&
     ArrayPrototypeSome(
-      StringPrototypeSplit(upgrade, new SafeRegExp(/\s*,\s*/)),
+      StringPrototypeSplit(upgrade, COMMA_WITH_SPACE_PATTERN),
       (option) => StringPrototypeToLowerCase(option) === "websocket",
     );
   if (!upgradeHasWebSocketOption) {
@@ -406,7 +408,7 @@ function upgradeWebSocket(request, options = {}) {
   const connection = request.headers.get("connection");
   const connectionHasUpgradeOption = connection !== null &&
     ArrayPrototypeSome(
-      StringPrototypeSplit(connection, new SafeRegExp(/\s*,\s*/)),
+      StringPrototypeSplit(connection, COMMA_WITH_SPACE_PATTERN),
       (option) => StringPrototypeToLowerCase(option) === "upgrade",
     );
   if (!connectionHasUpgradeOption) {

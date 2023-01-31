@@ -144,13 +144,15 @@ function processBlobParts(parts, endings) {
   return { parts: processedParts, size };
 }
 
+const NORMALIZE_PATTERN = new SafeRegExp(/^[\x20-\x7E]*$/);
+
 /**
  * @param {string} str
  * @returns {string}
  */
 function normalizeType(str) {
   let normalizedType = str;
-  if (!RegExpPrototypeTest(new SafeRegExp(/^[\x20-\x7E]*$/), str)) {
+  if (!RegExpPrototypeTest(NORMALIZE_PATTERN, str)) {
     normalizedType = "";
   }
   return StringPrototypeToLowerCase(normalizedType);
