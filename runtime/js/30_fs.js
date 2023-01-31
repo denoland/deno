@@ -146,10 +146,6 @@
               }
             }
           },
-          return() {
-            core.close(rid);
-            return { done: true };
-          },
         };
       },
     };
