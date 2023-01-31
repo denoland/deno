@@ -19,14 +19,6 @@ pub use self::range::VersionRangeSet;
 pub use self::range::XRange;
 use self::specifier::parse_version_req_from_specifier;
 
-/// The version matcher used for npm schemed urls is more strict than
-/// the one used by npm packages and so we represent either via a trait.
-pub trait VersionMatcher {
-  fn tag(&self) -> Option<&str>;
-  fn matches(&self, version: &Version) -> bool;
-  fn version_text(&self) -> String;
-}
-
 #[derive(
   Clone, Debug, PartialEq, Eq, Default, Hash, Serialize, Deserialize,
 )]
@@ -178,17 +170,15 @@ impl VersionReq {
   pub fn inner(&self) -> &RangeSetOrTag {
     &self.inner
   }
-}
 
-impl VersionMatcher for VersionReq {
-  fn tag(&self) -> Option<&str> {
+  pub fn tag(&self) -> Option<&str> {
     match &self.inner {
       RangeSetOrTag::RangeSet(_) => None,
       RangeSetOrTag::Tag(tag) => Some(tag.as_str()),
     }
   }
 
-  fn matches(&self, version: &Version) -> bool {
+  pub fn matches(&self, version: &Version) -> bool {
     match &self.inner {
       RangeSetOrTag::RangeSet(range_set) => range_set.satisfies(version),
       RangeSetOrTag::Tag(_) => panic!(
@@ -198,8 +188,8 @@ impl VersionMatcher for VersionReq {
     }
   }
 
-  fn version_text(&self) -> String {
-    self.raw_text.clone()
+  pub fn version_text(&self) -> &str {
+    &self.raw_text
   }
 }
 

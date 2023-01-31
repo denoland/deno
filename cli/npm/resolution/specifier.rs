@@ -9,7 +9,6 @@ use deno_ast::ModuleSpecifier;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolved;
 
-use crate::semver::VersionMatcher;
 use crate::semver::VersionReq;
 
 use super::NpmPackageReference;

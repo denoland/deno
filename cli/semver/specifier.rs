@@ -169,8 +169,6 @@ fn part(input: &str) -> ParseResult<&str> {
 
 #[cfg(test)]
 mod tests {
-  use crate::semver::VersionMatcher;
-
   use super::super::Version;
   use super::*;
 

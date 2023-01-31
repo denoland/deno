@@ -19,7 +19,6 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::registry::NpmPackageVersionDistInfo;
 use crate::npm::registry::NpmRegistryApi;
 use crate::npm::registry::RealNpmRegistryApi;
-use crate::semver::VersionMatcher;
 use crate::semver::VersionReq;
 
 use super::NpmPackageId;
@@ -198,14 +197,14 @@ impl NpmResolutionSnapshot {
   pub fn resolve_best_package_id(
     &self,
     name: &str,
-    version_matcher: &impl VersionMatcher,
+    version_req: &VersionReq,
   ) -> Option<NpmPackageId> {
     // todo(dsherret): this is not exactly correct because some ids
     // will be better than others due to peer dependencies
     let mut maybe_best_id: Option<&NpmPackageId> = None;
     if let Some(ids) = self.packages_by_name.get(name) {
       for id in ids {
-        if version_matcher.matches(&id.version) {
+        if version_req.matches(&id.version) {
           let is_best_version = maybe_best_id
             .as_ref()
             .map(|best_id| best_id.version.cmp(&id.version).is_lt())

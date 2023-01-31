@@ -411,8 +411,6 @@ mod tests {
   use pretty_assertions::assert_eq;
   use std::cmp::Ordering;
 
-  use crate::semver::VersionMatcher;
-
   use super::*;
 
   struct NpmVersionReqTester(VersionReq);

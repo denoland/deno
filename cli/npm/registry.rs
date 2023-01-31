@@ -26,7 +26,6 @@ use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
 use crate::semver::Version;
-use crate::semver::VersionMatcher;
 use crate::semver::VersionReq;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
