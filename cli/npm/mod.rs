@@ -4,11 +4,8 @@ mod cache;
 mod registry;
 mod resolution;
 mod resolvers;
-mod semver;
 mod tarball;
 
-#[cfg(test)]
-pub use self::semver::NpmVersion;
 pub use cache::NpmCache;
 #[cfg(test)]
 pub use registry::NpmPackageVersionDistInfo;
