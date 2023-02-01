@@ -13,6 +13,7 @@ use serde::Serialize;
 use crate::args::Lockfile;
 use crate::semver::Version;
 
+use self::graph::Graph;
 use self::graph::GraphDependencyResolver;
 use self::snapshot::NpmPackagesPartitioned;
 
@@ -27,7 +28,7 @@ mod reference;
 mod snapshot;
 mod specifier;
 
-use graph::Graph;
+pub use reference::parse_dep_entry_name_and_version;
 pub use reference::NpmPackageReference;
 pub use reference::NpmPackageReq;
 pub use snapshot::NpmResolutionSnapshot;

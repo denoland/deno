@@ -31,6 +31,7 @@ use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
+use super::resolution::parse_dep_entry_name_and_version;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
@@ -116,26 +117,11 @@ impl NpmPackageVersionInfo {
       entry: (&String, &String),
       kind: NpmDependencyEntryKind,
     ) -> Result<NpmDependencyEntry, AnyError> {
-      let bare_specifier = entry.0.clone();
       let (name, version_req) =
-        if let Some(package_and_version) = entry.1.strip_prefix("npm:") {
-          if let Some((name, version)) = package_and_version.rsplit_once('@') {
-            (name.to_string(), version.to_string())
-          } else {
-            bail!("could not find @ symbol in npm url '{}'", entry.1);
-          }
-        } else {
-          (entry.0.clone(), entry.1.clone())
-        };
-      let version_req =
-        VersionReq::parse_from_npm(&version_req).with_context(|| {
-          format!(
-            "error parsing version requirement for dependency: {bare_specifier}@{version_req}"
-          )
-        })?;
+        parse_dep_entry_name_and_version(entry.0.as_str(), entry.1.as_str())?;
       Ok(NpmDependencyEntry {
         kind,
-        bare_specifier,
+        bare_specifier: entry.0.to_string(),
         name,
         version_req,
         peer_dep_version_req: None,

@@ -118,6 +118,17 @@ impl NpmPackageReq {
     }
   }
 
+  pub fn from_dependency_entry(
+    key: &str,
+    value: &str,
+  ) -> Result<Self, AnyError> {
+    let (name, version_req) = parse_dep_entry_name_and_version(key, value)?;
+    Ok(NpmPackageReq {
+      name,
+      version_req: Some(version_req),
+    })
+  }
+
   fn parse_from_parts(name_parts: &[&str]) -> Result<Self, AnyError> {
     assert!(!name_parts.is_empty()); // this should be provided the result of a string split
     let last_name_part = &name_parts[name_parts.len() - 1];
@@ -141,6 +152,29 @@ impl NpmPackageReq {
     }
     Ok(Self { name, version_req })
   }
+}
+
+pub fn parse_dep_entry_name_and_version(
+  key: &str,
+  value: &str,
+) -> Result<(String, VersionReq), AnyError> {
+  let (name, version_req) =
+    if let Some(package_and_version) = value.strip_prefix("npm:") {
+      if let Some((name, version)) = package_and_version.rsplit_once('@') {
+        (name, version)
+      } else {
+        bail!("could not find @ symbol in npm url '{}'", value);
+      }
+    } else {
+      (key, value)
+    };
+  let version_req =
+    VersionReq::parse_from_npm(&version_req).with_context(|| {
+      format!(
+        "error parsing version requirement for dependency: {key}@{version_req}"
+      )
+    })?;
+  Ok((name.to_string(), version_req))
 }
 
 #[cfg(test)]
