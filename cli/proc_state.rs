@@ -181,10 +181,19 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
+    let maybe_package_json_deps = cli_options.maybe_package_json_deps()?;
+    let package_json_reqs = if let Some(deps) = &maybe_package_json_deps {
+      let mut package_reqs = deps.values().cloned().collect::<Vec<_>>();
+      package_reqs.sort(); // deterministic resolution
+      package_reqs
+    } else {
+      Vec::new()
+    };
+
     let maybe_cli_resolver = CliResolver::maybe_new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
-      cli_options.get_maybe_package_json(),
+      maybe_package_json_deps,
     );
     let maybe_resolver = maybe_cli_resolver.map(Arc::new);
 
@@ -225,6 +234,7 @@ impl ProcState {
       lockfile.as_ref().cloned(),
     )
     .await?;
+    npm_resolver.add_package_reqs(package_json_reqs).await?;
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
@@ -682,14 +692,8 @@ impl ProcState {
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
-
-    let maybe_cli_resolver = CliResolver::maybe_new(
-      self.options.to_maybe_jsx_import_source_config(),
-      self.maybe_import_map.clone(),
-      self.options.get_maybe_package_json(),
-    );
     let maybe_graph_resolver =
-      maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
+      self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
     let analyzer = self.parsed_source_cache.as_analyzer();
 
     let graph = create_graph(

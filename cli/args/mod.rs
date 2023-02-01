@@ -5,10 +5,12 @@ mod flags;
 mod flags_allow_net;
 mod import_map;
 mod lockfile;
+pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
 use ::import_map::ImportMap;
 
+use crate::npm::NpmPackageReq;
 use crate::util::fs::canonicalize_path;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
@@ -45,6 +47,7 @@ use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -612,7 +615,7 @@ impl CliOptions {
     };
     resolve_import_map_from_specifier(
       &import_map_specifier,
-      self.get_maybe_config_file().as_ref(),
+      self.maybe_config_file().as_ref(),
       file_fetcher,
     )
     .await
@@ -741,12 +744,22 @@ impl CliOptions {
     }
   }
 
-  pub fn get_maybe_config_file(&self) -> &Option<ConfigFile> {
+  pub fn maybe_config_file(&self) -> &Option<ConfigFile> {
     &self.maybe_config_file
   }
 
-  pub fn get_maybe_package_json(&self) -> Option<PackageJson> {
-    self.maybe_package_json.clone()
+  pub fn maybe_package_json(&self) -> &Option<PackageJson> {
+    &self.maybe_package_json
+  }
+
+  pub fn maybe_package_json_deps(
+    &self,
+  ) -> Result<Option<HashMap<String, NpmPackageReq>>, AnyError> {
+    if let Some(package_json) = self.maybe_package_json() {
+      package_json::get_local_package_json_version_reqs(package_json).map(Some)
+    } else {
+      Ok(None)
+    }
   }
 
   pub fn resolve_fmt_options(

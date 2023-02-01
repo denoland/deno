@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::cmp::Ordering;
+
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -118,17 +120,6 @@ impl NpmPackageReq {
     }
   }
 
-  pub fn from_dependency_entry(
-    key: &str,
-    value: &str,
-  ) -> Result<Self, AnyError> {
-    let (name, version_req) = parse_dep_entry_name_and_version(key, value)?;
-    Ok(NpmPackageReq {
-      name,
-      version_req: Some(version_req),
-    })
-  }
-
   fn parse_from_parts(name_parts: &[&str]) -> Result<Self, AnyError> {
     assert!(!name_parts.is_empty()); // this should be provided the result of a string split
     let last_name_part = &name_parts[name_parts.len() - 1];
@@ -154,27 +145,52 @@ impl NpmPackageReq {
   }
 }
 
-pub fn parse_dep_entry_name_and_version(
-  key: &str,
-  value: &str,
-) -> Result<(String, VersionReq), AnyError> {
-  let (name, version_req) =
-    if let Some(package_and_version) = value.strip_prefix("npm:") {
-      if let Some((name, version)) = package_and_version.rsplit_once('@') {
-        (name, version)
-      } else {
-        bail!("could not find @ symbol in npm url '{}'", value);
+impl PartialOrd for NpmPackageReq {
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+// Sort the package requirements alphabetically then the version
+// requirement in a way that will lead to the least number of
+// duplicate packages (so sort None last since it's `*`), but
+// mostly to create some determinism around how these are resolved.
+impl Ord for NpmPackageReq {
+  fn cmp(&self, other: &Self) -> Ordering {
+    fn cmp_specifier_version_req(a: &VersionReq, b: &VersionReq) -> Ordering {
+      match a.tag() {
+        Some(a_tag) => match b.tag() {
+          Some(b_tag) => b_tag.cmp(a_tag), // sort descending
+          None => Ordering::Less,          // prefer a since tag
+        },
+        None => {
+          match b.tag() {
+            Some(_) => Ordering::Greater, // prefer b since tag
+            None => {
+              // At this point, just sort by text descending.
+              // We could maybe be a bit smarter here in the future.
+              b.to_string().cmp(&a.to_string())
+            }
+          }
+        }
       }
-    } else {
-      (key, value)
-    };
-  let version_req =
-    VersionReq::parse_from_npm(&version_req).with_context(|| {
-      format!(
-        "error parsing version requirement for dependency: {key}@{version_req}"
-      )
-    })?;
-  Ok((name.to_string(), version_req))
+    }
+
+    match self.name.cmp(&other.name) {
+      Ordering::Equal => {
+        match &other.version_req {
+          Some(b_req) => {
+            match &self.version_req {
+              Some(a_req) => cmp_specifier_version_req(a_req, b_req),
+              None => Ordering::Greater, // prefer b, since a is *
+            }
+          }
+          None => Ordering::Less, // prefer a, since b is *
+        }
+      }
+      ordering => ordering,
+    }
+  }
 }
 
 #[cfg(test)]
@@ -328,5 +344,30 @@ mod tests {
         .to_string(),
       "Invalid npm specifier 'npm://test'. Did not contain a package name."
     );
+  }
+
+  #[test]
+  fn sorting_package_reqs() {
+    fn cmp_req(a: &str, b: &str) -> Ordering {
+      let a = NpmPackageReq::from_str(a).unwrap();
+      let b = NpmPackageReq::from_str(b).unwrap();
+      a.cmp(&b)
+    }
+
+    // sort by name
+    assert_eq!(cmp_req("a", "b@1"), Ordering::Less);
+    assert_eq!(cmp_req("b@1", "a"), Ordering::Greater);
+    // prefer non-wildcard
+    assert_eq!(cmp_req("a", "a@1"), Ordering::Greater);
+    assert_eq!(cmp_req("a@1", "a"), Ordering::Less);
+    // prefer tag
+    assert_eq!(cmp_req("a@tag", "a"), Ordering::Less);
+    assert_eq!(cmp_req("a", "a@tag"), Ordering::Greater);
+    // sort tag descending
+    assert_eq!(cmp_req("a@latest-v1", "a@latest-v2"), Ordering::Greater);
+    assert_eq!(cmp_req("a@latest-v2", "a@latest-v1"), Ordering::Less);
+    // sort version req descending
+    assert_eq!(cmp_req("a@1", "a@2"), Ordering::Greater);
+    assert_eq!(cmp_req("a@2", "a@1"), Ordering::Less);
   }
 }

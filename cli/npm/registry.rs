@@ -22,6 +22,7 @@ use deno_core::url::Url;
 use deno_runtime::colors;
 use serde::Serialize;
 
+use crate::args::package_json::parse_dep_entry_name_and_raw_version;
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
@@ -31,7 +32,6 @@ use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
-use super::resolution::parse_dep_entry_name_and_version;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
@@ -114,15 +114,19 @@ impl NpmPackageVersionInfo {
     &self,
   ) -> Result<Vec<NpmDependencyEntry>, AnyError> {
     fn parse_dep_entry(
-      entry: (&String, &String),
+      (key, value): (&String, &String),
       kind: NpmDependencyEntryKind,
     ) -> Result<NpmDependencyEntry, AnyError> {
       let (name, version_req) =
-        parse_dep_entry_name_and_version(entry.0.as_str(), entry.1.as_str())?;
+        parse_dep_entry_name_and_raw_version(key, value)?;
+      let version_req =
+        VersionReq::parse_from_npm(&version_req).with_context(|| {
+          format!("error parsing version requirement for dependency: {key}@{version_req}")
+        })?;
       Ok(NpmDependencyEntry {
         kind,
-        bare_specifier: entry.0.to_string(),
-        name,
+        bare_specifier: key.to_string(),
+        name: name.to_string(),
         version_req,
         peer_dep_version_req: None,
       })

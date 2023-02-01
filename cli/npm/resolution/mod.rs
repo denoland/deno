@@ -28,7 +28,6 @@ mod reference;
 mod snapshot;
 mod specifier;
 
-pub use reference::parse_dep_entry_name_and_version;
 pub use reference::NpmPackageReference;
 pub use reference::NpmPackageReq;
 pub use snapshot::NpmResolutionSnapshot;

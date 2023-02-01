@@ -5,18 +5,19 @@ use deno_core::resolve_import;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Resolver;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
-use deno_runtime::deno_node::PackageJson;
 use import_map::ImportMap;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::args::JsxImportSourceConfig;
+use crate::npm::NpmPackageReq;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug, Clone, Default)]
 pub struct CliResolver {
   maybe_import_map: Option<Arc<ImportMap>>,
-  maybe_package_json: Option<PackageJson>,
+  maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
 }
@@ -25,15 +26,15 @@ impl CliResolver {
   pub fn maybe_new(
     maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
     maybe_import_map: Option<Arc<ImportMap>>,
-    maybe_package_json: Option<PackageJson>,
+    maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
   ) -> Option<Self> {
     if maybe_jsx_import_source_config.is_some()
       || maybe_import_map.is_some()
-      || maybe_package_json.is_some()
+      || maybe_package_json_deps.is_some()
     {
       Some(Self {
         maybe_import_map,
-        maybe_package_json,
+        maybe_package_json_deps,
         maybe_default_jsx_import_source: maybe_jsx_import_source_config
           .as_ref()
           .and_then(|c| c.default_specifier.clone()),
@@ -77,31 +78,9 @@ impl Resolver for CliResolver {
         .map_err(|err| err.into());
     }
 
-    if let Some(pjson) = self.maybe_package_json.as_ref() {
-      let maybe_specifier_and_version = if let Some(deps) = &pjson.dependencies
-      {
-        if deps.contains_key(specifier) {
-          let version = deps.get(specifier).unwrap();
-          Some((specifier, version))
-        } else {
-          None
-        }
-      } else if let Some(dev_deps) = &pjson.dev_dependencies {
-        if dev_deps.contains_key(specifier) {
-          let version = dev_deps.get(specifier).unwrap();
-          Some((specifier, version))
-        } else {
-          None
-        }
-      } else {
-        None
-      };
-
-      if let Some((specifier, version)) = maybe_specifier_and_version {
-        return Ok(
-          ModuleSpecifier::parse(&format!("npm:{specifier}@{version}"))
-            .unwrap(),
-        );
+    if let Some(deps) = self.maybe_package_json_deps.as_ref() {
+      if let Some(req) = deps.get(specifier) {
+        return Ok(ModuleSpecifier::parse(&format!("npm:{req}")).unwrap());
       }
     }
 
