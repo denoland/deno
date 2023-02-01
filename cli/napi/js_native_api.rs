@@ -1721,7 +1721,7 @@ fn napi_get_global(env: *mut Env, result: *mut napi_value) -> Result {
   check_arg!(env, result);
 
   let value: v8::Local<v8::Value> =
-    transmute::<NonNull<v8::Value>, v8::Local<v8::Value>>((&mut *env).global);
+    transmute::<NonNull<v8::Value>, v8::Local<v8::Value>>((*env).global);
   *result = value.into();
   napi_clear_last_error(env);
   Ok(())
