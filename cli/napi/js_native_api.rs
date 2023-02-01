@@ -607,10 +607,6 @@ fn napi_create_function(
   check_arg!(env, result);
   check_arg_option!(env, cb);
 
-  if length > INT_MAX as _ {
-    return Err(Error::InvalidArg);
-  }
-
   let name = name
     .as_ref()
     .map(|_| check_new_from_utf8_len(env, name, length))
