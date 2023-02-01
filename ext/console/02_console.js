@@ -347,6 +347,11 @@
       // use generic 'Function' instead.
       cstrName = "Function";
     }
+    const stringValue = value.toString();
+    // Might be Class
+    if (stringValue.startsWith("class")) {
+      cstrName = "Class";
+    }
 
     // Our function may have properties, so we want to format those
     // as if our function was an object
