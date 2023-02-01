@@ -595,19 +595,35 @@ fn op_get_promise_details<'a>(
 #[op(v8)]
 fn op_set_promise_hooks(
   scope: &mut v8::HandleScope,
-  init_cb: serde_v8::Value,
-  before_cb: serde_v8::Value,
-  after_cb: serde_v8::Value,
-  resolve_cb: serde_v8::Value,
+  init_cb: Option<serde_v8::Value>,
+  before_cb: Option<serde_v8::Value>,
+  after_cb: Option<serde_v8::Value>,
+  resolve_cb: Option<serde_v8::Value>,
 ) -> Result<(), Error> {
-  let init_hook_global = to_v8_fn(scope, init_cb)?;
-  let before_hook_global = to_v8_fn(scope, before_cb)?;
-  let after_hook_global = to_v8_fn(scope, after_cb)?;
-  let resolve_hook_global = to_v8_fn(scope, resolve_cb)?;
-  let init_hook = v8::Local::new(scope, init_hook_global);
-  let before_hook = v8::Local::new(scope, before_hook_global);
-  let after_hook = v8::Local::new(scope, after_hook_global);
-  let resolve_hook = v8::Local::new(scope, resolve_hook_global);
+  let init_hook = if let Some(init_cb) = init_cb {
+    let init_hook_global = to_v8_fn(scope, init_cb)?;
+    Some(v8::Local::new(scope, init_hook_global))
+  } else {
+    None
+  };
+  let before_hook = if let Some(before_cb) = before_cb {
+    let before_hook_global = to_v8_fn(scope, before_cb)?;
+    Some(v8::Local::new(scope, before_hook_global))
+  } else {
+    None
+  };
+  let after_hook = if let Some(after_cb) = after_cb {
+    let after_hook_global = to_v8_fn(scope, after_cb)?;
+    Some(v8::Local::new(scope, after_hook_global))
+  } else {
+    None
+  };
+  let resolve_hook = if let Some(resolve_cb) = resolve_cb {
+    let resolve_hook_global = to_v8_fn(scope, resolve_cb)?;
+    Some(v8::Local::new(scope, resolve_hook_global))
+  } else {
+    None
+  };
 
   scope.get_current_context().set_promise_hooks(
     init_hook,

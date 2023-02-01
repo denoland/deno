@@ -326,40 +326,67 @@
   }
   const InterruptedPrototype = Interrupted.prototype;
 
-  const promiseHooks = {
-    init: [],
-    before: [],
-    after: [],
-    resolve: [],
-    hasBeenSet: false,
-  };
+  const initHooks = [];
+  const beforeHooks = [];
+  const afterHooks = [];
+  const resolveHooks = [];
+  let promiseHooksHaveBeenSet = false;
 
   function setPromiseHooks(init, before, after, resolve) {
-    if (init) ArrayPrototypePush(promiseHooks.init, init);
-    if (before) ArrayPrototypePush(promiseHooks.before, before);
-    if (after) ArrayPrototypePush(promiseHooks.after, after);
-    if (resolve) ArrayPrototypePush(promiseHooks.resolve, resolve);
+    if (init) ArrayPrototypePush(initHooks, init);
+    if (before) ArrayPrototypePush(beforeHooks, before);
+    if (after) ArrayPrototypePush(afterHooks, after);
+    if (resolve) ArrayPrototypePush(resolveHooks, resolve);
 
-    if (!promiseHooks.hasBeenSet) {
-      promiseHooks.hasBeenSet = true;
+    if (!promiseHooksHaveBeenSet) {
+      promiseHooksHaveBeenSet = true;
 
-      ops.op_set_promise_hooks((promise, parentPromise) => {
-        for (let i = 0; i < promiseHooks.init.length; ++i) {
-          promiseHooks.init[i](promise, parentPromise);
+      const init = initHooks.length === 0
+        ? undefined
+        : initHooks.length === 1
+        ? (promise, parentPromise) => {
+          initHooks[0](promise, parentPromise);
         }
-      }, (promise) => {
-        for (let i = 0; i < promiseHooks.before.length; ++i) {
-          promiseHooks.before[i](promise);
+        : (promise, parentPromise) => {
+          for (let i = 0; i < initHooks.length; ++i) {
+            initHooks[i](promise, parentPromise);
+          }
+        };
+      const before = beforeHooks.length === 0
+        ? undefined
+        : beforeHooks.length === 1
+        ? (promise) => {
+          beforeHooks[0](promise);
         }
-      }, (promise) => {
-        for (let i = 0; i < promiseHooks.after.length; ++i) {
-          promiseHooks.after[i](promise);
+        : (promise) => {
+          for (let i = 0; i < beforeHooks.length; ++i) {
+            beforeHooks[i](promise);
+          }
+        };
+      const after = afterHooks.length === 0
+        ? undefined
+        : afterHooks.length === 1
+        ? (promise) => {
+          afterHooks[0](promise);
         }
-      }, (promise) => {
-        for (let i = 0; i < promiseHooks.resolve.length; ++i) {
-          promiseHooks.resolve[i](promise);
+        : (promise) => {
+          for (let i = 0; i < afterHooks.length; ++i) {
+            afterHooks[i](promise);
+          }
+        };
+      const resolve = resolveHooks.length === 0
+        ? undefined
+        : resolveHooks.length === 1
+        ? (promise) => {
+          resolveHooks[0](promise);
         }
-      });
+        : (promise) => {
+          for (let i = 0; i < resolveHooks.length; ++i) {
+            resolveHooks[i](promise);
+          }
+        };
+
+      ops.op_set_promise_hooks(init, before, after, resolve);
     }
   }
 

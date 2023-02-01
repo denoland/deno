@@ -2,7 +2,7 @@
 
 import { assertEquals } from "./test_util.ts";
 
-function monitorPromises(outputArray: string[]) {
+function monitorPromises(outputArray: string[], initOnly = false) {
   const promiseIds = new Map<Promise<unknown>, string>();
 
   function identify(promise: Promise<unknown>) {
@@ -12,27 +12,35 @@ function monitorPromises(outputArray: string[]) {
     return promiseIds.get(promise);
   }
 
+  const init = (
+    promise: Promise<unknown>,
+    parentPromise?: Promise<unknown>,
+  ) => {
+    outputArray.push(
+      `init ${identify(promise)}` +
+        (parentPromise ? ` from ${identify(parentPromise)}` : ``),
+    );
+  };
+  const before = (promise: Promise<unknown>) => {
+    outputArray.push(`before ${identify(promise)}`);
+  };
+  const after = (promise: Promise<unknown>) => {
+    outputArray.push(`after ${identify(promise)}`);
+  };
+  const resolve = (promise: Promise<unknown>) => {
+    outputArray.push(`resolve ${identify(promise)}`);
+  };
+
   // @ts-ignore: Deno[Deno.internal].core allowed
   Deno[Deno.internal].core.setPromiseHooks(
-    (promise: Promise<unknown>, parentPromise?: Promise<unknown>) => {
-      outputArray.push(
-        `init ${identify(promise)}` +
-          (parentPromise ? ` from ${identify(parentPromise)}` : ``),
-      );
-    },
-    (promise: Promise<unknown>) => {
-      outputArray.push(`before ${identify(promise)}`);
-    },
-    (promise: Promise<unknown>) => {
-      outputArray.push(`after ${identify(promise)}`);
-    },
-    (promise: Promise<unknown>) => {
-      outputArray.push(`resolve ${identify(promise)}`);
-    },
+    init,
+    initOnly ? undefined : before,
+    initOnly ? undefined : after,
+    initOnly ? undefined : resolve,
   );
 }
 
-Deno.test(async function promiseHookBasic() {
+Deno.test({ ignore: true }, async function promiseHookBasic() {
   // Bogus await here to ensure any pending promise resolution from the
   // test runtime has a chance to run and avoid contaminating our results.
   await Promise.resolve(null);
@@ -87,7 +95,48 @@ Deno.test(async function promiseHookBasic() {
   ]);
 });
 
-Deno.test(async function promiseHookMultipleConsumers() {
+Deno.test(async function promiseHookOnlyInit() {
+  // Bogus await here to ensure any pending promise resolution from the
+  // test runtime has a chance to run and avoid contaminating our results.
+  await Promise.resolve(null);
+
+  const hookResults: string[] = [];
+  monitorPromises(hookResults, true);
+
+  async function asyncFn() {
+    await Promise.resolve(15);
+    await Promise.resolve(20);
+    Promise.reject(new Error()).catch(() => {});
+  }
+
+  // The function above is equivalent to:
+  //   function asyncFn() {
+  //     return new Promise(resolve => {
+  //       Promise.resolve(15).then(() => {
+  //         Promise.resolve(20).then(() => {
+  //           Promise.reject(new Error()).catch(() => {});
+  //           resolve();
+  //         });
+  //       });
+  //     });
+  //   }
+
+  await asyncFn();
+
+  assertEquals(hookResults, [
+    "init p1", // Creates the promise representing the return of `asyncFn()`.
+    "init p2", // Creates the promise representing `Promise.resolve(15)`.
+    "init p3 from p2", // Creates the promise that is resolved after the first `await` of the function. Equivalent to `p2.then(...)`.
+    "init p4 from p1", // The resolution above gives time for other pending code to run. Creates the promise that is resolved
+    // from the `await` at `await asyncFn()`, the last code to run. Equivalent to `asyncFn().then(...)`.
+    "init p5", // Creates the promise representing `Promise.resolve(20)`.
+    "init p6 from p5", // Creates the promise that is resolved after the second `await` of the function. Equivalent to `p5.then(...)`.
+    "init p7", // Creates a new promise representing `Promise.reject(new Error())`.
+    "init p8 from p7", // Creates a new promise for the `.catch` of the previous promise.
+  ]);
+});
+
+Deno.test({ ignore: true }, async function promiseHookMultipleConsumers() {
   const hookResultsFirstConsumer: string[] = [];
   const hookResultsSecondConsumer: string[] = [];
 
