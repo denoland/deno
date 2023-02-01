@@ -452,7 +452,7 @@ impl ReplSession {
 
     let npm_imports = resolved_imports
       .iter()
-      .flat_map(|url| NpmPackageReference::from_specifier(&url).ok())
+      .flat_map(|url| NpmPackageReference::from_specifier(url).ok())
       .map(|r| r.req)
       .collect::<Vec<_>>();
     let has_node_specifier =
