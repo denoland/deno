@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -9,6 +10,7 @@ use serde::Serialize;
 
 use crate::semver::VersionReq;
 
+/// A reference to an npm package that includes a potential sub path.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NpmPackageReference {
   pub req: NpmPackageReq,
@@ -41,21 +43,13 @@ impl NpmPackageReference {
       return Err(generic_error(format!("Not a valid package: {specifier}")));
     }
     let name_parts = &parts[0..name_part_len];
-    let last_name_part = &name_parts[name_part_len - 1];
-    let (name, version_req) = if let Some(at_index) = last_name_part.rfind('@')
-    {
-      let version = &last_name_part[at_index + 1..];
-      let last_name_part = &last_name_part[..at_index];
-      let version_req = VersionReq::parse_from_specifier(version)
-        .with_context(|| "Invalid version requirement.")?;
-      let name = if name_part_len == 1 {
-        last_name_part.to_string()
-      } else {
-        format!("{}/{}", name_parts[0], last_name_part)
-      };
-      (name, Some(version_req))
-    } else {
-      (name_parts.join("/"), None)
+    let req = match NpmPackageReq::parse_from_parts(name_parts) {
+      Ok(pkg_req) => pkg_req,
+      Err(err) => {
+        return Err(generic_error(format!(
+          "Invalid npm specifier '{original_text}'. {err:#}"
+        )))
+      }
     };
     let sub_path = if parts.len() == name_parts.len() {
       None
@@ -72,23 +66,13 @@ impl NpmPackageReference {
       if let Some(at_index) = sub_path.rfind('@') {
         let (new_sub_path, version) = sub_path.split_at(at_index);
         let msg = format!(
-          "Invalid package specifier 'npm:{name}/{sub_path}'. Did you mean to write 'npm:{name}{version}/{new_sub_path}'?"
+          "Invalid package specifier 'npm:{req}/{sub_path}'. Did you mean to write 'npm:{req}{version}/{new_sub_path}'?"
         );
         return Err(generic_error(msg));
       }
     }
 
-    if name.is_empty() {
-      let msg = format!(
-        "Invalid npm specifier '{original_text}'. Did not contain a package name."
-      );
-      return Err(generic_error(msg));
-    }
-
-    Ok(NpmPackageReference {
-      req: NpmPackageReq { name, version_req },
-      sub_path,
-    })
+    Ok(NpmPackageReference { req, sub_path })
   }
 }
 
@@ -102,6 +86,7 @@ impl std::fmt::Display for NpmPackageReference {
   }
 }
 
+/// The name and version constraint of an npm package.
 #[derive(
   Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize,
 )]
@@ -121,9 +106,38 @@ impl std::fmt::Display for NpmPackageReq {
 
 impl NpmPackageReq {
   pub fn from_str(text: &str) -> Result<Self, AnyError> {
-    // probably should do something more targeted in the future
-    let reference = NpmPackageReference::from_str(&format!("npm:{text}"))?;
-    Ok(reference.req)
+    let parts = text.split('/').collect::<Vec<_>>();
+    match NpmPackageReq::parse_from_parts(&parts) {
+      Ok(req) => Ok(req),
+      Err(err) => {
+        let msg = format!("Invalid npm package requirement '{text}'. {err:#}");
+        Err(generic_error(msg))
+      }
+    }
+  }
+
+  fn parse_from_parts(name_parts: &[&str]) -> Result<Self, AnyError> {
+    assert!(!name_parts.is_empty()); // this should be provided the result of a string split
+    let last_name_part = &name_parts[name_parts.len() - 1];
+    let (name, version_req) = if let Some(at_index) = last_name_part.rfind('@')
+    {
+      let version = &last_name_part[at_index + 1..];
+      let last_name_part = &last_name_part[..at_index];
+      let version_req = VersionReq::parse_from_specifier(version)
+        .with_context(|| "Invalid version requirement.")?;
+      let name = if name_parts.len() == 1 {
+        last_name_part.to_string()
+      } else {
+        format!("{}/{}", name_parts[0], last_name_part)
+      };
+      (name, Some(version_req))
+    } else {
+      (name_parts.join("/"), None)
+    };
+    if name.is_empty() {
+      bail!("Did not contain a package name.")
+    }
+    Ok(Self { name, version_req })
   }
 }
 
