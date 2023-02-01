@@ -631,14 +631,17 @@ impl CliOptions {
   }
 
   pub fn node_modules_dir(&self) -> bool {
-    self.flags.node_modules_dir
+    match self.flags.node_modules_dir {
+      Some(value) => value,
+      None => self.maybe_package_json.is_some(),
+    }
   }
 
   /// Resolves the path to use for a local node_modules folder.
   pub fn resolve_local_node_modules_folder(
     &self,
   ) -> Result<Option<PathBuf>, AnyError> {
-    let path = if !self.flags.node_modules_dir {
+    let path = if !self.node_modules_dir() {
       return Ok(None);
     } else if let Some(config_path) = self
       .maybe_config_file
