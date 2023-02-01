@@ -2,7 +2,8 @@
 returns_result: false
 has_ref_opstate: false
 has_rc_opstate: false
-has_fast_callback_option: false
+has_fast_callback_option: true
+needs_fast_callback_option: false
 fast_result: Some(Void)
 fast_parameters: [V8Value]
 transforms: {}

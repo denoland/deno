@@ -1,9 +1,13 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod in_memory_broadcast_channel;
 
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
+
+use std::cell::RefCell;
+use std::path::PathBuf;
+use std::rc::Rc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
@@ -14,9 +18,6 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use std::cell::RefCell;
-use std::path::PathBuf;
-use std::rc::Rc;
 
 #[async_trait]
 pub trait BroadcastChannel: Clone {
@@ -109,7 +110,8 @@ pub fn init<BC: BroadcastChannel + 'static>(
   bc: BC,
   unstable: bool,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl", "deno_web"])
     .js(include_js_files!(
       prefix "deno:ext/broadcast_channel",
       "01_broadcast_channel.js",

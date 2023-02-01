@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 
@@ -107,7 +107,7 @@ impl NodeAnalysisCache {
           Err(err) => {
             // should never error here, but if it ever does don't fail
             if cfg!(debug_assertions) {
-              panic!("Error creating node analysis cache: {:#}", err);
+              panic!("Error creating node analysis cache: {err:#}");
             } else {
               log::debug!("Error creating node analysis cache: {:#}", err);
               None
@@ -123,7 +123,7 @@ impl NodeAnalysisCache {
       Err(err) => {
         // should never error here, but if it ever does don't fail
         if cfg!(debug_assertions) {
-          panic!("Error using esm analysis: {:#}", err);
+          panic!("Error using esm analysis: {err:#}");
         } else {
           log::debug!("Error using esm analysis: {:#}", err);
         }
@@ -142,6 +142,7 @@ impl NodeAnalysisCacheInner {
     db_file_path: Option<&Path>,
     version: String,
   ) -> Result<Self, AnyError> {
+    log::debug!("Opening node analysis cache.");
     let conn = match db_file_path {
       Some(path) => Connection::open(path)?,
       None => Connection::open_in_memory()?,
@@ -251,7 +252,7 @@ impl NodeAnalysisCacheInner {
     let mut stmt = self.conn.prepare_cached(sql)?;
     stmt.execute(params![
       specifier,
-      &source_hash.to_string(),
+      &source_hash,
       &serde_json::to_string(top_level_decls)?,
     ])?;
     Ok(())
@@ -302,7 +303,7 @@ fn create_tables(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
       |row| row.get(0),
     )
     .ok();
-  if data_cli_version != Some(cli_version.to_string()) {
+  if data_cli_version.as_deref() != Some(cli_version) {
     conn.execute("DELETE FROM cjsanalysiscache", params![])?;
     conn.execute("DELETE FROM esmglobalscache", params![])?;
     let mut stmt = conn

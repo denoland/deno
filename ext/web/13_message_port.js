@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -36,7 +36,7 @@
 
     constructor() {
       this[webidl.brand] = webidl.brand;
-      const [port1Id, port2Id] = opCreateEntangledMessagePort();
+      const { 0: port1Id, 1: port2Id } = opCreateEntangledMessagePort();
       const port1 = createMessagePort(port1Id);
       const port2 = createMessagePort(port2Id);
       this.#port1 = port1;
@@ -204,7 +204,8 @@
     const arrayBufferIdsInTransferables = [];
     const transferredArrayBuffers = [];
 
-    for (const transferable of messageData.transferables) {
+    for (let i = 0; i < messageData.transferables.length; ++i) {
+      const transferable = messageData.transferables[i];
       switch (transferable.kind) {
         case "messagePort": {
           const port = createMessagePort(transferable.data);
@@ -214,8 +215,8 @@
         }
         case "arrayBuffer": {
           ArrayPrototypePush(transferredArrayBuffers, transferable.data);
-          const i = ArrayPrototypePush(transferables, null);
-          ArrayPrototypePush(arrayBufferIdsInTransferables, i);
+          const index = ArrayPrototypePush(transferables, null);
+          ArrayPrototypePush(arrayBufferIdsInTransferables, index);
           break;
         }
         default:
@@ -228,7 +229,7 @@
       transferredArrayBuffers,
     });
 
-    for (const i in arrayBufferIdsInTransferables) {
+    for (let i = 0; i < arrayBufferIdsInTransferables.length; ++i) {
       const id = arrayBufferIdsInTransferables[i];
       transferables[id] = transferredArrayBuffers[i];
     }
@@ -271,7 +272,8 @@
     const serializedTransferables = [];
 
     let arrayBufferI = 0;
-    for (const transferable of transferables) {
+    for (let i = 0; i < transferables.length; ++i) {
+      const transferable = transferables[i];
       if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, transferable)) {
         webidl.assertBranded(transferable, MessagePortPrototype);
         const id = transferable[_id];
@@ -327,8 +329,7 @@
       context: "Argument 2",
     });
     const messageData = serializeJsMessageData(value, options.transfer);
-    const [data] = deserializeJsMessageData(messageData);
-    return data;
+    return deserializeJsMessageData(messageData)[0];
   }
 
   window.__bootstrap.messagePort = {

@@ -3,6 +3,7 @@ returns_result: true
 has_ref_opstate: true
 has_rc_opstate: false
 has_fast_callback_option: false
+needs_fast_callback_option: false
 fast_result: Some(U32)
 fast_parameters: [V8Value, U32, U32]
 transforms: {}

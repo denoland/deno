@@ -1,11 +1,13 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::inspector_server::InspectorServer;
-use crate::js;
-use crate::ops;
-use crate::ops::io::Stdio;
-use crate::permissions::Permissions;
-use crate::BootstrapOptions;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering::Relaxed;
+use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
+
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
@@ -13,8 +15,6 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
-use deno_core::serde_json::json;
-use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
@@ -33,13 +33,13 @@ use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering::Relaxed;
-use std::sync::Arc;
-use std::task::Context;
-use std::task::Poll;
+
+use crate::inspector_server::InspectorServer;
+use crate::js;
+use crate::ops;
+use crate::ops::io::Stdio;
+use crate::permissions::PermissionsContainer;
+use crate::BootstrapOptions;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
@@ -65,20 +65,41 @@ impl ExitCode {
 pub struct MainWorker {
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
+  should_wait_for_inspector_session: bool,
   exit_code: ExitCode,
-  js_run_tests_callback: v8::Global<v8::Function>,
-  js_run_benchmarks_callback: v8::Global<v8::Function>,
-  js_enable_test_callback: v8::Global<v8::Function>,
-  js_enable_bench_callback: v8::Global<v8::Function>,
 }
 
 pub struct WorkerOptions {
   pub bootstrap: BootstrapOptions,
+
+  /// JsRuntime extensions, not to be confused with ES modules.
+  /// Only ops registered by extensions will be initialized. If you need
+  /// to execute JS code from extensions, use `extensions_with_js` options
+  /// instead.
   pub extensions: Vec<Extension>,
+
+  /// JsRuntime extensions, not to be confused with ES modules.
+  /// Ops registered by extensions will be initialized and JS code will be
+  /// executed. If you don't need to execute JS code from extensions, use
+  /// `extensions` option instead.
+  ///
+  /// This is useful when creating snapshots, in such case you would pass
+  /// extensions using `extensions_with_js`, later when creating a runtime
+  /// from the snapshot, you would pass these extensions using `extensions`
+  /// option.
+  pub extensions_with_js: Vec<Extension>,
+
+  /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
+
+  /// Implementation of `ModuleLoader` which will be
+  /// called when V8 requests to load ES modules.
+  ///
+  /// If not provided runtime will error if code being
+  /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
   pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
@@ -86,26 +107,41 @@ pub struct WorkerOptions {
   pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub web_worker_pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
+
+  /// Source map reference for errors.
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  // If true, the worker will wait for inspector session and break on first
+  // statement of user code. Takes higher precedence than
+  // `should_wait_for_inspector_session`.
   pub should_break_on_first_statement: bool,
+  // If true, the worker will wait for inspector session before executing
+  // user code.
+  pub should_wait_for_inspector_session: bool,
+
+  /// Allows to map error type to a string "class" used to represent
+  /// error in JavaScript.
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
+
+  /// The store to use for transferring SharedArrayBuffers between isolates.
+  /// If multiple isolates should have the possibility of sharing
+  /// SharedArrayBuffers, they should use the same [SharedArrayBufferStore]. If
+  /// no [SharedArrayBufferStore] is specified, SharedArrayBuffer can not be
+  /// serialized.
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+
+  /// The store to use for transferring `WebAssembly.Module` objects between
+  /// isolates.
+  /// If multiple isolates should have the possibility of sharing
+  /// `WebAssembly.Module` objects, they should use the same
+  /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
+  /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
-}
-
-fn grab_cb(
-  scope: &mut v8::HandleScope,
-  path: &str,
-) -> v8::Global<v8::Function> {
-  let cb = JsRuntime::eval::<v8::Function>(scope, path)
-    .unwrap_or_else(|| panic!("{} must be defined", path));
-  v8::Global::new(scope, cb)
 }
 
 impl Default for WorkerOptions {
@@ -124,6 +160,7 @@ impl Default for WorkerOptions {
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
       should_break_on_first_statement: Default::default(),
+      should_wait_for_inspector_session: Default::default(),
       compiled_wasm_module_store: Default::default(),
       shared_array_buffer_store: Default::default(),
       maybe_inspector_server: Default::default(),
@@ -137,6 +174,7 @@ impl Default for WorkerOptions {
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
+      extensions_with_js: Default::default(),
       startup_snapshot: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
@@ -147,7 +185,7 @@ impl Default for WorkerOptions {
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
-    permissions: Permissions,
+    permissions: PermissionsContainer,
     options: WorkerOptions,
   ) -> Self {
     let bootstrap_options = options.bootstrap.clone();
@@ -158,15 +196,15 @@ impl MainWorker {
 
   pub fn from_options(
     main_module: ModuleSpecifier,
-    permissions: Permissions,
+    permissions: PermissionsContainer,
     mut options: WorkerOptions,
   ) -> Self {
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let perm_ext = Extension::builder()
+    let perm_ext = Extension::builder("deno_permissions_worker")
       .state(move |state| {
-        state.put::<Permissions>(permissions.clone());
+        state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
         Ok(())
@@ -184,11 +222,11 @@ impl MainWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init::<Permissions>(
+      deno_web::init::<PermissionsContainer>(
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
-      deno_fetch::init::<Permissions>(deno_fetch::Options {
+      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
@@ -198,7 +236,7 @@ impl MainWorker {
         ..Default::default()
       }),
       deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<Permissions>(
+      deno_websocket::init::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
@@ -208,7 +246,7 @@ impl MainWorker {
       deno_crypto::init(options.seed),
       deno_webgpu::init(unstable),
       // ffi
-      deno_ffi::init::<Permissions>(unstable),
+      deno_ffi::init::<PermissionsContainer>(unstable),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
@@ -223,20 +261,20 @@ impl MainWorker {
       ops::io::init(),
       ops::io::init_stdio(options.stdio),
       deno_tls::init(),
-      deno_net::init::<Permissions>(
+      deno_net::init::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init::<Permissions>(unstable),
-      deno_node::init::<Permissions>(options.npm_resolver),
+      deno_napi::init::<PermissionsContainer>(unstable),
+      deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
-      deno_flash::init::<Permissions>(unstable),
+      deno_flash::init::<PermissionsContainer>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
@@ -255,7 +293,9 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      extensions_with_js: options.extensions_with_js,
       inspector: options.maybe_inspector_server.is_some(),
+      is_main: true,
       ..Default::default()
     });
 
@@ -263,33 +303,23 @@ impl MainWorker {
       server.register_inspector(
         main_module.to_string(),
         &mut js_runtime,
-        options.should_break_on_first_statement,
+        options.should_break_on_first_statement
+          || options.should_wait_for_inspector_session,
       );
-    }
 
-    let (
-      js_run_tests_callback,
-      js_run_benchmarks_callback,
-      js_enable_test_callback,
-      js_enable_bench_callback,
-    ) = {
-      let scope = &mut js_runtime.handle_scope();
-      (
-        grab_cb(scope, "__bootstrap.testing.runTests"),
-        grab_cb(scope, "__bootstrap.testing.runBenchmarks"),
-        grab_cb(scope, "__bootstrap.testing.enableTest"),
-        grab_cb(scope, "__bootstrap.testing.enableBench"),
-      )
-    };
+      // Put inspector handle into the op state so we can put a breakpoint when
+      // executing a CJS entrypoint.
+      let op_state = js_runtime.op_state();
+      let inspector = js_runtime.inspector();
+      op_state.borrow_mut().put(inspector);
+    }
 
     Self {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
+      should_wait_for_inspector_session: options
+        .should_wait_for_inspector_session,
       exit_code,
-      js_run_tests_callback,
-      js_run_benchmarks_callback,
-      js_enable_test_callback,
-      js_enable_bench_callback,
     }
   }
 
@@ -305,9 +335,8 @@ impl MainWorker {
     &mut self,
     script_name: &str,
     source_code: &str,
-  ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(script_name, source_code)?;
-    Ok(())
+  ) -> Result<v8::Global<v8::Value>, AnyError> {
+    self.js_runtime.execute_script(script_name, source_code)
   }
 
   /// Loads and instantiates specified JavaScript module as "main" module.
@@ -377,72 +406,15 @@ impl MainWorker {
     self.evaluate_module(id).await
   }
 
-  /// Run tests declared with `Deno.test()`. Test events will be dispatched
-  /// by calling ops which are currently only implemented in the CLI crate.
-  // TODO(nayeemrmn): Move testing ops to deno_runtime and redesign/unhide.
-  #[doc(hidden)]
-  pub async fn run_tests(
-    &mut self,
-    shuffle: &Option<u64>,
-  ) -> Result<(), AnyError> {
-    let promise = {
-      let scope = &mut self.js_runtime.handle_scope();
-      let cb = self.js_run_tests_callback.open(scope);
-      let this = v8::undefined(scope).into();
-      let options =
-        serde_v8::to_v8(scope, json!({ "shuffle": shuffle })).unwrap();
-      let promise = cb.call(scope, this, &[options]).unwrap();
-      v8::Global::new(scope, promise)
-    };
-    self.js_runtime.resolve_value(promise).await?;
-    Ok(())
-  }
-
-  /// Run benches declared with `Deno.bench()`. Bench events will be dispatched
-  /// by calling ops which are currently only implemented in the CLI crate.
-  // TODO(nayeemrmn): Move benchmark ops to deno_runtime and redesign/unhide.
-  #[doc(hidden)]
-  pub async fn run_benchmarks(&mut self) -> Result<(), AnyError> {
-    let promise = {
-      let scope = &mut self.js_runtime.handle_scope();
-      let cb = self.js_run_benchmarks_callback.open(scope);
-      let this = v8::undefined(scope).into();
-      let promise = cb.call(scope, this, &[]).unwrap();
-      v8::Global::new(scope, promise)
-    };
-    self.js_runtime.resolve_value(promise).await?;
-    Ok(())
-  }
-
-  /// Enable `Deno.test()`. If this isn't called before executing user code,
-  /// `Deno.test()` calls will noop.
-  // TODO(nayeemrmn): Move testing ops to deno_runtime and redesign/unhide.
-  #[doc(hidden)]
-  pub fn enable_test(&mut self) {
-    let scope = &mut self.js_runtime.handle_scope();
-    let cb = self.js_enable_test_callback.open(scope);
-    let this = v8::undefined(scope).into();
-    cb.call(scope, this, &[]).unwrap();
-  }
-
-  /// Enable `Deno.bench()`. If this isn't called before executing user code,
-  /// `Deno.bench()` calls will noop.
-  // TODO(nayeemrmn): Move benchmark ops to deno_runtime and redesign/unhide.
-  #[doc(hidden)]
-  pub fn enable_bench(&mut self) {
-    let scope = &mut self.js_runtime.handle_scope();
-    let cb = self.js_enable_bench_callback.open(scope);
-    let this = v8::undefined(scope).into();
-    cb.call(scope, this, &[]).unwrap();
-  }
-
   fn wait_for_inspector_session(&mut self) {
     if self.should_break_on_first_statement {
       self
         .js_runtime
         .inspector()
         .borrow_mut()
-        .wait_for_session_and_break_on_next_statement()
+        .wait_for_session_and_break_on_next_statement();
+    } else if self.should_wait_for_inspector_session {
+      self.js_runtime.inspector().borrow_mut().wait_for_session();
     }
   }
 
@@ -488,7 +460,7 @@ impl MainWorker {
 
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
-  pub fn get_exit_code(&self) -> i32 {
+  pub fn exit_code(&self) -> i32 {
     self.exit_code.get()
   }
 
@@ -505,7 +477,8 @@ impl MainWorker {
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
       "dispatchEvent(new Event('load'))",
-    )
+    )?;
+    Ok(())
   }
 
   /// Dispatches "unload" event to the JavaScript runtime.
@@ -521,7 +494,8 @@ impl MainWorker {
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
       "dispatchEvent(new Event('unload'))",
-    )
+    )?;
+    Ok(())
   }
 
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
@@ -540,109 +514,5 @@ impl MainWorker {
     )?;
     let local_value = value.open(&mut self.js_runtime.handle_scope());
     Ok(local_value.is_false())
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use deno_core::resolve_url_or_path;
-
-  fn create_test_worker() -> MainWorker {
-    let main_module = resolve_url_or_path("./hello.js").unwrap();
-    let permissions = Permissions::default();
-
-    let options = WorkerOptions {
-      bootstrap: BootstrapOptions {
-        args: vec![],
-        cpu_count: 1,
-        debug_flag: false,
-        enable_testing_features: false,
-        locale: deno_core::v8::icu::get_language_tag(),
-        location: None,
-        no_color: true,
-        is_tty: false,
-        runtime_version: "x".to_string(),
-        ts_version: "x".to_string(),
-        unstable: false,
-        user_agent: "x".to_string(),
-        inspect: false,
-      },
-      extensions: vec![],
-      startup_snapshot: None,
-      unsafely_ignore_certificate_errors: None,
-      root_cert_store: None,
-      seed: None,
-      format_js_error_fn: None,
-      source_map_getter: None,
-      web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
-      web_worker_pre_execute_module_cb: Arc::new(|_| unreachable!()),
-      create_web_worker_cb: Arc::new(|_| unreachable!()),
-      maybe_inspector_server: None,
-      should_break_on_first_statement: false,
-      module_loader: Rc::new(FsModuleLoader),
-      npm_resolver: None,
-      get_error_class_fn: None,
-      cache_storage_dir: None,
-      origin_storage_dir: None,
-      blob_store: BlobStore::default(),
-      broadcast_channel: InMemoryBroadcastChannel::default(),
-      shared_array_buffer_store: None,
-      compiled_wasm_module_store: None,
-      stdio: Default::default(),
-    };
-
-    MainWorker::bootstrap_from_options(main_module, permissions, options)
-  }
-
-  #[tokio::test]
-  async fn execute_mod_esm_imports_a() {
-    let p = test_util::testdata_path().join("runtime/esm_imports_a.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let mut worker = create_test_worker();
-    let result = worker.execute_main_module(&module_specifier).await;
-    if let Err(err) = result {
-      eprintln!("execute_mod err {:?}", err);
-    }
-    if let Err(e) = worker.run_event_loop(false).await {
-      panic!("Future got unexpected error: {:?}", e);
-    }
-  }
-
-  #[tokio::test]
-  async fn execute_mod_circular() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("tests/circular1.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let mut worker = create_test_worker();
-    let result = worker.execute_main_module(&module_specifier).await;
-    if let Err(err) = result {
-      eprintln!("execute_mod err {:?}", err);
-    }
-    if let Err(e) = worker.run_event_loop(false).await {
-      panic!("Future got unexpected error: {:?}", e);
-    }
-  }
-
-  #[tokio::test]
-  async fn execute_mod_resolve_error() {
-    // "foo" is not a valid module specifier so this should return an error.
-    let mut worker = create_test_worker();
-    let module_specifier = resolve_url_or_path("does-not-exist").unwrap();
-    let result = worker.execute_main_module(&module_specifier).await;
-    assert!(result.is_err());
-  }
-
-  #[tokio::test]
-  async fn execute_mod_002_hello() {
-    // This assumes cwd is project root (an assumption made throughout the
-    // tests).
-    let mut worker = create_test_worker();
-    let p = test_util::testdata_path().join("run/001_hello.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let result = worker.execute_main_module(&module_specifier).await;
-    assert!(result.is_ok());
   }
 }

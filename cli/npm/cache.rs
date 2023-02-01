@@ -1,24 +1,29 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 
-use crate::deno_dir::DenoDir;
-use crate::file_fetcher::CacheSetting;
-use crate::fs_util;
+use crate::args::CacheSetting;
+use crate::cache::DenoDir;
 use crate::http_util::HttpClient;
-use crate::progress_bar::ProgressBar;
+use crate::semver::Version;
+use crate::util::fs::canonicalize_path;
+use crate::util::fs::hard_link_dir_recursive;
+use crate::util::path::root_url_to_safe_local_dirname;
+use crate::util::progress_bar::ProgressBar;
 
 use super::registry::NpmPackageVersionDistInfo;
-use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
 
 /// For some of the tests, we want downloading of packages
@@ -30,7 +35,7 @@ pub fn should_sync_download() -> bool {
 const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
 pub fn with_folder_sync_lock(
-  package: (&str, &NpmVersion),
+  package: (&str, &Version),
   output_folder: &Path,
   action: impl FnOnce() -> Result<(), AnyError>,
 ) -> Result<(), AnyError> {
@@ -103,7 +108,7 @@ pub fn with_folder_sync_lock(
 
 pub struct NpmPackageCacheFolderId {
   pub name: String,
-  pub version: NpmVersion,
+  pub version: Version,
   /// Peer dependency resolution may require us to have duplicate copies
   /// of the same package.
   pub copy_index: usize,
@@ -146,7 +151,7 @@ impl Default for ReadonlyNpmCache {
     // This only gets used when creating the tsc runtime and for testing, and so
     // it shouldn't ever actually access the DenoDir, so it doesn't support a
     // custom root.
-    Self::from_deno_dir(&crate::deno_dir::DenoDir::new(None).unwrap())
+    Self::from_deno_dir(&DenoDir::new(None).unwrap())
   }
 }
 
@@ -159,7 +164,7 @@ impl ReadonlyNpmCache {
         std::fs::create_dir_all(root_dir)
           .with_context(|| format!("Error creating {}", root_dir.display()))?;
       }
-      Ok(crate::fs_util::canonicalize_path(root_dir)?)
+      Ok(canonicalize_path(root_dir)?)
     }
 
     // this may fail on readonly file systems, so just ignore if so
@@ -173,7 +178,7 @@ impl ReadonlyNpmCache {
   }
 
   pub fn from_deno_dir(dir: &DenoDir) -> Self {
-    Self::new(dir.root.join("npm"))
+    Self::new(dir.npm_folder_path())
   }
 
   pub fn package_folder_for_id(
@@ -197,7 +202,7 @@ impl ReadonlyNpmCache {
   pub fn package_folder_for_name_and_version(
     &self,
     name: &str,
-    version: &NpmVersion,
+    version: &Version,
     registry_url: &Url,
   ) -> PathBuf {
     self
@@ -211,7 +216,7 @@ impl ReadonlyNpmCache {
       let encoded_name = mixed_case_package_name_encode(name);
       // Using the encoded directory may have a collision with an actual package name
       // so prefix it with an underscore since npm packages can't start with that
-      dir.join(format!("_{}", encoded_name))
+      dir.join(format!("_{encoded_name}"))
     } else {
       // ensure backslashes are used on windows
       for part in name.split('/') {
@@ -224,7 +229,7 @@ impl ReadonlyNpmCache {
   pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
     self
       .root_dir
-      .join(fs_util::root_url_to_safe_local_dirname(registry_url))
+      .join(root_url_to_safe_local_dirname(registry_url))
   }
 
   pub fn resolve_package_folder_id_from_specifier(
@@ -249,7 +254,7 @@ impl ReadonlyNpmCache {
       .root_dir_url
       .join(&format!(
         "{}/",
-        fs_util::root_url_to_safe_local_dirname(registry_url)
+        root_url_to_safe_local_dirname(registry_url)
           .to_string_lossy()
           .replace('\\', "/")
       ))
@@ -300,7 +305,7 @@ impl ReadonlyNpmCache {
       };
     Some(NpmPackageCacheFolderId {
       name,
-      version: NpmVersion::parse(version).ok()?,
+      version: Version::parse_from_npm(version).ok()?,
       copy_index,
     })
   }
@@ -317,6 +322,8 @@ pub struct NpmCache {
   cache_setting: CacheSetting,
   http_client: HttpClient,
   progress_bar: ProgressBar,
+  /// ensures a package is only downloaded once per run
+  previously_reloaded_packages: Arc<Mutex<HashSet<String>>>,
 }
 
 impl NpmCache {
@@ -331,6 +338,7 @@ impl NpmCache {
       cache_setting,
       http_client,
       progress_bar,
+      previously_reloaded_packages: Default::default(),
     }
   }
 
@@ -338,9 +346,29 @@ impl NpmCache {
     self.readonly.clone()
   }
 
+  pub fn cache_setting(&self) -> &CacheSetting {
+    &self.cache_setting
+  }
+
+  /// Checks if the cache should be used for the provided name and version.
+  /// NOTE: Subsequent calls for the same package will always return `true`
+  /// to ensure a package is only downloaded once per run of the CLI. This
+  /// prevents downloads from re-occurring when someone has `--reload` and
+  /// and imports a dynamic import that imports the same package again for example.
+  fn should_use_global_cache_for_package(
+    &self,
+    package: (&str, &Version),
+  ) -> bool {
+    self.cache_setting.should_use_for_npm_package(package.0)
+      || !self
+        .previously_reloaded_packages
+        .lock()
+        .insert(format!("{}@{}", package.0, package.1))
+  }
+
   pub async fn ensure_package(
     &self,
-    package: (&str, &NpmVersion),
+    package: (&str, &Version),
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
@@ -352,13 +380,9 @@ impl NpmCache {
       })
   }
 
-  pub fn should_use_cache_for_npm_package(&self, package_name: &str) -> bool {
-    self.cache_setting.should_use_for_npm_package(package_name)
-  }
-
   async fn ensure_package_inner(
     &self,
-    package: (&str, &NpmVersion),
+    package: (&str, &Version),
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
@@ -367,11 +391,11 @@ impl NpmCache {
       package.1,
       registry_url,
     );
-    if package_folder.exists()
+    if self.should_use_global_cache_for_package(package)
+      && package_folder.exists()
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
-      && self.should_use_cache_for_npm_package(package.0)
     {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {
@@ -385,26 +409,18 @@ impl NpmCache {
       );
     }
 
-    let _guard = self.progress_bar.update(&dist.tarball);
-    let response = self.http_client.get(&dist.tarball).send().await?;
-
-    if response.status() == 404 {
-      bail!("Could not find npm package tarball at: {}", dist.tarball);
-    } else if !response.status().is_success() {
-      let status = response.status();
-      let maybe_response_text = response.text().await.ok();
-      bail!(
-        "Bad response: {:?}{}",
-        status,
-        match maybe_response_text {
-          Some(text) => format!("\n\n{}", text),
-          None => String::new(),
-        }
-      );
-    } else {
-      let bytes = response.bytes().await?;
-
-      verify_and_extract_tarball(package, &bytes, dist, &package_folder)
+    let guard = self.progress_bar.update(&dist.tarball);
+    let maybe_bytes = self
+      .http_client
+      .download_with_progress(&dist.tarball, &guard)
+      .await?;
+    match maybe_bytes {
+      Some(bytes) => {
+        verify_and_extract_tarball(package, &bytes, dist, &package_folder)
+      }
+      None => {
+        bail!("Could not find npm package tarball at: {}", dist.tarball);
+      }
     }
   }
 
@@ -435,12 +451,7 @@ impl NpmCache {
     with_folder_sync_lock(
       (id.name.as_str(), &id.version),
       &package_folder,
-      || {
-        fs_util::hard_link_dir_recursive(
-          &original_package_folder,
-          &package_folder,
-        )
-      },
+      || hard_link_dir_recursive(&original_package_folder, &package_folder),
     )?;
     Ok(())
   }
@@ -456,7 +467,7 @@ impl NpmCache {
   pub fn package_folder_for_name_and_version(
     &self,
     name: &str,
-    version: &NpmVersion,
+    version: &Version,
     registry_url: &Url,
   ) -> PathBuf {
     self.readonly.package_folder_for_name_and_version(
@@ -506,11 +517,12 @@ mod test {
 
   use super::ReadonlyNpmCache;
   use crate::npm::cache::NpmPackageCacheFolderId;
-  use crate::npm::semver::NpmVersion;
+  use crate::semver::Version;
 
   #[test]
   fn should_get_package_folder() {
-    let root_dir = crate::deno_dir::DenoDir::new(None).unwrap().root;
+    let deno_dir = crate::cache::DenoDir::new(None).unwrap();
+    let root_dir = deno_dir.npm_folder_path();
     let cache = ReadonlyNpmCache::new(root_dir.clone());
     let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
 
@@ -518,7 +530,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "json".to_string(),
-          version: NpmVersion::parse("1.2.5").unwrap(),
+          version: Version::parse_from_npm("1.2.5").unwrap(),
           copy_index: 0,
         },
         &registry_url,
@@ -533,7 +545,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "json".to_string(),
-          version: NpmVersion::parse("1.2.5").unwrap(),
+          version: Version::parse_from_npm("1.2.5").unwrap(),
           copy_index: 1,
         },
         &registry_url,
@@ -548,7 +560,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "JSON".to_string(),
-          version: NpmVersion::parse("2.1.5").unwrap(),
+          version: Version::parse_from_npm("2.1.5").unwrap(),
           copy_index: 0,
         },
         &registry_url,
@@ -563,7 +575,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "@types/JSON".to_string(),
-          version: NpmVersion::parse("2.1.5").unwrap(),
+          version: Version::parse_from_npm("2.1.5").unwrap(),
           copy_index: 0,
         },
         &registry_url,

@@ -1,7 +1,17 @@
 Check [WILDCARD]/bench/collect/bench.ts
+Check [WILDCARD]/bench/collect/include/2_bench.ts
+Check [WILDCARD]/bench/collect/include/bench.ts
 cpu: [WILDCARD]
 runtime: deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/bench/collect/bench.ts
+benchmark      time (avg)             (min … max)       p75       p99      p995
+------------------------------------------------- -----------------------------
+
+[WILDCARD]/bench/collect/include/2_bench.ts
+benchmark      time (avg)             (min … max)       p75       p99      p995
+------------------------------------------------- -----------------------------
+
+[WILDCARD]/bench/collect/include/bench.ts
 benchmark      time (avg)             (min … max)       p75       p99      p995
 ------------------------------------------------- -----------------------------

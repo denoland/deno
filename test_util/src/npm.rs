@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::HashMap;
 use std::fs;
 
@@ -111,14 +113,13 @@ fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
     let mut dist = serde_json::Map::new();
     dist.insert(
       "integrity".to_string(),
-      format!("sha512-{}", tarball_checksum).into(),
+      format!("sha512-{tarball_checksum}").into(),
     );
     dist.insert("shasum".to_string(), "dummy-value".into());
     dist.insert(
       "tarball".to_string(),
       format!(
-        "http://localhost:4545/npm/registry/{}/{}.tgz",
-        package_name, version
+        "http://localhost:4545/npm/registry/{package_name}/{version}.tgz"
       )
       .into(),
     );

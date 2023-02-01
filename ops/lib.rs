@@ -1,24 +1,30 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use attrs::Attributes;
 use once_cell::sync::Lazy;
-use optimizer::{BailoutReason, Optimizer};
+use optimizer::BailoutReason;
+use optimizer::Optimizer;
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
+use proc_macro2::Span;
+use proc_macro2::TokenStream as TokenStream2;
+use quote::quote;
+use quote::ToTokens;
 use regex::Regex;
-use syn::{
-  parse, parse_macro_input, punctuated::Punctuated, token::Comma, FnArg,
-  GenericParam, Ident, ItemFn, Lifetime, LifetimeDef,
-};
+use syn::parse;
+use syn::parse_macro_input;
+use syn::punctuated::Punctuated;
+use syn::token::Comma;
+use syn::FnArg;
+use syn::GenericParam;
+use syn::Ident;
+use syn::ItemFn;
+use syn::Lifetime;
+use syn::LifetimeDef;
 
 mod attrs;
 mod deno;
 mod fast_call;
 mod optimizer;
-
-#[cfg(test)]
-mod tests;
 
 const SCOPE_LIFETIME: &str = "'scope";
 
@@ -60,6 +66,10 @@ impl Op {
 
     let is_async = item.sig.asyncness.is_some() || is_future(&item.sig.output);
     let type_params = exclude_lifetime_params(&item.sig.generics.params);
+
+    #[cfg(test)]
+    let core = quote!(deno_core);
+    #[cfg(not(test))]
     let core = deno::import();
 
     Self {
@@ -75,10 +85,11 @@ impl Op {
   fn gen(mut self) -> TokenStream2 {
     let mut optimizer = Optimizer::new();
     match optimizer.analyze(&mut self) {
-      Ok(_) | Err(BailoutReason::MustBeSingleSegment) => {}
-      Err(BailoutReason::FastUnsupportedParamType) => {
+      Err(BailoutReason::MustBeSingleSegment)
+      | Err(BailoutReason::FastUnsupportedParamType) => {
         optimizer.fast_compatible = false;
       }
+      _ => {}
     };
 
     let Self {
@@ -191,13 +202,14 @@ fn codegen_v8_async(
     .inputs
     .iter()
     .map_while(|a| {
-      (if is_v8 { scope_arg(a) } else { None }).or_else(|| opstate_arg(a))
+      (if is_v8 { scope_arg(a) } else { None })
+        .or_else(|| rc_refcell_opstate_arg(a))
     })
     .collect::<Vec<_>>();
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
-  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 1);
+  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 1, true);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let (pre_result, mut result_fut) = match asyncness {
@@ -218,7 +230,7 @@ fn codegen_v8_async(
         quote! {
           let result = match result {
             Ok(fut) => fut.await,
-            Err(e) => return (promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
+            Err(e) => return (realm_idx, promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
           };
         }
       } else {
@@ -237,6 +249,7 @@ fn codegen_v8_async(
         as *const #core::_ops::OpCtx)
       };
       let op_id = ctx.id;
+      let realm_idx = ctx.realm_idx;
 
       let promise_id = args.get(0);
       let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
@@ -264,7 +277,7 @@ fn codegen_v8_async(
       #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
         let result = #result_fut
         #result_wrapper
-        (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
+        (realm_idx, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
       });
     },
     argc,
@@ -289,6 +302,16 @@ fn opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
   }
 }
 
+fn rc_refcell_opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
+  match arg {
+    arg if is_rc_refcell_opstate(arg) => Some(quote! { ctx.state.clone(), }),
+    arg if is_mut_ref_opstate(arg) => Some(
+      quote! { compile_error!("mutable opstate is not supported in async ops"), },
+    ),
+    _ => None,
+  }
+}
+
 /// Generate the body of a v8 func for a sync op
 fn codegen_v8_sync(
   core: &TokenStream2,
@@ -307,7 +330,7 @@ fn codegen_v8_sync(
     .collect::<Vec<_>>();
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
-  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 0);
+  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 0, false);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
@@ -357,6 +380,7 @@ fn codegen_args(
   f: &syn::ItemFn,
   rust_i0: usize, // Index of first generic arg in rust
   v8_i0: usize,   // Index of first generic arg in v8/js
+  asyncness: bool,
 ) -> ArgumentDecl {
   let inputs = &f.sig.inputs.iter().skip(rust_i0).enumerate();
   let ident_seq: TokenStream2 = inputs
@@ -369,7 +393,7 @@ fn codegen_args(
   let decls: TokenStream2 = inputs
     .clone()
     .map(|(i, arg)| {
-      codegen_arg(core, arg, format!("arg_{i}").as_ref(), v8_i0 + i)
+      codegen_arg(core, arg, format!("arg_{i}").as_ref(), v8_i0 + i, asyncness)
     })
     .collect();
   (decls, ident_seq, inputs.len())
@@ -380,11 +404,14 @@ fn codegen_arg(
   arg: &syn::FnArg,
   name: &str,
   idx: usize,
+  asyncness: bool,
 ) -> TokenStream2 {
   let ident = quote::format_ident!("{name}");
   let (pat, ty) = match arg {
     syn::FnArg::Typed(pat) => {
-      if is_optional_fast_callback_option(&pat.ty) {
+      if is_optional_fast_callback_option(&pat.ty)
+        || is_optional_wasm_memory(&pat.ty)
+      {
         return quote! { let #ident = None; };
       }
       (&pat.pat, &pat.ty)
@@ -419,17 +446,26 @@ fn codegen_arg(
   match is_ref_slice(&**ty) {
     None => {}
     Some(SliceType::U32Mut) => {
+      assert!(!asyncness, "Memory slices are not allowed in async ops");
       let blck = codegen_u32_mut_slice(core, idx);
       return quote! {
         let #ident = #blck;
       };
     }
     Some(_) => {
+      assert!(!asyncness, "Memory slices are not allowed in async ops");
       let blck = codegen_u8_slice(core, idx);
       return quote! {
         let #ident = #blck;
       };
     }
+  }
+  // Fast path for `*const u8`
+  if is_ptr_u8(&**ty) {
+    let blk = codegen_u8_ptr(core, idx);
+    return quote! {
+      let #ident = #blk;
+    };
   }
   // Otherwise deserialize it via serde_v8
   quote! {
@@ -449,11 +485,14 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
     let value = args.get(#idx as i32);
     match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
       Ok(b) => {
-        // Handles detached buffers.
         let byte_length = b.byte_length();
-        let store = b.data() as *mut u8;
-        // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
-        unsafe { ::std::slice::from_raw_parts_mut(store, byte_length) }
+        if let Some(data) = b.data() {
+          let store = data.cast::<u8>().as_ptr();
+          // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
+          unsafe { ::std::slice::from_raw_parts_mut(store, byte_length) }
+        } else {
+          &mut []
+        }
       },
       Err(_) => {
         if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
@@ -465,15 +504,53 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
                 return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
               }
           };
-          let store = buffer.data() as *mut u8;
-          // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
-          unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
+          if let Some(data) = buffer.data() {
+            let store = data.cast::<u8>().as_ptr();
+            // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
+            unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
+          } else {
+            &mut []
+          }
         } else {
           return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
         }
       }
     }}
   }
+}
+
+fn codegen_u8_ptr(core: &TokenStream2, idx: usize) -> TokenStream2 {
+  quote! {{
+    let value = args.get(#idx as i32);
+    match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
+      Ok(b) => {
+        if let Some(data) = b.data() {
+          data.cast::<u8>().as_ptr()
+        } else {
+          std::ptr::null::<u8>()
+        }
+      },
+      Err(_) => {
+        if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
+          let offset = view.byte_offset();
+          let buffer = match view.buffer(scope) {
+              Some(v) => v,
+              None => {
+                return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+              }
+          };
+          let store = if let Some(data) = buffer.data() {
+            data.cast::<u8>().as_ptr()
+          } else {
+            std::ptr::null_mut::<u8>()
+          };
+          unsafe { store.add(offset) }
+        } else {
+          return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+        }
+      }
+    }
+  }}
 }
 
 fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
@@ -486,9 +563,13 @@ fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
             return #core::_ops::throw_type_error(scope, format!("Expected Uint32Array at position {}", #idx));
           }
       };
-      let store = buffer.data() as *mut u8;
-      // SAFETY: buffer from Uint32Array. Rust guarantees that lifetime of slice is no longer than the call.
-      unsafe { ::std::slice::from_raw_parts_mut(store.add(offset) as *mut u32, len / 4) }
+      if let Some(data) = buffer.data() {
+        let store = data.cast::<u8>().as_ptr();
+        // SAFETY: buffer from Uint32Array. Rust guarantees that lifetime of slice is no longer than the call.
+        unsafe { ::std::slice::from_raw_parts_mut(store.add(offset) as *mut u32, len / 4) }
+      } else {
+        &mut []
+      }
     } else {
       return #core::_ops::throw_type_error(scope, format!("Expected Uint32Array at position {}", #idx));
     }
@@ -601,8 +682,16 @@ fn is_u32_slice_mut(ty: impl ToTokens) -> bool {
   tokens(ty) == "& mut [u32]"
 }
 
+fn is_ptr_u8(ty: impl ToTokens) -> bool {
+  tokens(ty) == "* const u8"
+}
+
 fn is_optional_fast_callback_option(ty: impl ToTokens) -> bool {
   tokens(&ty).contains("Option < & mut FastApiCallbackOptions")
+}
+
+fn is_optional_wasm_memory(ty: impl ToTokens) -> bool {
+  tokens(&ty).contains("Option < & mut [u8]")
 }
 
 /// Detects if the type can be set using `rv.set_uint32` fast path
@@ -667,4 +756,45 @@ fn exclude_lifetime_params(
     .filter(|t| !tokens(t).starts_with('\''))
     .cloned()
     .collect::<Punctuated<GenericParam, Comma>>()
+}
+
+#[cfg(test)]
+mod tests {
+  use crate::Attributes;
+  use crate::Op;
+  use std::path::PathBuf;
+
+  #[testing_macros::fixture("optimizer_tests/**/*.rs")]
+  fn test_codegen(input: PathBuf) {
+    let update_expected = std::env::var("UPDATE_EXPECTED").is_ok();
+
+    let source =
+      std::fs::read_to_string(&input).expect("Failed to read test file");
+
+    let mut attrs = Attributes::default();
+    if source.contains("// @test-attr:fast") {
+      attrs.must_be_fast = true;
+    }
+    if source.contains("// @test-attr:wasm") {
+      attrs.is_wasm = true;
+      attrs.must_be_fast = true;
+    }
+
+    let item = syn::parse_str(&source).expect("Failed to parse test file");
+    let op = Op::new(item, attrs);
+
+    let expected = std::fs::read_to_string(input.with_extension("out"))
+      .expect("Failed to read expected output file");
+
+    let actual = op.gen();
+    // Validate syntax tree.
+    let tree = syn::parse2(actual).unwrap();
+    let actual = prettyplease::unparse(&tree);
+    if update_expected {
+      std::fs::write(input.with_extension("out"), actual)
+        .expect("Failed to write expected file");
+    } else {
+      assert_eq!(actual, expected);
+    }
+  }
 }

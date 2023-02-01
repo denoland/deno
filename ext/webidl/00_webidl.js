@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // Adapted from https://github.com/jsdom/webidl-conversions.
 // Copyright Domenic Denicola. Licensed under BSD-2-Clause License.
@@ -61,14 +61,23 @@
     ReflectOwnKeys,
     RegExpPrototypeTest,
     Set,
+    SetPrototypeEntries,
+    SetPrototypeForEach,
+    SetPrototypeKeys,
+    SetPrototypeValues,
+    SetPrototypeHas,
+    SetPrototypeClear,
+    SetPrototypeDelete,
+    SetPrototypeAdd,
     // TODO(lucacasonato): add SharedArrayBuffer to primordials
-    // SharedArrayBuffer,
+    // SharedArrayBufferPrototype
     String,
     StringFromCodePoint,
     StringPrototypeCharCodeAt,
     Symbol,
     SymbolIterator,
     SymbolToStringTag,
+    TypedArrayPrototypeGetSymbolToStringTag,
     TypeError,
     Uint16Array,
     Uint32Array,
@@ -434,11 +443,17 @@
     return V;
   }
 
+  function isDataView(V) {
+    return ArrayBufferIsView(V) &&
+      TypedArrayPrototypeGetSymbolToStringTag(V) === undefined;
+  }
+
   function isNonSharedArrayBuffer(V) {
     return ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V);
   }
 
   function isSharedArrayBuffer(V) {
+    // deno-lint-ignore prefer-primordials
     return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V);
   }
 
@@ -458,7 +473,7 @@
   };
 
   converters.DataView = (V, opts = {}) => {
-    if (!(ObjectPrototypeIsPrototypeOf(DataViewPrototype, V))) {
+    if (!isDataView(V)) {
       throw makeException(TypeError, "is not a DataView", opts);
     }
 
@@ -632,8 +647,10 @@
   function createDictionaryConverter(name, ...dictionaries) {
     let hasRequiredKey = false;
     const allMembers = [];
-    for (const members of dictionaries) {
-      for (const member of members) {
+    for (let i = 0; i < dictionaries.length; ++i) {
+      const members = dictionaries[i];
+      for (let j = 0; j < members.length; ++j) {
+        const member = members[j];
         if (member.required) {
           hasRequiredKey = true;
         }
@@ -648,7 +665,8 @@
     });
 
     const defaultValues = {};
-    for (const member of allMembers) {
+    for (let i = 0; i < allMembers.length; ++i) {
+      const member = allMembers[i];
       if (ReflectHas(member, "defaultValue")) {
         const idlMemberValue = member.defaultValue;
         const imvType = typeof idlMemberValue;
@@ -694,7 +712,8 @@
         return idlDict;
       }
 
-      for (const member of allMembers) {
+      for (let i = 0; i < allMembers.length; ++i) {
+        const member = allMembers[i];
         const key = member.key;
 
         let esMemberValue;
@@ -820,7 +839,8 @@
       }
       // Slow path if Proxy (e.g: in WPT tests)
       const keys = ReflectOwnKeys(V);
-      for (const key of keys) {
+      for (let i = 0; i < keys.length; ++i) {
+        const key = keys[i];
         const desc = ObjectGetOwnPropertyDescriptor(V, key);
         if (desc !== undefined && desc.enumerable === true) {
           const typedKey = keyConverter(key, opts);
@@ -890,7 +910,9 @@
   }
 
   function define(target, source) {
-    for (const key of ReflectOwnKeys(source)) {
+    const keys = ReflectOwnKeys(source);
+    for (let i = 0; i < keys.length; ++i) {
+      const key = keys[i];
       const descriptor = ReflectGetOwnPropertyDescriptor(source, key);
       if (descriptor && !ReflectDefineProperty(target, key, descriptor)) {
         throw new TypeError(`Cannot redefine property: ${String(key)}`);
@@ -1012,6 +1034,9 @@
   function configurePrototype(prototype) {
     const descriptors = ObjectGetOwnPropertyDescriptors(prototype.prototype);
     for (const key in descriptors) {
+      if (!ObjectPrototypeHasOwnProperty(descriptors, key)) {
+        continue;
+      }
       if (key === "constructor") continue;
       const descriptor = descriptors[key];
       if (
@@ -1038,6 +1063,108 @@
     });
   }
 
+  const setlikeInner = Symbol("[[set]]");
+
+  // Ref: https://webidl.spec.whatwg.org/#es-setlike
+  function setlike(obj, objPrototype, readonly) {
+    ObjectDefineProperties(obj, {
+      size: {
+        configurable: true,
+        enumerable: true,
+        get() {
+          assertBranded(this, objPrototype);
+          return obj[setlikeInner].size;
+        },
+      },
+      [SymbolIterator]: {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value() {
+          assertBranded(this, objPrototype);
+          return obj[setlikeInner][SymbolIterator]();
+        },
+      },
+      entries: {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value() {
+          assertBranded(this, objPrototype);
+          return SetPrototypeEntries(obj[setlikeInner]);
+        },
+      },
+      keys: {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value() {
+          assertBranded(this, objPrototype);
+          return SetPrototypeKeys(obj[setlikeInner]);
+        },
+      },
+      values: {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value() {
+          assertBranded(this, objPrototype);
+          return SetPrototypeValues(obj[setlikeInner]);
+        },
+      },
+      forEach: {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value(callbackfn, thisArg) {
+          assertBranded(this, objPrototype);
+          return SetPrototypeForEach(obj[setlikeInner], callbackfn, thisArg);
+        },
+      },
+      has: {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value(value) {
+          assertBranded(this, objPrototype);
+          return SetPrototypeHas(obj[setlikeInner], value);
+        },
+      },
+    });
+
+    if (!readonly) {
+      ObjectDefineProperties(obj, {
+        add: {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value(value) {
+            assertBranded(this, objPrototype);
+            return SetPrototypeAdd(obj[setlikeInner], value);
+          },
+        },
+        delete: {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value(value) {
+            assertBranded(this, objPrototype);
+            return SetPrototypeDelete(obj[setlikeInner], value);
+          },
+        },
+        clear: {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value() {
+            assertBranded(this, objPrototype);
+            return SetPrototypeClear(obj[setlikeInner]);
+          },
+        },
+      });
+    }
+  }
+
   window.__bootstrap ??= {};
   window.__bootstrap.webidl = {
     type,
@@ -1058,5 +1185,7 @@
     illegalConstructor,
     mixinPairIterable,
     configurePrototype,
+    setlike,
+    setlikeInner,
   };
 })(this);

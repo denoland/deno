@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -211,7 +211,10 @@
     let offset = 0;
     let str =
       'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux"; return {';
-    for (let [name, type] of ObjectEntries(types)) {
+    const typeEntries = ObjectEntries(types);
+    for (let i = 0; i < typeEntries.length; ++i) {
+      let { 0: name, 1: type } = typeEntries[i];
+
       const optional = type.startsWith("?");
       if (optional) type = type.slice(1);
 
@@ -240,7 +243,7 @@
     return [new Function("view", str), new Uint32Array(offset)];
   }
 
-  const [statStruct, statBuf] = createByteStruct({
+  const { 0: statStruct, 1: statBuf } = createByteStruct({
     isFile: "bool",
     isDirectory: "bool",
     isSymlink: "bool",
@@ -389,8 +392,8 @@
     atime,
     mtime,
   ) {
-    const [atimeSec, atimeNsec] = toUnixTimeFromEpoch(atime);
-    const [mtimeSec, mtimeNsec] = toUnixTimeFromEpoch(mtime);
+    const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
+    const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
     ops.op_futime_sync(rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
   }
 
@@ -399,8 +402,8 @@
     atime,
     mtime,
   ) {
-    const [atimeSec, atimeNsec] = toUnixTimeFromEpoch(atime);
-    const [mtimeSec, mtimeNsec] = toUnixTimeFromEpoch(mtime);
+    const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
+    const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
     await core.opAsync(
       "op_futime_async",
       rid,
@@ -416,8 +419,8 @@
     atime,
     mtime,
   ) {
-    const [atimeSec, atimeNsec] = toUnixTimeFromEpoch(atime);
-    const [mtimeSec, mtimeNsec] = toUnixTimeFromEpoch(mtime);
+    const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
+    const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
     ops.op_utime_sync(
       pathFromURL(path),
       atimeSec,
@@ -432,8 +435,8 @@
     atime,
     mtime,
   ) {
-    const [atimeSec, atimeNsec] = toUnixTimeFromEpoch(atime);
-    const [mtimeSec, mtimeNsec] = toUnixTimeFromEpoch(mtime);
+    const { 0: atimeSec, 1: atimeNsec } = toUnixTimeFromEpoch(atime);
+    const { 0: mtimeSec, 1: mtimeNsec } = toUnixTimeFromEpoch(mtime);
     await core.opAsync(
       "op_utime_async",
       pathFromURL(path),

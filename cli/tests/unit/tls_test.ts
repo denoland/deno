@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -9,8 +9,8 @@ import {
   Deferred,
   deferred,
 } from "./test_util.ts";
-import { BufReader, BufWriter } from "../../../test_util/std/io/buffer.ts";
-import { readAll } from "../../../test_util/std/streams/conversion.ts";
+import { BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
+import { readAll } from "../../../test_util/std/streams/read_all.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 
 const encoder = new TextEncoder();
@@ -1046,9 +1046,9 @@ function createHttpsListener(port: number): Deno.Listener {
 }
 
 async function curl(url: string): Promise<string> {
-  const { success, code, stdout } = await Deno.spawn("curl", {
+  const { success, code, stdout } = await new Deno.Command("curl", {
     args: ["--insecure", url],
-  });
+  }).output();
 
   if (!success) {
     throw new Error(`curl ${url} failed: ${code}`);

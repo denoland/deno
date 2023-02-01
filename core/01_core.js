@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -9,22 +9,27 @@
     SyntaxError,
     TypeError,
     URIError,
-    Map,
     Array,
+    ArrayFrom,
     ArrayPrototypeFill,
+    ArrayPrototypeJoin,
     ArrayPrototypePush,
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
+    Function,
     Promise,
+    ObjectAssign,
     ObjectFromEntries,
+    ObjectPrototypeHasOwnProperty,
+    Map,
     MapPrototypeGet,
     MapPrototypeHas,
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeThen,
-    PromisePrototypeFinally,
+    ReflectApply,
+    SafePromisePrototypeFinally,
     StringPrototypeSlice,
-    ObjectAssign,
     SymbolFor,
     setQueueMicrotask,
   } = window.__bootstrap.primordials;
@@ -129,7 +134,14 @@
   }
 
   function buildCustomError(className, message, code) {
-    const error = errorMap[className]?.(message);
+    let error;
+    try {
+      error = errorMap[className]?.(message);
+    } catch (e) {
+      throw new Error(
+        `Unsable to build custom error for "${className}"\n  ${e.message}`,
+      );
+    }
     // Strip buildCustomError() calls from stack trace
     if (typeof error == "object") {
       ErrorCaptureStackTrace(error, buildCustomError);
@@ -187,8 +199,8 @@
             // Rethrow the error
             throw err;
           }
-          handleOpCallTracing("${name}", id, promise);
-          promise[promiseIdSymbol] = id;          
+          promise = handleOpCallTracing("${name}", id, promise);
+          promise[promiseIdSymbol] = id;
           return promise;
         }
       `,
@@ -205,11 +217,17 @@
     }
 
     // { <name>: <argc>, ... }
-    for (const ele of Object.entries(ops.asyncOpsInfo())) {
-      if (!ele) continue;
-      const [name, argc] = ele;
+    const info = ops.asyncOpsInfo();
+    for (const name in info) {
+      if (!ObjectPrototypeHasOwnProperty(info, name)) {
+        continue;
+      }
+      const argc = info[name];
       const op = ops[name];
-      const args = Array.from({ length: argc }, (_, i) => `arg${i}`).join(", ");
+      const args = ArrayPrototypeJoin(
+        ArrayFrom({ length: argc }, (_, i) => `arg${i}`),
+        ", ",
+      );
       ops[name] = genAsyncOp(op, name, args);
     }
   }
@@ -218,15 +236,17 @@
     if (opCallTracingEnabled) {
       const stack = StringPrototypeSlice(new Error().stack, 6);
       MapPrototypeSet(opCallTraces, promiseId, { opName, stack });
-      p = PromisePrototypeFinally(
+      return SafePromisePrototypeFinally(
         p,
         () => MapPrototypeDelete(opCallTraces, promiseId),
       );
+    } else {
+      return p;
     }
   }
 
   function opAsync(opName, ...args) {
-    return ops[opName](...args);
+    return ReflectApply(ops[opName], ops, args);
   }
 
   function refOp(promiseId) {
@@ -248,7 +268,7 @@
   }
 
   function metrics() {
-    const [aggregate, perOps] = ops.op_metrics();
+    const { 0: aggregate, 1: perOps } = ops.op_metrics();
     aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
       ops.op_op_names(),
       (opName, opId) => [opName, perOps[opId]],

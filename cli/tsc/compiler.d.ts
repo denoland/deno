@@ -1,8 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // Contains types that can be used to validate and check `99_main_compiler.js`
 
-import * as _ts from "../dts/typescript";
+import * as _ts from "./dts/typescript";
 
 declare global {
   namespace ts {
@@ -30,6 +30,7 @@ declare global {
       function setIsNodeSourceFileCallback(
         callback: (sourceFile: SourceFile) => boolean,
       );
+      function setNodeBuiltInModuleNames(names: string[]);
     }
   }
 

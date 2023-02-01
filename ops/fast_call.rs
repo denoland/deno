@@ -1,13 +1,28 @@
-/// Code generation for V8 fast calls.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+//! Code generation for V8 fast calls.
+
+use pmutil::q;
+use pmutil::Quote;
+use pmutil::ToTokensExt;
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use quote::quote;
+use syn::parse_quote;
+use syn::punctuated::Punctuated;
+use syn::token::Comma;
+use syn::GenericParam;
+use syn::Generics;
+use syn::Ident;
+use syn::ItemFn;
+use syn::ItemImpl;
+use syn::Path;
+use syn::PathArguments;
+use syn::PathSegment;
+use syn::Type;
+use syn::TypePath;
+
 use crate::optimizer::FastValue;
 use crate::optimizer::Optimizer;
-use pmutil::{q, Quote, ToTokensExt};
-use proc_macro2::{Span, TokenStream};
-use quote::quote;
-use syn::{
-  parse_quote, punctuated::Punctuated, token::Comma, GenericParam, Generics,
-  Ident, ItemFn, ItemImpl, Path, PathArguments, PathSegment, Type, TypePath,
-};
 
 pub(crate) struct FastImplItems {
   pub(crate) impl_and_fn: TokenStream,
@@ -53,9 +68,9 @@ pub(crate) fn generate(
   // - op_foo_fast, the fast call type.
   // - op_foo_fast_fn, the fast call function.
   let ident = item_fn.sig.ident.clone();
-  let fast_ident = Ident::new(&format!("{}_fast", ident), Span::call_site());
+  let fast_ident = Ident::new(&format!("{ident}_fast"), Span::call_site());
   let fast_fn_ident =
-    Ident::new(&format!("{}_fast_fn", ident), Span::call_site());
+    Ident::new(&format!("{ident}_fast_fn"), Span::call_site());
 
   // Deal with generics.
   let generics = &item_fn.sig.generics;
@@ -126,9 +141,9 @@ pub(crate) fn generate(
 
   // Retain only *pure* parameters.
   let mut fast_fn_inputs = if optimizer.has_opstate_in_parameters() {
-    inputs.iter().skip(1).cloned().collect()
+    inputs.into_iter().skip(1).collect()
   } else {
-    inputs.clone()
+    inputs
   };
 
   let mut input_variants = optimizer
@@ -139,12 +154,22 @@ pub(crate) fn generate(
 
   // Apply *hard* optimizer hints.
   if optimizer.has_fast_callback_option
+    || optimizer.has_wasm_memory
     || optimizer.needs_opstate()
     || optimizer.is_async
+    || optimizer.needs_fast_callback_option
   {
-    fast_fn_inputs.push(parse_quote! {
+    let decl = parse_quote! {
       fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions
-    });
+    };
+
+    if optimizer.has_fast_callback_option || optimizer.has_wasm_memory {
+      // Replace last parameter.
+      assert!(fast_fn_inputs.pop().is_some());
+      fast_fn_inputs.push(decl);
+    } else {
+      fast_fn_inputs.push(decl);
+    }
 
     input_variants.push(q!({ CallbackOptions }));
   }
@@ -162,14 +187,11 @@ pub(crate) fn generate(
 
   let mut output_transforms = q!({});
 
-  if optimizer.needs_opstate() || optimizer.is_async {
-    // Grab the op_state identifier, the first one. ¯\_(ツ)_/¯
-    let op_state = match idents.first() {
-      Some(ident) if optimizer.has_opstate_in_parameters() => ident.clone(),
-      // fn op_foo() -> Result<...>
-      _ => Ident::new("op_state", Span::call_site()),
-    };
-
+  if optimizer.needs_opstate()
+    || optimizer.is_async
+    || optimizer.has_fast_callback_option
+    || optimizer.has_wasm_memory
+  {
     // Dark arts 🪄 ✨
     //
     // - V8 calling convention guarantees that the callback options pointer is non-null.
@@ -179,13 +201,27 @@ pub(crate) fn generate(
     let prelude = q!({
       let __opts: &mut v8::fast_api::FastApiCallbackOptions =
         unsafe { &mut *fast_api_callback_options };
+    });
+
+    pre_transforms.push_tokens(&prelude);
+  }
+
+  if optimizer.needs_opstate() || optimizer.is_async {
+    // Grab the op_state identifier, the first one. ¯\_(ツ)_/¯
+    let op_state = match idents.first() {
+      Some(ident) if optimizer.has_opstate_in_parameters() => ident.clone(),
+      // fn op_foo() -> Result<...>
+      _ => Ident::new("op_state", Span::call_site()),
+    };
+
+    let ctx = q!({
       let __ctx = unsafe {
         &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
           as *const _ops::OpCtx)
       };
     });
 
-    pre_transforms.push_tokens(&prelude);
+    pre_transforms.push_tokens(&ctx);
     pre_transforms.push_tokens(&match optimizer.is_async {
       false => q!(
         Vars {
@@ -241,10 +277,12 @@ pub(crate) fn generate(
 
     let queue_future = if optimizer.returns_result {
       q!({
+        let realm_idx = __ctx.realm_idx;
         let __get_class = __state.get_error_class_fn;
         let result = _ops::queue_fast_async_op(__ctx, async move {
           let result = result.await;
           (
+            realm_idx,
             __promise_id,
             __op_id,
             _ops::to_op_result(__get_class, result),
@@ -253,9 +291,15 @@ pub(crate) fn generate(
       })
     } else {
       q!({
+        let realm_idx = __ctx.realm_idx;
         let result = _ops::queue_fast_async_op(__ctx, async move {
           let result = result.await;
-          (__promise_id, __op_id, _ops::OpResult::Ok(result.into()))
+          (
+            realm_idx,
+            __promise_id,
+            __op_id,
+            _ops::OpResult::Ok(result.into()),
+          )
         });
       })
     };
@@ -421,50 +465,4 @@ fn exclude_lifetime_params(
     gt_token: Some(Default::default()),
     where_clause: None,
   })
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::{Attributes, Op};
-  use std::path::PathBuf;
-
-  #[testing_macros::fixture("optimizer_tests/**/*.rs")]
-  fn test_fast_call_codegen(input: PathBuf) {
-    let update_expected = std::env::var("UPDATE_EXPECTED").is_ok();
-    let core = crate::deno::import();
-
-    let source =
-      std::fs::read_to_string(&input).expect("Failed to read test file");
-
-    let mut attrs = Attributes::default();
-    if source.contains("// @test-attr:fast") {
-      attrs.must_be_fast = true;
-    }
-
-    let item = syn::parse_str(&source).expect("Failed to parse test file");
-    let mut op = Op::new(item, attrs);
-    let mut optimizer = Optimizer::new();
-    if optimizer.analyze(&mut op).is_err() {
-      // Tested by optimizer::test tests.
-      return;
-    }
-
-    let expected = std::fs::read_to_string(input.with_extension("out"))
-      .expect("Failed to read expected file");
-
-    let FastImplItems {
-      impl_and_fn: actual,
-      ..
-    } = generate(&core, &mut optimizer, &op.item);
-    // Validate syntax tree.
-    let tree = syn::parse2(actual).unwrap();
-    let actual = prettyplease::unparse(&tree);
-    if update_expected {
-      std::fs::write(input.with_extension("out"), actual)
-        .expect("Failed to write expected file");
-    } else {
-      assert_eq!(actual, expected);
-    }
-  }
 }

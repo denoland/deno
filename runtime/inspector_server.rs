@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_core::error::AnyError;
@@ -67,7 +67,7 @@ impl InspectorServer {
     &self,
     module_url: String,
     js_runtime: &mut JsRuntime,
-    should_break_on_first_statement: bool,
+    wait_for_session: bool,
   ) {
     let inspector_rc = js_runtime.inspector();
     let mut inspector = inspector_rc.borrow_mut();
@@ -78,7 +78,7 @@ impl InspectorServer {
       session_sender,
       deregister_rx,
       module_url,
-      should_break_on_first_statement,
+      wait_for_session,
     );
     self.register_inspector_tx.unbounded_send(info).unwrap();
   }
@@ -233,7 +233,7 @@ async fn server(
         info.get_websocket_debugger_url()
       );
       eprintln!("Visit chrome://inspect to connect to the debugger.");
-      if info.should_break_on_first_statement {
+      if info.wait_for_session {
         eprintln!("Deno is waiting for debugger to connect.");
       }
       if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
@@ -266,16 +266,16 @@ async fn server(
         future::ready({
           match (req.method(), req.uri().path()) {
             (&http::Method::GET, path) if path.starts_with("/ws/") => {
-              handle_ws_request(req, inspector_map.clone())
+              handle_ws_request(req, Rc::clone(&inspector_map))
             }
             (&http::Method::GET, "/json/version") => {
               handle_json_version_request(json_version_response.clone())
             }
             (&http::Method::GET, "/json") => {
-              handle_json_request(inspector_map.clone())
+              handle_json_request(Rc::clone(&inspector_map))
             }
             (&http::Method::GET, "/json/list") => {
-              handle_json_request(inspector_map.clone())
+              handle_json_request(Rc::clone(&inspector_map))
             }
             _ => http::Response::builder()
               .status(http::StatusCode::NOT_FOUND)
@@ -289,7 +289,7 @@ async fn server(
   // Create the server manually so it can use the Local Executor
   let server_handler = hyper::server::Builder::new(
     hyper::server::conn::AddrIncoming::bind(&host).unwrap_or_else(|e| {
-      eprintln!("Cannot start inspector server: {}.", e);
+      eprintln!("Cannot start inspector server: {e}.");
       process::exit(1);
     }),
     hyper::server::conn::Http::new().with_executor(LocalExecutor),
@@ -299,7 +299,7 @@ async fn server(
     shutdown_server_rx.await.ok();
   })
   .unwrap_or_else(|err| {
-    eprintln!("Cannot start inspector server: {}.", err);
+    eprintln!("Cannot start inspector server: {err}.");
     process::exit(1);
   })
   .fuse();
@@ -370,7 +370,7 @@ pub struct InspectorInfo {
   pub new_session_tx: UnboundedSender<InspectorSessionProxy>,
   pub deregister_rx: oneshot::Receiver<()>,
   pub url: String,
-  pub should_break_on_first_statement: bool,
+  pub wait_for_session: bool,
 }
 
 impl InspectorInfo {
@@ -379,7 +379,7 @@ impl InspectorInfo {
     new_session_tx: mpsc::UnboundedSender<InspectorSessionProxy>,
     deregister_rx: oneshot::Receiver<()>,
     url: String,
-    should_break_on_first_statement: bool,
+    wait_for_session: bool,
   ) -> Self {
     Self {
       host,
@@ -388,7 +388,7 @@ impl InspectorInfo {
       new_session_tx,
       deregister_rx,
       url,
-      should_break_on_first_statement,
+      wait_for_session,
     }
   }
 
@@ -422,7 +422,7 @@ impl InspectorInfo {
       self
         .thread_name
         .as_ref()
-        .map(|n| format!(" - {}", n))
+        .map(|n| format!(" - {n}"))
         .unwrap_or_default(),
       process::id(),
     )

@@ -1,5 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+mod byte_stream;
 mod fs_fetch_handler;
 
 use data_url::DataUrl;
@@ -31,6 +32,7 @@ use deno_core::ZeroCopyBuf;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use http::header::CONTENT_LENGTH;
+use http::Uri;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -55,13 +57,14 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 
 // Re-export reqwest and data_url
 pub use data_url;
 pub use reqwest;
 
 pub use fs_fetch_handler::FsFetchHandler;
+
+use crate::byte_stream::MpscByteStream;
 
 #[derive(Clone)]
 pub struct Options {
@@ -92,7 +95,8 @@ pub fn init<FP>(options: Options) -> Extension
 where
   FP: FetchPermissions + 'static,
 {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_console"])
     .js(include_js_files!(
       prefix "deno:ext/fetch",
       "01_fetch_util.js",
@@ -227,8 +231,7 @@ where
 
       if method != Method::GET {
         return Err(type_error(format!(
-          "Fetching files only supports the GET method. Received {}.",
-          method
+          "Fetching files only supports the GET method. Received {method}."
         )));
       }
 
@@ -250,13 +253,19 @@ where
       let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url, "fetch()")?;
 
+      // Make sure that we have a valid URI early, as reqwest's `RequestBuilder::send`
+      // internally uses `expect_uri`, which panics instead of returning a usable `Result`.
+      if url.as_str().parse::<Uri>().is_err() {
+        return Err(type_error("Invalid URL"));
+      }
+
       let mut request = client.request(method.clone(), url);
 
       let request_body_rid = if has_body {
         match data {
           None => {
             // If no body is passed, we return a writer for streaming the body.
-            let (tx, rx) = mpsc::channel::<std::io::Result<bytes::Bytes>>(1);
+            let (stream, tx) = MpscByteStream::new();
 
             // If the size of the body is known, we include a content-length
             // header explicitly.
@@ -265,7 +274,7 @@ where
                 request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
             }
 
-            request = request.body(Body::wrap_stream(ReceiverStream::new(rx)));
+            request = request.body(Body::wrap_stream(stream));
 
             let request_body_rid =
               state.resource_table.add(FetchRequestBodyResource {
@@ -337,11 +346,11 @@ where
     }
     "data" => {
       let data_url = DataUrl::process(url.as_str())
-        .map_err(|e| type_error(format!("{:?}", e)))?;
+        .map_err(|e| type_error(format!("{e:?}")))?;
 
       let (body, _) = data_url
         .decode_to_vec()
-        .map_err(|e| type_error(format!("{:?}", e)))?;
+        .map_err(|e| type_error(format!("{e:?}")))?;
 
       let response = http::Response::builder()
         .status(http::StatusCode::OK)
@@ -361,7 +370,7 @@ where
       // because the URL isn't an object URL.
       return Err(type_error("Blob for the given URL not found."));
     }
-    _ => return Err(type_error(format!("scheme '{}' not supported", scheme))),
+    _ => return Err(type_error(format!("scheme '{scheme}' not supported"))),
   };
 
   Ok(FetchReturn {
@@ -459,7 +468,7 @@ impl Resource for FetchCancelHandle {
 }
 
 pub struct FetchRequestBodyResource {
-  body: AsyncRefCell<mpsc::Sender<std::io::Result<bytes::Bytes>>>,
+  body: AsyncRefCell<mpsc::Sender<Option<bytes::Bytes>>>,
   cancel: CancelHandle,
 }
 
@@ -474,10 +483,32 @@ impl Resource for FetchRequestBodyResource {
       let nwritten = bytes.len();
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      body.send(Ok(bytes)).or_cancel(cancel).await?.map_err(|_| {
-        type_error("request body receiver not connected (request closed)")
-      })?;
+      body
+        .send(Some(bytes))
+        .or_cancel(cancel)
+        .await?
+        .map_err(|_| {
+          type_error("request body receiver not connected (request closed)")
+        })?;
       Ok(WriteOutcome::Full { nwritten })
+    })
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(async move {
+      let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      // There is a case where hyper knows the size of the response body up
+      // front (through content-length header on the resp), where it will drop
+      // the body once that content length has been reached, regardless of if
+      // the stream is complete or not. This is expected behaviour, but it means
+      // that if you stream a body with an up front known size (eg a Blob),
+      // explicit shutdown can never succeed because the body (and by extension
+      // the receiver) will have dropped by the time we try to shutdown. As such
+      // we ignore if the receiver is closed, because we know that the request
+      // is complete in good health in that case.
+      body.send(None).or_cancel(cancel).await?.ok();
+      Ok(())
     })
   }
 
