@@ -10,7 +10,9 @@ use serde::Serialize;
 
 use crate::semver::VersionReq;
 
-/// A reference to an npm package that includes a potential sub path.
+/// A reference to an npm package's name, version constraint, and potential sub path.
+///
+/// This contains all the information found in an npm specifier.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NpmPackageReference {
   pub req: NpmPackageReq,
@@ -86,7 +88,7 @@ impl std::fmt::Display for NpmPackageReference {
   }
 }
 
-/// The name and version constraint of an npm package.
+/// The name and version constraint component of an `NpmPackageReference`.
 #[derive(
   Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize,
 )]
