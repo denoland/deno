@@ -12,6 +12,7 @@ pub mod r#async;
 pub mod callback;
 pub mod coerce;
 pub mod date;
+pub mod env;
 pub mod error;
 pub mod mem;
 pub mod numbers;
@@ -143,6 +144,7 @@ unsafe extern "C" fn napi_register_module_v1(
   typedarray::init(env, exports);
   arraybuffer::init(env, exports);
   array::init(env, exports);
+  env::init(env, exports);
   error::init(env, exports);
   primitives::init(env, exports);
   properties::init(env, exports);
