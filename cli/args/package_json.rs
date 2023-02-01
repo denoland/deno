@@ -45,9 +45,9 @@ pub fn get_local_package_json_version_reqs(
         let (name, version_req) =
           parse_dep_entry_name_and_raw_version(key, value)?;
         let version_req = VersionReq::parse_from_specifier(version_req)
-          .with_context(|| {
-            format!("Parsing version constraints in the application-level package.json is more strict at the moment.")
-          })?;
+          .context(
+            "Parsing version constraints in the application-level package.json is more strict at the moment."
+          )?;
         result.insert(
           key.to_string(),
           NpmPackageReq {

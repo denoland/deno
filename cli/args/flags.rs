@@ -502,7 +502,12 @@ impl Flags {
     }
   }
 
-  pub fn package_json_args(&self) -> Option<PathBuf> {
+  /// Extract path argument for `package.json` search paths.
+  /// If it returns Some(path), the `package.json` should be discovered
+  /// from the `path` dir.
+  /// If it returns None, the `package.json` file shouldn't be discovered at
+  /// all.
+  pub fn package_json_arg(&self) -> Option<PathBuf> {
     use DenoSubcommand::*;
 
     if let Run(RunFlags { script }) = &self.subcommand {

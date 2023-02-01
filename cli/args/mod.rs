@@ -48,11 +48,13 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -65,28 +67,6 @@ use self::config_file::FmtConfig;
 use self::config_file::LintConfig;
 use self::config_file::MaybeImportsResult;
 use self::config_file::TestConfig;
-
-fn discover_package_json(
-  flags: &Flags,
-) -> Result<Option<PackageJson>, AnyError> {
-  if let Some(package_json_arg) = flags.package_json_args() {
-    let pjson_path = package_json_arg.join("package.json");
-    let pjson = PackageJson::load_skip_read_permission(pjson_path)?;
-    return Ok(Some(pjson));
-  } else if let crate::args::DenoSubcommand::Task(TaskFlags {
-    cwd: Some(path),
-    ..
-  }) = &flags.subcommand
-  {
-    // attempt to resolve the config file from the task subcommand's
-    // `--cwd` when specified
-    let task_cwd = canonicalize_path(&PathBuf::from(path))?;
-    let pjson_path = task_cwd.join("package.json");
-    let pjson = PackageJson::load_skip_read_permission(pjson_path)?;
-    return Ok(Some(pjson));
-  }
-  Ok(None)
-}
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -401,6 +381,70 @@ fn resolve_lint_rules_options(
   }
 }
 
+/// Discover `package.json` file. If `maybe_stop_at` is provided, we will stop
+/// crawling up the directory tree at that path.
+fn discover_package_json(
+  flags: &Flags,
+  maybe_stop_at: Option<PathBuf>,
+) -> Result<Option<PackageJson>, AnyError> {
+  pub fn discover_from(
+    start: &Path,
+    checked: &mut HashSet<PathBuf>,
+    maybe_stop_at: Option<PathBuf>,
+  ) -> Result<Option<PackageJson>, AnyError> {
+    const PACKAGE_JSON_NAME: &str = "package.json";
+
+    for ancestor in start.ancestors() {
+      if checked.insert(ancestor.to_path_buf()) {
+        let path = ancestor.join(PACKAGE_JSON_NAME);
+
+        let source = match std::fs::read_to_string(&path) {
+          Ok(source) => source,
+          Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            if let Some(stop_at) = maybe_stop_at.as_ref() {
+              if ancestor == stop_at {
+                break;
+              }
+            }
+            continue;
+          }
+          Err(err) => bail!(
+            "Error loading package.json at {}. {:#}",
+            path.display(),
+            err
+          ),
+        };
+
+        let package_json = PackageJson::load_from_string(path, source)?;
+        return Ok(Some(package_json));
+      }
+    }
+    // No config file found.
+    Ok(None)
+  }
+
+  // TODO(bartlomieju): discover for all subcommands, but print warnings that
+  // `package.json` is ignored in bundle/compile/etc.
+
+  if let Some(package_json_arg) = flags.package_json_arg() {
+    return discover_from(
+      &package_json_arg,
+      &mut HashSet::new(),
+      maybe_stop_at,
+    );
+  } else if let crate::args::DenoSubcommand::Task(TaskFlags {
+    cwd: Some(path),
+    ..
+  }) = &flags.subcommand
+  {
+    // attempt to resolve the config file from the task subcommand's
+    // `--cwd` when specified
+    let task_cwd = canonicalize_path(&PathBuf::from(path))?;
+    return discover_from(&task_cwd, &mut HashSet::new(), None);
+  }
+  Ok(None)
+}
+
 /// Create and populate a root cert store based on the passed options and
 /// environment.
 pub fn get_root_cert_store(
@@ -539,11 +583,27 @@ impl CliOptions {
 
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let maybe_config_file = ConfigFile::discover(&flags)?;
-    let maybe_package_json = if maybe_config_file.is_none() {
-      discover_package_json(&flags)?
+
+    let mut maybe_package_json = None;
+    if let Some(config_file) = &maybe_config_file {
+      let specifier = config_file.specifier.clone();
+      if specifier.scheme() == "file" {
+        maybe_package_json = discover_package_json(
+          &flags,
+          Some(
+            specifier
+              .to_file_path()
+              .unwrap()
+              .parent()
+              .unwrap()
+              .to_path_buf(),
+          ),
+        )?;
+      }
     } else {
-      None
-    };
+      maybe_package_json = discover_package_json(&flags, None)?;
+    }
+
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
     Ok(Self::new(

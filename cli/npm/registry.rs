@@ -120,7 +120,7 @@ impl NpmPackageVersionInfo {
       let (name, version_req) =
         parse_dep_entry_name_and_raw_version(key, value)?;
       let version_req =
-        VersionReq::parse_from_npm(&version_req).with_context(|| {
+        VersionReq::parse_from_npm(version_req).with_context(|| {
           format!("error parsing version requirement for dependency: {key}@{version_req}")
         })?;
       Ok(NpmDependencyEntry {
