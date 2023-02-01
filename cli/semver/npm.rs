@@ -1,29 +1,17 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::cmp::Ordering;
-use std::fmt;
-
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use monch::*;
-use serde::Deserialize;
-use serde::Serialize;
 
-use crate::npm::resolution::NpmVersionMatcher;
-
-use self::range::Partial;
-use self::range::VersionBoundKind;
-use self::range::VersionRange;
-use self::range::VersionRangeSet;
-
-use self::range::XRange;
-pub use self::specifier::SpecifierVersionReq;
-
-mod range;
-mod specifier;
-
-// A lot of the below is a re-implementation of parts of https://github.com/npm/node-semver
-// which is Copyright (c) Isaac Z. Schlueter and Contributors (ISC License)
+use super::Partial;
+use super::RangeSetOrTag;
+use super::Version;
+use super::VersionBoundKind;
+use super::VersionRange;
+use super::VersionRangeSet;
+use super::VersionReq;
+use super::XRange;
 
 pub fn is_valid_npm_tag(value: &str) -> bool {
   // a valid tag is anything that doesn't get url encoded
@@ -33,200 +21,46 @@ pub fn is_valid_npm_tag(value: &str) -> bool {
     .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '~'))
 }
 
-#[derive(
-  Clone, Debug, PartialEq, Eq, Default, Hash, Serialize, Deserialize,
-)]
-pub struct NpmVersion {
-  pub major: u64,
-  pub minor: u64,
-  pub patch: u64,
-  pub pre: Vec<String>,
-  pub build: Vec<String>,
+// A lot of the below is a re-implementation of parts of https://github.com/npm/node-semver
+// which is Copyright (c) Isaac Z. Schlueter and Contributors (ISC License)
+
+pub fn parse_npm_version(text: &str) -> Result<Version, AnyError> {
+  let text = text.trim();
+  with_failure_handling(|input| {
+    let (input, _) = maybe(ch('='))(input)?; // skip leading =
+    let (input, _) = skip_whitespace(input)?;
+    let (input, _) = maybe(ch('v'))(input)?; // skip leading v
+    let (input, _) = skip_whitespace(input)?;
+    let (input, major) = nr(input)?;
+    let (input, _) = ch('.')(input)?;
+    let (input, minor) = nr(input)?;
+    let (input, _) = ch('.')(input)?;
+    let (input, patch) = nr(input)?;
+    let (input, q) = maybe(qualifier)(input)?;
+    let q = q.unwrap_or_default();
+
+    Ok((
+      input,
+      Version {
+        major,
+        minor,
+        patch,
+        pre: q.pre,
+        build: q.build,
+      },
+    ))
+  })(text)
+  .with_context(|| format!("Invalid npm version '{text}'."))
 }
 
-impl fmt::Display for NpmVersion {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "{}.{}.{}", self.major, self.minor, self.patch)?;
-    if !self.pre.is_empty() {
-      write!(f, "-")?;
-      for (i, part) in self.pre.iter().enumerate() {
-        if i > 0 {
-          write!(f, ".")?;
-        }
-        write!(f, "{part}")?;
-      }
-    }
-    if !self.build.is_empty() {
-      write!(f, "+")?;
-      for (i, part) in self.build.iter().enumerate() {
-        if i > 0 {
-          write!(f, ".")?;
-        }
-        write!(f, "{part}")?;
-      }
-    }
-    Ok(())
-  }
-}
-
-impl std::cmp::PartialOrd for NpmVersion {
-  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-    Some(self.cmp(other))
-  }
-}
-
-impl std::cmp::Ord for NpmVersion {
-  fn cmp(&self, other: &Self) -> Ordering {
-    let cmp_result = self.major.cmp(&other.major);
-    if cmp_result != Ordering::Equal {
-      return cmp_result;
-    }
-
-    let cmp_result = self.minor.cmp(&other.minor);
-    if cmp_result != Ordering::Equal {
-      return cmp_result;
-    }
-
-    let cmp_result = self.patch.cmp(&other.patch);
-    if cmp_result != Ordering::Equal {
-      return cmp_result;
-    }
-
-    // only compare the pre-release and not the build as node-semver does
-    if self.pre.is_empty() && other.pre.is_empty() {
-      Ordering::Equal
-    } else if !self.pre.is_empty() && other.pre.is_empty() {
-      Ordering::Less
-    } else if self.pre.is_empty() && !other.pre.is_empty() {
-      Ordering::Greater
-    } else {
-      let mut i = 0;
-      loop {
-        let a = self.pre.get(i);
-        let b = other.pre.get(i);
-        if a.is_none() && b.is_none() {
-          return Ordering::Equal;
-        }
-
-        // https://github.com/npm/node-semver/blob/4907647d169948a53156502867ed679268063a9f/internal/identifiers.js
-        let a = match a {
-          Some(a) => a,
-          None => return Ordering::Less,
-        };
-        let b = match b {
-          Some(b) => b,
-          None => return Ordering::Greater,
-        };
-
-        // prefer numbers
-        if let Ok(a_num) = a.parse::<u64>() {
-          if let Ok(b_num) = b.parse::<u64>() {
-            return a_num.cmp(&b_num);
-          } else {
-            return Ordering::Less;
-          }
-        } else if b.parse::<u64>().is_ok() {
-          return Ordering::Greater;
-        }
-
-        let cmp_result = a.cmp(b);
-        if cmp_result != Ordering::Equal {
-          return cmp_result;
-        }
-        i += 1;
-      }
-    }
-  }
-}
-
-impl NpmVersion {
-  pub fn parse(text: &str) -> Result<Self, AnyError> {
-    let text = text.trim();
-    with_failure_handling(parse_npm_version)(text)
-      .with_context(|| format!("Invalid npm version '{text}'."))
-  }
-}
-
-fn parse_npm_version(input: &str) -> ParseResult<NpmVersion> {
-  let (input, _) = maybe(ch('='))(input)?; // skip leading =
-  let (input, _) = skip_whitespace(input)?;
-  let (input, _) = maybe(ch('v'))(input)?; // skip leading v
-  let (input, _) = skip_whitespace(input)?;
-  let (input, major) = nr(input)?;
-  let (input, _) = ch('.')(input)?;
-  let (input, minor) = nr(input)?;
-  let (input, _) = ch('.')(input)?;
-  let (input, patch) = nr(input)?;
-  let (input, q) = maybe(qualifier)(input)?;
-  let q = q.unwrap_or_default();
-
-  Ok((
-    input,
-    NpmVersion {
-      major,
-      minor,
-      patch,
-      pre: q.pre,
-      build: q.build,
-    },
-  ))
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-enum NpmVersionReqInner {
-  RangeSet(VersionRangeSet),
-  Tag(String),
-}
-
-/// A version requirement found in an npm package's dependencies.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct NpmVersionReq {
-  raw_text: String,
-  inner: NpmVersionReqInner,
-}
-
-impl NpmVersionMatcher for NpmVersionReq {
-  fn tag(&self) -> Option<&str> {
-    match &self.inner {
-      NpmVersionReqInner::RangeSet(_) => None,
-      NpmVersionReqInner::Tag(tag) => Some(tag.as_str()),
-    }
-  }
-
-  fn matches(&self, version: &NpmVersion) -> bool {
-    match &self.inner {
-      NpmVersionReqInner::RangeSet(range_set) => range_set.satisfies(version),
-      NpmVersionReqInner::Tag(_) => panic!(
-        "programming error: cannot use matches with a tag: {}",
-        self.raw_text
-      ),
-    }
-  }
-
-  fn version_text(&self) -> String {
-    self.raw_text.clone()
-  }
-}
-
-impl fmt::Display for NpmVersionReq {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "{}", &self.raw_text)
-  }
-}
-
-impl NpmVersionReq {
-  pub fn parse(text: &str) -> Result<Self, AnyError> {
-    let text = text.trim();
-    with_failure_handling(parse_npm_version_req)(text)
-      .with_context(|| format!("Invalid npm version requirement '{text}'."))
-  }
-}
-
-fn parse_npm_version_req(input: &str) -> ParseResult<NpmVersionReq> {
-  map(inner, |inner| NpmVersionReq {
-    raw_text: input.to_string(),
-    inner,
-  })(input)
+pub fn parse_npm_version_req(text: &str) -> Result<VersionReq, AnyError> {
+  let text = text.trim();
+  with_failure_handling(|input| {
+    map(inner, |inner| {
+      VersionReq::from_raw_text_and_inner(input.to_string(), inner)
+    })(input)
+  })(text)
+  .with_context(|| format!("Invalid npm version requirement '{text}'."))
 }
 
 // https://github.com/npm/node-semver/tree/4907647d169948a53156502867ed679268063a9f#range-grammar
@@ -248,11 +82,11 @@ fn parse_npm_version_req(input: &str) -> ParseResult<NpmVersionReq> {
 // part       ::= nr | [-0-9A-Za-z]+
 
 // range-set ::= range ( logical-or range ) *
-fn inner(input: &str) -> ParseResult<NpmVersionReqInner> {
+fn inner(input: &str) -> ParseResult<RangeSetOrTag> {
   if input.is_empty() {
     return Ok((
       input,
-      NpmVersionReqInner::RangeSet(VersionRangeSet(vec![VersionRange::all()])),
+      RangeSetOrTag::RangeSet(VersionRangeSet(vec![VersionRange::all()])),
     ));
   }
 
@@ -263,10 +97,7 @@ fn inner(input: &str) -> ParseResult<NpmVersionReqInner> {
     match ranges.remove(0) {
       RangeOrInvalid::Invalid(invalid) => {
         if is_valid_npm_tag(invalid.text) {
-          return Ok((
-            input,
-            NpmVersionReqInner::Tag(invalid.text.to_string()),
-          ));
+          return Ok((input, RangeSetOrTag::Tag(invalid.text.to_string())));
         } else {
           return Err(invalid.failure);
         }
@@ -282,7 +113,7 @@ fn inner(input: &str) -> ParseResult<NpmVersionReqInner> {
     .into_iter()
     .filter_map(|r| r.into_range())
     .collect::<Vec<_>>();
-  Ok((input, NpmVersionReqInner::RangeSet(VersionRangeSet(ranges))))
+  Ok((input, RangeSetOrTag::RangeSet(VersionRangeSet(ranges))))
 }
 
 enum RangeOrInvalid<'a> {
@@ -582,21 +413,21 @@ mod tests {
 
   use super::*;
 
-  struct NpmVersionReqTester(NpmVersionReq);
+  struct NpmVersionReqTester(VersionReq);
 
   impl NpmVersionReqTester {
     fn new(text: &str) -> Self {
-      Self(NpmVersionReq::parse(text).unwrap())
+      Self(parse_npm_version_req(text).unwrap())
     }
 
     fn matches(&self, version: &str) -> bool {
-      self.0.matches(&NpmVersion::parse(version).unwrap())
+      self.0.matches(&parse_npm_version(version).unwrap())
     }
   }
 
   #[test]
   pub fn npm_version_req_with_v() {
-    assert!(NpmVersionReq::parse("v1.0.0").is_ok());
+    assert!(parse_npm_version_req("v1.0.0").is_ok());
   }
 
   #[test]
@@ -641,8 +472,8 @@ mod tests {
 
   #[test]
   pub fn npm_version_req_with_tag() {
-    let req = NpmVersionReq::parse("latest").unwrap();
-    assert_eq!(req.inner, NpmVersionReqInner::Tag("latest".to_string()));
+    let req = parse_npm_version_req("latest").unwrap();
+    assert_eq!(req.tag(), Some("latest"));
   }
 
   macro_rules! assert_cmp {
@@ -660,8 +491,8 @@ mod tests {
 
   macro_rules! test_compare {
     ($a:expr, $b:expr, $expected:expr) => {
-      let a = NpmVersion::parse($a).unwrap();
-      let b = NpmVersion::parse($b).unwrap();
+      let a = parse_npm_version($a).unwrap();
+      let b = parse_npm_version($b).unwrap();
       assert_cmp!(a, b, $expected);
     };
   }
@@ -759,8 +590,8 @@ mod tests {
       ("1.2.3-r100", "1.2.3-R2"),
     ];
     for (a, b) in fixtures {
-      let a = NpmVersion::parse(a).unwrap();
-      let b = NpmVersion::parse(b).unwrap();
+      let a = parse_npm_version(a).unwrap();
+      let b = parse_npm_version(b).unwrap();
       assert_cmp!(a, b, Ordering::Greater);
       assert_cmp!(b, a, Ordering::Less);
       assert_cmp!(a, a, Ordering::Equal);
@@ -856,12 +687,14 @@ mod tests {
       (">=09090", ">=9090.0.0"),
     ];
     for (range_text, expected) in fixtures {
-      let range = NpmVersionReq::parse(range_text).unwrap();
-      let expected_range = NpmVersionReq::parse(expected).unwrap();
+      let range = parse_npm_version_req(range_text).unwrap();
+      let expected_range = parse_npm_version_req(expected).unwrap();
       assert_eq!(
-        range.inner, expected_range.inner,
+        range.inner(),
+        expected_range.inner(),
         "failed for {} and {}",
-        range_text, expected
+        range_text,
+        expected
       );
     }
   }
@@ -980,8 +813,8 @@ mod tests {
       ("1.0.0-alpha.13", "1.0.0-alpha.13"),
     ];
     for (req_text, version_text) in fixtures {
-      let req = NpmVersionReq::parse(req_text).unwrap();
-      let version = NpmVersion::parse(version_text).unwrap();
+      let req = parse_npm_version_req(req_text).unwrap();
+      let version = parse_npm_version(version_text).unwrap();
       assert!(
         req.matches(&version),
         "Checking {req_text} satisfies {version_text}"
@@ -1077,8 +910,8 @@ mod tests {
     ];
 
     for (req_text, version_text) in fixtures {
-      let req = NpmVersionReq::parse(req_text).unwrap();
-      let version = NpmVersion::parse(version_text).unwrap();
+      let req = parse_npm_version_req(req_text).unwrap();
+      let version = parse_npm_version(version_text).unwrap();
       assert!(
         !req.matches(&version),
         "Checking {req_text} not satisfies {version_text}"
@@ -1123,8 +956,8 @@ mod tests {
     ];
 
     for (req_text, version_text, satisfies) in fixtures {
-      let req = NpmVersionReq::parse(req_text).unwrap();
-      let version = NpmVersion::parse(version_text).unwrap();
+      let req = parse_npm_version_req(req_text).unwrap();
+      let version = parse_npm_version(version_text).unwrap();
       assert_eq!(
         req.matches(&version),
         *satisfies,
@@ -1146,7 +979,7 @@ mod tests {
     for req_text in fixtures {
       // when it has no space, this is considered invalid
       // by node semver so we should error
-      assert!(NpmVersionReq::parse(req_text).is_err());
+      assert!(parse_npm_version_req(req_text).is_err());
     }
   }
 }
