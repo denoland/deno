@@ -418,6 +418,7 @@ pub struct Env {
     Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
   pub tsfn_ref_counters: Arc<Mutex<ThreadsafeFunctionRefCounters>>,
   pub last_error: napi_extended_error_info,
+  pub global: NonNull<v8::Value>,
 }
 
 unsafe impl Send for Env {}
@@ -427,6 +428,7 @@ impl Env {
   pub fn new(
     isolate_ptr: *mut v8::OwnedIsolate,
     context: v8::Global<v8::Context>,
+    global: v8::Global<v8::Value>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
     threadsafe_function_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
     cleanup_hooks: Rc<
@@ -446,6 +448,7 @@ impl Env {
     Self {
       isolate_ptr,
       context: context.into_raw(),
+      global: global.into_raw(),
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       async_work_sender: sender,
@@ -602,6 +605,7 @@ fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   op_state: &mut OpState,
   path: String,
+  global: serde_v8::Value,
 ) -> std::result::Result<serde_v8::Value<'scope>, AnyError>
 where
   NP: NapiPermissions + 'static,
@@ -644,6 +648,7 @@ where
   let mut env = Env::new(
     isolate_ptr,
     v8::Global::new(scope, ctx),
+    v8::Global::new(scope, global.v8_value),
     async_work_sender,
     tsfn_sender,
     cleanup_hooks,
