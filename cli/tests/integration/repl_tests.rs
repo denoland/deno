@@ -943,7 +943,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "Module {");
-    assert_contains!(out, "Chalk: [Function: Chalk],");
+    assert_contains!(out, "Chalk: [Class: Chalk],");
     assert!(err.is_empty());
   }
 
