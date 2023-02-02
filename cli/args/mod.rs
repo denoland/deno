@@ -416,6 +416,7 @@ fn discover_package_json(
         };
 
         let package_json = PackageJson::load_from_string(path, source)?;
+        log::debug!("package.json file found at '{}'", path.display());
         return Ok(Some(package_json));
       }
     }
