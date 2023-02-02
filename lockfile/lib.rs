@@ -187,7 +187,8 @@ impl Lockfile {
       return Ok(());
     }
 
-    let json_string = serde_json::to_string_pretty(&self.content).unwrap();
+    let mut json_string = serde_json::to_string_pretty(&self.content).unwrap();
+    json_string.push('\n'); // trailing newline in file
     let mut f = std::fs::OpenOptions::new()
       .write(true)
       .create(true)
