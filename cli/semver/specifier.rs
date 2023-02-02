@@ -42,7 +42,7 @@ pub fn parse_version_req_from_specifier(
     })(input)
   })(text)
   .with_context(|| {
-    format!("Invalid npm specifier version requirement '{text}'.")
+    format!("Invalid npm specifier version requirement '{text}'")
   })
 }
 

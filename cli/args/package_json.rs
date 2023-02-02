@@ -45,9 +45,10 @@ pub fn get_local_package_json_version_reqs(
         let (name, version_req) =
           parse_dep_entry_name_and_raw_version(key, value)?;
         let version_req = VersionReq::parse_from_specifier(version_req)
-          .context(
-            "Parsing version constraints in the application-level package.json is more strict at the moment."
-          )?;
+          .context(concat!(
+            "Parsing version constraints in the application-level ",
+            "package.json is more strict at the moment"
+          ))?;
         result.insert(
           key.to_string(),
           NpmPackageReq {
@@ -76,5 +77,83 @@ pub fn get_local_package_json_version_reqs(
 
 #[cfg(test)]
 mod test {
-  // todo: Tests
+  use pretty_assertions::assert_eq;
+  use std::path::PathBuf;
+
+  use super::*;
+
+  #[test]
+  fn test_parse_dep_entry_name_and_raw_version() {
+    let cases = [
+      ("test", "^1.2", Ok(("test", "^1.2"))),
+      ("test", "1.x - 2.6", Ok(("test", "1.x - 2.6"))),
+      ("test", "npm:package@^1.2", Ok(("package", "^1.2"))),
+      (
+        "test",
+        "npm:package",
+        Err("could not find @ symbol in npm url 'npm:package'"),
+      ),
+    ];
+    for (key, value, expected_result) in cases {
+      let result = parse_dep_entry_name_and_raw_version(key, value);
+      match result {
+        Ok(result) => assert_eq!(result, expected_result.unwrap()),
+        Err(err) => assert_eq!(err.to_string(), expected_result.err().unwrap()),
+      }
+    }
+  }
+
+  #[test]
+  fn test_get_local_package_json_version_reqs() {
+    let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
+    package_json.dependencies = Some(HashMap::from([
+      ("test".to_string(), "^1.2".to_string()),
+      ("other".to_string(), "npm:package@~1.3".to_string()),
+    ]));
+    package_json.dev_dependencies = Some(HashMap::from([
+      ("package_b".to_string(), "~2.2".to_string()),
+      // should be ignored
+      ("other".to_string(), "^3.2".to_string()),
+    ]));
+    let result = get_local_package_json_version_reqs(&package_json).unwrap();
+    assert_eq!(
+      result,
+      HashMap::from([
+        (
+          "test".to_string(),
+          NpmPackageReq::from_str("test@^1.2").unwrap()
+        ),
+        (
+          "other".to_string(),
+          NpmPackageReq::from_str("package@~1.3").unwrap()
+        ),
+        (
+          "package_b".to_string(),
+          NpmPackageReq::from_str("package_b@~2.2").unwrap()
+        )
+      ])
+    );
+  }
+
+  #[test]
+  fn test_get_local_package_json_version_reqs_errors_non_npm_specifier() {
+    let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
+    package_json.dependencies = Some(HashMap::from([(
+      "test".to_string(),
+      "1.x - 1.3".to_string(),
+    )]));
+    let err = get_local_package_json_version_reqs(&package_json)
+      .err()
+      .unwrap();
+    assert_eq!(
+      format!("{err:#}"),
+      concat!(
+        "Parsing version constraints in the application-level ",
+        "package.json is more strict at the moment: Invalid npm specifier ",
+        "version requirement '1.x - 1.3': Unexpected character.\n",
+        "   - 1.3\n",
+        "  ~" // the unexpected character is the space
+      )
+    );
+  }
 }
