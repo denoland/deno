@@ -4,6 +4,7 @@ use test_util as util;
 use test_util::assert_contains;
 use test_util::assert_ends_with;
 use test_util::assert_not_contains;
+use util::TempDir;
 
 #[test]
 fn pty_multiline() {
@@ -146,7 +147,6 @@ fn pty_complete_expression() {
     console.write_line("close();");
     let output = console.read_all_output();
     assert_contains!(output, "Display all");
-    assert_contains!(output, "core");
     assert_contains!(output, "args");
     assert_contains!(output, "exit");
     assert_contains!(output, "symlink");
@@ -895,6 +895,11 @@ fn repl_with_quiet_flag() {
 fn npm_packages() {
   let mut env_vars = util::env_vars_for_npm_tests();
   env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
+  let temp_dir = TempDir::new();
+  env_vars.push((
+    "DENO_DIR".to_string(),
+    temp_dir.path().to_string_lossy().to_string(),
+  ));
 
   {
     let (out, err) = util::run_and_collect_output_with_args(
@@ -947,7 +952,7 @@ fn npm_packages() {
       true,
       vec!["repl", "--quiet", "--allow-read", "--allow-env"],
       Some(vec![r#"import foo from "npm:asdfawe52345asdf""#]),
-      Some(env_vars),
+      Some(env_vars.clone()),
       true,
     );
 
@@ -955,6 +960,22 @@ fn npm_packages() {
       out,
       "error: npm package 'asdfawe52345asdf' does not exist"
     );
+    assert!(err.is_empty());
+  }
+
+  {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+      Some(vec![
+        "import path from 'node:path';",
+        "path.isGlob('asdf') ? 'yes' : 'no'",
+      ]),
+      Some(env_vars.clone()),
+      true,
+    );
+
+    assert_contains!(out, "no");
     assert!(err.is_empty());
   }
 }
