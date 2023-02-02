@@ -375,7 +375,7 @@ fn typescript_decorators() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert_ends_with!(out, "undefined\n[Function: Test]\n2\n");
+  assert_ends_with!(out, "undefined\n[Class: Test]\n2\n");
   assert!(err.is_empty());
 }
 
