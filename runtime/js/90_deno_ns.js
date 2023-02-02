@@ -126,6 +126,9 @@
     consoleSize: __bootstrap.tty.consoleSize,
     gid: __bootstrap.os.gid,
     uid: __bootstrap.os.uid,
+    Command: __bootstrap.spawn.Command,
+    // TODO(bartlomieju): why is this exported?
+    ChildProcess: __bootstrap.spawn.ChildProcess,
   };
 
   __bootstrap.denoNsUnstable = {
@@ -144,9 +147,6 @@
     flockSync: __bootstrap.fs.flockSync,
     funlock: __bootstrap.fs.funlock,
     funlockSync: __bootstrap.fs.funlockSync,
-    Child: __bootstrap.spawn.Child,
-    ChildProcess: __bootstrap.spawn.ChildProcess,
-    Command: __bootstrap.spawn.Command,
     serve: __bootstrap.flash.serve,
     upgradeHttp: __bootstrap.http.upgradeHttp,
     upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
