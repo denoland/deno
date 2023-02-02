@@ -347,7 +347,10 @@
       // use generic 'Function' instead.
       cstrName = "Function";
     }
-    const stringValue = value.toString();
+    let stringValue = "";
+    if (typeof value.toString === "function") {
+      stringValue = value.toString();
+    }
     // Might be Class
     if (stringValue.startsWith("class")) {
       cstrName = "Class";
