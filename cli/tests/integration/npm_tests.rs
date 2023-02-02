@@ -1306,7 +1306,8 @@ fn lock_file_lock_write() {
       }
     }
   }
-}"#;
+}
+"#;
   temp_dir.write("deno.lock", lock_file_content);
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)

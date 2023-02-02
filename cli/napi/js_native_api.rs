@@ -607,10 +607,6 @@ fn napi_create_function(
   check_arg!(env, result);
   check_arg_option!(env, cb);
 
-  if length > INT_MAX as _ {
-    return Err(Error::InvalidArg);
-  }
-
   let name = name
     .as_ref()
     .map(|_| check_new_from_utf8_len(env, name, length))
@@ -1718,12 +1714,12 @@ fn napi_get_element(
 #[napi_sym::napi_sym]
 fn napi_get_global(env: *mut Env, result: *mut napi_value) -> Result {
   check_env!(env);
-  let env = unsafe { &mut *env };
+  check_arg!(env, result);
 
-  let context = &mut env.scope().get_current_context();
-  let global = context.global(&mut env.scope());
-  let value: v8::Local<v8::Value> = global.into();
+  let value: v8::Local<v8::Value> =
+    transmute::<NonNull<v8::Value>, v8::Local<v8::Value>>((*env).global);
   *result = value.into();
+  napi_clear_last_error(env);
   Ok(())
 }
 
