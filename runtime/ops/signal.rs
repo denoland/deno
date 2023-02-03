@@ -298,7 +298,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGINFO" => Ok(29),
     "SIGUSR1" => Ok(30),
     "SIGUSR2" => Ok(31),
-    _ => Err(type_error(format!("Invalid signal: {}", s))),
+    _ => Err(type_error(format!("Invalid signal: {s}"))),
   }
 }
 
@@ -336,7 +336,7 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
     29 => Ok("SIGINFO"),
     30 => Ok("SIGUSR1"),
     31 => Ok("SIGUSR2"),
-    _ => Err(type_error(format!("Invalid signal: {}", s))),
+    _ => Err(type_error(format!("Invalid signal: {s}"))),
   }
 }
 
