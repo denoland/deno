@@ -128,20 +128,7 @@ impl ProcState {
     let ps =
       Self::build_with_sender(cli_options, Some(files_to_watch_sender.clone()))
         .await?;
-
-    // Add the extra files listed in the watch flag
-    if let Some(watch_paths) = ps.options.watch_paths() {
-      files_to_watch_sender.send(watch_paths.clone())?;
-    }
-
-    if let Ok(Some(import_map_path)) = ps
-      .options
-      .resolve_import_map_specifier()
-      .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
-    {
-      files_to_watch_sender.send(vec![import_map_path])?;
-    }
-
+    ps.init_watcher();
     Ok(ps)
   }
 
@@ -175,6 +162,26 @@ impl ProcState {
       progress_bar: self.progress_bar.clone(),
       node_std_graph_prepared: AtomicBool::new(false),
     });
+    self.init_watcher();
+  }
+
+  // Add invariant files like the import map and explicit watch flag list to
+  // the watcher. Dedup for build_for_file_watcher and reset_for_file_watcher.
+  fn init_watcher(&self) {
+    let files_to_watch_sender = match &self.0.maybe_file_watcher_reporter {
+      Some(reporter) => &reporter.sender,
+      None => return,
+    };
+    if let Some(watch_paths) = self.options.watch_paths() {
+      files_to_watch_sender.send(watch_paths.clone()).unwrap();
+    }
+    if let Ok(Some(import_map_path)) = self
+      .options
+      .resolve_import_map_specifier()
+      .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+    {
+      files_to_watch_sender.send(vec![import_map_path]).unwrap();
+    }
   }
 
   async fn build_with_sender(
