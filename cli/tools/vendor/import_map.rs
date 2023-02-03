@@ -321,11 +321,23 @@ fn handle_remote_dep_specifier(
 ) {
   if is_remote_specifier_text(text) {
     let base_specifier = mappings.base_specifier(specifier);
+    let sub_path;
     if !text.starts_with(base_specifier.as_str()) {
-      panic!("Expected {text} to start with {base_specifier}");
+      if let Some(host) = unresolved_specifier.host() {
+        if !text.ends_with(unresolved_specifier.path())
+          || !text.starts_with(specifier.scheme())
+          || !text.contains(&host.to_string())
+        {
+          panic!("Expected {host} to start with {base_specifier}");
+        } else {
+          sub_path = &specifier.path()[1..];
+        }
+      } else {
+        panic!("Expected {text} to start with {base_specifier}");
+      }
+    } else {
+      sub_path = &text[base_specifier.as_str().len()..];
     }
-
-    let sub_path = &text[base_specifier.as_str().len()..];
     let relative_text =
       mappings.relative_specifier_text(base_specifier, specifier);
     let expected_sub_path = relative_text.trim_start_matches("./");
