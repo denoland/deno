@@ -47,6 +47,7 @@
     StringPrototypeToString,
     StringPrototypeTrim,
     StringPrototypeIncludes,
+    StringPrototypeStartsWith,
     TypeError,
     NumberParseInt,
     RegExp,
@@ -82,6 +83,7 @@
     ArrayPrototypeFilter,
     ArrayPrototypeFind,
     FunctionPrototypeBind,
+    FunctionPrototypeToString,
     Map,
     MapPrototype,
     MapPrototypeHas,
@@ -347,12 +349,9 @@
       // use generic 'Function' instead.
       cstrName = "Function";
     }
-    let stringValue = "";
-    if (typeof value.toString === "function") {
-      stringValue = value.toString();
-    }
+    const stringValue = FunctionPrototypeToString(value);
     // Might be Class
-    if (stringValue.startsWith("class")) {
+    if (StringPrototypeStartsWith(stringValue, "class")) {
       cstrName = "Class";
     }
 
