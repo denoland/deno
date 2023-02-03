@@ -54,7 +54,7 @@ pub struct FileFlags {
 pub struct BenchFlags {
   pub files: FileFlags,
   pub filter: Option<String>,
-  pub json: bool
+  pub json: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2368,7 +2368,7 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Bench(BenchFlags {
     files: FileFlags { include, ignore },
     filter,
-    json
+    json,
   });
 }
 
@@ -6571,8 +6571,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: Some("- foo".to_string()),
-          include: Some(svec!["dir1/", "dir2/"]),
-          ignore: vec![],
           json: true,
           files: FileFlags {
             include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
@@ -6598,6 +6596,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: None,
+          json: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
