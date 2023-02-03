@@ -32,7 +32,6 @@ use deno_core::futures::future;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
-use deno_graph::DefaultParsedSourceStore;
 use deno_graph::GraphImport;
 use deno_graph::Resolved;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -1440,40 +1439,14 @@ fn analyze_module(
   maybe_headers: Option<&HashMap<String, String>>,
   maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
 ) -> ModuleResult {
-  use deno_graph::ParsedSourceStore;
-
-  struct UnreachableParser;
-
-  impl deno_graph::ModuleParser for UnreachableParser {
-    fn parse_module(
-      &self,
-      _specifier: &deno_graph::ModuleSpecifier,
-      _source: Arc<str>,
-      _media_type: MediaType,
-    ) -> deno_core::anyhow::Result<ParsedSource, deno_ast::Diagnostic> {
-      // should have re-used the parsed source from the store
-      unreachable!()
-    }
-  }
-
   match parsed_source_result {
-    Ok(parsed_source) => {
-      let store = DefaultParsedSourceStore::default();
-      store.set_parsed_source(specifier.clone(), parsed_source.clone());
-      let analyzer = deno_graph::CapturingModuleAnalyzer::new(
-        // should never parse because it will get the parsed source from the store
-        Some(Box::new(UnreachableParser)),
-        Some(Box::new(store)),
-      );
-      deno_graph::parse_module(
-        specifier,
-        maybe_headers,
-        parsed_source.text_info().text(),
-        Some(deno_graph::ModuleKind::Esm),
-        maybe_resolver,
-        Some(&analyzer),
-      )
-    }
+    Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
+      specifier,
+      deno_graph::ModuleKind::Esm,
+      maybe_headers,
+      parsed_source,
+      maybe_resolver,
+    )),
     Err(err) => Err(deno_graph::ModuleGraphError::ParseErr(
       specifier.clone(),
       err.clone(),
