@@ -178,7 +178,7 @@ impl BenchReporter for JsonReporter {
   fn report_end(&mut self, _report: &BenchReport) {
     match write_json_to_stdout(self) {
       Ok(_) => (),
-      Err(e) => println!("{}", e),
+      Err(e) => println!("{e}"),
     }
   }
 
