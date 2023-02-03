@@ -11,6 +11,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::args::Lockfile;
+use crate::semver::Version;
 
 use self::graph::GraphDependencyResolver;
 use self::snapshot::NpmPackagesPartitioned;
@@ -19,33 +20,25 @@ use super::cache::should_sync_download;
 use super::cache::NpmPackageCacheFolderId;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::RealNpmRegistryApi;
-use super::semver::NpmVersion;
 use super::NpmRegistryApi;
 
 mod graph;
+mod reference;
 mod snapshot;
 mod specifier;
 
 use graph::Graph;
+pub use reference::NpmPackageReference;
+pub use reference::NpmPackageReq;
 pub use snapshot::NpmResolutionSnapshot;
 pub use specifier::resolve_graph_npm_info;
-pub use specifier::NpmPackageReference;
-pub use specifier::NpmPackageReq;
-
-/// The version matcher used for npm schemed urls is more strict than
-/// the one used by npm packages and so we represent either via a trait.
-pub trait NpmVersionMatcher {
-  fn tag(&self) -> Option<&str>;
-  fn matches(&self, version: &NpmVersion) -> bool;
-  fn version_text(&self) -> String;
-}
 
 #[derive(
   Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize,
 )]
 pub struct NpmPackageId {
   pub name: String,
-  pub version: NpmVersion,
+  pub version: Version,
   pub peer_dependencies: Vec<NpmPackageId>,
 }
 
@@ -103,14 +96,12 @@ impl NpmPackageId {
       if_not_empty(substring(skip_while(|c| c != '_')))(input)
     }
 
-    fn parse_name_and_version(
-      input: &str,
-    ) -> ParseResult<(String, NpmVersion)> {
+    fn parse_name_and_version(input: &str) -> ParseResult<(String, Version)> {
       let (input, name) = parse_name(input)?;
       let (input, _) = ch('@')(input)?;
       let at_version_input = input;
       let (input, version) = parse_version(input)?;
-      match NpmVersion::parse(version) {
+      match Version::parse_from_npm(version) {
         Ok(version) => Ok((input, (name.to_string(), version))),
         Err(err) => ParseError::fail(at_version_input, format!("{err:#}")),
       }
@@ -417,30 +408,30 @@ mod tests {
   fn serialize_npm_package_id() {
     let id = NpmPackageId {
       name: "pkg-a".to_string(),
-      version: NpmVersion::parse("1.2.3").unwrap(),
+      version: Version::parse_from_npm("1.2.3").unwrap(),
       peer_dependencies: vec![
         NpmPackageId {
           name: "pkg-b".to_string(),
-          version: NpmVersion::parse("3.2.1").unwrap(),
+          version: Version::parse_from_npm("3.2.1").unwrap(),
           peer_dependencies: vec![
             NpmPackageId {
               name: "pkg-c".to_string(),
-              version: NpmVersion::parse("1.3.2").unwrap(),
+              version: Version::parse_from_npm("1.3.2").unwrap(),
               peer_dependencies: vec![],
             },
             NpmPackageId {
               name: "pkg-d".to_string(),
-              version: NpmVersion::parse("2.3.4").unwrap(),
+              version: Version::parse_from_npm("2.3.4").unwrap(),
               peer_dependencies: vec![],
             },
           ],
         },
         NpmPackageId {
           name: "pkg-e".to_string(),
-          version: NpmVersion::parse("2.3.1").unwrap(),
+          version: Version::parse_from_npm("2.3.1").unwrap(),
           peer_dependencies: vec![NpmPackageId {
             name: "pkg-f".to_string(),
-            version: NpmVersion::parse("2.3.1").unwrap(),
+            version: Version::parse_from_npm("2.3.1").unwrap(),
             peer_dependencies: vec![],
           }],
         },
