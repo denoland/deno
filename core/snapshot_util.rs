@@ -111,6 +111,8 @@ pub fn get_js_files(
     })
     .filter(|path| {
       path.extension().unwrap_or_default() == "js"
+        && !path.ends_with("90_deno_ns.js")
+        && !path.ends_with("98_global_scope.js")
         && !path.ends_with("99_main.js")
     })
     .collect::<Vec<PathBuf>>();

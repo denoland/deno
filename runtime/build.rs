@@ -179,7 +179,9 @@ mod not_docs {
     let mut js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js");
     js_files = js_files
       .into_iter()
-      .filter(|f| !f.ends_with("98_global_scope.js"))
+      .filter(|f| {
+        !f.ends_with("98_global_scope.js") && !f.ends_with("90_global_scope.js")
+      })
       .collect::<Vec<_>>();
 
     #[allow(unused_mut)]
@@ -188,6 +190,7 @@ mod not_docs {
     {
       let manifest = env!("CARGO_MANIFEST_DIR");
       let path = PathBuf::from(manifest);
+      esm_files.push(path.join("js").join("90_deno_ns.js"));
       esm_files.push(path.join("js").join("98_global_scope.js"));
       esm_files.push(path.join("js").join("99_main.js"));
     }
