@@ -7,6 +7,8 @@ import * as timers from "deno:ext/web/02_timers.js";
 import * as httpClient from "deno:ext/fetch/22_http_client.js";
 import * as console from "deno:ext/console/02_console.js";
 import * as ffi from "deno:ext/ffi/00_ffi.js";
+import * as net from "deno:ext/net/01_net.js";
+import * as tls from "deno:ext/net/02_tls.js";
 
 const denoNs = {
   metrics: core.metrics,
@@ -91,13 +93,13 @@ const denoNs = {
   stderr: __bootstrap.files.stderr,
   seek: __bootstrap.files.seek,
   seekSync: __bootstrap.files.seekSync,
-  connect: __bootstrap.net.connect,
-  listen: __bootstrap.net.listen,
+  connect: net.connect,
+  listen: net.listen,
   loadavg: __bootstrap.os.loadavg,
-  connectTls: __bootstrap.tls.connectTls,
-  listenTls: __bootstrap.tls.listenTls,
-  startTls: __bootstrap.tls.startTls,
-  shutdown: __bootstrap.net.shutdown,
+  connectTls: tls.connectTls,
+  listenTls: tls.listenTls,
+  startTls: tls.startTls,
+  shutdown: net.shutdown,
   fstatSync: __bootstrap.fs.fstatSync,
   fstat: __bootstrap.fs.fstat,
   fsyncSync: __bootstrap.fs.fsyncSync,
@@ -112,7 +114,7 @@ const denoNs = {
   Permissions: __bootstrap.permissions.Permissions,
   PermissionStatus: __bootstrap.permissions.PermissionStatus,
   serveHttp: __bootstrap.http.serveHttp,
-  resolveDns: __bootstrap.net.resolveDns,
+  resolveDns: net.resolveDns,
   upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
   utime: __bootstrap.fs.utime,
   utimeSync: __bootstrap.fs.utimeSync,
@@ -133,7 +135,7 @@ const denoNs = {
 
 const denoNsUnstable = {
   DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
-  listenDatagram: __bootstrap.net.listenDatagram,
+  listenDatagram: net.listenDatagram,
   umask: __bootstrap.fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
