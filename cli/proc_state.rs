@@ -75,7 +75,7 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   pub dir: DenoDir,
-  pub file_fetcher: FileFetcher,
+  pub file_fetcher: Arc<FileFetcher>,
   pub http_client: HttpClient,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
@@ -128,21 +128,60 @@ impl ProcState {
     let ps =
       Self::build_with_sender(cli_options, Some(files_to_watch_sender.clone()))
         .await?;
+    ps.init_watcher();
+    Ok(ps)
+  }
 
-    // Add the extra files listed in the watch flag
-    if let Some(watch_paths) = ps.options.watch_paths() {
-      files_to_watch_sender.send(watch_paths.clone())?;
+  /// Reset all runtime state to its default. This should be used on file
+  /// watcher restarts.
+  pub fn reset_for_file_watcher(&mut self) {
+    self.0 = Arc::new(Inner {
+      dir: self.dir.clone(),
+      options: self.options.clone(),
+      emit_cache: self.emit_cache.clone(),
+      emit_options_hash: self.emit_options_hash,
+      emit_options: self.emit_options.clone(),
+      file_fetcher: self.file_fetcher.clone(),
+      http_client: self.http_client.clone(),
+      graph_data: Default::default(),
+      lockfile: self.lockfile.clone(),
+      maybe_import_map: self.maybe_import_map.clone(),
+      maybe_inspector_server: self.maybe_inspector_server.clone(),
+      root_cert_store: self.root_cert_store.clone(),
+      blob_store: Default::default(),
+      broadcast_channel: Default::default(),
+      shared_array_buffer_store: Default::default(),
+      compiled_wasm_module_store: Default::default(),
+      parsed_source_cache: self.parsed_source_cache.reset_for_file_watcher(),
+      maybe_resolver: self.maybe_resolver.clone(),
+      maybe_file_watcher_reporter: self.maybe_file_watcher_reporter.clone(),
+      node_analysis_cache: self.node_analysis_cache.clone(),
+      npm_cache: self.npm_cache.clone(),
+      npm_resolver: self.npm_resolver.clone(),
+      cjs_resolutions: Default::default(),
+      progress_bar: self.progress_bar.clone(),
+      node_std_graph_prepared: AtomicBool::new(false),
+    });
+    self.init_watcher();
+  }
+
+  // Add invariant files like the import map and explicit watch flag list to
+  // the watcher. Dedup for build_for_file_watcher and reset_for_file_watcher.
+  fn init_watcher(&self) {
+    let files_to_watch_sender = match &self.0.maybe_file_watcher_reporter {
+      Some(reporter) => &reporter.sender,
+      None => return,
+    };
+    if let Some(watch_paths) = self.options.watch_paths() {
+      files_to_watch_sender.send(watch_paths.clone()).unwrap();
     }
-
-    if let Ok(Some(import_map_path)) = ps
+    if let Ok(Some(import_map_path)) = self
       .options
       .resolve_import_map_specifier()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
-      files_to_watch_sender.send(vec![import_map_path])?;
+      files_to_watch_sender.send(vec![import_map_path]).unwrap();
     }
-
-    Ok(ps)
   }
 
   async fn build_with_sender(
@@ -236,7 +275,7 @@ impl ProcState {
         .write_hashable(&emit_options)
         .finish(),
       emit_options,
-      file_fetcher,
+      file_fetcher: Arc::new(file_fetcher),
       http_client,
       graph_data: Default::default(),
       lockfile,
@@ -271,7 +310,6 @@ impl ProcState {
     lib: TsTypeLib,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-    reload_on_watch: bool,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
@@ -280,7 +318,7 @@ impl ProcState {
       r.scheme() == "npm" && NpmPackageReference::from_specifier(r).is_ok()
     });
 
-    if !reload_on_watch && !has_root_npm_specifier {
+    if !has_root_npm_specifier {
       let graph_data = self.graph_data.read();
       if self.options.type_check_mode() == TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
@@ -314,7 +352,6 @@ impl ProcState {
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
       graph_data: Arc<RwLock<GraphData>>,
-      reload: bool,
     }
     impl Loader for ProcStateLoader<'_> {
       fn get_cache_info(
@@ -331,9 +368,7 @@ impl ProcState {
         let graph_data = self.graph_data.read();
         let found_specifier = graph_data.follow_redirect(specifier);
         match graph_data.get(&found_specifier) {
-          Some(_) if !self.reload => {
-            Box::pin(futures::future::ready(Err(anyhow!(""))))
-          }
+          Some(_) => Box::pin(futures::future::ready(Err(anyhow!("")))),
           _ => self.inner.load(specifier, is_dynamic),
         }
       }
@@ -341,7 +376,6 @@ impl ProcState {
     let mut loader = ProcStateLoader {
       inner: &mut cache,
       graph_data: self.graph_data.clone(),
-      reload: reload_on_watch,
     };
 
     let maybe_file_watcher_reporter: Option<&dyn deno_graph::source::Reporter> =
@@ -380,7 +414,7 @@ impl ProcState {
 
     let (npm_package_reqs, has_node_builtin_specifier) = {
       let mut graph_data = self.graph_data.write();
-      graph_data.add_graph(&graph, reload_on_watch);
+      graph_data.add_graph(&graph);
       let check_js = self.options.check_js();
       graph_data
         .check(
@@ -479,7 +513,6 @@ impl ProcState {
         lib,
         PermissionsContainer::allow_all(),
         PermissionsContainer::allow_all(),
-        false,
       )
       .await
   }
@@ -493,7 +526,7 @@ impl ProcState {
     let node_std_graph = self
       .create_graph(vec![node::MODULE_ALL_URL.clone()])
       .await?;
-    self.graph_data.write().add_graph(&node_std_graph, false);
+    self.graph_data.write().add_graph(&node_std_graph);
     self.node_std_graph_prepared.store(true, Ordering::Relaxed);
     Ok(())
   }
