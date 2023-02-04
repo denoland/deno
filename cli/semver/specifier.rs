@@ -3,85 +3,56 @@
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use monch::*;
-use serde::Deserialize;
-use serde::Serialize;
 
-use super::is_valid_npm_tag;
 use super::range::Partial;
 use super::range::VersionRange;
+use super::range::VersionRangeSet;
 use super::range::XRange;
+use super::RangeSetOrTag;
+use super::VersionReq;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-enum SpecifierVersionReqInner {
-  Range(VersionRange),
-  Tag(String),
-}
+use super::is_valid_tag;
 
-/// Version requirement found in npm specifiers.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SpecifierVersionReq {
-  raw_text: String,
-  inner: SpecifierVersionReqInner,
-}
-
-impl std::fmt::Display for SpecifierVersionReq {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", self.raw_text)
-  }
-}
-
-impl SpecifierVersionReq {
-  pub fn parse(text: &str) -> Result<Self, AnyError> {
-    with_failure_handling(parse_npm_specifier)(text).with_context(|| {
-      format!("Invalid npm specifier version requirement '{text}'.")
-    })
-  }
-
-  pub fn range(&self) -> Option<&VersionRange> {
-    match &self.inner {
-      SpecifierVersionReqInner::Range(range) => Some(range),
-      SpecifierVersionReqInner::Tag(_) => None,
-    }
-  }
-
-  pub fn tag(&self) -> Option<&str> {
-    match &self.inner {
-      SpecifierVersionReqInner::Range(_) => None,
-      SpecifierVersionReqInner::Tag(tag) => Some(tag.as_str()),
-    }
-  }
-}
-
-fn parse_npm_specifier(input: &str) -> ParseResult<SpecifierVersionReq> {
-  map_res(version_range, |result| {
-    let (new_input, range_result) = match result {
-      Ok((input, range)) => (input, Ok(range)),
-      // use an empty string because we'll consider it a tag
-      Err(err) => ("", Err(err)),
-    };
-    Ok((
-      new_input,
-      SpecifierVersionReq {
-        raw_text: input.to_string(),
-        inner: match range_result {
-          Ok(range) => SpecifierVersionReqInner::Range(range),
-          Err(err) => {
-            if !is_valid_npm_tag(input) {
-              return Err(err);
-            } else {
-              SpecifierVersionReqInner::Tag(input.to_string())
+pub fn parse_version_req_from_specifier(
+  text: &str,
+) -> Result<VersionReq, AnyError> {
+  with_failure_handling(|input| {
+    map_res(version_range, |result| {
+      let (new_input, range_result) = match result {
+        Ok((input, range)) => (input, Ok(range)),
+        // use an empty string because we'll consider it a tag
+        Err(err) => ("", Err(err)),
+      };
+      Ok((
+        new_input,
+        VersionReq::from_raw_text_and_inner(
+          input.to_string(),
+          match range_result {
+            Ok(range) => RangeSetOrTag::RangeSet(VersionRangeSet(vec![range])),
+            Err(err) => {
+              if !is_valid_tag(input) {
+                return Err(err);
+              } else {
+                RangeSetOrTag::Tag(input.to_string())
+              }
             }
-          }
-        },
-      },
-    ))
-  })(input)
+          },
+        ),
+      ))
+    })(input)
+  })(text)
+  .with_context(|| {
+    format!("Invalid npm specifier version requirement '{text}'.")
+  })
 }
 
 // Note: Although the code below looks very similar to what's used for
 // parsing npm version requirements, the code here is more strict
 // in order to not allow for people to get ridiculous when using
 // npm specifiers.
+//
+// A lot of the code below is adapted from https://github.com/npm/node-semver
+// which is Copyright (c) Isaac Z. Schlueter and Contributors (ISC License)
 
 // version_range ::= partial | tilde | caret
 fn version_range(input: &str) -> ParseResult<VersionRange> {
@@ -198,23 +169,18 @@ fn part(input: &str) -> ParseResult<&str> {
 
 #[cfg(test)]
 mod tests {
-  use crate::npm::semver::NpmVersion;
-
+  use super::super::Version;
   use super::*;
 
-  struct VersionReqTester(SpecifierVersionReq);
+  struct VersionReqTester(VersionReq);
 
   impl VersionReqTester {
     fn new(text: &str) -> Self {
-      Self(SpecifierVersionReq::parse(text).unwrap())
+      Self(parse_version_req_from_specifier(text).unwrap())
     }
 
     fn matches(&self, version: &str) -> bool {
-      self
-        .0
-        .range()
-        .map(|r| r.satisfies(&NpmVersion::parse(version).unwrap()))
-        .unwrap_or(false)
+      self.0.matches(&Version::parse_from_npm(version).unwrap())
     }
   }
 
@@ -293,7 +259,7 @@ mod tests {
 
   #[test]
   fn parses_tag() {
-    let latest_tag = SpecifierVersionReq::parse("latest").unwrap();
+    let latest_tag = VersionReq::parse_from_specifier("latest").unwrap();
     assert_eq!(latest_tag.tag().unwrap(), "latest");
   }
 }

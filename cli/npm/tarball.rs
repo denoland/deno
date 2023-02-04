@@ -13,10 +13,10 @@ use tar::EntryType;
 
 use super::cache::with_folder_sync_lock;
 use super::registry::NpmPackageVersionDistInfo;
-use super::semver::NpmVersion;
+use crate::semver::Version;
 
 pub fn verify_and_extract_tarball(
-  package: (&str, &NpmVersion),
+  package: (&str, &Version),
   data: &[u8],
   dist_info: &NpmPackageVersionDistInfo,
   output_folder: &Path,
@@ -29,7 +29,7 @@ pub fn verify_and_extract_tarball(
 }
 
 fn verify_tarball_integrity(
-  package: (&str, &NpmVersion),
+  package: (&str, &Version),
   data: &[u8],
   npm_integrity: &str,
 ) -> Result<(), AnyError> {
@@ -120,12 +120,11 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::npm::semver::NpmVersion;
 
   #[test]
   pub fn test_verify_tarball() {
     let package_name = "package".to_string();
-    let package_version = NpmVersion::parse("1.0.0").unwrap();
+    let package_version = Version::parse_from_npm("1.0.0").unwrap();
     let package = (package_name.as_str(), &package_version);
     let actual_checksum =
       "z4phnx7vul3xvchq1m2ab9yg5aulvxxcg/spidns6c5h0ne8xyxysp+dgnkhfuwvy7kxvudbeoglodj6+sfapg==";

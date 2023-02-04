@@ -47,6 +47,7 @@
     StringPrototypeToString,
     StringPrototypeTrim,
     StringPrototypeIncludes,
+    StringPrototypeStartsWith,
     TypeError,
     NumberParseInt,
     RegExp,
@@ -82,6 +83,7 @@
     ArrayPrototypeFilter,
     ArrayPrototypeFind,
     FunctionPrototypeBind,
+    FunctionPrototypeToString,
     Map,
     MapPrototype,
     MapPrototypeHas,
@@ -346,6 +348,11 @@
       // If prototype is removed or broken,
       // use generic 'Function' instead.
       cstrName = "Function";
+    }
+    const stringValue = FunctionPrototypeToString(value);
+    // Might be Class
+    if (StringPrototypeStartsWith(stringValue, "class")) {
+      cstrName = "Class";
     }
 
     // Our function may have properties, so we want to format those
