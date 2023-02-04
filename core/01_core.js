@@ -32,7 +32,7 @@ const {
   SymbolFor,
   setQueueMicrotask,
 } = primordials;
-const { ops } = window.Deno.core;
+const { ops } = globalThis.Deno.core;
 
 
 const errorMap = {};
@@ -427,6 +427,7 @@ const core = ObjectAssign(globalThis.Deno.core, {
 });
 
 export { core };
+ObjectAssign(globalThis.__bootstrap, { core });
 ObjectAssign(globalThis.Deno, { core });
 
 // Direct bindings on `globalThis`

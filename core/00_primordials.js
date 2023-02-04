@@ -530,5 +530,7 @@ primordials.indirectEval = eval;
 ObjectSetPrototypeOf(primordials, null);
 ObjectFreeze(primordials);
 
+globalThis.__bootstrap = { primordials };
+
 // Provide bootstrap namespace
 export { primordials };

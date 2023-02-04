@@ -10,6 +10,7 @@ const {
   ObjectDefineProperties,
   ArrayPrototypePush,
   ArrayPrototypeMap,
+  ObjectFreeze,
   ArrayPrototypeJoin,
 } = primordials;
 
@@ -153,3 +154,5 @@ function prepareStackTrace(error, callSites) {
 }
 
 ObjectAssign(core, { prepareStackTrace });
+ObjectAssign(globalThis.__bootstrap.core, { prepareStackTrace });
+ObjectFreeze(globalThis.__bootstrap.core);

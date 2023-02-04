@@ -605,9 +605,14 @@ impl JsRuntime {
       None
     };
 
-    let loader = options
-      .module_loader
-      .unwrap_or_else(|| Rc::new(crate::modules::InternalModuleLoader));
+    let loader = if snapshot_options.will_snapshot() {
+      Rc::new(crate::modules::InternalModuleLoader)
+    } else {
+      options
+        .module_loader
+        .unwrap_or_else(|| Rc::new(NoopModuleLoader))
+    };
+
     {
       let mut state = state_rc.borrow_mut();
       state.global_realm = Some(JsRealm(global_context.clone()));
@@ -805,14 +810,26 @@ impl JsRuntime {
     // Take extensions to avoid double-borrow
     let extensions = std::mem::take(&mut self.extensions_with_js);
     for ext in &extensions {
-      let js_files = ext.init_js();
-      for (filename, source) in js_files {
-        let id = futures::executor::block_on(
-          self.load_side_module(&ModuleSpecifier::parse(filename).unwrap(), Some(source.to_string())),
-        )
-          .unwrap();
-        let _ = self.mod_evaluate(id);
-        futures::executor::block_on(self.run_event_loop(false)).unwrap();
+      {
+        let js_files = ext.init_esm();
+        for (filename, source) in js_files {
+          let id = futures::executor::block_on(
+            self.load_side_module(&ModuleSpecifier::parse(filename).unwrap(), Some(source.to_string())),
+          )
+            .unwrap();
+          let receiver = self.mod_evaluate(id);
+          futures::executor::block_on(self.run_event_loop(false)).unwrap();
+          let r = futures::executor::block_on(receiver).unwrap();
+          eprintln!("result {:#?}", r);
+        }
+      }
+
+      {
+        let js_files = ext.init_js();
+        for (filename, source) in js_files {
+          // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
+          realm.execute_script(self.v8_isolate(), filename, source)?;
+        }
       }
     }
     // Restore extensions
