@@ -6,6 +6,7 @@ import { core } from "deno:core/01_core.js";
 import * as timers from "deno:ext/web/02_timers.js";
 import * as httpClient from "deno:ext/fetch/22_http_client.js";
 import * as console from "deno:ext/console/02_console.js";
+import * as ffi from "deno:ext/ffi/00_ffi.js";
 
 const denoNs = {
   metrics: core.metrics,
@@ -137,11 +138,11 @@ const denoNsUnstable = {
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
   http: __bootstrap.http,
-  dlopen: __bootstrap.ffi.dlopen,
-  UnsafeCallback: __bootstrap.ffi.UnsafeCallback,
-  UnsafePointer: __bootstrap.ffi.UnsafePointer,
-  UnsafePointerView: __bootstrap.ffi.UnsafePointerView,
-  UnsafeFnPointer: __bootstrap.ffi.UnsafeFnPointer,
+  dlopen: ffi.dlopen,
+  UnsafeCallback: ffi.UnsafeCallback,
+  UnsafePointer: ffi.UnsafePointer,
+  UnsafePointerView: ffi.UnsafePointerView,
+  UnsafeFnPointer: ffi.UnsafeFnPointer,
   flock: __bootstrap.fs.flock,
   flockSync: __bootstrap.fs.flockSync,
   funlock: __bootstrap.fs.funlock,

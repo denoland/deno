@@ -6,7 +6,9 @@ import { core } from "deno:core/01_core.js";
 const ops = core.ops;
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import {
-  defineEventHandler, setTarget,EventTarget
+  defineEventHandler,
+  EventTarget,
+  setTarget,
 } from "deno:ext/web/02_event.js";
 import { DOMException } from "deno:ext/web/01_dom_exception.js";
 import { primordials } from "deno:core/00_primordials.js";
