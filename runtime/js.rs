@@ -35,6 +35,12 @@ pub fn deno_isolate_init() -> Snapshot {
   Snapshot::Static(&RUNTIME_SNAPSHOT)
 }
 
+pub fn get_98_global_scope() -> PathBuf {
+  let manifest = env!("CARGO_MANIFEST_DIR");
+  let path = PathBuf::from(manifest);
+  path.join("js").join("98_global_scope.js")
+}
+
 pub fn get_99_main() -> PathBuf {
   let manifest = env!("CARGO_MANIFEST_DIR");
   let path = PathBuf::from(manifest);
