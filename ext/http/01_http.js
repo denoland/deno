@@ -474,3 +474,5 @@ globalThis.__bootstrap.http = {
   upgradeHttp,
   _ws,
 };
+
+export { _ws, HttpConn, upgradeHttp, upgradeWebSocket };

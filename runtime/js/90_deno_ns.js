@@ -9,6 +9,8 @@ import * as console from "deno:ext/console/02_console.js";
 import * as ffi from "deno:ext/ffi/00_ffi.js";
 import * as net from "deno:ext/net/01_net.js";
 import * as tls from "deno:ext/net/02_tls.js";
+import * as http from "deno:ext/http/01_http.js";
+import * as flash from "deno:ext/flash/01_http.js";
 
 const denoNs = {
   metrics: core.metrics,
@@ -113,9 +115,10 @@ const denoNs = {
   permissions: __bootstrap.permissions.permissions,
   Permissions: __bootstrap.permissions.Permissions,
   PermissionStatus: __bootstrap.permissions.PermissionStatus,
+  // TODO(bartlomieju): why is this not in one of extensions?
   serveHttp: __bootstrap.http.serveHttp,
   resolveDns: net.resolveDns,
-  upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
+  upgradeWebSocket: http.upgradeWebSocket,
   utime: __bootstrap.fs.utime,
   utimeSync: __bootstrap.fs.utimeSync,
   kill: __bootstrap.process.kill,
@@ -139,7 +142,8 @@ const denoNsUnstable = {
   umask: __bootstrap.fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
-  http: __bootstrap.http,
+  // TODO(bartlomieju): why is it needed?
+  http,
   dlopen: ffi.dlopen,
   UnsafeCallback: ffi.UnsafeCallback,
   UnsafePointer: ffi.UnsafePointer,
@@ -152,9 +156,8 @@ const denoNsUnstable = {
   Child: __bootstrap.spawn.Child,
   ChildProcess: __bootstrap.spawn.ChildProcess,
   Command: __bootstrap.spawn.Command,
-  serve: __bootstrap.flash.serve,
-  upgradeHttp: __bootstrap.http.upgradeHttp,
-  upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
+  upgradeHttp: http.upgradeHttp,
+  upgradeHttpRaw: flash.upgradeHttpRaw,
 };
 
 export { denoNs, denoNsUnstable };

@@ -57,6 +57,7 @@ import { denoNs, denoNsUnstable } from "deno:runtime/js/90_deno_ns.js";
 const errors = globalThis.__bootstrap.errors.errors;
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import * as domException from "deno:ext/web/01_dom_exception.js";
+import * as flash from "deno:ext/flash/01_http.js";
 import {
   mainRuntimeGlobalProperties,
   setLanguage,
@@ -467,8 +468,8 @@ function bootstrapMainRuntime(runtimeOptions) {
           ops.op_node_unstable_spawn_child,
         ),
       ),
-      serve: __bootstrap.flash.createServe(ops.op_node_unstable_flash_serve),
-      upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
+      serve: flash.createServe(ops.op_node_unstable_flash_serve),
+      upgradeHttpRaw: flash.upgradeHttpRaw,
       listenDatagram: __bootstrap.net.createListenDatagram(
         ops.op_node_unstable_net_listen_udp,
         ops.op_node_unstable_net_listen_unixpacket,
@@ -510,7 +511,7 @@ function bootstrapMainRuntime(runtimeOptions) {
         __bootstrap.spawn.createSpawnSync(ops.op_spawn_sync),
         __bootstrap.spawn.createSpawnChild(ops.op_spawn_child),
       ),
-      serve: __bootstrap.flash.createServe(ops.op_flash_serve),
+      serve: flash.createServe(ops.op_flash_serve),
       listenDatagram: __bootstrap.net.createListenDatagram(
         ops.op_net_listen_udp,
         ops.op_net_listen_unixpacket,
@@ -612,8 +613,8 @@ function bootstrapWorkerRuntime(
           ops.op_node_unstable_spawn_child,
         ),
       ),
-      serve: __bootstrap.flash.createServe(ops.op_node_unstable_flash_serve),
-      upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
+      serve: flash.createServe(ops.op_node_unstable_flash_serve),
+      upgradeHttpRaw: flash.upgradeHttpRaw,
       listenDatagram: __bootstrap.net.createListenDatagram(
         ops.op_node_unstable_net_listen_udp,
         ops.op_node_unstable_net_listen_unixpacket,
@@ -647,7 +648,7 @@ function bootstrapWorkerRuntime(
         __bootstrap.spawn.createSpawnSync(ops.op_spawn_sync),
         __bootstrap.spawn.createSpawnChild(ops.op_spawn_child),
       ),
-      serve: __bootstrap.flash.createServe(ops.op_flash_serve),
+      serve: flash.createServe(ops.op_flash_serve),
       listenDatagram: __bootstrap.net.createListenDatagram(
         ops.op_net_listen_udp,
         ops.op_net_listen_unixpacket,
