@@ -6,6 +6,32 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.30.2 / 2023.02.03
+
+- Revert "chore(core): remove have_unpolled_ops on rt state (#17601)" (#17631)
+- fix(webgpu): specify viewFormats in surface configuration (#17626)
+
+### 1.30.1 / 2023.02.02
+
+- Revert "fix(watch): preserve `ProcState::file_fetcher` between restarts
+  (#15466) (#17591)
+- fix(core): Add lint check for core (#17223)
+- fix(ext): internal `structuredClone` for `ArrayBuffer` and `TypedArray`
+  subclasses (#17431)
+- fix(fmt): semiColons: false - handle prop with following generator and do
+  while with no block body (#17567)
+- fix(install): tsconfig.json -> deno.json for config file suffix (#17573)
+- fix(lockfile): emit trailing newline (#17618)
+- fix(lsp): update document dependencies on configuration change (#17556)
+- fix(napi): guard threadsafe function counters behind a mutex (#17552)
+- fix(napi): remove wrong length check in napi_create_function (#17614)
+- fix(napi): return node globalThis from napi_get_global (#17613)
+- fix(repl): handle @types/node not being cached in the repl (#17617)
+- fix(upgrade): ensure temp dir cleanup on failure (#17535)
+- fix: ensure "fs" -> "node:fs" error/quick fix works when user has import map
+  (#17566)
+- perf(ops): Remove unnecessary fast call fallback options usage (#17585)
+
 ### 1.30.0 / 2023.01.25
 
 - feat(cli): add `DENO_V8_FLAGS` env var (#17313)
