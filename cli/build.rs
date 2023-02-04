@@ -450,36 +450,11 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
-  let js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "tsc");
+  let js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "tsc", None);
   ts::create_compiler_snapshot(compiler_snapshot_path, js_files, &c);
 
   let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
-  let mut esm_files = vec![];
-
-  esm_files.push(deno_runtime::js::get_01_build());
-  esm_files.push(deno_runtime::js::get_01_errors());
-  esm_files.push(deno_runtime::js::get_01_version());
-  esm_files.push(deno_runtime::js::get_06_util());
-  esm_files.push(deno_runtime::js::get_10_permissions());
-  esm_files.push(deno_runtime::js::get_11_workers());
-  esm_files.push(deno_runtime::js::get_12_io());
-  esm_files.push(deno_runtime::js::get_13_buffer());
-  esm_files.push(deno_runtime::js::get_30_fs());
-  esm_files.push(deno_runtime::js::get_30_os());
-  esm_files.push(deno_runtime::js::get_40_diagnostics());
-  esm_files.push(deno_runtime::js::get_40_files());
-  esm_files.push(deno_runtime::js::get_40_fs_events());
-  esm_files.push(deno_runtime::js::get_40_spawn());
-  esm_files.push(deno_runtime::js::get_40_process());
-  esm_files.push(deno_runtime::js::get_40_read_file());
-  esm_files.push(deno_runtime::js::get_40_signals());
-  esm_files.push(deno_runtime::js::get_40_tty());
-  esm_files.push(deno_runtime::js::get_40_write_file());
-  esm_files.push(deno_runtime::js::get_40_http());
-  esm_files.push(deno_runtime::js::get_41_prompt());
-  esm_files.push(deno_runtime::js::get_90_deno_ns());
-  esm_files.push(deno_runtime::js::get_98_global_scope());
-  esm_files.extend(get_js_files(env!("CARGO_MANIFEST_DIR"), "js"));
+  let mut esm_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js", None);
   esm_files.push(deno_runtime::js::get_99_main());
   create_cli_snapshot(cli_snapshot_path, esm_files);
 

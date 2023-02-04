@@ -101,6 +101,7 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
 pub fn get_js_files(
   cargo_manifest_dir: &'static str,
   directory: &str,
+  filter: Option<Box<dyn Fn(&PathBuf) -> bool>>,
 ) -> Vec<PathBuf> {
   let manifest_dir = Path::new(cargo_manifest_dir);
   let mut js_files = std::fs::read_dir(directory)
@@ -111,30 +112,7 @@ pub fn get_js_files(
     })
     .filter(|path| {
       path.extension().unwrap_or_default() == "js"
-        && !path.ends_with("01_build.js")
-        && !path.ends_with("01_errors.js")
-        && !path.ends_with("01_version.js")
-        && !path.ends_with("06_util.js")
-        && !path.ends_with("10_permissions.js")
-        && !path.ends_with("11_workers.js")
-        && !path.ends_with("12_io.js")
-        && !path.ends_with("13_buffer.js")
-        && !path.ends_with("30_fs.js")
-        && !path.ends_with("30_os.js")
-        && !path.ends_with("40_diagnostics.js")
-        && !path.ends_with("40_files.js")
-        && !path.ends_with("40_fs_events.js")
-        && !path.ends_with("40_process.js")
-        && !path.ends_with("40_read_file.js")
-        && !path.ends_with("40_spawn.js")
-        && !path.ends_with("40_signals.js")
-        && !path.ends_with("40_tty.js")
-        && !path.ends_with("40_write_file.js")
-        && !path.ends_with("40_http.js")
-        && !path.ends_with("41_prompt.js")
-        && !path.ends_with("90_deno_ns.js")
-        && !path.ends_with("98_global_scope.js")
-        && !path.ends_with("99_main.js")
+        && filter.as_ref().map(|filter| filter(path)).unwrap_or(true)
     })
     .collect::<Vec<PathBuf>>();
   js_files.sort();

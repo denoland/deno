@@ -120,11 +120,7 @@ mod not_docs {
     }
   }
 
-  fn create_runtime_snapshot(
-    snapshot_path: PathBuf,
-    files: Vec<PathBuf>,
-    esm_files: Vec<PathBuf>,
-  ) {
+  fn create_runtime_snapshot(snapshot_path: PathBuf, esm_files: Vec<PathBuf>) {
     let extensions_with_js: Vec<Extension> = vec![
       deno_webidl::init(),
       deno_console::init(),
@@ -161,7 +157,7 @@ mod not_docs {
       startup_snapshot: None,
       extensions: vec![],
       extensions_with_js,
-      additional_files: files,
+      additional_files: vec![],
       additional_esm_files: esm_files,
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         lzzzz::lz4_hc::compress_to_vec(
@@ -176,46 +172,19 @@ mod not_docs {
 
   pub fn build_snapshot(runtime_snapshot_path: PathBuf) {
     #[allow(unused_mut)]
-    let mut js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js");
-    js_files = js_files
-      .into_iter()
-      .filter(|f| {
-        !f.ends_with("98_global_scope.js") && !f.ends_with("90_global_scope.js")
-      })
-      .collect::<Vec<_>>();
+    let mut esm_files = get_js_files(
+      env!("CARGO_MANIFEST_DIR"),
+      "js",
+      Some(Box::new(|path| !path.ends_with("99_main.js"))),
+    );
 
-    #[allow(unused_mut)]
-    let mut esm_files = vec![];
     #[cfg(not(feature = "snapshot_from_snapshot"))]
     {
       let manifest = env!("CARGO_MANIFEST_DIR");
       let path = PathBuf::from(manifest);
-      esm_files.push(path.join("js").join("01_build.js"));
-      esm_files.push(path.join("js").join("01_errors.js"));
-      esm_files.push(path.join("js").join("01_version.js"));
-      esm_files.push(path.join("js").join("06_util.js"));
-      esm_files.push(path.join("js").join("10_permissions.js"));
-      esm_files.push(path.join("js").join("11_workers.js"));
-      esm_files.push(path.join("js").join("12_io.js"));
-      esm_files.push(path.join("js").join("13_buffer.js"));
-      esm_files.push(path.join("js").join("30_fs.js"));
-      esm_files.push(path.join("js").join("30_os.js"));
-      esm_files.push(path.join("js").join("40_diagnostics.js"));
-      esm_files.push(path.join("js").join("40_files.js"));
-      esm_files.push(path.join("js").join("40_fs_events.js"));
-      esm_files.push(path.join("js").join("40_process.js"));
-      esm_files.push(path.join("js").join("40_read_file.js"));
-      esm_files.push(path.join("js").join("40_spawn.js"));
-      esm_files.push(path.join("js").join("40_signals.js"));
-      esm_files.push(path.join("js").join("40_tty.js"));
-      esm_files.push(path.join("js").join("40_write_file.js"));
-      esm_files.push(path.join("js").join("40_http.js"));
-      esm_files.push(path.join("js").join("41_prompt.js"));
-      esm_files.push(path.join("js").join("90_deno_ns.js"));
-      esm_files.push(path.join("js").join("98_global_scope.js"));
       esm_files.push(path.join("js").join("99_main.js"));
     }
-    create_runtime_snapshot(runtime_snapshot_path, js_files, esm_files);
+    create_runtime_snapshot(runtime_snapshot_path, esm_files);
   }
 }
 
