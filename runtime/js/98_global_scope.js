@@ -39,7 +39,7 @@ import * as domException from "deno:ext/web/01_dom_exception.js";
 import * as abortSignal from "deno:ext/web/03_abort_signal.js";
 import * as globalInterfaces from "deno:ext/web/04_global_interfaces.js";
 import * as webStorage from "deno:ext/webstorage/01_webstorage.js";
-const prompt = globalThis.__bootstrap.prompt;
+import * as prompt from "deno:runtime/js/41_prompt.js";
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {

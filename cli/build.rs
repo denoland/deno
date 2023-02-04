@@ -455,6 +455,7 @@ fn main() {
 
   let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
   let mut esm_files = vec![];
+  esm_files.push(deno_runtime::js::get_41_prompt());
   esm_files.push(deno_runtime::js::get_90_deno_ns());
   esm_files.push(deno_runtime::js::get_98_global_scope());
   esm_files.extend(get_js_files(env!("CARGO_MANIFEST_DIR"), "js"));
