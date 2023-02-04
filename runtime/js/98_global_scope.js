@@ -18,7 +18,7 @@ const caches = globalThis.__bootstrap.caches;
 const compression = globalThis.__bootstrap.compression;
 const worker = globalThis.__bootstrap.worker;
 const performance = globalThis.__bootstrap.performance;
-const crypto = globalThis.__bootstrap.crypto;
+import * as crypto from "deno:ext/crypto/00_crypto.js";
 import * as url from "deno:ext/url/00_url.js";
 import * as urlPattern from "deno:ext/url/01_urlpattern.js";
 const headers = globalThis.__bootstrap.headers;
@@ -320,13 +320,12 @@ const workerRuntimeGlobalProperties = {
   self: util.getterOnly(() => globalThis),
 };
 
-globalThis.__bootstrap.globalScope = {
-  windowOrWorkerGlobalScope,
-  unstableWindowOrWorkerGlobalScope,
+export {
   mainRuntimeGlobalProperties,
-  workerRuntimeGlobalProperties,
-
+  setLanguage,
   setNumCpus,
   setUserAgent,
-  setLanguage,
+  unstableWindowOrWorkerGlobalScope,
+  windowOrWorkerGlobalScope,
+  workerRuntimeGlobalProperties,
 };

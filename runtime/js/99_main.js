@@ -62,15 +62,15 @@ const domException = globalThis.__bootstrap.domException;
 const { defineEventHandler, reportException } = globalThis.__bootstrap.event;
 const { deserializeJsMessageData, serializeJsMessageData } =
   globalThis.__bootstrap.messagePort;
-const {
-  windowOrWorkerGlobalScope,
-  unstableWindowOrWorkerGlobalScope,
-  workerRuntimeGlobalProperties,
+import {
   mainRuntimeGlobalProperties,
+  setLanguage,
   setNumCpus,
   setUserAgent,
-  setLanguage,
-} = globalThis.__bootstrap.globalScope;
+  unstableWindowOrWorkerGlobalScope,
+  windowOrWorkerGlobalScope,
+  workerRuntimeGlobalProperties,
+} from "deno:runtime/js/98_global_scope.js";
 
 let windowIsClosing = false;
 
@@ -679,3 +679,5 @@ ObjectDefineProperties(globalThis, {
     configurable: true,
   },
 });
+
+core.print(`bootstrap ${globalThis.bootstrap}\n`, true);
