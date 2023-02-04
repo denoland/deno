@@ -671,6 +671,6 @@ export {
   newInnerRequest,
   processUrlList,
   Request,
-  toInnerRequest,
   RequestPrototype,
+  toInnerRequest,
 };

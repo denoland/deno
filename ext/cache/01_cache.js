@@ -8,10 +8,12 @@ const {
   TypeError,
   ObjectPrototypeIsPrototypeOf,
 } = primordials;
-import { Request, toInnerRequest, RequestPrototype } from "deno:ext/fetch/23_request.js";
 import {
-  toInnerResponse,
-} from "deno:ext/fetch/23_response.js";
+  Request,
+  RequestPrototype,
+  toInnerRequest,
+} from "deno:ext/fetch/23_request.js";
+import { toInnerResponse } from "deno:ext/fetch/23_response.js";
 import { URLPrototype } from "deno:ext/url/00_url.js";
 import { getHeader } from "deno:ext/fetch/20_headers.js";
 import { readableStreamForRid } from "deno:ext/web/06_streams.js";
@@ -287,8 +289,4 @@ function cacheStorage() {
   return cacheStorageStorage;
 }
 
-export {
-  CacheStorage,
-  Cache,
-  cacheStorage,
-};
+export { Cache, CacheStorage, cacheStorage };
