@@ -21,7 +21,7 @@ import * as performance from "deno:ext/web/15_performance.js";
 import * as crypto from "deno:ext/crypto/00_crypto.js";
 import * as url from "deno:ext/url/00_url.js";
 import * as urlPattern from "deno:ext/url/01_urlpattern.js";
-const headers = globalThis.__bootstrap.headers;
+import * as headers from "deno:ext/fetch/20_headers.js";
 import * as streams from "deno:ext/web/06_streams.js";
 import * as fileReader from "deno:ext/web/10_filereader.js";
 import * as webgpu from "deno:ext/webgpu/01_webgpu.js";
@@ -29,8 +29,10 @@ import * as webSocket from "deno:ext/websocket/01_websocket.js";
 import * as webSocketStream from "deno:ext/websocket/02_websocketstream.js";
 const broadcastChannel = globalThis.__bootstrap.broadcastChannel;
 import * as file from "deno:ext/web/09_file.js";
-const formData = globalThis.__bootstrap.formData;
-const fetch = globalThis.__bootstrap.fetch;
+import * as formData from "deno:ext/fetch/21_formdata.js";
+import * as request from "deno:ext/fetch/23_request.js";
+import * as response from "deno:ext/fetch/23_response.js";
+import * as fetch from "deno:ext/fetch/26_fetch.js";
 import * as messagePort from "deno:ext/web/13_message_port.js";
 const webidl = globalThis.__bootstrap.webidl;
 import * as domException from "deno:ext/web/01_dom_exception.js";
@@ -74,8 +76,8 @@ const windowOrWorkerGlobalScope = {
   ReadableStreamDefaultReader: util.nonEnumerable(
     streams.ReadableStreamDefaultReader,
   ),
-  Request: util.nonEnumerable(fetch.Request),
-  Response: util.nonEnumerable(fetch.Response),
+  Request: util.nonEnumerable(request.Request),
+  Response: util.nonEnumerable(response.Response),
   TextDecoder: util.nonEnumerable(encoding.TextDecoder),
   TextEncoder: util.nonEnumerable(encoding.TextEncoder),
   TextDecoderStream: util.nonEnumerable(encoding.TextDecoderStream),

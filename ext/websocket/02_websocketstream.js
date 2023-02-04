@@ -5,11 +5,14 @@
 import { core } from "deno:core/01_core.js";
 const ops = core.ops;
 import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { writableStreamClose, Deferred } from "deno:ext/web/06_streams.js";
+import { Deferred, writableStreamClose } from "deno:ext/web/06_streams.js";
 import { DOMException } from "deno:ext/web/01_dom_exception.js";
 import { add, remove } from "deno:ext/web/03_abort_signal.js";
-const { headersFromHeaderList, headerListFromHeaders, fillHeaders } =
-  globalThis.__bootstrap.headers;
+import {
+  fillHeaders,
+  headerListFromHeaders,
+  headersFromHeaderList,
+} from "deno:ext/fetch/20_headers.js";
 import { primordials } from "deno:core/00_primordials.js";
 const {
   ArrayPrototypeJoin,
@@ -112,12 +115,12 @@ class WebSocketStream {
 
     if (
       options.protocols.length !==
-      new Set(
-        ArrayPrototypeMap(
-          options.protocols,
-          (p) => StringPrototypeToLowerCase(p),
-        ),
-      ).size
+        new Set(
+          ArrayPrototypeMap(
+            options.protocols,
+            (p) => StringPrototypeToLowerCase(p),
+          ),
+        ).size
     ) {
       throw new DOMException(
         "Can't supply multiple times the same protocol.",
@@ -151,9 +154,7 @@ class WebSocketStream {
           "op_ws_create",
           "new WebSocketStream()",
           this[_url],
-          options.protocols
-            ? ArrayPrototypeJoin(options.protocols, ", ")
-            : "",
+          options.protocols ? ArrayPrototypeJoin(options.protocols, ", ") : "",
           cancelRid,
           headerListFromHeaders(headers),
         ),
@@ -278,7 +279,7 @@ class WebSocketStream {
               ) {
                 if (
                   new Date().getTime() - await this[_closeSent].promise <=
-                  CLOSE_RESPONSE_TIMEOUT
+                    CLOSE_RESPONSE_TIMEOUT
                 ) {
                   return pull(controller);
                 }
