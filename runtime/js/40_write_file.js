@@ -3,8 +3,8 @@ import { core } from "deno:core/01_core.js";
 import { primordials } from "deno:core/00_primordials.js";
 const ops = core.ops;
 import * as abortSignal from "deno:ext/web/03_abort_signal.js";
-const { pathFromURL } = window.__bootstrap.util;
-const { open } = window.__bootstrap.files;
+const { pathFromURL } = globalThis.__bootstrap.util;
+const { open } = globalThis.__bootstrap.files;
 import { ReadableStreamPrototype } from "deno:ext/web/06_streams.js";
 const { ObjectPrototypeIsPrototypeOf } = primordials;
 

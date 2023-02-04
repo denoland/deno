@@ -455,6 +455,7 @@ fn main() {
 
   let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
   let mut esm_files = vec![];
+  esm_files.push(deno_runtime::js::get_40_tty());
   esm_files.push(deno_runtime::js::get_40_write_file());
   esm_files.push(deno_runtime::js::get_41_prompt());
   esm_files.push(deno_runtime::js::get_90_deno_ns());

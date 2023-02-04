@@ -190,6 +190,7 @@ mod not_docs {
     {
       let manifest = env!("CARGO_MANIFEST_DIR");
       let path = PathBuf::from(manifest);
+      esm_files.push(path.join("js").join("40_tty.js"));
       esm_files.push(path.join("js").join("40_write_file.js"));
       esm_files.push(path.join("js").join("41_prompt.js"));
       esm_files.push(path.join("js").join("90_deno_ns.js"));

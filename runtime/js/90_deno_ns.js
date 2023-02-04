@@ -25,13 +25,14 @@ import * as fsEvents from "deno:runtime/js/40_fs_events.js";
 import * as process from "deno:runtime/js/40_process.js";
 import * as readFile from "deno:runtime/js/40_read_file.js";
 import * as signals from "deno:runtime/js/40_signals.js";
+import * as tty from "deno:runtime/js/40_tty.js";
 import * as writeFile from "deno:runtime/js/40_write_file.js";
 
 const denoNs = {
   metrics: core.metrics,
   Process: process.Process,
   run: process.run,
-  isatty: __bootstrap.tty.isatty,
+  isatty: tty.isatty,
   writeFileSync: writeFile.writeFileSync,
   writeFile: writeFile.writeFile,
   writeTextFileSync: writeFile.writeTextFileSync,
@@ -146,7 +147,7 @@ const denoNs = {
   hostname: os.hostname,
   systemMemoryInfo: os.systemMemoryInfo,
   networkInterfaces: os.networkInterfaces,
-  consoleSize: __bootstrap.tty.consoleSize,
+  consoleSize: tty.consoleSize,
   gid: os.gid,
   uid: os.uid,
 };

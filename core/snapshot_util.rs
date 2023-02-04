@@ -111,6 +111,7 @@ pub fn get_js_files(
     })
     .filter(|path| {
       path.extension().unwrap_or_default() == "js"
+        && !path.ends_with("40_tty.js")
         && !path.ends_with("40_write_file.js")
         && !path.ends_with("41_prompt.js")
         && !path.ends_with("90_deno_ns.js")

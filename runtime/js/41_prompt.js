@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { core } from "deno:core/01_core.js";
 import { primordials } from "deno:core/00_primordials.js";
-const { isatty } = globalThis.__bootstrap.tty;
+import { isatty } from "deno:runtime/js/40_tty.js";
 const { stdin } = globalThis.__bootstrap.files;
 const { ArrayPrototypePush, StringPrototypeCharCodeAt, Uint8Array } =
   primordials;
