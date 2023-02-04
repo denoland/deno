@@ -307,7 +307,11 @@ mod ts {
   }
 }
 
-fn create_cli_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>, esm_files: Vec<PathBuf>) {
+fn create_cli_snapshot(
+  snapshot_path: PathBuf,
+  files: Vec<PathBuf>,
+  esm_files: Vec<PathBuf>,
+) {
   let extensions: Vec<Extension> = vec![
     deno_webidl::init(),
     deno_console::init(),
@@ -455,7 +459,10 @@ fn main() {
 
   let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
   let js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js");
-  let esm_files = vec![deno_runtime::js::get_99_main()];
+  let esm_files = vec![
+    deno_runtime::js::get_98_global_scope(),
+    deno_runtime::js::get_99_main(),
+  ];
   create_cli_snapshot(cli_snapshot_path, js_files, esm_files);
 
   #[cfg(target_os = "windows")]

@@ -226,9 +226,7 @@ function formatException(error) {
       })
     }`;
   } else {
-    return `Uncaught ${
-      inspectArgs([error], { colors: !colors.getNoColor() })
-    }`;
+    return `Uncaught ${inspectArgs([error], { colors: !colors.getNoColor() })}`;
   }
 }
 

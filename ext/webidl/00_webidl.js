@@ -1186,3 +1186,26 @@ globalThis.__bootstrap.webidl = {
   setlike,
   setlikeInner,
 };
+
+export {
+  assertBranded,
+  brand,
+  configurePrototype,
+  converters,
+  createBranded,
+  createDictionaryConverter,
+  createEnumConverter,
+  createInterfaceConverter,
+  createNullableConverter,
+  createPromiseConverter,
+  createRecordConverter,
+  createSequenceConverter,
+  illegalConstructor,
+  invokeCallbackFunction,
+  makeException,
+  mixinPairIterable,
+  requiredArguments,
+  setlike,
+  setlikeInner,
+  type,
+};
