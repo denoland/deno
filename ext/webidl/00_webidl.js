@@ -705,7 +705,7 @@
       }
       const esDict = V;
 
-      const idlDict = ObjectAssign({}, defaultValues);
+      const idlDict = { __proto__: null, ...defaultValues };
 
       // NOTE: fast path Null and Undefined.
       if ((V === undefined || V === null) && !hasRequiredKey) {
@@ -729,13 +729,7 @@
           }`;
           const converter = member.converter;
           const idlMemberValue = converter(esMemberValue, { ...opts, context });
-          ObjectDefineProperty(idlDict, key, {
-            __proto__: null,
-            configurable: true,
-            enumerable: true,
-            value: idlMemberValue,
-            writable: true,
-          });
+          idlDict[key] = idlMemberValue;
         } else if (member.required) {
           throw makeException(
             TypeError,
