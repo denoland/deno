@@ -7,7 +7,7 @@ const {
   SymbolFor,
 } = primordials;
 
-const util = globalThis.__bootstrap.util;
+import * as util from "deno:runtime/js/06_util.js";
 import * as location from "deno:ext/web/12_location.js";
 import * as event from "deno:ext/web/02_event.js";
 import * as timers from "deno:ext/web/02_timers.js";
@@ -16,7 +16,7 @@ import * as encoding from "deno:ext/web/08_text_encoding.js";
 import * as console from "deno:ext/console/02_console.js";
 import * as caches from "deno:ext/cache/01_cache.js";
 import * as compression from "deno:ext/web/14_compression.js";
-const worker = globalThis.__bootstrap.worker;
+import * as worker from "deno:runtime/js/11_worker.js";
 import * as performance from "deno:ext/web/15_performance.js";
 import * as crypto from "deno:ext/crypto/00_crypto.js";
 import * as url from "deno:ext/url/00_url.js";

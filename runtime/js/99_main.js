@@ -38,12 +38,12 @@ const {
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
-const util = globalThis.__bootstrap.util;
+import * as util from "deno:runtime/js/06_util.js";
 import * as event from "deno:ext/web/02_event.js";
 import * as location from "deno:ext/web/12_location.js";
-const build = globalThis.__bootstrap.build;
-const version = globalThis.__bootstrap.version;
-const os = globalThis.__bootstrap.os;
+import * as build from "deno:runtime/js/01_build.js";
+import * as version from "deno:runtime/js/01_version.js";
+import * as os from "deno:runtime/js/30_os.js";
 import * as timers from "deno:ext/web/02_timers.js";
 import * as colors from "deno:ext/console/01_colors.js";
 const inspectArgs = globalThis.__bootstrap.console.inspectArgs;
@@ -54,7 +54,7 @@ import * as url from "deno:ext/url/00_url.js";
 const fetch = globalThis.__bootstrap.fetch;
 import * as messagePort from "deno:ext/web/13_message_port.js";
 import { denoNs, denoNsUnstable } from "deno:runtime/js/90_deno_ns.js";
-const errors = globalThis.__bootstrap.errors.errors;
+import { errors } from "deno:runtime/js/01_errors.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import * as domException from "deno:ext/web/01_dom_exception.js";
 import * as flash from "deno:ext/flash/01_http.js";
@@ -474,7 +474,7 @@ function bootstrapMainRuntime(runtimeOptions) {
         ops.op_node_unstable_net_listen_udp,
         ops.op_node_unstable_net_listen_unixpacket,
       ),
-      osUptime: __bootstrap.os.createOsUptime(ops.op_node_unstable_os_uptime),
+      osUptime: os.createOsUptime(ops.op_node_unstable_os_uptime),
     },
   });
 
@@ -516,7 +516,7 @@ function bootstrapMainRuntime(runtimeOptions) {
         ops.op_net_listen_udp,
         ops.op_net_listen_unixpacket,
       ),
-      osUptime: __bootstrap.os.createOsUptime(ops.op_os_uptime),
+      osUptime: os.createOsUptime(ops.op_os_uptime),
     });
   }
 
@@ -619,7 +619,7 @@ function bootstrapWorkerRuntime(
         ops.op_node_unstable_net_listen_udp,
         ops.op_node_unstable_net_listen_unixpacket,
       ),
-      osUptime: __bootstrap.os.createOsUptime(ops.op_node_unstable_os_uptime),
+      osUptime: os.createOsUptime(ops.op_node_unstable_os_uptime),
     },
   });
 
@@ -653,7 +653,7 @@ function bootstrapWorkerRuntime(
         ops.op_net_listen_udp,
         ops.op_net_listen_unixpacket,
       ),
-      osUptime: __bootstrap.os.createOsUptime(ops.op_os_uptime),
+      osUptime: os.createOsUptime(ops.op_os_uptime),
     });
   }
   ObjectDefineProperties(finalDenoNs, {

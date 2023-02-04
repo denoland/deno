@@ -5,7 +5,6 @@
   const core = window.Deno.core;
   const ops = core.ops;
   const { pathFromURL } = window.__bootstrap.util;
-  const { illegalConstructorKey } = window.__bootstrap.webUtil;
   const { add, remove } = window.__bootstrap.abortSignal;
   const {
     ArrayPrototypeMap,
@@ -25,6 +24,8 @@
     ReadableStreamPrototype,
     writableStreamForRid,
   } = window.__bootstrap.streams;
+
+  const illegalConstructorKey = Symbol("illegalConstructorKey");
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 

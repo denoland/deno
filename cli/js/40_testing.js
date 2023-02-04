@@ -2,9 +2,9 @@
 
 import { core } from "deno:core/01_core.js";
 const ops = core.ops;
-const { setExitHandler } = globalThis.__bootstrap.os;
+import { setExitHandler } from "deno:runtime/js/30_os.js";
 import { Console } from "deno:ext/console/02_console.js";
-const { serializePermissions } = globalThis.__bootstrap.permissions;
+import { serializePermissions } from "deno:runtime/js/10_permissions.js";
 import { assert } from "deno:ext/web/00_infra.js";
 import { primordials } from "deno:core/00_primordials.js";
 const {
