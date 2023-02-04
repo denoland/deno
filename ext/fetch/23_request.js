@@ -668,4 +668,5 @@ export {
   Request,
   RequestPrototype,
   toInnerRequest,
+  RequestPrototype,
 };
