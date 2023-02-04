@@ -95,12 +95,4 @@ async function startTls(
   return new TlsConn(rid, remoteAddr, localAddr);
 }
 
-globalThis.__bootstrap.tls = {
-  startTls,
-  listenTls,
-  connectTls,
-  TlsConn,
-  TlsListener,
-};
-
 export { connectTls, listenTls, startTls, TlsConn, TlsListener };
