@@ -190,8 +190,26 @@ mod not_docs {
     {
       let manifest = env!("CARGO_MANIFEST_DIR");
       let path = PathBuf::from(manifest);
+      esm_files.push(path.join("js").join("01_build.js"));
+      esm_files.push(path.join("js").join("01_errors.js"));
+      esm_files.push(path.join("js").join("01_version.js"));
+      esm_files.push(path.join("js").join("06_util.js"));
+      esm_files.push(path.join("js").join("10_permissions.js"));
+      esm_files.push(path.join("js").join("11_workers.js"));
+      esm_files.push(path.join("js").join("12_io.js"));
+      esm_files.push(path.join("js").join("13_buffer.js"));
+      esm_files.push(path.join("js").join("30_fs.js"));
+      esm_files.push(path.join("js").join("30_os.js"));
+      esm_files.push(path.join("js").join("40_diagnostics.js"));
+      esm_files.push(path.join("js").join("40_files.js"));
+      esm_files.push(path.join("js").join("40_fs_events.js"));
+      esm_files.push(path.join("js").join("40_process.js"));
+      esm_files.push(path.join("js").join("40_read_file.js"));
+      esm_files.push(path.join("js").join("40_spawn.js"));
+      esm_files.push(path.join("js").join("40_signals.js"));
       esm_files.push(path.join("js").join("40_tty.js"));
       esm_files.push(path.join("js").join("40_write_file.js"));
+      esm_files.push(path.join("js").join("40_http.js"));
       esm_files.push(path.join("js").join("41_prompt.js"));
       esm_files.push(path.join("js").join("90_deno_ns.js"));
       esm_files.push(path.join("js").join("98_global_scope.js"));

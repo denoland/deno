@@ -95,8 +95,9 @@ function pathFromURL(pathOrUrl) {
   return pathOrUrl;
 }
 
-window.__bootstrap.internals = {
-  ...window.__bootstrap.internals ?? {},
+// TODO(bartlomieju): remove
+globalThis.__bootstrap.internals = {
+  ...globalThis.__bootstrap.internals ?? {},
   pathFromURL,
 };
 

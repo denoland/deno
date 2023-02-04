@@ -58,6 +58,7 @@ import { errors } from "deno:runtime/js/01_errors.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import * as domException from "deno:ext/web/01_dom_exception.js";
 import * as flash from "deno:ext/flash/01_http.js";
+import * as spawn from "deno:runtime/js/40_spawn.js";
 import {
   mainRuntimeGlobalProperties,
   setLanguage,
@@ -459,12 +460,12 @@ function bootstrapMainRuntime(runtimeOptions) {
   // a snapshot
   ObjectAssign(internals, {
     nodeUnstable: {
-      Command: __bootstrap.spawn.createCommand(
-        __bootstrap.spawn.createSpawn(ops.op_node_unstable_spawn_child),
-        __bootstrap.spawn.createSpawnSync(
+      Command: spawn.createCommand(
+        spawn.createSpawn(ops.op_node_unstable_spawn_child),
+        spawn.createSpawnSync(
           ops.op_node_unstable_spawn_sync,
         ),
-        __bootstrap.spawn.createSpawnChild(
+        spawn.createSpawnChild(
           ops.op_node_unstable_spawn_child,
         ),
       ),
@@ -506,10 +507,10 @@ function bootstrapMainRuntime(runtimeOptions) {
     // the op function that needs to be passed will be invalidated by creating
     // a snapshot
     ObjectAssign(finalDenoNs, {
-      Command: __bootstrap.spawn.createCommand(
-        __bootstrap.spawn.createSpawn(ops.op_spawn_child),
-        __bootstrap.spawn.createSpawnSync(ops.op_spawn_sync),
-        __bootstrap.spawn.createSpawnChild(ops.op_spawn_child),
+      Command: spawn.createCommand(
+        spawn.createSpawn(ops.op_spawn_child),
+        spawn.createSpawnSync(ops.op_spawn_sync),
+        spawn.createSpawnChild(ops.op_spawn_child),
       ),
       serve: flash.createServe(ops.op_flash_serve),
       listenDatagram: __bootstrap.net.createListenDatagram(
@@ -604,12 +605,12 @@ function bootstrapWorkerRuntime(
   // a snapshot
   ObjectAssign(internals, {
     nodeUnstable: {
-      Command: __bootstrap.spawn.createCommand(
-        __bootstrap.spawn.createSpawn(ops.op_node_unstable_spawn_child),
-        __bootstrap.spawn.createSpawnSync(
+      Command: spawn.createCommand(
+        spawn.createSpawn(ops.op_node_unstable_spawn_child),
+        spawn.createSpawnSync(
           ops.op_node_unstable_spawn_sync,
         ),
-        __bootstrap.spawn.createSpawnChild(
+        spawn.createSpawnChild(
           ops.op_node_unstable_spawn_child,
         ),
       ),
@@ -643,10 +644,10 @@ function bootstrapWorkerRuntime(
     // the op function that needs to be passed will be invalidated by creating
     // a snapshot
     ObjectAssign(finalDenoNs, {
-      Command: __bootstrap.spawn.createCommand(
-        __bootstrap.spawn.createSpawn(ops.op_spawn_child),
-        __bootstrap.spawn.createSpawnSync(ops.op_spawn_sync),
-        __bootstrap.spawn.createSpawnChild(ops.op_spawn_child),
+      Command: spawn.createCommand(
+        spawn.createSpawn(ops.op_spawn_child),
+        spawn.createSpawnSync(ops.op_spawn_sync),
+        spawn.createSpawnChild(ops.op_spawn_child),
       ),
       serve: flash.createServe(ops.op_flash_serve),
       listenDatagram: __bootstrap.net.createListenDatagram(

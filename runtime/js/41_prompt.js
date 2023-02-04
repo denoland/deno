@@ -2,7 +2,7 @@
 import { core } from "deno:core/01_core.js";
 import { primordials } from "deno:core/00_primordials.js";
 import { isatty } from "deno:runtime/js/40_tty.js";
-const { stdin } = globalThis.__bootstrap.files;
+import { stdin } from "deno:runtime/js/40_files.js";
 const { ArrayPrototypePush, StringPrototypeCharCodeAt, Uint8Array } =
   primordials;
 const LF = StringPrototypeCharCodeAt("\n", 0);

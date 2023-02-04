@@ -16,7 +16,7 @@ import * as errors from "deno:runtime/js/01_errors.js";
 import * as version from "deno:runtime/js/01_version.js";
 import * as permissions from "deno:runtime/js/10_permissions.js";
 import * as io from "deno:runtime/js/12_io.js";
-import * as buffer from "deno:runtime/js/13_io.js";
+import * as buffer from "deno:runtime/js/13_buffer.js";
 import * as fs from "deno:runtime/js/30_fs.js";
 import * as os from "deno:runtime/js/30_os.js";
 import * as diagnostics from "deno:runtime/js/40_diagnostics.js";
@@ -27,6 +27,9 @@ import * as readFile from "deno:runtime/js/40_read_file.js";
 import * as signals from "deno:runtime/js/40_signals.js";
 import * as tty from "deno:runtime/js/40_tty.js";
 import * as writeFile from "deno:runtime/js/40_write_file.js";
+import * as spawn from "deno:runtime/js/40_spawn.js";
+// TODO(bartlomieju): this is funky we have two `http` imports
+import * as httpRuntime from "deno:runtime/js/40_http.js";
 
 const denoNs = {
   metrics: core.metrics,
@@ -132,7 +135,7 @@ const denoNs = {
   Permissions: permissions.Permissions,
   PermissionStatus: permissions.PermissionStatus,
   // TODO(bartlomieju): why is this not in one of extensions?
-  serveHttp: __bootstrap.http.serveHttp,
+  serveHttp: httpRuntime.serveHttp,
   resolveDns: net.resolveDns,
   upgradeWebSocket: http.upgradeWebSocket,
   utime: fs.utime,
@@ -169,9 +172,9 @@ const denoNsUnstable = {
   flockSync: fs.flockSync,
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
-  Child: __bootstrap.spawn.Child,
-  ChildProcess: __bootstrap.spawn.ChildProcess,
-  Command: __bootstrap.spawn.Command,
+  Child: spawn.Child,
+  ChildProcess: spawn.ChildProcess,
+  Command: spawn.Command,
   upgradeHttp: http.upgradeHttp,
   upgradeHttpRaw: flash.upgradeHttpRaw,
 };

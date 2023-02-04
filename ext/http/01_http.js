@@ -468,11 +468,4 @@ function upgradeHttp(req) {
   return req[_deferred].promise;
 }
 
-globalThis.__bootstrap.http = {
-  HttpConn,
-  upgradeWebSocket,
-  upgradeHttp,
-  _ws,
-};
-
 export { _ws, HttpConn, upgradeHttp, upgradeWebSocket };

@@ -9,7 +9,9 @@ const {
   SymbolFor,
 } = primordials;
 
-const windowDispatchEvent = EventTarget.prototype.dispatchEvent.bind(window);
+const windowDispatchEvent = EventTarget.prototype.dispatchEvent.bind(
+  globalThis,
+);
 
 function loadavg() {
   return ops.op_loadavg();
@@ -61,7 +63,7 @@ function exit(code) {
   }
 
   // Dispatches `unload` only when it's not dispatched yet.
-  if (!window[SymbolFor("isUnloadDispatched")]) {
+  if (!globalThis[SymbolFor("isUnloadDispatched")]) {
     // Invokes the `unload` hooks before exiting
     // ref: https://github.com/denoland/deno/issues/3603
     windowDispatchEvent(new Event("unload"));

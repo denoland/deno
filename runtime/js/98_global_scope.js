@@ -16,7 +16,7 @@ import * as encoding from "deno:ext/web/08_text_encoding.js";
 import * as console from "deno:ext/console/02_console.js";
 import * as caches from "deno:ext/cache/01_cache.js";
 import * as compression from "deno:ext/web/14_compression.js";
-import * as worker from "deno:runtime/js/11_worker.js";
+import * as worker from "deno:runtime/js/11_workers.js";
 import * as performance from "deno:ext/web/15_performance.js";
 import * as crypto from "deno:ext/crypto/00_crypto.js";
 import * as url from "deno:ext/url/00_url.js";

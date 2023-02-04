@@ -133,7 +133,7 @@ class Worker extends EventTarget {
     // TODO(nayeemrmn): It's not correct to use `e.fileName` to detect user
     // errors. It won't be there for non-awaited async ops for example.
     if (e.fileName && !event.defaultPrevented) {
-      window.dispatchEvent(event);
+      globalThis.dispatchEvent(event);
     }
 
     return event.defaultPrevented;
