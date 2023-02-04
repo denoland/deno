@@ -161,11 +161,13 @@ Deno.test(function fileConstructorOptionsValidation() {
 
   [{}, [], () => {}, Number, new Number(), new String(), new Boolean()].forEach(
     (options) => {
-      assert.strictEqual(new File([], "", options as any).lastModified, 3);
+      // @ts-ignore We want to test an options object that doesn't meet the typical types.
+      assert.strictEqual(new File([], "", options).lastModified, 3);
     },
   );
   [0, "", true, Symbol(), 0n].forEach((options) => {
-    assert.throws(() => new File([], "", options as any), TypeError);
+    // @ts-ignore We want to test an options object that doesn't meet the typical types.
+    assert.throws(() => new File([], "", options), TypeError);
   });
 
   // @ts-ignore cleaning up.
