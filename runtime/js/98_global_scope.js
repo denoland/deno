@@ -14,7 +14,7 @@ import * as timers from "deno:ext/web/02_timers.js";
 import * as base64 from "deno:ext/web/05_base64.js";
 import * as encoding from "deno:ext/web/08_text_encoding.js";
 import * as console from "deno:ext/console/02_console.js";
-const caches = globalThis.__bootstrap.caches;
+import * as caches from "deno:ext/cache/01_cache.js";
 import * as compression from "deno:ext/web/14_compression.js";
 const worker = globalThis.__bootstrap.worker;
 import * as performance from "deno:ext/web/15_performance.js";
