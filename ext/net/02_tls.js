@@ -3,7 +3,7 @@
 import { core } from "deno:core/01_core.js";
 const ops = core.ops;
 import { Conn, Listener } from "deno:ext/net/01_net.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const { TypeError } = primordials;
 
 function opStartTls(args) {

@@ -2,7 +2,7 @@
 
 import { core } from "deno:core/01_core.js";
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   ArrayIsArray,
   ObjectPrototypeIsPrototypeOf,

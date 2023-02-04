@@ -30,7 +30,7 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "deno:ext/fetch/20_headers.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypePush,

@@ -12,7 +12,7 @@
 
 import { core } from "deno:core/01_core.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 import { forgivingBase64Encode } from "deno:ext/web/00_infra.js";
 import { EventTarget, ProgressEvent } from "deno:ext/web/02_event.js";
 import { decode, TextDecoder } from "deno:ext/web/08_text_encoding.js";

@@ -6,7 +6,7 @@ import { FsFile } from "deno:runtime/js/40_files.js";
 import { readAll } from "deno:runtime/js/12_io.js";
 import { pathFromURL } from "deno:runtime/js/06_util.js";
 import { assert } from "deno:ext/web/00_infra.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,

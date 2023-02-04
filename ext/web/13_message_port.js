@@ -16,7 +16,7 @@ import {
   setEventTargetData,
 } from "deno:ext/web/02_event.js";
 import { DOMException } from "deno:ext/web/01_dom_exception.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   ArrayBufferPrototype,
   ArrayPrototypeFilter,

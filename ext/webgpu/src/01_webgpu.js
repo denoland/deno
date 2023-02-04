@@ -7,7 +7,7 @@
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
 import { core } from "deno:core/01_core.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import { EventTarget } from "deno:ext/web/02_event.js";
 import { DOMException } from "deno:ext/web/01_dom_exception.js";

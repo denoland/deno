@@ -29,7 +29,7 @@ import {
 } from "deno:ext/fetch/20_headers.js";
 import { HttpClientPrototype } from "deno:ext/fetch/22_http_client.js";
 import * as abortSignal from "deno:ext/web/03_abort_signal.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,

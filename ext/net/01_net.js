@@ -8,7 +8,7 @@ import {
   readableStreamForRidUnrefableUnref,
   writableStreamForRid,
 } from "deno:ext/web/06_streams.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   Error,
   ObjectPrototypeIsPrototypeOf,

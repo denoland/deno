@@ -8,7 +8,7 @@ delete Object.prototype.__proto__;
 delete Intl.v8BreakIterator;
 
 import { core } from "deno:core/01_core.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const ops = core.ops;
 const {
   ArrayPrototypeIndexOf,

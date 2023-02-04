@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { core } from "deno:core/01_core.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const ops = core.ops;
 import { pathFromURL } from "deno:runtime/js/06_util.js";
 import { add, remove } from "deno:ext/web/03_abort_signal.js";

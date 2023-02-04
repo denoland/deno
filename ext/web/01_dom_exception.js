@@ -7,7 +7,7 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   ArrayPrototypeSlice,
   Error,

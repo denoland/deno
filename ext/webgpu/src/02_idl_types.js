@@ -36,7 +36,7 @@ import {
   GPUTextureView,
   GPUValidationError,
 } from "deno:ext/webgpu/01_webgpu.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const { SymbolIterator, TypeError } = primordials;
 
 // This needs to be initialized after all of the base classes are implemented,

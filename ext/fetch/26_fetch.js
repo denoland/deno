@@ -31,7 +31,7 @@ import {
   toInnerResponse,
 } from "deno:ext/fetch/23_response.js";
 import * as abortSignal from "deno:ext/web/03_abort_signal.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   ArrayPrototypePush,
   ArrayPrototypeSplice,

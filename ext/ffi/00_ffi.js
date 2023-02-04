@@ -3,7 +3,7 @@
 import { core } from "deno:core/01_core.js";
 const ops = core.ops;
 const __bootstrap = globalThis.__bootstrap;
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypeJoin,

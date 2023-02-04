@@ -18,7 +18,7 @@ import {
   MessageEvent,
 } from "deno:ext/web/02_event.js";
 import { Blob, BlobPrototype } from "deno:ext/web/09_file.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   ArrayBufferPrototype,
   ArrayBufferIsView,

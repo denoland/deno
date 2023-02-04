@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { core } from "deno:core/01_core.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 import { BlobPrototype } from "deno:ext/web/09_file.js";
 import { TcpConn } from "deno:ext/net/01_net.js";
 import { toInnerResponse } from "deno:ext/fetch/23_response.js";

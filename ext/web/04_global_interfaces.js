@@ -4,7 +4,7 @@
 /// <reference path="../../core/internal.d.ts" />
 
 import { EventTarget } from "deno:ext/web/02_event.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   Symbol,
   SymbolToStringTag,

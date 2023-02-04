@@ -13,7 +13,7 @@
 import { core } from "deno:core/01_core.js";
 const ops = core.ops;
 import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   ArrayBufferPrototype,
   ArrayBufferPrototypeSlice,

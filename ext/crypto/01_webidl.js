@@ -4,7 +4,7 @@
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import { CryptoKey } from "deno:ext/crypto/00_crypto.js";
 const {

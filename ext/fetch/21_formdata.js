@@ -17,7 +17,7 @@ import {
   File,
   FilePrototype,
 } from "deno:ext/web/09_file.js";
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,

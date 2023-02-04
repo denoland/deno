@@ -2,7 +2,7 @@
 
 import { core } from "deno:core/01_core.js";
 const { BadResource, Interrupted } = core;
-import { primordials } from "deno:core/00_primordials.js";
+import primordials from "deno:core/00_primordials.js";
 const { Error } = primordials;
 
 class NotFound extends Error {
