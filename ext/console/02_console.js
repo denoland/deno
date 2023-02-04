@@ -2378,3 +2378,14 @@ export {
   quoteString,
   wrapConsole,
 };
+
+export {
+  Console,
+  createFilteredInspectProxy,
+  CSI,
+  customInspect,
+  inspect,
+  inspectArgs,
+  quoteString,
+  wrapConsole,
+};
