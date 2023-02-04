@@ -25,16 +25,17 @@ import * as fsEvents from "deno:runtime/js/40_fs_events.js";
 import * as process from "deno:runtime/js/40_process.js";
 import * as readFile from "deno:runtime/js/40_read_file.js";
 import * as signals from "deno:runtime/js/40_signals.js";
+import * as writeFile from "deno:runtime/js/40_write_file.js";
 
 const denoNs = {
   metrics: core.metrics,
   Process: process.Process,
   run: process.run,
   isatty: __bootstrap.tty.isatty,
-  writeFileSync: __bootstrap.writeFile.writeFileSync,
-  writeFile: __bootstrap.writeFile.writeFile,
-  writeTextFileSync: __bootstrap.writeFile.writeTextFileSync,
-  writeTextFile: __bootstrap.writeFile.writeTextFile,
+  writeFileSync: writeFile.writeFileSync,
+  writeFile: writeFile.writeFile,
+  writeTextFileSync: writeFile.writeTextFileSync,
+  writeTextFile: writeFile.writeTextFile,
   readTextFile: readFile.readTextFile,
   readTextFileSync: readFile.readTextFileSync,
   readFile: readFile.readFile,

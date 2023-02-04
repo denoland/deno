@@ -35,6 +35,12 @@ pub fn deno_isolate_init() -> Snapshot {
   Snapshot::Static(&RUNTIME_SNAPSHOT)
 }
 
+pub fn get_40_write_file() -> PathBuf {
+  let manifest = env!("CARGO_MANIFEST_DIR");
+  let path = PathBuf::from(manifest);
+  path.join("js").join("40_write_file.js")
+}
+
 pub fn get_41_prompt() -> PathBuf {
   let manifest = env!("CARGO_MANIFEST_DIR");
   let path = PathBuf::from(manifest);
