@@ -25,7 +25,8 @@ const headers = globalThis.__bootstrap.headers;
 import * as streams from "deno:ext/web/06_streams.js";
 import * as fileReader from "deno:ext/web/10_filereader.js";
 import * as webgpu from "deno:ext/webgpu/01_webgpu.js";
-const webSocket = globalThis.__bootstrap.webSocket;
+import * as webSocket from "deno:ext/websocket/01_websocket.js";
+import * as webSocketStream from "deno:ext/websocket/02_websocketstream.js";
 const broadcastChannel = globalThis.__bootstrap.broadcastChannel;
 import * as file from "deno:ext/web/09_file.js";
 const formData = globalThis.__bootstrap.formData;
@@ -138,7 +139,7 @@ const windowOrWorkerGlobalScope = {
 
 const unstableWindowOrWorkerGlobalScope = {
   BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
-  WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
+  WebSocketStream: util.nonEnumerable(webSocketStream.WebSocketStream),
 
   GPU: util.nonEnumerable(webgpu.GPU),
   GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
