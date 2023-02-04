@@ -11,7 +11,11 @@ const ops = core.ops;
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import { primordials } from "deno:core/00_primordials.js";
 const { Symbol } = primordials;
-import { _device, assertDevice, createGPUTexture } from "deno:ext/webgpu/01_webgpu.js";
+import {
+  _device,
+  assertDevice,
+  createGPUTexture,
+} from "deno:ext/webgpu/01_webgpu.js";
 
 const _surfaceRid = Symbol("[[surfaceRid]]");
 const _configuration = Symbol("[[configuration]]");
@@ -139,7 +143,4 @@ function createCanvasContext(options) {
   return canvasContext;
 }
 
-export {
-  GPUCanvasContext,
-  createCanvasContext,
-}
+export { createCanvasContext, GPUCanvasContext };

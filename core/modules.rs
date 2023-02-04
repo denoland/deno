@@ -306,11 +306,15 @@ impl ModuleLoader for InternalModuleLoader {
     if kind == ResolutionKind::Import {
       let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
       if specifier.scheme() == "deno" {
-        return if referrer == "." || referrer_specifier.unwrap().scheme() == "deno" {
+        return if referrer == "."
+          || referrer_specifier.unwrap().scheme() == "deno"
+        {
           Ok(specifier)
         } else {
-          Err(generic_error("Cannot load internal module from external code"))
-        }
+          Err(generic_error(
+            "Cannot load internal module from external code",
+          ))
+        };
       }
     }
 
@@ -329,8 +333,6 @@ impl ModuleLoader for InternalModuleLoader {
       .boxed_local()
   }
 }
-
-
 
 /// Basic file system module loader.
 ///

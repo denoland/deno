@@ -813,10 +813,11 @@ impl JsRuntime {
       {
         let js_files = ext.init_esm();
         for (filename, source) in js_files {
-          let id = futures::executor::block_on(
-            self.load_side_module(&ModuleSpecifier::parse(filename).unwrap(), Some(source.to_string())),
-          )
-            .unwrap();
+          let id = futures::executor::block_on(self.load_side_module(
+            &ModuleSpecifier::parse(filename).unwrap(),
+            Some(source.to_string()),
+          ))
+          .unwrap();
           let receiver = self.mod_evaluate(id);
           futures::executor::block_on(self.run_event_loop(false)).unwrap();
           let r = futures::executor::block_on(receiver).unwrap();

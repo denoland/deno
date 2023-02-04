@@ -459,7 +459,7 @@ const SafePromise = makeSafe(
 );
 
 primordials.ArrayPrototypeToString = (thisArray) =>
-    ArrayPrototypeJoin(thisArray);
+  ArrayPrototypeJoin(thisArray);
 
 primordials.TypedArrayPrototypeToString = (thisArray) =>
   TypedArrayPrototypeJoin(thisArray);

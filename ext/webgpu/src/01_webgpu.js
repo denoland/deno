@@ -9,9 +9,8 @@
 import { core } from "deno:core/01_core.js";
 import { primordials } from "deno:core/00_primordials.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
-
-const eventTarget = globalThis.__bootstrap.eventTarget;
-const { DOMException } = globalThis.__bootstrap.domException;
+import { EventTarget } from "deno:ext/web/02_event.js";
+import { DOMException } from "deno:ext/web/01_dom_exception.js";
 const {
   ArrayBuffer,
   ArrayBufferIsView,
@@ -854,7 +853,7 @@ function createGPUDevice(label, inner, queue) {
   return device;
 }
 
-class GPUDevice extends eventTarget.EventTarget {
+class GPUDevice extends EventTarget {
   /** @type {InnerGPUDevice} */
   [_device];
 
@@ -1803,12 +1802,10 @@ class GPUBuffer {
       prefix,
       context: "Argument 2",
     });
-    size = size === undefined
-      ? undefined
-      : webidl.converters.GPUSize64(size, {
-        prefix,
-        context: "Argument 3",
-      });
+    size = size === undefined ? undefined : webidl.converters.GPUSize64(size, {
+      prefix,
+      context: "Argument 3",
+    });
     const device = assertDevice(this, { prefix, context: "this" });
     const bufferRid = assertResource(this, { prefix, context: "this" });
     /** @type {number} */
@@ -2751,8 +2748,7 @@ class GPUCommandEncoder {
    */
   beginRenderPass(descriptor) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
-    const prefix =
-      "Failed to execute 'beginRenderPass' on 'GPUCommandEncoder'";
+    const prefix = "Failed to execute 'beginRenderPass' on 'GPUCommandEncoder'";
     webidl.requiredArguments(arguments.length, 1, { prefix });
     descriptor = webidl.converters.GPURenderPassDescriptor(descriptor, {
       prefix,
@@ -3083,9 +3079,7 @@ class GPUCommandEncoder {
       {
         texture: sourceTextureRid,
         mipLevel: source.mipLevel,
-        origin: source.origin
-          ? normalizeGPUOrigin3D(source.origin)
-          : undefined,
+        origin: source.origin ? normalizeGPUOrigin3D(source.origin) : undefined,
         aspect: source.aspect,
       },
       {
@@ -3147,9 +3141,7 @@ class GPUCommandEncoder {
       {
         texture: sourceTextureRid,
         mipLevel: source.mipLevel,
-        origin: source.origin
-          ? normalizeGPUOrigin3D(source.origin)
-          : undefined,
+        origin: source.origin ? normalizeGPUOrigin3D(source.origin) : undefined,
         aspect: source.aspect,
       },
       {
@@ -3209,8 +3201,7 @@ class GPUCommandEncoder {
    */
   pushDebugGroup(groupLabel) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
-    const prefix =
-      "Failed to execute 'pushDebugGroup' on 'GPUCommandEncoder'";
+    const prefix = "Failed to execute 'pushDebugGroup' on 'GPUCommandEncoder'";
     webidl.requiredArguments(arguments.length, 1, { prefix });
     groupLabel = webidl.converters.USVString(groupLabel, {
       prefix,
@@ -3272,8 +3263,7 @@ class GPUCommandEncoder {
    */
   writeTimestamp(querySet, queryIndex) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
-    const prefix =
-      "Failed to execute 'writeTimestamp' on 'GPUCommandEncoder'";
+    const prefix = "Failed to execute 'writeTimestamp' on 'GPUCommandEncoder'";
     webidl.requiredArguments(arguments.length, 2, { prefix });
     querySet = webidl.converters.GPUQuerySet(querySet, {
       prefix,
@@ -3320,8 +3310,7 @@ class GPUCommandEncoder {
     destinationOffset,
   ) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
-    const prefix =
-      "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder'";
+    const prefix = "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder'";
     webidl.requiredArguments(arguments.length, 5, { prefix });
     querySet = webidl.converters.GPUQuerySet(querySet, {
       prefix,
@@ -3465,8 +3454,7 @@ class GPURenderPassEncoder {
    */
   setViewport(x, y, width, height, minDepth, maxDepth) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
-    const prefix =
-      "Failed to execute 'setViewport' on 'GPUComputePassEncoder'";
+    const prefix = "Failed to execute 'setViewport' on 'GPUComputePassEncoder'";
     webidl.requiredArguments(arguments.length, 6, { prefix });
     x = webidl.converters.float(x, { prefix, context: "Argument 1" });
     y = webidl.converters.float(y, { prefix, context: "Argument 2" });
@@ -3773,8 +3761,7 @@ class GPURenderPassEncoder {
     dynamicOffsetsDataLength,
   ) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
-    const prefix =
-      "Failed to execute 'setBindGroup' on 'GPURenderPassEncoder'";
+    const prefix = "Failed to execute 'setBindGroup' on 'GPURenderPassEncoder'";
     const device = assertDevice(this[_encoder], {
       prefix,
       context: "encoder referenced by this",
@@ -3882,8 +3869,7 @@ class GPURenderPassEncoder {
    */
   setPipeline(pipeline) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
-    const prefix =
-      "Failed to execute 'setPipeline' on 'GPURenderPassEncoder'";
+    const prefix = "Failed to execute 'setPipeline' on 'GPURenderPassEncoder'";
     webidl.requiredArguments(arguments.length, 1, { prefix });
     pipeline = webidl.converters.GPURenderPipeline(pipeline, {
       prefix,
@@ -4081,8 +4067,7 @@ class GPURenderPassEncoder {
     firstInstance = 0,
   ) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
-    const prefix =
-      "Failed to execute 'drawIndexed' on 'GPURenderPassEncoder'";
+    const prefix = "Failed to execute 'drawIndexed' on 'GPURenderPassEncoder'";
     webidl.requiredArguments(arguments.length, 1, { prefix });
     indexCount = webidl.converters.GPUSize32(indexCount, {
       prefix,
@@ -4129,8 +4114,7 @@ class GPURenderPassEncoder {
    */
   drawIndirect(indirectBuffer, indirectOffset) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
-    const prefix =
-      "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder'";
+    const prefix = "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder'";
     webidl.requiredArguments(arguments.length, 2, { prefix });
     indirectBuffer = webidl.converters.GPUBuffer(indirectBuffer, {
       prefix,
@@ -4171,8 +4155,7 @@ class GPURenderPassEncoder {
    */
   drawIndexedIndirect(indirectBuffer, indirectOffset) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
-    const prefix =
-      "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder'";
+    const prefix = "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder'";
     webidl.requiredArguments(arguments.length, 2, { prefix });
     indirectBuffer = webidl.converters.GPUBuffer(indirectBuffer, {
       prefix,
@@ -4258,8 +4241,7 @@ class GPUComputePassEncoder {
    */
   setPipeline(pipeline) {
     webidl.assertBranded(this, GPUComputePassEncoderPrototype);
-    const prefix =
-      "Failed to execute 'setPipeline' on 'GPUComputePassEncoder'";
+    const prefix = "Failed to execute 'setPipeline' on 'GPUComputePassEncoder'";
     webidl.requiredArguments(arguments.length, 1, { prefix });
     pipeline = webidl.converters.GPUComputePipeline(pipeline, {
       prefix,
@@ -5226,38 +5208,38 @@ export {
   _device,
   assertDevice,
   createGPUTexture,
-  gpu,
   GPU,
+  gpu,
   GPUAdapter,
   GPUAdapterInfo,
-  GPUSupportedLimits,
-  GPUSupportedFeatures,
-  GPUDevice,
-  GPUDeviceLostInfo,
-  GPUQueue,
+  GPUBindGroup,
+  GPUBindGroupLayout,
   GPUBuffer,
   GPUBufferUsage,
+  GPUColorWrite,
+  GPUCommandBuffer,
+  GPUCommandEncoder,
+  GPUComputePassEncoder,
+  GPUComputePipeline,
+  GPUDevice,
+  GPUDeviceLostInfo,
+  GPUError,
   GPUMapMode,
-  GPUTextureUsage,
-  GPUTexture,
-  GPUTextureView,
-  GPUSampler,
-  GPUBindGroupLayout,
+  GPUOutOfMemoryError,
   GPUPipelineLayout,
-  GPUBindGroup,
+  GPUQuerySet,
+  GPUQueue,
+  GPURenderBundle,
+  GPURenderBundleEncoder,
+  GPURenderPassEncoder,
+  GPURenderPipeline,
+  GPUSampler,
   GPUShaderModule,
   GPUShaderStage,
-  GPUComputePipeline,
-  GPURenderPipeline,
-  GPUColorWrite,
-  GPUCommandEncoder,
-  GPURenderPassEncoder,
-  GPUComputePassEncoder,
-  GPUCommandBuffer,
-  GPURenderBundleEncoder,
-  GPURenderBundle,
-  GPUQuerySet,
-  GPUError,
+  GPUSupportedFeatures,
+  GPUSupportedLimits,
+  GPUTexture,
+  GPUTextureUsage,
+  GPUTextureView,
   GPUValidationError,
-  GPUOutOfMemoryError
-}
+};

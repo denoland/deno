@@ -742,7 +742,7 @@ const QUOTES = ['"', "'", "`"];
 function quoteString(string) {
   const quote =
     ArrayPrototypeFind(QUOTES, (c) => !StringPrototypeIncludes(string, c)) ??
-    QUOTES[0];
+      QUOTES[0];
   const escapePattern = new RegExp(`(?=[${quote}\\\\])`, "g");
   string = StringPrototypeReplace(string, escapePattern, "\\");
   string = replaceEscapeSequences(string);
@@ -814,10 +814,9 @@ function inspectValueWithQuotes(
   value,
   inspectOptions,
 ) {
-  const abbreviateSize =
-    typeof inspectOptions.strAbbreviateSize === "undefined"
-      ? STR_ABBREVIATE_SIZE
-      : inspectOptions.strAbbreviateSize;
+  const abbreviateSize = typeof inspectOptions.strAbbreviateSize === "undefined"
+    ? STR_ABBREVIATE_SIZE
+    : inspectOptions.strAbbreviateSize;
   const green = maybeColor(colors.green, inspectOptions);
   switch (typeof value) {
     case "string": {
@@ -1141,7 +1140,7 @@ function inspectRawObject(
   let shouldShowDisplayName = false;
   let displayName = value[
     SymbolToStringTag
-    ];
+  ];
   if (!displayName) {
     displayName = getClassInstanceName(value);
   }
@@ -1803,7 +1802,7 @@ function cssToAnsi(css, prevCss = null) {
   }
   if (
     ArrayPrototypeIncludes(css.textDecorationLine, "line-through") !=
-    ArrayPrototypeIncludes(prevCss.textDecorationLine, "line-through")
+      ArrayPrototypeIncludes(prevCss.textDecorationLine, "line-through")
   ) {
     if (ArrayPrototypeIncludes(css.textDecorationLine, "line-through")) {
       ansi += "\x1b[9m";
@@ -1813,7 +1812,7 @@ function cssToAnsi(css, prevCss = null) {
   }
   if (
     ArrayPrototypeIncludes(css.textDecorationLine, "overline") !=
-    ArrayPrototypeIncludes(prevCss.textDecorationLine, "overline")
+      ArrayPrototypeIncludes(prevCss.textDecorationLine, "overline")
   ) {
     if (ArrayPrototypeIncludes(css.textDecorationLine, "overline")) {
       ansi += "\x1b[53m";
@@ -1823,7 +1822,7 @@ function cssToAnsi(css, prevCss = null) {
   }
   if (
     ArrayPrototypeIncludes(css.textDecorationLine, "underline") !=
-    ArrayPrototypeIncludes(prevCss.textDecorationLine, "underline")
+      ArrayPrototypeIncludes(prevCss.textDecorationLine, "underline")
   ) {
     if (ArrayPrototypeIncludes(css.textDecorationLine, "underline")) {
       ansi += "\x1b[4m";
@@ -2004,7 +2003,7 @@ class Console {
   dir = (obj = undefined, options = {}) => {
     this.#printFunc(
       inspectArgs([obj], { ...getConsoleInspectOptions(), ...options }) +
-      "\n",
+        "\n",
       1,
     );
   };
@@ -2081,7 +2080,7 @@ class Console {
     if (properties !== undefined && !ArrayIsArray(properties)) {
       throw new Error(
         "The 'properties' argument must be of type Array. " +
-        "Received type string",
+          "Received type string",
       );
     }
 
@@ -2373,4 +2372,15 @@ globalThis.__bootstrap.console = {
   wrapConsole,
   createFilteredInspectProxy,
   quoteString,
+};
+
+export {
+  Console,
+  createFilteredInspectProxy,
+  CSI,
+  customInspect,
+  inspect,
+  inspectArgs,
+  quoteString,
+  wrapConsole,
 };

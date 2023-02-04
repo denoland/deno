@@ -34,7 +34,6 @@ const {
 } = primordials;
 const { ops } = globalThis.Deno.core;
 
-
 const errorMap = {};
 // Builtin v8 / JS errors
 registerErrorClass("Error", Error);

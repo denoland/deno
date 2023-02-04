@@ -1,40 +1,40 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = Deno.core;
+import { core } from "deno:core/01_core.js";
+import { primordials } from "deno:core/00_primordials.js";
 const {
   ObjectDefineProperties,
   SymbolFor,
-} = globalThis.__bootstrap.primordials;
+} = primordials;
 
 const util = globalThis.__bootstrap.util;
-const location = globalThis.__bootstrap.location;
-const event = globalThis.__bootstrap.event;
-const eventTarget = globalThis.__bootstrap.eventTarget;
-const timers = globalThis.__bootstrap.timers;
-const base64 = globalThis.__bootstrap.base64;
-const encoding = globalThis.__bootstrap.encoding;
-const Console = globalThis.__bootstrap.console.Console;
+import * as location from "deno:ext/web/12_location.js";
+import * as event from "deno:ext/web/02_event.js";
+import * as timers from "deno:ext/web/02_timers.js";
+import * as base64 from "deno:ext/web/05_base64.js";
+import * as encoding from "deno:ext/web/08_text_encoding.js";
+import * as console from "deno:ext/console/02_console.js";
 const caches = globalThis.__bootstrap.caches;
-const compression = globalThis.__bootstrap.compression;
+import * as compression from "deno:ext/web/14_compression.js";
 const worker = globalThis.__bootstrap.worker;
-const performance = globalThis.__bootstrap.performance;
+import * as performance from "deno:ext/web/15_performance.js";
 import * as crypto from "deno:ext/crypto/00_crypto.js";
 import * as url from "deno:ext/url/00_url.js";
 import * as urlPattern from "deno:ext/url/01_urlpattern.js";
 const headers = globalThis.__bootstrap.headers;
-const streams = globalThis.__bootstrap.streams;
-const fileReader = globalThis.__bootstrap.fileReader;
+import * as streams from "deno:ext/web/06_streams.js";
+import * as fileReader from "deno:ext/web/10_filereader.js";
 import * as webgpu from "deno:ext/webgpu/01_webgpu.js";
 const webSocket = globalThis.__bootstrap.webSocket;
 const broadcastChannel = globalThis.__bootstrap.broadcastChannel;
-const file = globalThis.__bootstrap.file;
+import * as file from "deno:ext/web/09_file.js";
 const formData = globalThis.__bootstrap.formData;
 const fetch = globalThis.__bootstrap.fetch;
-const messagePort = globalThis.__bootstrap.messagePort;
+import * as messagePort from "deno:ext/web/13_message_port.js";
 const webidl = globalThis.__bootstrap.webidl;
-const domException = globalThis.__bootstrap.domException;
-const abortSignal = globalThis.__bootstrap.abortSignal;
-const globalInterfaces = globalThis.__bootstrap.globalInterfaces;
+import * as domException from "deno:ext/web/01_dom_exception.js";
+import * as abortSignal from "deno:ext/web/03_abort_signal.js";
+import * as globalInterfaces from "deno:ext/web/04_global_interfaces.js";
 const webStorage = globalThis.__bootstrap.webStorage;
 const prompt = globalThis.__bootstrap.prompt;
 
@@ -57,7 +57,7 @@ const windowOrWorkerGlobalScope = {
   DOMException: util.nonEnumerable(domException.DOMException),
   ErrorEvent: util.nonEnumerable(event.ErrorEvent),
   Event: util.nonEnumerable(event.Event),
-  EventTarget: util.nonEnumerable(eventTarget.EventTarget),
+  EventTarget: util.nonEnumerable(event.EventTarget),
   File: util.nonEnumerable(file.File),
   FileReader: util.nonEnumerable(fileReader.FileReader),
   FormData: util.nonEnumerable(formData.FormData),
@@ -121,7 +121,7 @@ const windowOrWorkerGlobalScope = {
   CacheStorage: util.nonEnumerable(caches.CacheStorage),
   Cache: util.nonEnumerable(caches.Cache),
   console: util.nonEnumerable(
-    new Console((msg, level) => core.print(msg, level > 1)),
+    new console.Console((msg, level) => core.print(msg, level > 1)),
   ),
   crypto: util.readOnly(crypto.crypto),
   Crypto: util.nonEnumerable(crypto.Crypto),

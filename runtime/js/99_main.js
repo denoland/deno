@@ -39,29 +39,25 @@ const {
   WeakMapPrototypeSet,
 } = primordials;
 const util = globalThis.__bootstrap.util;
-const event = globalThis.__bootstrap.event;
-const eventTarget = globalThis.__bootstrap.eventTarget;
-const location = globalThis.__bootstrap.location;
+import * as event from "deno:ext/web/02_event.js";
+import * as location from "deno:ext/web/12_location.js";
 const build = globalThis.__bootstrap.build;
 const version = globalThis.__bootstrap.version;
 const os = globalThis.__bootstrap.os;
-const timers = globalThis.__bootstrap.timers;
+import * as timers from "deno:ext/web/02_timers.js";
 import * as colors from "deno:ext/console/01_colors.js";
 const inspectArgs = globalThis.__bootstrap.console.inspectArgs;
 const quoteString = globalThis.__bootstrap.console.quoteString;
 const internals = globalThis.__bootstrap.internals;
-const performance = globalThis.__bootstrap.performance;
-const url = globalThis.__bootstrap.url;
+import * as performance from "deno:ext/web/15_performance.js";
+import * as url from "deno:ext/url/00_url.js";
 const fetch = globalThis.__bootstrap.fetch;
-const messagePort = globalThis.__bootstrap.messagePort;
+import * as messagePort from "deno:ext/web/13_message_port.js";
 const denoNs = globalThis.__bootstrap.denoNs;
 const denoNsUnstable = globalThis.__bootstrap.denoNsUnstable;
 const errors = globalThis.__bootstrap.errors.errors;
-const webidl = globalThis.__bootstrap.webidl;
-const domException = globalThis.__bootstrap.domException;
-const { defineEventHandler, reportException } = globalThis.__bootstrap.event;
-const { deserializeJsMessageData, serializeJsMessageData } =
-  globalThis.__bootstrap.messagePort;
+import * as webidl from "deno:ext/webidl/00_webidl.js";
+import * as domException from "deno:ext/web/01_dom_exception.js";
 import {
   mainRuntimeGlobalProperties,
   setLanguage,
@@ -125,7 +121,7 @@ function postMessage(message, transferOrOptions = {}) {
     );
   }
   const { transfer } = options;
-  const data = serializeJsMessageData(message, transfer);
+  const data = messagePort.serializeJsMessageData(message, transfer);
   ops.op_worker_post_message(data);
 }
 
@@ -142,7 +138,7 @@ async function pollForMessages() {
   while (!isClosing) {
     const data = await core.opAsync("op_worker_recv_message");
     if (data === null) break;
-    const v = deserializeJsMessageData(data);
+    const v = messagePort.deserializeJsMessageData(data);
     const message = v[0];
     const transferables = v[1];
 
@@ -234,7 +230,7 @@ function runtimeStart(runtimeOptions, source) {
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
-  core.setReportExceptionCallback(reportException);
+  core.setReportExceptionCallback(event.reportException);
   ops.op_set_format_exception_callback(formatException);
   version.setVersions(
     runtimeOptions.denoVersion,
@@ -338,7 +334,7 @@ function promiseRejectCallback(type, promise, reason) {
   }
 
   return !!globalThis.onunhandledrejection ||
-    eventTarget.listenerCount(globalThis, "unhandledrejection") > 0;
+    event.listenerCount(globalThis, "unhandledrejection") > 0;
 }
 
 function promiseRejectMacrotaskCallback() {
@@ -431,13 +427,13 @@ function bootstrapMainRuntime(runtimeOptions) {
     wrapConsole(consoleFromDeno, consoleFromV8);
   }
 
-  eventTarget.setEventTargetData(globalThis);
+  event.setEventTargetData(globalThis);
 
-  defineEventHandler(globalThis, "error");
-  defineEventHandler(globalThis, "load");
-  defineEventHandler(globalThis, "beforeunload");
-  defineEventHandler(globalThis, "unload");
-  defineEventHandler(globalThis, "unhandledrejection");
+  event.defineEventHandler(globalThis, "error");
+  event.defineEventHandler(globalThis, "load");
+  event.defineEventHandler(globalThis, "beforeunload");
+  event.defineEventHandler(globalThis, "unload");
+  event.defineEventHandler(globalThis, "unhandledrejection");
 
   core.setPromiseRejectCallback(promiseRejectCallback);
 
@@ -575,11 +571,11 @@ function bootstrapWorkerRuntime(
   const consoleFromDeno = globalThis.console;
   wrapConsole(consoleFromDeno, consoleFromV8);
 
-  eventTarget.setEventTargetData(globalThis);
+  event.setEventTargetData(globalThis);
 
-  defineEventHandler(self, "message");
-  defineEventHandler(self, "error", undefined, true);
-  defineEventHandler(self, "unhandledrejection");
+  event.fineEventHandler(self, "message");
+  event.fineEventHandler(self, "error", undefined, true);
+  event.defineEventHandler(self, "unhandledrejection");
 
   core.setPromiseRejectCallback(promiseRejectCallback);
 

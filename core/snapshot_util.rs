@@ -3,8 +3,9 @@
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::{Extension, ModuleSpecifier};
+use crate::Extension;
 use crate::JsRuntime;
+use crate::ModuleSpecifier;
 use crate::RuntimeOptions;
 use crate::Snapshot;
 
@@ -49,12 +50,14 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     let display_path = file.strip_prefix(display_root).unwrap_or(&file);
     let display_path_str = display_path.display().to_string();
 
-    let filename = &("deno:".to_string() + &display_path_str.replace('\\', "/"));
+    let filename =
+      &("deno:".to_string() + &display_path_str.replace('\\', "/"));
 
-    let id = futures::executor::block_on(
-      js_runtime.load_side_module(&ModuleSpecifier::parse(filename).unwrap(), Some(std::fs::read_to_string(&file).unwrap())),
-    )
-      .unwrap();
+    let id = futures::executor::block_on(js_runtime.load_side_module(
+      &ModuleSpecifier::parse(filename).unwrap(),
+      Some(std::fs::read_to_string(&file).unwrap()),
+    ))
+    .unwrap();
     let receiver = js_runtime.mod_evaluate(id);
     futures::executor::block_on(js_runtime.run_event_loop(false)).unwrap();
     let r = futures::executor::block_on(receiver).unwrap();

@@ -10,50 +10,47 @@
 /// <reference path="../url/lib.deno_url.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
-"use strict";
 
-((window) => {
-  const core = Deno.core;
-  const ops = core.ops;
-  const webidl = window.__bootstrap.webidl;
-  const { getParts } = window.__bootstrap.file;
-  const { URL } = window.__bootstrap.url;
+import { core } from "deno:core/01_core.js";
+const ops = core.ops;
+import * as webidl from "deno:ext/webidl/00_webidl.js";
+import { getParts } from "deno:ext/web/09_file.js";
+import { URL } from "deno:ext/url/00_url.js";
 
-  /**
-   * @param {Blob} blob
-   * @returns {string}
-   */
-  function createObjectURL(blob) {
-    const prefix = "Failed to execute 'createObjectURL' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    blob = webidl.converters["Blob"](blob, {
-      context: "Argument 1",
-      prefix,
-    });
+/**
+ * @param {Blob} blob
+ * @returns {string}
+ */
+function createObjectURL(blob) {
+  const prefix = "Failed to execute 'createObjectURL' on 'URL'";
+  webidl.requiredArguments(arguments.length, 1, { prefix });
+  blob = webidl.converters["Blob"](blob, {
+    context: "Argument 1",
+    prefix,
+  });
 
-    const url = ops.op_blob_create_object_url(
-      blob.type,
-      getParts(blob),
-    );
+  const url = ops.op_blob_create_object_url(
+    blob.type,
+    getParts(blob),
+  );
 
-    return url;
-  }
+  return url;
+}
 
-  /**
-   * @param {string} url
-   * @returns {void}
-   */
-  function revokeObjectURL(url) {
-    const prefix = "Failed to execute 'revokeObjectURL' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    url = webidl.converters["DOMString"](url, {
-      context: "Argument 1",
-      prefix,
-    });
+/**
+ * @param {string} url
+ * @returns {void}
+ */
+function revokeObjectURL(url) {
+  const prefix = "Failed to execute 'revokeObjectURL' on 'URL'";
+  webidl.requiredArguments(arguments.length, 1, { prefix });
+  url = webidl.converters["DOMString"](url, {
+    context: "Argument 1",
+    prefix,
+  });
 
-    ops.op_blob_revoke_object_url(url);
-  }
+  ops.op_blob_revoke_object_url(url);
+}
 
-  URL.createObjectURL = createObjectURL;
-  URL.revokeObjectURL = revokeObjectURL;
-})(globalThis);
+URL.createObjectURL = createObjectURL;
+URL.revokeObjectURL = revokeObjectURL;
