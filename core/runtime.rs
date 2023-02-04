@@ -607,7 +607,7 @@ impl JsRuntime {
 
     let loader = options
       .module_loader
-      .unwrap_or_else(|| Rc::new(NoopModuleLoader));
+      .unwrap_or_else(|| Rc::new(crate::modules::InternalModuleLoader));
     {
       let mut state = state_rc.borrow_mut();
       state.global_realm = Some(JsRealm(global_context.clone()));
@@ -807,8 +807,12 @@ impl JsRuntime {
     for ext in &extensions {
       let js_files = ext.init_js();
       for (filename, source) in js_files {
-        // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        realm.execute_script(self.v8_isolate(), filename, source)?;
+        let id = futures::executor::block_on(
+          self.load_side_module(&ModuleSpecifier::parse(filename).unwrap(), Some(source.to_string())),
+        )
+          .unwrap();
+        let _ = self.mod_evaluate(id);
+        futures::executor::block_on(self.run_event_loop(false)).unwrap();
       }
     }
     // Restore extensions

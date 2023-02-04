@@ -292,6 +292,46 @@ impl ModuleLoader for NoopModuleLoader {
   }
 }
 
+pub struct InternalModuleLoader;
+
+impl ModuleLoader for InternalModuleLoader {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+  ) -> Result<ModuleSpecifier, Error> {
+    dbg!(specifier, referrer, &kind);
+    let specifier = ModuleSpecifier::parse(specifier).unwrap();
+    if kind == ResolutionKind::Import {
+      let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
+      if specifier.scheme() == "deno" {
+        return if referrer == "." || referrer_specifier.unwrap().scheme() == "deno" {
+          Ok(specifier)
+        } else {
+          Err(generic_error("Cannot load internal module from external code"))
+        }
+      }
+    }
+
+    Err(generic_error("Module loading is not supported"))
+  }
+
+  fn load(
+    &self,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
+    is_dyn_import: bool,
+  ) -> Pin<Box<ModuleSourceFuture>> {
+    dbg!(module_specifier, maybe_referrer, is_dyn_import);
+
+    async { Err(generic_error("Module loading is not supported")) }
+      .boxed_local()
+  }
+}
+
+
+
 /// Basic file system module loader.
 ///
 /// Note that this loader will **block** event loop
