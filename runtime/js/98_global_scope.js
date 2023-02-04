@@ -24,7 +24,7 @@ import * as urlPattern from "deno:ext/url/01_urlpattern.js";
 const headers = globalThis.__bootstrap.headers;
 const streams = globalThis.__bootstrap.streams;
 const fileReader = globalThis.__bootstrap.fileReader;
-const webgpu = globalThis.__bootstrap.webgpu;
+import * as webgpu from "deno:ext/webgpu/01_webgpu.js";
 const webSocket = globalThis.__bootstrap.webSocket;
 const broadcastChannel = globalThis.__bootstrap.broadcastChannel;
 const file = globalThis.__bootstrap.file;
