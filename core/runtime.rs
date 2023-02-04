@@ -821,7 +821,7 @@ impl JsRuntime {
           let receiver = self.mod_evaluate(id);
           futures::executor::block_on(self.run_event_loop(false)).unwrap();
           let r = futures::executor::block_on(receiver).unwrap();
-          eprintln!("result {:#?}", r);
+          r.unwrap();
         }
       }
 

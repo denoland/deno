@@ -1042,7 +1042,7 @@ class EventTarget {
     // `globalThis` directly here, because it could be deleted by user.
     // Instead use saved reference to global scope when the script was
     // executed.
-    const self = this ?? window;
+    const self = this ?? globalThis;
     webidl.assertBranded(self, EventTargetPrototype);
     webidl.requiredArguments(arguments.length, 1, {
       prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
@@ -1479,7 +1479,7 @@ function reportException(error) {
     error,
   });
   // Avoid recursing `reportException()` via error handlers more than once.
-  if (reportExceptionStackedCalls > 1 || window.dispatchEvent(event)) {
+  if (reportExceptionStackedCalls > 1 || globalThis.dispatchEvent(event)) {
     ops.op_dispatch_exception(error);
   }
   reportExceptionStackedCalls--;

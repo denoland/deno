@@ -13,6 +13,7 @@ const {
   PromisePrototypeThen,
   SafePromiseAll,
   SymbolFor,
+  Symbol,
 } = primordials;
 import {
   readableStreamCollectIntoUint8Array,

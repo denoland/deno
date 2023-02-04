@@ -301,7 +301,6 @@ impl ModuleLoader for InternalModuleLoader {
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
-    dbg!(specifier, referrer, &kind);
     let specifier = ModuleSpecifier::parse(specifier).unwrap();
     if kind == ResolutionKind::Import {
       let referrer_specifier = ModuleSpecifier::parse(referrer).ok();

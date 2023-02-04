@@ -61,7 +61,7 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     let receiver = js_runtime.mod_evaluate(id);
     futures::executor::block_on(js_runtime.run_event_loop(false)).unwrap();
     let r = futures::executor::block_on(receiver).unwrap();
-    eprintln!("result {:#?}", r);
+    r.unwrap();
   }
 
   let snapshot = js_runtime.snapshot();
