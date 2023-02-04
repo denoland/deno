@@ -688,7 +688,7 @@ impl DenoDiagnostic {
               changes: Some(HashMap::from([(
                 specifier.clone(),
                 vec![lsp::TextEdit {
-                  new_text: format!("\"{to}\""),
+                  new_text: to,
                   range: diagnostic.range,
                 }],
               )])),
@@ -754,7 +754,7 @@ impl DenoDiagnostic {
               changes: Some(HashMap::from([(
                 specifier.clone(),
                 vec![lsp::TextEdit {
-                  new_text: format!("\"{}\"", data.redirect),
+                  new_text: data.redirect.into(),
                   range: diagnostic.range,
                 }],
               )])),
@@ -777,7 +777,7 @@ impl DenoDiagnostic {
               changes: Some(HashMap::from([(
                 specifier.clone(),
                 vec![lsp::TextEdit {
-                  new_text: format!("\"node:{}\"", data.specifier),
+                  new_text: format!("node:{}", data.specifier),
                   range: diagnostic.range,
                 }],
               )])),
