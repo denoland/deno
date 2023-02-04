@@ -9,13 +9,13 @@ import * as webidl from "deno:ext/webidl/00_webidl.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "deno:ext/web/00_infra.js";
 import { DOMException } from "deno:ext/web/01_dom_exception.js";
 import {
-  Event,
-  ErrorEvent,
-  CloseEvent,
-  MessageEvent,
-  defineEventHandler,
   _skipInternalInit,
+  CloseEvent,
+  defineEventHandler,
+  ErrorEvent,
+  Event,
   EventTarget,
+  MessageEvent,
 } from "deno:ext/web/02_event.js";
 import { Blob, BlobPrototype } from "deno:ext/web/09_file.js";
 import { primordials } from "deno:core/00_primordials.js";
@@ -211,9 +211,9 @@ class WebSocket extends EventTarget {
 
     if (
       protocols.length !==
-      new Set(
-        ArrayPrototypeMap(protocols, (p) => StringPrototypeToLowerCase(p)),
-      ).size
+        new Set(
+          ArrayPrototypeMap(protocols, (p) => StringPrototypeToLowerCase(p)),
+        ).size
     ) {
       throw new DOMException(
         "Can't supply multiple times the same protocol.",
@@ -224,8 +224,7 @@ class WebSocket extends EventTarget {
     if (
       ArrayPrototypeSome(
         protocols,
-        (protocol) =>
-          !RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, protocol),
+        (protocol) => !RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, protocol),
       )
     ) {
       throw new DOMException(
@@ -577,13 +576,13 @@ globalThis.__bootstrap.webSocket = {
 };
 
 export {
-  WebSocket,
-  _rid,
-  _readyState,
   _eventLoop,
-  _protocol,
-  _server,
   _idleTimeoutDuration,
   _idleTimeoutTimeout,
+  _protocol,
+  _readyState,
+  _rid,
+  _server,
   _serverHandleIdleTimeout,
-}
+  WebSocket,
+};
