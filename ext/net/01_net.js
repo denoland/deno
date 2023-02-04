@@ -407,19 +407,6 @@ async function connect(args) {
   }
 }
 
-globalThis.__bootstrap.net = {
-  connect,
-  Conn,
-  TcpConn,
-  UnixConn,
-  listen,
-  createListenDatagram,
-  Listener,
-  shutdown,
-  Datagram,
-  resolveDns,
-};
-
 export {
   Conn,
   connect,

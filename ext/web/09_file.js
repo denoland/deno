@@ -626,15 +626,6 @@ function blobFromObjectUrl(url) {
   return blob;
 }
 
-globalThis.__bootstrap.file = {
-  blobFromObjectUrl,
-  getParts,
-  Blob,
-  BlobPrototype,
-  File,
-  FilePrototype,
-};
-
 export {
   Blob,
   blobFromObjectUrl,

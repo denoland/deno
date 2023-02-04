@@ -2363,17 +2363,6 @@ globalThis.__bootstrap.internals = {
   parseCssColor,
 };
 
-globalThis.__bootstrap.console = {
-  CSI,
-  inspectArgs,
-  Console,
-  customInspect,
-  inspect,
-  wrapConsole,
-  createFilteredInspectProxy,
-  quoteString,
-};
-
 export {
   Console,
   createFilteredInspectProxy,

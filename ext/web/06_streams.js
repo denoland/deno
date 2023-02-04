@@ -6213,42 +6213,6 @@ webidl.converters.StreamPipeOptions = webidl
     { key: "signal", converter: webidl.converters.AbortSignal },
   ]);
 
-globalThis.__bootstrap.streams = {
-  // Non-Public
-  _state,
-  isReadableStreamDisturbed,
-  errorReadableStream,
-  createProxy,
-  writableStreamClose,
-  readableStreamClose,
-  readableStreamCollectIntoUint8Array,
-  readableStreamDisturb,
-  readableStreamForRid,
-  readableStreamForRidUnrefable,
-  readableStreamForRidUnrefableRef,
-  readableStreamForRidUnrefableUnref,
-  readableStreamThrowIfErrored,
-  getReadableStreamResourceBacking,
-  writableStreamForRid,
-  getWritableStreamResourceBacking,
-  Deferred,
-  // Exposed in global runtime scope
-  ByteLengthQueuingStrategy,
-  CountQueuingStrategy,
-  ReadableStream,
-  ReadableStreamPrototype,
-  ReadableStreamDefaultReader,
-  TransformStream,
-  WritableStream,
-  WritableStreamDefaultWriter,
-  WritableStreamDefaultController,
-  ReadableByteStreamController,
-  ReadableStreamBYOBReader,
-  ReadableStreamBYOBRequest,
-  ReadableStreamDefaultController,
-  TransformStreamDefaultController,
-};
-
 export {
   // Non-Public
   _state,

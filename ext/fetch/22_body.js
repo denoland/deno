@@ -468,5 +468,4 @@ webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
   webidl.converters["BodyInit_DOMString"],
 );
 
-globalThis.__bootstrap.fetchBody = { mixinBody, InnerBody, extractBody };
 export { extractBody, InnerBody, mixinBody };

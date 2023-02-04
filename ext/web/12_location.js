@@ -400,15 +400,6 @@ const workerLocationDescriptor = {
   enumerable: true,
 };
 
-globalThis.__bootstrap.location = {
-  locationConstructorDescriptor,
-  workerLocationConstructorDescriptor,
-  locationDescriptor,
-  workerLocationDescriptor,
-  setLocationHref,
-  getLocationHref,
-};
-
 export {
   getLocationHref,
   locationConstructorDescriptor,

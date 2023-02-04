@@ -655,15 +655,6 @@ function fromFlashRequest(
   return request;
 }
 
-globalThis.__bootstrap.fetch ??= {};
-globalThis.__bootstrap.fetch.Request = Request;
-globalThis.__bootstrap.fetch.toInnerRequest = toInnerRequest;
-globalThis.__bootstrap.fetch.fromFlashRequest = fromFlashRequest;
-globalThis.__bootstrap.fetch.fromInnerRequest = fromInnerRequest;
-globalThis.__bootstrap.fetch.newInnerRequest = newInnerRequest;
-globalThis.__bootstrap.fetch.processUrlList = processUrlList;
-globalThis.__bootstrap.fetch._flash = _flash;
-
 export {
   _flash,
   fromFlashRequest,

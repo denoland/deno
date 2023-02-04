@@ -197,5 +197,4 @@ for (let i = 0; i < entries.length; ++i) {
   ObjectDefineProperty(DOMException.prototype, key, desc);
 }
 
-globalThis.__bootstrap.domException = { DOMException };
 export { DOMException };

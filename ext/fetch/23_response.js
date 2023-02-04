@@ -505,17 +505,6 @@ function fromInnerResponse(inner, guard) {
   return response;
 }
 
-globalThis.__bootstrap.fetch ??= {};
-globalThis.__bootstrap.fetch.Response = Response;
-globalThis.__bootstrap.fetch.ResponsePrototype = ResponsePrototype;
-globalThis.__bootstrap.fetch.newInnerResponse = newInnerResponse;
-globalThis.__bootstrap.fetch.toInnerResponse = toInnerResponse;
-globalThis.__bootstrap.fetch.fromInnerResponse = fromInnerResponse;
-globalThis.__bootstrap.fetch.redirectStatus = redirectStatus;
-globalThis.__bootstrap.fetch.nullBodyStatus = nullBodyStatus;
-globalThis.__bootstrap.fetch.networkError = networkError;
-globalThis.__bootstrap.fetch.abortedNetworkError = abortedNetworkError;
-
 export {
   abortedNetworkError,
   fromInnerResponse,

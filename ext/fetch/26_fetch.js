@@ -579,8 +579,4 @@ function handleWasmStreaming(source, rid) {
   }
 }
 
-globalThis.__bootstrap.fetch ??= {};
-globalThis.__bootstrap.fetch.fetch = fetch;
-globalThis.__bootstrap.fetch.handleWasmStreaming = handleWasmStreaming;
-
 export { fetch, handleWasmStreaming };

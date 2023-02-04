@@ -137,15 +137,9 @@ function getterOnly(getter) {
   };
 }
 
+// TODO(bartlomieju): remove me
 globalThis.__bootstrap.util = {
-  log,
-  setLogDebug,
-  createResolvable,
   pathFromURL,
-  writable,
-  nonEnumerable,
-  readOnly,
-  getterOnly,
 };
 
 export {

@@ -46,12 +46,16 @@ import * as version from "deno:runtime/js/01_version.js";
 import * as os from "deno:runtime/js/30_os.js";
 import * as timers from "deno:ext/web/02_timers.js";
 import * as colors from "deno:ext/console/01_colors.js";
-const inspectArgs = globalThis.__bootstrap.console.inspectArgs;
-const quoteString = globalThis.__bootstrap.console.quoteString;
+import * as net from "deno:ext/net/01_net.js";
+import {
+  inspectArgs,
+  quoteString,
+  wrapConsole,
+} from "deno:ext/console/02_console.js";
 const internals = globalThis.__bootstrap.internals;
 import * as performance from "deno:ext/web/15_performance.js";
 import * as url from "deno:ext/url/00_url.js";
-const fetch = globalThis.__bootstrap.fetch;
+import * as fetch from "deno:ext/fetch/26_fetch.js";
 import * as messagePort from "deno:ext/web/13_message_port.js";
 import { denoNs, denoNsUnstable } from "deno:runtime/js/90_deno_ns.js";
 import { errors } from "deno:runtime/js/01_errors.js";
@@ -392,7 +396,6 @@ function bootstrapMainRuntime(runtimeOptions) {
   performance.setTimeOrigin(DateNow());
 
   const consoleFromV8 = globalThis.Deno.core.console;
-  const wrapConsole = globalThis.__bootstrap.console.wrapConsole;
 
   // Remove bootstrapping data from the global scope
   const __bootstrap = globalThis.__bootstrap;
@@ -471,7 +474,7 @@ function bootstrapMainRuntime(runtimeOptions) {
       ),
       serve: flash.createServe(ops.op_node_unstable_flash_serve),
       upgradeHttpRaw: flash.upgradeHttpRaw,
-      listenDatagram: __bootstrap.net.createListenDatagram(
+      listenDatagram: net.createListenDatagram(
         ops.op_node_unstable_net_listen_udp,
         ops.op_node_unstable_net_listen_unixpacket,
       ),
@@ -513,7 +516,7 @@ function bootstrapMainRuntime(runtimeOptions) {
         spawn.createSpawnChild(ops.op_spawn_child),
       ),
       serve: flash.createServe(ops.op_flash_serve),
-      listenDatagram: __bootstrap.net.createListenDatagram(
+      listenDatagram: net.createListenDatagram(
         ops.op_net_listen_udp,
         ops.op_net_listen_unixpacket,
       ),
@@ -541,7 +544,6 @@ function bootstrapWorkerRuntime(
   performance.setTimeOrigin(DateNow());
 
   const consoleFromV8 = globalThis.Deno.core.console;
-  const wrapConsole = globalThis.__bootstrap.console.wrapConsole;
 
   // Remove bootstrapping data from the global scope
   const __bootstrap = globalThis.__bootstrap;
@@ -616,7 +618,7 @@ function bootstrapWorkerRuntime(
       ),
       serve: flash.createServe(ops.op_node_unstable_flash_serve),
       upgradeHttpRaw: flash.upgradeHttpRaw,
-      listenDatagram: __bootstrap.net.createListenDatagram(
+      listenDatagram: net.createListenDatagram(
         ops.op_node_unstable_net_listen_udp,
         ops.op_node_unstable_net_listen_unixpacket,
       ),
@@ -650,7 +652,7 @@ function bootstrapWorkerRuntime(
         spawn.createSpawnChild(ops.op_spawn_child),
       ),
       serve: flash.createServe(ops.op_flash_serve),
-      listenDatagram: __bootstrap.net.createListenDatagram(
+      listenDatagram: net.createListenDatagram(
         ops.op_net_listen_udp,
         ops.op_net_listen_unixpacket,
       ),
@@ -676,5 +678,3 @@ ObjectDefineProperties(globalThis, {
     configurable: true,
   },
 });
-
-core.print(`bootstrap ${globalThis.bootstrap}\n`, true);

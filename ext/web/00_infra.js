@@ -306,35 +306,6 @@ function serializeJSValueToJSONString(value) {
   return result;
 }
 
-globalThis.__bootstrap.infra = {
-  collectSequenceOfCodepoints,
-  ASCII_DIGIT,
-  ASCII_UPPER_ALPHA,
-  ASCII_LOWER_ALPHA,
-  ASCII_ALPHA,
-  ASCII_ALPHANUMERIC,
-  HTTP_TAB_OR_SPACE,
-  HTTP_WHITESPACE,
-  HTTP_TOKEN_CODE_POINT,
-  HTTP_TOKEN_CODE_POINT_RE,
-  HTTP_QUOTED_STRING_TOKEN_POINT,
-  HTTP_QUOTED_STRING_TOKEN_POINT_RE,
-  HTTP_TAB_OR_SPACE_PREFIX_RE,
-  HTTP_TAB_OR_SPACE_SUFFIX_RE,
-  HTTP_WHITESPACE_PREFIX_RE,
-  HTTP_WHITESPACE_SUFFIX_RE,
-  httpTrim,
-  regexMatcher,
-  byteUpperCase,
-  byteLowerCase,
-  collectHttpQuotedString,
-  forgivingBase64Encode,
-  forgivingBase64Decode,
-  AssertionError,
-  assert,
-  serializeJSValueToJSONString,
-};
-
 export {
   ASCII_ALPHA,
   ASCII_ALPHANUMERIC,

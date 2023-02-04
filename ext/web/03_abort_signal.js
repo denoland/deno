@@ -189,17 +189,6 @@ function follow(followingSignal, parentSignal) {
   }
 }
 
-globalThis.__bootstrap.abortSignal = {
-  AbortSignal,
-  AbortController,
-  AbortSignalPrototype,
-  add,
-  signalAbort,
-  remove,
-  follow,
-  newSignal,
-};
-
 export {
   AbortController,
   AbortSignal,

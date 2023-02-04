@@ -137,5 +137,4 @@ function structuredClone(value) {
   }
 }
 
-globalThis.__bootstrap.structuredClone = structuredClone;
 export { structuredClone };

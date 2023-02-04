@@ -466,16 +466,6 @@ function guardFromHeaders(headers) {
   return headers[_guard];
 }
 
-globalThis.__bootstrap.headers = {
-  headersFromHeaderList,
-  headerListFromHeaders,
-  getDecodeSplitHeader,
-  guardFromHeaders,
-  fillHeaders,
-  getHeader,
-  Headers,
-};
-
 export {
   fillHeaders,
   getDecodeSplitHeader,

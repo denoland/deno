@@ -1,7 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const __bootstrap = globalThis.__bootstrap;
-
 import { core } from "deno:core/01_core.js";
 import * as timers from "deno:ext/web/02_timers.js";
 import * as httpClient from "deno:ext/fetch/22_http_client.js";

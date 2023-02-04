@@ -421,6 +421,4 @@ class WebSocketStream {
 
 const WebSocketStreamPrototype = WebSocketStream.prototype;
 
-globalThis.__bootstrap.webSocket.WebSocketStream = WebSocketStream;
-
 export { WebSocketStream };

@@ -39,9 +39,4 @@ class HttpClient {
 }
 const HttpClientPrototype = HttpClient.prototype;
 
-globalThis.__bootstrap.fetch ??= {};
-globalThis.__bootstrap.fetch.createHttpClient = createHttpClient;
-globalThis.__bootstrap.fetch.HttpClient = HttpClient;
-globalThis.__bootstrap.fetch.HttpClientPrototype = HttpClientPrototype;
-
 export { createHttpClient, HttpClient, HttpClientPrototype };

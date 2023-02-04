@@ -266,6 +266,4 @@ webidl.converters["URLPatternInput"] = (V, opts) => {
   return webidl.converters.USVString(V, opts);
 };
 
-globalThis.__bootstrap.urlPattern = {
-  URLPattern,
-};
+export { URLPattern };

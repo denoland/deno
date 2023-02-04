@@ -563,18 +563,6 @@ defineEventHandler(WebSocket.prototype, "open");
 webidl.configurePrototype(WebSocket);
 const WebSocketPrototype = WebSocket.prototype;
 
-globalThis.__bootstrap.webSocket = {
-  WebSocket,
-  _rid,
-  _readyState,
-  _eventLoop,
-  _protocol,
-  _server,
-  _idleTimeoutDuration,
-  _idleTimeoutTimeout,
-  _serverHandleIdleTimeout,
-};
-
 export {
   _eventLoop,
   _idleTimeoutDuration,

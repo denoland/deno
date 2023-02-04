@@ -1499,27 +1499,6 @@ function reportError(error) {
   reportException(error);
 }
 
-globalThis.__bootstrap.eventTarget = {
-  EventTarget,
-  setEventTargetData,
-  listenerCount,
-};
-globalThis.__bootstrap.event = {
-  reportException,
-  setIsTrusted,
-  setTarget,
-  defineEventHandler,
-  _skipInternalInit,
-  Event,
-  ErrorEvent,
-  CloseEvent,
-  MessageEvent,
-  CustomEvent,
-  ProgressEvent,
-  PromiseRejectionEvent,
-  reportError,
-};
-
 export {
   _skipInternalInit,
   CloseEvent,
