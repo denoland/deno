@@ -8,7 +8,7 @@ use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
+use deno_core::include_js_files_for_snapshot;
 use deno_core::op;
 
 use deno_core::Extension;
@@ -75,7 +75,7 @@ use crate::shared::RawKeyData;
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_web"])
-    .js(include_js_files!(
+    .js(include_js_files_for_snapshot!(
       prefix "deno:ext/crypto",
       "00_crypto.js",
       "01_webidl.js",

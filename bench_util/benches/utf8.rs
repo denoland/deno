@@ -6,20 +6,25 @@ use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 use deno_bench_util::BenchOptions;
 use deno_core::Extension;
+use deno_core::ExtensionSourceFile;
+use deno_core::ExtensionSourceFileSource;
 
 fn setup() -> Vec<Extension> {
   vec![Extension::builder("bench_setup")
-    .js(vec![(
-      "setup.js",
-      r#"
-      const hello = "hello world\n";
-      const hello1k = hello.repeat(1e3);
-      const hello1m = hello.repeat(1e6);
-      const helloEncoded = Deno.core.encode(hello);
-      const hello1kEncoded = Deno.core.encode(hello1k);
-      const hello1mEncoded = Deno.core.encode(hello1m);
-      "#,
-    )])
+    .js(vec![ExtensionSourceFile {
+      specifier: "setup.js",
+      source_code: ExtensionSourceFileSource::Embedded(
+        r#"
+const hello = "hello world\n";
+const hello1k = hello.repeat(1e3);
+const hello1m = hello.repeat(1e6);
+const helloEncoded = Deno.core.encode(hello);
+const hello1kEncoded = Deno.core.encode(hello1k);
+const hello1mEncoded = Deno.core.encode(hello1m);
+"#
+        .to_string(),
+      ),
+    }])
     .build()]
 }
 

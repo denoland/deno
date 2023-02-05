@@ -5,6 +5,8 @@ use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 use deno_core::Extension;
+use deno_core::ExtensionSourceFile;
+use deno_core::ExtensionSourceFileSource;
 use deno_web::BlobStore;
 
 struct Permissions;
@@ -29,13 +31,14 @@ fn setup() -> Vec<Extension> {
     deno_console::init(),
     deno_web::init::<Permissions>(BlobStore::default(), None),
     Extension::builder("bench_setup")
-      .js(vec![(
-        "setup",
-        r#"
-        const { TextDecoder } = globalThis.__bootstrap.encoding;
-        const hello12k = Deno.core.encode("hello world\n".repeat(1e3));
-        "#,
-      )])
+      .js(vec![ExtensionSourceFile {
+        specifier: "setup",
+        source_code: ExtensionSourceFileSource::Embedded(
+          r#"const { TextDecoder } = globalThis.__bootstrap.encoding;
+const hello12k = Deno.core.encode("hello world\n".repeat(1e3));"#
+            .to_string(),
+        ),
+      }])
       .state(|state| {
         state.put(Permissions {});
         Ok(())

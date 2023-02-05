@@ -8,7 +8,7 @@ mod timers;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
+use deno_core::include_js_files_for_snapshot;
 use deno_core::op;
 use deno_core::serde_v8;
 use deno_core::url::Url;
@@ -64,7 +64,7 @@ pub fn init<P: TimersPermission + 'static>(
 ) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_console", "deno_url"])
-    .js(include_js_files!(
+    .js(include_js_files_for_snapshot!(
       prefix "deno:ext/web",
       "00_infra.js",
       "01_dom_exception.js",

@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::error::format_file_name;
 use crate::error::type_error;
-use crate::include_js_files;
+use crate::include_js_files_for_snapshot;
 use crate::io::BufMutView;
 use crate::io::BufView;
 use crate::ops_metrics::OpMetrics;
@@ -20,7 +20,7 @@ use std::rc::Rc;
 
 pub(crate) fn init_builtins() -> Extension {
   Extension::builder("deno_builtins")
-    .js(include_js_files!(
+    .js(include_js_files_for_snapshot!(
       prefix "deno:core",
       "00_primordials.js",
       "01_core.js",

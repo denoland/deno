@@ -2,7 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
-use deno_core::include_js_files;
+use deno_core::include_js_files_for_snapshot;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -84,7 +84,7 @@ pub(crate) struct FfiState {
 
 pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
-    .js(include_js_files!(
+    .js(include_js_files_for_snapshot!(
       prefix "deno:ext/ffi",
       "00_ffi.js",
     ))

@@ -7,9 +7,16 @@ use std::rc::Rc;
 use std::task::Context;
 use v8::fast_api::FastFunction;
 
+pub enum ExtensionSourceFileSource {
+  /// Use this option when snapshotting so that the source code is not embedded
+  /// in the produced binary.
+  File(PathBuf),
+  /// Use this option when not snapshotting.
+  Embedded(String),
+}
 pub struct ExtensionSourceFile {
   pub specifier: &'static str,
-  pub source_path: PathBuf,
+  pub source_code: ExtensionSourceFileSource,
 }
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
@@ -221,19 +228,21 @@ impl ExtensionBuilder {
 ///
 /// Example:
 /// ```ignore
-/// include_js_files!(
+/// include_js_files_for_snapshot!(
 ///   prefix "deno:extensions/hello",
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
 /// ```
 #[macro_export]
-macro_rules! include_js_files {
+macro_rules! include_js_files_for_snapshot {
   (prefix $prefix:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionSourceFile {
         specifier: concat!($prefix, "/", $file),
-        source_path: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file),
+        source_code: $crate::ExtensionSourceFileSource::File(
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
+        ),
       },)+
     ]
   };

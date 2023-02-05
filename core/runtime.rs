@@ -20,6 +20,7 @@ use crate::ops::*;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
+use crate::ExtensionSourceFileSource;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
 use crate::OpState;
@@ -807,13 +808,27 @@ impl JsRuntime {
     for ext in &extensions {
       let js_files = ext.init_js();
       for source_file in js_files {
-        let source = std::fs::read_to_string(&source_file.source_path)?;
-        // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        realm.execute_script(
-          self.v8_isolate(),
-          source_file.specifier,
-          &source,
-        )?;
+        match &source_file.source_code {
+          ExtensionSourceFileSource::Embedded(code) => {
+            // TODO(bartlomieju): warn if the runtime is configured to be
+            // snapshotted.
+            realm.execute_script(
+              self.v8_isolate(),
+              source_file.specifier,
+              code,
+            )?;
+            continue;
+          }
+          ExtensionSourceFileSource::File(path) => {
+            let source = std::fs::read_to_string(path)?;
+            realm.execute_script(
+              self.v8_isolate(),
+              source_file.specifier,
+              &source,
+            )?;
+            continue;
+          }
+        }
       }
     }
     // Restore extensions

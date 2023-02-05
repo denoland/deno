@@ -7,7 +7,7 @@ use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
-use deno_core::include_js_files;
+use deno_core::include_js_files_for_snapshot;
 use deno_core::op;
 
 use deno_core::url;
@@ -504,7 +504,7 @@ pub fn init<P: WebSocketPermissions + 'static>(
 ) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_url", "deno_webidl"])
-    .js(include_js_files!(
+    .js(include_js_files_for_snapshot!(
       prefix "deno:ext/websocket",
       "01_websocket.js",
       "02_websocketstream.js",

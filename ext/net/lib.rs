@@ -8,7 +8,7 @@ pub mod ops_unix;
 pub mod resolve_addr;
 
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
+use deno_core::include_js_files_for_snapshot;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_tls::rustls::RootCertStore;
@@ -86,7 +86,7 @@ pub fn init<P: NetPermissions + 'static>(
   ops.extend(ops_tls::init::<P>());
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_web"])
-    .js(include_js_files!(
+    .js(include_js_files_for_snapshot!(
       prefix "deno:ext/net",
       "01_net.js",
       "02_tls.js",

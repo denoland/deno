@@ -6,12 +6,19 @@ use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 
 use deno_core::Extension;
+use deno_core::ExtensionSourceFile;
+use deno_core::ExtensionSourceFileSource;
 
 fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::init(),
     Extension::builder("deno_webidl_bench")
-      .js(vec![("setup", include_str!("dict.js"))])
+      .js(vec![ExtensionSourceFile {
+        specifier: "setup",
+        source_code: ExtensionSourceFileSource::Embedded(
+          include_str!("dict.js").to_string(),
+        ),
+      }])
       .build(),
   ]
 }
