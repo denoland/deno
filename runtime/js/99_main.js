@@ -7,7 +7,7 @@ delete Object.prototype.__proto__;
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
-import { core, ops } from "deno:core/01_core.js";
+import { core, ops, internals } from "deno:core/01_core.js";
 import primordials from "deno:core/00_primordials.js";
 const {
   ArrayPrototypeIndexOf,
@@ -51,7 +51,6 @@ import {
   quoteString,
   wrapConsole,
 } from "deno:ext/console/02_console.js";
-const internals = globalThis.__bootstrap.internals;
 import * as performance from "deno:ext/web/15_performance.js";
 import * as url from "deno:ext/url/00_url.js";
 import * as fetch from "deno:ext/fetch/26_fetch.js";
@@ -397,7 +396,6 @@ function bootstrapMainRuntime(runtimeOptions) {
   const consoleFromV8 = globalThis.Deno.core.console;
 
   // Remove bootstrapping data from the global scope
-  const __bootstrap = globalThis.__bootstrap;
   delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
   util.log("bootstrapMainRuntime");
@@ -545,7 +543,6 @@ function bootstrapWorkerRuntime(
   const consoleFromV8 = globalThis.Deno.core.console;
 
   // Remove bootstrapping data from the global scope
-  const __bootstrap = globalThis.__bootstrap;
   delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
   util.log("bootstrapWorkerRuntime");

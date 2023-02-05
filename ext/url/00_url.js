@@ -797,15 +797,6 @@ webidl
     return webidl.converters.USVString(V, opts);
   };
 
-// TODO(bartlomieju): remove me
-globalThis.__bootstrap.url = {
-  URL,
-  URLPrototype,
-  URLSearchParams,
-  URLSearchParamsPrototype,
-  parseUrlEncoded,
-};
-
 export {
   parseUrlEncoded,
   URL,

@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "deno:core/01_core.js";
+import { core, ops, internals } from "deno:core/01_core.js";
 import { setExitHandler } from "deno:runtime/js/30_os.js";
 import { Console } from "deno:ext/console/02_console.js";
 import { serializePermissions } from "deno:runtime/js/10_permissions.js";
@@ -1415,14 +1415,11 @@ function wrapTestFnWithSanitizers(testFn, opts) {
   return testFn;
 }
 
-globalThis.__bootstrap.internals = {
-  ...globalThis.__bootstrap.internals ?? {},
-  testing: {
-    runTests,
-    runBenchmarks,
-    enableTest,
-    enableBench,
-  },
+internals.testing = {
+  runTests,
+  runBenchmarks,
+  enableTest,
+  enableBench,
 };
 
 import { denoNs } from "deno:runtime/js/90_deno_ns.js";

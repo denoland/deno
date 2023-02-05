@@ -2,7 +2,7 @@
 
 // deno-lint-ignore-file
 
-import { core, ops } from "deno:core/01_core.js";
+import { core, ops, internals } from "deno:core/01_core.js";
 import primordials from "deno:core/00_primordials.js";
 const {
   ArrayIsArray,
@@ -37,7 +37,7 @@ const {
   Error,
   TypeError,
 } = primordials;
-const { node } = globalThis.__bootstrap.internals;
+const node = internals.node;
 
 // Map used to store CJS parsing data.
 const cjsParseCache = new SafeWeakMap();
@@ -922,19 +922,16 @@ function packageSpecifierSubPath(specifier) {
   return ArrayPrototypeJoin(parts, "/");
 }
 
-globalThis.__bootstrap.internals = {
-  ...globalThis.__bootstrap.internals ?? {},
-  require: {
-    setUsesLocalNodeModulesDir() {
-      usesLocalNodeModulesDir = true;
-    },
-    setInspectBrk() {
-      hasInspectBrk = true;
-    },
-    Module,
-    wrapSafe,
-    toRealPath,
-    cjsParseCache,
-    readPackageScope,
+internals.require = {
+  setUsesLocalNodeModulesDir() {
+    usesLocalNodeModulesDir = true;
   },
+  setInspectBrk() {
+    hasInspectBrk = true;
+  },
+  Module,
+  wrapSafe,
+  toRealPath,
+  cjsParseCache,
+  readPackageScope,
 };

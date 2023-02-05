@@ -2,6 +2,7 @@
 
 // deno-lint-ignore-file
 
+import { internals } from "deno:core/01_core.js";
 import primordials from "deno:core/00_primordials.js";
 const {
   ArrayPrototypePush,
@@ -114,12 +115,9 @@ function initialize(nodeModules, nodeGlobalThisName) {
   });
 }
 
-globalThis.__bootstrap.internals = {
-  ...globalThis.__bootstrap.internals ?? {},
-  node: {
-    globalThis: nodeGlobalThis,
-    initialize,
-    nativeModuleExports,
-    builtinModules,
-  },
+internals.node = {
+  globalThis: nodeGlobalThis,
+  initialize,
+  nativeModuleExports,
+  builtinModules,
 };

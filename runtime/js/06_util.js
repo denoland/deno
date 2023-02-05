@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+import { internals } from "deno:core/01_core.js";
 import primordials from "deno:core/00_primordials.js";
 const {
   decodeURIComponent,
@@ -96,10 +97,7 @@ function pathFromURL(pathOrUrl) {
 }
 
 // TODO(bartlomieju): remove
-globalThis.__bootstrap.internals = {
-  ...globalThis.__bootstrap.internals ?? {},
-  pathFromURL,
-};
+internals.pathFromURL = pathFromURL;
 
 function writable(value) {
   return {

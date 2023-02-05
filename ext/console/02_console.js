@@ -2,7 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core } from "deno:core/01_core.js";
+import { core, internals } from "deno:core/01_core.js";
 import primordials from "deno:core/00_primordials.js";
 const {
   AggregateErrorPrototype,
@@ -2354,14 +2354,11 @@ function wrapConsole(consoleFromDeno, consoleFromV8) {
 }
 
 // Expose these fields to internalObject for tests.
-globalThis.__bootstrap.internals = {
-  ...globalThis.__bootstrap.internals ?? {},
-  Console,
-  cssToAnsi,
-  inspectArgs,
-  parseCss,
-  parseCssColor,
-};
+internals.Console = Console;
+internals.cssToAnsi = cssToAnsi;
+internals.inspectArgs = inspectArgs;
+internals.parseCss = parseCss;
+internals.parseCssColor = parseCssColor;
 
 export {
   Console,
