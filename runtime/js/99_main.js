@@ -570,8 +570,8 @@ function bootstrapWorkerRuntime(
 
   event.setEventTargetData(globalThis);
 
-  event.fineEventHandler(self, "message");
-  event.fineEventHandler(self, "error", undefined, true);
+  event.defineEventHandler(self, "message");
+  event.defineEventHandler(self, "error", undefined, true);
   event.defineEventHandler(self, "unhandledrejection");
 
   core.setPromiseRejectCallback(promiseRejectCallback);
