@@ -1,11 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "deno:core/01_core.js";
-import { FsFile } from "deno:runtime/js/40_files.js";
-import { readAll } from "deno:runtime/js/12_io.js";
-import { pathFromURL } from "deno:runtime/js/06_util.js";
-import { assert } from "deno:ext/web/00_infra.js";
-import primordials from "deno:core/00_primordials.js";
+import { core, ops } from "internal:core/01_core.js";
+import { FsFile } from "internal:runtime/js/40_files.js";
+import { readAll } from "internal:runtime/js/12_io.js";
+import { pathFromURL } from "internal:runtime/js/06_util.js";
+import { assert } from "internal:ext/web/00_infra.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,

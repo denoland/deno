@@ -11,10 +11,10 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { ops } from "deno:core/01_core.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { getParts } from "deno:ext/web/09_file.js";
-import { URL } from "deno:ext/url/00_url.js";
+import { ops } from "internal:core/01_core.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import { getParts } from "internal:ext/web/09_file.js";
+import { URL } from "internal:ext/url/00_url.js";
 
 /**
  * @param {Blob} blob

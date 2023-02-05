@@ -10,9 +10,9 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, ops } from "deno:core/01_core.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import primordials from "deno:core/00_primordials.js";
+import { core, ops } from "internal:core/01_core.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayBufferPrototype,
   ArrayBufferPrototypeSlice,
@@ -37,7 +37,7 @@ const {
   TypeError,
   Uint8Array,
 } = primordials;
-import { createFilteredInspectProxy } from "deno:ext/console/02_console.js";
+import { createFilteredInspectProxy } from "internal:ext/console/02_console.js";
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.

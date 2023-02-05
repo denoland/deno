@@ -3,15 +3,15 @@
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
-import * as webidl from "deno:ext/webidl/00_webidl.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
 import {
   defineEventHandler,
   Event,
   EventTarget,
   listenerCount,
   setIsTrusted,
-} from "deno:ext/web/02_event.js";
-import primordials from "deno:core/00_primordials.js";
+} from "internal:ext/web/02_event.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   SafeArrayIterator,
   SafeSetIterator,
@@ -21,7 +21,7 @@ const {
   Symbol,
   TypeError,
 } = primordials;
-import { refTimer, setTimeout, unrefTimer } from "deno:ext/web/02_timers.js";
+import { refTimer, setTimeout, unrefTimer } from "internal:ext/web/02_timers.js";
 
 const add = Symbol("[[add]]");
 const signalAbort = Symbol("[[signalAbort]]");

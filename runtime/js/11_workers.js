@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "deno:core/01_core.js";
-import primordials from "deno:core/00_primordials.js";
+import { core, ops } from "internal:core/01_core.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   Error,
   ObjectPrototypeIsPrototypeOf,
@@ -10,22 +10,22 @@ const {
   SymbolIterator,
   SymbolToStringTag,
 } = primordials;
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { URL } from "deno:ext/url/00_url.js";
-import { getLocationHref } from "deno:ext/web/12_location.js";
-import { serializePermissions } from "deno:runtime/js/10_permissions.js";
-import { log } from "deno:runtime/js/06_util.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import { URL } from "internal:ext/url/00_url.js";
+import { getLocationHref } from "internal:ext/web/12_location.js";
+import { serializePermissions } from "internal:runtime/js/10_permissions.js";
+import { log } from "internal:runtime/js/06_util.js";
 import {
   defineEventHandler,
   ErrorEvent,
   EventTarget,
   MessageEvent,
-} from "deno:ext/web/02_event.js";
+} from "internal:ext/web/02_event.js";
 import {
   deserializeJsMessageData,
   MessagePortPrototype,
   serializeJsMessageData,
-} from "deno:ext/web/13_message_port.js";
+} from "internal:ext/web/13_message_port.js";
 
 function createWorker(
   specifier,

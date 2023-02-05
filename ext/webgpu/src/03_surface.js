@@ -6,15 +6,15 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
-import { ops } from "deno:core/01_core.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import primordials from "deno:core/00_primordials.js";
+import { ops } from "internal:core/01_core.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import primordials from "internal:core/00_primordials.js";
 const { Symbol } = primordials;
 import {
   _device,
   assertDevice,
   createGPUTexture,
-} from "deno:ext/webgpu/01_webgpu.js";
+} from "internal:ext/webgpu/01_webgpu.js";
 
 const _surfaceRid = Symbol("[[surfaceRid]]");
 const _configuration = Symbol("[[configuration]]");

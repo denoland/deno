@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "deno:core/01_core.js";
+import { core } from "internal:core/01_core.js";
 const { BadResource, Interrupted } = core;
-import primordials from "deno:core/00_primordials.js";
+import primordials from "internal:core/00_primordials.js";
 const { Error } = primordials;
 
 class NotFound extends Error {

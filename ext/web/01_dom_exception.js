@@ -7,7 +7,7 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 
-import primordials from "deno:core/00_primordials.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayPrototypeSlice,
   Error,
@@ -20,8 +20,8 @@ const {
   Symbol,
   SymbolFor,
 } = primordials;
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "deno:ext/console/02_console.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "internal:ext/console/02_console.js";
 
 const _name = Symbol("name");
 const _message = Symbol("message");

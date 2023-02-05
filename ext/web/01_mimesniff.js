@@ -6,7 +6,7 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 
-import primordials from "deno:core/00_primordials.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayPrototypeIncludes,
   Map,
@@ -26,7 +26,7 @@ import {
   HTTP_WHITESPACE,
   HTTP_WHITESPACE_PREFIX_RE,
   HTTP_WHITESPACE_SUFFIX_RE,
-} from "deno:ext/web/00_infra.js";
+} from "internal:ext/web/00_infra.js";
 
 /**
  * @typedef MimeType

@@ -2,7 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import primordials from "deno:core/00_primordials.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   RegExp,
   StringPrototypeReplace,

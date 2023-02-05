@@ -29,8 +29,8 @@ fn setup() -> Vec<Extension> {
     deno_web::init::<Permissions>(BlobStore::default(), None),
     Extension::builder("bench_setup")
     .esm(vec![
-      ("deno:setup", r#"
-      import { setTimeout, handleTimerMacrotask } from "deno:ext/web/02_timers.js";
+      ("internal:setup", r#"
+      import { setTimeout, handleTimerMacrotask } from "internal:ext/web/02_timers.js";
       globalThis.setTimeout = setTimeout;
       Deno.core.setMacrotaskCallback(handleTimerMacrotask);
       "#),

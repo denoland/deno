@@ -5,9 +5,9 @@
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-import { ops } from "deno:core/01_core.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import primordials from "deno:core/00_primordials.js";
+import { ops } from "internal:core/01_core.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayIsArray,
   ArrayPrototypeMap,

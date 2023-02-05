@@ -1,33 +1,33 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "deno:core/01_core.js";
-import * as timers from "deno:ext/web/02_timers.js";
-import * as httpClient from "deno:ext/fetch/22_http_client.js";
-import * as console from "deno:ext/console/02_console.js";
-import * as ffi from "deno:ext/ffi/00_ffi.js";
-import * as net from "deno:ext/net/01_net.js";
-import * as tls from "deno:ext/net/02_tls.js";
-import * as http from "deno:ext/http/01_http.js";
-import * as flash from "deno:ext/flash/01_http.js";
-import * as build from "deno:runtime/js/01_build.js";
-import * as errors from "deno:runtime/js/01_errors.js";
-import * as version from "deno:runtime/js/01_version.js";
-import * as permissions from "deno:runtime/js/10_permissions.js";
-import * as io from "deno:runtime/js/12_io.js";
-import * as buffer from "deno:runtime/js/13_buffer.js";
-import * as fs from "deno:runtime/js/30_fs.js";
-import * as os from "deno:runtime/js/30_os.js";
-import * as diagnostics from "deno:runtime/js/40_diagnostics.js";
-import * as files from "deno:runtime/js/40_files.js";
-import * as fsEvents from "deno:runtime/js/40_fs_events.js";
-import * as process from "deno:runtime/js/40_process.js";
-import * as readFile from "deno:runtime/js/40_read_file.js";
-import * as signals from "deno:runtime/js/40_signals.js";
-import * as tty from "deno:runtime/js/40_tty.js";
-import * as writeFile from "deno:runtime/js/40_write_file.js";
-import * as spawn from "deno:runtime/js/40_spawn.js";
+import { core, ops } from "internal:core/01_core.js";
+import * as timers from "internal:ext/web/02_timers.js";
+import * as httpClient from "internal:ext/fetch/22_http_client.js";
+import * as console from "internal:ext/console/02_console.js";
+import * as ffi from "internal:ext/ffi/00_ffi.js";
+import * as net from "internal:ext/net/01_net.js";
+import * as tls from "internal:ext/net/02_tls.js";
+import * as http from "internal:ext/http/01_http.js";
+import * as flash from "internal:ext/flash/01_http.js";
+import * as build from "internal:runtime/js/01_build.js";
+import * as errors from "internal:runtime/js/01_errors.js";
+import * as version from "internal:runtime/js/01_version.js";
+import * as permissions from "internal:runtime/js/10_permissions.js";
+import * as io from "internal:runtime/js/12_io.js";
+import * as buffer from "internal:runtime/js/13_buffer.js";
+import * as fs from "internal:runtime/js/30_fs.js";
+import * as os from "internal:runtime/js/30_os.js";
+import * as diagnostics from "internal:runtime/js/40_diagnostics.js";
+import * as files from "internal:runtime/js/40_files.js";
+import * as fsEvents from "internal:runtime/js/40_fs_events.js";
+import * as process from "internal:runtime/js/40_process.js";
+import * as readFile from "internal:runtime/js/40_read_file.js";
+import * as signals from "internal:runtime/js/40_signals.js";
+import * as tty from "internal:runtime/js/40_tty.js";
+import * as writeFile from "internal:runtime/js/40_write_file.js";
+import * as spawn from "internal:runtime/js/40_spawn.js";
 // TODO(bartlomieju): this is funky we have two `http` imports
-import * as httpRuntime from "deno:runtime/js/40_http.js";
+import * as httpRuntime from "internal:runtime/js/40_http.js";
 
 const denoNs = {
   metrics: core.metrics,

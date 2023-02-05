@@ -96,7 +96,7 @@ async function patchSurface() {
   await patchFile(
     join(TARGET_DIR, "src", "surface.rs"),
     (data) =>
-      data.replace(`prefix "deno:deno_webgpu",`, `prefix "deno:ext/webgpu",`),
+      data.replace(`prefix "internal:deno_webgpu",`, `prefix "internal:ext/webgpu",`),
   );
 }
 

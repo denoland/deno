@@ -9,7 +9,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import * as webidl from "deno:ext/webidl/00_webidl.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
 import {
   byteLowerCase,
   collectHttpQuotedString,
@@ -18,8 +18,8 @@ import {
   HTTP_TAB_OR_SPACE_SUFFIX_RE,
   HTTP_TOKEN_CODE_POINT_RE,
   httpTrim,
-} from "deno:ext/web/00_infra.js";
-import primordials from "deno:core/00_primordials.js";
+} from "internal:ext/web/00_infra.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayIsArray,
   ArrayPrototypeMap,

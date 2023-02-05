@@ -1,9 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "deno:core/01_core.js";
-import primordials from "deno:core/00_primordials.js";
-import { pathFromURL } from "deno:runtime/js/06_util.js";
-import { add, remove } from "deno:ext/web/03_abort_signal.js";
+import { core, ops } from "internal:core/01_core.js";
+import primordials from "internal:core/00_primordials.js";
+import { pathFromURL } from "internal:runtime/js/06_util.js";
+import { add, remove } from "internal:ext/web/03_abort_signal.js";
 const {
   ArrayPrototypeMap,
   ObjectEntries,
@@ -22,7 +22,7 @@ import {
   readableStreamForRidUnrefableUnref,
   ReadableStreamPrototype,
   writableStreamForRid,
-} from "deno:ext/web/06_streams.js";
+} from "internal:ext/web/06_streams.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 

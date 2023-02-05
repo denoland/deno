@@ -9,15 +9,15 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { core } from "deno:core/01_core.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
+import { core } from "internal:core/01_core.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
 import {
   Blob,
   BlobPrototype,
   File,
   FilePrototype,
-} from "deno:ext/web/09_file.js";
-import primordials from "deno:core/00_primordials.js";
+} from "internal:ext/web/09_file.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,

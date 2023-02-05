@@ -6,16 +6,16 @@
 /// <reference path="./lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, ops } from "deno:core/01_core.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
+import { core, ops } from "internal:core/01_core.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
 import {
   AbortSignalPrototype,
   add,
   newSignal,
   remove,
   signalAbort,
-} from "deno:ext/web/03_abort_signal.js";
-import primordials from "deno:core/00_primordials.js";
+} from "internal:ext/web/03_abort_signal.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayBuffer,
   ArrayBufferPrototype,
@@ -67,8 +67,8 @@ const {
   WeakMapPrototypeHas,
   WeakMapPrototypeSet,
 } = primordials;
-import { createFilteredInspectProxy } from "deno:ext/console/02_console.js";
-import { assert, AssertionError } from "deno:ext/web/00_infra.js";
+import { createFilteredInspectProxy } from "internal:ext/console/02_console.js";
+import { assert, AssertionError } from "internal:ext/web/00_infra.js";
 
 /** @template T */
 class Deferred {

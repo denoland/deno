@@ -51,7 +51,7 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     let display_path_str = display_path.display().to_string();
 
     let filename =
-      &("deno:".to_string() + &display_path_str.replace('\\', "/"));
+      &("internal:".to_string() + &display_path_str.replace('\\', "/"));
 
     let id = futures::executor::block_on(js_runtime.load_side_module(
       &ModuleSpecifier::parse(filename).unwrap(),

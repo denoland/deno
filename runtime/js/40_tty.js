@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { ops } from "deno:core/01_core.js";
-import primordials from "deno:core/00_primordials.js";
+import { ops } from "internal:core/01_core.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   Uint32Array,
   Uint8Array,

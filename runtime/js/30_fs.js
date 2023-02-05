@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "deno:core/01_core.js";
-import primordials from "deno:core/00_primordials.js";
+import { core, ops } from "internal:core/01_core.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   Date,
   DatePrototype,
@@ -13,8 +13,8 @@ const {
   ObjectEntries,
   Uint32Array,
 } = primordials;
-import { pathFromURL } from "deno:runtime/js/06_util.js";
-import { build } from "deno:runtime/js/01_build.js";
+import { pathFromURL } from "internal:runtime/js/06_util.js";
+import { build } from "internal:runtime/js/01_build.js";
 
 function chmodSync(path, mode) {
   ops.op_chmod_sync(pathFromURL(path), mode);

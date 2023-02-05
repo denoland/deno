@@ -11,20 +11,20 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { core } from "deno:core/01_core.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
+import { core } from "internal:core/01_core.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
 import {
   parseUrlEncoded,
   URLSearchParamsPrototype,
-} from "deno:ext/url/00_url.js";
+} from "internal:ext/url/00_url.js";
 import {
   formDataFromEntries,
   FormDataPrototype,
   formDataToBlob,
   parseFormData,
-} from "deno:ext/fetch/21_formdata.js";
-import * as mimesniff from "deno:ext/web/01_mimesniff.js";
-import { BlobPrototype } from "deno:ext/web/09_file.js";
+} from "internal:ext/fetch/21_formdata.js";
+import * as mimesniff from "internal:ext/web/01_mimesniff.js";
+import { BlobPrototype } from "internal:ext/web/09_file.js";
 import {
   createProxy,
   errorReadableStream,
@@ -34,8 +34,8 @@ import {
   readableStreamDisturb,
   ReadableStreamPrototype,
   readableStreamThrowIfErrored,
-} from "deno:ext/web/06_streams.js";
-import primordials from "deno:core/00_primordials.js";
+} from "internal:ext/web/06_streams.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayBufferPrototype,
   ArrayBufferIsView,

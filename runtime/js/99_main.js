@@ -7,8 +7,8 @@ delete Object.prototype.__proto__;
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
-import { core, internals, ops } from "deno:core/01_core.js";
-import primordials from "deno:core/00_primordials.js";
+import { core, internals, ops } from "internal:core/01_core.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
@@ -37,30 +37,30 @@ const {
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
-import * as util from "deno:runtime/js/06_util.js";
-import * as event from "deno:ext/web/02_event.js";
-import * as location from "deno:ext/web/12_location.js";
-import * as build from "deno:runtime/js/01_build.js";
-import * as version from "deno:runtime/js/01_version.js";
-import * as os from "deno:runtime/js/30_os.js";
-import * as timers from "deno:ext/web/02_timers.js";
-import * as colors from "deno:ext/console/01_colors.js";
-import * as net from "deno:ext/net/01_net.js";
+import * as util from "internal:runtime/js/06_util.js";
+import * as event from "internal:ext/web/02_event.js";
+import * as location from "internal:ext/web/12_location.js";
+import * as build from "internal:runtime/js/01_build.js";
+import * as version from "internal:runtime/js/01_version.js";
+import * as os from "internal:runtime/js/30_os.js";
+import * as timers from "internal:ext/web/02_timers.js";
+import * as colors from "internal:ext/console/01_colors.js";
+import * as net from "internal:ext/net/01_net.js";
 import {
   inspectArgs,
   quoteString,
   wrapConsole,
-} from "deno:ext/console/02_console.js";
-import * as performance from "deno:ext/web/15_performance.js";
-import * as url from "deno:ext/url/00_url.js";
-import * as fetch from "deno:ext/fetch/26_fetch.js";
-import * as messagePort from "deno:ext/web/13_message_port.js";
-import { denoNs, denoNsUnstable } from "deno:runtime/js/90_deno_ns.js";
-import { errors } from "deno:runtime/js/01_errors.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import * as domException from "deno:ext/web/01_dom_exception.js";
-import * as flash from "deno:ext/flash/01_http.js";
-import * as spawn from "deno:runtime/js/40_spawn.js";
+} from "internal:ext/console/02_console.js";
+import * as performance from "internal:ext/web/15_performance.js";
+import * as url from "internal:ext/url/00_url.js";
+import * as fetch from "internal:ext/fetch/26_fetch.js";
+import * as messagePort from "internal:ext/web/13_message_port.js";
+import { denoNs, denoNsUnstable } from "internal:runtime/js/90_deno_ns.js";
+import { errors } from "internal:runtime/js/01_errors.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import * as domException from "internal:ext/web/01_dom_exception.js";
+import * as flash from "internal:ext/flash/01_http.js";
+import * as spawn from "internal:runtime/js/40_spawn.js";
 import {
   mainRuntimeGlobalProperties,
   setLanguage,
@@ -69,7 +69,7 @@ import {
   unstableWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
-} from "deno:runtime/js/98_global_scope.js";
+} from "internal:runtime/js/98_global_scope.js";
 
 let windowIsClosing = false;
 

@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "deno:core/01_core.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import primordials from "deno:core/00_primordials.js";
+import { core } from "internal:core/01_core.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   Symbol,
   TypeError,
@@ -12,11 +12,11 @@ import {
   Request,
   RequestPrototype,
   toInnerRequest,
-} from "deno:ext/fetch/23_request.js";
-import { toInnerResponse } from "deno:ext/fetch/23_response.js";
-import { URLPrototype } from "deno:ext/url/00_url.js";
-import { getHeader } from "deno:ext/fetch/20_headers.js";
-import { readableStreamForRid } from "deno:ext/web/06_streams.js";
+} from "internal:ext/fetch/23_request.js";
+import { toInnerResponse } from "internal:ext/fetch/23_response.js";
+import { URLPrototype } from "internal:ext/url/00_url.js";
+import { getHeader } from "internal:ext/fetch/20_headers.js";
+import { readableStreamForRid } from "internal:ext/web/06_streams.js";
 
 class CacheStorage {
   constructor() {

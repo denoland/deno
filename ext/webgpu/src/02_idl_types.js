@@ -3,7 +3,7 @@
 // @ts-check
 /// <reference path="../web/internal.d.ts" />
 
-import * as webidl from "deno:ext/webidl/00_webidl.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
 import {
   GPU,
   GPUAdapter,
@@ -35,8 +35,8 @@ import {
   GPUTextureUsage,
   GPUTextureView,
   GPUValidationError,
-} from "deno:ext/webgpu/01_webgpu.js";
-import primordials from "deno:core/00_primordials.js";
+} from "internal:ext/webgpu/01_webgpu.js";
+import primordials from "internal:core/00_primordials.js";
 const { SymbolIterator, TypeError } = primordials;
 
 // This needs to be initialized after all of the base classes are implemented,

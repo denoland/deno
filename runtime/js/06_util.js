@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { internals } from "deno:core/01_core.js";
-import primordials from "deno:core/00_primordials.js";
+import { internals } from "internal:core/01_core.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   decodeURIComponent,
   ObjectPrototypeIsPrototypeOf,
@@ -10,8 +10,8 @@ const {
   StringPrototypeReplace,
   TypeError,
 } = primordials;
-import { build } from "deno:runtime/js/01_build.js";
-import { URLPrototype } from "deno:ext/url/00_url.js";
+import { build } from "internal:runtime/js/01_build.js";
+import { URLPrototype } from "internal:ext/url/00_url.js";
 let logDebug = false;
 let logSource = "JS";
 

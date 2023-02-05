@@ -1,23 +1,23 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { core } from "deno:core/01_core.js";
-import primordials from "deno:core/00_primordials.js";
+import { core } from "internal:core/01_core.js";
+import primordials from "internal:core/00_primordials.js";
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { InnerBody } from "deno:ext/fetch/22_body.js";
-import { Event, setEventTargetData } from "deno:ext/web/02_event.js";
-import { BlobPrototype } from "deno:ext/web/09_file.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import { InnerBody } from "internal:ext/fetch/22_body.js";
+import { Event, setEventTargetData } from "internal:ext/web/02_event.js";
+import { BlobPrototype } from "internal:ext/web/09_file.js";
 import {
   fromInnerResponse,
   newInnerResponse,
   ResponsePrototype,
   toInnerResponse,
-} from "deno:ext/fetch/23_response.js";
+} from "internal:ext/fetch/23_response.js";
 import {
   _flash,
   fromInnerRequest,
   newInnerRequest,
-} from "deno:ext/fetch/23_request.js";
-import * as abortSignal from "deno:ext/web/03_abort_signal.js";
+} from "internal:ext/fetch/23_request.js";
+import * as abortSignal from "internal:ext/web/03_abort_signal.js";
 import {
   _eventLoop,
   _idleTimeoutDuration,
@@ -28,16 +28,16 @@ import {
   _server,
   _serverHandleIdleTimeout,
   WebSocket,
-} from "deno:ext/websocket/01_websocket.js";
-import { TcpConn, UnixConn } from "deno:ext/net/01_net.js";
-import { TlsConn } from "deno:ext/net/02_tls.js";
+} from "internal:ext/websocket/01_websocket.js";
+import { TcpConn, UnixConn } from "internal:ext/net/01_net.js";
+import { TlsConn } from "internal:ext/net/02_tls.js";
 import {
   Deferred,
   getReadableStreamResourceBacking,
   readableStreamClose,
   readableStreamForRid,
   ReadableStreamPrototype,
-} from "deno:ext/web/06_streams.js";
+} from "internal:ext/web/06_streams.js";
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypePush,

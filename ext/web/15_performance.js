@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import primordials from "deno:core/00_primordials.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeFind,
@@ -14,12 +14,12 @@ const {
   SymbolFor,
   TypeError,
 } = primordials;
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { structuredClone } from "deno:ext/web/02_structured_clone.js";
-const { createFilteredInspectProxy } = "deno:ext/console/02_console.js";
-import { EventTarget } from "deno:ext/web/02_event.js";
-import { opNow } from "deno:ext/web/02_timers.js";
-import DOMException from "deno:ext/web/01_dom_exception.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import { structuredClone } from "internal:ext/web/02_structured_clone.js";
+const { createFilteredInspectProxy } = "internal:ext/console/02_console.js";
+import { EventTarget } from "internal:ext/web/02_event.js";
+import { opNow } from "internal:ext/web/02_timers.js";
+import DOMException from "internal:ext/web/01_dom_exception.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 const customInspect = SymbolFor("Deno.customInspect");

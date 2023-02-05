@@ -6,8 +6,8 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 
-import { ops } from "deno:core/01_core.js";
-import primordials from "deno:core/00_primordials.js";
+import { ops } from "internal:core/01_core.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,

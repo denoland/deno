@@ -6,17 +6,17 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_web.d.ts" />
 
-import { core } from "deno:core/01_core.js";
+import { core } from "internal:core/01_core.js";
 const { InterruptedPrototype, ops } = core;
-import * as webidl from "deno:ext/webidl/00_webidl.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
 import {
   defineEventHandler,
   EventTarget,
   MessageEvent,
   setEventTargetData,
-} from "deno:ext/web/02_event.js";
-import DOMException from "deno:ext/web/01_dom_exception.js";
-import primordials from "deno:core/00_primordials.js";
+} from "internal:ext/web/02_event.js";
+import DOMException from "internal:ext/web/01_dom_exception.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayBufferPrototype,
   ArrayPrototypeFilter,

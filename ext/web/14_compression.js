@@ -5,9 +5,9 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_web.d.ts" />
 
-import { ops } from "deno:core/01_core.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { TransformStream } from "deno:ext/web/06_streams.js";
+import { ops } from "internal:core/01_core.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import { TransformStream } from "internal:ext/web/06_streams.js";
 
 webidl.converters.CompressionFormat = webidl.createEnumConverter(
   "CompressionFormat",

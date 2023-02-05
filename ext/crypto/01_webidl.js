@@ -4,9 +4,9 @@
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-import primordials from "deno:core/00_primordials.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { CryptoKey } from "deno:ext/crypto/00_crypto.js";
+import primordials from "internal:core/00_primordials.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import { CryptoKey } from "internal:ext/crypto/00_crypto.js";
 const {
   ArrayBufferIsView,
   ArrayBufferPrototype,

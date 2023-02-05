@@ -6,10 +6,10 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { ops } from "deno:core/01_core.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import DOMException from "deno:ext/web/01_dom_exception.js";
-import primordials from "deno:core/00_primordials.js";
+import { ops } from "internal:core/01_core.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import DOMException from "internal:ext/web/01_dom_exception.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ObjectPrototypeIsPrototypeOf,
   TypeErrorPrototype,

@@ -6,8 +6,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core } from "deno:core/01_core.js";
-import primordials from "deno:core/00_primordials.js";
+import { core } from "internal:core/01_core.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayBufferPrototype,
   ArrayBufferIsView,

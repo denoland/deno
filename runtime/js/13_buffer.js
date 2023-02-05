@@ -4,8 +4,8 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-import { assert } from "deno:ext/web/00_infra.js";
-import primordials from "deno:core/00_primordials.js";
+import { assert } from "internal:ext/web/00_infra.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeSlice,

@@ -1,19 +1,19 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "deno:core/01_core.js";
-import { read, readSync, write, writeSync } from "deno:runtime/js/12_io.js";
+import { core, ops } from "internal:core/01_core.js";
+import { read, readSync, write, writeSync } from "internal:runtime/js/12_io.js";
 import {
   fstat,
   fstatSync,
   ftruncate,
   ftruncateSync,
-} from "deno:runtime/js/30_fs.js";
-import { pathFromURL } from "deno:runtime/js/06_util.js";
+} from "internal:runtime/js/30_fs.js";
+import { pathFromURL } from "internal:runtime/js/06_util.js";
 import {
   readableStreamForRid,
   writableStreamForRid,
-} from "deno:ext/web/06_streams.js";
-import primordials from "deno:core/00_primordials.js";
+} from "internal:ext/web/06_streams.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayPrototypeFilter,
   Error,

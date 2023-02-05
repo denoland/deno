@@ -304,9 +304,9 @@ impl ModuleLoader for InternalModuleLoader {
     let specifier = ModuleSpecifier::parse(specifier).unwrap();
     if kind == ResolutionKind::Import {
       let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
-      if specifier.scheme() == "deno" {
+      if specifier.scheme() == "internal" {
         return if referrer == "."
-          || referrer_specifier.unwrap().scheme() == "deno"
+          || referrer_specifier.unwrap().scheme() == "internal"
         {
           Ok(specifier)
         } else {

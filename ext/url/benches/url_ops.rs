@@ -13,8 +13,8 @@ fn setup() -> Vec<Extension> {
     deno_url::init(),
     Extension::builder("bench_setup")
       .esm(vec![(
-        "deno:setup",
-        r#"import { URL } from "deno:ext/url/00_url.js";
+        "internal:setup",
+        r#"import { URL } from "internal:ext/url/00_url.js";
         globalThis.URL = URL;
         "#,
       )])

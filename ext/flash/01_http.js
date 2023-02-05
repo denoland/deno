@@ -1,18 +1,18 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { core, ops } from "deno:core/01_core.js";
-import primordials from "deno:core/00_primordials.js";
-import { BlobPrototype } from "deno:ext/web/09_file.js";
-import { TcpConn } from "deno:ext/net/01_net.js";
-import { toInnerResponse } from "deno:ext/fetch/23_response.js";
-import { _flash, fromFlashRequest } from "deno:ext/fetch/23_request.js";
-import { Event } from "deno:ext/web/02_event.js";
+import { core, ops } from "internal:core/01_core.js";
+import primordials from "internal:core/00_primordials.js";
+import { BlobPrototype } from "internal:ext/web/09_file.js";
+import { TcpConn } from "internal:ext/net/01_net.js";
+import { toInnerResponse } from "internal:ext/fetch/23_response.js";
+import { _flash, fromFlashRequest } from "internal:ext/fetch/23_request.js";
+import { Event } from "internal:ext/web/02_event.js";
 import {
   _state,
   getReadableStreamResourceBacking,
   ReadableStream,
   readableStreamClose,
   ReadableStreamPrototype,
-} from "deno:ext/web/06_streams.js";
+} from "internal:ext/web/06_streams.js";
 import {
   _eventLoop,
   _idleTimeoutDuration,
@@ -22,8 +22,8 @@ import {
   _rid,
   _serverHandleIdleTimeout,
   WebSocket,
-} from "deno:ext/websocket/01_websocket.js";
-import { _ws } from "deno:ext/http/01_http.js";
+} from "internal:ext/websocket/01_websocket.js";
+import { _ws } from "internal:ext/http/01_http.js";
 const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototype,

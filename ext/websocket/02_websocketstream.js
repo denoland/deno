@@ -2,17 +2,17 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, ops } from "deno:core/01_core.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { Deferred, writableStreamClose } from "deno:ext/web/06_streams.js";
-import DOMException from "deno:ext/web/01_dom_exception.js";
-import { add, remove } from "deno:ext/web/03_abort_signal.js";
+import { core, ops } from "internal:core/01_core.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import { Deferred, writableStreamClose } from "internal:ext/web/06_streams.js";
+import DOMException from "internal:ext/web/01_dom_exception.js";
+import { add, remove } from "internal:ext/web/03_abort_signal.js";
 import {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "deno:ext/fetch/20_headers.js";
-import primordials from "deno:core/00_primordials.js";
+} from "internal:ext/fetch/20_headers.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,

@@ -1,14 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "deno:core/01_core.js";
+import { core } from "internal:core/01_core.js";
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
 import {
   readableStreamForRidUnrefable,
   readableStreamForRidUnrefableRef,
   readableStreamForRidUnrefableUnref,
   writableStreamForRid,
-} from "deno:ext/web/06_streams.js";
-import primordials from "deno:core/00_primordials.js";
+} from "internal:ext/web/06_streams.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   Error,
   ObjectPrototypeIsPrototypeOf,

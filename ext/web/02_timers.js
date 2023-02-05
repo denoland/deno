@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "deno:core/01_core.js";
-import primordials from "deno:core/00_primordials.js";
+import { core, ops } from "internal:core/01_core.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -21,9 +21,9 @@ const {
   TypeError,
   indirectEval,
 } = primordials;
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { reportException } from "deno:ext/web/02_event.js";
-import { assert } from "deno:ext/web/00_infra.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import { reportException } from "internal:ext/web/02_event.js";
+import { assert } from "internal:ext/web/00_infra.js";
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(hrU8.buffer);

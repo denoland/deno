@@ -1,11 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, internals, ops } from "deno:core/01_core.js";
-import { setExitHandler } from "deno:runtime/js/30_os.js";
-import { Console } from "deno:ext/console/02_console.js";
-import { serializePermissions } from "deno:runtime/js/10_permissions.js";
-import { assert } from "deno:ext/web/00_infra.js";
-import primordials from "deno:core/00_primordials.js";
+import { core, internals, ops } from "internal:core/01_core.js";
+import { setExitHandler } from "internal:runtime/js/30_os.js";
+import { Console } from "internal:ext/console/02_console.js";
+import { serializePermissions } from "internal:runtime/js/10_permissions.js";
+import { assert } from "internal:ext/web/00_infra.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayFrom,
   ArrayPrototypeFilter,
@@ -1422,6 +1422,6 @@ internals.testing = {
   enableBench,
 };
 
-import { denoNs } from "deno:runtime/js/90_deno_ns.js";
+import { denoNs } from "internal:runtime/js/90_deno_ns.js";
 denoNs.bench = bench;
 denoNs.test = test;

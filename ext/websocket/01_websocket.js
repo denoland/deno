@@ -2,11 +2,11 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, ops } from "deno:core/01_core.js";
-import { URL } from "deno:ext/url/00_url.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { HTTP_TOKEN_CODE_POINT_RE } from "deno:ext/web/00_infra.js";
-import DOMException from "deno:ext/web/01_dom_exception.js";
+import { core, ops } from "internal:core/01_core.js";
+import { URL } from "internal:ext/url/00_url.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import { HTTP_TOKEN_CODE_POINT_RE } from "internal:ext/web/00_infra.js";
+import DOMException from "internal:ext/web/01_dom_exception.js";
 import {
   _skipInternalInit,
   CloseEvent,
@@ -15,9 +15,9 @@ import {
   Event,
   EventTarget,
   MessageEvent,
-} from "deno:ext/web/02_event.js";
-import { Blob, BlobPrototype } from "deno:ext/web/09_file.js";
-import primordials from "deno:core/00_primordials.js";
+} from "internal:ext/web/02_event.js";
+import { Blob, BlobPrototype } from "internal:ext/web/09_file.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayBufferPrototype,
   ArrayBufferIsView,

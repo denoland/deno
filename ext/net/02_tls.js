@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "deno:core/01_core.js";
-import { Conn, Listener } from "deno:ext/net/01_net.js";
-import primordials from "deno:core/00_primordials.js";
+import { core, ops } from "internal:core/01_core.js";
+import { Conn, Listener } from "internal:ext/net/01_net.js";
+import primordials from "internal:core/00_primordials.js";
 const { TypeError } = primordials;
 
 function opStartTls(args) {

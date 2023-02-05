@@ -2,9 +2,9 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { URL } from "deno:ext/url/00_url.js";
-import DOMException from "deno:ext/web/01_dom_exception.js";
-import primordials from "deno:core/00_primordials.js";
+import { URL } from "internal:ext/url/00_url.js";
+import DOMException from "internal:ext/web/01_dom_exception.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   Error,
   ObjectDefineProperties,

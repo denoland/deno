@@ -10,27 +10,27 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { core } from "deno:core/01_core.js";
-import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "deno:ext/console/02_console.js";
+import { core } from "internal:core/01_core.js";
+import * as webidl from "internal:ext/webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "internal:ext/console/02_console.js";
 import {
   byteLowerCase,
   HTTP_TAB_OR_SPACE,
   regexMatcher,
   serializeJSValueToJSONString,
-} from "deno:ext/web/00_infra.js";
-import { extractBody, mixinBody } from "deno:ext/fetch/22_body.js";
-import { getLocationHref } from "deno:ext/web/12_location.js";
-import { extractMimeType } from "deno:ext/web/01_mimesniff.js";
-import { URL } from "deno:ext/url/00_url.js";
+} from "internal:ext/web/00_infra.js";
+import { extractBody, mixinBody } from "internal:ext/fetch/22_body.js";
+import { getLocationHref } from "internal:ext/web/12_location.js";
+import { extractMimeType } from "internal:ext/web/01_mimesniff.js";
+import { URL } from "internal:ext/url/00_url.js";
 import {
   fillHeaders,
   getDecodeSplitHeader,
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "deno:ext/fetch/20_headers.js";
-import primordials from "deno:core/00_primordials.js";
+} from "internal:ext/fetch/20_headers.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypePush,

@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "deno:core/01_core.js";
-import { pathFromURL } from "deno:runtime/js/06_util.js";
-import * as abortSignal from "deno:ext/web/03_abort_signal.js";
+import { core, ops } from "internal:core/01_core.js";
+import { pathFromURL } from "internal:runtime/js/06_util.js";
+import * as abortSignal from "internal:ext/web/03_abort_signal.js";
 
 function readFileSync(path) {
   return ops.op_readfile_sync(pathFromURL(path));

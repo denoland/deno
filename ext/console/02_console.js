@@ -2,8 +2,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, internals } from "deno:core/01_core.js";
-import primordials from "deno:core/00_primordials.js";
+import { core, internals } from "internal:core/01_core.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   AggregateErrorPrototype,
   ArrayPrototypeUnshift,
@@ -114,7 +114,7 @@ const {
   WeakMapPrototype,
   WeakSetPrototype,
 } = primordials;
-import * as colors from "deno:ext/console/01_colors.js";
+import * as colors from "internal:ext/console/01_colors.js";
 
 function isInvalidDate(x) {
   return isNaN(DatePrototypeGetTime(x));
