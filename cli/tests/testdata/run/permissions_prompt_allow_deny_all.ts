@@ -1,20 +1,20 @@
-Deno.permissions.request({ name: "run", command: "FOO" });
-Deno.permissions.request({ name: "run", command: "BAR" });
+Deno.permissions.requestSync({ name: "run", command: "FOO" });
+Deno.permissions.requestSync({ name: "run", command: "BAR" });
 
-Deno.permissions.request({ name: "read", path: "FOO" });
-Deno.permissions.request({ name: "read", path: "BAR" });
+Deno.permissions.requestSync({ name: "read", path: "FOO" });
+Deno.permissions.requestSync({ name: "read", path: "BAR" });
 
-Deno.permissions.request({ name: "write", path: "FOO" });
-Deno.permissions.request({ name: "write", path: "BAR" });
+Deno.permissions.requestSync({ name: "write", path: "FOO" });
+Deno.permissions.requestSync({ name: "write", path: "BAR" });
 
-Deno.permissions.request({ name: "net", host: "FOO" });
-Deno.permissions.request({ name: "net", host: "BAR" });
+Deno.permissions.requestSync({ name: "net", host: "FOO" });
+Deno.permissions.requestSync({ name: "net", host: "BAR" });
 
-Deno.permissions.request({ name: "env", variable: "FOO" });
-Deno.permissions.request({ name: "env", variable: "BAR" });
+Deno.permissions.requestSync({ name: "env", variable: "FOO" });
+Deno.permissions.requestSync({ name: "env", variable: "BAR" });
 
-Deno.permissions.request({ name: "sys", kind: "loadavg" });
-Deno.permissions.request({ name: "sys", kind: "hostname" });
+Deno.permissions.requestSync({ name: "sys", kind: "loadavg" });
+Deno.permissions.requestSync({ name: "sys", kind: "hostname" });
 
-Deno.permissions.request({ name: "ffi", path: "FOO" });
-Deno.permissions.request({ name: "ffi", path: "BAR" });
+Deno.permissions.requestSync({ name: "ffi", path: "FOO" });
+Deno.permissions.requestSync({ name: "ffi", path: "BAR" });
