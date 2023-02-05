@@ -19,7 +19,7 @@ import { structuredClone } from "deno:ext/web/02_structured_clone.js";
 const { createFilteredInspectProxy } = "deno:ext/console/02_console.js";
 import { EventTarget } from "deno:ext/web/02_event.js";
 import { opNow } from "deno:ext/web/02_timers.js";
-import { DOMException } from "deno:ext/web/01_dom_exception.js";
+import DOMException from "deno:ext/web/01_dom_exception.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 const customInspect = SymbolFor("Deno.customInspect");

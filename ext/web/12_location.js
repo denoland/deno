@@ -3,7 +3,7 @@
 /// <reference path="../../core/internal.d.ts" />
 
 import { URL } from "deno:ext/url/00_url.js";
-import { DOMException } from "deno:ext/web/01_dom_exception.js";
+import DOMException from "deno:ext/web/01_dom_exception.js";
 import primordials from "deno:core/00_primordials.js";
 const {
   Error,

@@ -9,7 +9,7 @@ import {
   EventTarget,
   setTarget,
 } from "deno:ext/web/02_event.js";
-import { DOMException } from "deno:ext/web/01_dom_exception.js";
+import DOMException from "deno:ext/web/01_dom_exception.js";
 import primordials from "deno:core/00_primordials.js";
 const {
   ArrayPrototypeIndexOf,

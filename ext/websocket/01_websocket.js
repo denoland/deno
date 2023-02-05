@@ -6,7 +6,7 @@ import { core, ops } from "deno:core/01_core.js";
 import { URL } from "deno:ext/url/00_url.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "deno:ext/web/00_infra.js";
-import { DOMException } from "deno:ext/web/01_dom_exception.js";
+import DOMException from "deno:ext/web/01_dom_exception.js";
 import {
   _skipInternalInit,
   CloseEvent,

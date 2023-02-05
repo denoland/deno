@@ -7,7 +7,7 @@
 
 import { core, ops } from "deno:core/01_core.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
-import { DOMException } from "deno:ext/web/01_dom_exception.js";
+import DOMException from "deno:ext/web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "deno:ext/console/02_console.js";
 import primordials from "deno:core/00_primordials.js";
 const {

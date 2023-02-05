@@ -5,7 +5,7 @@
 import { core, ops } from "deno:core/01_core.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import { Deferred, writableStreamClose } from "deno:ext/web/06_streams.js";
-import { DOMException } from "deno:ext/web/01_dom_exception.js";
+import DOMException from "deno:ext/web/01_dom_exception.js";
 import { add, remove } from "deno:ext/web/03_abort_signal.js";
 import {
   fillHeaders,

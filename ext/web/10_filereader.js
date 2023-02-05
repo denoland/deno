@@ -17,7 +17,7 @@ import { forgivingBase64Encode } from "deno:ext/web/00_infra.js";
 import { EventTarget, ProgressEvent } from "deno:ext/web/02_event.js";
 import { decode, TextDecoder } from "deno:ext/web/08_text_encoding.js";
 import { parseMimeType } from "deno:ext/web/01_mimesniff.js";
-import { DOMException } from "deno:ext/web/01_dom_exception.js";
+import DOMException from "deno:ext/web/01_dom_exception.js";
 const {
   ArrayPrototypePush,
   ArrayPrototypeReduce,
