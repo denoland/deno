@@ -35,7 +35,7 @@ fn setup() -> Vec<Extension> {
           specifier:"setup", 
           source_code: ExtensionSourceFileSource::Embedded(
 r#"const { setTimeout, handleTimerMacrotask } = globalThis.__bootstrap.timers;
-Deno.core.setMacrotaskCallback(handleTimerMacrotask);"#.to_string()
+Deno.core.setMacrotaskCallback(handleTimerMacrotask);"#
           )
         },
       ])

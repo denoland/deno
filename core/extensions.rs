@@ -12,7 +12,7 @@ pub enum ExtensionSourceFileSource {
   /// in the produced binary.
   File(PathBuf),
   /// Use this option when not snapshotting.
-  Embedded(String),
+  Embedded(&'static str),
 }
 pub struct ExtensionSourceFile {
   pub specifier: &'static str,

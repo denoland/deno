@@ -21,8 +21,7 @@ const hello1m = hello.repeat(1e6);
 const helloEncoded = Deno.core.encode(hello);
 const hello1kEncoded = Deno.core.encode(hello1k);
 const hello1mEncoded = Deno.core.encode(hello1m);
-"#
-        .to_string(),
+"#,
       ),
     }])
     .build()]

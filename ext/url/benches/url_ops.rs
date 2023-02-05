@@ -17,7 +17,7 @@ fn setup() -> Vec<Extension> {
       .js(vec![ExtensionSourceFile {
         specifier: "setup",
         source_code: ExtensionSourceFileSource::Embedded(
-          "const { URL } = globalThis.__bootstrap.url;".to_string(),
+          "const { URL } = globalThis.__bootstrap.url;",
         ),
       }])
       .build(),

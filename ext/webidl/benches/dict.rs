@@ -15,9 +15,9 @@ fn setup() -> Vec<Extension> {
     Extension::builder("deno_webidl_bench")
       .js(vec![ExtensionSourceFile {
         specifier: "setup",
-        source_code: ExtensionSourceFileSource::Embedded(
-          include_str!("dict.js").to_string(),
-        ),
+        source_code: ExtensionSourceFileSource::Embedded(include_str!(
+          "dict.js"
+        )),
       }])
       .build(),
   ]

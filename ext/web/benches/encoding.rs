@@ -35,8 +35,7 @@ fn setup() -> Vec<Extension> {
         specifier: "setup",
         source_code: ExtensionSourceFileSource::Embedded(
           r#"const { TextDecoder } = globalThis.__bootstrap.encoding;
-const hello12k = Deno.core.encode("hello world\n".repeat(1e3));"#
-            .to_string(),
+const hello12k = Deno.core.encode("hello world\n".repeat(1e3));"#,
         ),
       }])
       .state(|state| {
