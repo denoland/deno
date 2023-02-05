@@ -3887,8 +3887,8 @@ assertEquals(1, notify_return_value);
       )
       .unwrap_err();
     let error_string = error.to_string();
-    // Test that the script specifier is a URL: `deno:<repo-relative path>`.
-    assert!(error_string.contains("deno:core/01_core.js"));
+    // Test that the script specifier is a URL: `internal:<repo-relative path>`.
+    assert!(error_string.contains("internal:core/01_core.js"));
   }
 
   #[test]

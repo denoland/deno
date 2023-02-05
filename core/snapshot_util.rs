@@ -39,7 +39,7 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     let display_path_str = display_path.display().to_string();
     js_runtime
       .execute_script(
-        &("deno:".to_string() + &display_path_str.replace('\\', "/")),
+        &("internal:".to_string() + &display_path_str.replace('\\', "/")),
         &std::fs::read_to_string(&file).unwrap(),
       )
       .unwrap();
