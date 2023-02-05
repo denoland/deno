@@ -58,7 +58,7 @@ import * as messagePort from "internal:ext/web/13_message_port.js";
 import { denoNs, denoNsUnstable } from "internal:runtime/js/90_deno_ns.js";
 import { errors } from "internal:runtime/js/01_errors.js";
 import * as webidl from "internal:ext/webidl/00_webidl.js";
-import * as domException from "internal:ext/web/01_dom_exception.js";
+import DOMException from "internal:ext/web/01_dom_exception.js";
 import * as flash from "internal:ext/flash/01_http.js";
 import * as spawn from "internal:runtime/js/40_spawn.js";
 import {
@@ -185,7 +185,7 @@ function importScripts(...urls) {
     try {
       return new url.URL(scriptUrl, baseUrl ?? undefined).href;
     } catch {
-      throw new domException.DOMException(
+      throw new DOMException(
         "Failed to parse URL.",
         "SyntaxError",
       );

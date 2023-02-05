@@ -35,7 +35,7 @@ import * as response from "internal:ext/fetch/23_response.js";
 import * as fetch from "internal:ext/fetch/26_fetch.js";
 import * as messagePort from "internal:ext/web/13_message_port.js";
 import * as webidl from "internal:ext/webidl/00_webidl.js";
-import * as domException from "internal:ext/web/01_dom_exception.js";
+import DOMException from "internal:ext/web/01_dom_exception.js";
 import * as abortSignal from "internal:ext/web/03_abort_signal.js";
 import * as globalInterfaces from "internal:ext/web/04_global_interfaces.js";
 import * as webStorage from "internal:ext/webstorage/01_webstorage.js";
@@ -57,7 +57,7 @@ const windowOrWorkerGlobalScope = {
   CryptoKey: util.nonEnumerable(crypto.CryptoKey),
   CustomEvent: util.nonEnumerable(event.CustomEvent),
   DecompressionStream: util.nonEnumerable(compression.DecompressionStream),
-  DOMException: util.nonEnumerable(domException.DOMException),
+  DOMException: util.nonEnumerable(DOMException),
   ErrorEvent: util.nonEnumerable(event.ErrorEvent),
   Event: util.nonEnumerable(event.Event),
   EventTarget: util.nonEnumerable(event.EventTarget),
