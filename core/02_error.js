@@ -1,16 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-"use strict";
 
 import primordials from "deno:core/00_primordials.js";
 const {
   Error,
-  ObjectAssign,
   StringPrototypeStartsWith,
   StringPrototypeEndsWith,
   ObjectDefineProperties,
   ArrayPrototypePush,
   ArrayPrototypeMap,
-  ObjectFreeze,
   ArrayPrototypeJoin,
 } = primordials;
 
@@ -152,6 +149,4 @@ function prepareStackTrace(error, callSites) {
     );
 }
 
-ObjectAssign(core, { prepareStackTrace });
-ObjectAssign(globalThis.__bootstrap.core, { prepareStackTrace });
-ObjectFreeze(globalThis.__bootstrap.core);
+core.prepareStackTrace = prepareStackTrace;
