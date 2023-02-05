@@ -3,7 +3,7 @@
 #![warn(unsafe_op_in_unsafe_fn)]
 
 use deno_core::error::AnyError;
-use deno_core::include_js_files_for_snapshot;
+use deno_core::include_js_files_from_crate;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -119,7 +119,7 @@ impl Resource for WebGpuQuerySet {
 pub fn init(unstable: bool) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_web"])
-    .js(include_js_files_for_snapshot!(
+    .js(include_js_files_from_crate!(
       prefix "internal:ext/webgpu",
       "01_webgpu.js",
       "02_idl_types.js",

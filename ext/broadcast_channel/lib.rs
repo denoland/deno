@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
-use deno_core::include_js_files_for_snapshot;
+use deno_core::include_js_files_from_crate;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -112,7 +112,7 @@ pub fn init<BC: BroadcastChannel + 'static>(
 ) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_web"])
-    .js(include_js_files_for_snapshot!(
+    .js(include_js_files_from_crate!(
       prefix "internal:ext/broadcast_channel",
       "01_broadcast_channel.js",
     ))

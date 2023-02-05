@@ -20,7 +20,7 @@ use deno_core::futures::stream::Peekable;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
-use deno_core::include_js_files_for_snapshot;
+use deno_core::include_js_files_from_crate;
 use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -80,7 +80,7 @@ mod reader_stream;
 pub fn init() -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_web", "deno_net", "deno_fetch", "deno_websocket"])
-    .js(include_js_files_for_snapshot!(
+    .js(include_js_files_from_crate!(
       prefix "internal:ext/http",
       "01_http.js",
     ))

@@ -223,19 +223,45 @@ impl ExtensionBuilder {
 }
 
 /// Helps embed JS files in an extension. Returns `ExtensionSourceFile` which
-/// represents the filename and the location of the source code in the extension
-/// crate.
+/// represents the filename and the string content of the file. The contents
+/// of the file will be included in the produced binary.
 ///
 /// Example:
 /// ```ignore
-/// include_js_files_for_snapshot!(
+/// include_js_files!(
 ///   prefix "internal:extensions/hello",
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
 /// ```
 #[macro_export]
-macro_rules! include_js_files_for_snapshot {
+macro_rules! include_js_files {
+  (prefix $prefix:literal, $($file:literal,)+) => {
+    vec![
+      $($crate::ExtensionSourceFile {
+        specifier: concat!($prefix, "/", $file),
+        source_code: $crate::ExtensionSourceFileSource::Embedded(
+          include_str!($file)
+        ),
+      },)+
+    ]
+  };
+}
+
+/// Helps embed JS files in an extension. Returns `ExtensionSourceFile` which
+/// represents the filename and the location of the source code in the extension
+/// crate.
+///
+/// Example:
+/// ```ignore
+/// include_js_files_from_crate!(
+///   prefix "internal:extensions/hello",
+///   "01_hello.js",
+///   "02_goodbye.js",
+/// )
+/// ```
+#[macro_export]
+macro_rules! include_js_files_from_crate {
   (prefix $prefix:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionSourceFile {

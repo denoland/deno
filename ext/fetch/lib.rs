@@ -10,7 +10,7 @@ use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::include_js_files_for_snapshot;
+use deno_core::include_js_files_from_crate;
 use deno_core::op;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
@@ -97,7 +97,7 @@ where
 {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_console"])
-    .js(include_js_files_for_snapshot!(
+    .js(include_js_files_from_crate!(
       prefix "internal:ext/fetch",
       "01_fetch_util.js",
       "20_headers.js",

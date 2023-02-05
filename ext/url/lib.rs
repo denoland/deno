@@ -4,7 +4,7 @@ mod urlpattern;
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files_for_snapshot;
+use deno_core::include_js_files_from_crate;
 use deno_core::op;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
@@ -20,7 +20,7 @@ use crate::urlpattern::op_urlpattern_process_match_input;
 pub fn init() -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl"])
-    .js(include_js_files_for_snapshot!(
+    .js(include_js_files_from_crate!(
       prefix "internal:ext/url",
       "00_url.js",
       "01_urlpattern.js",

@@ -6,7 +6,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
-use deno_core::include_js_files_for_snapshot;
+use deno_core::include_js_files_from_crate;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -24,7 +24,7 @@ const MAX_STORAGE_BYTES: u32 = 10 * 1024 * 1024;
 pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl"])
-    .js(include_js_files_for_snapshot!(
+    .js(include_js_files_from_crate!(
       prefix "internal:ext/webstorage",
       "01_webstorage.js",
     ))

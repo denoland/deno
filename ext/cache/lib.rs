@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
-use deno_core::include_js_files_for_snapshot;
+use deno_core::include_js_files_from_crate;
 use deno_core::op;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -27,7 +27,7 @@ pub fn init<CA: Cache + 'static>(
 ) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_fetch"])
-    .js(include_js_files_for_snapshot!(
+    .js(include_js_files_from_crate!(
       prefix "internal:ext/cache",
       "01_cache.js",
     ))
