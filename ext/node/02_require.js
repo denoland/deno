@@ -563,7 +563,7 @@
         if (isRelative) {
           paths = options.paths;
         } else {
-          const fakeParent = new Module("", null);
+          const fakeParent = new Module("fake-module", null);
 
           paths = [];
 
