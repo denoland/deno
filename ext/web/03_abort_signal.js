@@ -21,7 +21,11 @@ const {
   Symbol,
   TypeError,
 } = primordials;
-import { refTimer, setTimeout, unrefTimer } from "internal:ext/web/02_timers.js";
+import {
+  refTimer,
+  setTimeout,
+  unrefTimer,
+} from "internal:ext/web/02_timers.js";
 
 const add = Symbol("[[add]]");
 const signalAbort = Symbol("[[signalAbort]]");

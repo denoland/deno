@@ -20,7 +20,10 @@ import {
   ReadableStreamPrototype,
 } from "internal:ext/web/06_streams.js";
 import { extractBody, InnerBody } from "internal:ext/fetch/22_body.js";
-import { processUrlList, toInnerRequest } from "internal:ext/fetch/23_request.js";
+import {
+  processUrlList,
+  toInnerRequest,
+} from "internal:ext/fetch/23_request.js";
 import {
   abortedNetworkError,
   fromInnerResponse,

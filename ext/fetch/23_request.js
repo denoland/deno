@@ -16,7 +16,11 @@ import {
   HTTP_TOKEN_CODE_POINT_RE,
 } from "internal:ext/web/00_infra.js";
 import { URL } from "internal:ext/url/00_url.js";
-import { extractBody, InnerBody, mixinBody } from "internal:ext/fetch/22_body.js";
+import {
+  extractBody,
+  InnerBody,
+  mixinBody,
+} from "internal:ext/fetch/22_body.js";
 import { getLocationHref } from "internal:ext/web/12_location.js";
 import { extractMimeType } from "internal:ext/web/01_mimesniff.js";
 import { blobFromObjectUrl } from "internal:ext/web/09_file.js";
