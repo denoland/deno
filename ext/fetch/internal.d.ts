@@ -5,10 +5,6 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-declare var fetchUtil: {
-  requiredArguments(name: string, length: number, required: number): void;
-};
-
 declare var domIterable: {
   DomIterableMixin(base: any, dataSymbol: symbol): any;
 };
