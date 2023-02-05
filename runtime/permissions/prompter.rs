@@ -201,7 +201,7 @@ impl PermissionPrompter for TtyPrompter {
 
     // print to stderr so that if stdout is piped this is still displayed.
     let opts = if is_unary {
-      "[y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all)"
+      "[y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all"
     } else {
       "[y/n] (y = yes, allow; n = no, deny)"
     };
