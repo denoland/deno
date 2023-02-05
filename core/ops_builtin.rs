@@ -22,7 +22,9 @@ pub(crate) fn init_builtins() -> Extension {
   Extension::builder("deno_builtins")
     .js(include_js_files!(
       prefix "deno:core",
-      "00_primordials.js", "01_core.js", "02_error.js",
+      "00_primordials.js",
+      "01_core.js",
+      "02_error.js",
     ))
     .ops(vec![
       op_close::decl(),
