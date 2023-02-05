@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import primordials from "deno:core/00_primordials.js";
+import primordials from "internal:core/00_primordials.js";
 const {
   Error,
   StringPrototypeStartsWith,
@@ -11,7 +11,7 @@ const {
   ArrayPrototypeJoin,
 } = primordials;
 
-import { core, ops } from "deno:core/01_core.js";
+import { core, ops } from "internal:core/01_core.js";
 
 // Keep in sync with `cli/fmt_errors.rs`.
 function formatLocation(cse) {
