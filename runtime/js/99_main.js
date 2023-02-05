@@ -271,43 +271,43 @@ function registerErrors() {
   core.registerErrorBuilder(
     "DOMExceptionOperationError",
     function DOMExceptionOperationError(msg) {
-      return new domException.DOMException(msg, "OperationError");
+      return new DOMException(msg, "OperationError");
     },
   );
   core.registerErrorBuilder(
     "DOMExceptionQuotaExceededError",
     function DOMExceptionQuotaExceededError(msg) {
-      return new domException.DOMException(msg, "QuotaExceededError");
+      return new DOMException(msg, "QuotaExceededError");
     },
   );
   core.registerErrorBuilder(
     "DOMExceptionNotSupportedError",
     function DOMExceptionNotSupportedError(msg) {
-      return new domException.DOMException(msg, "NotSupported");
+      return new DOMException(msg, "NotSupported");
     },
   );
   core.registerErrorBuilder(
     "DOMExceptionNetworkError",
     function DOMExceptionNetworkError(msg) {
-      return new domException.DOMException(msg, "NetworkError");
+      return new DOMException(msg, "NetworkError");
     },
   );
   core.registerErrorBuilder(
     "DOMExceptionAbortError",
     function DOMExceptionAbortError(msg) {
-      return new domException.DOMException(msg, "AbortError");
+      return new DOMException(msg, "AbortError");
     },
   );
   core.registerErrorBuilder(
     "DOMExceptionInvalidCharacterError",
     function DOMExceptionInvalidCharacterError(msg) {
-      return new domException.DOMException(msg, "InvalidCharacterError");
+      return new DOMException(msg, "InvalidCharacterError");
     },
   );
   core.registerErrorBuilder(
     "DOMExceptionDataError",
     function DOMExceptionDataError(msg) {
-      return new domException.DOMException(msg, "DataError");
+      return new DOMException(msg, "DataError");
     },
   );
 }
