@@ -596,12 +596,26 @@ fn permissions_prompt_allow_all() {
   let args = "run --quiet run/permissions_prompt_allow_deny_all.ts";
   use util::PtyData::*;
   util::test_pty2(args, vec![
+    // "run" permissions
     Output("⚠️  ┌ Deno requests run access to \"FOO\".\r\n    ├ Run again with --allow-run to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
     Input("Y\n"),
     Output("✅ Granted all run access.\r\n"),
+    // "read" permissions
+    Output("⚠️  ┌ Deno requests read access to \"FOO\".\r\n    ├ Run again with --allow-read to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
+    Input("Y\n"),
+    Output("✅ Granted all read access.\r\n"),
+    // "write" permissions
+    Output("⚠️  ┌ Deno requests write access to \"FOO\".\r\n    ├ Run again with --allow-write to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
+    Input("Y\n"),
+    Output("✅ Granted all write access.\r\n"),
+    // "net" permissions
+    // "env" permissions
     Output("⚠️  ┌ Deno requests env access to \"FOO\".\r\n    ├ Run again with --allow-env to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
     Input("Y\n"),
     Output("✅ Granted all env access.\r\n"),
+    // "sys" permissions
+    // "ffi" permissions
+    // "hrtime" permissions
   ]);
 }
 
@@ -610,12 +624,26 @@ fn permissions_prompt_deny_all() {
   let args = "run --quiet run/permissions_prompt_allow_deny_all.ts";
   use util::PtyData::*;
   util::test_pty2(args, vec![
+    // "run" permissions
     Output("⚠️  ┌ Deno requests run access to \"FOO\".\r\n   ├ Run again with --allow-run to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
     Input("N\n"),
     Output("❌ Denied all run access.\r\n"),
+    // "read" permissions
+    Output("⚠️  ┌ Deno requests read access to \"FOO\".\r\n   ├ Run again with --allow-read to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
+    Input("N\n"),
+    Output("❌ Denied all read access.\r\n"),
+    // "write" permissions
+    Output("⚠️  ┌ Deno requests write access to \"FOO\".\r\n   ├ Run again with --allow-write to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
+    Input("N\n"),
+    Output("❌ Denied all write access.\r\n"),
+    // "net" permissions
+    // "env" permissions
     Output("⚠️  ┌ Deno requests env access to \"FOO\".\r\n   ├ Run again with --allow-env to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
     Input("N\n"),
     Output("❌ Denied all env access.\r\n"),
+    // "sys" permissions
+    // "ffi" permissions
+    // "hrtime" permissions
   ]);
 }
 
