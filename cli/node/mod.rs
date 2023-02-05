@@ -101,7 +101,7 @@ impl NodeResolution {
       }
       Some(resolution) => (resolution.into_url(), MediaType::Dts),
       None => (
-        ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap(),
+        ModuleSpecifier::parse("internal:///missing_dependency.d.ts").unwrap(),
         MediaType::Dts,
       ),
     }

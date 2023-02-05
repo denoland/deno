@@ -446,7 +446,7 @@ struct EmitArgs {
 fn op_emit(state: &mut OpState, args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
-    "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
+    "internal:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
     _ => {
       if cfg!(debug_assertions) {
         panic!("Unhandled emit write: {}", args.file_name);
@@ -518,11 +518,11 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
   let graph_data = state.graph_data.read();
-  let data = if &v.specifier == "deno:///.tsbuildinfo" {
+  let data = if &v.specifier == "internal:///.tsbuildinfo" {
     state.maybe_tsbuildinfo.as_deref().map(Cow::Borrowed)
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
-  } else if &v.specifier == "deno:///missing_dependency.d.ts" {
+  } else if &v.specifier == "internal:///missing_dependency.d.ts" {
     hash = Some("1".to_string());
     media_type = MediaType::Dts;
     Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
@@ -726,7 +726,7 @@ fn op_resolve(
         (specifier_str, media_type.as_ts_extension().into())
       }
       None => (
-        "deno:///missing_dependency.d.ts".to_string(),
+        "internal:///missing_dependency.d.ts".to_string(),
         ".d.ts".to_string(),
       ),
     };
@@ -983,10 +983,10 @@ mod tests {
       "lib": ["deno.window"],
       "module": "esnext",
       "noEmit": true,
-      "outDir": "deno:///",
+      "outDir": "internal:///",
       "strict": true,
       "target": "esnext",
-      "tsBuildInfoFile": "deno:///.tsbuildinfo",
+      "tsBuildInfoFile": "internal:///.tsbuildinfo",
     }));
     let request = Request {
       config,
@@ -1075,7 +1075,7 @@ mod tests {
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
-        file_name: "deno:///.tsbuildinfo".to_string(),
+        file_name: "internal:///.tsbuildinfo".to_string(),
       },
     );
     assert!(actual);
@@ -1146,9 +1146,11 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual =
-      op_load::call(&mut state, json!({ "specifier": "deno:///.tsbuildinfo"}))
-        .expect("should have invoked op");
+    let actual = op_load::call(
+      &mut state,
+      json!({ "specifier": "internal:///.tsbuildinfo"}),
+    )
+    .expect("should have invoked op");
     assert_eq!(
       actual,
       json!({
@@ -1217,7 +1219,7 @@ mod tests {
     .expect("should have not errored");
     assert_eq!(
       actual,
-      vec![("deno:///missing_dependency.d.ts".into(), ".d.ts".into())]
+      vec![("internal:///missing_dependency.d.ts".into(), ".d.ts".into())]
     );
   }
 

@@ -16,7 +16,7 @@ pub fn init_surface(unstable: bool) -> Extension {
   Extension::builder("deno_webgpu_surface")
     .dependencies(vec!["deno_webidl", "deno_web", "deno_webgpu"])
     .esm(include_js_files!(
-      prefix "deno:ext/webgpu",
+      prefix "internal:ext/webgpu",
       "03_surface.js",
       "04_surface_idl_types.js",
     ))

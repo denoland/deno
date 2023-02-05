@@ -27,7 +27,7 @@ impl FromStr for BarePort {
 }
 
 pub fn validator(host_and_port: &str) -> Result<(), String> {
-  if Url::parse(&format!("deno://{host_and_port}")).is_ok()
+  if Url::parse(&format!("internal://{host_and_port}")).is_ok()
     || host_and_port.parse::<IpAddr>().is_ok()
     || host_and_port.parse::<BarePort>().is_ok()
   {
@@ -43,7 +43,7 @@ pub fn validator(host_and_port: &str) -> Result<(), String> {
 pub fn parse(paths: Vec<String>) -> clap::Result<Vec<String>> {
   let mut out: Vec<String> = vec![];
   for host_and_port in paths.iter() {
-    if Url::parse(&format!("deno://{host_and_port}")).is_ok()
+    if Url::parse(&format!("internal://{host_and_port}")).is_ok()
       || host_and_port.parse::<IpAddr>().is_ok()
     {
       out.push(host_and_port.to_owned())

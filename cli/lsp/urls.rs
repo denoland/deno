@@ -17,7 +17,7 @@ use std::sync::Arc;
 /// Used in situations where a default URL needs to be used where otherwise a
 /// panic is undesired.
 pub static INVALID_SPECIFIER: Lazy<ModuleSpecifier> =
-  Lazy::new(|| ModuleSpecifier::parse("deno://invalid").unwrap());
+  Lazy::new(|| ModuleSpecifier::parse("internal://invalid").unwrap());
 
 /// Matches the `encodeURIComponent()` encoding from JavaScript, which matches
 /// the component percent encoding set.
@@ -81,7 +81,7 @@ impl LspUrlMapInner {
 }
 
 /// A bi-directional map of URLs sent to the LSP client and internal module
-/// specifiers.  We need to map internal specifiers into `deno:` schema URLs
+/// specifiers.  We need to map internal specifiers into `internal:` schema URLs
 /// to allow the Deno language server to manage these as virtual documents.
 #[derive(Debug, Default, Clone)]
 pub struct LspUrlMap(Arc<Mutex<LspUrlMapInner>>);
@@ -101,7 +101,7 @@ impl LspUrlMap {
         specifier.clone()
       } else {
         let specifier_str = if specifier.scheme() == "asset" {
-          format!("deno:/asset{}", specifier.path())
+          format!("internal:/asset{}", specifier.path())
         } else if specifier.scheme() == "data" {
           let data_url = DataUrl::process(specifier.as_str())
             .map_err(|e| uri_error(format!("{e:?}")))?;
@@ -114,7 +114,7 @@ impl LspUrlMap {
             media_type.as_ts_extension()
           };
           format!(
-            "deno:/{}/data_url{}",
+            "internal:/{}/data_url{}",
             hash_data_specifier(specifier),
             extension
           )
@@ -128,7 +128,7 @@ impl LspUrlMap {
             })
             .collect();
           path.push_str(&parts.join("/"));
-          format!("deno:/{path}")
+          format!("internal:/{path}")
         };
         let url = Url::parse(&specifier_str)?;
         inner.put(specifier.clone(), url.clone());
@@ -138,7 +138,7 @@ impl LspUrlMap {
     }
   }
 
-  /// Normalize URLs from the client, where "virtual" `deno:///` URLs are
+  /// Normalize URLs from the client, where "virtual" `internal:///` URLs are
   /// converted into proper module specifiers, as well as handle situations
   /// where the client encodes a file URL differently than Rust does by default
   /// causing issues with string matching of URLs.
@@ -178,7 +178,7 @@ mod tests {
       .normalize_specifier(&fixture)
       .expect("could not handle specifier");
     let expected_url =
-      Url::parse("deno:/https/deno.land/x/pkg%401.0.0/mod.ts").unwrap();
+      Url::parse("internal:/https/deno.land/x/pkg%401.0.0/mod.ts").unwrap();
     assert_eq!(actual_url, expected_url);
 
     let actual_specifier = map.normalize_url(&actual_url);
@@ -193,7 +193,7 @@ mod tests {
     let actual_url = map
       .normalize_specifier(&fixture)
       .expect("could not handle specifier");
-    let expected_url = Url::parse("deno:/https/cdn.skypack.dev/-/postcss%40v8.2.9-E4SktPp9c0AtxrJHp8iV/dist%3Des2020%2Cmode%3Dtypes/lib/postcss.d.ts").unwrap();
+    let expected_url = Url::parse("internal:/https/cdn.skypack.dev/-/postcss%40v8.2.9-E4SktPp9c0AtxrJHp8iV/dist%3Des2020%2Cmode%3Dtypes/lib/postcss.d.ts").unwrap();
     assert_eq!(actual_url, expected_url);
 
     let actual_specifier = map.normalize_url(&actual_url);
@@ -207,7 +207,7 @@ mod tests {
     let actual_url = map
       .normalize_specifier(&fixture)
       .expect("could not handle specifier");
-    let expected_url = Url::parse("deno:/c21c7fc382b2b0553dc0864aa81a3acacfb7b3d1285ab5ae76da6abec213fb37/data_url.ts").unwrap();
+    let expected_url = Url::parse("internal:/c21c7fc382b2b0553dc0864aa81a3acacfb7b3d1285ab5ae76da6abec213fb37/data_url.ts").unwrap();
     assert_eq!(actual_url, expected_url);
 
     let actual_specifier = map.normalize_url(&actual_url);
