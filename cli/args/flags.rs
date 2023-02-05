@@ -1612,7 +1612,7 @@ fn test_subcommand<'a>() -> Command<'a> {
     .arg(
       Arg::new("doc")
         .long("doc")
-        .help("UNSTABLE: type-check code blocks")
+        .help("Type-check code blocks in JSDoc and Markdown")
         .takes_value(false),
     )
     .arg(
@@ -1647,7 +1647,7 @@ fn test_subcommand<'a>() -> Command<'a> {
       Arg::new("shuffle")
         .long("shuffle")
         .value_name("NUMBER")
-        .help("(UNSTABLE): Shuffle the order in which the tests are run")
+        .help("Shuffle the order in which the tests are run")
         .min_values(0)
         .max_values(1)
         .require_equals(true)
@@ -1666,7 +1666,7 @@ fn test_subcommand<'a>() -> Command<'a> {
         .conflicts_with("inspect")
         .conflicts_with("inspect-wait")
         .conflicts_with("inspect-brk")
-        .help("UNSTABLE: Collect coverage profile data into DIR"),
+        .help("Collect coverage profile data into DIR"),
     )
     .arg(
       Arg::new("parallel")
