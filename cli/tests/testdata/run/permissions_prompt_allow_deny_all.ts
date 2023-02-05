@@ -15,3 +15,6 @@ Deno.permissions.request({ name: "env", variable: "BAR" });
 
 Deno.permissions.request({ name: "sys", kind: "loadavg" });
 Deno.permissions.request({ name: "sys", kind: "hostname" });
+
+Deno.permissions.request({ name: "ffi", path: "FOO" });
+Deno.permissions.request({ name: "ffi", path: "BAR" });
