@@ -811,7 +811,7 @@ impl JsRuntime {
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
         realm.execute_script(
           self.v8_isolate(),
-          &source_file.specifier,
+          source_file.specifier,
           &source,
         )?;
       }
