@@ -609,11 +609,17 @@ fn permissions_prompt_allow_all() {
     Input("Y\n"),
     Output("✅ Granted all write access.\r\n"),
     // "net" permissions
+    Output("⚠️  ┌ Deno requests net access to \"FOO\".\r\n    ├ Run again with --allow-net to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
+    Input("Y\n"),
+    Output("✅ Granted all net access.\r\n"),
     // "env" permissions
     Output("⚠️  ┌ Deno requests env access to \"FOO\".\r\n    ├ Run again with --allow-env to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
     Input("Y\n"),
     Output("✅ Granted all env access.\r\n"),
     // "sys" permissions
+    Output("⚠️  ┌ Deno requests sys access to \"loadavg\".\r\n    ├ Run again with --allow-sys to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
+    Input("Y\n"),
+    Output("✅ Granted sys env access.\r\n"),
     // "ffi" permissions
     // "hrtime" permissions
   ]);
@@ -637,11 +643,17 @@ fn permissions_prompt_deny_all() {
     Input("N\n"),
     Output("❌ Denied all write access.\r\n"),
     // "net" permissions
+    Output("⚠️  ┌ Deno requests net access to \"FOO\".\r\n   ├ Run again with --allow-net to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
+    Input("N\n"),
+    Output("❌ Denied all net access.\r\n"),
     // "env" permissions
     Output("⚠️  ┌ Deno requests env access to \"FOO\".\r\n   ├ Run again with --allow-env to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
     Input("N\n"),
     Output("❌ Denied all env access.\r\n"),
     // "sys" permissions
+    Output("⚠️  ┌ Deno requests sys access to \"loadavg\".\r\n   ├ Run again with --allow-sys to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
+    Input("N\n"),
+    Output("❌ Denied all sys access.\r\n"),
     // "ffi" permissions
     // "hrtime" permissions
   ]);
