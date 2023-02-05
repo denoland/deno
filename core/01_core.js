@@ -426,9 +426,10 @@ const core = ObjectAssign(globalThis.Deno.core, {
 });
 
 const internals = {};
-export { core, internals, ops };
 ObjectAssign(globalThis.Deno, { core });
 
 // Direct bindings on `globalThis`
 ObjectAssign(globalThis, { queueMicrotask });
 setQueueMicrotask(queueMicrotask);
+
+export { core, internals, ops };

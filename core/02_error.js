@@ -6,6 +6,7 @@ const {
   StringPrototypeStartsWith,
   StringPrototypeEndsWith,
   ObjectDefineProperties,
+  ObjectFreeze,
   ArrayPrototypePush,
   ArrayPrototypeMap,
   ArrayPrototypeJoin,
@@ -150,3 +151,4 @@ function prepareStackTrace(error, callSites) {
 }
 
 core.prepareStackTrace = prepareStackTrace;
+ObjectFreeze(core);

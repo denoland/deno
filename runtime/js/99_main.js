@@ -72,6 +72,7 @@ import {
 } from "internal:runtime/js/98_global_scope.js";
 
 let windowIsClosing = false;
+let globalThis_;
 
 function windowClose() {
   if (!windowIsClosing) {
@@ -336,8 +337,8 @@ function promiseRejectCallback(type, promise, reason) {
       return false;
   }
 
-  return !!globalThis.onunhandledrejection ||
-    event.listenerCount(globalThis, "unhandledrejection") > 0;
+  return !!globalThis_.onunhandledrejection ||
+    event.listenerCount(globalThis_, "unhandledrejection") > 0;
 }
 
 function promiseRejectMacrotaskCallback() {
@@ -370,9 +371,9 @@ function promiseRejectMacrotaskCallback() {
     // Add a callback for "error" event - it will be dispatched
     // if error is thrown during dispatch of "unhandledrejection"
     // event.
-    globalThis.addEventListener("error", errorEventCb);
-    globalThis.dispatchEvent(rejectionEvent);
-    globalThis.removeEventListener("error", errorEventCb);
+    globalThis_.addEventListener("error", errorEventCb);
+    globalThis_.dispatchEvent(rejectionEvent);
+    globalThis_.removeEventListener("error", errorEventCb);
 
     // If event was not prevented (or "unhandledrejection" listeners didn't
     // throw) we will let Rust side handle it.
@@ -392,6 +393,7 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   core.initializeAsyncOps();
   performance.setTimeOrigin(DateNow());
+  globalThis_ = globalThis;
 
   const consoleFromV8 = globalThis.Deno.core.console;
 
@@ -428,6 +430,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   }
 
   event.setEventTargetData(globalThis);
+  event.saveGlobalThisReference(globalThis);
 
   event.defineEventHandler(globalThis, "error");
   event.defineEventHandler(globalThis, "load");
@@ -443,7 +446,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   // See https://github.com/denoland/deno/issues/9201.
   globalThis[isUnloadDispatched] = false;
   globalThis.addEventListener("unload", () => {
-    globalThis[isUnloadDispatched] = true;
+    globalThis_[isUnloadDispatched] = true;
   });
 
   runtimeStart(runtimeOptions);
@@ -538,6 +541,7 @@ function bootstrapWorkerRuntime(
 
   core.initializeAsyncOps();
   performance.setTimeOrigin(DateNow());
+  globalThis_ = globalThis;
 
   const consoleFromV8 = globalThis.Deno.core.console;
 
@@ -569,6 +573,7 @@ function bootstrapWorkerRuntime(
   wrapConsole(consoleFromDeno, consoleFromV8);
 
   event.setEventTargetData(globalThis);
+  event.saveGlobalThisReference(globalThis);
 
   event.defineEventHandler(self, "message");
   event.defineEventHandler(self, "error", undefined, true);

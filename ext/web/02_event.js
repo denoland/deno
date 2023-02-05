@@ -40,6 +40,15 @@ const {
   TypeError,
 } = primordials;
 
+
+// This should be set via setGlobalThis this is required so that if even
+// user deletes globalThis it is still usable
+let globalThis_;
+
+function saveGlobalThisReference(val) {
+  globalThis_ = val;
+}
+
 // accessors for non runtime visible data
 
 function getDispatched(event) {
@@ -945,7 +954,7 @@ class EventTarget {
     callback,
     options,
   ) {
-    const self = this ?? globalThis;
+    const self = this ?? globalThis_;
     webidl.assertBranded(self, EventTargetPrototype);
     const prefix = "Failed to execute 'addEventListener' on 'EventTarget'";
 
@@ -1003,7 +1012,7 @@ class EventTarget {
     callback,
     options,
   ) {
-    const self = this ?? globalThis;
+    const self = this ?? globalThis_;
     webidl.assertBranded(self, EventTargetPrototype);
     webidl.requiredArguments(arguments.length, 2, {
       prefix: "Failed to execute 'removeEventListener' on 'EventTarget'",
@@ -1041,7 +1050,7 @@ class EventTarget {
     // `globalThis` directly here, because it could be deleted by user.
     // Instead use saved reference to global scope when the script was
     // executed.
-    const self = this ?? globalThis;
+    const self = this ?? globalThis_;
     webidl.assertBranded(self, EventTargetPrototype);
     webidl.requiredArguments(arguments.length, 1, {
       prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
@@ -1478,14 +1487,14 @@ function reportException(error) {
     error,
   });
   // Avoid recursing `reportException()` via error handlers more than once.
-  if (reportExceptionStackedCalls > 1 || globalThis.dispatchEvent(event)) {
+  if (reportExceptionStackedCalls > 1 || globalThis_.dispatchEvent(event)) {
     ops.op_dispatch_exception(error);
   }
   reportExceptionStackedCalls--;
 }
 
 function checkThis(thisArg) {
-  if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
+  if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis_) {
     throw new TypeError("Illegal invocation");
   }
 }
@@ -1515,4 +1524,5 @@ export {
   setEventTargetData,
   setIsTrusted,
   setTarget,
+  saveGlobalThisReference,
 };
