@@ -5,8 +5,7 @@
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-import { core } from "deno:core/01_core.js";
-const ops = core.ops;
+import { ops } from "deno:core/01_core.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import primordials from "deno:core/00_primordials.js";
 const {
@@ -56,7 +55,7 @@ function opUrlParse(href, maybeBase) {
   if (maybeBase === undefined) {
     status = ops.op_url_parse(href, componentsBuf.buffer);
   } else {
-    status = core.ops.op_url_parse_with_base(
+    status = ops.op_url_parse_with_base(
       href,
       maybeBase,
       componentsBuf.buffer,
@@ -69,7 +68,7 @@ function getSerialization(status, href, maybeBase) {
   if (status === 0) {
     return href;
   } else if (status === 1) {
-    return core.ops.op_url_get_serialization();
+    return ops.op_url_get_serialization();
   } else {
     throw new TypeError(
       `Invalid URL: '${href}'` +

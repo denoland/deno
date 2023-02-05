@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "deno:core/01_core.js";
-const ops = core.ops;
+import { core, ops } from "deno:core/01_core.js";
 import { FsFile } from "deno:runtime/js/40_files.js";
 import { readAll } from "deno:runtime/js/12_io.js";
 import { pathFromURL } from "deno:runtime/js/06_util.js";

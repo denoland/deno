@@ -5,8 +5,7 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_web.d.ts" />
 
-import { core } from "deno:core/01_core.js";
-const ops = core.ops;
+import { ops } from "deno:core/01_core.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import { TransformStream } from "deno:ext/web/06_streams.js";
 

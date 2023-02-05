@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { core } from "deno:core/01_core.js";
+import { core, ops } from "deno:core/01_core.js";
 import primordials from "deno:core/00_primordials.js";
 import { BlobPrototype } from "deno:ext/web/09_file.js";
 import { TcpConn } from "deno:ext/net/01_net.js";
@@ -187,7 +187,7 @@ function http1Response(
 }
 
 function prepareFastCalls() {
-  return core.ops.op_flash_make_request();
+  return ops.op_flash_make_request();
 }
 
 function hostnameForDisplay(hostname) {
@@ -211,7 +211,7 @@ function writeFixedResponse(
     nwritten = respondFast(requestId, response, end);
   } else {
     // string
-    nwritten = core.ops.op_flash_respond(
+    nwritten = ops.op_flash_respond(
       server,
       requestId,
       response,
@@ -558,11 +558,11 @@ function createServe(opFn) {
               () => methods[method],
               /* urlCb */
               () => {
-                const path = core.ops.op_flash_path(serverId, i);
+                const path = ops.op_flash_path(serverId, i);
                 return `${server.transport}://${server.hostname}:${server.port}${path}`;
               },
               /* headersCb */
-              () => core.ops.op_flash_headers(serverId, i),
+              () => ops.op_flash_headers(serverId, i),
             );
 
             let resp;
@@ -636,7 +636,7 @@ function createServe(opFn) {
     });
 
     function tryRespondChunked(token, chunk, shutdown) {
-      const nwritten = core.ops.op_try_flash_respond_chunked(
+      const nwritten = ops.op_try_flash_respond_chunked(
         serverId,
         token,
         chunk ?? new Uint8Array(),
@@ -670,10 +670,10 @@ function createServe(opFn) {
     let respondFast = (token, response, shutdown) =>
       fastOp.respond(token, response, shutdown);
     if (serverId > 0) {
-      nextRequestSync = () => core.ops.op_flash_next_server(serverId);
-      getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
+      nextRequestSync = () => ops.op_flash_next_server(serverId);
+      getMethodSync = (token) => ops.op_flash_method(serverId, token);
       respondFast = (token, response, shutdown) =>
-        core.ops.op_flash_respond(serverId, token, response, null, shutdown);
+        ops.op_flash_respond(serverId, token, response, null, shutdown);
     }
 
     if (!dateInterval) {
@@ -692,7 +692,7 @@ function createServe(opFn) {
 
 function createRequestBodyStream(serverId, token) {
   // The first packet is left over bytes after parsing the request
-  const firstRead = core.ops.op_flash_first_packet(
+  const firstRead = ops.op_flash_first_packet(
     serverId,
     token,
   );
@@ -749,7 +749,7 @@ function upgradeHttpRaw(req) {
   req.headers;
 
   const { serverId, streamRid } = req[_flash];
-  const connRid = core.ops.op_flash_upgrade_http(streamRid, serverId);
+  const connRid = ops.op_flash_upgrade_http(streamRid, serverId);
   // TODO(@littledivy): return already read first packet too.
   return [new TcpConn(connRid), new Uint8Array()];
 }

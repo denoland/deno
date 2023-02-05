@@ -5,8 +5,7 @@
 // parts still exists.  This means you will observe a lot of strange structures
 // and impossible logic branches based on what Deno currently supports.
 
-import { core } from "deno:core/01_core.js";
-const ops = core.ops;
+import { core, ops } from "deno:core/01_core.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import { DOMException } from "deno:ext/web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "deno:ext/console/02_console.js";

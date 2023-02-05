@@ -10,7 +10,7 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { core } from "deno:core/01_core.js";
+import { ops } from "deno:core/01_core.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import primordials from "deno:core/00_primordials.js";
 import { forgivingBase64Encode } from "deno:ext/web/00_infra.js";
@@ -166,7 +166,7 @@ class FileReader extends EventTarget {
                   break;
                 }
                 case "BinaryString":
-                  this[result] = core.ops.op_encode_binary_string(bytes);
+                  this[result] = ops.op_encode_binary_string(bytes);
                   break;
                 case "Text": {
                   let decoder = undefined;

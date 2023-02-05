@@ -7,9 +7,8 @@ delete Object.prototype.__proto__;
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
-import { core } from "deno:core/01_core.js";
+import { core, ops } from "deno:core/01_core.js";
 import primordials from "deno:core/00_primordials.js";
-const ops = core.ops;
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,

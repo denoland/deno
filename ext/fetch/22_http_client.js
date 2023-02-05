@@ -10,8 +10,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { core } from "deno:core/01_core.js";
-const ops = core.ops;
+import { core, ops } from "deno:core/01_core.js";
 
 /**
  * @param {Deno.CreateHttpClientOptions} options

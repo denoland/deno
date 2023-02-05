@@ -2,8 +2,7 @@
 
 // deno-lint-ignore-file
 
-import { core } from "deno:core/01_core.js";
-const ops = core.ops;
+import { core, ops } from "deno:core/01_core.js";
 import primordials from "deno:core/00_primordials.js";
 const {
   ArrayIsArray,
@@ -111,7 +110,7 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
     requestPath,
     "package.json",
   );
-  const pkg = core.ops.op_require_read_package_scope(packageJsonPath)?.main;
+  const pkg = ops.op_require_read_package_scope(packageJsonPath)?.main;
   if (!pkg) {
     return tryExtensions(
       pathResolve(requestPath, "index"),
@@ -314,7 +313,7 @@ function resolveExports(
     return;
   }
 
-  return core.ops.op_require_resolve_exports(
+  return ops.op_require_resolve_exports(
     usesLocalNodeModulesDir,
     modulesPath,
     request,
@@ -364,7 +363,7 @@ Module._findPath = function (request, paths, isMain, parentPath) {
       }
     }
 
-    const isDenoDirPackage = core.ops.op_require_is_deno_dir_package(
+    const isDenoDirPackage = ops.op_require_is_deno_dir_package(
       curPath,
     );
     const isRelative = ops.op_require_is_request_relative(
@@ -415,16 +414,16 @@ Module._nodeModulePaths = function (fromPath) {
 Module._resolveLookupPaths = function (request, parent) {
   const paths = [];
 
-  if (core.ops.op_require_is_request_relative(request) && parent?.filename) {
+  if (ops.op_require_is_request_relative(request) && parent?.filename) {
     ArrayPrototypePush(
       paths,
-      core.ops.op_require_path_dirname(parent.filename),
+      ops.op_require_path_dirname(parent.filename),
     );
     return paths;
   }
 
   if (parent?.filename && parent.filename.length > 0) {
-    const denoDirPath = core.ops.op_require_resolve_deno_dir(
+    const denoDirPath = ops.op_require_resolve_deno_dir(
       request,
       parent.filename,
     );
@@ -590,7 +589,7 @@ Module._resolveFilename = function (
 
   if (parent?.filename) {
     if (request[0] === "#") {
-      const maybeResolved = core.ops.op_require_package_imports_resolve(
+      const maybeResolved = ops.op_require_package_imports_resolve(
         parent.filename,
         request,
       );
@@ -739,7 +738,7 @@ Module.prototype._compile = function (content, filename) {
 
   if (hasInspectBrk && !hasBrokenOnInspectBrk) {
     hasBrokenOnInspectBrk = true;
-    core.ops.op_require_break_on_next_statement();
+    ops.op_require_break_on_next_statement();
   }
 
   const result = compiledWrapper.call(
@@ -761,7 +760,7 @@ Module._extensions[".js"] = function (module, filename) {
   const content = ops.op_require_read_file(filename);
 
   if (StringPrototypeEndsWith(filename, ".js")) {
-    const pkg = core.ops.op_require_read_closest_package_json(filename);
+    const pkg = ops.op_require_read_closest_package_json(filename);
     if (pkg && pkg.exists && pkg.typ == "module") {
       let message = `Trying to import ESM module: ${filename}`;
 
@@ -869,7 +868,7 @@ function createRequire(filenameOrUrl) {
       `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
     );
   }
-  const filename = core.ops.op_require_as_file_path(fileUrlStr);
+  const filename = ops.op_require_as_file_path(fileUrlStr);
   return createRequireFromPath(filename);
 }
 

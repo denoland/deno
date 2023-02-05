@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "deno:core/01_core.js";
+import { core, ops } from "deno:core/01_core.js";
 import * as timers from "deno:ext/web/02_timers.js";
 import * as httpClient from "deno:ext/fetch/22_http_client.js";
 import * as console from "deno:ext/console/02_console.js";
@@ -53,7 +53,7 @@ const denoNs = {
   makeTempDir: fs.makeTempDir,
   makeTempFileSync: fs.makeTempFileSync,
   makeTempFile: fs.makeTempFile,
-  memoryUsage: () => core.ops.op_runtime_memory_usage(),
+  memoryUsage: () => ops.op_runtime_memory_usage(),
   mkdirSync: fs.mkdirSync,
   mkdir: fs.mkdir,
   chdir: fs.chdir,

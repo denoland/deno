@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "deno:core/01_core.js";
-const ops = core.ops;
+import { ops } from "deno:core/01_core.js";
 import { Event, EventTarget } from "deno:ext/web/02_event.js";
 import { pathFromURL } from "deno:runtime/js/06_util.js";
 import primordials from "deno:core/00_primordials.js";

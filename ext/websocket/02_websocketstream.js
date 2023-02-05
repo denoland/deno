@@ -2,8 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core } from "deno:core/01_core.js";
-const ops = core.ops;
+import { core, ops } from "deno:core/01_core.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import { Deferred, writableStreamClose } from "deno:ext/web/06_streams.js";
 import { DOMException } from "deno:ext/web/01_dom_exception.js";

@@ -1,11 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { core } from "deno:core/01_core.js";
+import { ops } from "deno:core/01_core.js";
 import primordials from "deno:core/00_primordials.js";
 const {
   Uint32Array,
   Uint8Array,
 } = primordials;
-const ops = core.ops;
 
 const size = new Uint32Array(2);
 

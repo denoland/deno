@@ -4,8 +4,7 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
 
-import { core } from "deno:core/01_core.js";
-const ops = core.ops;
+import { core, ops } from "deno:core/01_core.js";
 import primordials from "deno:core/00_primordials.js";
 const {
   Uint8Array,

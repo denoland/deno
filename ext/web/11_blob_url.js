@@ -11,8 +11,7 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { core } from "deno:core/01_core.js";
-const ops = core.ops;
+import { ops } from "deno:core/01_core.js";
 import * as webidl from "deno:ext/webidl/00_webidl.js";
 import { getParts } from "deno:ext/web/09_file.js";
 import { URL } from "deno:ext/url/00_url.js";
@@ -29,12 +28,7 @@ function createObjectURL(blob) {
     prefix,
   });
 
-  const url = ops.op_blob_create_object_url(
-    blob.type,
-    getParts(blob),
-  );
-
-  return url;
+  return ops.op_blob_create_object_url(blob.type, getParts(blob));
 }
 
 /**

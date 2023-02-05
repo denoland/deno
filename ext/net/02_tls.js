@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "deno:core/01_core.js";
-const ops = core.ops;
+import { core, ops } from "deno:core/01_core.js";
 import { Conn, Listener } from "deno:ext/net/01_net.js";
 import primordials from "deno:core/00_primordials.js";
 const { TypeError } = primordials;
