@@ -14,8 +14,7 @@ const {
   ArrayPrototypeJoin,
 } = primordials;
 
-import { core } from "deno:core/01_core.js";
-const ops = core.ops;
+import { core, ops } from "deno:core/01_core.js";
 
 // Keep in sync with `cli/fmt_errors.rs`.
 function formatLocation(cse) {
