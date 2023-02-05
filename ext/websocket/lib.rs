@@ -505,7 +505,7 @@ pub fn init<P: WebSocketPermissions + 'static>(
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_url", "deno_webidl"])
     .js(include_js_files!(
-      prefix "deno:ext/websocket",
+      prefix "internal:ext/websocket",
       "01_websocket.js",
       "02_websocketstream.js",
     ))

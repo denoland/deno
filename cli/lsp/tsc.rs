@@ -1154,11 +1154,15 @@ impl ImplementationLocation {
     language_server: &language_server::Inner,
   ) -> lsp::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
-      .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
+      .unwrap_or_else(|_| {
+        ModuleSpecifier::parse("internal://invalid").unwrap()
+      });
     let uri = language_server
       .url_map
       .normalize_specifier(&specifier)
-      .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
+      .unwrap_or_else(|_| {
+        ModuleSpecifier::parse("internal://invalid").unwrap()
+      });
     lsp::Location {
       uri,
       range: self.document_span.text_span.to_range(line_index),
