@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
@@ -161,51 +161,6 @@ impl WsStreamResource {
     }
   }
 
-  fn try_send(self: &Rc<Self>, message: Message) -> Result<bool, AnyError> {
-    let waker = deno_core::futures::task::noop_waker();
-    let mut cx = std::task::Context::from_waker(&waker);
-
-    let res = match self.stream {
-      WebSocketStreamType::Client { .. } => {
-        match RcRef::map(self, |r| match &r.stream {
-          WebSocketStreamType::Client { tx, .. } => tx,
-          WebSocketStreamType::Server { .. } => unreachable!(),
-        })
-        .try_borrow_mut()
-        {
-          Some(mut tx) => {
-            if tx.poll_ready_unpin(&mut cx).is_ready() {
-              tx.start_send_unpin(message)?;
-              tx.poll_flush_unpin(&mut cx).is_ready()
-            } else {
-              false
-            }
-          }
-          None => false,
-        }
-      }
-      WebSocketStreamType::Server { .. } => {
-        match RcRef::map(self, |r| match &r.stream {
-          WebSocketStreamType::Client { .. } => unreachable!(),
-          WebSocketStreamType::Server { tx, .. } => tx,
-        })
-        .try_borrow_mut()
-        {
-          Some(mut tx) => {
-            if tx.poll_ready_unpin(&mut cx).is_ready() {
-              tx.start_send_unpin(message)?;
-              tx.poll_flush_unpin(&mut cx).is_ready()
-            } else {
-              false
-            }
-          }
-          None => false,
-        }
-      }
-    };
-    Ok(res)
-  }
-
   async fn next_message(
     self: &Rc<Self>,
     cancel: RcRef<CancelHandle>,
@@ -366,7 +321,7 @@ where
     Some("ws") => 80,
     _ => unreachable!(),
   });
-  let addr = format!("{}:{}", domain, port);
+  let addr = format!("{domain}:{port}");
   let tcp_socket = TcpStream::connect(addr).await?;
 
   let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
@@ -404,8 +359,7 @@ where
     }
     .map_err(|err| {
       DomExceptionNetworkError::new(&format!(
-        "failed to connect to WebSocket: {}",
-        err
+        "failed to connect to WebSocket: {err}"
       ))
     })?;
 
@@ -469,60 +423,6 @@ pub async fn op_ws_send(
     .get::<WsStreamResource>(rid)?;
   resource.send(msg).await?;
   Ok(())
-}
-
-#[op]
-pub async fn op_ws_send_string(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  text: String,
-) -> Result<(), AnyError> {
-  let resource = state
-    .borrow_mut()
-    .resource_table
-    .get::<WsStreamResource>(rid)?;
-  resource.send(Message::Text(text)).await?;
-  Ok(())
-}
-
-#[op]
-pub async fn op_ws_send_binary(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  data: ZeroCopyBuf,
-) -> Result<(), AnyError> {
-  let resource = state
-    .borrow_mut()
-    .resource_table
-    .get::<WsStreamResource>(rid)?;
-  resource.send(Message::Binary(data.to_vec())).await?;
-  Ok(())
-}
-
-#[op]
-pub fn op_ws_try_send_string(
-  state: &mut OpState,
-  rid: ResourceId,
-  text: String,
-) -> bool {
-  let resource = match state.resource_table.get::<WsStreamResource>(rid) {
-    Ok(resource) => resource,
-    Err(_) => return false,
-  };
-  resource.try_send(Message::Text(text)).is_ok()
-}
-
-#[op(fast)]
-pub fn op_ws_try_send_binary(
-  state: &mut OpState,
-  rid: u32,
-  value: &[u8],
-) -> bool {
-  let resource = match state.resource_table.get::<WsStreamResource>(rid) {
-    Ok(resource) => resource,
-    Err(_) => return false,
-  };
-  resource.try_send(Message::Binary(value.to_vec())).is_ok()
 }
 
 #[op(deferred)]
@@ -602,9 +502,10 @@ pub fn init<P: WebSocketPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_url", "deno_webidl"])
     .js(include_js_files!(
-      prefix "deno:ext/websocket",
+      prefix "internal:ext/websocket",
       "01_websocket.js",
       "02_websocketstream.js",
     ))
@@ -614,10 +515,6 @@ pub fn init<P: WebSocketPermissions + 'static>(
       op_ws_send::decl(),
       op_ws_close::decl(),
       op_ws_next_event::decl(),
-      op_ws_send_string::decl(),
-      op_ws_send_binary::decl(),
-      op_ws_try_send_string::decl(),
-      op_ws_try_send_binary::decl(),
     ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));

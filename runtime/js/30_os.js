@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -96,6 +96,9 @@
       return ops.op_env();
     },
     set: setEnv,
+    has(key) {
+      return getEnv(key) !== undefined;
+    },
     delete: deleteEnv,
   };
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::Flags;
 use crate::args::ReplFlags;
@@ -8,6 +8,7 @@ use crate::worker::create_main_worker;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
 
 mod cdp;
@@ -72,7 +73,7 @@ async fn read_eval_file(
 
   let file = ps
     .file_fetcher
-    .fetch(&specifier, &mut Permissions::allow_all())
+    .fetch(&specifier, PermissionsContainer::allow_all())
     .await?;
 
   Ok((*file.source).to_string())
@@ -83,8 +84,10 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
   let mut worker = create_main_worker(
     &ps,
-    main_module.clone(),
-    Permissions::from_options(&ps.options.permissions_options())?,
+    main_module,
+    PermissionsContainer::new(Permissions::from_options(
+      &ps.options.permissions_options(),
+    )?),
   )
   .await?;
   worker.setup_repl().await?;
@@ -109,14 +112,11 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
             .await;
           // only output errors
           if let EvaluationOutput::Error(error_text) = output {
-            println!(
-              "Error in --eval-file file \"{}\": {}",
-              eval_file, error_text
-            );
+            println!("Error in --eval-file file \"{eval_file}\": {error_text}");
           }
         }
         Err(e) => {
-          println!("Error in --eval-file file \"{}\": {}", eval_file, e);
+          println!("Error in --eval-file file \"{eval_file}\": {e}");
         }
       }
     }
@@ -126,7 +126,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     let output = repl_session.evaluate_line_and_get_output(&eval).await;
     // only output errors
     if let EvaluationOutput::Error(error_text) = output {
-      println!("Error in --eval flag: {}", error_text);
+      println!("Error in --eval flag: {error_text}");
     }
   }
 
@@ -163,7 +163,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
           break;
         }
 
-        println!("{}", output);
+        println!("{output}");
       }
       Err(ReadlineError::Interrupted) => {
         if editor.should_exit_on_interrupt() {
@@ -177,11 +177,11 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
         break;
       }
       Err(err) => {
-        println!("Error: {:?}", err);
+        println!("Error: {err:?}");
         break;
       }
     }
   }
 
-  Ok(repl_session.worker.get_exit_code())
+  Ok(repl_session.worker.exit_code())
 }

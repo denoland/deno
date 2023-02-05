@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -161,6 +161,20 @@
       ArrayPrototypeIncludes(permissionNames, desc.name);
   }
 
+  /**
+   * @param {Deno.PermissionDescriptor} desc
+   * @returns {desc is Deno.PermissionDescriptor}
+   */
+  function formDescriptor(desc) {
+    if (
+      desc.name === "read" || desc.name === "write" || desc.name === "ffi"
+    ) {
+      desc.path = pathFromURL(desc.path);
+    } else if (desc.name === "run") {
+      desc.command = pathFromURL(desc.command);
+    }
+  }
+
   class Permissions {
     constructor(key = null) {
       if (key != illegalConstructorKey) {
@@ -169,62 +183,66 @@
     }
 
     query(desc) {
+      try {
+        return PromiseResolve(this.querySync(desc));
+      } catch (error) {
+        return PromiseReject(error);
+      }
+    }
+
+    querySync(desc) {
       if (!isValidDescriptor(desc)) {
-        return PromiseReject(
-          new TypeError(
-            `The provided value "${desc?.name}" is not a valid permission name.`,
-          ),
+        throw new TypeError(
+          `The provided value "${desc?.name}" is not a valid permission name.`,
         );
       }
 
-      if (
-        desc.name === "read" || desc.name === "write" || desc.name === "ffi"
-      ) {
-        desc.path = pathFromURL(desc.path);
-      } else if (desc.name === "run") {
-        desc.command = pathFromURL(desc.command);
-      }
+      formDescriptor(desc);
 
       const state = opQuery(desc);
-      return PromiseResolve(cache(desc, state));
+      return cache(desc, state);
     }
 
     revoke(desc) {
+      try {
+        return PromiseResolve(this.revokeSync(desc));
+      } catch (error) {
+        return PromiseReject(error);
+      }
+    }
+
+    revokeSync(desc) {
       if (!isValidDescriptor(desc)) {
-        return PromiseReject(
-          new TypeError(
-            `The provided value "${desc?.name}" is not a valid permission name.`,
-          ),
+        throw new TypeError(
+          `The provided value "${desc?.name}" is not a valid permission name.`,
         );
       }
 
-      if (desc.name === "read" || desc.name === "write") {
-        desc.path = pathFromURL(desc.path);
-      } else if (desc.name === "run") {
-        desc.command = pathFromURL(desc.command);
-      }
+      formDescriptor(desc);
 
       const state = opRevoke(desc);
-      return PromiseResolve(cache(desc, state));
+      return cache(desc, state);
     }
 
     request(desc) {
+      try {
+        return PromiseResolve(this.requestSync(desc));
+      } catch (error) {
+        return PromiseReject(error);
+      }
+    }
+
+    requestSync(desc) {
       if (!isValidDescriptor(desc)) {
-        return PromiseReject(
-          new TypeError(
-            `The provided value "${desc?.name}" is not a valid permission name.`,
-          ),
+        throw new TypeError(
+          `The provided value "${desc?.name}" is not a valid permission name.`,
         );
       }
 
-      if (desc.name === "read" || desc.name === "write") {
-        desc.path = pathFromURL(desc.path);
-      } else if (desc.name === "run") {
-        desc.command = pathFromURL(desc.command);
-      }
+      formDescriptor(desc);
 
       const state = opRequest(desc);
-      return PromiseResolve(cache(desc, state));
+      return cache(desc, state);
     }
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::DiskCache;
 
@@ -184,7 +184,12 @@ mod dirs {
   use std::os::windows::ffi::OsStringExt;
   use std::path::PathBuf;
   use winapi::shared::winerror;
-  use winapi::um::{combaseapi, knownfolders, shlobj, shtypes, winbase, winnt};
+  use winapi::um::combaseapi;
+  use winapi::um::knownfolders;
+  use winapi::um::shlobj;
+  use winapi::um::shtypes;
+  use winapi::um::winbase;
+  use winapi::um::winnt;
 
   fn known_folder(folder_id: shtypes::REFKNOWNFOLDERID) -> Option<PathBuf> {
     // SAFETY: winapi calls

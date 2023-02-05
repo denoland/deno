@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
@@ -237,7 +237,7 @@ Deno.test(function consoleTestStringifyCircular() {
   arrowFunc: [Function: arrowFunc],
   extendedClass: Extended { a: 1, b: 2 },
   nFunc: [Function],
-  extendedCstr: [Function: Extended],
+  extendedCstr: [Class: Extended],
   o: {
     num: 2,
     bool: false,

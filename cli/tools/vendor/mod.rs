@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -153,9 +153,12 @@ fn maybe_update_config_file(output_dir: &Path, ps: &ProcState) -> bool {
     Some(f) => f,
     None => return false,
   };
+
   let fmt_config = ps
     .options
-    .to_fmt_config()
+    .get_maybe_config_file()
+    .as_ref()
+    .and_then(|config| config.to_fmt_config().ok())
     .unwrap_or_default()
     .unwrap_or_default();
   let result = update_config_file(
@@ -265,11 +268,8 @@ async fn create_graph(
   let entry_points = flags
     .specifiers
     .iter()
-    .map(|p| {
-      let url = resolve_url_or_path(p)?;
-      Ok((url, deno_graph::ModuleKind::Esm))
-    })
-    .collect::<Result<Vec<_>, AnyError>>()?;
+    .map(|p| resolve_url_or_path(p))
+    .collect::<Result<Vec<_>, _>>()?;
 
   ps.create_graph(entry_points).await
 }

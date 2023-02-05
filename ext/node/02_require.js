@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
 
@@ -804,7 +804,7 @@
     if (filename.endsWith("fsevents.node")) {
       throw new Error("Using fsevents module is currently not supported");
     }
-    module.exports = ops.op_napi_open(filename);
+    module.exports = ops.op_napi_open(filename, node.globalThis);
   };
 
   function createRequireFromPath(filename) {

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod urlpattern;
 
@@ -18,9 +18,10 @@ use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl"])
     .js(include_js_files!(
-      prefix "deno:ext/url",
+      prefix "internal:ext/url",
       "00_url.js",
       "01_urlpattern.js",
     ))

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
@@ -78,9 +78,10 @@ pub mod compressible;
 mod reader_stream;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_web", "deno_net", "deno_fetch", "deno_websocket"])
     .js(include_js_files!(
-      prefix "deno:ext/http",
+      prefix "internal:ext/http",
       "01_http.js",
     ))
     .ops(vec![
@@ -745,7 +746,7 @@ fn ensure_vary_accept_encoding(hmap: &mut hyper::HeaderMap) {
   if let Some(v) = hmap.get_mut(hyper::header::VARY) {
     if let Ok(s) = v.to_str() {
       if !s.to_lowercase().contains("accept-encoding") {
-        *v = format!("Accept-Encoding, {}", s).try_into().unwrap()
+        *v = format!("Accept-Encoding, {s}").try_into().unwrap()
       }
       return;
     }
@@ -934,7 +935,7 @@ async fn op_http_shutdown(
 fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   let digest = ring::digest::digest(
     &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
-    format!("{}258EAFA5-E914-47DA-95CA-C5AB0DC85B11", key).as_bytes(),
+    format!("{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11").as_bytes(),
   );
   Ok(base64::encode(digest))
 }

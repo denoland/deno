@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub mod io;
 pub mod ops;
@@ -45,8 +45,7 @@ impl UnstableChecker {
   pub fn check_unstable(&self, api_name: &str) {
     if !self.unstable {
       eprintln!(
-        "Unstable API '{}'. The --unstable flag must be provided.",
-        api_name
+        "Unstable API '{api_name}'. The --unstable flag must be provided."
       );
       std::process::exit(70);
     }
@@ -85,9 +84,10 @@ pub fn init<P: NetPermissions + 'static>(
 ) -> Extension {
   let mut ops = ops::init::<P>();
   ops.extend(ops_tls::init::<P>());
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_web"])
     .js(include_js_files!(
-      prefix "deno:ext/net",
+      prefix "internal:ext/net",
       "01_net.js",
       "02_tls.js",
     ))

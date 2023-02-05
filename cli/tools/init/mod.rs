@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::InitFlags;
 use crate::colors;
@@ -18,7 +18,7 @@ fn create_file(
     .write(true)
     .create_new(true)
     .open(dir.join(filename))
-    .with_context(|| format!("Failed to create {} file", filename))?;
+    .with_context(|| format!("Failed to create {filename} file"))?;
   file.write_all(content.as_bytes())?;
   Ok(())
 }

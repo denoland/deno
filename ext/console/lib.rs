@@ -1,13 +1,13 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::include_js_files;
 use deno_core::Extension;
 use std::path::PathBuf;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
     .js(include_js_files!(
-      prefix "deno:ext/console",
+      prefix "internal:ext/console",
       "01_colors.js",
       "02_console.js",
     ))

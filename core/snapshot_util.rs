@@ -1,9 +1,12 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::path::Path;
+use std::path::PathBuf;
+
 use crate::Extension;
 use crate::JsRuntime;
 use crate::RuntimeOptions;
 use crate::Snapshot;
-use std::path::Path;
-use std::path::PathBuf;
 
 pub type CompressionCb = dyn Fn(&mut Vec<u8>, &[u8]);
 
@@ -36,7 +39,7 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     let display_path_str = display_path.display().to_string();
     js_runtime
       .execute_script(
-        &("deno:".to_string() + &display_path_str.replace('\\', "/")),
+        &("internal:".to_string() + &display_path_str.replace('\\', "/")),
         &std::fs::read_to_string(&file).unwrap(),
       )
       .unwrap();

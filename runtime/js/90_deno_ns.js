@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -146,9 +146,6 @@
     funlockSync: __bootstrap.fs.funlockSync,
     Child: __bootstrap.spawn.Child,
     ChildProcess: __bootstrap.spawn.ChildProcess,
-    spawnChild: __bootstrap.spawn.spawnChild,
-    spawn: __bootstrap.spawn.spawn,
-    spawnSync: __bootstrap.spawn.spawnSync,
     Command: __bootstrap.spawn.Command,
     serve: __bootstrap.flash.serve,
     upgradeHttp: __bootstrap.http.upgradeHttp,

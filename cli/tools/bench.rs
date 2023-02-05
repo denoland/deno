@@ -1,11 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::BenchConfig;
-use crate::args::BenchFlags;
-use crate::args::Flags;
+use crate::args::BenchOptions;
+use crate::args::CliOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
-use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::ops;
 use crate::proc_state::ProcState;
@@ -15,7 +13,6 @@ use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_supported_ext;
-use crate::util::path::specifier_to_file_path;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
@@ -26,22 +23,24 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::ModuleSpecifier;
-use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 struct BenchSpecifierOptions {
-  filter: Option<String>,
+  filter: TestFilter,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
@@ -337,9 +336,8 @@ async fn check_specifiers(
     specifiers,
     false,
     lib,
-    Permissions::allow_all(),
-    permissions,
-    true,
+    PermissionsContainer::allow_all(),
+    PermissionsContainer::new(permissions),
   )
   .await?;
 
@@ -354,12 +352,12 @@ async fn bench_specifier(
   channel: UnboundedSender<BenchEvent>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let filter = TestFilter::from_flag(&options.filter);
+  let filter = options.filter;
   let mut worker = create_main_worker_for_test_or_bench(
     &ps,
-    specifier.clone(),
-    permissions,
-    vec![ops::bench::init(channel.clone(), filter)],
+    specifier,
+    PermissionsContainer::new(permissions),
+    vec![ops::bench::init(channel, filter)],
     Default::default(),
   )
   .await?;
@@ -369,8 +367,8 @@ async fn bench_specifier(
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn bench_specifiers(
-  ps: ProcState,
-  permissions: Permissions,
+  ps: &ProcState,
+  permissions: &Permissions,
   specifiers: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
@@ -378,10 +376,10 @@ async fn bench_specifiers(
 
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
 
-  let join_handles = specifiers.iter().map(move |specifier| {
+  let join_handles = specifiers.into_iter().map(move |specifier| {
     let ps = ps.clone();
     let permissions = permissions.clone();
-    let specifier = specifier.clone();
+    let specifier = specifier;
     let sender = sender.clone();
     let options = options.clone();
 
@@ -486,21 +484,18 @@ fn is_supported_bench_path(path: &Path) -> bool {
 }
 
 pub async fn run_benchmarks(
-  flags: Flags,
-  bench_flags: BenchFlags,
+  cli_options: CliOptions,
+  bench_options: BenchOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  // Various bench files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
 
-  let selection =
-    collect_include_ignore(&bench_flags, ps.options.to_bench_config()?);
-
-  let specifiers = collect_specifiers(
-    selection.include,
-    &selection.ignore,
-    is_supported_bench_path,
-  )?;
+  let specifiers =
+    collect_specifiers(&bench_options.files, is_supported_bench_path)?;
 
   if specifiers.is_empty() {
     return Err(generic_error("No bench modules found"));
@@ -509,11 +504,11 @@ pub async fn run_benchmarks(
   check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
   bench_specifiers(
-    ps,
-    permissions,
+    &ps,
+    &permissions,
     specifiers,
     BenchSpecifierOptions {
-      filter: bench_flags.filter,
+      filter: TestFilter::from_flag(&bench_options.filter),
     },
   )
   .await?;
@@ -523,50 +518,37 @@ pub async fn run_benchmarks(
 
 // TODO(bartlomieju): heavy duplication of code with `cli/tools/test.rs`
 pub async fn run_benchmarks_with_watch(
-  flags: Flags,
-  bench_flags: BenchFlags,
+  cli_options: CliOptions,
+  bench_options: BenchOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  // Various bench files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
-
-  let selection =
-    collect_include_ignore(&bench_flags, ps.options.to_bench_config()?);
-
-  let paths_to_watch: Vec<_> =
-    selection.include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
-  let resolver = |changed: Option<Vec<PathBuf>>| {
-    let paths_to_watch = paths_to_watch.clone();
-    let paths_to_watch_clone = paths_to_watch.clone();
+  let ps = RefCell::new(ps);
 
+  let resolver = |changed: Option<Vec<PathBuf>>| {
+    let paths_to_watch = bench_options.files.include.clone();
+    let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
-    let include = selection.include.clone();
-    let ignore = selection.ignore.clone();
-    let ps = ps.clone();
+    let bench_options = &bench_options;
+    let ps = ps.borrow().clone();
 
     async move {
       let bench_modules =
-        collect_specifiers(include.clone(), &ignore, is_supported_bench_path)?;
+        collect_specifiers(&bench_options.files, is_supported_bench_path)?;
 
       let mut paths_to_watch = paths_to_watch_clone;
       let mut modules_to_reload = if files_changed {
         Vec::new()
       } else {
-        bench_modules
-          .iter()
-          .map(|url| (url.clone(), ModuleKind::Esm))
-          .collect()
+        bench_modules.clone()
       };
-      let graph = ps
-        .create_graph(
-          bench_modules
-            .iter()
-            .map(|s| (s.clone(), ModuleKind::Esm))
-            .collect(),
-        )
-        .await?;
+      let graph = ps.create_graph(bench_modules.clone()).await?;
       graph_valid(&graph, !no_check, ps.options.check_js())?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
@@ -608,7 +590,6 @@ pub async fn run_benchmarks_with_watch(
             }
           }
         }
-
         // This bench module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
@@ -624,8 +605,8 @@ pub async fn run_benchmarks_with_watch(
           for path in changed.iter().filter_map(|path| {
             deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
           }) {
-            if modules.contains(&&path) {
-              modules_to_reload.push((specifier, ModuleKind::Esm));
+            if modules.contains(&path) {
+              modules_to_reload.push(specifier);
               break;
             }
           }
@@ -656,81 +637,45 @@ pub async fn run_benchmarks_with_watch(
     })
   };
 
-  let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let filter = bench_flags.filter.clone();
-    let include = selection.include.clone();
-    let ignore = selection.ignore.clone();
-    let permissions = permissions.clone();
-    let ps = ps.clone();
+  let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
+    let permissions = &permissions;
+    let bench_options = &bench_options;
+    ps.borrow_mut().reset_for_file_watcher();
+    let ps = ps.borrow().clone();
 
     async move {
       let specifiers =
-        collect_specifiers(include.clone(), &ignore, is_supported_bench_path)?
-          .iter()
-          .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
-          .cloned()
+        collect_specifiers(&bench_options.files, is_supported_bench_path)?
+          .into_iter()
+          .filter(|specifier| modules_to_reload.contains(specifier))
           .collect::<Vec<ModuleSpecifier>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
-      let specifier_options = BenchSpecifierOptions {
-        filter: filter.clone(),
-      };
-      bench_specifiers(ps, permissions.clone(), specifiers, specifier_options)
-        .await?;
+      bench_specifiers(
+        &ps,
+        permissions,
+        specifiers,
+        BenchSpecifierOptions {
+          filter: TestFilter::from_flag(&bench_options.filter),
+        },
+      )
+      .await?;
 
       Ok(())
     }
   };
 
+  let clear_screen = !ps.borrow().options.no_clear_screen();
   file_watcher::watch_func(
     resolver,
     operation,
     file_watcher::PrintConfig {
       job_name: "Bench".to_string(),
-      clear_screen: !ps.options.no_clear_screen(),
+      clear_screen,
     },
   )
   .await?;
 
   Ok(())
-}
-
-struct IncludeIgnoreCollection {
-  include: Vec<String>,
-  ignore: Vec<PathBuf>,
-}
-
-fn collect_include_ignore(
-  bench_flags: &BenchFlags,
-  maybe_bench_config: Option<BenchConfig>,
-) -> IncludeIgnoreCollection {
-  let mut include = bench_flags.include.clone().unwrap_or_default();
-  let mut ignore = bench_flags.ignore.clone();
-
-  if let Some(bench_config) = maybe_bench_config {
-    if include.is_empty() {
-      include = bench_config
-        .files
-        .include
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>();
-    }
-
-    if ignore.is_empty() {
-      ignore = bench_config
-        .files
-        .exclude
-        .iter()
-        .filter_map(|s| specifier_to_file_path(s).ok())
-        .collect::<Vec<_>>();
-    }
-  }
-
-  if include.is_empty() {
-    include.push(".".to_string());
-  }
-
-  IncludeIgnoreCollection { include, ignore }
 }

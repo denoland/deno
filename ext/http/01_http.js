@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -115,7 +115,7 @@
         return null;
       }
 
-      const [streamRid, method, url] = nextRequest;
+      const { 0: streamRid, 1: method, 2: url } = nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
@@ -135,7 +135,12 @@
         false,
       );
       const signal = abortSignal.newSignal();
-      const request = fromInnerRequest(innerRequest, signal, "immutable");
+      const request = fromInnerRequest(
+        innerRequest,
+        signal,
+        "immutable",
+        false,
+      );
 
       const respondWith = createRespondWith(
         this,

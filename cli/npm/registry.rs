@@ -1,5 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -24,13 +25,12 @@ use serde::Serialize;
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
+use crate::semver::Version;
+use crate::semver::VersionReq;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
-use super::resolution::NpmVersionMatcher;
-use super::semver::NpmVersion;
-use super::semver::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
@@ -60,11 +60,11 @@ pub struct NpmDependencyEntry {
   pub kind: NpmDependencyEntryKind,
   pub bare_specifier: String,
   pub name: String,
-  pub version_req: NpmVersionReq,
+  pub version_req: VersionReq,
   /// When the dependency is also marked as a peer dependency,
   /// use this entry to resolve the dependency when it can't
   /// be resolved as a peer dependency.
-  pub peer_dep_version_req: Option<NpmVersionReq>,
+  pub peer_dep_version_req: Option<VersionReq>,
 }
 
 impl PartialOrd for NpmDependencyEntry {
@@ -81,7 +81,7 @@ impl Ord for NpmDependencyEntry {
       Ordering::Equal => other
         .version_req
         .version_text()
-        .cmp(&self.version_req.version_text()),
+        .cmp(self.version_req.version_text()),
       ordering => ordering,
     }
   }
@@ -128,10 +128,9 @@ impl NpmPackageVersionInfo {
           (entry.0.clone(), entry.1.clone())
         };
       let version_req =
-        NpmVersionReq::parse(&version_req).with_context(|| {
+        VersionReq::parse_from_npm(&version_req).with_context(|| {
           format!(
-            "error parsing version requirement for dependency: {}@{}",
-            bare_specifier, version_req
+            "error parsing version requirement for dependency: {bare_specifier}@{version_req}"
           )
         })?;
       Ok(NpmDependencyEntry {
@@ -178,8 +177,18 @@ impl NpmPackageVersionInfo {
 pub struct NpmPackageVersionDistInfo {
   /// URL to the tarball.
   pub tarball: String,
-  pub shasum: String,
-  pub integrity: Option<String>,
+  shasum: String,
+  integrity: Option<String>,
+}
+
+impl NpmPackageVersionDistInfo {
+  pub fn integrity(&self) -> Cow<String> {
+    self
+      .integrity
+      .as_ref()
+      .map(Cow::Borrowed)
+      .unwrap_or_else(|| Cow::Owned(format!("sha1-{}", self.shasum)))
+  }
 }
 
 pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
@@ -207,7 +216,7 @@ pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
   fn package_version_info(
     &self,
     name: &str,
-    version: &NpmVersion,
+    version: &Version,
   ) -> BoxFuture<'static, Result<Option<NpmPackageVersionInfo>, AnyError>> {
     let api = self.clone();
     let name = name.to_string();
@@ -358,10 +367,7 @@ impl RealNpmRegistryApiInner {
       Ok(value) => value,
       Err(err) => {
         if cfg!(debug_assertions) {
-          panic!(
-            "error loading cached npm package info for {}: {:#}",
-            name, err
-          );
+          panic!("error loading cached npm package info for {name}: {err:#}");
         } else {
           None
         }
@@ -404,10 +410,7 @@ impl RealNpmRegistryApiInner {
       self.save_package_info_to_file_cache_result(name, package_info)
     {
       if cfg!(debug_assertions) {
-        panic!(
-          "error saving cached npm package info for {}: {:#}",
-          name, err
-        );
+        panic!("error saving cached npm package info for {name}: {err:#}");
       }
     }
   }
@@ -432,8 +435,7 @@ impl RealNpmRegistryApiInner {
       return Err(custom_error(
         "NotCached",
         format!(
-          "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
-          name
+          "An npm specifier not found in cache: \"{name}\", --cached-only is specified."
         )
       ));
     }

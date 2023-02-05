@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
@@ -193,12 +193,13 @@ impl ReplSession {
     line: &str,
   ) -> EvaluationOutput {
     fn format_diagnostic(diagnostic: &deno_ast::Diagnostic) -> String {
+      let display_position = diagnostic.display_position();
       format!(
         "{}: {} at {}:{}",
         colors::red("parse error"),
         diagnostic.message(),
-        diagnostic.display_position.line_number,
-        diagnostic.display_position.column_number,
+        display_position.line_number,
+        display_position.column_number,
       )
     }
 
@@ -397,7 +398,9 @@ impl ReplSession {
       scope_analysis: false,
     })?;
 
-    self.check_for_npm_imports(&parsed_module.program()).await?;
+    self
+      .check_for_npm_or_node_imports(&parsed_module.program())
+      .await?;
 
     let transpiled_src = parsed_module
       .transpile(&deno_ast::EmitOptions {
@@ -418,10 +421,7 @@ impl ReplSession {
       .text;
 
     let value = self
-      .evaluate_expression(&format!(
-        "'use strict'; void 0;\n{}",
-        transpiled_src
-      ))
+      .evaluate_expression(&format!("'use strict'; void 0;\n{transpiled_src}"))
       .await?;
 
     Ok(TsEvaluateResponse {
@@ -430,14 +430,14 @@ impl ReplSession {
     })
   }
 
-  async fn check_for_npm_imports(
+  async fn check_for_npm_or_node_imports(
     &mut self,
     program: &swc_ast::Program,
   ) -> Result<(), AnyError> {
     let mut collector = ImportCollector::new();
     program.visit_with(&mut collector);
 
-    let npm_imports = collector
+    let resolved_imports = collector
       .imports
       .iter()
       .flat_map(|i| {
@@ -445,15 +445,19 @@ impl ReplSession {
           .proc_state
           .maybe_resolver
           .as_ref()
-          .and_then(|resolver| {
-            resolver.resolve(i, &self.referrer).to_result().ok()
-          })
+          .and_then(|resolver| resolver.resolve(i, &self.referrer).ok())
           .or_else(|| ModuleSpecifier::parse(i).ok())
-          .and_then(|url| NpmPackageReference::from_specifier(&url).ok())
       })
+      .collect::<Vec<_>>();
+
+    let npm_imports = resolved_imports
+      .iter()
+      .flat_map(|url| NpmPackageReference::from_specifier(url).ok())
       .map(|r| r.req)
       .collect::<Vec<_>>();
-    if !npm_imports.is_empty() {
+    let has_node_specifier =
+      resolved_imports.iter().any(|url| url.scheme() == "node");
+    if !npm_imports.is_empty() || has_node_specifier {
       if !self.has_initialized_node_runtime {
         self.proc_state.prepare_node_std_graph().await?;
         crate::node::initialize_runtime(
@@ -469,6 +473,15 @@ impl ReplSession {
         .npm_resolver
         .add_package_reqs(npm_imports)
         .await?;
+
+      // prevent messages in the repl about @types/node not being cached
+      if has_node_specifier {
+        self
+          .proc_state
+          .npm_resolver
+          .inject_synthetic_types_node_package()
+          .await?;
+      }
     }
     Ok(())
   }

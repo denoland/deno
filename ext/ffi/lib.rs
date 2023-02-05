@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
@@ -60,8 +60,7 @@ fn check_unstable(state: &OpState, api_name: &str) {
 
   if !unstable.0 {
     eprintln!(
-      "Unstable API '{}'. The --unstable flag must be provided.",
-      api_name
+      "Unstable API '{api_name}'. The --unstable flag must be provided."
     );
     std::process::exit(70);
   }
@@ -84,9 +83,9 @@ pub(crate) struct FfiState {
 }
 
 pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
     .js(include_js_files!(
-      prefix "deno:ext/ffi",
+      prefix "internal:ext/ffi",
       "00_ffi.js",
     ))
     .ops(vec![

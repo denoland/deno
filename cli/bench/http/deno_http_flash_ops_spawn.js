@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 if (Deno.build.os !== "linux") {
   throw new Error("SO_REUSEPORT is only supported on Linux");
 }

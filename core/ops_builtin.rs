@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::error::format_file_name;
 use crate::error::type_error;
 use crate::include_js_files;
@@ -13,13 +13,15 @@ use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
 use std::cell::RefCell;
-use std::io::{stderr, stdout, Write};
+use std::io::stderr;
+use std::io::stdout;
+use std::io::Write;
 use std::rc::Rc;
 
 pub(crate) fn init_builtins() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_builtins")
     .js(include_js_files!(
-      prefix "deno:core",
+      prefix "internal:core",
       "00_primordials.js",
       "01_core.js",
       "02_error.js",

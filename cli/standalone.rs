@@ -1,16 +1,20 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CaData;
 use crate::args::Flags;
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::ops;
 use crate::proc_state::ProcState;
+use crate::util::v8::construct_v8_flags;
 use crate::version;
 use crate::CliResolver;
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::io::AllowStdIo;
+use deno_core::futures::AsyncReadExt;
+use deno_core::futures::AsyncSeekExt;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::serde::Deserialize;
@@ -20,12 +24,13 @@ use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
@@ -33,14 +38,10 @@ use deno_runtime::BootstrapOptions;
 use import_map::parse_from_json;
 use log::Level;
 use std::env::current_exe;
-use std::io::BufReader;
-use std::io::Cursor;
 use std::io::SeekFrom;
-use std::iter::once;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
@@ -74,9 +75,10 @@ pub async fn extract_standalone(
 ) -> Result<Option<(Metadata, eszip::EszipV2)>, AnyError> {
   let current_exe_path = current_exe()?;
 
-  let file = tokio::fs::File::open(current_exe_path).await?;
+  let file = std::fs::File::open(current_exe_path)?;
 
-  let mut bufreader = tokio::io::BufReader::new(file);
+  let mut bufreader =
+    deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
 
   let trailer_pos = bufreader.seek(SeekFrom::End(-24)).await?;
   let mut trailer = [0; 24];
@@ -133,7 +135,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     specifier: &str,
     referrer: &str,
-    _is_main: bool,
+    _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
     // Try to follow redirects when resolving.
     let referrer = match self.eszip.get_module(referrer) {
@@ -148,7 +150,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         deno_core::resolve_import(specifier, referrer.as_str())
           .map_err(|err| err.into())
       },
-      |r| r.resolve(specifier, &referrer).to_result(),
+      |r| r.resolve(specifier, &referrer),
     )
   }
 
@@ -158,14 +160,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let module_specifier = module_specifier.clone();
-
-    let is_data_uri = get_source_from_data_url(&module_specifier).ok();
+    let is_data_uri = get_source_from_data_url(module_specifier).ok();
     let module = self
       .eszip
       .get_module(module_specifier.as_str())
       .ok_or_else(|| type_error("Module not found"));
 
+    let module_specifier = module_specifier.clone();
     async move {
       if let Some((source, _)) = is_data_uri {
         return Ok(deno_core::ModuleSource {
@@ -213,6 +214,7 @@ fn metadata_to_flags(metadata: &Metadata) -> Flags {
     v8_flags: metadata.v8_flags.clone(),
     log_level: metadata.log_level,
     ca_stores: metadata.ca_stores.clone(),
+    ca_data: metadata.ca_data.clone().map(CaData::Bytes),
     ..Default::default()
   }
 }
@@ -224,7 +226,9 @@ pub async fn run(
   let flags = metadata_to_flags(&metadata);
   let main_module = &metadata.entrypoint;
   let ps = ProcState::build(flags).await?;
-  let permissions = Permissions::from_options(&metadata.permissions)?;
+  let permissions = PermissionsContainer::new(Permissions::from_options(
+    &metadata.permissions,
+  )?);
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader {
@@ -244,29 +248,9 @@ pub async fn run(
     todo!("Workers are currently not supported in standalone binaries");
   });
 
-  // Keep in sync with `main.rs`.
-  v8_set_flags(
-    once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
-      .chain(metadata.v8_flags.iter().cloned())
-      .collect::<Vec<_>>(),
-  );
+  v8_set_flags(construct_v8_flags(&metadata.v8_flags, vec![]));
 
-  let mut root_cert_store = ps.root_cert_store.clone();
-
-  if let Some(cert) = metadata.ca_data {
-    let reader = &mut BufReader::new(Cursor::new(cert));
-    match rustls_pemfile::certs(reader) {
-      Ok(certs) => {
-        root_cert_store.add_parsable_certificates(&certs);
-      }
-      Err(e) => {
-        return Err(anyhow!(
-          "Unable to add pem file to certificate store: {}",
-          e
-        ));
-      }
-    }
-  }
+  let root_cert_store = ps.root_cert_store.clone();
 
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
@@ -286,7 +270,7 @@ pub async fn run(
       user_agent: version::get_user_agent(),
       inspect: ps.options.is_inspecting(),
     },
-    extensions: ops::cli_exts(ps.clone()),
+    extensions: ops::cli_exts(ps),
     extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: metadata
@@ -336,9 +320,7 @@ fn get_error_class_name(e: &AnyError) -> &'static str {
     panic!(
       "Error '{}' contains boxed error of unsupported type:{}",
       e,
-      e.chain()
-        .map(|e| format!("\n  {:?}", e))
-        .collect::<String>()
+      e.chain().map(|e| format!("\n  {e:?}")).collect::<String>()
     );
   })
 }

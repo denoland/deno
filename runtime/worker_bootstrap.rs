@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -37,7 +37,7 @@ impl Default for BootstrapOptions {
       .unwrap_or(1);
 
     let runtime_version = env!("CARGO_PKG_VERSION").into();
-    let user_agent = format!("Deno/{}", runtime_version);
+    let user_agent = format!("Deno/{runtime_version}");
 
     Self {
       runtime_version,

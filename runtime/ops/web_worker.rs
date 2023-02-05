@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod sync_fetch;
 
@@ -17,7 +17,7 @@ use std::rc::Rc;
 use self::sync_fetch::op_worker_sync_fetch;
 
 pub fn init() -> Extension {
-  Extension::builder()
+  Extension::builder("deno_web_worker")
     .ops(vec![
       op_worker_post_message::decl(),
       op_worker_recv_message::decl(),

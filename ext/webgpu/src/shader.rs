@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -22,7 +22,6 @@ pub fn op_webgpu_create_shader_module(
   device_rid: ResourceId,
   label: Option<String>,
   code: String,
-  _source_map: Option<()>, // not yet implemented
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -41,6 +40,6 @@ pub fn op_webgpu_create_shader_module(
     device,
     &descriptor,
     source,
-    std::marker::PhantomData
+    ()
   ) => state, WebGpuShaderModule)
 }

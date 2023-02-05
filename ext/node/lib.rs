@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -53,7 +53,11 @@ pub trait RequireNpmResolver {
 
   fn in_npm_package(&self, path: &Path) -> bool;
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError>;
 }
 
 pub const MODULE_ES_SHIM: &str = include_str!("./module_es_shim.js");
@@ -65,7 +69,7 @@ pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
     .unwrap()
     .as_secs();
   // use a changing variable name to make it hard to depend on this
-  format!("__DENO_NODE_GLOBAL_THIS_{}__", seconds)
+  format!("__DENO_NODE_GLOBAL_THIS_{seconds}__")
 });
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -80,9 +84,9 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
 pub fn init<P: NodePermissions + 'static>(
   maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
     .js(include_js_files!(
-      prefix "deno:ext/node",
+      prefix "internal:ext/node",
       "01_node.js",
       "02_require.js",
     ))
@@ -95,7 +99,7 @@ pub fn init<P: NodePermissions + 'static>(
       op_require_is_request_relative::decl(),
       op_require_resolve_lookup_paths::decl(),
       op_require_try_self_parent_path::decl::<P>(),
-      op_require_try_self::decl(),
+      op_require_try_self::decl::<P>(),
       op_require_real_path::decl::<P>(),
       op_require_path_is_absolute::decl(),
       op_require_path_dirname::decl(),
@@ -104,9 +108,9 @@ pub fn init<P: NodePermissions + 'static>(
       op_require_path_basename::decl(),
       op_require_read_file::decl::<P>(),
       op_require_as_file_path::decl(),
-      op_require_resolve_exports::decl(),
+      op_require_resolve_exports::decl::<P>(),
       op_require_read_closest_package_json::decl::<P>(),
-      op_require_read_package_scope::decl(),
+      op_require_read_package_scope::decl::<P>(),
       op_require_package_imports_resolve::decl::<P>(),
       op_require_break_on_next_statement::decl(),
     ])
@@ -130,11 +134,8 @@ where
     let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
     resolver.clone()
   };
-  if resolver.ensure_read_permission(file_path).is_ok() {
-    return Ok(());
-  }
-
-  state.borrow_mut::<P>().check_read(file_path)
+  let permissions = state.borrow_mut::<P>();
+  resolver.ensure_read_permission(permissions, file_path)
 }
 
 #[op]
@@ -459,19 +460,24 @@ where
 }
 
 #[op]
-fn op_require_try_self(
+fn op_require_try_self<P>(
   state: &mut OpState,
   parent_path: Option<String>,
   request: String,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, AnyError>
+where
+  P: NodePermissions + 'static,
+{
   if parent_path.is_none() {
     return Ok(None);
   }
 
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let permissions = state.borrow_mut::<P>();
   let pkg = resolution::get_package_scope_config(
     &Url::from_file_path(parent_path.unwrap()).unwrap(),
     &*resolver,
+    permissions,
   )
   .ok();
   if pkg.is_none() {
@@ -491,7 +497,7 @@ fn op_require_try_self(
 
   if request == pkg_name {
     // pass
-  } else if request.starts_with(&format!("{}/", pkg_name)) {
+  } else if request.starts_with(&format!("{pkg_name}/")) {
     expansion += &request[pkg_name.len()..];
   } else {
     return Ok(None);
@@ -508,6 +514,7 @@ fn op_require_try_self(
       resolution::REQUIRE_CONDITIONS,
       NodeResolutionMode::Execution,
       &*resolver,
+      permissions,
     )
     .map(|r| Some(r.to_string_lossy().to_string()))
   } else {
@@ -540,7 +547,7 @@ pub fn op_require_as_file_path(file_or_url: String) -> String {
 }
 
 #[op]
-fn op_require_resolve_exports(
+fn op_require_resolve_exports<P>(
   state: &mut OpState,
   uses_local_node_modules_dir: bool,
   modules_path: String,
@@ -548,8 +555,12 @@ fn op_require_resolve_exports(
   name: String,
   expansion: String,
   parent_path: String,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, AnyError>
+where
+  P: NodePermissions + 'static,
+{
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let permissions = state.borrow_mut::<P>();
 
   let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path))
     && !uses_local_node_modules_dir
@@ -560,6 +571,7 @@ fn op_require_resolve_exports(
   };
   let pkg = PackageJson::load(
     &*resolver,
+    permissions,
     PathBuf::from(&pkg_path).join("package.json"),
   )?;
 
@@ -567,13 +579,14 @@ fn op_require_resolve_exports(
     let referrer = Url::from_file_path(parent_path).unwrap();
     resolution::package_exports_resolve(
       &pkg.path,
-      format!(".{}", expansion),
+      format!(".{expansion}"),
       exports,
       &referrer,
       NodeModuleKind::Cjs,
       resolution::REQUIRE_CONDITIONS,
       NodeResolutionMode::Execution,
       &*resolver,
+      permissions,
     )
     .map(|r| Some(r.to_string_lossy().to_string()))
   } else {
@@ -594,20 +607,26 @@ where
     PathBuf::from(&filename).parent().unwrap(),
   )?;
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let permissions = state.borrow_mut::<P>();
   resolution::get_closest_package_json(
     &Url::from_file_path(filename).unwrap(),
     &*resolver,
+    permissions,
   )
 }
 
 #[op]
-fn op_require_read_package_scope(
+fn op_require_read_package_scope<P>(
   state: &mut OpState,
   package_json_path: String,
-) -> Option<PackageJson> {
+) -> Option<PackageJson>
+where
+  P: NodePermissions + 'static,
+{
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let permissions = state.borrow_mut::<P>();
   let package_json_path = PathBuf::from(package_json_path);
-  PackageJson::load(&*resolver, package_json_path).ok()
+  PackageJson::load(&*resolver, permissions, package_json_path).ok()
 }
 
 #[op]
@@ -622,7 +641,12 @@ where
   let parent_path = PathBuf::from(&parent_filename);
   ensure_read_permission::<P>(state, &parent_path)?;
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
-  let pkg = PackageJson::load(&*resolver, parent_path.join("package.json"))?;
+  let permissions = state.borrow_mut::<P>();
+  let pkg = PackageJson::load(
+    &*resolver,
+    permissions,
+    parent_path.join("package.json"),
+  )?;
 
   if pkg.imports.is_some() {
     let referrer =
@@ -634,6 +658,7 @@ where
       resolution::REQUIRE_CONDITIONS,
       NodeResolutionMode::Execution,
       &*resolver,
+      permissions,
     )
     .map(|r| Some(Url::from_file_path(r).unwrap().to_string()));
     state.put(resolver);
@@ -650,3 +675,197 @@ fn op_require_break_on_next_statement(state: &mut OpState) {
     .borrow_mut()
     .wait_for_session_and_break_on_next_statement()
 }
+
+pub struct NodeModulePolyfill {
+  /// Name of the module like "assert" or "timers/promises"
+  pub name: &'static str,
+
+  /// Specifier relative to the root of `deno_std` repo, like "node/assert.ts"
+  pub specifier: &'static str,
+}
+
+pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
+  NodeModulePolyfill {
+    name: "assert",
+    specifier: "node/assert.ts",
+  },
+  NodeModulePolyfill {
+    name: "assert/strict",
+    specifier: "node/assert/strict.ts",
+  },
+  NodeModulePolyfill {
+    name: "async_hooks",
+    specifier: "node/async_hooks.ts",
+  },
+  NodeModulePolyfill {
+    name: "buffer",
+    specifier: "node/buffer.ts",
+  },
+  NodeModulePolyfill {
+    name: "child_process",
+    specifier: "node/child_process.ts",
+  },
+  NodeModulePolyfill {
+    name: "cluster",
+    specifier: "node/cluster.ts",
+  },
+  NodeModulePolyfill {
+    name: "console",
+    specifier: "node/console.ts",
+  },
+  NodeModulePolyfill {
+    name: "constants",
+    specifier: "node/constants.ts",
+  },
+  NodeModulePolyfill {
+    name: "crypto",
+    specifier: "node/crypto.ts",
+  },
+  NodeModulePolyfill {
+    name: "dgram",
+    specifier: "node/dgram.ts",
+  },
+  NodeModulePolyfill {
+    name: "dns",
+    specifier: "node/dns.ts",
+  },
+  NodeModulePolyfill {
+    name: "dns/promises",
+    specifier: "node/dns/promises.ts",
+  },
+  NodeModulePolyfill {
+    name: "domain",
+    specifier: "node/domain.ts",
+  },
+  NodeModulePolyfill {
+    name: "events",
+    specifier: "node/events.ts",
+  },
+  NodeModulePolyfill {
+    name: "fs",
+    specifier: "node/fs.ts",
+  },
+  NodeModulePolyfill {
+    name: "fs/promises",
+    specifier: "node/fs/promises.ts",
+  },
+  NodeModulePolyfill {
+    name: "http",
+    specifier: "node/http.ts",
+  },
+  NodeModulePolyfill {
+    name: "https",
+    specifier: "node/https.ts",
+  },
+  NodeModulePolyfill {
+    name: "module",
+    // NOTE(bartlomieju): `module` is special, because we don't want to use
+    // `deno_std/node/module.ts`, but instead use a special shim that we
+    // provide in `ext/node`.
+    specifier: "[USE `deno_node::MODULE_ES_SHIM` to get this module]",
+  },
+  NodeModulePolyfill {
+    name: "net",
+    specifier: "node/net.ts",
+  },
+  NodeModulePolyfill {
+    name: "os",
+    specifier: "node/os.ts",
+  },
+  NodeModulePolyfill {
+    name: "path",
+    specifier: "node/path.ts",
+  },
+  NodeModulePolyfill {
+    name: "path/posix",
+    specifier: "node/path/posix.ts",
+  },
+  NodeModulePolyfill {
+    name: "path/win32",
+    specifier: "node/path/win32.ts",
+  },
+  NodeModulePolyfill {
+    name: "perf_hooks",
+    specifier: "node/perf_hooks.ts",
+  },
+  NodeModulePolyfill {
+    name: "process",
+    specifier: "node/process.ts",
+  },
+  NodeModulePolyfill {
+    name: "querystring",
+    specifier: "node/querystring.ts",
+  },
+  NodeModulePolyfill {
+    name: "readline",
+    specifier: "node/readline.ts",
+  },
+  NodeModulePolyfill {
+    name: "stream",
+    specifier: "node/stream.ts",
+  },
+  NodeModulePolyfill {
+    name: "stream/consumers",
+    specifier: "node/stream/consumers.mjs",
+  },
+  NodeModulePolyfill {
+    name: "stream/promises",
+    specifier: "node/stream/promises.mjs",
+  },
+  NodeModulePolyfill {
+    name: "stream/web",
+    specifier: "node/stream/web.ts",
+  },
+  NodeModulePolyfill {
+    name: "string_decoder",
+    specifier: "node/string_decoder.ts",
+  },
+  NodeModulePolyfill {
+    name: "sys",
+    specifier: "node/sys.ts",
+  },
+  NodeModulePolyfill {
+    name: "timers",
+    specifier: "node/timers.ts",
+  },
+  NodeModulePolyfill {
+    name: "timers/promises",
+    specifier: "node/timers/promises.ts",
+  },
+  NodeModulePolyfill {
+    name: "tls",
+    specifier: "node/tls.ts",
+  },
+  NodeModulePolyfill {
+    name: "tty",
+    specifier: "node/tty.ts",
+  },
+  NodeModulePolyfill {
+    name: "url",
+    specifier: "node/url.ts",
+  },
+  NodeModulePolyfill {
+    name: "util",
+    specifier: "node/util.ts",
+  },
+  NodeModulePolyfill {
+    name: "util/types",
+    specifier: "node/util/types.ts",
+  },
+  NodeModulePolyfill {
+    name: "v8",
+    specifier: "node/v8.ts",
+  },
+  NodeModulePolyfill {
+    name: "vm",
+    specifier: "node/vm.ts",
+  },
+  NodeModulePolyfill {
+    name: "worker_threads",
+    specifier: "node/worker_threads.ts",
+  },
+  NodeModulePolyfill {
+    name: "zlib",
+    specifier: "node/zlib.ts",
+  },
+];

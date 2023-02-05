@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod blob;
 mod compression;
@@ -62,9 +62,10 @@ pub fn init<P: TimersPermission + 'static>(
   blob_store: BlobStore,
   maybe_location: Option<Url>,
 ) -> Extension {
-  Extension::builder()
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl", "deno_console", "deno_url"])
     .js(include_js_files!(
-      prefix "deno:ext/web",
+      prefix "internal:ext/web",
       "00_infra.js",
       "01_dom_exception.js",
       "01_mimesniff.js",
@@ -129,25 +130,27 @@ pub fn init<P: TimersPermission + 'static>(
 #[op]
 fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {
   let mut s = input.into_bytes();
-  let decoded_len = forgiving_base64_decode(&mut s)?;
+  let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
   Ok(s.into())
 }
 
 #[op]
 fn op_base64_atob(mut s: ByteString) -> Result<ByteString, AnyError> {
-  let decoded_len = forgiving_base64_decode(&mut s)?;
+  let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
   Ok(s)
 }
 
 /// See <https://infra.spec.whatwg.org/#forgiving-base64>
 #[inline]
-fn forgiving_base64_decode(input: &mut [u8]) -> Result<usize, AnyError> {
+fn forgiving_base64_decode_inplace(
+  input: &mut [u8],
+) -> Result<usize, AnyError> {
   let error: _ =
     || DomExceptionInvalidCharacterError::new("Failed to decode base64");
-  let decoded = base64_simd::Base64::forgiving_decode_inplace(input)
-    .map_err(|_| error())?;
+  let decoded =
+    base64_simd::forgiving_decode_inplace(input).map_err(|_| error())?;
   Ok(decoded.len())
 }
 
@@ -164,8 +167,7 @@ fn op_base64_btoa(s: ByteString) -> String {
 /// See <https://infra.spec.whatwg.org/#forgiving-base64>
 #[inline]
 fn forgiving_base64_encode(s: &[u8]) -> String {
-  const BASE64_STANDARD: base64_simd::Base64 = base64_simd::Base64::STANDARD;
-  BASE64_STANDARD.encode_to_boxed_str(s).into_string()
+  base64_simd::STANDARD.encode_to_string(s)
 }
 
 #[op]
@@ -173,8 +175,7 @@ fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
   let encoding = Encoding::for_label_no_replacement(label.as_bytes())
     .ok_or_else(|| {
       range_error(format!(
-        "The encoding label provided ('{}') is invalid.",
-        label
+        "The encoding label provided ('{label}') is invalid."
       ))
     })?;
   Ok(encoding.name().to_lowercase())
@@ -222,8 +223,7 @@ fn op_encoding_decode_single(
 ) -> Result<U16String, AnyError> {
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
-      "The encoding label provided ('{}') is invalid.",
-      label
+      "The encoding label provided ('{label}') is invalid."
     ))
   })?;
 
@@ -276,8 +276,7 @@ fn op_encoding_new_decoder(
 ) -> Result<ResourceId, AnyError> {
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
-      "The encoding label provided ('{}') is invalid.",
-      label
+      "The encoding label provided ('{label}') is invalid."
     ))
   })?;
 
