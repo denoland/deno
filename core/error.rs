@@ -272,7 +272,7 @@ impl JsError {
           if let (Some(file_name), Some(line_number)) =
             (&frame.file_name, frame.line_number)
           {
-            if !file_name.trim_start_matches('[').starts_with("deno:") {
+            if !file_name.trim_start_matches('[').starts_with("internal:") {
               source_line = get_source_line(
                 file_name,
                 line_number,
@@ -424,7 +424,7 @@ impl JsError {
             if let (Some(file_name), Some(line_number)) =
               (&frame.file_name, frame.line_number)
             {
-              if !file_name.trim_start_matches('[').starts_with("deno:") {
+              if !file_name.trim_start_matches('[').starts_with("internal:") {
                 source_line = get_source_line(
                   file_name,
                   line_number,
@@ -438,7 +438,7 @@ impl JsError {
           }
         } else if let Some(frame) = frames.first() {
           if let Some(file_name) = &frame.file_name {
-            if !file_name.trim_start_matches('[').starts_with("deno:") {
+            if !file_name.trim_start_matches('[').starts_with("internal:") {
               source_line = msg
                 .get_source_line(scope)
                 .map(|v| v.to_rust_string_lossy(scope));

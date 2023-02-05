@@ -1050,7 +1050,7 @@ impl Inner {
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark("did_close", Some(&params));
-    if params.text_document.uri.scheme() == "deno" {
+    if params.text_document.uri.scheme() == "internal" {
       // we can ignore virtual text documents closing, as they don't need to
       // be tracked in memory, as they are static assets that won't change
       // already managed by the language service
@@ -2609,7 +2609,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
-    if params.text_document.uri.scheme() == "deno" {
+    if params.text_document.uri.scheme() == "internal" {
       // we can ignore virtual text documents opening, as they don't need to
       // be tracked in memory, as they are static assets that won't change
       // already managed by the language service
@@ -3121,7 +3121,7 @@ impl Inner {
       .performance
       .mark("virtual_text_document", Some(&params));
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    let contents = if specifier.as_str() == "deno:/status.md" {
+    let contents = if specifier.as_str() == "internal:/status.md" {
       let mut contents = String::new();
       let mut documents_specifiers = self
         .documents

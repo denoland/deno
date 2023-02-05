@@ -1462,7 +1462,7 @@
         const frame = frames[i];
         if (
           typeof frame.fileName == "string" &&
-          !StringPrototypeStartsWith(frame.fileName, "deno:")
+          !StringPrototypeStartsWith(frame.fileName, "internal:")
         ) {
           filename = frame.fileName;
           lineno = frame.lineNumber;

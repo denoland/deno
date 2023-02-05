@@ -85,7 +85,7 @@ pub(crate) struct FfiState {
 pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .js(include_js_files!(
-      prefix "deno:ext/ffi",
+      prefix "internal:ext/ffi",
       "00_ffi.js",
     ))
     .ops(vec![
