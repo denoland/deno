@@ -215,8 +215,9 @@ impl ExtensionBuilder {
   }
 }
 
-/// Helps embed JS files in an extension. Returns Vec<(&'static str, PathBuf)>
-/// representing the filename and the location of the source code.
+/// Helps embed JS files in an extension. Returns `ExtensionSourceFile` which
+/// represents the filename and the location of the source code in the extension
+/// crate.
 ///
 /// Example:
 /// ```ignore
