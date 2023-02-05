@@ -40,7 +40,6 @@ const {
   TypeError,
 } = primordials;
 
-
 // This should be set via setGlobalThis this is required so that if even
 // user deletes globalThis it is still usable
 let globalThis_;
@@ -1522,8 +1521,8 @@ export {
   PromiseRejectionEvent,
   reportError,
   reportException,
+  saveGlobalThisReference,
   setEventTargetData,
   setIsTrusted,
   setTarget,
-  saveGlobalThisReference,
 };
