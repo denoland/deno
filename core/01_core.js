@@ -425,8 +425,8 @@ const core = ObjectAssign(globalThis.Deno.core, {
   byteLength: (str) => ops.op_str_byte_length(str),
 });
 
-const internal = {};
-export { core, ops, internal };
+const internals = {};
+export { core, ops, internals };
 ObjectAssign(globalThis.__bootstrap, { core });
 ObjectAssign(globalThis.Deno, { core });
 
