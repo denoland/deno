@@ -1146,9 +1146,11 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual =
-      op_load::call(&mut state, json!({ "specifier": "internal:///.tsbuildinfo"}))
-        .expect("should have invoked op");
+    let actual = op_load::call(
+      &mut state,
+      json!({ "specifier": "internal:///.tsbuildinfo"}),
+    )
+    .expect("should have invoked op");
     assert_eq!(
       actual,
       json!({
