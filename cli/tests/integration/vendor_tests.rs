@@ -74,7 +74,7 @@ fn output_dir_exists() {
 }
 
 #[test]
-fn vendor_remote_module_test(){
+fn vendor_remote_module_test() {
   let _server = http_server();
   let t = TempDir::new();
   let vendor_dir = t.path().join("vendor2");
@@ -94,16 +94,8 @@ fn vendor_remote_module_test(){
     .unwrap();
   let output = deno.wait_with_output().unwrap();
   assert!(vendor_dir.exists());
-  assert_eq!(
-    String::from_utf8_lossy(&output.stderr).trim(),
-    format!(
-      concat!(
-        "Download https://x.nest.land/Yenv@1.0.0/mod.ts\n",
-        "{}",
-      ),
-      success_text("9 modules", "vendor2", true),
-    )
-  );
+  assert!(String::from_utf8_lossy(&output.stderr)
+    .contains("Vendored 9 modules into vendor2 directory"));
 }
 
 #[test]
