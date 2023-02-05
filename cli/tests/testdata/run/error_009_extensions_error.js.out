@@ -2,5 +2,5 @@
 new Event();
 ^
     at [WILDCARD]
-    at new Event (deno:ext/web/[WILDCARD])
+    at new Event (internal:ext/web/[WILDCARD])
     at [WILDCARD]
