@@ -98,10 +98,12 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   );
 }
 
+pub type FilterFn = Box<dyn Fn(&PathBuf) -> bool>;
+
 pub fn get_js_files(
   cargo_manifest_dir: &'static str,
   directory: &str,
-  filter: Option<Box<dyn Fn(&PathBuf) -> bool>>,
+  filter: Option<FilterFn>,
 ) -> Vec<PathBuf> {
   let manifest_dir = Path::new(cargo_manifest_dir);
   let mut js_files = std::fs::read_dir(directory)
