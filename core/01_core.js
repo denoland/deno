@@ -290,6 +290,7 @@ function setReportExceptionCallback(cb) {
 }
 
 function queueMicrotask(cb) {
+  console.log("microTask");
   if (typeof cb != "function") {
     throw new TypeError("expected a function");
   }
