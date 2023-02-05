@@ -593,7 +593,7 @@ fn _090_run_permissions_request_sync() {
 
 #[test]
 fn permissions_prompt_allow_all_env() {
-  let args = "run --quiet run/permissions_prompt_allow_all_env.ts";
+  let args = "run --quiet run/permissions_prompt_allow_deny_all_env.ts";
   use util::PtyData::*;
   util::test_pty2(args, vec![
     Output("⚠️  ┌ Deno requests env access to \"FOO\".\r\n    ├ Run again with --allow-env to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
@@ -604,7 +604,7 @@ fn permissions_prompt_allow_all_env() {
 
 #[test]
 fn permissions_prompt_deny_all_env() {
-  let args = "run --quiet run/permissions_prompt_allow_all_env.ts";
+  let args = "run --quiet run/permissions_prompt_allow_deny_all_env.ts";
   use util::PtyData::*;
   util::test_pty2(args, vec![
     Output("⚠️  ┌ Deno requests env access to \"FOO\".\r\n   ├ Run again with --allow-env to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
