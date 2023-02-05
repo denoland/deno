@@ -2,11 +2,15 @@
 use crate::OpState;
 use anyhow::Error;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::task::Context;
 use v8::fast_api::FastFunction;
 
-pub type SourcePair = (&'static str, &'static str);
+pub struct ExtensionSourceFile {
+  pub specifier: &'static str,
+  pub source_path: PathBuf,
+}
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
@@ -37,7 +41,7 @@ impl OpDecl {
 
 #[derive(Default)]
 pub struct Extension {
-  js_files: Option<Vec<SourcePair>>,
+  js_files: Option<Vec<ExtensionSourceFile>>,
   ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
@@ -81,7 +85,7 @@ impl Extension {
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn init_js(&self) -> &[SourcePair] {
+  pub fn init_js(&self) -> &[ExtensionSourceFile] {
     match &self.js_files {
       Some(files) => files,
       None => &[],
@@ -144,7 +148,7 @@ impl Extension {
 // Provides a convenient builder pattern to declare Extensions
 #[derive(Default)]
 pub struct ExtensionBuilder {
-  js: Vec<SourcePair>,
+  js: Vec<ExtensionSourceFile>,
   ops: Vec<OpDecl>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
@@ -159,7 +163,7 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn js(&mut self, js_files: Vec<SourcePair>) -> &mut Self {
+  pub fn js(&mut self, js_files: Vec<ExtensionSourceFile>) -> &mut Self {
     self.js.extend(js_files);
     self
   }
@@ -210,8 +214,9 @@ impl ExtensionBuilder {
     }
   }
 }
-/// Helps embed JS files in an extension. Returns Vec<(&'static str, &'static str)>
-/// representing the filename and source code.
+
+/// Helps embed JS files in an extension. Returns Vec<(&'static str, PathBuf)>
+/// representing the filename and the location of the source code.
 ///
 /// Example:
 /// ```ignore
@@ -225,10 +230,10 @@ impl ExtensionBuilder {
 macro_rules! include_js_files {
   (prefix $prefix:literal, $($file:literal,)+) => {
     vec![
-      $((
-        concat!($prefix, "/", $file),
-        include_str!($file),
-      ),)+
+      $($crate::ExtensionSourceFile {
+        specifier: concat!($prefix, "/", $file),
+        source_path: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file),
+      },)+
     ]
   };
 }

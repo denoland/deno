@@ -806,9 +806,14 @@ impl JsRuntime {
     let extensions = std::mem::take(&mut self.extensions_with_js);
     for ext in &extensions {
       let js_files = ext.init_js();
-      for (filename, source) in js_files {
+      for source_file in js_files {
+        let source = std::fs::read_to_string(&source_file.source_path)?;
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        realm.execute_script(self.v8_isolate(), filename, source)?;
+        realm.execute_script(
+          self.v8_isolate(),
+          &source_file.specifier,
+          &source,
+        )?;
       }
     }
     // Restore extensions
