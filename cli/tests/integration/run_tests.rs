@@ -621,6 +621,9 @@ fn permissions_prompt_allow_all() {
     Input("Y\n"),
     Output("✅ Granted sys env access.\r\n"),
     // "ffi" permissions
+    Output("⚠️  ┌ Deno requests ffi access to \"FOO\".\r\n    ├ Run again with --allow-ffi to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
+    Input("Y\n"),
+    Output("✅ Granted ffi env access.\r\n"),
     // "hrtime" permissions
   ]);
 }
@@ -655,6 +658,9 @@ fn permissions_prompt_deny_all() {
     Input("N\n"),
     Output("❌ Denied all sys access.\r\n"),
     // "ffi" permissions
+    Output("⚠️  ┌ Deno requests ffi access to \"FOO\".\r\n   ├ Run again with --allow-ffi to bypass this prompt.\r\n   └ Allow? [y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all) >"),
+    Input("N\n"),
+    Output("❌ Denied all ffi access.\r\n"),
     // "hrtime" permissions
   ]);
 }
