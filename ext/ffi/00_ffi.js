@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "deno:core/01_core.js";
-const __bootstrap = globalThis.__bootstrap;
+import { core, internals, ops } from "deno:core/01_core.js";
 import primordials from "deno:core/00_primordials.js";
 const {
   ArrayPrototypeMap,
@@ -493,8 +492,9 @@ class DynamicLibrary {
 }
 
 function dlopen(path, symbols) {
+  // TODO(@crowlKats): remove me
   // URL support is progressively enhanced by util in `runtime/js`.
-  const pathFromURL = __bootstrap.util.pathFromURL ?? ((p) => p);
+  const pathFromURL = internals.pathFromURL ?? ((p) => p);
   return new DynamicLibrary(pathFromURL(path), symbols);
 }
 

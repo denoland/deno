@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops, internals } from "deno:core/01_core.js";
+import { core, internals, ops } from "deno:core/01_core.js";
 import { setExitHandler } from "deno:runtime/js/30_os.js";
 import { Console } from "deno:ext/console/02_console.js";
 import { serializePermissions } from "deno:runtime/js/10_permissions.js";

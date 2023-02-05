@@ -2,7 +2,7 @@
 
 // deno-lint-ignore-file
 
-import { core, ops, internals } from "deno:core/01_core.js";
+import { core, internals, ops } from "deno:core/01_core.js";
 import primordials from "deno:core/00_primordials.js";
 const {
   ArrayIsArray,

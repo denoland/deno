@@ -1163,30 +1163,6 @@ function setlike(obj, objPrototype, readonly) {
   }
 }
 
-globalThis.__bootstrap ??= {};
-globalThis.__bootstrap.webidl = {
-  type,
-  makeException,
-  converters,
-  requiredArguments,
-  createDictionaryConverter,
-  createEnumConverter,
-  createNullableConverter,
-  createSequenceConverter,
-  createRecordConverter,
-  createPromiseConverter,
-  invokeCallbackFunction,
-  createInterfaceConverter,
-  brand,
-  createBranded,
-  assertBranded,
-  illegalConstructor,
-  mixinPairIterable,
-  configurePrototype,
-  setlike,
-  setlikeInner,
-};
-
 export {
   assertBranded,
   brand,

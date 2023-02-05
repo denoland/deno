@@ -426,8 +426,7 @@ const core = ObjectAssign(globalThis.Deno.core, {
 });
 
 const internals = {};
-export { core, ops, internals };
-ObjectAssign(globalThis.__bootstrap, { core });
+export { core, internals, ops };
 ObjectAssign(globalThis.Deno, { core });
 
 // Direct bindings on `globalThis`

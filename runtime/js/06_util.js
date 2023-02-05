@@ -135,11 +135,6 @@ function getterOnly(getter) {
   };
 }
 
-// TODO(bartlomieju): remove me
-globalThis.__bootstrap.util = {
-  pathFromURL,
-};
-
 export {
   createResolvable,
   getterOnly,

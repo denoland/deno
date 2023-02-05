@@ -196,7 +196,7 @@ function opCreateEntangledMessagePort() {
 }
 
 /**
- * @param {globalThis.__bootstrap.messagePort.MessageData} messageData
+ * @param {messagePort.MessageData} messageData
  * @returns {[any, object[]]}
  */
 function deserializeJsMessageData(messageData) {
@@ -242,7 +242,7 @@ function deserializeJsMessageData(messageData) {
 /**
  * @param {any} data
  * @param {object[]} transferables
- * @returns {globalThis.__bootstrap.messagePort.MessageData}
+ * @returns {messagePort.MessageData}
  */
 function serializeJsMessageData(data, transferables) {
   const transferredArrayBuffers = [];
@@ -270,7 +270,7 @@ function serializeJsMessageData(data, transferables) {
     throw new DOMException(err, "DataCloneError");
   });
 
-  /** @type {globalThis.__bootstrap.messagePort.Transferable[]} */
+  /** @type {messagePort.Transferable[]} */
   const serializedTransferables = [];
 
   let arrayBufferI = 0;
@@ -333,15 +333,6 @@ function structuredClone(value, options) {
   const messageData = serializeJsMessageData(value, options.transfer);
   return deserializeJsMessageData(messageData)[0];
 }
-
-globalThis.__bootstrap.messagePort = {
-  MessageChannel,
-  MessagePort,
-  MessagePortPrototype,
-  deserializeJsMessageData,
-  serializeJsMessageData,
-  structuredClone,
-};
 
 export {
   deserializeJsMessageData,

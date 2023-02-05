@@ -359,17 +359,6 @@ function unrefTimer(id) {
   core.unrefOp(timerInfo.promiseId);
 }
 
-globalThis.__bootstrap.timers = {
-  setTimeout,
-  setInterval,
-  clearTimeout,
-  clearInterval,
-  handleTimerMacrotask,
-  opNow,
-  refTimer,
-  unrefTimer,
-};
-
 export {
   clearInterval,
   clearTimeout,

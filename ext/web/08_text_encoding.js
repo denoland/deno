@@ -432,14 +432,6 @@ function BOMSniff(bytes) {
   return null;
 }
 
-globalThis.__bootstrap.encoding = {
-  TextEncoder,
-  TextDecoder,
-  TextEncoderStream,
-  TextDecoderStream,
-  decode,
-};
-
 export {
   decode,
   TextDecoder,

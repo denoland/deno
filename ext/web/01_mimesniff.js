@@ -249,11 +249,4 @@ function extractMimeType(headerValues) {
   return mimeType;
 }
 
-globalThis.__bootstrap.mimesniff = {
-  parseMimeType,
-  essence,
-  serializeMimeType,
-  extractMimeType,
-};
-
 export { essence, extractMimeType, parseMimeType, serializeMimeType };

@@ -5,16 +5,12 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-declare namespace globalThis {
-  declare namespace __bootstrap {
-    declare var url: {
-      URL: typeof URL;
-      URLSearchParams: typeof URLSearchParams;
-      parseUrlEncoded(bytes: Uint8Array): [string, string][];
-    };
+declare var url: {
+  URL: typeof URL;
+  URLSearchParams: typeof URLSearchParams;
+  parseUrlEncoded(bytes: Uint8Array): [string, string][];
+};
 
-    declare var urlPattern: {
-      URLPattern: typeof URLPattern;
-    };
-  }
-}
+declare var urlPattern: {
+  URLPattern: typeof URLPattern;
+};

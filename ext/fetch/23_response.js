@@ -166,7 +166,7 @@ function abortedNetworkError() {
  * https://fetch.spec.whatwg.org#initialize-a-response
  * @param {Response} response
  * @param {ResponseInit} init
- * @param {{ body: __bootstrap.fetchBody.InnerBody, contentType: string | null } | null} bodyWithType
+ * @param {{ body: fetchBody.InnerBody, contentType: string | null } | null} bodyWithType
  */
 function initializeAResponse(response, init, bodyWithType) {
   // 1.
@@ -190,7 +190,7 @@ function initializeAResponse(response, init, bodyWithType) {
   // 4.
   response[_response].statusMessage = init.statusText;
   // 5.
-  /** @type {__bootstrap.headers.Headers} */
+  /** @type {headers.Headers} */
   const headers = response[_headers];
   if (init.headers) {
     fillHeaders(headers, init.headers);
