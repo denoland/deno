@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use anyhow::Context;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -53,15 +54,19 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     let filename =
       &("internal:".to_string() + &display_path_str.replace('\\', "/"));
 
-    let id = futures::executor::block_on(js_runtime.load_side_module(
-      &ModuleSpecifier::parse(filename).unwrap(),
-      Some(std::fs::read_to_string(&file).unwrap()),
-    ))
+    futures::executor::block_on(async {
+      let id = js_runtime
+        .load_side_module(
+          &ModuleSpecifier::parse(filename)?,
+          Some(std::fs::read_to_string(&file)?),
+        )
+        .await?;
+      let receiver = js_runtime.mod_evaluate(id);
+      js_runtime.run_event_loop(false).await?;
+      receiver.await?
+    })
+    .with_context(|| format!("Couldn't execute '{}'", file.display()))
     .unwrap();
-    let receiver = js_runtime.mod_evaluate(id);
-    futures::executor::block_on(js_runtime.run_event_loop(false)).unwrap();
-    let r = futures::executor::block_on(receiver).unwrap();
-    r.unwrap();
   }
 
   let snapshot = js_runtime.snapshot();

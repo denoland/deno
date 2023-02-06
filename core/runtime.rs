@@ -23,6 +23,7 @@ use crate::OpMiddlewareFn;
 use crate::OpResult;
 use crate::OpState;
 use crate::PromiseId;
+use anyhow::Context as AnyhowContext;
 use anyhow::Error;
 use futures::channel::oneshot;
 use futures::future::poll_fn;
@@ -808,15 +809,18 @@ impl JsRuntime {
       {
         let js_files = ext.init_esm();
         for (filename, source) in js_files {
-          let id = futures::executor::block_on(self.load_side_module(
-            &ModuleSpecifier::parse(filename).unwrap(),
-            Some(source.to_string()),
-          ))
-          .unwrap();
-          let receiver = self.mod_evaluate(id);
-          futures::executor::block_on(self.run_event_loop(false)).unwrap();
-          let r = futures::executor::block_on(receiver).unwrap();
-          r.unwrap();
+          futures::executor::block_on(async {
+            let id = self
+              .load_side_module(
+                &ModuleSpecifier::parse(filename)?,
+                Some(source.to_string()),
+              )
+              .await?;
+            let receiver = self.mod_evaluate(id);
+            self.run_event_loop(false).await?;
+            receiver.await?
+          })
+          .with_context(|| format!("Couldn't execute '{filename}'"))?;
         }
       }
 
@@ -3610,10 +3614,7 @@ pub mod tests {
       assert_eq!(module_map.info.len(), modules.len());
       assert_eq!(module_map.by_name.len(), modules.len());
 
-      assert_eq!(
-        module_map.next_load_id,
-        (modules.len() + 1) as ModuleLoadId
-      );
+      assert_eq!(module_map.next_load_id, (modules.len() + 1) as ModuleLoadId);
 
       for info in modules {
         assert!(module_map.handles.get(info.id).is_some());
