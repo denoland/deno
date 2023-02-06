@@ -19,6 +19,7 @@ use crate::ops::*;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
+use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
 use crate::OpState;
@@ -605,9 +606,15 @@ impl JsRuntime {
       None
     };
 
-    let loader = Rc::new(crate::modules::InternalModuleLoader::new(
-      options.module_loader,
-    ));
+    let loader = if snapshot_options != SnapshotOptions::Load {
+      Rc::new(crate::modules::InternalModuleLoader::new(
+        options.module_loader,
+      ))
+    } else {
+      options
+        .module_loader
+        .unwrap_or_else(|| Rc::new(NoopModuleLoader))
+    };
 
     {
       let mut state = state_rc.borrow_mut();
