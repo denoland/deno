@@ -292,7 +292,15 @@ impl ModuleLoader for NoopModuleLoader {
   }
 }
 
-pub struct InternalModuleLoader;
+pub struct InternalModuleLoader(Rc<dyn ModuleLoader>);
+
+impl InternalModuleLoader {
+  pub fn new(module_loader: Option<Rc<dyn ModuleLoader>>) -> Self {
+    InternalModuleLoader(
+      module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
+    )
+  }
+}
 
 impl ModuleLoader for InternalModuleLoader {
   fn resolve(
@@ -301,13 +309,13 @@ impl ModuleLoader for InternalModuleLoader {
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
-    let specifier = ModuleSpecifier::parse(specifier).unwrap();
+    let url_specifier = ModuleSpecifier::parse(specifier).unwrap();
     if kind == ResolutionKind::Import {
       let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
-      if specifier.scheme() == "internal" {
+      if url_specifier.scheme() == "internal" {
         if referrer == "." || referrer_specifier.unwrap().scheme() == "internal"
         {
-          return Ok(specifier);
+          return Ok(url_specifier);
         } else {
           return Err(generic_error(
             "Cannot load internal module from external code",
@@ -316,7 +324,7 @@ impl ModuleLoader for InternalModuleLoader {
       }
     }
 
-    Err(generic_error("Module loading is not supported"))
+    self.0.resolve(specifier, referrer, kind)
   }
 
   fn load(
@@ -325,10 +333,22 @@ impl ModuleLoader for InternalModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    dbg!(module_specifier, maybe_referrer, is_dyn_import);
+    self.0.load(module_specifier, maybe_referrer, is_dyn_import)
+  }
 
-    async { Err(generic_error("Module loading is not supported")) }
-      .boxed_local()
+  fn prepare_load(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<String>,
+    is_dyn_import: bool,
+  ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
+    self.0.prepare_load(
+      op_state,
+      module_specifier,
+      maybe_referrer,
+      is_dyn_import,
+    )
   }
 }
 

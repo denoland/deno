@@ -13,7 +13,6 @@ use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
-use crate::modules::NoopModuleLoader;
 use crate::op_void_async;
 use crate::op_void_sync;
 use crate::ops::*;
@@ -605,13 +604,9 @@ impl JsRuntime {
       None
     };
 
-    let loader = if snapshot_options.will_snapshot() {
-      Rc::new(crate::modules::InternalModuleLoader)
-    } else {
-      options
-        .module_loader
-        .unwrap_or_else(|| Rc::new(NoopModuleLoader))
-    };
+    let loader = Rc::new(crate::modules::InternalModuleLoader::new(
+      options.module_loader,
+    ));
 
     {
       let mut state = state_rc.borrow_mut();
@@ -813,6 +808,7 @@ impl JsRuntime {
       {
         let js_files = ext.init_esm();
         for (filename, source) in js_files {
+          dbg!(filename);
           let id = futures::executor::block_on(self.load_side_module(
             &ModuleSpecifier::parse(filename).unwrap(),
             Some(source.to_string()),
@@ -828,6 +824,7 @@ impl JsRuntime {
       {
         let js_files = ext.init_js();
         for (filename, source) in js_files {
+          dbg!(filename);
           // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
           realm.execute_script(self.v8_isolate(), filename, source)?;
         }
