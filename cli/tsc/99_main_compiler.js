@@ -14,7 +14,7 @@ delete Object.prototype.__proto__;
 
 ((window) => {
   /** @type {DenoCore} */
-  const core = window.Deno.core;
+  const core = globalThis.Deno.core;
   const ops = core.ops;
 
   let logDebug = false;
