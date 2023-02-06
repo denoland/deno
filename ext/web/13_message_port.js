@@ -6,7 +6,7 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_web.d.ts" />
 
-import { core } from "internal:core/01_core.js";
+const core = globalThis.Deno.core;
 const { InterruptedPrototype, ops } = core;
 import * as webidl from "internal:ext/webidl/00_webidl.js";
 import {
@@ -16,7 +16,7 @@ import {
   setEventTargetData,
 } from "internal:ext/web/02_event.js";
 import DOMException from "internal:ext/web/01_dom_exception.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
   ArrayPrototypeFilter,

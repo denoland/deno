@@ -6,7 +6,8 @@
 /// <reference path="./lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, ops } from "internal:core/01_core.js";
+const core = globalThis.Deno.core;
+const ops = core.ops;
 import * as webidl from "internal:ext/webidl/00_webidl.js";
 import {
   AbortSignalPrototype,
@@ -15,7 +16,7 @@ import {
   remove,
   signalAbort,
 } from "internal:ext/web/03_abort_signal.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBuffer,
   ArrayBufferPrototype,

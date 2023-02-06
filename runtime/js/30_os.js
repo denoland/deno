@@ -1,8 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { ops } from "internal:core/01_core.js";
+const core = globalThis.Deno.core;
+const ops = core.ops;
 import { Event, EventTarget } from "internal:ext/web/02_event.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
   SymbolFor,

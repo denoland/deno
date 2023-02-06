@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { core, ops } from "internal:core/01_core.js";
-import primordials from "internal:core/00_primordials.js";
+const core = globalThis.Deno.core;
+const ops = core.ops;
+const primordials = globalThis.__bootstrap.primordials;
 import { BlobPrototype } from "internal:ext/web/09_file.js";
 import { TcpConn } from "internal:ext/net/01_net.js";
 import { toInnerResponse } from "internal:ext/fetch/23_response.js";

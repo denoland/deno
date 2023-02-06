@@ -10,7 +10,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { core } from "internal:core/01_core.js";
+const core = globalThis.Deno.core;
 import * as webidl from "internal:ext/webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "internal:ext/console/02_console.js";
 import {
@@ -30,7 +30,7 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "internal:ext/fetch/20_headers.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,
   ArrayPrototypePush,

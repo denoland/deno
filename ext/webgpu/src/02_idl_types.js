@@ -36,7 +36,7 @@ import {
   GPUTextureView,
   GPUValidationError,
 } from "internal:ext/webgpu/01_webgpu.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const { SymbolIterator, TypeError } = primordials;
 
 // This needs to be initialized after all of the base classes are implemented,

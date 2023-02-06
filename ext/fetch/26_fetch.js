@@ -10,7 +10,8 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, ops } from "internal:core/01_core.js";
+const core = globalThis.Deno.core;
+const ops = core.ops;
 import * as webidl from "internal:ext/webidl/00_webidl.js";
 import { byteLowerCase } from "internal:ext/web/00_infra.js";
 import { BlobPrototype } from "internal:ext/web/09_file.js";
@@ -33,7 +34,7 @@ import {
   toInnerResponse,
 } from "internal:ext/fetch/23_response.js";
 import * as abortSignal from "internal:ext/web/03_abort_signal.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypePush,
   ArrayPrototypeSplice,

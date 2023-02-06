@@ -2,7 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   RegExp,
   StringPrototypeReplace,

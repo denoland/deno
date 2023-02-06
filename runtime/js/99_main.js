@@ -7,8 +7,10 @@ delete Object.prototype.__proto__;
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
-import { core, internals, ops } from "internal:core/01_core.js";
-import primordials from "internal:core/00_primordials.js";
+const core = globalThis.Deno.core;
+const ops = core.ops;
+const internals = globalThis.__bootstrap.internals;
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
@@ -398,6 +400,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   const consoleFromV8 = globalThis.Deno.core.console;
 
   // Remove bootstrapping data from the global scope
+  delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
   util.log("bootstrapMainRuntime");
   hasBootstrapped = true;
@@ -546,6 +549,7 @@ function bootstrapWorkerRuntime(
   const consoleFromV8 = globalThis.Deno.core.console;
 
   // Remove bootstrapping data from the global scope
+  delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
   util.log("bootstrapWorkerRuntime");
   hasBootstrapped = true;

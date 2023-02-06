@@ -20,7 +20,7 @@ use std::rc::Rc;
 
 pub(crate) fn init_builtins() -> Extension {
   Extension::builder("deno_builtins")
-    .esm(include_js_files!(
+    .js(include_js_files!(
       prefix "internal:core",
       "00_primordials.js",
       "01_core.js",

@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "internal:core/01_core.js";
+const core = globalThis.Deno.core;
+const ops = core.ops;
 import * as timers from "internal:ext/web/02_timers.js";
 import * as httpClient from "internal:ext/fetch/22_http_client.js";
 import * as console from "internal:ext/console/02_console.js";

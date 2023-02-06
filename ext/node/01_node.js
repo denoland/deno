@@ -2,8 +2,8 @@
 
 // deno-lint-ignore-file
 
-import { internals } from "internal:core/01_core.js";
-import primordials from "internal:core/00_primordials.js";
+const internals = globalThis.__bootstrap.internals;
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypePush,
   ArrayPrototypeFilter,

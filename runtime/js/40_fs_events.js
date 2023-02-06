@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core } from "internal:core/01_core.js";
+const core = globalThis.Deno.core;
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
   ObjectPrototypeIsPrototypeOf,

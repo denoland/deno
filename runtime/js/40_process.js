@@ -1,11 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "internal:core/01_core.js";
+const core = globalThis.Deno.core;
+const ops = core.ops;
 import { FsFile } from "internal:runtime/js/40_files.js";
 import { readAll } from "internal:runtime/js/12_io.js";
 import { pathFromURL } from "internal:runtime/js/06_util.js";
 import { assert } from "internal:ext/web/00_infra.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,

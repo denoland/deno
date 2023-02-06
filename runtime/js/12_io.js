@@ -4,8 +4,9 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
 
-import { core, ops } from "internal:core/01_core.js";
-import primordials from "internal:core/00_primordials.js";
+const core = globalThis.Deno.core;
+const ops = core.ops;
+const primordials = globalThis.__bootstrap.primordials;
 const {
   Uint8Array,
   ArrayPrototypePush,

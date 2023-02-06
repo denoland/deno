@@ -5,7 +5,7 @@
 // https://github.com/golang/go/blob/master/LICENSE
 
 import { assert } from "internal:ext/web/00_infra.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeSlice,

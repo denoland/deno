@@ -1,1 +1,1 @@
-await import("internal:core/01_core.js");
+await import("internal:runtime/js/01_build.js");

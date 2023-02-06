@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { core, ops } from "internal:core/01_core.js";
+const core = globalThis.Deno.core;
+const ops = core.ops;
 import { read, readSync, write, writeSync } from "internal:runtime/js/12_io.js";
 import {
   fstat,
@@ -13,7 +14,7 @@ import {
   readableStreamForRid,
   writableStreamForRid,
 } from "internal:ext/web/06_streams.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
   Error,

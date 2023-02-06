@@ -33,7 +33,7 @@ import {
 } from "internal:ext/fetch/20_headers.js";
 import { HttpClientPrototype } from "internal:ext/fetch/22_http_client.js";
 import * as abortSignal from "internal:ext/web/03_abort_signal.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,

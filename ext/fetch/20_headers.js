@@ -19,7 +19,7 @@ import {
   HTTP_TOKEN_CODE_POINT_RE,
   httpTrim,
 } from "internal:ext/web/00_infra.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
   ArrayPrototypeMap,

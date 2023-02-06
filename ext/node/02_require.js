@@ -2,8 +2,10 @@
 
 // deno-lint-ignore-file
 
-import { core, internals, ops } from "internal:core/01_core.js";
-import primordials from "internal:core/00_primordials.js";
+const core = globalThis.Deno.core;
+const ops = core.ops;
+const internals = globalThis.__bootstrap.internals;
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,

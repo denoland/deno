@@ -11,7 +11,7 @@ import {
   listenerCount,
   setIsTrusted,
 } from "internal:ext/web/02_event.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   SafeArrayIterator,
   SafeSetIterator,

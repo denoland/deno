@@ -4,7 +4,7 @@
 
 import { URL } from "internal:ext/url/00_url.js";
 import DOMException from "internal:ext/web/01_dom_exception.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
   ObjectDefineProperties,

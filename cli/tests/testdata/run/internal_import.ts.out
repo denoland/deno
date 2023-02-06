@@ -1,4 +1,4 @@
-error: Unsupported scheme "internal" for module "internal:core/01_core.js". Supported schemes: [
+error: Unsupported scheme "internal" for module "internal:runtime/js/01_build.js". Supported schemes: [
     "data",
     "blob",
     "file",

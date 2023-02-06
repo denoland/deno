@@ -6,10 +6,11 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { ops } from "internal:core/01_core.js";
+const core = globalThis.Deno.core;
+const ops = core.ops;
 import * as webidl from "internal:ext/webidl/00_webidl.js";
 import DOMException from "internal:ext/web/01_dom_exception.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 const {
   ObjectPrototypeIsPrototypeOf,
   TypeErrorPrototype,

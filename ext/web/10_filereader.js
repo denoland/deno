@@ -10,9 +10,10 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { ops } from "internal:core/01_core.js";
+const core = globalThis.Deno.core;
+const ops = core.ops;
 import * as webidl from "internal:ext/webidl/00_webidl.js";
-import primordials from "internal:core/00_primordials.js";
+const primordials = globalThis.__bootstrap.primordials;
 import { forgivingBase64Encode } from "internal:ext/web/00_infra.js";
 import { EventTarget, ProgressEvent } from "internal:ext/web/02_event.js";
 import { decode, TextDecoder } from "internal:ext/web/08_text_encoding.js";
