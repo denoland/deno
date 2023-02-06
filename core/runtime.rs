@@ -807,7 +807,7 @@ impl JsRuntime {
     let extensions = std::mem::take(&mut self.extensions_with_js);
     for ext in &extensions {
       {
-        let js_files = ext.init_esm();
+        let js_files = ext.get_esm_sources();
         for (filename, source) in js_files {
           futures::executor::block_on(async {
             let id = self
@@ -825,7 +825,7 @@ impl JsRuntime {
       }
 
       {
-        let js_files = ext.init_js();
+        let js_files = ext.get_js_sources();
         for (filename, source) in js_files {
           // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
           realm.execute_script(self.v8_isolate(), filename, source)?;

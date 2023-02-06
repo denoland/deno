@@ -82,14 +82,14 @@ impl Extension {
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn init_js(&self) -> &[SourcePair] {
+  pub fn get_js_sources(&self) -> &[SourcePair] {
     match &self.js_files {
       Some(files) => files,
       None => &[],
     }
   }
 
-  pub fn init_esm(&self) -> &[SourcePair] {
+  pub fn get_esm_sources(&self) -> &[SourcePair] {
     match &self.esm_files {
       Some(files) => files,
       None => &[],

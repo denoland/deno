@@ -209,7 +209,6 @@ fn op_queue_microtask(
   scope: &mut v8::HandleScope,
   cb: serde_v8::Value,
 ) -> Result<(), Error> {
-  dbg!();
   scope.enqueue_microtask(to_v8_local_fn(cb)?);
   Ok(())
 }

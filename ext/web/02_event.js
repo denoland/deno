@@ -1452,7 +1452,6 @@ let reportExceptionStackedCalls = 0;
 
 // https://html.spec.whatwg.org/#report-the-exception
 function reportException(error) {
-  console.log(new Error());
   reportExceptionStackedCalls++;
   const jsError = core.destructureError(error);
   const message = jsError.exceptionMessage;
