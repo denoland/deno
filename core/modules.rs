@@ -342,6 +342,10 @@ impl ModuleLoader for InternalModuleLoader {
     maybe_referrer: Option<String>,
     is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
+    if module_specifier.scheme() == "internal" {
+      return async { Ok(()) }.boxed_local();
+    }
+
     self.0.prepare_load(
       op_state,
       module_specifier,

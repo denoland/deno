@@ -808,7 +808,6 @@ impl JsRuntime {
       {
         let js_files = ext.init_esm();
         for (filename, source) in js_files {
-          dbg!(filename);
           let id = futures::executor::block_on(self.load_side_module(
             &ModuleSpecifier::parse(filename).unwrap(),
             Some(source.to_string()),
@@ -824,7 +823,6 @@ impl JsRuntime {
       {
         let js_files = ext.init_js();
         for (filename, source) in js_files {
-          dbg!(filename);
           // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
           realm.execute_script(self.v8_isolate(), filename, source)?;
         }
