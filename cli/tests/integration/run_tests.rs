@@ -3851,10 +3851,8 @@ itest!(internal_import {
   exit_code: 1,
 });
 
-
 itest!(internal_dynamic_import {
   args: "run run/internal_dynamic_import.ts",
   output: "run/internal_dynamic_import.ts.out",
   exit_code: 1,
 });
-

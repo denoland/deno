@@ -312,8 +312,7 @@ impl ModuleLoader for InternalModuleLoader {
     let url_specifier = ModuleSpecifier::parse(specifier).unwrap();
     if url_specifier.scheme() == "internal" {
       let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
-      if referrer == "." || referrer_specifier.unwrap().scheme() == "internal"
-      {
+      if referrer == "." || referrer_specifier.unwrap().scheme() == "internal" {
         return Ok(url_specifier);
       } else {
         return Err(generic_error(
