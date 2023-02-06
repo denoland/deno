@@ -3,8 +3,8 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-declare namespace console {
-  declare function createFilteredInspectProxy<TObject>(params: {
+declare module "internal:ext/console/02_console.js" {
+  function createFilteredInspectProxy<TObject>(params: {
     object: TObject;
     keys: (keyof TObject)[];
     evaluate: boolean;

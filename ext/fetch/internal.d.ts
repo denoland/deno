@@ -9,7 +9,7 @@ declare var domIterable: {
   DomIterableMixin(base: any, dataSymbol: symbol): any;
 };
 
-declare namespace headers {
+declare module "internal:ext/fetch/20_headers.js" {
   class Headers {
   }
   type HeaderList = [string, string][];
@@ -33,19 +33,19 @@ declare namespace headers {
   ): "immutable" | "request" | "request-no-cors" | "response" | "none";
 }
 
-declare namespace formData {
-  declare type FormData = typeof FormData;
-  declare function formDataToBlob(
-    formData: globalThis.FormData,
+declare module "internal:ext/fetch/21_formdata.js" {
+  type FormData = typeof FormData;
+  function formDataToBlob(
+    formData: FormData,
   ): Blob;
-  declare function parseFormData(
+  function parseFormData(
     body: Uint8Array,
     boundary: string | undefined,
   ): FormData;
-  declare function formDataFromEntries(entries: FormDataEntry[]): FormData;
+  function formDataFromEntries(entries: FormDataEntry[]): FormData;
 }
 
-declare namespace fetchBody {
+declare module "internal:ext/fetch/22_body.js" {
   function mixinBody(
     prototype: any,
     bodySymbol: symbol,
@@ -66,7 +66,7 @@ declare namespace fetchBody {
   };
 }
 
-declare namespace fetch {
+declare module "internal:ext/fetch/26_fetch.js" {
   function toInnerRequest(request: Request): InnerRequest;
   function fromInnerRequest(
     inner: InnerRequest,
