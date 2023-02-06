@@ -310,18 +310,16 @@ impl ModuleLoader for InternalModuleLoader {
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
     let url_specifier = ModuleSpecifier::parse(specifier).unwrap();
-    if kind == ResolutionKind::Import {
+    if url_specifier.scheme() == "internal" {
       let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
-      if url_specifier.scheme() == "internal" {
-        if referrer == "." || referrer_specifier.unwrap().scheme() == "internal"
-        {
-          return Ok(url_specifier);
-        } else {
-          return Err(generic_error(
-            "Cannot load internal module from external code",
-          ));
-        };
-      }
+      if referrer == "." || referrer_specifier.unwrap().scheme() == "internal"
+      {
+        return Ok(url_specifier);
+      } else {
+        return Err(generic_error(
+          "Cannot load internal module from external code",
+        ));
+      };
     }
 
     self.0.resolve(specifier, referrer, kind)

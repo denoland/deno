@@ -1,0 +1,8 @@
+error: Unsupported scheme "internal" for module "internal:core/01_core.js". Supported schemes: [
+    "data",
+    "blob",
+    "file",
+    "http",
+    "https",
+]
+    at [WILDCARD]
