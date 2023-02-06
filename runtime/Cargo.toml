@@ -102,6 +102,7 @@ nix.workspace = true
 
 [dev-dependencies]
 # Used in benchmark
+deno_ast.workspace = true
 test_util.workspace = true
 
 [package.metadata.docs.rs]

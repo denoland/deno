@@ -2,6 +2,7 @@
 
 use crate::bindings;
 use crate::error::generic_error;
+use crate::extensions::SourcePair;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
@@ -292,13 +293,24 @@ impl ModuleLoader for NoopModuleLoader {
   }
 }
 
-pub struct InternalModuleLoader(Rc<dyn ModuleLoader>);
+pub type SnapshotLoadCb = Box<dyn Fn(&'static str, &'static str) -> String>;
+pub struct InternalModuleLoader {
+  module_loader: Rc<dyn ModuleLoader>,
+  esm_sources: Vec<SourcePair>,
+  snapshot_load_cb: Option<SnapshotLoadCb>,
+}
 
 impl InternalModuleLoader {
-  pub fn new(module_loader: Option<Rc<dyn ModuleLoader>>) -> Self {
-    InternalModuleLoader(
-      module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
-    )
+  pub fn new(
+    module_loader: Option<Rc<dyn ModuleLoader>>,
+    esm_sources: Vec<SourcePair>,
+    snapshot_load_cb: Option<SnapshotLoadCb>,
+  ) -> Self {
+    InternalModuleLoader {
+      module_loader: module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
+      esm_sources,
+      snapshot_load_cb,
+    }
   }
 }
 
@@ -323,7 +335,7 @@ impl ModuleLoader for InternalModuleLoader {
       }
     }
 
-    self.0.resolve(specifier, referrer, kind)
+    self.module_loader.resolve(specifier, referrer, kind)
   }
 
   fn load(
@@ -332,7 +344,38 @@ impl ModuleLoader for InternalModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    self.0.load(module_specifier, maybe_referrer, is_dyn_import)
+    if module_specifier.scheme() == "internal" {
+      if let Some(source_pair) = self
+        .esm_sources
+        .iter()
+        .find(|source_pair| source_pair.0 == module_specifier.as_str())
+      {
+        let code = if let Some(snapshot_load_cb) = &self.snapshot_load_cb {
+          snapshot_load_cb(source_pair.0, source_pair.1)
+        } else {
+          source_pair.1.to_string()
+        };
+
+        let source = ModuleSource {
+          code: code.as_bytes().to_vec().into_boxed_slice(),
+          module_type: ModuleType::JavaScript,
+          module_url_specified: module_specifier.to_string(),
+          module_url_found: module_specifier.to_string(),
+        };
+        return async move { Ok(source) }.boxed_local();
+      } else {
+        return async {
+          Err(generic_error(
+            "Cannot find internal module source for specifier",
+          ))
+        }
+        .boxed_local();
+      }
+    }
+
+    self
+      .module_loader
+      .load(module_specifier, maybe_referrer, is_dyn_import)
   }
 
   fn prepare_load(
@@ -346,7 +389,7 @@ impl ModuleLoader for InternalModuleLoader {
       return async { Ok(()) }.boxed_local();
     }
 
-    self.0.prepare_load(
+    self.module_loader.prepare_load(
       op_state,
       module_specifier,
       maybe_referrer,
