@@ -3585,9 +3585,7 @@ pub mod tests {
         )
         .unwrap()
       };
-      // We load 3 internal modules before the first user module (
-      // 00_primordials.js, 01_core.js and 02_error.js)
-      assert_eq!(i + 3, id);
+      assert_eq!(i, id);
 
       #[allow(clippy::let_underscore_future)]
       let _ = runtime.mod_evaluate(id);
@@ -3608,13 +3606,13 @@ pub mod tests {
     fn assert_module_map(runtime: &mut JsRuntime, modules: &Vec<ModuleInfo>) {
       let module_map_rc = runtime.get_module_map();
       let module_map = module_map_rc.borrow();
-      assert_eq!(module_map.handles.len(), modules.len() + 3);
-      assert_eq!(module_map.info.len(), modules.len() + 3);
-      assert_eq!(module_map.by_name.len(), modules.len() + 3);
+      assert_eq!(module_map.handles.len(), modules.len());
+      assert_eq!(module_map.info.len(), modules.len());
+      assert_eq!(module_map.by_name.len(), modules.len());
 
       assert_eq!(
         module_map.next_load_id,
-        (modules.len() + 3 + 1) as ModuleLoadId
+        (modules.len() + 1) as ModuleLoadId
       );
 
       for info in modules {
