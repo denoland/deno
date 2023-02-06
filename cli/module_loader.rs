@@ -96,14 +96,7 @@ impl CliModuleLoader {
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
-          | MediaType::Json => {
-            if let Some(source) = graph_data.get_cjs_esm_translation(specifier)
-            {
-              source.to_owned()
-            } else {
-              code.to_string()
-            }
-          }
+          | MediaType::Json => code.to_string(),
           MediaType::Dts | MediaType::Dcts | MediaType::Dmts => "".to_string(),
           MediaType::TypeScript
           | MediaType::Mts
@@ -277,7 +270,6 @@ impl ModuleLoader for CliModuleLoader {
         lib,
         root_permissions,
         dynamic_permissions,
-        false,
       )
       .await
     }

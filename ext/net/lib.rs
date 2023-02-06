@@ -87,7 +87,7 @@ pub fn init<P: NetPermissions + 'static>(
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_web"])
     .js(include_js_files!(
-      prefix "deno:ext/net",
+      prefix "internal:ext/net",
       "01_net.js",
       "02_tls.js",
     ))

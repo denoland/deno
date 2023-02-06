@@ -58,6 +58,7 @@
         surfaceRid: this[_surfaceRid],
         deviceRid: device.rid,
         format: configuration.format,
+        viewFormats: configuration.viewFormats,
         usage: configuration.usage,
         width: configuration.width,
         height: configuration.height,
