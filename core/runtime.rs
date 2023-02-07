@@ -8,18 +8,19 @@ use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
+use crate::modules::InternalModuleLoaderCb;
 use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
-use crate::modules::SnapshotLoadCb;
 use crate::op_void_async;
 use crate::op_void_sync;
 use crate::ops::*;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
+use crate::ExtensionFileSource;
 use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -271,7 +272,8 @@ pub struct RuntimeOptions {
   /// The snapshot is deterministic and uses predictable random numbers.
   pub will_snapshot: bool,
 
-  pub snapshot_load_cb: Option<SnapshotLoadCb>,
+  // TODO(bartlomieju): rename
+  pub snapshot_load_cb: Option<InternalModuleLoaderCb>,
 
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
@@ -613,9 +615,8 @@ impl JsRuntime {
       let esm_sources = options
         .extensions_with_js
         .iter()
-        .map(|ext| ext.get_esm_sources().to_owned())
-        .flatten()
-        .collect::<Vec<_>>();
+        .flat_map(|ext| ext.get_esm_sources().to_owned())
+        .collect::<Vec<ExtensionFileSource>>();
 
       Rc::new(crate::modules::InternalModuleLoader::new(
         options.module_loader,

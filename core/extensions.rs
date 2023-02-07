@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::task::Context;
 use v8::fast_api::FastFunction;
 
+#[derive(Clone, Debug)]
 pub struct ExtensionFileSource {
   pub specifier: String,
   pub code: &'static str,
