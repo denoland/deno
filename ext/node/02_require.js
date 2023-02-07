@@ -801,7 +801,7 @@
 
   // Native extension for .node
   Module._extensions[".node"] = function (module, filename) {
-    module.exports = ops.op_napi_open(filename);
+    module.exports = ops.op_napi_open(filename, node.globalThis);
   };
 
   function createRequireFromPath(filename) {

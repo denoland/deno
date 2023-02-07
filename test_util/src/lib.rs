@@ -214,7 +214,7 @@ async fn hyper_hello(port: u16) {
 
   let server = Server::bind(&addr).serve(hello_svc);
   if let Err(e) = server.await {
-    eprintln!("server error: {}", e);
+    eprintln!("server error: {e}");
   }
 }
 
@@ -232,7 +232,7 @@ fn redirect_resp(url: String) -> Response<Body> {
 async fn redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}{}", PORT, p);
+  let url = format!("http://localhost:{PORT}{p}");
 
   Ok(redirect_resp(url))
 }
@@ -240,7 +240,7 @@ async fn redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
 async fn double_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}{}", REDIRECT_PORT, p);
+  let url = format!("http://localhost:{REDIRECT_PORT}{p}");
 
   Ok(redirect_resp(url))
 }
@@ -248,7 +248,7 @@ async fn double_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
 async fn inf_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}{}", INF_REDIRECTS_PORT, p);
+  let url = format!("http://localhost:{INF_REDIRECTS_PORT}{p}");
 
   Ok(redirect_resp(url))
 }
@@ -256,7 +256,7 @@ async fn inf_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
 async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}/subdir{}", PORT, p);
+  let url = format!("http://localhost:{PORT}/subdir{p}");
 
   Ok(redirect_resp(url))
 }
@@ -267,10 +267,10 @@ async fn auth_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
     .get("authorization")
     .map(|v| v.to_str().unwrap())
   {
-    if auth.to_lowercase() == format!("bearer {}", TEST_AUTH_TOKEN) {
+    if auth.to_lowercase() == format!("bearer {TEST_AUTH_TOKEN}") {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
-      let url = format!("http://localhost:{}{}", PORT, p);
+      let url = format!("http://localhost:{PORT}{p}");
       return Ok(redirect_resp(url));
     }
   }
@@ -289,11 +289,11 @@ async fn basic_auth_redirect(
     .map(|v| v.to_str().unwrap())
   {
     let credentials =
-      format!("{}:{}", TEST_BASIC_AUTH_USERNAME, TEST_BASIC_AUTH_PASSWORD);
+      format!("{TEST_BASIC_AUTH_USERNAME}:{TEST_BASIC_AUTH_PASSWORD}");
     if auth == format!("Basic {}", base64::encode(credentials)) {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
-      let url = format!("http://localhost:{}{}", PORT, p);
+      let url = format!("http://localhost:{PORT}{p}");
       return Ok(redirect_resp(url));
     }
   }
@@ -316,7 +316,7 @@ async fn run_ws_server(addr: &SocketAddr) {
         rx.forward(tx)
           .map(|result| {
             if let Err(e) = result {
-              println!("websocket server error: {:?}", e);
+              println!("websocket server error: {e:?}");
             }
           })
           .await;
@@ -452,14 +452,14 @@ async fn run_wss_server(addr: &SocketAddr) {
             rx.forward(tx)
               .map(|result| {
                 if let Err(e) = result {
-                  println!("Websocket server error: {:?}", e);
+                  println!("Websocket server error: {e:?}");
                 }
               })
               .await;
           }
         }
         Err(e) => {
-          eprintln!("TLS accept error: {:?}", e);
+          eprintln!("TLS accept error: {e:?}");
         }
       }
     });
@@ -490,12 +490,12 @@ async fn run_tls_client_auth_server() {
     .boxed()
   };
 
-  let host_and_port = &format!("localhost:{}", TLS_CLIENT_AUTH_PORT);
+  let host_and_port = &format!("localhost:{TLS_CLIENT_AUTH_PORT}");
 
   let listeners = tokio::net::lookup_host(host_and_port)
     .await
     .expect(host_and_port)
-    .inspect(|address| println!("{} -> {}", host_and_port, address))
+    .inspect(|address| println!("{host_and_port} -> {address}"))
     .map(tokio::net::TcpListener::bind)
     .collect::<futures::stream::FuturesUnordered<_>>()
     .collect::<Vec<_>>()
@@ -525,7 +525,7 @@ async fn run_tls_client_auth_server() {
         }
 
         Err(e) => {
-          eprintln!("TLS accept error: {:?}", e);
+          eprintln!("TLS accept error: {e:?}");
         }
       }
     });
@@ -554,12 +554,12 @@ async fn run_tls_server() {
     .boxed()
   };
 
-  let host_and_port = &format!("localhost:{}", TLS_PORT);
+  let host_and_port = &format!("localhost:{TLS_PORT}");
 
   let listeners = tokio::net::lookup_host(host_and_port)
     .await
     .expect(host_and_port)
-    .inspect(|address| println!("{} -> {}", host_and_port, address))
+    .inspect(|address| println!("{host_and_port} -> {address}"))
     .map(tokio::net::TcpListener::bind)
     .collect::<futures::stream::FuturesUnordered<_>>()
     .collect::<Vec<_>>()
@@ -582,7 +582,7 @@ async fn run_tls_server() {
         }
 
         Err(e) => {
-          eprintln!("TLS accept error: {:?}", e);
+          eprintln!("TLS accept error: {e:?}");
         }
       }
     });
@@ -596,7 +596,7 @@ async fn absolute_redirect(
 
   if path.starts_with("/REDIRECT") {
     let url = &req.uri().path()[9..];
-    println!("URL: {:?}", url);
+    println!("URL: {url:?}");
     let redirect = redirect_resp(url.to_string());
     return Ok(redirect);
   }
@@ -1009,7 +1009,7 @@ async fn main_server(
           Err(err) => {
             return Response::builder()
               .status(StatusCode::INTERNAL_SERVER_ERROR)
-              .body(format!("{:#}", err).into());
+              .body(format!("{err:#}").into());
           }
         }
       } else if req.uri().path().starts_with("/npm/registry/") {
@@ -1027,7 +1027,7 @@ async fn main_server(
           {
             return Response::builder()
               .status(StatusCode::INTERNAL_SERVER_ERROR)
-              .body(format!("{:#}", err).into());
+              .body(format!("{err:#}").into());
           };
 
           // serve the file
@@ -1095,12 +1095,9 @@ async fn download_npm_registry_file(
   };
   let url = if is_tarball {
     let file_name = file_path.file_name().unwrap().to_string_lossy();
-    format!(
-      "https://registry.npmjs.org/{}/-/{}",
-      package_name, file_name
-    )
+    format!("https://registry.npmjs.org/{package_name}/-/{file_name}")
   } else {
-    format!("https://registry.npmjs.org/{}", package_name)
+    format!("https://registry.npmjs.org/{package_name}")
   };
   let client = reqwest::Client::new();
   let response = client.get(url).send().await?;
@@ -1111,8 +1108,8 @@ async fn download_npm_registry_file(
     String::from_utf8(bytes.to_vec())
       .unwrap()
       .replace(
-        &format!("https://registry.npmjs.org/{}/-/", package_name),
-        &format!("http://localhost:4545/npm/registry/{}/", package_name),
+        &format!("https://registry.npmjs.org/{package_name}/-/"),
+        &format!("http://localhost:4545/npm/registry/{package_name}/"),
       )
       .into_bytes()
   };
@@ -1153,7 +1150,7 @@ async fn wrap_redirect_server() {
   let redirect_addr = SocketAddr::from(([127, 0, 0, 1], REDIRECT_PORT));
   let redirect_server = Server::bind(&redirect_addr).serve(redirect_svc);
   if let Err(e) = redirect_server.await {
-    eprintln!("Redirect error: {:?}", e);
+    eprintln!("Redirect error: {e:?}");
   }
 }
 
@@ -1166,7 +1163,7 @@ async fn wrap_double_redirect_server() {
   let double_redirects_server =
     Server::bind(&double_redirects_addr).serve(double_redirects_svc);
   if let Err(e) = double_redirects_server.await {
-    eprintln!("Double redirect error: {:?}", e);
+    eprintln!("Double redirect error: {e:?}");
   }
 }
 
@@ -1179,7 +1176,7 @@ async fn wrap_inf_redirect_server() {
   let inf_redirects_server =
     Server::bind(&inf_redirects_addr).serve(inf_redirects_svc);
   if let Err(e) = inf_redirects_server.await {
-    eprintln!("Inf redirect error: {:?}", e);
+    eprintln!("Inf redirect error: {e:?}");
   }
 }
 
@@ -1192,7 +1189,7 @@ async fn wrap_another_redirect_server() {
   let another_redirect_server =
     Server::bind(&another_redirect_addr).serve(another_redirect_svc);
   if let Err(e) = another_redirect_server.await {
-    eprintln!("Another redirect error: {:?}", e);
+    eprintln!("Another redirect error: {e:?}");
   }
 }
 
@@ -1205,7 +1202,7 @@ async fn wrap_auth_redirect_server() {
   let auth_redirect_server =
     Server::bind(&auth_redirect_addr).serve(auth_redirect_svc);
   if let Err(e) = auth_redirect_server.await {
-    eprintln!("Auth redirect error: {:?}", e);
+    eprintln!("Auth redirect error: {e:?}");
   }
 }
 
@@ -1218,7 +1215,7 @@ async fn wrap_basic_auth_redirect_server() {
   let basic_auth_redirect_server =
     Server::bind(&basic_auth_redirect_addr).serve(basic_auth_redirect_svc);
   if let Err(e) = basic_auth_redirect_server.await {
-    eprintln!("Basic auth redirect error: {:?}", e);
+    eprintln!("Basic auth redirect error: {e:?}");
   }
 }
 
@@ -1231,7 +1228,7 @@ async fn wrap_abs_redirect_server() {
   let abs_redirect_server =
     Server::bind(&abs_redirect_addr).serve(abs_redirect_svc);
   if let Err(e) = abs_redirect_server.await {
-    eprintln!("Absolute redirect error: {:?}", e);
+    eprintln!("Absolute redirect error: {e:?}");
   }
 }
 
@@ -1241,7 +1238,7 @@ async fn wrap_main_server() {
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
   let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
   if let Err(e) = main_server.await {
-    eprintln!("HTTP server error: {:?}", e);
+    eprintln!("HTTP server error: {e:?}");
   }
 }
 
@@ -1389,7 +1386,7 @@ async fn wrap_client_auth_https_server() {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
       .expect("Cannot bind TCP");
-    println!("ready: https_client_auth on :{:?}", HTTPS_CLIENT_AUTH_PORT); // Eye catcher for HttpServerCount
+    println!("ready: https_client_auth on :{HTTPS_CLIENT_AUTH_PORT:?}"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
     // Prepare a long-running future stream to accept and serve cients.
     let incoming_tls_stream = async_stream::stream! {
@@ -1538,7 +1535,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
     response.headers_mut().insert(
       "Content-Type",
       HeaderValue::from_str(
-        &format!("application/typescript;charset={}", charset)[..],
+        &format!("application/typescript;charset={charset}")[..],
       )
       .unwrap(),
     );
@@ -1643,9 +1640,9 @@ impl HttpServerCount {
           let _ = test_server.wait();
         }
         Ok(Some(status)) => {
-          panic!("test_server exited unexpectedly {}", status)
+          panic!("test_server exited unexpectedly {status}")
         }
-        Err(e) => panic!("test_server error: {}", e),
+        Err(e) => panic!("test_server error: {e}"),
       }
     }
   }
@@ -1755,8 +1752,8 @@ pub fn run_collect(
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
   if expect_success != status.success() {
-    eprintln!("stdout: <<<{}>>>", stdout);
-    eprintln!("stderr: <<<{}>>>", stderr);
+    eprintln!("stdout: <<<{stdout}>>>");
+    eprintln!("stderr: <<<{stderr}>>>");
     panic!("Unexpected exit code: {:?}", status.code());
   }
   (stdout, stderr)
@@ -1817,8 +1814,8 @@ pub fn run_and_collect_output_with_args(
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
   if expect_success != status.success() {
-    eprintln!("stdout: <<<{}>>>", stdout);
-    eprintln!("stderr: <<<{}>>>", stderr);
+    eprintln!("stdout: <<<{stdout}>>>");
+    eprintln!("stderr: <<<{stderr}>>>");
     panic!("Unexpected exit code: {:?}", status.code());
   }
   (stdout, stderr)
@@ -1883,11 +1880,10 @@ pub fn run_powershell_script_file(
   let output = command.output().expect("failed to spawn script");
   let stdout = String::from_utf8(output.stdout).unwrap();
   let stderr = String::from_utf8(output.stderr).unwrap();
-  println!("{}", stdout);
+  println!("{stdout}");
   if !output.status.success() {
     panic!(
-      "{} executed with failing error code\n{}{}",
-      script_file_path, stdout, stderr
+      "{script_file_path} executed with failing error code\n{stdout}{stderr}"
     );
   }
 
@@ -1958,7 +1954,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
 
     if let Some(input) = self.input {
       let mut p_stdin = process.stdin.take().unwrap();
-      write!(p_stdin, "{}", input).unwrap();
+      write!(p_stdin, "{input}").unwrap();
     }
 
     // Very important when using pipes: This parent process is still
@@ -1974,7 +1970,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
 
     if let Some(exit_code) = status.code() {
       if self.exit_code != exit_code {
-        println!("OUTPUT\n{}\nOUTPUT", actual);
+        println!("OUTPUT\n{actual}\nOUTPUT");
         panic!(
           "bad exit code, expected: {:?}, actual: {:?}",
           self.exit_code, exit_code
@@ -1985,15 +1981,15 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       {
         use std::os::unix::process::ExitStatusExt;
         let signal = status.signal().unwrap();
-        println!("OUTPUT\n{}\nOUTPUT", actual);
+        println!("OUTPUT\n{actual}\nOUTPUT");
         panic!(
           "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
-          self.exit_code, signal
+          self.exit_code, signal,
         );
       }
       #[cfg(not(unix))]
       {
-        println!("OUTPUT\n{}\nOUTPUT", actual);
+        println!("OUTPUT\n{actual}\nOUTPUT");
         panic!("process terminated without status code on non unix platform, expected exit code: {:?}", self.exit_code);
       }
     }
@@ -2020,8 +2016,8 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     if !expected.contains("[WILDCARD]") {
       assert_eq!(actual, expected)
     } else if !wildcard_match(&expected, &actual) {
-      println!("OUTPUT\n{}\nOUTPUT", actual);
-      println!("EXPECTED\n{}\nEXPECTED", expected);
+      println!("OUTPUT\n{actual}\nOUTPUT");
+      println!("EXPECTED\n{expected}\nEXPECTED");
       panic!("pattern match failed");
     }
   }
@@ -2432,14 +2428,13 @@ foo:
     fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
       // If there is leading text add a newline so it's on it's own line
       let head = match leading_text {
-        Some(v) => format!("{}\n", v),
+        Some(v) => format!("{v}\n"),
         None => "".to_string(),
       };
       format!(
-        "{}foo:
-quuz {} corge
-grault",
-        head, input
+        "{head}foo:
+quuz {input} corge
+grault"
       )
     }
 

@@ -237,7 +237,7 @@ Deno.test(function consoleTestStringifyCircular() {
   arrowFunc: [Function: arrowFunc],
   extendedClass: Extended { a: 1, b: 2 },
   nFunc: [Function],
-  extendedCstr: [Function: Extended],
+  extendedCstr: [Class: Extended],
   o: {
     num: 2,
     bool: false,

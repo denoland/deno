@@ -77,6 +77,7 @@
     Symbol,
     SymbolIterator,
     SymbolToStringTag,
+    TypedArrayPrototypeGetSymbolToStringTag,
     TypeError,
     Uint16Array,
     Uint32Array,
@@ -442,6 +443,11 @@
     return V;
   }
 
+  function isDataView(V) {
+    return ArrayBufferIsView(V) &&
+      TypedArrayPrototypeGetSymbolToStringTag(V) === undefined;
+  }
+
   function isNonSharedArrayBuffer(V) {
     return ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V);
   }
@@ -467,7 +473,7 @@
   };
 
   converters.DataView = (V, opts = {}) => {
-    if (!(ObjectPrototypeIsPrototypeOf(DataViewPrototype, V))) {
+    if (!isDataView(V)) {
       throw makeException(TypeError, "is not a DataView", opts);
     }
 

@@ -32,17 +32,17 @@ impl Error for ModuleResolutionError {
 impl fmt::Display for ModuleResolutionError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
-      InvalidUrl(ref err) => write!(f, "invalid URL: {}", err),
+      InvalidUrl(ref err) => write!(f, "invalid URL: {err}"),
       InvalidBaseUrl(ref err) => {
-        write!(f, "invalid base URL for relative import: {}", err)
+        write!(f, "invalid base URL for relative import: {err}")
       }
-      InvalidPath(ref path) => write!(f, "invalid module path: {:?}", path),
+      InvalidPath(ref path) => write!(f, "invalid module path: {path:?}"),
       ImportPrefixMissing(ref specifier, ref maybe_referrer) => write!(
         f,
         "Relative import path \"{}\" not prefixed with / or ./ or ../{}",
         specifier,
         match maybe_referrer {
-          Some(referrer) => format!(" from \"{}\"", referrer),
+          Some(referrer) => format!(" from \"{referrer}\""),
           None => String::new(),
         }
       ),
@@ -425,7 +425,7 @@ mod tests {
       ]);
 
       // Relative local path.
-      let expected_url = format!("file://{}/tests/006_url_imports.ts", cwd_str);
+      let expected_url = format!("file://{cwd_str}/tests/006_url_imports.ts");
       tests.extend(vec![
         ("tests/006_url_imports.ts", expected_url.to_string()),
         ("./tests/006_url_imports.ts", expected_url.to_string()),

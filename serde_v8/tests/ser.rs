@@ -65,7 +65,7 @@ fn sercheck<T: Serialize>(val: T, code: &str, pollute: bool) -> bool {
     // Pollution check
     if let Some(message) = scope.message() {
       let msg = message.get(scope).to_rust_string_lossy(scope);
-      panic!("JS Exception: {}", msg);
+      panic!("JS Exception: {msg}");
     }
 
     // Execute equality check in JS (e.g: x == ...)

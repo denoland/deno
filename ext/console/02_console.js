@@ -8,11 +8,9 @@
   const core = window.Deno.core;
   const colors = window.__bootstrap.colors;
   const {
-    ArrayBufferIsView,
     AggregateErrorPrototype,
     ArrayPrototypeUnshift,
     isNaN,
-    DataViewPrototype,
     DatePrototype,
     DateNow,
     DatePrototypeGetTime,
@@ -49,6 +47,7 @@
     StringPrototypeToString,
     StringPrototypeTrim,
     StringPrototypeIncludes,
+    StringPrototypeStartsWith,
     TypeError,
     NumberParseInt,
     RegExp,
@@ -84,6 +83,7 @@
     ArrayPrototypeFilter,
     ArrayPrototypeFind,
     FunctionPrototypeBind,
+    FunctionPrototypeToString,
     Map,
     MapPrototype,
     MapPrototypeHas,
@@ -114,6 +114,7 @@
     ReflectGetPrototypeOf,
     ReflectHas,
     TypedArrayPrototypeGetLength,
+    TypedArrayPrototypeGetSymbolToStringTag,
     WeakMapPrototype,
     WeakSetPrototype,
   } = window.__bootstrap.primordials;
@@ -144,8 +145,7 @@
   // Forked from Node's lib/internal/cli_table.js
 
   function isTypedArray(x) {
-    return ArrayBufferIsView(x) &&
-      !ObjectPrototypeIsPrototypeOf(DataViewPrototype, x);
+    return TypedArrayPrototypeGetSymbolToStringTag(x) !== undefined;
   }
 
   const tableChars = {
@@ -348,6 +348,11 @@
       // If prototype is removed or broken,
       // use generic 'Function' instead.
       cstrName = "Function";
+    }
+    const stringValue = FunctionPrototypeToString(value);
+    // Might be Class
+    if (StringPrototypeStartsWith(stringValue, "class")) {
+      cstrName = "Class";
     }
 
     // Our function may have properties, so we want to format those

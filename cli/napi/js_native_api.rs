@@ -607,10 +607,6 @@ fn napi_create_function(
   check_arg!(env, result);
   check_arg_option!(env, cb);
 
-  if length > INT_MAX as _ {
-    return Err(Error::InvalidArg);
-  }
-
   let name = name
     .as_ref()
     .map(|_| check_new_from_utf8_len(env, name, length))
@@ -1223,13 +1219,17 @@ fn napi_add_finalizer(
 fn napi_adjust_external_memory(
   env: *mut Env,
   change_in_bytes: i64,
-  adjusted_value: &mut i64,
+  adjusted_value: *mut i64,
 ) -> Result {
   check_env!(env);
+  check_arg!(env, adjusted_value);
+
   let env = unsafe { &mut *env };
   let isolate = &mut *env.isolate_ptr;
   *adjusted_value =
     isolate.adjust_amount_of_external_allocated_memory(change_in_bytes);
+
+  napi_clear_last_error(env);
   Ok(())
 }
 
@@ -1535,10 +1535,21 @@ fn napi_delete_reference(env: *mut Env, _nref: napi_ref) -> Result {
 }
 
 #[napi_sym::napi_sym]
-fn napi_detach_arraybuffer(_env: *mut Env, value: napi_value) -> Result {
+fn napi_detach_arraybuffer(env: *mut Env, value: napi_value) -> Result {
+  check_env!(env);
+
   let value = napi_value_unchecked(value);
-  let ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  ab.detach(None);
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(value)
+    .map_err(|_| Error::ArrayBufferExpected)?;
+
+  if !ab.is_detachable() {
+    return Err(Error::DetachableArraybufferExpected);
+  }
+
+  // Expected to crash for None.
+  ab.detach(None).unwrap();
+
+  napi_clear_last_error(env);
   Ok(())
 }
 
@@ -1741,12 +1752,12 @@ fn napi_get_element(
 #[napi_sym::napi_sym]
 fn napi_get_global(env: *mut Env, result: *mut napi_value) -> Result {
   check_env!(env);
-  let env = unsafe { &mut *env };
+  check_arg!(env, result);
 
-  let context = &mut env.scope().get_current_context();
-  let global = context.global(&mut env.scope());
-  let value: v8::Local<v8::Value> = global.into();
+  let value: v8::Local<v8::Value> =
+    transmute::<NonNull<v8::Value>, v8::Local<v8::Value>>((*env).global);
   *result = value.into();
+  napi_clear_last_error(env);
   Ok(())
 }
 
@@ -2133,13 +2144,22 @@ fn napi_is_date(
 
 #[napi_sym::napi_sym]
 fn napi_is_detached_arraybuffer(
-  _env: *mut Env,
+  env: *mut Env,
   value: napi_value,
   result: *mut bool,
 ) -> Result {
+  check_env!(env);
+  check_arg!(env, result);
+
   let value = napi_value_unchecked(value);
-  let _ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  *result = _ab.was_detached();
+
+  *result = match v8::Local::<v8::ArrayBuffer>::try_from(value) {
+    Ok(array_buffer) => array_buffer.was_detached(),
+    Err(_) => false,
+  };
+
+  napi_clear_last_error(env);
+
   Ok(())
 }
 

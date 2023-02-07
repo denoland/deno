@@ -14,7 +14,6 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
-use deno_graph::ModuleKind;
 use deno_graph::ModuleSpecifier;
 use std::path::PathBuf;
 
@@ -27,7 +26,7 @@ pub async fn print_docs(
   let mut doc_nodes = match doc_flags.source_file {
     DocSourceFileFlag::Builtin => {
       let source_file_specifier =
-        ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
+        ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
       let content = get_types_declaration_file_text(ps.options.unstable());
       let mut loader = deno_graph::source::MemoryLoader::new(
         vec![(
@@ -42,7 +41,7 @@ pub async fn print_docs(
       );
       let analyzer = deno_graph::CapturingModuleAnalyzer::default();
       let graph = deno_graph::create_graph(
-        vec![(source_file_specifier.clone(), ModuleKind::Esm)],
+        vec![source_file_specifier.clone()],
         &mut loader,
         deno_graph::GraphOptions {
           is_dynamic: false,
@@ -70,7 +69,7 @@ pub async fn print_docs(
         local: PathBuf::from("./$deno$doc.ts"),
         maybe_types: None,
         media_type: MediaType::TypeScript,
-        source: format!("export * from \"{}\";", module_specifier).into(),
+        source: format!("export * from \"{module_specifier}\";").into(),
         specifier: root_specifier.clone(),
         maybe_headers: None,
       };
@@ -78,9 +77,7 @@ pub async fn print_docs(
       // Save our fake file into file fetcher cache.
       ps.file_fetcher.insert_cached(root);
 
-      let graph = ps
-        .create_graph(vec![(root_specifier.clone(), ModuleKind::Esm)])
-        .await?;
+      let graph = ps.create_graph(vec![root_specifier.clone()]).await?;
       let doc_parser = doc::DocParser::new(
         graph,
         doc_flags.private,

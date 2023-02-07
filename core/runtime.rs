@@ -199,9 +199,9 @@ fn v8_init(
 ) {
   // Include 10MB ICU data file.
   #[repr(C, align(16))]
-  struct IcuData([u8; 10454784]);
+  struct IcuData([u8; 10541264]);
   static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
-  v8::icu::set_common_data_71(&ICU_DATA.0).unwrap();
+  v8::icu::set_common_data_72(&ICU_DATA.0).unwrap();
 
   let flags = concat!(
     " --wasm-test-streaming",
@@ -266,7 +266,7 @@ pub struct RuntimeOptions {
   pub startup_snapshot: Option<Snapshot>,
 
   /// Prepare runtime to take snapshot of loaded code.
-  /// The snapshot is determinstic and uses predictable random numbers.
+  /// The snapshot is deterministic and uses predictable random numbers.
   pub will_snapshot: bool,
 
   /// Isolate creation parameters.
@@ -435,12 +435,11 @@ impl JsRuntime {
         match err {
           v8::DataError::BadType { actual, expected } => {
             panic!(
-              "Invalid type for snapshot data: expected {}, got {}",
-              expected, actual
+              "Invalid type for snapshot data: expected {expected}, got {actual}"
             );
           }
           v8::DataError::NoData { expected } => {
-            panic!("No data for snapshot data: expected {}", expected);
+            panic!("No data for snapshot data: expected {expected}");
           }
         }
       }
@@ -1528,8 +1527,8 @@ impl JsRuntimeState {
   }
 }
 
-pub(crate) fn exception_to_err_result<'s, T>(
-  scope: &mut v8::HandleScope<'s>,
+pub(crate) fn exception_to_err_result<T>(
+  scope: &mut v8::HandleScope,
   exception: v8::Local<v8::Value>,
   in_promise: bool,
 ) -> Result<T, Error> {
@@ -2731,7 +2730,7 @@ pub mod tests {
 
   pub fn run_in_task<F>(f: F)
   where
-    F: FnOnce(&mut Context) + Send + 'static,
+    F: FnOnce(&mut Context) + 'static,
   {
     futures::executor::block_on(lazy(move |cx| f(cx)));
   }
@@ -2963,8 +2962,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_poll_value() {
-    run_in_task(|cx| {
-      let mut runtime = JsRuntime::new(Default::default());
+    let mut runtime = JsRuntime::new(Default::default());
+    run_in_task(move |cx| {
       let value_global = runtime
         .execute_script("a.js", "Promise.resolve(1 + 2)")
         .unwrap();
@@ -3163,8 +3162,8 @@ pub mod tests {
 
   #[test]
   fn test_encode_decode() {
-    run_in_task(|cx| {
-      let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "encode_decode_test.js",
@@ -3179,8 +3178,8 @@ pub mod tests {
 
   #[test]
   fn test_serialize_deserialize() {
-    run_in_task(|cx| {
-      let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "serialize_deserialize_test.js",
@@ -3204,15 +3203,15 @@ pub mod tests {
       "DOMExceptionOperationError"
     }
 
-    run_in_task(|cx| {
-      let ext = Extension::builder("test_ext")
-        .ops(vec![op_err::decl()])
-        .build();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![ext],
-        get_error_class_fn: Some(&get_error_class_name),
-        ..Default::default()
-      });
+    let ext = Extension::builder("test_ext")
+      .ops(vec![op_err::decl()])
+      .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      get_error_class_fn: Some(&get_error_class_name),
+      ..Default::default()
+    });
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "error_builder_test.js",
@@ -3393,6 +3392,7 @@ pub mod tests {
     )
     .unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(module_id);
 
     let module_namespace = runtime.get_module_namespace(module_id).unwrap();
@@ -3570,6 +3570,7 @@ pub mod tests {
       };
       assert_eq!(i, id);
 
+      #[allow(clippy::let_underscore_future)]
       let _ = runtime.mod_evaluate(id);
       futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
@@ -3622,6 +3623,7 @@ pub mod tests {
     )
     .unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
@@ -3723,8 +3725,8 @@ main();
 
   #[test]
   fn test_error_async_stack() {
-    run_in_task(|cx| {
-      let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "error_async_stack.js",
@@ -3772,15 +3774,15 @@ main();
       Err(anyhow!("original async error").context("higher-level async error"))
     }
 
-    run_in_task(|cx| {
-      let ext = Extension::builder("test_ext")
-        .ops(vec![op_err_sync::decl(), op_err_async::decl()])
-        .build();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![ext],
-        ..Default::default()
-      });
+    let ext = Extension::builder("test_ext")
+      .ops(vec![op_err_sync::decl(), op_err_async::decl()])
+      .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
 
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "test_error_context_sync.js",
@@ -3820,7 +3822,7 @@ Deno.core.initializeAsyncOps();
 
       match runtime.poll_value(&promise, cx) {
         Poll::Ready(Ok(_)) => {}
-        Poll::Ready(Err(err)) => panic!("{:?}", err),
+        Poll::Ready(Err(err)) => panic!("{err:?}"),
         _ => panic!(),
       }
     })
@@ -3828,8 +3830,8 @@ Deno.core.initializeAsyncOps();
 
   #[test]
   fn test_pump_message_loop() {
-    run_in_task(|cx| {
-      let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "pump_message_loop.js",
@@ -3885,8 +3887,8 @@ assertEquals(1, notify_return_value);
       )
       .unwrap_err();
     let error_string = error.to_string();
-    // Test that the script specifier is a URL: `deno:<repo-relative path>`.
-    assert!(error_string.contains("deno:core/01_core.js"));
+    // Test that the script specifier is a URL: `internal:<repo-relative path>`.
+    assert!(error_string.contains("internal:core/01_core.js"));
   }
 
   #[test]
@@ -4344,9 +4346,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
                 globalThis.rejectValue = `{realm_name}/${{reason}}`;
               }});
               Deno.core.ops.op_void_async().then(() => Promise.reject({number}));
-            "#,
-            realm_name=realm_name,
-            number=number
+            "#
           ),
         )
         .unwrap();
@@ -4362,7 +4362,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       let reject_value = v8::Local::new(scope, reject_value);
       assert!(reject_value.is_string());
       let reject_value_string = reject_value.to_rust_string_lossy(scope);
-      assert_eq!(reject_value_string, format!("{}/{}", realm_name, number));
+      assert_eq!(reject_value_string, format!("{realm_name}/{number}"));
     }
   }
 
@@ -4808,19 +4808,20 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
 
   #[tokio::test]
   async fn js_realm_ref_unref_ops() {
-    run_in_task(|cx| {
-      // Never resolves.
-      #[op]
-      async fn op_pending() {
-        futures::future::pending().await
-      }
+    // Never resolves.
+    #[op]
+    async fn op_pending() {
+      futures::future::pending().await
+    }
 
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![Extension::builder("test_ext")
-          .ops(vec![op_pending::decl()])
-          .build()],
-        ..Default::default()
-      });
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![Extension::builder("test_ext")
+        .ops(vec![op_pending::decl()])
+        .build()],
+      ..Default::default()
+    });
+
+    run_in_task(move |cx| {
       let main_realm = runtime.global_realm();
       let other_realm = runtime.create_realm().unwrap();
 

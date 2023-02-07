@@ -337,7 +337,7 @@ fn seek_helper(args: SeekArgs) -> Result<(u32, SeekFrom), AnyError> {
     1 => SeekFrom::Current(offset),
     2 => SeekFrom::End(offset),
     _ => {
-      return Err(type_error(format!("Invalid seek mode: {}", whence)));
+      return Err(type_error(format!("Invalid seek mode: {whence}")));
     }
   };
 
@@ -542,7 +542,7 @@ fn op_chdir(state: &mut OpState, directory: String) -> Result<(), AnyError> {
     .borrow_mut::<PermissionsContainer>()
     .check_read(&d, "Deno.chdir()")?;
   set_current_dir(&d).map_err(|err| {
-    Error::new(err.kind(), format!("{}, chdir '{}'", err, directory))
+    Error::new(err.kind(), format!("{err}, chdir '{directory}'"))
   })?;
   Ok(())
 }
@@ -1747,7 +1747,7 @@ fn make_temp(
   let mut rng = thread_rng();
   loop {
     let unique = rng.gen::<u32>();
-    buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
+    buf.set_file_name(format!("{prefix_}{unique:08x}{suffix_}"));
     let r = if is_dir {
       #[allow(unused_mut)]
       let mut builder = std::fs::DirBuilder::new();

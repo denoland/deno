@@ -17,6 +17,7 @@ mod ts {
   use deno_core::error::AnyError;
   use deno_core::op;
   use deno_core::OpState;
+  use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
   use regex::Regex;
   use serde::Deserialize;
   use serde_json::json;
@@ -129,7 +130,7 @@ mod ts {
     for name in libs.iter() {
       println!(
         "cargo:rerun-if-changed={}",
-        path_dts.join(format!("lib.{}.d.ts", name)).display()
+        path_dts.join(format!("lib.{name}.d.ts")).display()
       );
     }
     println!(
@@ -164,10 +165,16 @@ mod ts {
     #[op]
     fn op_build_info(state: &mut OpState) -> Value {
       let build_specifier = "asset:///bootstrap.ts";
+
+      let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
+        .iter()
+        .map(|s| s.name)
+        .collect::<Vec<&str>>();
       let build_libs = state.borrow::<Vec<&str>>();
       json!({
         "buildSpecifier": build_specifier,
         "libs": build_libs,
+        "nodeBuiltInModuleNames": node_built_in_module_names,
       })
     }
 
@@ -222,7 +229,7 @@ mod ts {
             PathBuf::from(op_crate_lib).canonicalize()?
             // otherwise we are will generate the path ourself
           } else {
-            path_dts.join(format!("lib.{}.d.ts", lib))
+            path_dts.join(format!("lib.{lib}.d.ts"))
           };
           let data = std::fs::read_to_string(path)?;
           Ok(json!({
@@ -424,7 +431,7 @@ fn main() {
   // op_fetch_asset::trace_serializer();
 
   if let Ok(c) = env::var("DENO_CANARY") {
-    println!("cargo:rustc-env=DENO_CANARY={}", c);
+    println!("cargo:rustc-env=DENO_CANARY={c}");
   }
   println!("cargo:rerun-if-env-changed=DENO_CANARY");
 

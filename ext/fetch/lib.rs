@@ -98,7 +98,7 @@ where
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_console"])
     .js(include_js_files!(
-      prefix "deno:ext/fetch",
+      prefix "internal:ext/fetch",
       "01_fetch_util.js",
       "20_headers.js",
       "21_formdata.js",
@@ -231,8 +231,7 @@ where
 
       if method != Method::GET {
         return Err(type_error(format!(
-          "Fetching files only supports the GET method. Received {}.",
-          method
+          "Fetching files only supports the GET method. Received {method}."
         )));
       }
 
@@ -347,11 +346,11 @@ where
     }
     "data" => {
       let data_url = DataUrl::process(url.as_str())
-        .map_err(|e| type_error(format!("{:?}", e)))?;
+        .map_err(|e| type_error(format!("{e:?}")))?;
 
       let (body, _) = data_url
         .decode_to_vec()
-        .map_err(|e| type_error(format!("{:?}", e)))?;
+        .map_err(|e| type_error(format!("{e:?}")))?;
 
       let response = http::Response::builder()
         .status(http::StatusCode::OK)
@@ -371,7 +370,7 @@ where
       // because the URL isn't an object URL.
       return Err(type_error("Blob for the given URL not found."));
     }
-    _ => return Err(type_error(format!("scheme '{}' not supported", scheme))),
+    _ => return Err(type_error(format!("scheme '{scheme}' not supported"))),
   };
 
   Ok(FetchReturn {

@@ -321,7 +321,7 @@ where
     Some("ws") => 80,
     _ => unreachable!(),
   });
-  let addr = format!("{}:{}", domain, port);
+  let addr = format!("{domain}:{port}");
   let tcp_socket = TcpStream::connect(addr).await?;
 
   let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
@@ -359,8 +359,7 @@ where
     }
     .map_err(|err| {
       DomExceptionNetworkError::new(&format!(
-        "failed to connect to WebSocket: {}",
-        err
+        "failed to connect to WebSocket: {err}"
       ))
     })?;
 
@@ -506,7 +505,7 @@ pub fn init<P: WebSocketPermissions + 'static>(
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_url", "deno_webidl"])
     .js(include_js_files!(
-      prefix "deno:ext/websocket",
+      prefix "internal:ext/websocket",
       "01_websocket.js",
       "02_websocketstream.js",
     ))

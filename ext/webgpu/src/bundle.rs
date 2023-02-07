@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::OpState;
@@ -108,7 +109,7 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     &wgpu_core::command::RenderBundleDescriptor {
       label: label.map(Cow::from),
     },
-    std::marker::PhantomData
+    ()
   ) => state, WebGpuRenderBundle)
 }
 
@@ -134,8 +135,8 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
   // Align the data
   assert!(dynamic_offsets_data.len() % std::mem::size_of::<u32>() == 0);
   let (prefix, dynamic_offsets_data, suffix) =
-  // SAFETY: A u8 to u32 cast is safe because we asserted that the length is a
-  // multiple of 4.
+    // SAFETY: A u8 to u32 cast is safe because we asserted that the length is a
+    // multiple of 4.
     unsafe { dynamic_offsets_data.align_to::<u32>() };
   assert!(prefix.is_empty());
   assert!(suffix.is_empty());
@@ -268,16 +269,15 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
     state
       .resource_table
       .get::<WebGpuRenderBundleEncoder>(render_bundle_encoder_rid)?;
+  let size = Some(
+    std::num::NonZeroU64::new(size)
+      .ok_or_else(|| type_error("size must be larger than 0"))?,
+  );
 
   render_bundle_encoder_resource
     .0
     .borrow_mut()
-    .set_index_buffer(
-      buffer_resource.0,
-      index_format,
-      offset,
-      std::num::NonZeroU64::new(size),
-    );
+    .set_index_buffer(buffer_resource.0, index_format, offset, size);
 
   Ok(WebGpuResult::empty())
 }
@@ -298,13 +298,17 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
     state
       .resource_table
       .get::<WebGpuRenderBundleEncoder>(render_bundle_encoder_rid)?;
+  let size = Some(
+    std::num::NonZeroU64::new(size)
+      .ok_or_else(|| type_error("size must be larger than 0"))?,
+  );
 
   wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_vertex_buffer(
     &mut render_bundle_encoder_resource.0.borrow_mut(),
     slot,
     buffer_resource.0,
     offset,
-    std::num::NonZeroU64::new(size),
+    size,
   );
 
   Ok(WebGpuResult::empty())

@@ -204,19 +204,15 @@ fn build_proxy_module_source(
 
   // for simplicity, always include the `export *` statement as it won't error
   // even when the module does not contain a named export
-  writeln!(text, "export * from \"{}\";", relative_specifier).unwrap();
+  writeln!(text, "export * from \"{relative_specifier}\";").unwrap();
 
   // add a default export if one exists in the module
   if let Some(parsed_source) =
     parsed_source_cache.get_parsed_source_from_module(module)?
   {
     if has_default_export(&parsed_source) {
-      writeln!(
-        text,
-        "export {{ default }} from \"{}\";",
-        relative_specifier
-      )
-      .unwrap();
+      writeln!(text, "export {{ default }} from \"{relative_specifier}\";")
+        .unwrap();
     }
   }
 

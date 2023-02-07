@@ -96,14 +96,7 @@ impl CliModuleLoader {
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
-          | MediaType::Json => {
-            if let Some(source) = graph_data.get_cjs_esm_translation(specifier)
-            {
-              source.to_owned()
-            } else {
-              code.to_string()
-            }
-          }
+          | MediaType::Json => code.to_string(),
           MediaType::Dts | MediaType::Dcts | MediaType::Dmts => "".to_string(),
           MediaType::TypeScript
           | MediaType::Mts
@@ -122,7 +115,7 @@ impl CliModuleLoader {
             )?
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
-            panic!("Unexpected media type {} for {}", media_type, found_url)
+            panic!("Unexpected media type {media_type} for {found_url}")
           }
         };
 
@@ -136,7 +129,7 @@ impl CliModuleLoader {
         })
       }
       _ => {
-        let mut msg = format!("Loading unprepared module: {}", specifier);
+        let mut msg = format!("Loading unprepared module: {specifier}");
         if let Some(referrer) = maybe_referrer {
           msg = format!("{}, imported from: {}", msg, referrer.as_str());
         }

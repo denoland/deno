@@ -216,7 +216,7 @@ impl ExtensionBuilder {
 /// Example:
 /// ```ignore
 /// include_js_files!(
-///   prefix "deno:extensions/hello",
+///   prefix "internal:extensions/hello",
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
