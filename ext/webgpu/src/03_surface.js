@@ -8,14 +8,14 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:ext/webidl/00_webidl.js";
+import * as webidl from "internal:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const { Symbol } = primordials;
 import {
   _device,
   assertDevice,
   createGPUTexture,
-} from "internal:ext/webgpu/01_webgpu.js";
+} from "internal:deno_webgpu/01_webgpu.js";
 
 const _surfaceRid = Symbol("[[surfaceRid]]");
 const _configuration = Symbol("[[configuration]]");

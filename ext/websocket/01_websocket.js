@@ -4,10 +4,10 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import { URL } from "internal:ext/url/00_url.js";
-import * as webidl from "internal:ext/webidl/00_webidl.js";
-import { HTTP_TOKEN_CODE_POINT_RE } from "internal:ext/web/00_infra.js";
-import DOMException from "internal:ext/web/01_dom_exception.js";
+import { URL } from "internal:deno_url/00_url.js";
+import * as webidl from "internal:deno_webidl/00_webidl.js";
+import { HTTP_TOKEN_CODE_POINT_RE } from "internal:deno_web/00_infra.js";
+import DOMException from "internal:deno_web/01_dom_exception.js";
 import {
   _skipInternalInit,
   CloseEvent,
@@ -16,8 +16,8 @@ import {
   Event,
   EventTarget,
   MessageEvent,
-} from "internal:ext/web/02_event.js";
-import { Blob, BlobPrototype } from "internal:ext/web/09_file.js";
+} from "internal:deno_web/02_event.js";
+import { Blob, BlobPrototype } from "internal:deno_web/09_file.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,

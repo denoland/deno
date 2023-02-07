@@ -20,8 +20,8 @@ const {
   Symbol,
   SymbolFor,
 } = primordials;
-import * as webidl from "internal:ext/webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "internal:ext/console/02_console.js";
+import * as webidl from "internal:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
 
 const _name = Symbol("name");
 const _message = Symbol("message");

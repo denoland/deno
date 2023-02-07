@@ -6,7 +6,10 @@ use std::rc::Rc;
 use std::task::Context;
 use v8::fast_api::FastFunction;
 
-pub type SourcePair = (&'static str, &'static str);
+pub struct ExtensionFileSource {
+  pub specifier: String,
+  pub code: &'static str,
+}
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
@@ -37,8 +40,8 @@ impl OpDecl {
 
 #[derive(Default)]
 pub struct Extension {
-  js_files: Option<Vec<SourcePair>>,
-  esm_files: Option<Vec<SourcePair>>,
+  js_files: Option<Vec<ExtensionFileSource>>,
+  esm_files: Option<Vec<ExtensionFileSource>>,
   ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
@@ -82,14 +85,14 @@ impl Extension {
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn get_js_sources(&self) -> &[SourcePair] {
+  pub fn get_js_sources(&self) -> &[ExtensionFileSource] {
     match &self.js_files {
       Some(files) => files,
       None => &[],
     }
   }
 
-  pub fn get_esm_sources(&self) -> &[SourcePair] {
+  pub fn get_esm_sources(&self) -> &[ExtensionFileSource] {
     match &self.esm_files {
       Some(files) => files,
       None => &[],
@@ -152,8 +155,8 @@ impl Extension {
 // Provides a convenient builder pattern to declare Extensions
 #[derive(Default)]
 pub struct ExtensionBuilder {
-  js: Vec<SourcePair>,
-  esm: Vec<SourcePair>,
+  js: Vec<ExtensionFileSource>,
+  esm: Vec<ExtensionFileSource>,
   ops: Vec<OpDecl>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
@@ -168,13 +171,28 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn js(&mut self, js_files: Vec<SourcePair>) -> &mut Self {
+  pub fn js(&mut self, js_files: Vec<ExtensionFileSource>) -> &mut Self {
+    let js_files =
+      js_files.into_iter().map(|file_source| ExtensionFileSource {
+        specifier: format!("internal:{}/{}", self.name, file_source.specifier),
+        code: file_source.code,
+      });
     self.js.extend(js_files);
     self
   }
 
-  pub fn esm(&mut self, js_files: Vec<SourcePair>) -> &mut Self {
-    self.esm.extend(js_files);
+  pub fn esm(&mut self, esm_files: Vec<ExtensionFileSource>) -> &mut Self {
+    let esm_files =
+      esm_files
+        .into_iter()
+        .map(|file_source| ExtensionFileSource {
+          specifier: format!(
+            "internal:{}/{}",
+            self.name, file_source.specifier
+          ),
+          code: file_source.code,
+        });
+    self.esm.extend(esm_files);
     self
   }
 
@@ -232,19 +250,18 @@ impl ExtensionBuilder {
 /// Example:
 /// ```ignore
 /// include_js_files!(
-///   prefix "internal:extensions/hello",
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
 /// ```
 #[macro_export]
 macro_rules! include_js_files {
-  (prefix $prefix:literal, $($file:literal,)+) => {
+  ($($file:literal,)+) => {
     vec![
-      $((
-        concat!($prefix, "/", $file),
-        include_str!($file),
-      ),)+
+      $($crate::ExtensionFileSource {
+        specifier: $file.to_string(),
+        code: include_str!($file),
+      },)+
     ]
   };
 }

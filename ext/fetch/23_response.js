@@ -11,25 +11,25 @@
 /// <reference lib="esnext" />
 
 const core = globalThis.Deno.core;
-import * as webidl from "internal:ext/webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "internal:ext/console/02_console.js";
+import * as webidl from "internal:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
 import {
   byteLowerCase,
   HTTP_TAB_OR_SPACE,
   regexMatcher,
   serializeJSValueToJSONString,
-} from "internal:ext/web/00_infra.js";
-import { extractBody, mixinBody } from "internal:ext/fetch/22_body.js";
-import { getLocationHref } from "internal:ext/web/12_location.js";
-import { extractMimeType } from "internal:ext/web/01_mimesniff.js";
-import { URL } from "internal:ext/url/00_url.js";
+} from "internal:deno_web/00_infra.js";
+import { extractBody, mixinBody } from "internal:deno_fetch/22_body.js";
+import { getLocationHref } from "internal:deno_web/12_location.js";
+import { extractMimeType } from "internal:deno_web/01_mimesniff.js";
+import { URL } from "internal:deno_url/00_url.js";
 import {
   fillHeaders,
   getDecodeSplitHeader,
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "internal:ext/fetch/20_headers.js";
+} from "internal:deno_fetch/20_headers.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,

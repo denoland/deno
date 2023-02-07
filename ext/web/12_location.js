@@ -2,8 +2,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { URL } from "internal:ext/url/00_url.js";
-import DOMException from "internal:ext/web/01_dom_exception.js";
+import { URL } from "internal:deno_url/00_url.js";
+import DOMException from "internal:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,

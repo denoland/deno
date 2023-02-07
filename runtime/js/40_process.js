@@ -5,7 +5,7 @@ const ops = core.ops;
 import { FsFile } from "internal:runtime/js/40_files.js";
 import { readAll } from "internal:runtime/js/12_io.js";
 import { pathFromURL } from "internal:runtime/js/06_util.js";
-import { assert } from "internal:ext/web/00_infra.js";
+import { assert } from "internal:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,

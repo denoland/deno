@@ -9,9 +9,9 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
-import * as webidl from "internal:ext/webidl/00_webidl.js";
-import { EventTarget } from "internal:ext/web/02_event.js";
-import DOMException from "internal:ext/web/01_dom_exception.js";
+import * as webidl from "internal:deno_webidl/00_webidl.js";
+import { EventTarget } from "internal:deno_web/02_event.js";
+import DOMException from "internal:deno_web/01_dom_exception.js";
 const {
   ArrayBuffer,
   ArrayBufferIsView,
