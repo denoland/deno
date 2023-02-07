@@ -14,12 +14,12 @@ const {
   SymbolFor,
   TypeError,
 } = primordials;
-import * as webidl from "internal:ext/webidl/00_webidl.js";
-import { structuredClone } from "internal:ext/web/02_structured_clone.js";
-import { createFilteredInspectProxy } from "internal:ext/console/02_console.js";
-import { EventTarget } from "internal:ext/web/02_event.js";
-import { opNow } from "internal:ext/web/02_timers.js";
-import DOMException from "internal:ext/web/01_dom_exception.js";
+import * as webidl from "internal:deno_webidl/00_webidl.js";
+import { structuredClone } from "internal:deno_web/02_structured_clone.js";
+import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
+import { EventTarget } from "internal:deno_web/02_event.js";
+import { opNow } from "internal:deno_web/02_timers.js";
+import DOMException from "internal:deno_web/01_dom_exception.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 const customInspect = SymbolFor("Deno.customInspect");

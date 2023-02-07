@@ -32,7 +32,7 @@ fn setup() -> Vec<Extension> {
       .esm(vec![(
         "internal:setup",
         r#"
-        import { TextDecoder } from "internal:ext/web/08_text_encoding.js";
+        import { TextDecoder } from "internal:deno_web/08_text_encoding.js";
         globalThis.TextDecoder = TextDecoder;
         globalThis.hello12k = Deno.core.encode("hello world\n".repeat(1e3));
         "#,

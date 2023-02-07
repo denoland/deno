@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::task::Context;
 use v8::fast_api::FastFunction;
 
-pub type SourcePair = (&'static str, &'static str);
+pub type SourcePair = (String, &'static str);
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
@@ -168,13 +168,27 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn js(&mut self, js_files: Vec<SourcePair>) -> &mut Self {
+  pub fn js(
+    &mut self,
+    js_files: Vec<(&'static str, &'static str)>,
+  ) -> &mut Self {
+    let js_files = js_files.into_iter().map(|source_pair| {
+      let name = format!("internal:{}/{}", self.name, source_pair.0);
+      (name, source_pair.1)
+    });
     self.js.extend(js_files);
     self
   }
 
-  pub fn esm(&mut self, js_files: Vec<SourcePair>) -> &mut Self {
-    self.esm.extend(js_files);
+  pub fn esm(
+    &mut self,
+    esm_files: Vec<(&'static str, &'static str)>,
+  ) -> &mut Self {
+    let esm_files = esm_files.into_iter().map(|source_pair| {
+      let name = format!("internal:{}/{}", self.name, source_pair.0);
+      (name, source_pair.1)
+    });
+    self.esm.extend(esm_files);
     self
   }
 
@@ -232,17 +246,16 @@ impl ExtensionBuilder {
 /// Example:
 /// ```ignore
 /// include_js_files!(
-///   prefix "internal:extensions/hello",
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
 /// ```
 #[macro_export]
 macro_rules! include_js_files {
-  (prefix $prefix:literal, $($file:literal,)+) => {
+  ($($file:literal,)+) => {
     vec![
       $((
-        concat!($prefix, "/", $file),
+        $file,
         include_str!($file),
       ),)+
     ]

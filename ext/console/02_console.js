@@ -116,7 +116,7 @@ const {
   WeakMapPrototype,
   WeakSetPrototype,
 } = primordials;
-import * as colors from "internal:ext/console/01_colors.js";
+import * as colors from "internal:deno_console/01_colors.js";
 
 function isInvalidDate(x) {
   return isNaN(DatePrototypeGetTime(x));

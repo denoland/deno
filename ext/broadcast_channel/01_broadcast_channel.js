@@ -4,13 +4,13 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:ext/webidl/00_webidl.js";
+import * as webidl from "internal:deno_webidl/00_webidl.js";
 import {
   defineEventHandler,
   EventTarget,
   setTarget,
-} from "internal:ext/web/02_event.js";
-import DOMException from "internal:ext/web/01_dom_exception.js";
+} from "internal:deno_web/02_event.js";
+import DOMException from "internal:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeIndexOf,

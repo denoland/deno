@@ -3,7 +3,7 @@
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
-import { EventTarget } from "internal:ext/web/02_event.js";
+import { EventTarget } from "internal:deno_web/02_event.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   Symbol,

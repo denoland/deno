@@ -65,7 +65,6 @@ pub fn init<P: TimersPermission + 'static>(
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_console", "deno_url"])
     .esm(include_js_files!(
-      prefix "internal:ext/web",
       "00_infra.js",
       "01_dom_exception.js",
       "01_mimesniff.js",
