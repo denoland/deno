@@ -4551,7 +4551,7 @@ class ByteLengthQueuingStrategy {
       context: "Argument 1",
     });
     this[webidl.brand] = webidl.brand;
-    this[_globalObject] = window;
+    this[_globalObject] = globalThis;
     this[_highWaterMark] = init.highWaterMark;
   }
 
@@ -4607,7 +4607,7 @@ class CountQueuingStrategy {
       context: "Argument 1",
     });
     this[webidl.brand] = webidl.brand;
-    this[_globalObject] = window;
+    this[_globalObject] = globalThis;
     this[_highWaterMark] = init.highWaterMark;
   }
 
