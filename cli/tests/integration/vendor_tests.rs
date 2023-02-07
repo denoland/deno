@@ -74,6 +74,31 @@ fn output_dir_exists() {
 }
 
 #[test]
+fn vendor_remote_module_test() {
+  let _server = http_server();
+  let t = TempDir::new();
+  let vendor_dir = t.path().join("vendor2");
+  t.write(
+    "my_app.ts",
+    "import { load } from 'https://x.nest.land/Yenv@1.0.0/mod.ts'; const env = await load({});",
+  );
+  let deno = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("vendor")
+    .arg("my_app.ts")
+    .arg("--output")
+    .arg("vendor2")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(vendor_dir.exists());
+  assert!(String::from_utf8_lossy(&output.stderr)
+    .contains("Vendored 9 modules into vendor2 directory"));
+}
+
+#[test]
 fn standard_test() {
   let _server = http_server();
   let t = TempDir::new();
