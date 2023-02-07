@@ -8,10 +8,8 @@ https://github.com/denoland/deno_install
 
 ### 1.30.3 / 2023.02.07
 
--  refactor: rename `deno` specifiers to `internal` (#17655)
 - fix(ext/console): log class for class constructor (#17615)
 - fix(lsp): prevent crash analyzing module (#17642)
-- fix: revert lsp related internal specifiers (#17673)
 
 ### 1.30.2 / 2023.02.03
 
