@@ -275,6 +275,7 @@ mod ts {
         .build()],
       extensions_with_js: vec![],
       additional_files: files,
+      additional_esm_files: vec![],
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         vec.extend_from_slice(
           &zstd::bulk::compress(snapshot_slice, 22)
@@ -306,7 +307,7 @@ mod ts {
   }
 }
 
-fn create_cli_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
+fn create_cli_snapshot(snapshot_path: PathBuf, esm_files: Vec<PathBuf>) {
   let extensions: Vec<Extension> = vec![
     deno_webidl::init(),
     deno_console::init(),
@@ -343,7 +344,8 @@ fn create_cli_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
     startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
     extensions,
     extensions_with_js: vec![],
-    additional_files: files,
+    additional_files: vec![],
+    additional_esm_files: esm_files,
     compression_cb: Some(Box::new(|vec, snapshot_slice| {
       lzzzz::lz4_hc::compress_to_vec(
         snapshot_slice,
@@ -448,13 +450,13 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
-  let js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "tsc");
+  let js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "tsc", None);
   ts::create_compiler_snapshot(compiler_snapshot_path, js_files, &c);
 
   let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
-  let mut js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js");
-  js_files.push(deno_runtime::js::get_99_main());
-  create_cli_snapshot(cli_snapshot_path, js_files);
+  let mut esm_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js", None);
+  esm_files.push(deno_runtime::js::get_99_main());
+  create_cli_snapshot(cli_snapshot_path, esm_files);
 
   #[cfg(target_os = "windows")]
   {

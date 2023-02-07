@@ -85,7 +85,7 @@ pub fn init<P: NodePermissions + 'static>(
   maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
 ) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
-    .js(include_js_files!(
+    .esm(include_js_files!(
       prefix "internal:ext/node",
       "01_node.js",
       "02_require.js",
