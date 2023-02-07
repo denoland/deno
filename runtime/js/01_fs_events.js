@@ -9,6 +9,7 @@ const {
   PromiseResolve,
   SymbolAsyncIterator,
 } = primordials;
+
 class FsWatcher {
   #rid = 0;
 

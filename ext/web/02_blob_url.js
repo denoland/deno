@@ -14,8 +14,8 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "internal:ext/webidl/00_webidl.js";
-import { getParts } from "internal:ext/web/09_file.js";
-import { URL } from "internal:ext/url/00_url.js";
+import { getParts } from "internal:ext/web/01_file.js";
+import { URL } from "internal:ext/url/01_url.js";
 
 /**
  * @param {Blob} blob

@@ -7,7 +7,7 @@ import {
   readableStreamForRidUnrefableRef,
   readableStreamForRidUnrefableUnref,
   writableStreamForRid,
-} from "internal:ext/web/06_streams.js";
+} from "internal:ext/web/04_streams.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,

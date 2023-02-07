@@ -7,39 +7,39 @@ const {
   SymbolFor,
 } = primordials;
 
-import * as util from "internal:runtime/js/06_util.js";
-import * as location from "internal:ext/web/12_location.js";
+import * as util from "internal:runtime/js/02_util.js";
+import * as location from "internal:ext/web/02_location.js";
 import * as event from "internal:ext/web/02_event.js";
 import * as timers from "internal:ext/web/02_timers.js";
-import * as base64 from "internal:ext/web/05_base64.js";
-import * as encoding from "internal:ext/web/08_text_encoding.js";
+import * as base64 from "internal:ext/web/02_base64.js";
+import * as encoding from "internal:ext/web/01_text_encoding.js";
 import * as console from "internal:ext/console/02_console.js";
 import * as caches from "internal:ext/cache/01_cache.js";
-import * as compression from "internal:ext/web/14_compression.js";
-import * as worker from "internal:runtime/js/11_workers.js";
-import * as performance from "internal:ext/web/15_performance.js";
-import * as crypto from "internal:ext/crypto/00_crypto.js";
-import * as url from "internal:ext/url/00_url.js";
-import * as urlPattern from "internal:ext/url/01_urlpattern.js";
-import * as headers from "internal:ext/fetch/20_headers.js";
-import * as streams from "internal:ext/web/06_streams.js";
-import * as fileReader from "internal:ext/web/10_filereader.js";
+import * as compression from "internal:ext/web/05_compression.js";
+import * as worker from "internal:runtime/js/04_workers.js";
+import * as performance from "internal:ext/web/03_performance.js";
+import * as crypto from "internal:ext/crypto/01_crypto.js";
+import * as url from "internal:ext/url/01_url.js";
+import * as urlPattern from "internal:ext/url/02_urlpattern.js";
+import * as headers from "internal:ext/fetch/02_headers.js";
+import * as streams from "internal:ext/web/04_streams.js";
+import * as fileReader from "internal:ext/web/03_filereader.js";
 import * as webgpu from "internal:ext/webgpu/01_webgpu.js";
 import * as webSocket from "internal:ext/websocket/01_websocket.js";
 import * as webSocketStream from "internal:ext/websocket/02_websocketstream.js";
 import * as broadcastChannel from "internal:ext/broadcast_channel/01_broadcast_channel.js";
-import * as file from "internal:ext/web/09_file.js";
-import * as formData from "internal:ext/fetch/21_formdata.js";
-import * as request from "internal:ext/fetch/23_request.js";
-import * as response from "internal:ext/fetch/23_response.js";
-import * as fetch from "internal:ext/fetch/26_fetch.js";
-import * as messagePort from "internal:ext/web/13_message_port.js";
+import * as file from "internal:ext/web/01_file.js";
+import * as formData from "internal:ext/fetch/01_formdata.js";
+import * as request from "internal:ext/fetch/04_request.js";
+import * as response from "internal:ext/fetch/04_response.js";
+import * as fetch from "internal:ext/fetch/05_fetch.js";
+import * as messagePort from "internal:ext/web/03_message_port.js";
 import * as webidl from "internal:ext/webidl/00_webidl.js";
 import DOMException from "internal:ext/web/01_dom_exception.js";
 import * as abortSignal from "internal:ext/web/03_abort_signal.js";
-import * as globalInterfaces from "internal:ext/web/04_global_interfaces.js";
+import * as globalInterfaces from "internal:ext/web/03_global_interfaces.js";
 import * as webStorage from "internal:ext/webstorage/01_webstorage.js";
-import * as prompt from "internal:runtime/js/41_prompt.js";
+import * as prompt from "internal:runtime/js/05_prompt.js";
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {

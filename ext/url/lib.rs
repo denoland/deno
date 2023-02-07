@@ -22,8 +22,8 @@ pub fn init() -> Extension {
     .dependencies(vec!["deno_webidl"])
     .esm(include_js_files!(
       prefix "internal:ext/url",
-      "00_url.js",
-      "01_urlpattern.js",
+      "01_url.js",
+      "02_urlpattern.js",
     ))
     .ops(vec![
       op_url_reparse::decl(),

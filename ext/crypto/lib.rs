@@ -77,8 +77,8 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
     .dependencies(vec!["deno_webidl", "deno_web"])
     .esm(include_js_files!(
       prefix "internal:ext/crypto",
-      "00_crypto.js",
-      "01_webidl.js",
+      "01_crypto.js",
+      "02_webidl.js",
     ))
     .ops(vec![
       op_crypto_get_random_values::decl(),

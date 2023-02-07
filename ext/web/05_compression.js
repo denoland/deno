@@ -8,7 +8,7 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "internal:ext/webidl/00_webidl.js";
-import { TransformStream } from "internal:ext/web/06_streams.js";
+import { TransformStream } from "internal:ext/web/04_streams.js";
 
 webidl.converters.CompressionFormat = webidl.createEnumConverter(
   "CompressionFormat",

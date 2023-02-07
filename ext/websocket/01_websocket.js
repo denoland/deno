@@ -4,7 +4,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import { URL } from "internal:ext/url/00_url.js";
+import { URL } from "internal:ext/url/01_url.js";
 import * as webidl from "internal:ext/webidl/00_webidl.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "internal:ext/web/00_infra.js";
 import DOMException from "internal:ext/web/01_dom_exception.js";
@@ -17,7 +17,7 @@ import {
   EventTarget,
   MessageEvent,
 } from "internal:ext/web/02_event.js";
-import { Blob, BlobPrototype } from "internal:ext/web/09_file.js";
+import { Blob, BlobPrototype } from "internal:ext/web/01_file.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,

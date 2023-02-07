@@ -3,7 +3,7 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
-import { pathFromURL } from "internal:runtime/js/06_util.js";
+import { pathFromURL } from "internal:runtime/js/02_util.js";
 import { add, remove } from "internal:ext/web/03_abort_signal.js";
 const {
   ArrayPrototypeMap,
@@ -23,7 +23,7 @@ import {
   readableStreamForRidUnrefableUnref,
   ReadableStreamPrototype,
   writableStreamForRid,
-} from "internal:ext/web/06_streams.js";
+} from "internal:ext/web/04_streams.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 

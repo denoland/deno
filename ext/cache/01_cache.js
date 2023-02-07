@@ -12,11 +12,11 @@ import {
   Request,
   RequestPrototype,
   toInnerRequest,
-} from "internal:ext/fetch/23_request.js";
-import { toInnerResponse } from "internal:ext/fetch/23_response.js";
-import { URLPrototype } from "internal:ext/url/00_url.js";
-import { getHeader } from "internal:ext/fetch/20_headers.js";
-import { readableStreamForRid } from "internal:ext/web/06_streams.js";
+} from "internal:ext/fetch/04_request.js";
+import { toInnerResponse } from "internal:ext/fetch/04_response.js";
+import { URLPrototype } from "internal:ext/url/01_url.js";
+import { getHeader } from "internal:ext/fetch/02_headers.js";
+import { readableStreamForRid } from "internal:ext/web/04_streams.js";
 
 class CacheStorage {
   constructor() {

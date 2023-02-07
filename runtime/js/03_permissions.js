@@ -3,7 +3,7 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import { Event, EventTarget } from "internal:ext/web/02_event.js";
-import { pathFromURL } from "internal:runtime/js/06_util.js";
+import { pathFromURL } from "internal:runtime/js/02_util.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,

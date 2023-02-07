@@ -12,10 +12,10 @@ const {
   SymbolToStringTag,
 } = primordials;
 import * as webidl from "internal:ext/webidl/00_webidl.js";
-import { URL } from "internal:ext/url/00_url.js";
-import { getLocationHref } from "internal:ext/web/12_location.js";
-import { serializePermissions } from "internal:runtime/js/10_permissions.js";
-import { log } from "internal:runtime/js/06_util.js";
+import { URL } from "internal:ext/url/01_url.js";
+import { getLocationHref } from "internal:ext/web/02_location.js";
+import { serializePermissions } from "internal:runtime/js/03_permissions.js";
+import { log } from "internal:runtime/js/02_util.js";
 import {
   defineEventHandler,
   ErrorEvent,
@@ -26,7 +26,7 @@ import {
   deserializeJsMessageData,
   MessagePortPrototype,
   serializeJsMessageData,
-} from "internal:ext/web/13_message_port.js";
+} from "internal:ext/web/03_message_port.js";
 
 function createWorker(
   specifier,

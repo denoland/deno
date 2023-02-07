@@ -2,18 +2,18 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import { read, readSync, write, writeSync } from "internal:runtime/js/12_io.js";
+import { read, readSync, write, writeSync } from "internal:runtime/js/01_io.js";
 import {
   fstat,
   fstatSync,
   ftruncate,
   ftruncateSync,
-} from "internal:runtime/js/30_fs.js";
-import { pathFromURL } from "internal:runtime/js/06_util.js";
+} from "internal:runtime/js/03_fs.js";
+import { pathFromURL } from "internal:runtime/js/02_util.js";
 import {
   readableStreamForRid,
   writableStreamForRid,
-} from "internal:ext/web/06_streams.js";
+} from "internal:ext/web/04_streams.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,

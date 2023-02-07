@@ -2,10 +2,10 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
-import { BlobPrototype } from "internal:ext/web/09_file.js";
+import { BlobPrototype } from "internal:ext/web/01_file.js";
 import { TcpConn } from "internal:ext/net/01_net.js";
-import { toInnerResponse } from "internal:ext/fetch/23_response.js";
-import { _flash, fromFlashRequest } from "internal:ext/fetch/23_request.js";
+import { toInnerResponse } from "internal:ext/fetch/04_response.js";
+import { _flash, fromFlashRequest } from "internal:ext/fetch/04_request.js";
 import { Event } from "internal:ext/web/02_event.js";
 import {
   _state,
@@ -13,7 +13,7 @@ import {
   ReadableStream,
   readableStreamClose,
   ReadableStreamPrototype,
-} from "internal:ext/web/06_streams.js";
+} from "internal:ext/web/04_streams.js";
 import {
   _eventLoop,
   _idleTimeoutDuration,

@@ -5,14 +5,14 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "internal:ext/webidl/00_webidl.js";
-import { Deferred, writableStreamClose } from "internal:ext/web/06_streams.js";
+import { Deferred, writableStreamClose } from "internal:ext/web/04_streams.js";
 import DOMException from "internal:ext/web/01_dom_exception.js";
 import { add, remove } from "internal:ext/web/03_abort_signal.js";
 import {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "internal:ext/fetch/20_headers.js";
+} from "internal:ext/fetch/02_headers.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeJoin,

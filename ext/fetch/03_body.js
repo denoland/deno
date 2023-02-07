@@ -16,15 +16,15 @@ import * as webidl from "internal:ext/webidl/00_webidl.js";
 import {
   parseUrlEncoded,
   URLSearchParamsPrototype,
-} from "internal:ext/url/00_url.js";
+} from "internal:ext/url/01_url.js";
 import {
   formDataFromEntries,
   FormDataPrototype,
   formDataToBlob,
   parseFormData,
-} from "internal:ext/fetch/21_formdata.js";
+} from "internal:ext/fetch/01_formdata.js";
 import * as mimesniff from "internal:ext/web/01_mimesniff.js";
-import { BlobPrototype } from "internal:ext/web/09_file.js";
+import { BlobPrototype } from "internal:ext/web/01_file.js";
 import {
   createProxy,
   errorReadableStream,
@@ -34,7 +34,7 @@ import {
   readableStreamDisturb,
   ReadableStreamPrototype,
   readableStreamThrowIfErrored,
-} from "internal:ext/web/06_streams.js";
+} from "internal:ext/web/04_streams.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,

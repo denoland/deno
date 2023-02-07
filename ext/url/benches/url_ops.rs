@@ -14,7 +14,7 @@ fn setup() -> Vec<Extension> {
     Extension::builder("bench_setup")
       .esm(vec![(
         "internal:setup",
-        r#"import { URL } from "internal:ext/url/00_url.js";
+        r#"import { URL } from "internal:ext/url/01_url.js";
         globalThis.URL = URL;
         "#,
       )])

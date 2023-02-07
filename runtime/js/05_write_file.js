@@ -1,11 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 import * as abortSignal from "internal:ext/web/03_abort_signal.js";
-import { pathFromURL } from "internal:runtime/js/06_util.js";
-import { open } from "internal:runtime/js/40_files.js";
-import { ReadableStreamPrototype } from "internal:ext/web/06_streams.js";
+import { pathFromURL } from "internal:runtime/js/02_util.js";
+import { open } from "internal:runtime/js/04_files.js";
+import { ReadableStreamPrototype } from "internal:ext/web/04_streams.js";
 const { ObjectPrototypeIsPrototypeOf } = primordials;
 
 function writeFileSync(

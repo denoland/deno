@@ -99,13 +99,13 @@ where
     .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_console"])
     .esm(include_js_files!(
       prefix "internal:ext/fetch",
-      "20_headers.js",
-      "21_formdata.js",
-      "22_body.js",
-      "22_http_client.js",
-      "23_request.js",
-      "23_response.js",
-      "26_fetch.js",
+      "01_formdata.js",
+      "01_http_client.js",
+      "02_headers.js",
+      "03_body.js",
+      "04_request.js",
+      "04_response.js",
+      "05_fetch.js",
     ))
     .ops(vec![
       op_fetch::decl::<FP>(),

@@ -15,23 +15,23 @@ import {
   byteUpperCase,
   HTTP_TOKEN_CODE_POINT_RE,
 } from "internal:ext/web/00_infra.js";
-import { URL } from "internal:ext/url/00_url.js";
+import { URL } from "internal:ext/url/01_url.js";
 import {
   extractBody,
   InnerBody,
   mixinBody,
-} from "internal:ext/fetch/22_body.js";
-import { getLocationHref } from "internal:ext/web/12_location.js";
+} from "internal:ext/fetch/03_body.js";
+import { getLocationHref } from "internal:ext/web/02_location.js";
 import { extractMimeType } from "internal:ext/web/01_mimesniff.js";
-import { blobFromObjectUrl } from "internal:ext/web/09_file.js";
+import { blobFromObjectUrl } from "internal:ext/web/01_file.js";
 import {
   fillHeaders,
   getDecodeSplitHeader,
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "internal:ext/fetch/20_headers.js";
-import { HttpClientPrototype } from "internal:ext/fetch/22_http_client.js";
+} from "internal:ext/fetch/02_headers.js";
+import { HttpClientPrototype } from "internal:ext/fetch/01_http_client.js";
 import * as abortSignal from "internal:ext/web/03_abort_signal.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {

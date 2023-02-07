@@ -3,9 +3,9 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const internals = globalThis.__bootstrap.internals;
-import { setExitHandler } from "internal:runtime/js/30_os.js";
+import { setExitHandler } from "internal:runtime/js/03_os.js";
 import { Console } from "internal:ext/console/02_console.js";
-import { serializePermissions } from "internal:runtime/js/10_permissions.js";
+import { serializePermissions } from "internal:runtime/js/03_permissions.js";
 import { assert } from "internal:ext/web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {

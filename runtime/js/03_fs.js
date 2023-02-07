@@ -14,7 +14,7 @@ const {
   ObjectEntries,
   Uint32Array,
 } = primordials;
-import { pathFromURL } from "internal:runtime/js/06_util.js";
+import { pathFromURL } from "internal:runtime/js/02_util.js";
 import { build } from "internal:runtime/js/01_build.js";
 
 function chmodSync(path, mode) {

@@ -16,7 +16,7 @@ import * as webidl from "internal:ext/webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 import { forgivingBase64Encode } from "internal:ext/web/00_infra.js";
 import { EventTarget, ProgressEvent } from "internal:ext/web/02_event.js";
-import { decode, TextDecoder } from "internal:ext/web/08_text_encoding.js";
+import { decode, TextDecoder } from "internal:ext/web/01_text_encoding.js";
 import { parseMimeType } from "internal:ext/web/01_mimesniff.js";
 import DOMException from "internal:ext/web/01_dom_exception.js";
 const {

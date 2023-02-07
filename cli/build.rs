@@ -143,7 +143,7 @@ mod ts {
     );
     println!(
       "cargo:rerun-if-changed={}",
-      cwd.join("js").join("40_testing.js").display()
+      cwd.join("js").join("01_testing.js").display()
     );
 
     // create a copy of the vector that includes any op crate libs to be passed

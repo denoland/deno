@@ -19,17 +19,17 @@ import {
   regexMatcher,
   serializeJSValueToJSONString,
 } from "internal:ext/web/00_infra.js";
-import { extractBody, mixinBody } from "internal:ext/fetch/22_body.js";
-import { getLocationHref } from "internal:ext/web/12_location.js";
+import { extractBody, mixinBody } from "internal:ext/fetch/03_body.js";
+import { getLocationHref } from "internal:ext/web/02_location.js";
 import { extractMimeType } from "internal:ext/web/01_mimesniff.js";
-import { URL } from "internal:ext/url/00_url.js";
+import { URL } from "internal:ext/url/01_url.js";
 import {
   fillHeaders,
   getDecodeSplitHeader,
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "internal:ext/fetch/20_headers.js";
+} from "internal:ext/fetch/02_headers.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,

@@ -16,7 +16,7 @@ import {
   BlobPrototype,
   File,
   FilePrototype,
-} from "internal:ext/web/09_file.js";
+} from "internal:ext/web/01_file.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypePush,

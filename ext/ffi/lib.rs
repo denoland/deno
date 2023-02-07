@@ -86,7 +86,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .esm(include_js_files!(
       prefix "internal:ext/ffi",
-      "00_ffi.js",
+      "01_ffi.js",
     ))
     .ops(vec![
       op_ffi_load::decl::<P>(),

@@ -2,7 +2,7 @@
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
-/// <reference path="./06_streams_types.d.ts" />
+/// <reference path="./04_streams_types.d.ts" />
 /// <reference path="./lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 

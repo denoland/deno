@@ -6,7 +6,7 @@
 
 const primordials = globalThis.__bootstrap.primordials;
 import * as webidl from "internal:ext/webidl/00_webidl.js";
-import { CryptoKey } from "internal:ext/crypto/00_crypto.js";
+import { CryptoKey } from "internal:ext/crypto/01_crypto.js";
 const {
   ArrayBufferIsView,
   ArrayBufferPrototype,

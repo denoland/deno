@@ -3,20 +3,20 @@ const core = globalThis.Deno.core;
 const primordials = globalThis.__bootstrap.primordials;
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
 import * as webidl from "internal:ext/webidl/00_webidl.js";
-import { InnerBody } from "internal:ext/fetch/22_body.js";
+import { InnerBody } from "internal:ext/fetch/03_body.js";
 import { Event, setEventTargetData } from "internal:ext/web/02_event.js";
-import { BlobPrototype } from "internal:ext/web/09_file.js";
+import { BlobPrototype } from "internal:ext/web/01_file.js";
 import {
   fromInnerResponse,
   newInnerResponse,
   ResponsePrototype,
   toInnerResponse,
-} from "internal:ext/fetch/23_response.js";
+} from "internal:ext/fetch/04_response.js";
 import {
   _flash,
   fromInnerRequest,
   newInnerRequest,
-} from "internal:ext/fetch/23_request.js";
+} from "internal:ext/fetch/04_request.js";
 import * as abortSignal from "internal:ext/web/03_abort_signal.js";
 import {
   _eventLoop,
@@ -37,7 +37,7 @@ import {
   readableStreamClose,
   readableStreamForRid,
   ReadableStreamPrototype,
-} from "internal:ext/web/06_streams.js";
+} from "internal:ext/web/04_streams.js";
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypePush,

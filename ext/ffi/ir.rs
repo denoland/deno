@@ -14,7 +14,7 @@ use std::ptr;
 
 pub struct OutBuffer(pub *mut u8, pub usize);
 
-// SAFETY: OutBuffer is allocated by us in 00_ffi.js and is guaranteed to be
+// SAFETY: OutBuffer is allocated by us in 01_ffi.js and is guaranteed to be
 // only used for the purpose of writing return value of structs.
 unsafe impl Send for OutBuffer {}
 // SAFETY: See above
