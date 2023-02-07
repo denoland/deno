@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 pub fn init() -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
-    .js(include_js_files!(
+    .esm(include_js_files!(
       prefix "internal:ext/console",
       "01_colors.js",
       "02_console.js",

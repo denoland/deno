@@ -12,9 +12,11 @@ fn setup() -> Vec<Extension> {
     deno_webidl::init(),
     deno_url::init(),
     Extension::builder("bench_setup")
-      .js(vec![(
-        "setup",
-        "const { URL } = globalThis.__bootstrap.url;",
+      .esm(vec![(
+        "internal:setup",
+        r#"import { URL } from "internal:ext/url/00_url.js";
+        globalThis.URL = URL;
+        "#,
       )])
       .build(),
   ]

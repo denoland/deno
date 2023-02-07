@@ -3844,3 +3844,15 @@ itest!(node_prefix_missing {
   envs: env_vars_for_npm_tests_no_sync_download(),
   exit_code: 1,
 });
+
+itest!(internal_import {
+  args: "run run/internal_import.ts",
+  output: "run/internal_import.ts.out",
+  exit_code: 1,
+});
+
+itest!(internal_dynamic_import {
+  args: "run run/internal_dynamic_import.ts",
+  output: "run/internal_dynamic_import.ts.out",
+  exit_code: 1,
+});

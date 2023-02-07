@@ -92,11 +92,23 @@ async function patchSrcLib() {
   );
 }
 
+async function patchSurface() {
+  await patchFile(
+    join(TARGET_DIR, "src", "surface.rs"),
+    (data) =>
+      data.replace(
+        `prefix "internal:deno_webgpu",`,
+        `prefix "internal:ext/webgpu",`,
+      ),
+  );
+}
+
 async function main() {
   await clearTargetDir();
   await checkoutUpstream();
   await patchCargo();
   await patchSrcLib();
+  await patchSurface();
   await bash(join(ROOT_PATH, "tools", "format.js"));
 }
 
