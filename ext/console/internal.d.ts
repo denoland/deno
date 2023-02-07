@@ -3,7 +3,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-declare module "internal:ext/console/02_console.js" {
+declare module "internal:deno_console/02_console.js" {
   function createFilteredInspectProxy<TObject>(params: {
     object: TObject;
     keys: (keyof TObject)[];

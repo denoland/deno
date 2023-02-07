@@ -19,9 +19,8 @@ use std::io::Write;
 use std::rc::Rc;
 
 pub(crate) fn init_builtins() -> Extension {
-  Extension::builder("deno_builtins")
+  Extension::builder("core")
     .js(include_js_files!(
-      prefix "internal:core",
       "00_primordials.js",
       "01_core.js",
       "02_error.js",

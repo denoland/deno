@@ -26,7 +26,7 @@ import {
   HTTP_WHITESPACE,
   HTTP_WHITESPACE_PREFIX_RE,
   HTTP_WHITESPACE_SUFFIX_RE,
-} from "internal:ext/web/00_infra.js";
+} from "internal:deno_web/00_infra.js";
 
 /**
  * @typedef MimeType
