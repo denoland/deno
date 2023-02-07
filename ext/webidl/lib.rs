@@ -6,8 +6,6 @@ use deno_core::Extension;
 /// Load and execute the javascript code.
 pub fn init() -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
-    .esm(include_js_files!(
-      "00_webidl.js",
-    ))
+    .esm(include_js_files!("00_webidl.js",))
     .build()
 }

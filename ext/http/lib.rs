@@ -80,9 +80,7 @@ mod reader_stream;
 pub fn init() -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_web", "deno_net", "deno_fetch", "deno_websocket"])
-    .esm(include_js_files!(
-      "01_http.js",
-    ))
+    .esm(include_js_files!("01_http.js",))
     .ops(vec![
       op_http_accept::decl(),
       op_http_write_headers::decl(),

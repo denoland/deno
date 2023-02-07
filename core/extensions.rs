@@ -168,7 +168,10 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn js(&mut self, js_files: Vec<(&'static str, &'static str)>) -> &mut Self {
+  pub fn js(
+    &mut self,
+    js_files: Vec<(&'static str, &'static str)>,
+  ) -> &mut Self {
     let js_files = js_files.into_iter().map(|source_pair| {
       let name = format!("internal:{}/{}", self.name, source_pair.0);
       (name, source_pair.1)
@@ -177,7 +180,10 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn esm(&mut self, esm_files: Vec<(&'static str, &'static str)>) -> &mut Self {
+  pub fn esm(
+    &mut self,
+    esm_files: Vec<(&'static str, &'static str)>,
+  ) -> &mut Self {
     let esm_files = esm_files.into_iter().map(|source_pair| {
       let name = format!("internal:{}/{}", self.name, source_pair.0);
       (name, source_pair.1)
