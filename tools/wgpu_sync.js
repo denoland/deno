@@ -103,14 +103,6 @@ async function patchSurface() {
   );
 }
 
-async function patchSurface() {
-  await patchFile(
-    join(TARGET_DIR, "src", "surface.rs"),
-    (data) =>
-      data.replace(`prefix "deno:deno_webgpu",`, `prefix "deno:ext/webgpu",`),
-  );
-}
-
 async function main() {
   await clearTargetDir();
   await checkoutUpstream();

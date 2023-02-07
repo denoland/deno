@@ -6,6 +6,13 @@ Deno.test(function globalThisExists() {
   assert(globalThis != null);
 });
 
+Deno.test(function noInternalGlobals() {
+  // globalThis.__bootstrap should not be there.
+  for (const key of Object.keys(globalThis)) {
+    assert(!key.startsWith("_"));
+  }
+});
+
 Deno.test(function windowExists() {
   assert(window != null);
 });
