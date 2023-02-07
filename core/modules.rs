@@ -2571,4 +2571,33 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       )
       .unwrap();
   }
+
+  #[test]
+  fn internal_module_loader() {
+    let loader = InternalModuleLoader::new(None);
+    assert!(loader
+      .resolve("internal:foo", "internal:bar", ResolutionKind::Import)
+      .is_ok());
+    assert_eq!(
+      loader
+        .resolve("internal:foo", "file://bar", ResolutionKind::Import)
+        .err()
+        .map(|e| e.to_string()),
+      Some("Cannot load internal module from external code".to_string())
+    );
+    assert_eq!(
+      loader
+        .resolve("file://foo", "file://bar", ResolutionKind::Import)
+        .err()
+        .map(|e| e.to_string()),
+      Some("Module loading is not supported".to_string())
+    );
+    assert_eq!(
+      loader
+        .resolve("file://foo", "internal:bar", ResolutionKind::Import)
+        .err()
+        .map(|e| e.to_string()),
+      Some("Module loading is not supported".to_string())
+    );
+  }
 }
