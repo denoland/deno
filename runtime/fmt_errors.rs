@@ -45,7 +45,7 @@ pub fn format_location(frame: &JsStackFrame) -> String {
   let _internal = frame
     .file_name
     .as_ref()
-    .map_or(false, |f| f.starts_with("deno:"));
+    .map_or(false, |f| f.starts_with("internal:"));
   if frame.is_native {
     return cyan("native").to_string();
   }
@@ -73,7 +73,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
   let _internal = frame
     .file_name
     .as_ref()
-    .map_or(false, |f| f.starts_with("deno:"));
+    .map_or(false, |f| f.starts_with("internal:"));
   let is_method_call =
     !(frame.is_top_level.unwrap_or_default() || frame.is_constructor);
   let mut result = String::new();

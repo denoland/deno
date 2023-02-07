@@ -66,7 +66,6 @@ pub struct GraphData {
   /// error messages.
   referrer_map: HashMap<ModuleSpecifier, Box<Range>>,
   graph_imports: Vec<GraphImport>,
-  cjs_esm_translations: HashMap<ModuleSpecifier, String>,
 }
 
 impl GraphData {
@@ -311,7 +310,6 @@ impl GraphData {
       npm_packages: self.npm_packages.clone(),
       referrer_map,
       graph_imports: self.graph_imports.to_vec(),
-      cjs_esm_translations: Default::default(),
     })
   }
 
@@ -464,13 +462,6 @@ impl GraphData {
       return Some(&graph_import.dependencies);
     }
     None
-  }
-
-  pub fn get_cjs_esm_translation<'a>(
-    &'a self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<&'a String> {
-    self.cjs_esm_translations.get(specifier)
   }
 }
 

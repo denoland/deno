@@ -1803,15 +1803,15 @@ import "/a.js";
       }
     }
 
-    // Test an erroneous dynamic import where the specified module isn't found.
-    run_in_task(|cx| {
-      let loader = Rc::new(DynImportErrLoader::default());
-      let count = loader.count.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
+    let loader = Rc::new(DynImportErrLoader::default());
+    let count = loader.count.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
 
+    // Test an erroneous dynamic import where the specified module isn't found.
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "file:///dyn_import2.js",
@@ -1886,16 +1886,15 @@ import "/a.js";
 
   #[test]
   fn dyn_import_ok() {
-    run_in_task(|cx| {
-      let loader = Rc::new(DynImportOkLoader::default());
-      let prepare_load_count = loader.prepare_load_count.clone();
-      let resolve_count = loader.resolve_count.clone();
-      let load_count = loader.load_count.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
-
+    let loader = Rc::new(DynImportOkLoader::default());
+    let prepare_load_count = loader.prepare_load_count.clone();
+    let resolve_count = loader.resolve_count.clone();
+    let load_count = loader.load_count.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+    run_in_task(move |cx| {
       // Dynamically import mod_b
       runtime
         .execute_script(
@@ -1935,13 +1934,14 @@ import "/a.js";
   #[test]
   fn dyn_import_borrow_mut_error() {
     // https://github.com/denoland/deno/issues/6054
-    run_in_task(|cx| {
-      let loader = Rc::new(DynImportOkLoader::default());
-      let prepare_load_count = loader.prepare_load_count.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
+    let loader = Rc::new(DynImportOkLoader::default());
+    let prepare_load_count = loader.prepare_load_count.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "file:///dyn_import3.js",
@@ -2193,13 +2193,14 @@ import "/a.js";
 
   #[test]
   fn slow_never_ready_modules() {
-    run_in_task(|cx| {
-      let loader = MockLoader::new();
-      let loads = loader.loads.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
+    let loader = MockLoader::new();
+    let loads = loader.loads.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    run_in_task(move |cx| {
       let spec = resolve_url("file:///main.js").unwrap();
       let mut recursive_load =
         runtime.load_main_module(&spec, None).boxed_local();
@@ -2238,12 +2239,13 @@ import "/a.js";
 
   #[test]
   fn loader_disappears_after_error() {
-    run_in_task(|cx| {
-      let loader = MockLoader::new();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
+    let loader = MockLoader::new();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    run_in_task(move |cx| {
       let spec = resolve_url("file:///bad_import.js").unwrap();
       let mut load_fut = runtime.load_main_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(cx);
