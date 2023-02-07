@@ -46,8 +46,11 @@
   const cjsParseCache = new SafeWeakMap();
 
   function pathDirname(filepath) {
-    if (filepath == null || filepath === "") {
+    if (filepath == null) {
       throw new Error("Empty filepath.");
+    }
+    if (filepath === "") {
+      return ".";
     }
     return ops.op_require_path_dirname(filepath);
   }
@@ -563,7 +566,7 @@
         if (isRelative) {
           paths = options.paths;
         } else {
-          const fakeParent = new Module("fake-module", null);
+          const fakeParent = new Module("", null);
 
           paths = [];
 
