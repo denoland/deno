@@ -667,6 +667,6 @@ export {
   processUrlList,
   Request,
   RequestPrototype,
-  toInnerRequest,
   RequestPrototype,
+  toInnerRequest,
 };

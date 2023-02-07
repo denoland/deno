@@ -13,6 +13,7 @@ use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
+use crate::modules::SnapshotLoadCb;
 use crate::op_void_async;
 use crate::op_void_sync;
 use crate::ops::*;
@@ -269,6 +270,8 @@ pub struct RuntimeOptions {
   /// Prepare runtime to take snapshot of loaded code.
   /// The snapshot is deterministic and uses predictable random numbers.
   pub will_snapshot: bool,
+
+  pub snapshot_load_cb: Option<SnapshotLoadCb>,
 
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
@@ -607,8 +610,17 @@ impl JsRuntime {
     };
 
     let loader = if snapshot_options != SnapshotOptions::Load {
+      let esm_sources = options
+        .extensions_with_js
+        .iter()
+        .map(|ext| ext.get_esm_sources().to_owned())
+        .flatten()
+        .collect::<Vec<_>>();
+
       Rc::new(crate::modules::InternalModuleLoader::new(
         options.module_loader,
+        esm_sources,
+        options.snapshot_load_cb,
       ))
     } else {
       options
@@ -815,13 +827,10 @@ impl JsRuntime {
     for ext in &extensions {
       {
         let js_files = ext.get_esm_sources();
-        for (filename, source) in js_files {
+        for (filename, _source) in js_files {
           futures::executor::block_on(async {
             let id = self
-              .load_side_module(
-                &ModuleSpecifier::parse(filename)?,
-                Some(source.to_string()),
-              )
+              .load_side_module(&ModuleSpecifier::parse(filename)?, None)
               .await?;
             let receiver = self.mod_evaluate(id);
             self.run_event_loop(false).await?;
