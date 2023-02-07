@@ -324,7 +324,7 @@ pub fn host_import_module_dynamically_callback<'s>(
       v8::String::new(scope, "Cannot load internal module from external code")
         .unwrap();
     let exception = v8::Exception::type_error(scope, message);
-    resolver.reject(scope, exception.into());
+    resolver.reject(scope, exception);
   }
 
   Some(promise)
