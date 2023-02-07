@@ -48,7 +48,7 @@ fn main() -> Result<(), AnyError> {
   let js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
     extensions_with_js: vec![ext],
-    snapshot_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
+    snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
     ..Default::default()
   });
 

@@ -272,8 +272,10 @@ pub struct RuntimeOptions {
   /// The snapshot is deterministic and uses predictable random numbers.
   pub will_snapshot: bool,
 
-  // TODO(bartlomieju): rename
-  pub snapshot_load_cb: Option<InternalModuleLoaderCb>,
+  /// An optional callback that will be called for each module that is loaded
+  /// during snapshotting. This callback can be used to transpile source on the
+  /// fly, during snapshotting, eg. to transpile TypeScript to JavaScript.
+  pub snapshot_module_load_cb: Option<InternalModuleLoaderCb>,
 
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
@@ -621,7 +623,7 @@ impl JsRuntime {
       Rc::new(crate::modules::InternalModuleLoader::new(
         options.module_loader,
         esm_sources,
-        options.snapshot_load_cb,
+        options.snapshot_module_load_cb,
       ))
     } else {
       options
@@ -3615,8 +3617,6 @@ pub mod tests {
         )
         .unwrap()
       };
-      // We load 3 internal modules before the first user module (
-      // 00_primordials.js, 01_core.js and 02_error.js)
       assert_eq!(i, id);
 
       #[allow(clippy::let_underscore_future)]
