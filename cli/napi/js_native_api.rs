@@ -1430,7 +1430,7 @@ fn napi_define_properties(
   let scope = &mut env.scope();
 
   let object = transmute::<napi_value, v8::Local<v8::Object>>(obj);
-  
+
   let properties = std::slice::from_raw_parts(properties, property_count);
   for property in properties {
     let name = if !property.utf8name.is_null() {
@@ -1442,46 +1442,34 @@ fn napi_define_properties(
         .map_err(|_| Error::NameExpected)?
     };
 
-    if !property.getter.is_null() || !property.setter.is_null() {
-      let local_getter: Option<v8::Local<v8::Function>> = if !property.getter.is_null()
-      {
-        Some(create_function(env_ptr, None, property.getter, property.data))
+    if property.getter.is_some() || property.setter.is_some() {
+      let local_getter: v8::Local<v8::Value> = if property.getter.is_some() {
+        create_function(env_ptr, None, property.getter, property.data).into()
       } else {
-        None
+        v8::undefined(scope).into()
       };
-      let local_setter: Option<v8::Local<v8::Function>> = if !property.setter.is_null()
-      {
-        Some(create_function(env_ptr, None, property.setter, property.data))
+      let local_setter: v8::Local<v8::Value> = if property.setter.is_some() {
+        create_function(env_ptr, None, property.setter, property.data).into()
       } else {
-        None
+        v8::undefined(scope).into()
       };
 
-      let mut accessor_property = v8::NONE;
-      if property.attributes & napi_enumerable == 0 {
-        accessor_property = accessor_property | v8::DONT_ENUM;
-      }
-      if property.attributes & napi_configurable == 0 {
-        accessor_property = accessor_property | v8::DONT_DELETE;
-      }
+      let mut desc =
+        v8::PropertyDescriptor::new_from_get_set(local_getter, local_setter);
+      desc.set_enumerable(property.attributes & napi_enumerable != 0);
+      desc.set_configurable(property.attributes & napi_configurable != 0);
 
-      let proto = tpl.prototype_template(scope);
-      proto.set_accessor_property(
-        name.into(),
-        getter,
-        setter,
-        accessor_property,
-      );
-    }
-
-    let method_ptr = property.method;
-
-    if method_ptr.is_some() {
+      object.define_property(scope, name.into(), &desc);
+    } else if property.method.is_some() {
       let function: v8::Local<v8::Value> = {
         let function =
           create_function(env_ptr, None, property.method, property.data);
         function.into()
       };
       object.set(scope, name.into(), function).unwrap();
+    } else {
+      let value = napi_value_unchecked(property.value);
+      object.set(scope, name.into(), value).unwrap();
     }
   }
 
