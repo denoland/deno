@@ -30,7 +30,7 @@ fn setup() -> Vec<Extension> {
     Extension::builder("bench_setup")
     .esm(vec![
       ("internal:setup", r#"
-      import { setTimeout, handleTimerMacrotask } from "internal:ext/web/02_timers.js";
+      import { setTimeout, handleTimerMacrotask } from "internal:deno_web/02_timers.js";
       globalThis.setTimeout = setTimeout;
       Deno.core.setMacrotaskCallback(handleTimerMacrotask);
       "#),

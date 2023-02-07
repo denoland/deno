@@ -76,7 +76,6 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_web"])
     .esm(include_js_files!(
-      prefix "internal:ext/crypto",
       "00_crypto.js",
       "01_webidl.js",
     ))

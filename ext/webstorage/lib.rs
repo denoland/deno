@@ -25,7 +25,6 @@ pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl"])
     .esm(include_js_files!(
-      prefix "internal:ext/webstorage",
       "01_webstorage.js",
     ))
     .ops(vec![

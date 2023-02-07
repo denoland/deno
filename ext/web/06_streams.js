@@ -8,14 +8,14 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:ext/webidl/00_webidl.js";
+import * as webidl from "internal:deno_webidl/00_webidl.js";
 import {
   AbortSignalPrototype,
   add,
   newSignal,
   remove,
   signalAbort,
-} from "internal:ext/web/03_abort_signal.js";
+} from "internal:deno_web/03_abort_signal.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBuffer,
@@ -68,8 +68,8 @@ const {
   WeakMapPrototypeHas,
   WeakMapPrototypeSet,
 } = primordials;
-import { createFilteredInspectProxy } from "internal:ext/console/02_console.js";
-import { assert, AssertionError } from "internal:ext/web/00_infra.js";
+import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
+import { assert, AssertionError } from "internal:deno_web/00_infra.js";
 
 /** @template T */
 class Deferred {

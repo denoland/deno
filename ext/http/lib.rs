@@ -81,7 +81,6 @@ pub fn init() -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_web", "deno_net", "deno_fetch", "deno_websocket"])
     .esm(include_js_files!(
-      prefix "internal:ext/http",
       "01_http.js",
     ))
     .ops(vec![

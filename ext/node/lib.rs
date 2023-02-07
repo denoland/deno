@@ -86,7 +86,6 @@ pub fn init<P: NodePermissions + 'static>(
 ) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .esm(include_js_files!(
-      prefix "internal:ext/node",
       "01_node.js",
       "02_require.js",
     ))

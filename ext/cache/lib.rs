@@ -28,7 +28,6 @@ pub fn init<CA: Cache + 'static>(
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_fetch"])
     .esm(include_js_files!(
-      prefix "internal:ext/cache",
       "01_cache.js",
     ))
     .ops(vec![

@@ -21,7 +21,6 @@ pub fn init() -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl"])
     .esm(include_js_files!(
-      prefix "internal:ext/url",
       "00_url.js",
       "01_urlpattern.js",
     ))

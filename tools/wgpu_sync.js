@@ -87,7 +87,7 @@ async function patchSrcLib() {
     (data) =>
       data.replace(
         `prefix "internal:deno_webgpu",`,
-        `prefix "internal:ext/webgpu",`,
+        `prefix "internal:deno_webgpu",`,
       ),
   );
 }
@@ -98,7 +98,7 @@ async function patchSurface() {
     (data) =>
       data.replace(
         `prefix "internal:deno_webgpu",`,
-        `prefix "internal:ext/webgpu",`,
+        `prefix "internal:deno_webgpu",`,
       ),
   );
 }

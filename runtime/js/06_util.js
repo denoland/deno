@@ -11,7 +11,7 @@ const {
   TypeError,
 } = primordials;
 import { build } from "internal:runtime/js/01_build.js";
-import { URLPrototype } from "internal:ext/url/00_url.js";
+import { URLPrototype } from "internal:deno_url/00_url.js";
 let logDebug = false;
 let logSource = "JS";
 

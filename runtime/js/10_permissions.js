@@ -2,7 +2,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import { Event, EventTarget } from "internal:ext/web/02_event.js";
+import { Event, EventTarget } from "internal:deno_web/02_event.js";
 import { pathFromURL } from "internal:runtime/js/06_util.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {

@@ -120,7 +120,6 @@ pub fn init(unstable: bool) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_web"])
     .esm(include_js_files!(
-      prefix "internal:ext/webgpu",
       "01_webgpu.js",
       "02_idl_types.js",
     ))
