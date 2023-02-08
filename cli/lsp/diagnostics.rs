@@ -1283,11 +1283,11 @@ let c: number = "a";
               "range": {
                 "start": {
                   "line": 0,
-                  "character": 24
+                  "character": 23
                 },
                 "end": {
                   "line": 0,
-                  "character": 49
+                  "character": 50
                 }
               },
               "severity": 4,

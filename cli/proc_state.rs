@@ -18,7 +18,7 @@ use crate::cache::TypeCheckCache;
 use crate::emit::emit_parsed_source;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_lock_or_exit;
-use crate::graph_util::graph_valid;
+use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::GraphData;
 use crate::http_util::HttpClient;
 use crate::node;
@@ -357,13 +357,7 @@ impl ProcState {
     }
 
     let (npm_package_reqs, has_node_builtin_specifier) = {
-      let check_js = self.options.check_js();
-      graph_valid(
-        &graph,
-        &roots,
-        self.options.type_check_mode() != TypeCheckMode::None,
-        check_js,
-      )?;
+      graph_valid_with_cli_options(&graph, &roots, &self.options)?;
       let mut graph_data = self.graph_data.write();
       graph_data.set_graph(Arc::new(graph));
       (
@@ -396,6 +390,13 @@ impl ProcState {
     {
       log::debug!("Type checking.");
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
+      let (graph, has_node_builtin_specifier) = {
+        let graph_data = self.graph_data.read();
+        (
+          Arc::new(graph_data.get_graph().segment(&roots)),
+          graph_data.has_node_builtin_specifier(),
+        )
+      };
       let options = check::CheckOptions {
         type_check_mode: self.options.type_check_mode(),
         debug: self.options.log_level() == Some(log::Level::Debug),
@@ -407,16 +408,12 @@ impl ProcState {
         log_checks: true,
         reload: self.options.reload_flag()
           && !roots.iter().all(|r| reload_exclusions.contains(r)),
+        has_node_builtin_specifier,
       };
       let check_cache =
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
-      let check_result = check::check(
-        &roots,
-        &self.graph_data,
-        &check_cache,
-        &self.npm_resolver,
-        options,
-      )?;
+      let check_result =
+        check::check(graph, &check_cache, &self.npm_resolver, options)?;
       self.graph_data.write().set_type_checked(&roots, lib);
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));

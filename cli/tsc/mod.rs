@@ -30,6 +30,7 @@ use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::ModuleGraph;
+use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
@@ -623,24 +624,26 @@ fn op_resolve(
       }),
       None => None,
     };
+
     let maybe_result = match resolved_dep {
       Some(Resolved::Ok { specifier, .. }) => {
-        match graph.get(&specifier) {
+        let module = match graph.get(&specifier) {
           Some(module) => match &module.maybe_types_dependency {
             Some((_, Resolved::Ok { specifier, .. })) => {
               match graph.get(&specifier) {
-                Some(module) => {
-                  Some((module.specifier.clone(), module.media_type))
-                }
+                Some(module) => Some(module),
                 _ => None,
               }
             }
-            _ => Some((module.specifier.clone(), module.media_type)),
+            _ => Some(module),
           },
-          _ => {
-            let specifier = graph.resolve(&specifier);
+          _ => None,
+        };
+        if let Some(module) = module {
+          if module.kind == ModuleKind::External {
             // handle npm:<package> urls
-            if let Ok(npm_ref) = NpmPackageReference::from_specifier(&specifier)
+            if let Ok(npm_ref) =
+              NpmPackageReference::from_specifier(&module.specifier)
             {
               if let Some(npm_resolver) = &state.maybe_npm_resolver {
                 Some(resolve_npm_package_reference_types(
@@ -653,7 +656,11 @@ fn op_resolve(
             } else {
               None
             }
+          } else {
+            Some((module.specifier.clone(), module.media_type))
           }
+        } else {
+          None
         }
       }
       _ => {

@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
@@ -124,22 +125,33 @@ impl GraphData {
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
 /// so. Returns `Err(_)` if there is a known module graph or resolution
+/// error statically reachable from `roots` and not a dynamic import.
+pub fn graph_valid_with_cli_options(
+  graph: &ModuleGraph,
+  roots: &[ModuleSpecifier],
+  options: &CliOptions,
+) -> Result<(), AnyError> {
+  graph_valid(
+    graph,
+    roots,
+    deno_graph::WalkOptions {
+      follow_dynamic: false,
+      follow_type_only: options.type_check_mode() != TypeCheckMode::None,
+      check_js: options.check_js(),
+    },
+  )
+}
+
+/// Check if `roots` and their deps are available. Returns `Ok(())` if
+/// so. Returns `Err(_)` if there is a known module graph or resolution
 /// error statically reachable from `roots`.
 pub fn graph_valid(
   graph: &ModuleGraph,
   roots: &[ModuleSpecifier],
-  follow_type_only: bool,
-  check_js: bool,
+  walk_options: deno_graph::WalkOptions,
 ) -> Result<(), AnyError> {
   graph
-    .walk(
-      &roots,
-      deno_graph::WalkOptions {
-        follow_dynamic: false,
-        follow_type_only,
-        check_js,
-      },
-    )
+    .walk(&roots, walk_options)
     .validate()
     .map_err(|error| {
       let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
@@ -211,23 +223,12 @@ pub async fn create_graph_and_maybe_check(
       },
     )
     .await;
-  let check_js = ps.options.check_js();
-  graph_valid(
-    &graph,
-    &graph.roots,
-    ps.options.type_check_mode() != TypeCheckMode::None,
-    check_js,
-  )?;
+  graph_valid_with_cli_options(&graph, &graph.roots, &ps.options)?;
   let graph = Arc::new(graph);
-  let (npm_package_reqs, has_node_builtin_specifier) = {
-    let mut graph_data = GraphData::default();
-    graph_data.set_graph(graph.clone());
-    (
-      graph_data.npm_package_reqs().clone(),
-      graph_data.has_node_builtin_specifier(),
-    )
-  };
-  ps.npm_resolver.add_package_reqs(npm_package_reqs).await?;
+  let npm_graph_info = resolve_graph_npm_info(&graph);
+  ps.npm_resolver
+    .add_package_reqs(npm_graph_info.package_reqs)
+    .await?;
   if let Some(lockfile) = &ps.lockfile {
     graph_lock_or_exit(&graph, &mut lockfile.lock());
   }
@@ -235,7 +236,7 @@ pub async fn create_graph_and_maybe_check(
   if ps.options.type_check_mode() != TypeCheckMode::None {
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now after the lockfile has been written
-    if has_node_builtin_specifier {
+    if npm_graph_info.has_node_builtin_specifier {
       ps.npm_resolver
         .inject_synthetic_types_node_package()
         .await?;
@@ -251,8 +252,7 @@ pub async fn create_graph_and_maybe_check(
     let maybe_config_specifier = ps.options.maybe_config_file_specifier();
     let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
     let check_result = check::check(
-      &graph.roots,
-      &ps.graph_data,
+      graph.clone(),
       &cache,
       &ps.npm_resolver,
       check::CheckOptions {
@@ -262,6 +262,7 @@ pub async fn create_graph_and_maybe_check(
         ts_config: ts_config_result.ts_config,
         log_checks: true,
         reload: ps.options.reload_flag(),
+        has_node_builtin_specifier: npm_graph_info.has_node_builtin_specifier,
       },
     )?;
     log::debug!("{}", check_result.stats);

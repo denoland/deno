@@ -5,8 +5,8 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::RwLock;
 use deno_graph::ModuleGraph;
+use deno_graph::ModuleKind;
 use deno_runtime::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -15,7 +15,6 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
-use crate::graph_util::GraphData;
 use crate::npm::NpmPackageResolver;
 use crate::tsc;
 use crate::tsc::Diagnostics;
@@ -40,6 +39,11 @@ pub struct CheckOptions {
   /// If true, valid `.tsbuildinfo` files will be ignored and type checking
   /// will always occur.
   pub reload: bool,
+  /// If the graph data has a node built-in specifier.
+  ///
+  /// Although this could be derived from the graph, it requires traversing
+  /// the graph, so this helps speed things up.
+  pub has_node_builtin_specifier: bool,
 }
 
 /// The result of a check of a module graph.
@@ -54,20 +58,12 @@ pub struct CheckResult {
 /// It is expected that it is determined if a check and/or emit is validated
 /// before the function is called.
 pub fn check(
-  roots: &[ModuleSpecifier],
-  graph_data: &Arc<RwLock<GraphData>>,
+  graph: Arc<ModuleGraph>,
   cache: &TypeCheckCache,
   npm_resolver: &NpmPackageResolver,
   options: CheckOptions,
 ) -> Result<CheckResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
-  let (graph, has_node_builtin_specifier) = {
-    let graph_data = graph_data.read();
-    (
-      graph_data.get_graph().segment(roots),
-      graph_data.has_node_builtin_specifier(),
-    )
-  };
   let check_hash = match get_check_hash(&graph, &options) {
     CheckHashResult::NoFiles => return Ok(Default::default()),
     CheckHashResult::Hash(hash) => hash,
@@ -78,23 +74,22 @@ pub fn check(
     return Ok(Default::default());
   }
 
-  let root_names = get_tsc_roots(&graph, has_node_builtin_specifier, check_js);
   if options.log_checks {
-    for root in roots {
+    for root in &graph.roots {
       let root_str = root.as_str();
-      // `$deno` specifiers are internal, don't print them.
-      if !root_str.contains("$deno") {
-        log::info!("{} {}", colors::green("Check"), root_str);
-      }
+      log::info!("{} {}", colors::green("Check"), root_str);
     }
   }
+
+  let root_names =
+    get_tsc_roots(&graph, options.has_node_builtin_specifier, check_js);
   // while there might be multiple roots, we can't "merge" the build info, so we
   // try to retrieve the build info for first root, which is the most common use
   // case.
   let maybe_tsbuildinfo = if options.reload {
     None
   } else {
-    cache.get_tsbuildinfo(&roots[0])
+    cache.get_tsbuildinfo(&graph.roots[0])
   };
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
@@ -107,7 +102,7 @@ pub fn check(
   let response = tsc::exec(tsc::Request {
     config: options.ts_config,
     debug: options.debug,
-    graph: Arc::new(graph),
+    graph: graph.clone(),
     hash_data,
     maybe_config_specifier: options.maybe_config_specifier,
     maybe_npm_resolver: Some(npm_resolver.clone()),
@@ -139,7 +134,7 @@ pub fn check(
   };
 
   if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
-    cache.set_tsbuildinfo(&roots[0], &tsbuildinfo);
+    cache.set_tsbuildinfo(&graph.roots[0], &tsbuildinfo);
   }
 
   if diagnostics.is_empty() {
@@ -243,7 +238,7 @@ fn get_tsc_roots(
     ));
   }
   result.extend(graph.modules().filter_map(|module| {
-    if module.maybe_source.is_none() {
+    if module.kind == ModuleKind::External || module.maybe_source.is_none() {
       return None;
     }
     match module.media_type {

@@ -176,7 +176,15 @@ impl LanguageServer {
       let graph = ps
         .create_graph_with_loader(roots.clone(), &mut loader)
         .await?;
-      graph_valid(&graph, &roots, true, false)?;
+      graph_valid(
+        &graph,
+        &roots,
+        deno_graph::WalkOptions {
+          follow_dynamic: false,
+          follow_type_only: true,
+          check_js: false,
+        },
+      )?;
       Ok(())
     }
 
