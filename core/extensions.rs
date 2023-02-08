@@ -266,3 +266,15 @@ macro_rules! include_js_files {
     ]
   };
 }
+
+#[macro_export]
+macro_rules! include_js_files_dir {
+  (dir $dir:literal, $($file:literal,)+) => {
+    vec![
+      $($crate::ExtensionFileSource {
+        specifier: concat!($dir, "/", $file).to_string(),
+        code: include_str!(concat!($dir, "/", $file)),
+      },)+
+    ]
+  };
+}

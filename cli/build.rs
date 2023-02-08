@@ -282,6 +282,7 @@ mod ts {
             .expect("snapshot compression failed"),
         );
       })),
+      snapshot_module_load_cb: None,
     });
   }
 
@@ -354,6 +355,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf, esm_files: Vec<PathBuf>) {
       )
       .expect("snapshot compression failed");
     })),
+    snapshot_module_load_cb: None,
   })
 }
 

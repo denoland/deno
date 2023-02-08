@@ -366,11 +366,18 @@ impl ModuleLoader for InternalModuleLoader {
       );
     }
 
+    let internal_modules = self
+      .esm_sources
+      .iter()
+      .map(|f| f.specifier.as_str())
+      .collect::<Vec<_>>();
+    eprintln!("internal modules {:?}", internal_modules);
+
     let specifier = module_specifier.to_string();
     let maybe_file_source = self
       .esm_sources
       .iter()
-      .find(|source_pair| source_pair.specifier == module_specifier.as_str());
+      .find(|file_source| file_source.specifier == module_specifier.as_str());
 
     if let Some(file_source) = maybe_file_source {
       let result = if let Some(load_callback) = &self.maybe_load_callback {
@@ -394,8 +401,7 @@ impl ModuleLoader for InternalModuleLoader {
 
     async move {
       Err(generic_error(format!(
-        "Cannot find internal module source for specifier {}",
-        specifier
+        "Cannot find internal module source for specifier {specifier}"
       )))
     }
     .boxed_local()

@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::include_js_files_dir;
 use std::env;
-
 use std::path::PathBuf;
 
 // This is a shim that allows to generate documentation on docs.rs
@@ -153,7 +153,10 @@ mod not_docs {
     }
   }
 
-  fn create_runtime_snapshot(snapshot_path: PathBuf, esm_files: Vec<PathBuf>) {
+  fn create_runtime_snapshot(
+    snapshot_path: PathBuf,
+    additional_extension: Extension,
+  ) {
     let extensions_with_js: Vec<Extension> = vec![
       deno_webidl::init(),
       deno_console::init(),
@@ -182,6 +185,7 @@ mod not_docs {
       deno_napi::init::<Permissions>(false),
       deno_http::init(),
       deno_flash::init::<Permissions>(false), // No --unstable
+      additional_extension,
     ];
 
     create_snapshot(CreateSnapshotOptions {
@@ -191,7 +195,7 @@ mod not_docs {
       extensions: vec![],
       extensions_with_js,
       additional_files: vec![],
-      additional_esm_files: esm_files,
+      additional_esm_files: vec![],
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         lzzzz::lz4_hc::compress_to_vec(
           snapshot_slice,
@@ -205,20 +209,69 @@ mod not_docs {
   }
 
   pub fn build_snapshot(runtime_snapshot_path: PathBuf) {
-    #[allow(unused_mut)]
-    let mut esm_files = get_js_files(
-      env!("CARGO_MANIFEST_DIR"),
-      "js",
-      Some(Box::new(|path| !path.ends_with("99_main.js"))),
-    );
+    #[allow(unused_mut, unused_assignments)]
+    let mut additional_extension = Extension::builder("runtime")
+      .esm(include_js_files_dir!(
+        dir "js",
+        "01_build.js",
+        "01_errors.js",
+        "01_version.ts",
+        "06_util.js",
+        "10_permissions.js",
+        "11_workers.js",
+        "12_io.js",
+        "13_buffer.js",
+        "30_fs.js",
+        "30_os.js",
+        "40_diagnostics.js",
+        "40_files.js",
+        "40_fs_events.js",
+        "40_http.js",
+        "40_process.js",
+        "40_read_file.js",
+        "40_signals.js",
+        "40_spawn.js",
+        "40_tty.js",
+        "40_write_file.js",
+        "41_prompt.js",
+        "90_deno_ns.js",
+        "98_global_scope.js",
+      ))
+      .build();
 
     #[cfg(not(feature = "snapshot_from_snapshot"))]
     {
-      let manifest = env!("CARGO_MANIFEST_DIR");
-      let path = PathBuf::from(manifest);
-      esm_files.push(path.join("js").join("99_main.js"));
+      additional_extension = Extension::builder("runtime")
+        .esm(include_js_files_dir!(
+          dir "js",
+          "01_build.js",
+          "01_errors.js",
+          "01_version.ts",
+          "06_util.js",
+          "10_permissions.js",
+          "11_workers.js",
+          "12_io.js",
+          "13_buffer.js",
+          "30_fs.js",
+          "30_os.js",
+          "40_diagnostics.js",
+          "40_files.js",
+          "40_fs_events.js",
+          "40_http.js",
+          "40_process.js",
+          "40_read_file.js",
+          "40_signals.js",
+          "40_spawn.js",
+          "40_tty.js",
+          "40_write_file.js",
+          "41_prompt.js",
+          "90_deno_ns.js",
+          "98_global_scope.js",
+          "99_main.js",
+        ))
+        .build();
     }
-    create_runtime_snapshot(runtime_snapshot_path, esm_files);
+    create_runtime_snapshot(runtime_snapshot_path, additional_extension);
   }
 }
 
