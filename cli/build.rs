@@ -349,7 +349,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
   );
   esm_files.push(ExtensionFileSource {
     specifier: "runtime/js/99_main.js".to_string(),
-    code: deno_runtime::js::SOURCE_CORE_FOR_99_MAIN_JS,
+    code: deno_runtime::js::SOURCE_CODE_FOR_99_MAIN_JS,
   });
   let extensions_with_js =
     vec![Extension::builder("cli").esm(esm_files).build()];
