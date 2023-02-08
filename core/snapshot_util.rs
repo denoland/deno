@@ -1,12 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use anyhow::Context;
 use std::path::Path;
 use std::path::PathBuf;
 
 use crate::Extension;
+use crate::InternalModuleLoaderCb;
 use crate::JsRuntime;
-use crate::ModuleSpecifier;
 use crate::RuntimeOptions;
 use crate::Snapshot;
 
@@ -18,56 +17,19 @@ pub struct CreateSnapshotOptions {
   pub startup_snapshot: Option<Snapshot>,
   pub extensions: Vec<Extension>,
   pub extensions_with_js: Vec<Extension>,
-  pub additional_files: Vec<PathBuf>,
-  pub additional_esm_files: Vec<PathBuf>,
   pub compression_cb: Option<Box<CompressionCb>>,
+  pub snapshot_module_load_cb: Option<InternalModuleLoaderCb>,
 }
 
 pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
-  let mut js_runtime = JsRuntime::new(RuntimeOptions {
+  let js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
     startup_snapshot: create_snapshot_options.startup_snapshot,
     extensions: create_snapshot_options.extensions,
     extensions_with_js: create_snapshot_options.extensions_with_js,
+    snapshot_module_load_cb: create_snapshot_options.snapshot_module_load_cb,
     ..Default::default()
   });
-
-  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
-  // workspace root.
-  let display_root = Path::new(create_snapshot_options.cargo_manifest_dir)
-    .parent()
-    .unwrap();
-  for file in create_snapshot_options.additional_files {
-    let display_path = file.strip_prefix(display_root).unwrap_or(&file);
-    let display_path_str = display_path.display().to_string();
-    js_runtime
-      .execute_script(
-        &("internal:".to_string() + &display_path_str.replace('\\', "/")),
-        &std::fs::read_to_string(&file).unwrap(),
-      )
-      .unwrap();
-  }
-  for file in create_snapshot_options.additional_esm_files {
-    let display_path = file.strip_prefix(display_root).unwrap_or(&file);
-    let display_path_str = display_path.display().to_string();
-
-    let filename =
-      &("internal:".to_string() + &display_path_str.replace('\\', "/"));
-
-    futures::executor::block_on(async {
-      let id = js_runtime
-        .load_side_module(
-          &ModuleSpecifier::parse(filename)?,
-          Some(std::fs::read_to_string(&file)?),
-        )
-        .await?;
-      let receiver = js_runtime.mod_evaluate(id);
-      js_runtime.run_event_loop(false).await?;
-      receiver.await?
-    })
-    .with_context(|| format!("Couldn't execute '{}'", file.display()))
-    .unwrap();
-  }
 
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &snapshot;

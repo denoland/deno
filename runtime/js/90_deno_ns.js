@@ -2,17 +2,17 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as timers from "internal:ext/web/02_timers.js";
-import * as httpClient from "internal:ext/fetch/22_http_client.js";
-import * as console from "internal:ext/console/02_console.js";
-import * as ffi from "internal:ext/ffi/00_ffi.js";
-import * as net from "internal:ext/net/01_net.js";
-import * as tls from "internal:ext/net/02_tls.js";
-import * as http from "internal:ext/http/01_http.js";
-import * as flash from "internal:ext/flash/01_http.js";
+import * as timers from "internal:deno_web/02_timers.js";
+import * as httpClient from "internal:deno_fetch/22_http_client.js";
+import * as console from "internal:deno_console/02_console.js";
+import * as ffi from "internal:deno_ffi/00_ffi.js";
+import * as net from "internal:deno_net/01_net.js";
+import * as tls from "internal:deno_net/02_tls.js";
+import * as http from "internal:deno_http/01_http.js";
+import * as flash from "internal:deno_flash/01_http.js";
 import * as build from "internal:runtime/js/01_build.js";
 import * as errors from "internal:runtime/js/01_errors.js";
-import * as version from "internal:runtime/js/01_version.js";
+import * as version from "internal:runtime/js/01_version.ts";
 import * as permissions from "internal:runtime/js/10_permissions.js";
 import * as io from "internal:runtime/js/12_io.js";
 import * as buffer from "internal:runtime/js/13_buffer.js";

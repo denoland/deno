@@ -47,6 +47,7 @@ const {
   StringPrototypeIncludes,
   StringPrototypeStartsWith,
   TypeError,
+  NumberIsInteger,
   NumberParseInt,
   RegExp,
   RegExpPrototype,
@@ -116,7 +117,7 @@ const {
   WeakMapPrototype,
   WeakSetPrototype,
 } = primordials;
-import * as colors from "internal:ext/console/01_colors.js";
+import * as colors from "internal:deno_console/01_colors.js";
 
 function isInvalidDate(x) {
   return isNaN(DatePrototypeGetTime(x));
@@ -232,11 +233,6 @@ function renderRow(row, columnWidths, columnRightAlign) {
   return out;
 }
 
-function canRightAlign(value) {
-  const isNumber = !isNaN(value);
-  return isNumber;
-}
-
 function cliTable(head, columns) {
   const rows = [];
   const columnWidths = ArrayPrototypeMap(head, (h) => getStringWidth(h));
@@ -257,7 +253,7 @@ function cliTable(head, columns) {
       const width = columnWidths[i] || 0;
       const counted = getStringWidth(value);
       columnWidths[i] = MathMax(width, counted);
-      columnRightAlign[i] &= canRightAlign(value);
+      columnRightAlign[i] &= NumberIsInteger(+value);
     }
   }
 

@@ -3,12 +3,12 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-declare module "internal:ext/url/00_url.js" {
+declare module "internal:deno_url/00_url.js" {
   const URL: typeof URL;
   const URLSearchParams: typeof URLSearchParams;
   function parseUrlEncoded(bytes: Uint8Array): [string, string][];
 }
 
-declare module "internal:ext/url/01_urlpattern.js" {
+declare module "internal:deno_url/01_urlpattern.js" {
   const URLPattern: typeof URLPattern;
 }

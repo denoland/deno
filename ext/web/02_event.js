@@ -7,9 +7,9 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:ext/webidl/00_webidl.js";
-import DOMException from "internal:ext/web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "internal:ext/console/02_console.js";
+import * as webidl from "internal:deno_webidl/00_webidl.js";
+import DOMException from "internal:deno_web/01_dom_exception.js";
+import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
