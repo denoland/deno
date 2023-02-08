@@ -3,7 +3,13 @@
 const primordials = globalThis.__bootstrap.primordials;
 const { ObjectFreeze } = primordials;
 
-const version = {
+interface Version {
+  deno: string;
+  v8: string;
+  typescript: string;
+}
+
+const version: Version = {
   deno: "",
   v8: "",
   typescript: "",

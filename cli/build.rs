@@ -4,8 +4,10 @@ use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::include_js_files_dir;
 use deno_core::snapshot_util::*;
 use deno_core::Extension;
+use deno_core::ExtensionFileSource;
 use deno_runtime::deno_cache::SqliteBackedCache;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::*;
@@ -15,6 +17,7 @@ mod ts {
   use crate::deno_webgpu_get_declaration;
   use deno_core::error::custom_error;
   use deno_core::error::AnyError;
+  use deno_core::include_js_files_dir;
   use deno_core::op;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
@@ -32,11 +35,7 @@ mod ts {
     specifier: String,
   }
 
-  pub fn create_compiler_snapshot(
-    snapshot_path: PathBuf,
-    files: Vec<PathBuf>,
-    cwd: &Path,
-  ) {
+  pub fn create_compiler_snapshot(snapshot_path: PathBuf, cwd: &Path) {
     // libs that are being provided by op crates.
     let mut op_crate_libs = HashMap::new();
     op_crate_libs.insert("deno.cache", deno_cache::get_declaration());
@@ -252,36 +251,42 @@ mod ts {
       }
     }
 
+    let tsc_extension = Extension::builder("deno_tsc")
+      .ops(vec![
+        op_build_info::decl(),
+        op_cwd::decl(),
+        op_exists::decl(),
+        op_is_node_file::decl(),
+        op_load::decl(),
+        op_script_version::decl(),
+      ])
+      .js(include_js_files_dir! {
+        dir "tsc",
+        "00_typescript.js",
+        "99_main_compiler.js",
+      })
+      .state(move |state| {
+        state.put(op_crate_libs.clone());
+        state.put(build_libs.clone());
+        state.put(path_dts.clone());
+
+        Ok(())
+      })
+      .build();
+
     create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions: vec![Extension::builder("deno_tsc")
-        .ops(vec![
-          op_build_info::decl(),
-          op_cwd::decl(),
-          op_exists::decl(),
-          op_is_node_file::decl(),
-          op_load::decl(),
-          op_script_version::decl(),
-        ])
-        .state(move |state| {
-          state.put(op_crate_libs.clone());
-          state.put(build_libs.clone());
-          state.put(path_dts.clone());
-
-          Ok(())
-        })
-        .build()],
-      extensions_with_js: vec![],
-      additional_files: files,
-      additional_esm_files: vec![],
+      extensions: vec![],
+      extensions_with_js: vec![tsc_extension],
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         vec.extend_from_slice(
           &zstd::bulk::compress(snapshot_slice, 22)
             .expect("snapshot compression failed"),
         );
       })),
+      snapshot_module_load_cb: None,
     });
   }
 
@@ -307,7 +312,7 @@ mod ts {
   }
 }
 
-fn create_cli_snapshot(snapshot_path: PathBuf, esm_files: Vec<PathBuf>) {
+fn create_cli_snapshot(snapshot_path: PathBuf) {
   let extensions: Vec<Extension> = vec![
     deno_webidl::init(),
     deno_console::init(),
@@ -338,14 +343,23 @@ fn create_cli_snapshot(snapshot_path: PathBuf, esm_files: Vec<PathBuf>) {
     deno_flash::init::<PermissionsContainer>(false), // No --unstable
   ];
 
+  let mut esm_files = include_js_files_dir!(
+    dir "js",
+    "40_testing.js",
+  );
+  esm_files.push(ExtensionFileSource {
+    specifier: "runtime/js/99_main.js".to_string(),
+    code: deno_runtime::js::SOURCE_CODE_FOR_99_MAIN_JS,
+  });
+  let extensions_with_js =
+    vec![Extension::builder("cli").esm(esm_files).build()];
+
   create_snapshot(CreateSnapshotOptions {
     cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
     snapshot_path,
     startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
     extensions,
-    extensions_with_js: vec![],
-    additional_files: vec![],
-    additional_esm_files: esm_files,
+    extensions_with_js,
     compression_cb: Some(Box::new(|vec, snapshot_slice| {
       lzzzz::lz4_hc::compress_to_vec(
         snapshot_slice,
@@ -354,6 +368,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf, esm_files: Vec<PathBuf>) {
       )
       .expect("snapshot compression failed");
     })),
+    snapshot_module_load_cb: None,
   })
 }
 
@@ -450,13 +465,10 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
-  let js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "tsc", None);
-  ts::create_compiler_snapshot(compiler_snapshot_path, js_files, &c);
+  ts::create_compiler_snapshot(compiler_snapshot_path, &c);
 
   let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
-  let mut esm_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js", None);
-  esm_files.push(deno_runtime::js::get_99_main());
-  create_cli_snapshot(cli_snapshot_path, esm_files);
+  create_cli_snapshot(cli_snapshot_path);
 
   #[cfg(target_os = "windows")]
   {
