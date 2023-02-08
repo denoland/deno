@@ -1514,10 +1514,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
       "deno_websocket",
       "deno_http",
     ])
-    .js(deno_core::include_js_files!(
-      prefix "internal:ext/flash",
-      "01_http.js",
-    ))
+    .esm(deno_core::include_js_files!("01_http.js",))
     .ops(vec![
       op_flash_serve::decl::<P>(),
       op_node_unstable_flash_serve::decl::<P>(),

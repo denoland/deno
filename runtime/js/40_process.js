@@ -1,139 +1,133 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-"use strict";
 
-((window) => {
-  const core = window.Deno.core;
-  const ops = core.ops;
-  const { FsFile } = window.__bootstrap.files;
-  const { readAll } = window.__bootstrap.io;
-  const { pathFromURL } = window.__bootstrap.util;
-  const { assert } = window.__bootstrap.infra;
-  const {
-    ArrayPrototypeMap,
-    ArrayPrototypeSlice,
-    TypeError,
-    ObjectEntries,
-    SafeArrayIterator,
-    String,
-  } = window.__bootstrap.primordials;
+const core = globalThis.Deno.core;
+const ops = core.ops;
+import { FsFile } from "internal:runtime/js/40_files.js";
+import { readAll } from "internal:runtime/js/12_io.js";
+import { pathFromURL } from "internal:runtime/js/06_util.js";
+import { assert } from "internal:deno_web/00_infra.js";
+const primordials = globalThis.__bootstrap.primordials;
+const {
+  ArrayPrototypeMap,
+  ArrayPrototypeSlice,
+  TypeError,
+  ObjectEntries,
+  SafeArrayIterator,
+  String,
+} = primordials;
 
-  function opKill(pid, signo, apiName) {
-    ops.op_kill(pid, signo, apiName);
+function opKill(pid, signo, apiName) {
+  ops.op_kill(pid, signo, apiName);
+}
+
+function kill(pid, signo = "SIGTERM") {
+  opKill(pid, signo, "Deno.kill()");
+}
+
+function opRunStatus(rid) {
+  return core.opAsync("op_run_status", rid);
+}
+
+function opRun(request) {
+  assert(request.cmd.length > 0);
+  return ops.op_run(request);
+}
+
+async function runStatus(rid) {
+  const res = await opRunStatus(rid);
+
+  if (res.gotSignal) {
+    const signal = res.exitSignal;
+    return { success: false, code: 128 + signal, signal };
+  } else if (res.exitCode != 0) {
+    return { success: false, code: res.exitCode };
+  } else {
+    return { success: true, code: 0 };
   }
+}
 
-  function kill(pid, signo = "SIGTERM") {
-    opKill(pid, signo, "Deno.kill()");
-  }
+class Process {
+  constructor(res) {
+    this.rid = res.rid;
+    this.pid = res.pid;
 
-  function opRunStatus(rid) {
-    return core.opAsync("op_run_status", rid);
-  }
-
-  function opRun(request) {
-    assert(request.cmd.length > 0);
-    return ops.op_run(request);
-  }
-
-  async function runStatus(rid) {
-    const res = await opRunStatus(rid);
-
-    if (res.gotSignal) {
-      const signal = res.exitSignal;
-      return { success: false, code: 128 + signal, signal };
-    } else if (res.exitCode != 0) {
-      return { success: false, code: res.exitCode };
-    } else {
-      return { success: true, code: 0 };
-    }
-  }
-
-  class Process {
-    constructor(res) {
-      this.rid = res.rid;
-      this.pid = res.pid;
-
-      if (res.stdinRid && res.stdinRid > 0) {
-        this.stdin = new FsFile(res.stdinRid);
-      }
-
-      if (res.stdoutRid && res.stdoutRid > 0) {
-        this.stdout = new FsFile(res.stdoutRid);
-      }
-
-      if (res.stderrRid && res.stderrRid > 0) {
-        this.stderr = new FsFile(res.stderrRid);
-      }
+    if (res.stdinRid && res.stdinRid > 0) {
+      this.stdin = new FsFile(res.stdinRid);
     }
 
-    status() {
-      return runStatus(this.rid);
+    if (res.stdoutRid && res.stdoutRid > 0) {
+      this.stdout = new FsFile(res.stdoutRid);
     }
 
-    async output() {
-      if (!this.stdout) {
-        throw new TypeError("stdout was not piped");
-      }
-      try {
-        return await readAll(this.stdout);
-      } finally {
-        this.stdout.close();
-      }
-    }
-
-    async stderrOutput() {
-      if (!this.stderr) {
-        throw new TypeError("stderr was not piped");
-      }
-      try {
-        return await readAll(this.stderr);
-      } finally {
-        this.stderr.close();
-      }
-    }
-
-    close() {
-      core.close(this.rid);
-    }
-
-    kill(signo = "SIGTERM") {
-      opKill(this.pid, signo, "Deno.Process.kill()");
+    if (res.stderrRid && res.stderrRid > 0) {
+      this.stderr = new FsFile(res.stderrRid);
     }
   }
 
-  function run({
-    cmd,
-    cwd = undefined,
-    clearEnv = false,
-    env = {},
-    gid = undefined,
-    uid = undefined,
-    stdout = "inherit",
-    stderr = "inherit",
-    stdin = "inherit",
-  }) {
-    if (cmd[0] != null) {
-      cmd = [
-        pathFromURL(cmd[0]),
-        ...new SafeArrayIterator(ArrayPrototypeSlice(cmd, 1)),
-      ];
-    }
-    const res = opRun({
-      cmd: ArrayPrototypeMap(cmd, String),
-      cwd,
-      clearEnv,
-      env: ObjectEntries(env),
-      gid,
-      uid,
-      stdin,
-      stdout,
-      stderr,
-    });
-    return new Process(res);
+  status() {
+    return runStatus(this.rid);
   }
 
-  window.__bootstrap.process = {
-    run,
-    Process,
-    kill,
-  };
-})(this);
+  async output() {
+    if (!this.stdout) {
+      throw new TypeError("stdout was not piped");
+    }
+    try {
+      return await readAll(this.stdout);
+    } finally {
+      this.stdout.close();
+    }
+  }
+
+  async stderrOutput() {
+    if (!this.stderr) {
+      throw new TypeError("stderr was not piped");
+    }
+    try {
+      return await readAll(this.stderr);
+    } finally {
+      this.stderr.close();
+    }
+  }
+
+  close() {
+    core.close(this.rid);
+  }
+
+  kill(signo = "SIGTERM") {
+    opKill(this.pid, signo, "Deno.Process.kill()");
+  }
+}
+
+function run({
+  cmd,
+  cwd = undefined,
+  clearEnv = false,
+  env = {},
+  gid = undefined,
+  uid = undefined,
+  stdout = "inherit",
+  stderr = "inherit",
+  stdin = "inherit",
+}) {
+  if (cmd[0] != null) {
+    cmd = [
+      pathFromURL(cmd[0]),
+      ...new SafeArrayIterator(ArrayPrototypeSlice(cmd, 1)),
+    ];
+  }
+  const res = opRun({
+    cmd: ArrayPrototypeMap(cmd, String),
+    cwd,
+    clearEnv,
+    env: ObjectEntries(env),
+    gid,
+    uid,
+    stdin,
+    stdout,
+    stderr,
+  });
+  return new Process(res);
+}
+
+export { kill, Process, run };

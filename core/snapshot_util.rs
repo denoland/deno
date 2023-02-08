@@ -1,10 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use anyhow::Context;
 use std::path::Path;
 use std::path::PathBuf;
 
 use crate::Extension;
 use crate::JsRuntime;
+use crate::ModuleSpecifier;
 use crate::RuntimeOptions;
 use crate::Snapshot;
 
@@ -17,6 +19,7 @@ pub struct CreateSnapshotOptions {
   pub extensions: Vec<Extension>,
   pub extensions_with_js: Vec<Extension>,
   pub additional_files: Vec<PathBuf>,
+  pub additional_esm_files: Vec<PathBuf>,
   pub compression_cb: Option<Box<CompressionCb>>,
 }
 
@@ -43,6 +46,27 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
         &std::fs::read_to_string(&file).unwrap(),
       )
       .unwrap();
+  }
+  for file in create_snapshot_options.additional_esm_files {
+    let display_path = file.strip_prefix(display_root).unwrap_or(&file);
+    let display_path_str = display_path.display().to_string();
+
+    let filename =
+      &("internal:".to_string() + &display_path_str.replace('\\', "/"));
+
+    futures::executor::block_on(async {
+      let id = js_runtime
+        .load_side_module(
+          &ModuleSpecifier::parse(filename)?,
+          Some(std::fs::read_to_string(&file)?),
+        )
+        .await?;
+      let receiver = js_runtime.mod_evaluate(id);
+      js_runtime.run_event_loop(false).await?;
+      receiver.await?
+    })
+    .with_context(|| format!("Couldn't execute '{}'", file.display()))
+    .unwrap();
   }
 
   let snapshot = js_runtime.snapshot();
@@ -79,9 +103,12 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   );
 }
 
+pub type FilterFn = Box<dyn Fn(&PathBuf) -> bool>;
+
 pub fn get_js_files(
   cargo_manifest_dir: &'static str,
   directory: &str,
+  filter: Option<FilterFn>,
 ) -> Vec<PathBuf> {
   let manifest_dir = Path::new(cargo_manifest_dir);
   let mut js_files = std::fs::read_dir(directory)
@@ -92,7 +119,7 @@ pub fn get_js_files(
     })
     .filter(|path| {
       path.extension().unwrap_or_default() == "js"
-        && !path.ends_with("99_main.js")
+        && filter.as_ref().map(|filter| filter(path)).unwrap_or(true)
     })
     .collect::<Vec<PathBuf>>();
   js_files.sort();

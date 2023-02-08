@@ -112,10 +112,7 @@ pub fn init<BC: BroadcastChannel + 'static>(
 ) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_web"])
-    .js(include_js_files!(
-      prefix "internal:ext/broadcast_channel",
-      "01_broadcast_channel.js",
-    ))
+    .esm(include_js_files!("01_broadcast_channel.js",))
     .ops(vec![
       op_broadcast_subscribe::decl::<BC>(),
       op_broadcast_unsubscribe::decl::<BC>(),

@@ -5,7 +5,6 @@ use std::env;
 use std::path::PathBuf;
 
 // This is a shim that allows to generate documentation on docs.rs
-#[cfg(not(feature = "docsrs"))]
 mod not_docs {
   use std::path::Path;
 
@@ -121,7 +120,7 @@ mod not_docs {
     }
   }
 
-  fn create_runtime_snapshot(snapshot_path: PathBuf, files: Vec<PathBuf>) {
+  fn create_runtime_snapshot(snapshot_path: PathBuf, esm_files: Vec<PathBuf>) {
     let extensions_with_js: Vec<Extension> = vec![
       deno_webidl::init(),
       deno_console::init(),
@@ -158,7 +157,8 @@ mod not_docs {
       startup_snapshot: None,
       extensions: vec![],
       extensions_with_js,
-      additional_files: files,
+      additional_files: vec![],
+      additional_esm_files: esm_files,
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         lzzzz::lz4_hc::compress_to_vec(
           snapshot_slice,
@@ -172,14 +172,19 @@ mod not_docs {
 
   pub fn build_snapshot(runtime_snapshot_path: PathBuf) {
     #[allow(unused_mut)]
-    let mut js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js");
+    let mut esm_files = get_js_files(
+      env!("CARGO_MANIFEST_DIR"),
+      "js",
+      Some(Box::new(|path| !path.ends_with("99_main.js"))),
+    );
+
     #[cfg(not(feature = "snapshot_from_snapshot"))]
     {
       let manifest = env!("CARGO_MANIFEST_DIR");
       let path = PathBuf::from(manifest);
-      js_files.push(path.join("js").join("99_main.js"));
+      esm_files.push(path.join("js").join("99_main.js"));
     }
-    create_runtime_snapshot(runtime_snapshot_path, js_files);
+    create_runtime_snapshot(runtime_snapshot_path, esm_files);
   }
 }
 
