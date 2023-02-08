@@ -12,3 +12,16 @@ type _TestHasNodeJsGlobal = NodeJS.Architecture;
 
 const controller = new AbortController();
 controller.abort("reason"); // in the NodeJS declaration it doesn't have a reason
+
+// Super edge case where some Node code deletes a global where the
+// Node code has its own global and the Deno code has the same global,
+// but it's different. Basically if some Node code deletes
+// one of these globals then we don't want it to suddenly inherit
+// the Deno global.
+globals.withNodeGlobalThis((nodeGlobalThis: any) => {
+  (globalThis as any).setTimeout = 5;
+  console.log(setTimeout);
+  // this delete should also delete on the Deno globalThis
+  delete nodeGlobalThis["setTimeout"];
+  console.log(globalThis.setTimeout);
+});
