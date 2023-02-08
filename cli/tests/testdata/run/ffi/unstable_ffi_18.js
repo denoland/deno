@@ -1,1 +1,1 @@
-Deno.core.ops.op_ffi_create_ptr(0n);
+Deno[Deno.internal].core.ops.op_ffi_create_ptr(null);
