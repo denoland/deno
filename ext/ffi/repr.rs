@@ -28,11 +28,12 @@ where
   Ok(buf as *mut c_void)
 }
 
-#[op]
+#[op(fast)]
 fn op_ffi_ptr_value<FP>(
   state: &mut deno_core::OpState,
   ptr: *mut c_void,
-) -> Result<usize, AnyError>
+  out: &mut [u32],
+) -> Result<(), AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -40,7 +41,18 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(ptr as usize)
+  let outptr = out.as_ptr() as *mut usize;
+  let length = out.len();
+  assert!(
+    length >= (std::mem::size_of::<usize>() / std::mem::size_of::<u32>())
+  );
+  assert_eq!(outptr as usize % std::mem::size_of::<usize>(), 0);
+
+  // SAFETY: Out buffer was asserted to be at least large enough to hold a usize, and properly aligned.
+  let out = unsafe { &mut *outptr };
+  *out = ptr as usize;
+
+  Ok(())
 }
 
 #[op(fast)]

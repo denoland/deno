@@ -1,3 +1,0 @@
-pub fn op_ffi_get_ptr_value(ptr: *mut c_void) -> usize {
-  // ...
-}

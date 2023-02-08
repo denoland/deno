@@ -616,7 +616,7 @@ const addToFooCallback = new Deno.UnsafeCallback({
 }, () => counter++);
 
 // Test thread safe callbacks
-assertEquals( counter, 0);
+assertEquals(counter, 0);
 addToFooCallback.ref();
 await dylib.symbols.call_fn_ptr_thread_safe(addToFooCallback.pointer);
 addToFooCallback.unref();
