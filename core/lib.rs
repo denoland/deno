@@ -75,6 +75,7 @@ pub use crate::module_specifier::ModuleSpecifier;
 pub use crate::module_specifier::DUMMY_SPECIFIER;
 pub use crate::modules::FsModuleLoader;
 pub use crate::modules::InternalModuleLoader;
+pub use crate::modules::InternalModuleLoaderCb;
 pub use crate::modules::ModuleId;
 pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;

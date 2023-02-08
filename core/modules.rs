@@ -2,6 +2,7 @@
 
 use crate::bindings;
 use crate::error::generic_error;
+use crate::extensions::ExtensionFileSource;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
@@ -312,13 +313,38 @@ pub(crate) fn resolve_helper(
   loader.resolve(specifier, referrer, kind)
 }
 
-pub struct InternalModuleLoader(Rc<dyn ModuleLoader>);
+/// Function that can be passed to the `InternalModuleLoader` that allows to
+/// transpile sources before passing to V8.
+pub type InternalModuleLoaderCb =
+  Box<dyn Fn(&ExtensionFileSource) -> Result<String, Error>>;
+
+pub struct InternalModuleLoader {
+  module_loader: Rc<dyn ModuleLoader>,
+  esm_sources: Vec<ExtensionFileSource>,
+  maybe_load_callback: Option<InternalModuleLoaderCb>,
+}
+
+impl Default for InternalModuleLoader {
+  fn default() -> Self {
+    Self {
+      module_loader: Rc::new(NoopModuleLoader),
+      esm_sources: vec![],
+      maybe_load_callback: None,
+    }
+  }
+}
 
 impl InternalModuleLoader {
-  pub fn new(module_loader: Option<Rc<dyn ModuleLoader>>) -> Self {
-    InternalModuleLoader(
-      module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
-    )
+  pub fn new(
+    module_loader: Option<Rc<dyn ModuleLoader>>,
+    esm_sources: Vec<ExtensionFileSource>,
+    maybe_load_callback: Option<InternalModuleLoaderCb>,
+  ) -> Self {
+    InternalModuleLoader {
+      module_loader: module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
+      esm_sources,
+      maybe_load_callback,
+    }
   }
 }
 
@@ -343,7 +369,7 @@ impl ModuleLoader for InternalModuleLoader {
       }
     }
 
-    self.0.resolve(specifier, referrer, kind)
+    self.module_loader.resolve(specifier, referrer, kind)
   }
 
   fn load(
@@ -352,7 +378,46 @@ impl ModuleLoader for InternalModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    self.0.load(module_specifier, maybe_referrer, is_dyn_import)
+    if module_specifier.scheme() != "internal" {
+      return self.module_loader.load(
+        module_specifier,
+        maybe_referrer,
+        is_dyn_import,
+      );
+    }
+
+    let specifier = module_specifier.to_string();
+    let maybe_file_source = self
+      .esm_sources
+      .iter()
+      .find(|file_source| file_source.specifier == module_specifier.as_str());
+
+    if let Some(file_source) = maybe_file_source {
+      let result = if let Some(load_callback) = &self.maybe_load_callback {
+        load_callback(file_source)
+      } else {
+        Ok(file_source.code.to_string())
+      };
+
+      return async move {
+        let code = result?;
+        let source = ModuleSource {
+          code: code.into_bytes().into_boxed_slice(),
+          module_type: ModuleType::JavaScript,
+          module_url_specified: specifier.clone(),
+          module_url_found: specifier.clone(),
+        };
+        Ok(source)
+      }
+      .boxed_local();
+    }
+
+    async move {
+      Err(generic_error(format!(
+        "Cannot find internal module source for specifier {specifier}"
+      )))
+    }
+    .boxed_local()
   }
 
   fn prepare_load(
@@ -366,7 +431,7 @@ impl ModuleLoader for InternalModuleLoader {
       return async { Ok(()) }.boxed_local();
     }
 
-    self.0.prepare_load(
+    self.module_loader.prepare_load(
       op_state,
       module_specifier,
       maybe_referrer,
@@ -2639,7 +2704,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
 
   #[test]
   fn internal_module_loader() {
-    let loader = InternalModuleLoader::new(None);
+    let loader = InternalModuleLoader::default();
     assert!(loader
       .resolve("internal:foo", "internal:bar", ResolutionKind::Import)
       .is_ok());

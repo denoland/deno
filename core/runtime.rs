@@ -8,6 +8,7 @@ use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
+use crate::modules::InternalModuleLoaderCb;
 use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
@@ -19,6 +20,7 @@ use crate::ops::*;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
+use crate::ExtensionFileSource;
 use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -269,6 +271,11 @@ pub struct RuntimeOptions {
   /// Prepare runtime to take snapshot of loaded code.
   /// The snapshot is deterministic and uses predictable random numbers.
   pub will_snapshot: bool,
+
+  /// An optional callback that will be called for each module that is loaded
+  /// during snapshotting. This callback can be used to transpile source on the
+  /// fly, during snapshotting, eg. to transpile TypeScript to JavaScript.
+  pub snapshot_module_load_cb: Option<InternalModuleLoaderCb>,
 
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
@@ -607,8 +614,16 @@ impl JsRuntime {
     };
 
     let loader = if snapshot_options != SnapshotOptions::Load {
+      let esm_sources = options
+        .extensions_with_js
+        .iter()
+        .flat_map(|ext| ext.get_esm_sources().to_owned())
+        .collect::<Vec<ExtensionFileSource>>();
+
       Rc::new(crate::modules::InternalModuleLoader::new(
         options.module_loader,
+        esm_sources,
+        options.snapshot_module_load_cb,
       ))
     } else {
       options
@@ -818,13 +833,13 @@ impl JsRuntime {
     let extensions = std::mem::take(&mut self.extensions_with_js);
     for ext in &extensions {
       {
-        let js_files = ext.get_esm_sources();
-        for file_source in js_files {
+        let esm_files = ext.get_esm_sources();
+        for file_source in esm_files {
           futures::executor::block_on(async {
             let id = self
               .load_side_module(
                 &ModuleSpecifier::parse(&file_source.specifier)?,
-                Some(file_source.code.to_string()),
+                None,
               )
               .await?;
             let receiver = self.mod_evaluate(id);
