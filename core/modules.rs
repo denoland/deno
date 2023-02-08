@@ -302,12 +302,11 @@ pub(crate) fn resolve_helper(
   referrer: &str,
   kind: ResolutionKind,
 ) -> Result<ModuleSpecifier, Error> {
-  if snapshot_loaded_and_not_snapshotting {
-    if specifier.starts_with("internal:") {
-      return Err(generic_error(
-        "Cannot load internal module from external code",
-      ));
-    }
+  if snapshot_loaded_and_not_snapshotting && specifier.starts_with("internal:")
+  {
+    return Err(generic_error(
+      "Cannot load internal module from external code",
+    ));
   }
 
   loader.resolve(specifier, referrer, kind)
