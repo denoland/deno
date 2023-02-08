@@ -210,67 +210,43 @@ mod not_docs {
 
   pub fn build_snapshot(runtime_snapshot_path: PathBuf) {
     #[allow(unused_mut, unused_assignments)]
-    let mut additional_extension = Extension::builder("runtime")
-      .esm(include_js_files_dir!(
-        dir "js",
-        "01_build.js",
-        "01_errors.js",
-        "01_version.ts",
-        "06_util.js",
-        "10_permissions.js",
-        "11_workers.js",
-        "12_io.js",
-        "13_buffer.js",
-        "30_fs.js",
-        "30_os.js",
-        "40_diagnostics.js",
-        "40_files.js",
-        "40_fs_events.js",
-        "40_http.js",
-        "40_process.js",
-        "40_read_file.js",
-        "40_signals.js",
-        "40_spawn.js",
-        "40_tty.js",
-        "40_write_file.js",
-        "41_prompt.js",
-        "90_deno_ns.js",
-        "98_global_scope.js",
-      ))
-      .build();
+    let mut esm_files = include_js_files_dir!(
+      dir "js",
+      "01_build.js",
+      "01_errors.js",
+      "01_version.ts",
+      "06_util.js",
+      "10_permissions.js",
+      "11_workers.js",
+      "12_io.js",
+      "13_buffer.js",
+      "30_fs.js",
+      "30_os.js",
+      "40_diagnostics.js",
+      "40_files.js",
+      "40_fs_events.js",
+      "40_http.js",
+      "40_process.js",
+      "40_read_file.js",
+      "40_signals.js",
+      "40_spawn.js",
+      "40_tty.js",
+      "40_write_file.js",
+      "41_prompt.js",
+      "90_deno_ns.js",
+      "98_global_scope.js",
+    );
 
     #[cfg(not(feature = "snapshot_from_snapshot"))]
     {
-      additional_extension = Extension::builder("runtime")
-        .esm(include_js_files_dir!(
-          dir "js",
-          "01_build.js",
-          "01_errors.js",
-          "01_version.ts",
-          "06_util.js",
-          "10_permissions.js",
-          "11_workers.js",
-          "12_io.js",
-          "13_buffer.js",
-          "30_fs.js",
-          "30_os.js",
-          "40_diagnostics.js",
-          "40_files.js",
-          "40_fs_events.js",
-          "40_http.js",
-          "40_process.js",
-          "40_read_file.js",
-          "40_signals.js",
-          "40_spawn.js",
-          "40_tty.js",
-          "40_write_file.js",
-          "41_prompt.js",
-          "90_deno_ns.js",
-          "98_global_scope.js",
-          "99_main.js",
-        ))
-        .build();
+      esm_files.push(ExtensionFileSource {
+        specifier: "js/99_main.js".to_string(),
+        code: include_str!("js/99_main.js"),
+      });
     }
+
+    let additional_extension =
+      Extension::builder("runtime").esm(esm_files).build();
     create_runtime_snapshot(runtime_snapshot_path, additional_extension);
   }
 }
