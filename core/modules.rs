@@ -366,13 +366,6 @@ impl ModuleLoader for InternalModuleLoader {
       );
     }
 
-    let internal_modules = self
-      .esm_sources
-      .iter()
-      .map(|f| f.specifier.as_str())
-      .collect::<Vec<_>>();
-    eprintln!("internal modules {:?}", internal_modules);
-
     let specifier = module_specifier.to_string();
     let maybe_file_source = self
       .esm_sources
