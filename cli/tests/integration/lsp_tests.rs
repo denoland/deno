@@ -1962,11 +1962,11 @@ fn lsp_hover_dependency() {
       "range": {
         "start": {
           "line": 0,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 0,
-          "character": 61
+          "character": 62
         }
       }
     }))
@@ -2297,11 +2297,11 @@ fn lsp_hover_typescript_types() {
       "range": {
         "start": {
           "line": 0,
-          "character": 20
+          "character": 19
         },
         "end": {
           "line": 0,
-          "character": 61
+          "character": 62
         }
       }
     })
@@ -4955,11 +4955,11 @@ fn lsp_cache_location() {
       "range": {
         "start": {
           "line": 0,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 0,
-          "character": 61
+          "character": 62
         }
       }
     }))
@@ -4990,11 +4990,11 @@ fn lsp_cache_location() {
       "range": {
         "start": {
           "line": 7,
-          "character": 20
+          "character": 19
         },
         "end": {
           "line": 7,
-          "character": 52
+          "character": 53
         }
       }
     }))
