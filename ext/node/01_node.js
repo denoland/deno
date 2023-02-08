@@ -49,10 +49,9 @@ const nodeGlobalThis = new Proxy(globalThis, {
     return ReflectHas(nodeGlobals, prop) || ReflectHas(target, prop);
   },
   deleteProperty(target, prop) {
-    return (
-      ReflectDeleteProperty(nodeGlobals, prop) ||
-      ReflectDeleteProperty(target, prop)
-    );
+    const nodeDeleted = ReflectDeleteProperty(nodeGlobals, prop);
+    const targetDeleted = ReflectDeleteProperty(target, prop);
+    return nodeDeleted || targetDeleted;
   },
   ownKeys(target) {
     const targetKeys = ReflectOwnKeys(target);
