@@ -352,7 +352,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     code: deno_runtime::js::SOURCE_CORE_FOR_99_MAIN_JS,
   });
   let extensions_with_js =
-    vec![Extension::builder("deno_cli").esm(esm_files).build()];
+    vec![Extension::builder("cli").esm(esm_files).build()];
 
   create_snapshot(CreateSnapshotOptions {
     cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
