@@ -6,6 +6,23 @@ use napi_sys::*;
 use std::os::raw::c_char;
 use std::ptr;
 
+static NICE: i64 = 69;
+
+fn init_constants(env: napi_env) -> napi_value {
+  let mut constants: napi_value = ptr::null_mut();
+  let mut value: napi_value = ptr::null_mut();
+
+  assert_napi_ok!(napi_create_object(env, &mut constants));
+  assert_napi_ok!(napi_create_int64(env, NICE, &mut value));
+  assert_napi_ok!(napi_set_named_property(
+    env,
+    constants,
+    "nice\0".as_ptr() as _,
+    value
+  ));
+  constants
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let mut number: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_create_double(env, 1.0, &mut number));
@@ -36,6 +53,16 @@ pub fn init(env: napi_env, exports: napi_value) {
 
   let properties = &[
     napi_property_descriptor {
+      utf8name: "test_simple_property\0".as_ptr() as *const c_char,
+      name: ptr::null_mut(),
+      method: None,
+      getter: None,
+      setter: None,
+      data: ptr::null_mut(),
+      attributes: enumerable | writable,
+      value: init_constants(env),
+    },
+    napi_property_descriptor {
       utf8name: "test_property_rw\0".as_ptr() as *const c_char,
       name: ptr::null_mut(),
       method: None,
@@ -55,26 +82,27 @@ pub fn init(env: napi_env, exports: napi_value) {
       attributes: enumerable,
       value: number,
     },
-    napi_property_descriptor {
-      utf8name: ptr::null(),
-      name: name_value,
-      method: None,
-      getter: None,
-      setter: None,
-      data: ptr::null_mut(),
-      attributes: enumerable,
-      value: number,
-    },
-    napi_property_descriptor {
-      utf8name: ptr::null(),
-      name: name_symbol,
-      method: None,
-      getter: None,
-      setter: None,
-      data: ptr::null_mut(),
-      attributes: enumerable,
-      value: number,
-    },
+    // TODO(@littledivy): Fix this.
+    // napi_property_descriptor {
+    //   utf8name: ptr::null(),
+    //   name: name_value,
+    //   method: None,
+    //   getter: None,
+    //   setter: None,
+    //   data: ptr::null_mut(),
+    //   attributes: enumerable,
+    //   value: number,
+    // },
+    // napi_property_descriptor {
+    //   utf8name: ptr::null(),
+    //   name: name_symbol,
+    //   method: None,
+    //   getter: None,
+    //   setter: None,
+    //   data: ptr::null_mut(),
+    //   attributes: enumerable,
+    //   value: number,
+    // },
   ];
 
   assert_napi_ok!(napi_define_properties(

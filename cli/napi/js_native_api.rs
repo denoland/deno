@@ -1429,13 +1429,15 @@ fn napi_define_properties(
 
   let scope = &mut env.scope();
 
-  let object = transmute::<napi_value, v8::Local<v8::Object>>(obj);
+  let object: v8::Local<v8::Object> = napi_value_unchecked(obj)
+    .try_into()
+    .map_err(|_| Error::ObjectExpected)?;
 
   let properties = std::slice::from_raw_parts(properties, property_count);
   for property in properties {
     let name = if !property.utf8name.is_null() {
       let name_str = CStr::from_ptr(property.utf8name).to_str().unwrap();
-      v8::String::new(scope, name_str).unwrap()
+      v8::String::new(scope, name_str).ok_or(Error::GenericFailure)?
     } else {
       let property_value = napi_value_unchecked(property.name);
       v8::Local::<v8::String>::try_from(property_value)
@@ -1459,17 +1461,30 @@ fn napi_define_properties(
       desc.set_enumerable(property.attributes & napi_enumerable != 0);
       desc.set_configurable(property.attributes & napi_configurable != 0);
 
-      object.define_property(scope, name.into(), &desc);
+      let define_maybe = object.define_property(scope, name.into(), &desc);
+      return_status_if_false!(
+        env_ptr,
+        !define_maybe.unwrap_or(false),
+        napi_invalid_arg
+      );
     } else if property.method.is_some() {
-      let function: v8::Local<v8::Value> = {
+      let value: v8::Local<v8::Value> = {
         let function =
           create_function(env_ptr, None, property.method, property.data);
         function.into()
       };
-      object.set(scope, name.into(), function).unwrap();
+      return_status_if_false!(
+        env_ptr,
+        object.set(scope, name.into(), value).is_some(),
+        napi_invalid_arg
+      );
     } else {
       let value = napi_value_unchecked(property.value);
-      object.set(scope, name.into(), value).unwrap();
+      return_status_if_false!(
+        env_ptr,
+        object.set(scope, name.into(), value).is_some(),
+        napi_invalid_arg
+      );
     }
   }
 
