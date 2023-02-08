@@ -1064,6 +1064,7 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
+  use pretty_assertions::assert_eq;
   use std::path::Path;
   use std::path::PathBuf;
   use std::sync::Arc;
@@ -1282,11 +1283,11 @@ let c: number = "a";
               "range": {
                 "start": {
                   "line": 0,
-                  "character": 23
+                  "character": 24
                 },
                 "end": {
                   "line": 0,
-                  "character": 50
+                  "character": 49
                 }
               },
               "severity": 4,

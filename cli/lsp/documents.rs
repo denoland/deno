@@ -1186,18 +1186,18 @@ impl Documents {
     self.maybe_resolver =
       CliResolver::maybe_new(maybe_jsx_config, maybe_import_map);
     self.imports = Arc::new(
-      if let Some(Ok(Some(imports))) =
+      if let Some(Ok(imports)) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
       {
         imports
           .into_iter()
-          .map(|(referrer, dependencies)| {
+          .map(|import| {
             let graph_import = GraphImport::new(
-              referrer.clone(),
-              dependencies,
+              &import.referrer,
+              import.imports,
               self.get_maybe_resolver(),
             );
-            (referrer, graph_import)
+            (import.referrer, graph_import)
           })
           .collect()
       } else {

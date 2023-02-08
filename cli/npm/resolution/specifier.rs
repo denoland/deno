@@ -686,23 +686,22 @@ mod tests {
       Vec::new(),
     );
     let analyzer = deno_graph::CapturingModuleAnalyzer::default();
-    let graph = deno_graph::create_graph(
-      vec![
-        ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
-        // test redirect at root
-        ModuleSpecifier::parse("https://deno.land/x/module_redirect/mod.ts")
-          .unwrap(),
-      ],
-      &mut loader,
-      deno_graph::GraphOptions {
-        is_dynamic: false,
-        imports: None,
-        resolver: None,
-        module_analyzer: Some(&analyzer),
-        reporter: None,
-      },
-    )
-    .await;
+    let mut graph = deno_graph::ModuleGraph::default();
+    graph
+      .build(
+        vec![
+          ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
+          // test redirect at root
+          ModuleSpecifier::parse("https://deno.land/x/module_redirect/mod.ts")
+            .unwrap(),
+        ],
+        &mut loader,
+        deno_graph::BuildOptions {
+          module_analyzer: Some(&analyzer),
+          ..Default::default()
+        },
+      )
+      .await;
     let reqs = resolve_graph_npm_info(&graph)
       .package_reqs
       .into_iter()

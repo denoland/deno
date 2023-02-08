@@ -1377,7 +1377,7 @@ pub async fn run_tests_with_watch(
         test_modules.clone()
       };
       let graph = ps.create_graph(test_modules.clone()).await?;
-      graph_valid(&graph, !no_check, ps.options.check_js())?;
+      graph_valid(&graph, &test_modules, !no_check, ps.options.check_js())?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {

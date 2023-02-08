@@ -450,7 +450,7 @@ impl<'a> GraphDisplayContext<'a> {
         print_tree_node(&root_node, writer)?;
         Ok(())
       }
-      Err(ModuleGraphError::Missing(_)) => {
+      Err(ModuleGraphError::Missing(_, _)) => {
         writeln!(
           writer,
           "{} module could not be found",
@@ -596,7 +596,7 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleGraphError::InvalidTypeAssertion { .. } => {
         self.build_error_msg(specifier, "(invalid import assertion)")
       }
-      ModuleGraphError::LoadingErr(_, _) => {
+      ModuleGraphError::LoadingErr(_, _, _) => {
         self.build_error_msg(specifier, "(loading error)")
       }
       ModuleGraphError::ParseErr(_, _) => {
@@ -605,13 +605,13 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleGraphError::ResolutionError(_) => {
         self.build_error_msg(specifier, "(resolution error)")
       }
-      ModuleGraphError::UnsupportedImportAssertionType(_, _) => {
+      ModuleGraphError::UnsupportedImportAssertionType { .. } => {
         self.build_error_msg(specifier, "(unsupported import assertion)")
       }
       ModuleGraphError::UnsupportedMediaType(_, _) => {
         self.build_error_msg(specifier, "(unsupported)")
       }
-      ModuleGraphError::Missing(_) => {
+      ModuleGraphError::Missing(_, _) => {
         self.build_error_msg(specifier, "(missing)")
       }
     }

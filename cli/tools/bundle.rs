@@ -38,7 +38,10 @@ pub async fn bundle(
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()
-        .filter_map(|(_, r)| r.ok().and_then(|(s, _, _)| s.to_file_path().ok()))
+        .filter_map(|(_, r)| {
+          r.ok()
+            .and_then(|module| module.specifier.to_file_path().ok())
+        })
         .collect();
 
       if let Ok(Some(import_map_path)) = ps

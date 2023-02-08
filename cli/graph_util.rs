@@ -18,161 +18,63 @@ use crate::tools::check;
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
-use deno_graph::Dependency;
-use deno_graph::GraphImport;
-use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
-use deno_graph::ModuleKind;
-use deno_graph::Range;
 use deno_graph::ResolutionError;
-use deno_graph::Resolved;
 use deno_graph::SpecifierError;
+use deno_graph::WalkOptions;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMapError;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::collections::HashSet;
-use std::collections::VecDeque;
 use std::sync::Arc;
 
-#[derive(Debug, Clone)]
-#[allow(clippy::large_enum_variant)]
-pub enum ModuleEntry {
-  Module {
-    code: Arc<str>,
-    dependencies: BTreeMap<String, Dependency>,
-    media_type: MediaType,
-    /// A set of type libs that the module has passed a type check with this
-    /// session. This would consist of window, worker or both.
-    checked_libs: HashSet<TsTypeLib>,
-    maybe_types: Option<Resolved>,
-  },
-  Error(ModuleGraphError),
-  Redirect(ModuleSpecifier),
-}
-
-/// Composes data from potentially many `ModuleGraph`s.
 #[derive(Debug, Default)]
 pub struct GraphData {
-  modules: HashMap<ModuleSpecifier, ModuleEntry>,
-  /// Specifiers that are built-in or external.
-  external_specifiers: HashSet<ModuleSpecifier>,
+  graph: Arc<ModuleGraph>,
   npm_packages: Vec<NpmPackageReq>,
   has_node_builtin_specifier: bool,
-  /// Map of first known referrer locations for each module. Used to enhance
-  /// error messages.
-  referrer_map: HashMap<ModuleSpecifier, Box<Range>>,
-  graph_imports: Vec<GraphImport>,
+  checked_libs: HashSet<(ModuleSpecifier, TsTypeLib)>,
 }
 
 impl GraphData {
   /// Store data from `graph` into `self`.
-  pub fn add_graph(&mut self, graph: &ModuleGraph) {
-    for graph_import in &graph.imports {
-      for dep in graph_import.dependencies.values() {
-        for resolved in [&dep.maybe_code, &dep.maybe_type] {
-          if let Resolved::Ok {
-            specifier, range, ..
-          } = resolved
-          {
-            let entry = self.referrer_map.entry(specifier.clone());
-            entry.or_insert_with(|| range.clone());
-          }
-        }
-      }
-      self.graph_imports.push(graph_import.clone())
-    }
-
+  pub fn set_graph(&mut self, graph: Arc<ModuleGraph>) {
     let mut has_npm_specifier_in_graph = false;
 
-    for (specifier, result) in graph.specifiers() {
-      if self.modules.contains_key(specifier) {
-        continue;
-      }
-
-      if !self.has_node_builtin_specifier && specifier.scheme() == "node" {
-        self.has_node_builtin_specifier = true;
-      }
-
-      if let Some(found) = graph.redirects.get(specifier) {
-        let module_entry = ModuleEntry::Redirect(found.clone());
-        self.modules.insert(specifier.clone(), module_entry);
-        continue;
-      }
-
-      match result {
-        Ok((_, module_kind, media_type)) => {
-          if module_kind == ModuleKind::External {
-            if !has_npm_specifier_in_graph
-              && NpmPackageReference::from_specifier(specifier).is_ok()
-            {
-              has_npm_specifier_in_graph = true;
-            }
-            self.external_specifiers.insert(specifier.clone());
-            continue; // ignore npm and node specifiers
-          }
-
-          let module = graph.get(specifier).unwrap();
-          let code = match &module.maybe_source {
-            Some(source) => source.clone(),
-            None => continue,
-          };
-          let maybe_types = module
-            .maybe_types_dependency
-            .as_ref()
-            .map(|(_, r)| r.clone());
-          if let Some(Resolved::Ok {
-            specifier, range, ..
-          }) = &maybe_types
+    for (specifier, _) in graph.specifiers() {
+      match specifier.scheme() {
+        "node" => {
+          self.has_node_builtin_specifier = true;
+        }
+        "npm" => {
+          if !has_npm_specifier_in_graph
+            && NpmPackageReference::from_specifier(specifier).is_ok()
           {
-            let specifier = graph.redirects.get(specifier).unwrap_or(specifier);
-            let entry = self.referrer_map.entry(specifier.clone());
-            entry.or_insert_with(|| range.clone());
+            has_npm_specifier_in_graph = true;
           }
-          for dep in module.dependencies.values() {
-            #[allow(clippy::manual_flatten)]
-            for resolved in [&dep.maybe_code, &dep.maybe_type] {
-              if let Resolved::Ok {
-                specifier, range, ..
-              } = resolved
-              {
-                let specifier =
-                  graph.redirects.get(specifier).unwrap_or(specifier);
-                let entry = self.referrer_map.entry(specifier.clone());
-                entry.or_insert_with(|| range.clone());
-              }
-            }
-          }
-          let module_entry = ModuleEntry::Module {
-            code,
-            dependencies: module.dependencies.clone(),
-            media_type,
-            checked_libs: Default::default(),
-            maybe_types,
-          };
-          self.modules.insert(specifier.clone(), module_entry);
         }
-        Err(error) => {
-          let module_entry = ModuleEntry::Error(error.clone());
-          self.modules.insert(specifier.clone(), module_entry);
-        }
+        _ => {}
+      }
+
+      if has_npm_specifier_in_graph && self.has_node_builtin_specifier {
+        break; // exit early
       }
     }
 
     if has_npm_specifier_in_graph {
-      self
-        .npm_packages
-        .extend(resolve_graph_npm_info(graph).package_reqs);
+      self.npm_packages = resolve_graph_npm_info(&graph).package_reqs;
     }
+    self.graph = graph;
   }
 
-  pub fn entries(
-    &self,
-  ) -> impl Iterator<Item = (&ModuleSpecifier, &ModuleEntry)> {
-    self.modules.iter()
+  pub fn get_graph(&self) -> &Arc<ModuleGraph> {
+    &self.graph
+  }
+
+  // todo(dsherret): remove the need for cloning this
+  pub fn get_graph_clone(&self) -> ModuleGraph {
+    (*self.graph).clone()
   }
 
   /// Gets if the graph had a "node:" specifier.
@@ -186,209 +88,6 @@ impl GraphData {
     &self.npm_packages
   }
 
-  /// Walk dependencies from `roots` and return every encountered specifier.
-  /// Return `None` if any modules are not known.
-  pub fn walk<'a>(
-    &'a self,
-    roots: &[ModuleSpecifier],
-    follow_dynamic: bool,
-    follow_type_only: bool,
-    check_js: bool,
-  ) -> Option<HashMap<&'a ModuleSpecifier, &'a ModuleEntry>> {
-    let mut result = HashMap::<&'a ModuleSpecifier, &'a ModuleEntry>::new();
-    let mut seen = HashSet::<&ModuleSpecifier>::new();
-    let mut visiting = VecDeque::<&ModuleSpecifier>::new();
-    for root in roots {
-      seen.insert(root);
-      visiting.push_back(root);
-    }
-    for (_, dep) in self.graph_imports.iter().flat_map(|i| &i.dependencies) {
-      let mut resolutions = vec![&dep.maybe_code];
-      if follow_type_only {
-        resolutions.push(&dep.maybe_type);
-      }
-      #[allow(clippy::manual_flatten)]
-      for resolved in resolutions {
-        if let Resolved::Ok { specifier, .. } = resolved {
-          if !seen.contains(specifier) {
-            seen.insert(specifier);
-            visiting.push_front(specifier);
-          }
-        }
-      }
-    }
-    while let Some(specifier) = visiting.pop_front() {
-      let (specifier, entry) = match self.modules.get_key_value(specifier) {
-        Some(pair) => pair,
-        None => {
-          if self.external_specifiers.contains(specifier) {
-            continue;
-          }
-          return None;
-        }
-      };
-      result.insert(specifier, entry);
-      match entry {
-        ModuleEntry::Module {
-          dependencies,
-          maybe_types,
-          media_type,
-          ..
-        } => {
-          let check_types = (check_js
-            || !matches!(
-              media_type,
-              MediaType::JavaScript
-                | MediaType::Mjs
-                | MediaType::Cjs
-                | MediaType::Jsx
-            ))
-            && follow_type_only;
-          if check_types {
-            if let Some(Resolved::Ok { specifier, .. }) = maybe_types {
-              if !seen.contains(specifier) {
-                seen.insert(specifier);
-                visiting.push_front(specifier);
-              }
-            }
-          }
-          for (dep_specifier, dep) in dependencies.iter().rev() {
-            // todo(dsherret): ideally there would be a way to skip external dependencies
-            // in the graph here rather than specifically npm package references
-            if NpmPackageReference::from_str(dep_specifier).is_ok() {
-              continue;
-            }
-
-            if !dep.is_dynamic || follow_dynamic {
-              let mut resolutions = vec![&dep.maybe_code];
-              if check_types {
-                resolutions.push(&dep.maybe_type);
-              }
-              #[allow(clippy::manual_flatten)]
-              for resolved in resolutions {
-                if let Resolved::Ok { specifier, .. } = resolved {
-                  if !seen.contains(specifier) {
-                    seen.insert(specifier);
-                    visiting.push_front(specifier);
-                  }
-                }
-              }
-            }
-          }
-        }
-        ModuleEntry::Error(_) => {}
-        ModuleEntry::Redirect(specifier) => {
-          if !seen.contains(specifier) {
-            seen.insert(specifier);
-            visiting.push_front(specifier);
-          }
-        }
-      }
-    }
-    Some(result)
-  }
-
-  /// Clone part of `self`, containing only modules which are dependencies of
-  /// `roots`. Returns `None` if any roots are not known.
-  pub fn graph_segment(&self, roots: &[ModuleSpecifier]) -> Option<Self> {
-    let mut modules = HashMap::new();
-    let mut referrer_map = HashMap::new();
-    let entries = match self.walk(roots, true, true, true) {
-      Some(entries) => entries,
-      None => return None,
-    };
-    for (specifier, module_entry) in entries {
-      modules.insert(specifier.clone(), module_entry.clone());
-      if let Some(referrer) = self.referrer_map.get(specifier) {
-        referrer_map.insert(specifier.clone(), referrer.clone());
-      }
-    }
-    Some(Self {
-      modules,
-      external_specifiers: self.external_specifiers.clone(),
-      has_node_builtin_specifier: self.has_node_builtin_specifier,
-      npm_packages: self.npm_packages.clone(),
-      referrer_map,
-      graph_imports: self.graph_imports.to_vec(),
-    })
-  }
-
-  /// Check if `roots` and their deps are available. Returns `Some(Ok(()))` if
-  /// so. Returns `Some(Err(_))` if there is a known module graph or resolution
-  /// error statically reachable from `roots`. Returns `None` if any modules are
-  /// not known.
-  pub fn check(
-    &self,
-    roots: &[ModuleSpecifier],
-    follow_type_only: bool,
-    check_js: bool,
-  ) -> Option<Result<(), AnyError>> {
-    let entries = match self.walk(roots, false, follow_type_only, check_js) {
-      Some(entries) => entries,
-      None => return None,
-    };
-    for (specifier, module_entry) in entries {
-      match module_entry {
-        ModuleEntry::Module {
-          dependencies,
-          maybe_types,
-          media_type,
-          ..
-        } => {
-          let check_types = (check_js
-            || !matches!(
-              media_type,
-              MediaType::JavaScript
-                | MediaType::Mjs
-                | MediaType::Cjs
-                | MediaType::Jsx
-            ))
-            && follow_type_only;
-          if check_types {
-            if let Some(Resolved::Err(error)) = maybe_types {
-              let range = error.range();
-              return Some(handle_check_error(
-                error.clone().into(),
-                Some(range),
-              ));
-            }
-          }
-          for (_, dep) in dependencies.iter() {
-            if !dep.is_dynamic {
-              let mut resolutions = vec![&dep.maybe_code];
-              if check_types {
-                resolutions.push(&dep.maybe_type);
-              }
-              #[allow(clippy::manual_flatten)]
-              for resolved in resolutions {
-                if let Resolved::Err(error) = resolved {
-                  let range = error.range();
-                  return Some(handle_check_error(
-                    error.clone().into(),
-                    Some(range),
-                  ));
-                }
-              }
-            }
-          }
-        }
-        ModuleEntry::Error(error) => {
-          let maybe_range = if roots.contains(specifier) {
-            None
-          } else {
-            self.referrer_map.get(specifier)
-          };
-          return Some(handle_check_error(
-            error.clone().into(),
-            maybe_range.map(|r| &**r),
-          ));
-        }
-        _ => {}
-      }
-    }
-    Some(Ok(()))
-  }
-
   /// Mark `roots` and all of their dependencies as type checked under `lib`.
   /// Assumes that all of those modules are known.
   pub fn set_type_checked(
@@ -396,17 +95,16 @@ impl GraphData {
     roots: &[ModuleSpecifier],
     lib: TsTypeLib,
   ) {
-    let specifiers: Vec<ModuleSpecifier> =
-      match self.walk(roots, true, true, true) {
-        Some(entries) => entries.into_keys().cloned().collect(),
-        None => unreachable!("contains module not in graph data"),
-      };
-    for specifier in specifiers {
-      if let ModuleEntry::Module { checked_libs, .. } =
-        self.modules.get_mut(&specifier).unwrap()
-      {
-        checked_libs.insert(lib);
-      }
+    let entries = self.graph.walk(
+      roots,
+      WalkOptions {
+        check_js: true,
+        follow_dynamic: true,
+        follow_type_only: true,
+      },
+    );
+    for (specifier, _) in entries {
+      self.checked_libs.insert((specifier.clone(), lib));
     }
   }
 
@@ -414,74 +112,44 @@ impl GraphData {
   pub fn is_type_checked(
     &self,
     roots: &[ModuleSpecifier],
-    lib: &TsTypeLib,
+    lib: TsTypeLib,
   ) -> bool {
     roots.iter().all(|r| {
-      let found = self.follow_redirect(r);
-      match self.modules.get(&found) {
-        Some(ModuleEntry::Module { checked_libs, .. }) => {
-          checked_libs.contains(lib)
-        }
-        _ => false,
-      }
+      let found = self.graph.resolve(r);
+      let key = (found.clone(), lib);
+      self.checked_libs.contains(&key)
     })
   }
-
-  /// If `specifier` is known and a redirect, return the found specifier.
-  /// Otherwise return `specifier`.
-  pub fn follow_redirect(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> ModuleSpecifier {
-    match self.modules.get(specifier) {
-      Some(ModuleEntry::Redirect(s)) => s.clone(),
-      _ => specifier.clone(),
-    }
-  }
-
-  pub fn get<'a>(
-    &'a self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<&'a ModuleEntry> {
-    self.modules.get(specifier)
-  }
-
-  /// Get the dependencies of a module or graph import.
-  pub fn get_dependencies<'a>(
-    &'a self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<&'a BTreeMap<String, Dependency>> {
-    let specifier = self.follow_redirect(specifier);
-    if let Some(ModuleEntry::Module { dependencies, .. }) = self.get(&specifier)
-    {
-      return Some(dependencies);
-    }
-    if let Some(graph_import) =
-      self.graph_imports.iter().find(|i| i.referrer == specifier)
-    {
-      return Some(&graph_import.dependencies);
-    }
-    None
-  }
 }
 
-impl From<&ModuleGraph> for GraphData {
-  fn from(graph: &ModuleGraph) -> Self {
-    let mut graph_data = GraphData::default();
-    graph_data.add_graph(graph);
-    graph_data
-  }
-}
-
-/// Like `graph.valid()`, but enhanced with referrer info.
+/// Check if `roots` and their deps are available. Returns `Ok(())` if
+/// so. Returns `Err(_)` if there is a known module graph or resolution
+/// error statically reachable from `roots`.
 pub fn graph_valid(
   graph: &ModuleGraph,
+  roots: &[ModuleSpecifier],
   follow_type_only: bool,
   check_js: bool,
 ) -> Result<(), AnyError> {
-  GraphData::from(graph)
-    .check(&graph.roots, follow_type_only, check_js)
-    .unwrap()
+  graph
+    .walk(
+      &roots,
+      deno_graph::WalkOptions {
+        follow_dynamic: false,
+        follow_type_only,
+        check_js,
+      },
+    )
+    .validate()
+    .map_err(|error| {
+      let message = if let ModuleGraphError::ResolutionError(err) = &error {
+        enhanced_resolution_error_message(err)
+      } else {
+        format!("{error}")
+      };
+
+      custom_error(get_error_class_name(&error.into()), message)
+    })
 }
 
 /// Checks the lockfile against the graph and and exits on errors.
@@ -523,11 +191,12 @@ pub async fn create_graph_and_maybe_check(
   let maybe_graph_resolver =
     maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
   let analyzer = ps.parsed_source_cache.as_analyzer();
-  let graph = Arc::new(
-    deno_graph::create_graph(
+  let mut graph = ps.graph_data.read().get_graph_clone();
+  graph
+    .build(
       vec![root],
       &mut cache,
-      deno_graph::GraphOptions {
+      deno_graph::BuildOptions {
         is_dynamic: false,
         imports: maybe_imports,
         resolver: maybe_graph_resolver,
@@ -535,22 +204,24 @@ pub async fn create_graph_and_maybe_check(
         reporter: None,
       },
     )
-    .await,
-  );
-
+    .await;
   let check_js = ps.options.check_js();
-  let mut graph_data = GraphData::default();
-  graph_data.add_graph(&graph);
-  graph_data
-    .check(
-      &graph.roots,
-      ps.options.type_check_mode() != TypeCheckMode::None,
-      check_js,
+  graph_valid(
+    &graph,
+    &graph.roots,
+    ps.options.type_check_mode() != TypeCheckMode::None,
+    check_js,
+  )?;
+  let graph = Arc::new(graph);
+  let (npm_package_reqs, has_node_builtin_specifier) = {
+    let mut graph_data = ps.graph_data.write();
+    graph_data.set_graph(graph.clone());
+    (
+      graph_data.npm_package_reqs().clone(),
+      graph_data.has_node_builtin_specifier(),
     )
-    .unwrap()?;
-  ps.npm_resolver
-    .add_package_reqs(graph_data.npm_package_reqs().clone())
-    .await?;
+  };
+  ps.npm_resolver.add_package_reqs(npm_package_reqs).await?;
   if let Some(lockfile) = &ps.lockfile {
     graph_lock_or_exit(&graph, &mut lockfile.lock());
   }
@@ -558,7 +229,7 @@ pub async fn create_graph_and_maybe_check(
   if ps.options.type_check_mode() != TypeCheckMode::None {
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now after the lockfile has been written
-    if graph_data.has_node_builtin_specifier() {
+    if has_node_builtin_specifier {
       ps.npm_resolver
         .inject_synthetic_types_node_package()
         .await?;
@@ -575,7 +246,7 @@ pub async fn create_graph_and_maybe_check(
     let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
     let check_result = check::check(
       &graph.roots,
-      Arc::new(RwLock::new(graph_data)),
+      &ps.graph_data,
       &cache,
       &ps.npm_resolver,
       check::CheckOptions {
@@ -602,8 +273,8 @@ pub fn error_for_any_npm_specifier(
   let first_npm_specifier = graph
     .specifiers()
     .filter_map(|(_, r)| match r {
-      Ok((specifier, kind, _)) if kind == deno_graph::ModuleKind::External => {
-        Some(specifier)
+      Ok(module) if module.kind == deno_graph::ModuleKind::External => {
+        Some(&module.specifier)
       }
       _ => None,
     })
@@ -613,25 +284,6 @@ pub fn error_for_any_npm_specifier(
   } else {
     Ok(())
   }
-}
-
-fn handle_check_error(
-  error: AnyError,
-  maybe_range: Option<&deno_graph::Range>,
-) -> Result<(), AnyError> {
-  let mut message = if let Some(err) = error.downcast_ref::<ResolutionError>() {
-    enhanced_resolution_error_message(err)
-  } else {
-    format!("{error}")
-  };
-
-  if let Some(range) = maybe_range {
-    if !range.specifier.as_str().contains("$deno") {
-      message.push_str(&format!("\n    at {range}"));
-    }
-  }
-
-  Err(custom_error(get_error_class_name(&error), message))
 }
 
 /// Adds more explanatory information to a resolution error.
