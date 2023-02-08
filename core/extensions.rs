@@ -245,8 +245,9 @@ impl ExtensionBuilder {
     }
   }
 }
-/// Helps embed JS files in an extension. Returns Vec<(&'static str, &'static str)>
-/// representing the filename and source code.
+
+/// Helps embed JS files in an extension. Returns a vector of
+/// `ExtensionFileSource`, that represent the filename and source code.
 ///
 /// Example:
 /// ```ignore
@@ -267,6 +268,20 @@ macro_rules! include_js_files {
   };
 }
 
+/// Helps embed JS files in an extension. Returns a vector of
+/// `ExtensionFileSource`, that represent the filename and source code.
+/// Additional "dir" option is required, that specifies which directory in the
+/// crate root contains the listed files. "dir" option will be prepended to
+/// each file name.
+///
+/// Example:
+/// ```ignore
+/// include_js_files_dir!(
+///   dir "example",
+///   "01_hello.js",
+///   "02_goodbye.js",
+/// )
+/// ```
 #[macro_export]
 macro_rules! include_js_files_dir {
   (dir $dir:literal, $($file:literal,)+) => {
