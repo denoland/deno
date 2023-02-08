@@ -15,6 +15,7 @@ mod ts {
   use crate::deno_webgpu_get_declaration;
   use deno_core::error::custom_error;
   use deno_core::error::AnyError;
+  use deno_core::include_js_files_dir;
   use deno_core::op;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
@@ -32,11 +33,7 @@ mod ts {
     specifier: String,
   }
 
-  pub fn create_compiler_snapshot(
-    snapshot_path: PathBuf,
-    files: Vec<PathBuf>,
-    cwd: &Path,
-  ) {
+  pub fn create_compiler_snapshot(snapshot_path: PathBuf, cwd: &Path) {
     // libs that are being provided by op crates.
     let mut op_crate_libs = HashMap::new();
     op_crate_libs.insert("deno.cache", deno_cache::get_declaration());
@@ -252,29 +249,36 @@ mod ts {
       }
     }
 
+    let tsc_extension = Extension::builder("deno_tsc")
+      .ops(vec![
+        op_build_info::decl(),
+        op_cwd::decl(),
+        op_exists::decl(),
+        op_is_node_file::decl(),
+        op_load::decl(),
+        op_script_version::decl(),
+      ])
+      .js(include_js_files_dir! {
+        dir "tsc",
+        "00_typescript.js",
+        "99_main_compiler.js",
+      })
+      .state(move |state| {
+        state.put(op_crate_libs.clone());
+        state.put(build_libs.clone());
+        state.put(path_dts.clone());
+
+        Ok(())
+      })
+      .build();
+
     create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions: vec![Extension::builder("deno_tsc")
-        .ops(vec![
-          op_build_info::decl(),
-          op_cwd::decl(),
-          op_exists::decl(),
-          op_is_node_file::decl(),
-          op_load::decl(),
-          op_script_version::decl(),
-        ])
-        .state(move |state| {
-          state.put(op_crate_libs.clone());
-          state.put(build_libs.clone());
-          state.put(path_dts.clone());
-
-          Ok(())
-        })
-        .build()],
-      extensions_with_js: vec![],
-      additional_files: files,
+      extensions: vec![],
+      extensions_with_js: vec![tsc_extension],
+      additional_files: vec![],
       additional_esm_files: vec![],
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         vec.extend_from_slice(
@@ -339,6 +343,8 @@ fn create_cli_snapshot(snapshot_path: PathBuf, esm_files: Vec<PathBuf>) {
     deno_flash::init::<PermissionsContainer>(false), // No --unstable
   ];
 
+  // TODO(bartlomieju): don't rely on `additional_esm_files`, we should be
+  // creating an extension here
   create_snapshot(CreateSnapshotOptions {
     cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
     snapshot_path,
@@ -452,8 +458,7 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
-  let js_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "tsc", None);
-  ts::create_compiler_snapshot(compiler_snapshot_path, js_files, &c);
+  ts::create_compiler_snapshot(compiler_snapshot_path, &c);
 
   let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
   let mut esm_files = get_js_files(env!("CARGO_MANIFEST_DIR"), "js", None);
