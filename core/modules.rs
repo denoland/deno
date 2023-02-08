@@ -292,6 +292,69 @@ impl ModuleLoader for NoopModuleLoader {
   }
 }
 
+pub struct InternalModuleLoader(Rc<dyn ModuleLoader>);
+
+impl InternalModuleLoader {
+  pub fn new(module_loader: Option<Rc<dyn ModuleLoader>>) -> Self {
+    InternalModuleLoader(
+      module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
+    )
+  }
+}
+
+impl ModuleLoader for InternalModuleLoader {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+  ) -> Result<ModuleSpecifier, Error> {
+    if let Ok(url_specifier) = ModuleSpecifier::parse(specifier) {
+      if url_specifier.scheme() == "internal" {
+        let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
+        if referrer == "." || referrer_specifier.unwrap().scheme() == "internal"
+        {
+          return Ok(url_specifier);
+        } else {
+          return Err(generic_error(
+            "Cannot load internal module from external code",
+          ));
+        };
+      }
+    }
+
+    self.0.resolve(specifier, referrer, kind)
+  }
+
+  fn load(
+    &self,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
+    is_dyn_import: bool,
+  ) -> Pin<Box<ModuleSourceFuture>> {
+    self.0.load(module_specifier, maybe_referrer, is_dyn_import)
+  }
+
+  fn prepare_load(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<String>,
+    is_dyn_import: bool,
+  ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
+    if module_specifier.scheme() == "internal" {
+      return async { Ok(()) }.boxed_local();
+    }
+
+    self.0.prepare_load(
+      op_state,
+      module_specifier,
+      maybe_referrer,
+      is_dyn_import,
+    )
+  }
+}
+
 /// Basic file system module loader.
 ///
 /// Note that this loader will **block** event loop
@@ -2507,5 +2570,34 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
         "if (globalThis.url !== 'file:///main_with_code.js') throw Error('x')",
       )
       .unwrap();
+  }
+
+  #[test]
+  fn internal_module_loader() {
+    let loader = InternalModuleLoader::new(None);
+    assert!(loader
+      .resolve("internal:foo", "internal:bar", ResolutionKind::Import)
+      .is_ok());
+    assert_eq!(
+      loader
+        .resolve("internal:foo", "file://bar", ResolutionKind::Import)
+        .err()
+        .map(|e| e.to_string()),
+      Some("Cannot load internal module from external code".to_string())
+    );
+    assert_eq!(
+      loader
+        .resolve("file://foo", "file://bar", ResolutionKind::Import)
+        .err()
+        .map(|e| e.to_string()),
+      Some("Module loading is not supported".to_string())
+    );
+    assert_eq!(
+      loader
+        .resolve("file://foo", "internal:bar", ResolutionKind::Import)
+        .err()
+        .map(|e| e.to_string()),
+      Some("Module loading is not supported".to_string())
+    );
   }
 }

@@ -20,11 +20,7 @@ use crate::urlpattern::op_urlpattern_process_match_input;
 pub fn init() -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl"])
-    .js(include_js_files!(
-      prefix "internal:ext/url",
-      "00_url.js",
-      "01_urlpattern.js",
-    ))
+    .esm(include_js_files!("00_url.js", "01_urlpattern.js",))
     .ops(vec![
       op_url_reparse::decl(),
       op_url_parse::decl(),

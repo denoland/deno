@@ -123,7 +123,7 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
     let file = self.maybe_file.as_ref()?;
     // If the current version saved is not the actualy current version of the binary
     // It means
-    // - We already check for a new vesion today
+    // - We already check for a new version today
     // - The user have probably upgraded today
     // So we should not prompt and wait for tomorrow for the latest version to be updated again
     if file.current_version != self.env.current_version() {

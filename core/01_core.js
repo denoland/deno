@@ -427,6 +427,8 @@
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });
+  const internals = {};
+  ObjectAssign(globalThis.__bootstrap, { internals });
   ObjectAssign(globalThis.Deno, { core });
 
   // Direct bindings on `globalThis`

@@ -13,17 +13,18 @@ use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
-use crate::modules::NoopModuleLoader;
 use crate::op_void_async;
 use crate::op_void_sync;
 use crate::ops::*;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
+use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
 use crate::OpState;
 use crate::PromiseId;
+use anyhow::Context as AnyhowContext;
 use anyhow::Error;
 use futures::channel::oneshot;
 use futures::future::poll_fn;
@@ -199,9 +200,9 @@ fn v8_init(
 ) {
   // Include 10MB ICU data file.
   #[repr(C, align(16))]
-  struct IcuData([u8; 10454784]);
+  struct IcuData([u8; 10541264]);
   static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
-  v8::icu::set_common_data_71(&ICU_DATA.0).unwrap();
+  v8::icu::set_common_data_72(&ICU_DATA.0).unwrap();
 
   let flags = concat!(
     " --wasm-test-streaming",
@@ -605,9 +606,16 @@ impl JsRuntime {
       None
     };
 
-    let loader = options
-      .module_loader
-      .unwrap_or_else(|| Rc::new(NoopModuleLoader));
+    let loader = if snapshot_options != SnapshotOptions::Load {
+      Rc::new(crate::modules::InternalModuleLoader::new(
+        options.module_loader,
+      ))
+    } else {
+      options
+        .module_loader
+        .unwrap_or_else(|| Rc::new(NoopModuleLoader))
+    };
+
     {
       let mut state = state_rc.borrow_mut();
       state.global_realm = Some(JsRealm(global_context.clone()));
@@ -805,10 +813,36 @@ impl JsRuntime {
     // Take extensions to avoid double-borrow
     let extensions = std::mem::take(&mut self.extensions_with_js);
     for ext in &extensions {
-      let js_files = ext.init_js();
-      for (filename, source) in js_files {
-        // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        realm.execute_script(self.v8_isolate(), filename, source)?;
+      {
+        let js_files = ext.get_esm_sources();
+        for file_source in js_files {
+          futures::executor::block_on(async {
+            let id = self
+              .load_side_module(
+                &ModuleSpecifier::parse(&file_source.specifier)?,
+                Some(file_source.code.to_string()),
+              )
+              .await?;
+            let receiver = self.mod_evaluate(id);
+            self.run_event_loop(false).await?;
+            receiver.await?
+          })
+          .with_context(|| {
+            format!("Couldn't execute '{}'", file_source.specifier)
+          })?;
+        }
+      }
+
+      {
+        let js_files = ext.get_js_sources();
+        for file_source in js_files {
+          // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
+          realm.execute_script(
+            self.v8_isolate(),
+            &file_source.specifier,
+            file_source.code,
+          )?;
+        }
       }
     }
     // Restore extensions
