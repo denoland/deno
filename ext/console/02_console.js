@@ -47,6 +47,7 @@ const {
   StringPrototypeIncludes,
   StringPrototypeStartsWith,
   TypeError,
+  NumberIsInteger,
   NumberParseInt,
   RegExp,
   RegExpPrototype,
@@ -252,7 +253,7 @@ function cliTable(head, columns) {
       const width = columnWidths[i] || 0;
       const counted = getStringWidth(value);
       columnWidths[i] = MathMax(width, counted);
-      columnRightAlign[i] &= Number.isInteger(value);
+      columnRightAlign[i] &= NumberIsInteger(value);
     }
   }
 
