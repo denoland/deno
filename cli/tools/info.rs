@@ -608,7 +608,7 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleGraphError::UnsupportedImportAssertionType { .. } => {
         self.build_error_msg(specifier, "(unsupported import assertion)")
       }
-      ModuleGraphError::UnsupportedMediaType(_, _) => {
+      ModuleGraphError::UnsupportedMediaType { .. } => {
         self.build_error_msg(specifier, "(unsupported)")
       }
       ModuleGraphError::Missing(_, _) => {

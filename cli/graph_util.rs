@@ -142,11 +142,17 @@ pub fn graph_valid(
     )
     .validate()
     .map_err(|error| {
-      let message = if let ModuleGraphError::ResolutionError(err) = &error {
+      let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
         enhanced_resolution_error_message(err)
       } else {
         format!("{error}")
       };
+
+      if let Some(range) = error.maybe_range() {
+        if !range.specifier.as_str().contains("/$deno$eval") {
+          message.push_str(&format!("\n    at {}", range));
+        }
+      }
 
       custom_error(get_error_class_name(&error.into()), message)
     })
@@ -191,7 +197,7 @@ pub async fn create_graph_and_maybe_check(
   let maybe_graph_resolver =
     maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
   let analyzer = ps.parsed_source_cache.as_analyzer();
-  let mut graph = ps.graph_data.read().get_graph_clone();
+  let mut graph = ModuleGraph::default();
   graph
     .build(
       vec![root],
@@ -214,7 +220,7 @@ pub async fn create_graph_and_maybe_check(
   )?;
   let graph = Arc::new(graph);
   let (npm_package_reqs, has_node_builtin_specifier) = {
-    let mut graph_data = ps.graph_data.write();
+    let mut graph_data = GraphData::default();
     graph_data.set_graph(graph.clone());
     (
       graph_data.npm_package_reqs().clone(),

@@ -33,7 +33,7 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
       get_diagnostic_class(diagnostic)
     }
     ModuleGraphError::ResolutionError(err) => get_resolution_error_class(err),
-    ModuleGraphError::UnsupportedMediaType(_, _)
+    ModuleGraphError::UnsupportedMediaType { .. }
     | ModuleGraphError::UnsupportedImportAssertionType { .. } => "TypeError",
     ModuleGraphError::Missing(_, _) => "NotFound",
   }
