@@ -57,7 +57,6 @@ pub fn graph_valid(
   walk_options: deno_graph::WalkOptions,
 ) -> Result<(), AnyError> {
   graph.walk(roots, walk_options).validate().map_err(|error| {
-    let error = *error;
     let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
       enhanced_resolution_error_message(err)
     } else {
