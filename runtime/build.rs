@@ -194,8 +194,6 @@ mod not_docs {
       startup_snapshot: None,
       extensions: vec![],
       extensions_with_js,
-      additional_files: vec![],
-      additional_esm_files: vec![],
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         lzzzz::lz4_hc::compress_to_vec(
           snapshot_slice,
