@@ -133,8 +133,8 @@ declare namespace Deno {
     & Record<NativeNumberType, number>
     & Record<NativeBigIntType, number | bigint>
     & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue | null>
-    & Record<NativeFunctionType, PointerValue | null>
+    & Record<NativePointerType, PointerValue>
+    & Record<NativeFunctionType, PointerValue>
     & Record<NativeBufferType, BufferSource | null>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -193,9 +193,9 @@ declare namespace Deno {
     & Record<NativeNumberType, number>
     & Record<NativeBigIntType, number | bigint>
     & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue | null>
-    & Record<NativeBufferType, PointerValue | null>
-    & Record<NativeFunctionType, PointerValue | null>;
+    & Record<NativePointerType, PointerValue>
+    & Record<NativeBufferType, PointerValue>
+    & Record<NativeFunctionType, PointerValue>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -350,7 +350,7 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type PointerValue = Record<string | number | symbol, never>;
+  export type PointerValue = null | Record<string | number | symbol, never>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -365,7 +365,7 @@ declare namespace Deno {
     /** Return the direct memory pointer to the typed array in memory. */
     static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
     /** Return a new pointer offset from the original by `offset` bytes. */
-    static offset(value: PointerValue, offset: number): PointerValue
+    static offset(value: NonNullable<PointerValue>, offset: number): PointerValue
     /** Get the numeric value of a pointer */
     static value(value: PointerValue): number | bigint;
   }
@@ -380,9 +380,9 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: PointerValue);
+    constructor(pointer: NonNullable<PointerValue>);
 
-    pointer: PointerValue;
+    pointer: NonNullable<PointerValue>;
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
@@ -423,14 +423,14 @@ declare namespace Deno {
     getCString(offset?: number): string;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the specified pointer. */
-    static getCString(pointer: PointerValue, offset?: number): string;
+    static getCString(pointer: NonNullable<PointerValue>, offset?: number): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the pointer. */
     getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the specified pointer. */
     static getArrayBuffer(
-      pointer: PointerValue,
+      pointer: NonNullable<PointerValue>,
       byteLength: number,
       offset?: number,
     ): ArrayBuffer;
@@ -446,7 +446,7 @@ declare namespace Deno {
      *
      * Also takes optional byte offset from the pointer. */
     static copyInto(
-      pointer: PointerValue,
+      pointer: NonNullable<PointerValue>,
       destination: BufferSource,
       offset?: number,
     ): void;
@@ -461,11 +461,11 @@ declare namespace Deno {
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
     /** The pointer to the function. */
-    pointer: PointerValue;
+    pointer: NonNullable<PointerValue>;
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerValue, definition: Const<Fn>);
+    constructor(pointer: NonNullable<PointerValue>, definition: Const<Fn>);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -524,7 +524,7 @@ declare namespace Deno {
     );
 
     /** The pointer to the unsafe callback. */
-    pointer: PointerValue;
+    pointer: NonNullable<PointerValue>;
     /** The definition of the unsafe callback. */
     definition: Definition;
     /** The callback function. */

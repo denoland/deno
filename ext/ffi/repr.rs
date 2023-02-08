@@ -71,6 +71,10 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  if ptr.is_null() {
+    return Err(type_error("Invalid pointer to offset, pointer is null"));
+  }
+
   // SAFETY: Pointer and offset are user provided.
   Ok(unsafe { ptr.offset(offset) })
 }
