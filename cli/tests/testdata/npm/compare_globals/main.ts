@@ -23,5 +23,5 @@ globals.withNodeGlobalThis((nodeGlobalThis: any) => {
   console.log(setTimeout);
   // this delete should also delete on the Deno globalThis
   delete nodeGlobalThis["setTimeout"];
-  console.log(globalThis.setTimeout);
+  console.log(nodeGlobalThis["setTimeout"]); // should be undefined
 });
