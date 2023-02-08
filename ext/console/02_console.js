@@ -253,7 +253,7 @@ function cliTable(head, columns) {
       const width = columnWidths[i] || 0;
       const counted = getStringWidth(value);
       columnWidths[i] = MathMax(width, counted);
-      columnRightAlign[i] &= NumberIsInteger(value);
+      columnRightAlign[i] &= NumberIsInteger(+value);
     }
   }
 
