@@ -10,6 +10,7 @@ use v8::MapFnTo;
 use crate::error::is_instance_of_error;
 use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
+use crate::modules::resolve_helper;
 use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
@@ -379,9 +380,12 @@ fn import_meta_resolve(
     url_prop.to_rust_string_lossy(scope)
   };
   let module_map_rc = JsRuntime::module_map(scope);
-  let loader = {
+  let (loader, snapshot_loaded_and_not_snapshotting) = {
     let module_map = module_map_rc.borrow();
-    module_map.loader.clone()
+    (
+      module_map.loader.clone(),
+      module_map.snapshot_loaded_and_not_snapshotting,
+    )
   };
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
@@ -390,8 +394,13 @@ fn import_meta_resolve(
     return;
   }
 
-  match loader.resolve(&specifier_str, &referrer, ResolutionKind::DynamicImport)
-  {
+  match resolve_helper(
+    snapshot_loaded_and_not_snapshotting,
+    loader,
+    &specifier_str,
+    &referrer,
+    ResolutionKind::DynamicImport,
+  ) {
     Ok(resolved) => {
       let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();
       rv.set(resolved_val);
