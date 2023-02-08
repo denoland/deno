@@ -11,7 +11,6 @@ use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
-use deno_graph::Resolved;
 
 use crate::util::path::path_with_stem_suffix;
 use crate::util::path::relative_specifier;
@@ -76,13 +75,12 @@ impl Mappings {
 
     // resolve all the "proxy" paths to use for when an x-typescript-types header is specified
     for module in remote_modules {
-      if let Some((
-        _,
-        Resolved::Ok {
-          specifier, range, ..
-        },
-      )) = &module.maybe_types_dependency
+      if let Some(resolved) = &module
+        .maybe_types_dependency
+        .as_ref()
+        .and_then(|d| d.dependency.ok())
       {
+        let range = &resolved.range;
         // hack to tell if it's an x-typescript-types header
         let is_ts_types_header =
           range.start == Position::zeroed() && range.end == Position::zeroed();
@@ -96,7 +94,7 @@ impl Mappings {
             module.specifier.clone(),
             ProxiedModule {
               output_path: proxied_path,
-              declaration_specifier: specifier.clone(),
+              declaration_specifier: resolved.specifier.clone(),
             },
           );
         }

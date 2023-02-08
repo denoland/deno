@@ -42,7 +42,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 v8 = { version = "0.62.2", default-features = false }
-deno_ast = { version = "0.23.2", features = ["transpiling"] }
+deno_ast = { version = "0.24.0", features = ["transpiling"] }
 
 deno_core = { version = "0.171.0", path = "./core" }
 deno_ops = { version = "0.49.0", path = "./ops" }
@@ -295,8 +295,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
-[patch.crates-io.deno_ast]
-path = "../deno_ast"
 [patch.crates-io.deno_graph]
 path = "../deno_graph"
 [patch.crates-io.deno_doc]

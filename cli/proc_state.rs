@@ -19,13 +19,13 @@ use crate::emit::emit_parsed_source;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
-use crate::graph_util::GraphData;
 use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
 use crate::npm::resolve_graph_npm_info;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 use crate::npm::RealNpmRegistryApi;
 use crate::resolver::CliResolver;
@@ -48,7 +48,8 @@ use deno_core::SharedArrayBufferStore;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
 use deno_graph::ModuleGraph;
-use deno_graph::Resolved;
+use deno_graph::ModuleKind;
+use deno_graph::Resolution;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -57,6 +58,7 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
 use log::warn;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -78,7 +80,7 @@ pub struct Inner {
   pub emit_cache: EmitCache,
   pub emit_options: deno_ast::EmitOptions,
   pub emit_options_hash: u64,
-  pub graph_data: Arc<RwLock<GraphData>>,
+  graph_data: Arc<RwLock<GraphData>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -330,7 +332,7 @@ impl ProcState {
     let analyzer = self.parsed_source_cache.as_analyzer();
 
     log::debug!("Creating module graph.");
-    let mut graph = self.graph_data.read().get_graph_clone();
+    let mut graph = self.graph_data.read().graph_inner_clone();
 
     // Determine any modules that have already been emitted this session and
     // should be skipped.
@@ -359,10 +361,10 @@ impl ProcState {
     let (npm_package_reqs, has_node_builtin_specifier) = {
       graph_valid_with_cli_options(&graph, &roots, &self.options)?;
       let mut graph_data = self.graph_data.write();
-      graph_data.set_graph(Arc::new(graph));
+      graph_data.update_graph(Arc::new(graph));
       (
-        graph_data.npm_package_reqs().clone(),
-        graph_data.has_node_builtin_specifier(),
+        graph_data.npm_packages.clone(),
+        graph_data.has_node_builtin_specifier,
       )
     };
 
@@ -393,8 +395,8 @@ impl ProcState {
       let (graph, has_node_builtin_specifier) = {
         let graph_data = self.graph_data.read();
         (
-          Arc::new(graph_data.get_graph().segment(&roots)),
-          graph_data.has_node_builtin_specifier(),
+          Arc::new(graph_data.graph.segment(&roots)),
+          graph_data.has_node_builtin_specifier,
         )
       };
       let options = check::CheckOptions {
@@ -461,7 +463,7 @@ impl ProcState {
       return Ok(());
     }
 
-    let mut graph = self.graph_data.read().get_graph_clone();
+    let mut graph = self.graph_data.read().graph_inner_clone();
     let mut loader = self.create_graph_loader();
     let analyzer = self.parsed_source_cache.as_analyzer();
     graph
@@ -475,7 +477,7 @@ impl ProcState {
       )
       .await;
 
-    self.graph_data.write().set_graph(Arc::new(graph));
+    self.graph_data.write().update_graph(Arc::new(graph));
     self.node_std_graph_prepared.store(true, Ordering::Relaxed);
     Ok(())
   }
@@ -520,7 +522,7 @@ impl ProcState {
       }
 
       let graph_data = self.graph_data.read();
-      let graph = graph_data.get_graph();
+      let graph = &graph_data.graph;
       let maybe_resolved = match graph.get(&referrer) {
         Some(module) => module
           .dependencies
@@ -530,7 +532,8 @@ impl ProcState {
       };
 
       match maybe_resolved {
-        Some((found_referrer, Resolved::Ok { specifier, .. })) => {
+        Some((found_referrer, Resolution::Ok(resolved))) => {
+          let specifier = &resolved.specifier;
           if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
           {
             if !self.options.unstable()
@@ -554,13 +557,13 @@ impl ProcState {
             return Ok(specifier.clone());
           }
         }
-        Some((_, Resolved::Err(err))) => {
+        Some((_, Resolution::Err(err))) => {
           return Err(custom_error(
             "TypeError",
             format!("{}\n", err.to_string_with_range()),
           ))
         }
-        Some((_, Resolved::None)) | None => {}
+        Some((_, Resolution::None)) | None => {}
       }
     }
 
@@ -610,16 +613,17 @@ impl ProcState {
   }
 
   pub fn cache_module_emits(&self) -> Result<(), AnyError> {
-    let graph = self.graph_data.read().get_graph().clone();
+    let graph = self.graph();
     for module in graph.modules() {
-      let is_emittable = matches!(
-        module.media_type,
-        MediaType::TypeScript
-          | MediaType::Mts
-          | MediaType::Cts
-          | MediaType::Jsx
-          | MediaType::Tsx
-      );
+      let is_emittable = module.kind != ModuleKind::External
+        && matches!(
+          module.media_type,
+          MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Jsx
+            | MediaType::Tsx
+        );
       if is_emittable {
         if let Some(code) = &module.maybe_source {
           emit_parsed_source(
@@ -704,6 +708,10 @@ impl ProcState {
 
     Ok(graph)
   }
+
+  pub fn graph(&self) -> Arc<ModuleGraph> {
+    self.graph_data.read().graph.clone()
+  }
 }
 
 #[derive(Clone, Debug)]
@@ -726,6 +734,92 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
 
     if modules_done == modules_total {
       self.sender.send(file_paths.drain(..).collect()).unwrap();
+    }
+  }
+}
+
+#[derive(Debug, Default)]
+struct GraphData {
+  graph: Arc<ModuleGraph>,
+  /// The npm package requirements from all the encountered graphs
+  /// in the order that they should be resolved.
+  npm_packages: Vec<NpmPackageReq>,
+  /// If the graph had a "node:" specifier.
+  has_node_builtin_specifier: bool,
+  checked_libs: HashMap<TsTypeLib, HashSet<ModuleSpecifier>>,
+}
+
+impl GraphData {
+  /// Store data from `graph` into `self`.
+  pub fn update_graph(&mut self, graph: Arc<ModuleGraph>) {
+    let mut has_npm_specifier_in_graph = false;
+
+    for (specifier, _) in graph.specifiers() {
+      match specifier.scheme() {
+        "node" => {
+          // We don't ever set this back to false because once it's
+          // on then it's on globally.
+          self.has_node_builtin_specifier = true;
+        }
+        "npm" => {
+          if !has_npm_specifier_in_graph
+            && NpmPackageReference::from_specifier(specifier).is_ok()
+          {
+            has_npm_specifier_in_graph = true;
+          }
+        }
+        _ => {}
+      }
+
+      if has_npm_specifier_in_graph && self.has_node_builtin_specifier {
+        break; // exit early
+      }
+    }
+
+    if has_npm_specifier_in_graph {
+      self.npm_packages = resolve_graph_npm_info(&graph).package_reqs;
+    }
+    self.graph = graph;
+  }
+
+  // todo(dsherret): remove the need for cloning this (maybe if we used an AsyncRefCell)
+  pub fn graph_inner_clone(&self) -> ModuleGraph {
+    (*self.graph).clone()
+  }
+
+  /// Mark `roots` and all of their dependencies as type checked under `lib`.
+  /// Assumes that all of those modules are known.
+  pub fn set_type_checked(
+    &mut self,
+    roots: &[ModuleSpecifier],
+    lib: TsTypeLib,
+  ) {
+    let entries = self.graph.walk(
+      roots,
+      deno_graph::WalkOptions {
+        check_js: true,
+        follow_dynamic: true,
+        follow_type_only: true,
+      },
+    );
+    let checked_lib_set = self.checked_libs.entry(lib).or_default();
+    for (specifier, _) in entries {
+      checked_lib_set.insert(specifier.clone());
+    }
+  }
+
+  /// Check if `roots` are all marked as type checked under `lib`.
+  pub fn is_type_checked(
+    &self,
+    roots: &[ModuleSpecifier],
+    lib: TsTypeLib,
+  ) -> bool {
+    match self.checked_libs.get(&lib) {
+      Some(checked_lib_set) => roots.iter().all(|r| {
+        let found = self.graph.resolve(r);
+        checked_lib_set.contains(&found)
+      }),
+      None => false,
     }
   }
 }

@@ -31,7 +31,7 @@ use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleKind;
-use deno_graph::Resolved;
+use deno_graph::ResolutionResolved;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
@@ -537,7 +537,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     } else {
       &specifier
     };
-    let maybe_source = if let Some(module) = graph.get(&specifier) {
+    let maybe_source = if let Some(module) = graph.get(specifier) {
       media_type = module.media_type;
       module.maybe_source.as_ref().map(|s| Cow::Borrowed(&**s))
     } else if state
@@ -615,28 +615,31 @@ fn op_resolve(
 
     let graph = &state.graph;
     let resolved_dep = match graph.get(&referrer).map(|m| &m.dependencies) {
-      Some(dependencies) => dependencies.get(&specifier).map(|d| {
-        if matches!(d.maybe_type, Resolved::Ok { .. }) {
-          &d.maybe_type
+      Some(dependencies) => dependencies.get(&specifier).and_then(|d| {
+        if let Some(type_resolution) = d.maybe_type.ok() {
+          Some(type_resolution)
+        } else if let Some(code_resolution) = d.maybe_code.ok() {
+          Some(code_resolution)
         } else {
-          &d.maybe_code
+          None
         }
       }),
       None => None,
     };
 
     let maybe_result = match resolved_dep {
-      Some(Resolved::Ok { specifier, .. }) => {
-        let module = match graph.get(&specifier) {
-          Some(module) => match &module.maybe_types_dependency {
-            Some((_, Resolved::Ok { specifier, .. })) => {
-              match graph.get(&specifier) {
-                Some(module) => Some(module),
-                _ => None,
-              }
+      Some(ResolutionResolved { specifier, .. }) => {
+        let module = match graph.get(specifier) {
+          Some(module) => {
+            let maybe_types_dep = module
+              .maybe_types_dependency
+              .as_ref()
+              .map(|d| &d.dependency);
+            match maybe_types_dep.and_then(|d| d.maybe_specifier()) {
+              Some(specifier) => graph.get(specifier),
+              _ => Some(module),
             }
-            _ => Some(module),
-          },
+          }
           _ => None,
         };
         if let Some(module) = module {

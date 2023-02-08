@@ -3,15 +3,12 @@
 use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsConfigType;
-use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::cache::TypeCheckCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
 use crate::npm::resolve_graph_npm_info;
-use crate::npm::NpmPackageReference;
-use crate::npm::NpmPackageReq;
 use crate::proc_state::ProcState;
 use crate::resolver::CliResolver;
 use crate::tools::check;
@@ -24,104 +21,9 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
-use deno_graph::WalkOptions;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMapError;
-use std::collections::HashSet;
 use std::sync::Arc;
-
-#[derive(Debug, Default)]
-pub struct GraphData {
-  graph: Arc<ModuleGraph>,
-  npm_packages: Vec<NpmPackageReq>,
-  has_node_builtin_specifier: bool,
-  checked_libs: HashSet<(ModuleSpecifier, TsTypeLib)>,
-}
-
-impl GraphData {
-  /// Store data from `graph` into `self`.
-  pub fn set_graph(&mut self, graph: Arc<ModuleGraph>) {
-    let mut has_npm_specifier_in_graph = false;
-
-    for (specifier, _) in graph.specifiers() {
-      match specifier.scheme() {
-        "node" => {
-          self.has_node_builtin_specifier = true;
-        }
-        "npm" => {
-          if !has_npm_specifier_in_graph
-            && NpmPackageReference::from_specifier(specifier).is_ok()
-          {
-            has_npm_specifier_in_graph = true;
-          }
-        }
-        _ => {}
-      }
-
-      if has_npm_specifier_in_graph && self.has_node_builtin_specifier {
-        break; // exit early
-      }
-    }
-
-    if has_npm_specifier_in_graph {
-      self.npm_packages = resolve_graph_npm_info(&graph).package_reqs;
-    }
-    self.graph = graph;
-  }
-
-  pub fn get_graph(&self) -> &Arc<ModuleGraph> {
-    &self.graph
-  }
-
-  // todo(dsherret): remove the need for cloning this
-  pub fn get_graph_clone(&self) -> ModuleGraph {
-    (*self.graph).clone()
-  }
-
-  /// Gets if the graph had a "node:" specifier.
-  pub fn has_node_builtin_specifier(&self) -> bool {
-    self.has_node_builtin_specifier
-  }
-
-  /// Gets the npm package requirements from all the encountered graphs
-  /// in the order that they should be resolved.
-  pub fn npm_package_reqs(&self) -> &Vec<NpmPackageReq> {
-    &self.npm_packages
-  }
-
-  /// Mark `roots` and all of their dependencies as type checked under `lib`.
-  /// Assumes that all of those modules are known.
-  pub fn set_type_checked(
-    &mut self,
-    roots: &[ModuleSpecifier],
-    lib: TsTypeLib,
-  ) {
-    let entries = self.graph.walk(
-      roots,
-      WalkOptions {
-        check_js: true,
-        follow_dynamic: true,
-        follow_type_only: true,
-      },
-    );
-    for (specifier, _) in entries {
-      self.checked_libs.insert((specifier.clone(), lib));
-    }
-  }
-
-  /// Check if `roots` are all marked as type checked under `lib`.
-  pub fn is_type_checked(
-    &self,
-    roots: &[ModuleSpecifier],
-    lib: TsTypeLib,
-  ) -> bool {
-    roots.iter().all(|r| {
-      let found = self.graph.resolve(r);
-      let key = (found.clone(), lib);
-      self.checked_libs.contains(&key)
-    })
-  }
-}
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
 /// so. Returns `Err(_)` if there is a known module graph or resolution
@@ -145,29 +47,30 @@ pub fn graph_valid_with_cli_options(
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
 /// so. Returns `Err(_)` if there is a known module graph or resolution
 /// error statically reachable from `roots`.
+///
+/// It is preferable to use this over using deno_graph's API directly
+/// because it will have enhanced error message information specifically
+/// for the CLI.
 pub fn graph_valid(
   graph: &ModuleGraph,
   roots: &[ModuleSpecifier],
   walk_options: deno_graph::WalkOptions,
 ) -> Result<(), AnyError> {
-  graph
-    .walk(&roots, walk_options)
-    .validate()
-    .map_err(|error| {
-      let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
-        enhanced_resolution_error_message(err)
-      } else {
-        format!("{error}")
-      };
+  graph.walk(roots, walk_options).validate().map_err(|error| {
+    let mut message = if let ModuleGraphError::ResolutionError(err) = &*error {
+      enhanced_resolution_error_message(err)
+    } else {
+      format!("{error}")
+    };
 
-      if let Some(range) = error.maybe_range() {
-        if !range.specifier.as_str().contains("/$deno$eval") {
-          message.push_str(&format!("\n    at {}", range));
-        }
+    if let Some(range) = error.maybe_range() {
+      if !range.specifier.as_str().contains("/$deno$eval") {
+        message.push_str(&format!("\n    at {range}"));
       }
+    }
 
-      custom_error(get_error_class_name(&error.into()), message)
-    })
+    custom_error(get_error_class_name(&error.into()), message)
+  })
 }
 
 /// Checks the lockfile against the graph and and exits on errors.

@@ -84,8 +84,7 @@ impl CliModuleLoader {
         media_type: MediaType::JavaScript,
       });
     }
-    let graph_data = self.ps.graph_data.read();
-    let graph = graph_data.get_graph();
+    let graph = self.ps.graph();
     match graph.get(specifier) {
       Some(deno_graph::Module {
         maybe_source: Some(code),
@@ -109,7 +108,7 @@ impl CliModuleLoader {
             emit_parsed_source(
               &self.ps.emit_cache,
               &self.ps.parsed_source_cache,
-              &specifier,
+              specifier,
               *media_type,
               code,
               &self.ps.emit_options,
@@ -297,8 +296,7 @@ impl SourceMapGetter for CliModuleLoader {
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
-    let graph_data = self.ps.graph_data.read();
-    let graph = graph_data.get_graph();
+    let graph = self.ps.graph();
     let code = match graph.get(&resolve_url(file_name).ok()?) {
       Some(deno_graph::Module {
         maybe_source: Some(code),

@@ -14,7 +14,7 @@ use deno_graph::Dependency;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
-use deno_graph::Resolved;
+use deno_graph::Resolution;
 use deno_runtime::colors;
 
 use crate::args::Flags;
@@ -450,15 +450,16 @@ impl<'a> GraphDisplayContext<'a> {
         print_tree_node(&root_node, writer)?;
         Ok(())
       }
-      Err(ModuleGraphError::Missing(_, _)) => {
-        writeln!(
-          writer,
-          "{} module could not be found",
-          colors::red("error:")
-        )
-      }
       Err(err) => {
-        writeln!(writer, "{} {}", colors::red("error:"), err)
+        if let ModuleGraphError::Missing(_, _) = *err {
+          writeln!(
+            writer,
+            "{} module could not be found",
+            colors::red("error:")
+          )
+        } else {
+          writeln!(writer, "{} {}", colors::red("error:"), err)
+        }
       }
       Ok(None) => {
         writeln!(
@@ -536,8 +537,10 @@ impl<'a> GraphDisplayContext<'a> {
     let mut tree_node = TreeNode::from_text(header_text);
 
     if !was_seen {
-      if let Some((_, type_dep)) = &module.maybe_types_dependency {
-        if let Some(child) = self.build_resolved_info(type_dep, true) {
+      if let Some(types_dep) = &module.maybe_types_dependency {
+        if let Some(child) =
+          self.build_resolved_info(&types_dep.dependency, true)
+        {
           tree_node.children.push(child);
         }
       }
@@ -631,11 +634,12 @@ impl<'a> GraphDisplayContext<'a> {
 
   fn build_resolved_info(
     &mut self,
-    resolved: &Resolved,
+    resolution: &Resolution,
     type_dep: bool,
   ) -> Option<TreeNode> {
-    match resolved {
-      Resolved::Ok { specifier, .. } => {
+    match resolution {
+      Resolution::Ok(resolved) => {
+        let specifier = &resolved.specifier;
         let resolved_specifier = self.graph.resolve(specifier);
         Some(match self.graph.try_get(&resolved_specifier) {
           Ok(Some(module)) => self.build_module_info(module, type_dep),
@@ -647,7 +651,7 @@ impl<'a> GraphDisplayContext<'a> {
           )),
         })
       }
-      Resolved::Err(err) => Some(TreeNode::from_text(format!(
+      Resolution::Err(err) => Some(TreeNode::from_text(format!(
         "{} {}",
         colors::italic(err.to_string()),
         colors::red_bold("(resolve error)")
