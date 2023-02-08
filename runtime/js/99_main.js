@@ -43,7 +43,7 @@ import * as util from "internal:runtime/js/06_util.js";
 import * as event from "internal:deno_web/02_event.js";
 import * as location from "internal:deno_web/12_location.js";
 import * as build from "internal:runtime/js/01_build.js";
-import * as version from "internal:runtime/js/01_version.js";
+import * as version from "internal:runtime/js/01_version.ts";
 import * as os from "internal:runtime/js/30_os.js";
 import * as timers from "internal:deno_web/02_timers.js";
 import * as colors from "internal:deno_console/01_colors.js";

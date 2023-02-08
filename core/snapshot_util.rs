@@ -5,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::Extension;
+use crate::InternalModuleLoaderCb;
 use crate::JsRuntime;
 use crate::ModuleSpecifier;
 use crate::RuntimeOptions;
@@ -21,6 +22,7 @@ pub struct CreateSnapshotOptions {
   pub additional_files: Vec<PathBuf>,
   pub additional_esm_files: Vec<PathBuf>,
   pub compression_cb: Option<Box<CompressionCb>>,
+  pub snapshot_module_load_cb: Option<InternalModuleLoaderCb>,
 }
 
 pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
@@ -29,6 +31,7 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     startup_snapshot: create_snapshot_options.startup_snapshot,
     extensions: create_snapshot_options.extensions,
     extensions_with_js: create_snapshot_options.extensions_with_js,
+    snapshot_module_load_cb: create_snapshot_options.snapshot_module_load_cb,
     ..Default::default()
   });
 

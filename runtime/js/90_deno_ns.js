@@ -12,7 +12,7 @@ import * as http from "internal:deno_http/01_http.js";
 import * as flash from "internal:deno_flash/01_http.js";
 import * as build from "internal:runtime/js/01_build.js";
 import * as errors from "internal:runtime/js/01_errors.js";
-import * as version from "internal:runtime/js/01_version.js";
+import * as version from "internal:runtime/js/01_version.ts";
 import * as permissions from "internal:runtime/js/10_permissions.js";
 import * as io from "internal:runtime/js/12_io.js";
 import * as buffer from "internal:runtime/js/13_buffer.js";

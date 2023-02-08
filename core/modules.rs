@@ -366,6 +366,7 @@ impl ModuleLoader for InternalModuleLoader {
       );
     }
 
+    let specifier = module_specifier.to_string();
     let maybe_file_source = self
       .esm_sources
       .iter()
@@ -378,7 +379,6 @@ impl ModuleLoader for InternalModuleLoader {
         Ok(file_source.code.to_string())
       };
 
-      let specifier = module_specifier.to_string();
       return async move {
         let code = result?;
         let source = ModuleSource {
@@ -392,10 +392,11 @@ impl ModuleLoader for InternalModuleLoader {
       .boxed_local();
     }
 
-    async {
-      Err(generic_error(
-        "Cannot find internal module source for specifier",
-      ))
+    async move {
+      Err(generic_error(format!(
+        "Cannot find internal module source for specifier {}",
+        specifier
+      )))
     }
     .boxed_local()
   }

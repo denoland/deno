@@ -13,6 +13,39 @@ mod not_docs {
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
 
+  use deno_ast::MediaType;
+  use deno_ast::ParseParams;
+  use deno_ast::SourceTextInfo;
+  use deno_core::error::AnyError;
+  use deno_core::ExtensionFileSource;
+
+  fn transpile_ts_for_snapshotting(
+    file_source: &ExtensionFileSource,
+  ) -> Result<String, AnyError> {
+    let media_type = MediaType::from(Path::new(&file_source.specifier));
+
+    let should_transpile = match media_type {
+      MediaType::JavaScript => false,
+      MediaType::TypeScript => true,
+      _ => panic!("Unsupported media type for snapshotting {media_type:?}"),
+    };
+
+    if !should_transpile {
+      return Ok(file_source.code.to_string());
+    }
+
+    let parsed = deno_ast::parse_module(ParseParams {
+      specifier: file_source.specifier.to_string(),
+      text_info: SourceTextInfo::from_string(file_source.code.to_string()),
+      media_type,
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })?;
+    let transpiled_source = parsed.transpile(&Default::default())?;
+    Ok(transpiled_source.text)
+  }
+
   struct Permissions;
 
   impl deno_fetch::FetchPermissions for Permissions {
@@ -167,6 +200,7 @@ mod not_docs {
         )
         .expect("snapshot compression failed");
       })),
+      snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
     });
   }
 
