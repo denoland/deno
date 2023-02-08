@@ -21,7 +21,7 @@ controller.abort("reason"); // in the NodeJS declaration it doesn't have a reaso
 globals.withNodeGlobalThis((nodeGlobalThis: any) => {
   (globalThis as any).setTimeout = 5;
   console.log(setTimeout);
-  // this delete should also delete on the Deno globalThis
   delete nodeGlobalThis["setTimeout"];
   console.log(nodeGlobalThis["setTimeout"]); // should be undefined
+  console.log(globalThis["setTimeout"]); // should be undefined
 });
