@@ -26,6 +26,7 @@ const dylib = Deno.dlopen(
   } as const,
 );
 
+let retry = false;
 const tripleLogCallback = () => {
   console.log("Sync");
   Promise.resolve().then(() => {
@@ -35,6 +36,14 @@ const tripleLogCallback = () => {
   setTimeout(() => {
     console.log("Timeout");
     callback.unref();
+
+    if (retry) {
+      // Re-ref and retry the call to make sure re-refing works.
+      console.log("RETRY THREAD SAFE");
+      retry = false;
+      callback.ref();
+      dylib.symbols.call_stored_function_thread_safe_and_log();
+    }
   }, 10);
 };
 
@@ -63,4 +72,5 @@ callback.ref();
 callback.ref();
 
 console.log("THREAD SAFE");
+retry = true;
 dylib.symbols.call_stored_function_thread_safe_and_log();
