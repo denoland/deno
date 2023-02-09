@@ -3,10 +3,13 @@
 
 // Run using cargo test or `--v8-flags=--allow-natives-syntax`
 
-import { assertEquals, assertInstanceOf, assertNotEquals } from "https://deno.land/std@0.149.0/testing/asserts.ts";
 import {
   assertThrows,
   assert,
+  assertNotEquals,
+  assertInstanceOf,
+  assertEquals,
+  assertFalse,
 } from "../../test_util/std/testing/asserts.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
@@ -688,6 +691,25 @@ assertEquals(uint32Array[0], 42);
 uint32Array[0] = 55; // MUTATES!
 assertEquals(uint32Array[0], 55);
 assertEquals(view.getUint32(), 55);
+
+
+{
+  // Test UnsafePointer APIs
+  assertEquals(Deno.UnsafePointer.create(0), null);
+  const createdPointer = Deno.UnsafePointer.create(1);
+  assertNotEquals(createdPointer, null);
+  assertEquals(typeof createdPointer, "object");
+  assertEquals(Deno.UnsafePointer.value(null), 0);
+  assertEquals(Deno.UnsafePointer.value(createdPointer), 1);
+  assert(Deno.UnsafePointer.equals(null, null));
+  assertFalse(Deno.UnsafePointer.equals(null, createdPointer));
+  assertFalse(Deno.UnsafePointer.equals(Deno.UnsafePointer.create(2), createdPointer));
+  // Do not allow offsetting from null, `create` function should be used instead.
+  assertThrows(() => Deno.UnsafePointer.offset(null, 5));
+  const offsetPointer = Deno.UnsafePointer.offset(createdPointer, 5);
+  assertEquals(Deno.UnsafePointer.value(offsetPointer), 6);
+  assertEquals(Deno.UnsafePointer.offset(offsetPointer, -6), null);
+}
 
 // Test non-UTF-8 characters
 

@@ -362,6 +362,8 @@ declare namespace Deno {
   export class UnsafePointer {
     /** Create a pointer from a numeric value. This is one is <i>really</i> dangerous! */
     static create(value: number | bigint): PointerValue;
+    /** Returns `true` if the two pointers point to the same address. */
+    static equals(a: PointerValue, b: PointerValue): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
     static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
     /** Return a new pointer offset from the original by `offset` bytes. */

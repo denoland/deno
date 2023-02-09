@@ -178,7 +178,16 @@ const OUT_BUFFER = new Uint32Array(2);
 const OUT_BUFFER_64 = new BigInt64Array(OUT_BUFFER.buffer);
 class UnsafePointer {
   static create(value) {
-    return ops.op_ffi_create_ptr(value);
+    return ops.op_ffi_ptr_create(value);
+  }
+
+  static equals(a, b) {
+    if (a === b) {
+      return true;
+    } else if (a === null || b === null) {
+      return a === b;
+    }
+    return ops.op_ffi_ptr_equals(a, b);
   }
 
   static of(value) {

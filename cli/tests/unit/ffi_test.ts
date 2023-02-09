@@ -29,9 +29,8 @@ Deno.test({ permissions: { ffi: false } }, function ffiPermissionDenied() {
     Deno.dlopen("/usr/lib/libc.so.6", {});
   }, Deno.errors.PermissionDenied);
   const fnptr = new Deno.UnsafeFnPointer(
-    // Here and below it's not actually proper to use a null pointer,
-    // but null pointers are checked for only after the permission is checked.
-    null as unknown as NonNullable<Deno.PointerValue>,
+    // @ts-expect-error: Not NonNullable but null check is after premissions check.
+    null,
     {
       parameters: ["u32", "pointer"],
       result: "void",
@@ -44,7 +43,8 @@ Deno.test({ permissions: { ffi: false } }, function ffiPermissionDenied() {
     Deno.UnsafePointer.of(new Uint8Array(0));
   }, Deno.errors.PermissionDenied);
   const ptrView = new Deno.UnsafePointerView(
-    null as unknown as NonNullable<Deno.PointerValue>,
+    // @ts-expect-error: Not NonNullable but null check is after premissions check.
+    null,
   );
   assertThrows(() => {
     ptrView.copyInto(new Uint8Array(0));

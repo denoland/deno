@@ -14,6 +14,37 @@ use std::ffi::CStr;
 use std::ptr;
 
 #[op(fast)]
+fn op_ffi_ptr_create<FP>(
+  state: &mut deno_core::OpState,
+  ptr_number: usize,
+) -> Result<*mut c_void, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointer#create");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  Ok(ptr_number as *mut c_void)
+}
+
+#[op(fast)]
+pub fn op_ffi_ptr_equals<FP>(
+  state: &mut deno_core::OpState,
+  a: *const c_void,
+  b: *const c_void,
+) -> Result<bool, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointer#of");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  Ok(a == b)
+}
+
+#[op(fast)]
 pub fn op_ffi_ptr_of<FP>(
   state: &mut deno_core::OpState,
   buf: *const u8,
@@ -26,48 +57,6 @@ where
   permissions.check(None)?;
 
   Ok(buf as *mut c_void)
-}
-
-#[op(fast)]
-fn op_ffi_ptr_value<FP>(
-  state: &mut deno_core::OpState,
-  ptr: *mut c_void,
-  out: &mut [u32],
-) -> Result<(), AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
-  check_unstable(state, "Deno.UnsafePointer#value");
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
-
-  let outptr = out.as_ptr() as *mut usize;
-  let length = out.len();
-  assert!(
-    length >= (std::mem::size_of::<usize>() / std::mem::size_of::<u32>())
-  );
-  assert_eq!(outptr as usize % std::mem::size_of::<usize>(), 0);
-
-  // SAFETY: Out buffer was asserted to be at least large enough to hold a usize, and properly aligned.
-  let out = unsafe { &mut *outptr };
-  *out = ptr as usize;
-
-  Ok(())
-}
-
-#[op(fast)]
-fn op_ffi_create_ptr<FP>(
-  state: &mut deno_core::OpState,
-  ptr_number: usize,
-) -> Result<*mut c_void, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
-  check_unstable(state, "Deno.UnsafePointer#create");
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
-
-  Ok(ptr_number as *mut c_void)
 }
 
 #[op(fast)]
@@ -96,6 +85,33 @@ unsafe extern "C" fn noop_deleter_callback(
   _byte_length: usize,
   _deleter_data: *mut c_void,
 ) {
+}
+
+#[op(fast)]
+fn op_ffi_ptr_value<FP>(
+  state: &mut deno_core::OpState,
+  ptr: *mut c_void,
+  out: &mut [u32],
+) -> Result<(), AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointer#value");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  let outptr = out.as_ptr() as *mut usize;
+  let length = out.len();
+  assert!(
+    length >= (std::mem::size_of::<usize>() / std::mem::size_of::<u32>())
+  );
+  assert_eq!(outptr as usize % std::mem::size_of::<usize>(), 0);
+
+  // SAFETY: Out buffer was asserted to be at least large enough to hold a usize, and properly aligned.
+  let out = unsafe { &mut *outptr };
+  *out = ptr as usize;
+
+  Ok(())
 }
 
 #[op(v8)]
