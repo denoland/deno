@@ -8,6 +8,7 @@ use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
+use crate::modules::InternalModuleLoaderCb;
 use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
@@ -19,6 +20,7 @@ use crate::ops::*;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
+use crate::ExtensionFileSource;
 use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -269,6 +271,11 @@ pub struct RuntimeOptions {
   /// Prepare runtime to take snapshot of loaded code.
   /// The snapshot is deterministic and uses predictable random numbers.
   pub will_snapshot: bool,
+
+  /// An optional callback that will be called for each module that is loaded
+  /// during snapshotting. This callback can be used to transpile source on the
+  /// fly, during snapshotting, eg. to transpile TypeScript to JavaScript.
+  pub snapshot_module_load_cb: Option<InternalModuleLoaderCb>,
 
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
@@ -607,8 +614,16 @@ impl JsRuntime {
     };
 
     let loader = if snapshot_options != SnapshotOptions::Load {
+      let esm_sources = options
+        .extensions_with_js
+        .iter()
+        .flat_map(|ext| ext.get_esm_sources().to_owned())
+        .collect::<Vec<ExtensionFileSource>>();
+
       Rc::new(crate::modules::InternalModuleLoader::new(
         options.module_loader,
+        esm_sources,
+        options.snapshot_module_load_cb,
       ))
     } else {
       options
@@ -629,7 +644,11 @@ impl JsRuntime {
       Rc::into_raw(state_rc.clone()) as *mut c_void,
     );
 
-    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
+    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(
+      loader,
+      op_state,
+      snapshot_options == SnapshotOptions::Load,
+    )));
     if let Some(module_map_data) = module_map_data {
       let scope =
         &mut v8::HandleScope::with_context(&mut isolate, global_context);
@@ -814,13 +833,13 @@ impl JsRuntime {
     let extensions = std::mem::take(&mut self.extensions_with_js);
     for ext in &extensions {
       {
-        let js_files = ext.get_esm_sources();
-        for file_source in js_files {
+        let esm_files = ext.get_esm_sources();
+        for file_source in esm_files {
           futures::executor::block_on(async {
             let id = self
               .load_side_module(
                 &ModuleSpecifier::parse(&file_source.specifier)?,
-                Some(file_source.code.to_string()),
+                None,
               )
               .await?;
             let receiver = self.mod_evaluate(id);
@@ -4927,5 +4946,73 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
         }",
       )
       .is_ok());
+  }
+
+  #[tokio::test]
+  async fn cant_load_internal_module_when_snapshot_is_loaded_and_not_snapshotting(
+  ) {
+    #[derive(Default)]
+    struct ModsLoader;
+
+    impl ModuleLoader for ModsLoader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _kind: ResolutionKind,
+      ) -> Result<ModuleSpecifier, Error> {
+        assert_eq!(specifier, "file:///main.js");
+        assert_eq!(referrer, ".");
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        let source = r#"
+        // This module doesn't really exist, just verifying that we'll get 
+        // an error when specifier starts with "internal:".
+        import { core } from "internal:core.js";
+        "#;
+
+        async move {
+          Ok(ModuleSource {
+            code: source.as_bytes().to_vec().into_boxed_slice(),
+            module_url_specified: "file:///main.js".to_string(),
+            module_url_found: "file:///main.js".to_string(),
+            module_type: ModuleType::JavaScript,
+          })
+        }
+        .boxed_local()
+      }
+    }
+
+    let snapshot = {
+      let runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
+      let snap: &[u8] = &runtime.snapshot();
+      Vec::from(snap).into_boxed_slice()
+    };
+
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(Rc::new(ModsLoader)),
+      startup_snapshot: Some(Snapshot::Boxed(snapshot)),
+      ..Default::default()
+    });
+
+    let err = runtime2
+      .load_main_module(&crate::resolve_url("file:///main.js").unwrap(), None)
+      .await
+      .unwrap_err();
+    assert_eq!(
+      err.to_string(),
+      "Cannot load internal module from external code"
+    );
   }
 }

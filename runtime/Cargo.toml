@@ -24,6 +24,7 @@ name = "hello_runtime"
 path = "examples/hello_runtime.rs"
 
 [build-dependencies]
+deno_ast.workspace = true
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
 deno_console.workspace = true
