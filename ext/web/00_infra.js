@@ -15,7 +15,6 @@ const {
   Error,
   JSONStringify,
   NumberPrototypeToString,
-  RegExp,
   SafeArrayIterator,
   SafeRegExp,
   String,

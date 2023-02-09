@@ -775,7 +775,6 @@ function replaceEscapeSequences(string) {
       ESCAPE_PATTERN,
       (c) => ESCAPE_MAP[c],
     ),
-    // deno-lint-ignore no-control-regex
     new SafeRegExp(ESCAPE_PATTERN2),
     (c) =>
       "\\x" +
