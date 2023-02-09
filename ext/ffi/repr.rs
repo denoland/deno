@@ -37,7 +37,7 @@ pub fn op_ffi_ptr_equals<FP>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointer#of");
+  check_unstable(state, "Deno.UnsafePointer#equals");
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
