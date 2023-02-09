@@ -97,7 +97,6 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native struct type for interfacing with foreign functions.
-   *
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
@@ -524,6 +523,17 @@ declare namespace Deno {
       Definition["parameters"],
       Definition["result"]
     >;
+
+    /** Creates an {@linkcode UnsafeCallback} and `ref()`s it once to allow it to wake up the Deno event loop. */
+    static threadSafe<
+      Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
+    >(
+      definition: Const<Definition>,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >,
+    ): UnsafeCallback<Definition>;
 
     /**
      * Adds one to this callback's reference counting and returns the new

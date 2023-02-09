@@ -335,6 +335,12 @@ class UnsafeCallback {
     this.callback = callback;
   }
 
+  static threadSafe(definition, callback) {
+    const unsafeCallback = new UnsafeCallback(definition, callback);
+    unsafeCallback.ref();
+    return unsafeCallback;
+  }
+
   ref() {
     if (this.#refcount++ === 0) {
       if (this.#refpromise) {

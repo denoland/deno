@@ -47,7 +47,7 @@ const tripleLogCallback = () => {
   }, 10);
 };
 
-const callback = new Deno.UnsafeCallback(
+const callback = Deno.UnsafeCallback.threadSafe(
   {
     parameters: [],
     result: "void",
@@ -66,9 +66,9 @@ console.log("STORED_FUNCTION called");
 // Wait to make sure synch logging and async logging
 await new Promise((res) => setTimeout(res, 100));
 
-// Ref twice to make sure both `Promise.resolve().then()` and `setTimeout()`
-// must resolve before isolate exists.
-callback.ref();
+// Ref once to make sure both `Promise.resolve().then()` and `setTimeout()`
+// must resolve and unref before isolate exists.
+// One ref'ing has been done by `threadSafe` constructor.
 callback.ref();
 
 console.log("THREAD SAFE");
