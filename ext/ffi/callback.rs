@@ -520,19 +520,6 @@ pub fn op_ffi_unsafe_callback_ref(
   })
 }
 
-#[op(fast)]
-pub fn op_ffi_unsafe_callback_unref(
-  state: &mut deno_core::OpState,
-  rid: u32,
-) -> Result<(), AnyError> {
-  state
-    .resource_table
-    .get::<UnsafeCallbackResource>(rid)?
-    .cancel
-    .cancel();
-  Ok(())
-}
-
 #[derive(Deserialize)]
 pub struct RegisterCallbackArgs {
   parameters: Vec<NativeType>,

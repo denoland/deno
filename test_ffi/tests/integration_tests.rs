@@ -244,7 +244,8 @@ fn event_loop_integration() {
     RETRY THREAD SAFE\n\
     Sync\n\
     Async\n\
-    STORED_FUNCTION called\n\n";
+    STORED_FUNCTION called\n\
+    Timeout\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }
