@@ -594,7 +594,7 @@ fn filter_coverages(
   coverages
     .into_iter()
     .filter(|e| {
-      let is_internal = e.url.starts_with("deno:")
+      let is_internal = e.url.starts_with("internal:")
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.js")
         || e.url.ends_with(".snap");

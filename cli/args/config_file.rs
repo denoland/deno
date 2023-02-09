@@ -925,7 +925,7 @@ pub fn get_ts_config_for_emit(
       "sourceMap": false,
       "strict": true,
       "target": "esnext",
-      "tsBuildInfoFile": "deno:///.tsbuildinfo",
+      "tsBuildInfoFile": "internal:///.tsbuildinfo",
       "useDefineForClassFields": true,
       // TODO(@kitsonk) remove for Deno 2.0
       "useUnknownInCatchVariables": false,

@@ -5,3 +5,6 @@ Download http://localhost:4545/npm/registry/@types/node/node-18.8.2.tgz
 Check file:///[WILDCARD]/npm/compare_globals/main.ts
 true
 []
+5
+undefined
+undefined
