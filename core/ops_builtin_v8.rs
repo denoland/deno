@@ -609,7 +609,7 @@ fn op_set_promise_hooks(
   let after_hook = v8::Local::new(scope, after_hook_global);
   let resolve_hook = v8::Local::new(scope, resolve_hook_global);
 
-  scope.get_current_context().set_promise_hooks(
+  scope.set_promise_hooks(
     Some(init_hook),
     Some(before_hook),
     Some(after_hook),
