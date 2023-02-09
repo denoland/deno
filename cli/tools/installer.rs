@@ -26,7 +26,6 @@ use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use tokio::runtime::Runtime;
 
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
@@ -127,19 +126,17 @@ fn get_installer_root() -> Result<PathBuf, io::Error> {
   Ok(home_path)
 }
 
-pub fn infer_name_from_url(url: &Url) -> Option<String> {
+pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   // If there's an absolute url with no path, eg. https://my-cli.com
   // perform a request, and see if it redirects another file instead.
-  let url = url.to_owned();
-  let url = if url.path() == "/" {
-    let rt = Runtime::new().unwrap();
+  let mut url = url.clone();
+
+  if url.path() == "/" {
     let client = HttpClient::new(None, None).unwrap();
-    rt.block_on(client.get_redirected_response(url.clone()))
-      .map(|res| res.url().clone())
-      .unwrap_or(url)
-  } else {
-    url
-  };
+    if let Ok(res) = client.get_redirected_response(url.clone()).await {
+      url = res.url().clone();
+    }
+  }
 
   if let Ok(npm_ref) = NpmPackageReference::from_specifier(&url) {
     if let Some(sub_path) = npm_ref.sub_path {
@@ -241,14 +238,14 @@ pub async fn install_command(
     .await?;
 
   // create the install shim
-  create_install_shim(flags, install_flags)
+  create_install_shim(flags, install_flags).await
 }
 
-fn create_install_shim(
+async fn create_install_shim(
   flags: Flags,
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
-  let shim_data = resolve_shim_data(&flags, &install_flags)?;
+  let shim_data = resolve_shim_data(&flags, &install_flags).await?;
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&shim_data.installation_dir) {
@@ -298,7 +295,7 @@ struct ShimData {
   extra_files: Vec<(PathBuf, String)>,
 }
 
-fn resolve_shim_data(
+async fn resolve_shim_data(
   flags: &Flags,
   install_flags: &InstallFlags,
 ) -> Result<ShimData, AnyError> {
@@ -312,10 +309,11 @@ fn resolve_shim_data(
   // Check if module_url is remote
   let module_url = resolve_url_or_path(&install_flags.module_url)?;
 
-  let name = install_flags
-    .name
-    .clone()
-    .or_else(|| infer_name_from_url(&module_url));
+  let name = if install_flags.name.is_some() {
+    install_flags.name.clone()
+  } else {
+    infer_name_from_url(&module_url).await
+  };
 
   let name = match name {
     Some(name) => name,
@@ -494,115 +492,131 @@ mod tests {
   use test_util::testdata_path;
   use test_util::TempDir;
 
-  #[test]
-  fn install_infer_name_from_url() {
+  #[tokio::test]
+  async fn install_infer_name_from_url() {
     assert_eq!(
       infer_name_from_url(
         &Url::parse("https://example.com/abc/server.ts").unwrap()
-      ),
+      )
+      .await,
       Some("server".to_string())
     );
     assert_eq!(
       infer_name_from_url(
         &Url::parse("https://example.com/abc/main.ts").unwrap()
-      ),
+      )
+      .await,
       Some("abc".to_string())
     );
     assert_eq!(
       infer_name_from_url(
         &Url::parse("https://example.com/abc/mod.ts").unwrap()
-      ),
+      )
+      .await,
       Some("abc".to_string())
     );
     assert_eq!(
       infer_name_from_url(
         &Url::parse("https://example.com/abc/index.ts").unwrap()
-      ),
+      )
+      .await,
       Some("abc".to_string())
     );
     assert_eq!(
       infer_name_from_url(
         &Url::parse("https://example.com/abc/cli.ts").unwrap()
-      ),
+      )
+      .await,
       Some("abc".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("https://example.com/main.ts").unwrap()),
+      infer_name_from_url(&Url::parse("https://example.com/main.ts").unwrap())
+        .await,
       Some("main".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("https://example.com").unwrap()),
+      infer_name_from_url(&Url::parse("https://example.com").unwrap()).await,
       None
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("file:///abc/server.ts").unwrap()),
+      infer_name_from_url(&Url::parse("file:///abc/server.ts").unwrap()).await,
       Some("server".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("file:///abc/main.ts").unwrap()),
+      infer_name_from_url(&Url::parse("file:///abc/main.ts").unwrap()).await,
       Some("abc".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("file:///main.ts").unwrap()),
+      infer_name_from_url(&Url::parse("file:///main.ts").unwrap()).await,
       Some("main".to_string())
     );
-    assert_eq!(infer_name_from_url(&Url::parse("file:///").unwrap()), None);
+    assert_eq!(
+      infer_name_from_url(&Url::parse("file:///").unwrap()).await,
+      None
+    );
     assert_eq!(
       infer_name_from_url(
         &Url::parse("https://example.com/abc@0.1.0").unwrap()
-      ),
+      )
+      .await,
       Some("abc".to_string())
     );
     assert_eq!(
       infer_name_from_url(
         &Url::parse("https://example.com/abc@0.1.0/main.ts").unwrap()
-      ),
+      )
+      .await,
       Some("abc".to_string())
     );
     assert_eq!(
       infer_name_from_url(
         &Url::parse("https://example.com/abc@def@ghi").unwrap()
-      ),
+      )
+      .await,
       Some("abc".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("https://example.com/@abc.ts").unwrap()),
+      infer_name_from_url(&Url::parse("https://example.com/@abc.ts").unwrap())
+        .await,
       Some("@abc".to_string())
     );
     assert_eq!(
       infer_name_from_url(
         &Url::parse("https://example.com/@abc/mod.ts").unwrap()
-      ),
+      )
+      .await,
       Some("@abc".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("file:///@abc.ts").unwrap()),
+      infer_name_from_url(&Url::parse("file:///@abc.ts").unwrap()).await,
       Some("@abc".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("file:///@abc/cli.ts").unwrap()),
+      infer_name_from_url(&Url::parse("file:///@abc/cli.ts").unwrap()).await,
       Some("@abc".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("npm:cowsay@1.2/cowthink").unwrap()),
+      infer_name_from_url(&Url::parse("npm:cowsay@1.2/cowthink").unwrap())
+        .await,
       Some("cowthink".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("npm:cowsay@1.2/cowthink/test").unwrap()),
+      infer_name_from_url(&Url::parse("npm:cowsay@1.2/cowthink/test").unwrap())
+        .await,
       Some("cowsay".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("npm:cowsay@1.2").unwrap()),
+      infer_name_from_url(&Url::parse("npm:cowsay@1.2").unwrap()).await,
       Some("cowsay".to_string())
     );
     assert_eq!(
-      infer_name_from_url(&Url::parse("npm:@types/node@1.2").unwrap()),
+      infer_name_from_url(&Url::parse("npm:@types/node@1.2").unwrap()).await,
       None
     );
   }
 
-  #[test]
-  fn install_unstable() {
+  #[tokio::test]
+  async fn install_unstable() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -620,6 +634,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     let mut file_path = bin_dir.join("echo_test");
@@ -641,8 +656,8 @@ mod tests {
     }
   }
 
-  #[test]
-  fn install_inferred_name() {
+  #[tokio::test]
+  async fn install_inferred_name() {
     let shim_data = resolve_shim_data(
       &Flags::default(),
       &InstallFlags {
@@ -653,6 +668,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     assert_eq!(shim_data.name, "echo_server");
@@ -662,8 +678,8 @@ mod tests {
     );
   }
 
-  #[test]
-  fn install_inferred_name_from_parent() {
+  #[tokio::test]
+  async fn install_inferred_name_from_parent() {
     let shim_data = resolve_shim_data(
       &Flags::default(),
       &InstallFlags {
@@ -674,6 +690,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     assert_eq!(shim_data.name, "subdir");
@@ -683,8 +700,8 @@ mod tests {
     );
   }
 
-  #[test]
-  fn install_inferred_name_after_redirect_for_no_path_url() {
+  #[tokio::test]
+  async fn install_inferred_name_after_redirect_for_no_path_url() {
     let _http_server_guard = test_util::http_server();
     let shim_data = resolve_shim_data(
       &Flags::default(),
@@ -697,6 +714,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     assert_eq!(shim_data.name, "a");
@@ -710,8 +728,8 @@ mod tests {
     );
   }
 
-  #[test]
-  fn install_custom_dir_option() {
+  #[tokio::test]
+  async fn install_custom_dir_option() {
     let shim_data = resolve_shim_data(
       &Flags::default(),
       &InstallFlags {
@@ -722,6 +740,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     assert_eq!(shim_data.name, "echo_test");
@@ -731,8 +750,8 @@ mod tests {
     );
   }
 
-  #[test]
-  fn install_with_flags() {
+  #[tokio::test]
+  async fn install_with_flags() {
     let shim_data = resolve_shim_data(
       &Flags {
         allow_net: Some(vec![]),
@@ -749,6 +768,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     assert_eq!(shim_data.name, "echo_test");
@@ -766,8 +786,8 @@ mod tests {
     );
   }
 
-  #[test]
-  fn install_prompt() {
+  #[tokio::test]
+  async fn install_prompt() {
     let shim_data = resolve_shim_data(
       &Flags {
         no_prompt: true,
@@ -781,6 +801,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     assert_eq!(
@@ -794,8 +815,8 @@ mod tests {
     );
   }
 
-  #[test]
-  fn install_allow_all() {
+  #[tokio::test]
+  async fn install_allow_all() {
     let shim_data = resolve_shim_data(
       &Flags {
         allow_all: true,
@@ -809,6 +830,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     assert_eq!(
@@ -822,8 +844,8 @@ mod tests {
     );
   }
 
-  #[test]
-  fn install_npm_lockfile_default() {
+  #[tokio::test]
+  async fn install_npm_lockfile_default() {
     let temp_dir = canonicalize_path(&env::temp_dir()).unwrap();
     let shim_data = resolve_shim_data(
       &Flags {
@@ -838,6 +860,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     let lock_path = temp_dir.join("bin").join(".cowsay.lock.json");
@@ -855,8 +878,8 @@ mod tests {
     assert_eq!(shim_data.extra_files, vec![(lock_path, "{}".to_string())]);
   }
 
-  #[test]
-  fn install_npm_no_lock() {
+  #[tokio::test]
+  async fn install_npm_no_lock() {
     let shim_data = resolve_shim_data(
       &Flags {
         allow_all: true,
@@ -871,6 +894,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     assert_eq!(
@@ -886,8 +910,8 @@ mod tests {
     assert_eq!(shim_data.extra_files, vec![]);
   }
 
-  #[test]
-  fn install_local_module() {
+  #[tokio::test]
+  async fn install_local_module() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -905,6 +929,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     let mut file_path = bin_dir.join("echo_test");
@@ -917,8 +942,8 @@ mod tests {
     assert!(content.contains(&local_module_url.to_string()));
   }
 
-  #[test]
-  fn install_force() {
+  #[tokio::test]
+  async fn install_force() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -933,6 +958,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     let mut file_path = bin_dir.join("echo_test");
@@ -951,7 +977,8 @@ mod tests {
         root: Some(temp_dir.path().to_path_buf()),
         force: false,
       },
-    );
+    )
+    .await;
     assert!(no_force_result.is_err());
     assert!(no_force_result
       .unwrap_err()
@@ -971,15 +998,16 @@ mod tests {
         root: Some(temp_dir.path().to_path_buf()),
         force: true,
       },
-    );
+    )
+    .await;
     assert!(force_result.is_ok());
     // Assert modified
     let file_content_2 = fs::read_to_string(&file_path).unwrap();
     assert!(file_content_2.contains("cat.ts"));
   }
 
-  #[test]
-  fn install_with_config() {
+  #[tokio::test]
+  async fn install_with_config() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     let config_file_path = temp_dir.path().join("test_tsconfig.json");
@@ -1002,7 +1030,8 @@ mod tests {
         root: Some(temp_dir.path().to_path_buf()),
         force: true,
       },
-    );
+    )
+    .await;
     assert!(result.is_ok());
 
     let config_file_name = ".echo_test.deno.json";
@@ -1015,8 +1044,8 @@ mod tests {
 
   // TODO: enable on Windows after fixing batch escaping
   #[cfg(not(windows))]
-  #[test]
-  fn install_shell_escaping() {
+  #[tokio::test]
+  async fn install_shell_escaping() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -1031,6 +1060,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     let mut file_path = bin_dir.join("echo_test");
@@ -1049,8 +1079,8 @@ mod tests {
     }
   }
 
-  #[test]
-  fn install_unicode() {
+  #[tokio::test]
+  async fn install_unicode() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
@@ -1070,6 +1100,7 @@ mod tests {
         force: false,
       },
     )
+    .await
     .unwrap();
 
     let mut file_path = bin_dir.join("echo_test");
@@ -1089,8 +1120,8 @@ mod tests {
     assert!(status.success());
   }
 
-  #[test]
-  fn install_with_import_map() {
+  #[tokio::test]
+  async fn install_with_import_map() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     let import_map_path = temp_dir.path().join("import_map.json");
@@ -1112,7 +1143,8 @@ mod tests {
         root: Some(temp_dir.path().to_path_buf()),
         force: true,
       },
-    );
+    )
+    .await;
     assert!(result.is_ok());
 
     let mut file_path = bin_dir.join("echo_test");
@@ -1135,8 +1167,8 @@ mod tests {
   }
 
   // Regression test for https://github.com/denoland/deno/issues/10556.
-  #[test]
-  fn install_file_url() {
+  #[tokio::test]
+  async fn install_file_url() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
     let module_path = fs::canonicalize(testdata_path().join("cat.ts")).unwrap();
@@ -1153,7 +1185,8 @@ mod tests {
         root: Some(temp_dir.path().to_path_buf()),
         force: true,
       },
-    );
+    )
+    .await;
     assert!(result.is_ok());
 
     let mut file_path = bin_dir.join("echo_test");

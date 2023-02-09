@@ -610,7 +610,7 @@ async fn absolute_redirect(
       .collect();
 
     if let Some(url) = query_params.get("redirect_to") {
-      println!("URL: {:?}", url);
+      println!("URL: {url:?}");
       let redirect = redirect_resp(url.to_owned());
       return Ok(redirect);
     }
