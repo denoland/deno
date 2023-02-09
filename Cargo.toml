@@ -146,6 +146,10 @@ incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.bench]
 codegen-units = 1
@@ -295,15 +299,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
-[patch.crates-io.deno_graph]
-path = "../deno_graph"
-[patch.crates-io.deno_doc]
-path = "../deno_doc"
-[patch.crates-io.deno_lint]
-path = "../deno_lint"
-[patch.crates-io.eszip]
-path = "../eszip"
-[patch.crates-io.dprint-plugin-typescript]
-path = "../dprint-plugin-typescript"
-[patch.crates-io.deno_emit]
-path = "../deno_emit/rs-lib"

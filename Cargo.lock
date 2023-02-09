@@ -1008,7 +1008,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.54.0"
+version = "0.55.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d51f565fc87d1b8754482a49acf48254c9413392696a109d0f7464fb68da17d4"
 dependencies = [
  "cfg-if",
  "deno_ast",
@@ -1024,7 +1026,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.14.0"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1462b4d37e1d301512505231729b39993d601ffc3c5c8121cd3a829952bd99ad"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -1086,7 +1090,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.42.0"
+version = "0.43.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f71bb48b14950d62552aee1d05d0b90c203319b293b36358021ec77e05eaf9a4"
 dependencies = [
  "anyhow",
  "data-url",
@@ -1127,7 +1133,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.37.0"
+version = "0.38.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85201db46e6a8b4aeea4b5d574fd28e95477590ad08e128f2f043ec60442d550"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -1493,7 +1501,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.82.0"
+version = "0.83.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d1c293007fd6552e023431731f0d6fa0ed560d056ef4609e1c6dfcfbd734924"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -1684,7 +1694,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.34.0"
+version = "0.35.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bbe59a9f33f0b4c2ac2b630e1769225fc1d7419bef195e27084be24b996afd9"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
