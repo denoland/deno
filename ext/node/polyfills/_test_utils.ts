@@ -1,6 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertStringIncludes } from "SOMETHING IS BROKEN HERE ../testing/asserts.ts";
+import { TextDecoder } from "internal:deno_web/08_text_encoding.js";
+import {
+  assert,
+  assertStringIncludes,
+} from "SOMETHING IS BROKEN HERE ../testing/asserts.ts";
 
 /** Asserts that an error thrown in a callback will not be wrongly caught. */
 export async function assertCallbackErrorUncaught(

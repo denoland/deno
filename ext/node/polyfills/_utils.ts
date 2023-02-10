@@ -1,5 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+import {
+  TextDecoder,
+  TextEncoder,
+} from "internal:deno_web/08_text_encoding.js";
 import { errorMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
 import { codes } from "internal:deno_node/polyfills/internal/error_codes.ts";
 
