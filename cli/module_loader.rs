@@ -78,9 +78,11 @@ impl CliModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleCodeSource, AnyError> {
-    if specifier.scheme() == "node" {
-      unreachable!("Node built-in modules should be handled internally.");
-    }
+    // TODO(bartlomieju): uncomment, when all `node:` module have been
+    // snapshotted
+    // if specifier.scheme() == "node" {
+    //   unreachable!("Node built-in modules should be handled internally.");
+    // }
     let graph_data = self.ps.graph_data.read();
     let found_url = graph_data.follow_redirect(specifier);
     match graph_data.get(&found_url) {
