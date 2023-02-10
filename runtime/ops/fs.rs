@@ -2018,7 +2018,13 @@ fn op_readfile_sync(
   state
     .borrow_mut::<PermissionsContainer>()
     .check_read(path, "Deno.readFileSync()")?;
-  Ok(std::fs::read(path)?.into())
+  let err_mapper = |err: Error| {
+    Error::new(
+      err.kind(),
+      format!("{}, readlink '{}'", err, path.display()),
+    )
+  };
+  Ok(std::fs::read(path).map_err(err_mapper)?.into())
 }
 
 #[op]
@@ -2048,7 +2054,17 @@ async fn op_readfile_async(
   }
   let fut = tokio::task::spawn_blocking(move || {
     let path = Path::new(&path);
-    Ok(std::fs::read(path).map(ZeroCopyBuf::from)?)
+    let err_mapper = |err: Error| {
+      Error::new(
+        err.kind(),
+        format!("{}, readfile '{}'", err, path.display()),
+      )
+    };
+    Ok(
+      std::fs::read(path)
+        .map_err(err_mapper)
+        .map(ZeroCopyBuf::from)?,
+    )
   });
   if let Some(cancel_rid) = cancel_rid {
     let cancel_handle = state
