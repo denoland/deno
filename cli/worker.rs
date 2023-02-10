@@ -69,7 +69,7 @@ impl CliMainWorker {
     if self.is_main_cjs {
       self.ps.prepare_node_std_graph().await?;
       self.initialize_main_module_for_node().await?;
-      node::load_cjs_module_from_ext_node(
+      deno_node::load_cjs_module(
         &mut self.worker.js_runtime,
         &self.main_module.to_file_path().unwrap().to_string_lossy(),
         true,
@@ -319,7 +319,7 @@ impl CliMainWorker {
           .sub_path
           .as_deref()
           .unwrap_or(pkg_ref.req.name.as_str());
-        node::initialize_binary_command(
+        deno_node::initialize_binary_command(
           &mut self.worker.js_runtime,
           binary_name,
         )
