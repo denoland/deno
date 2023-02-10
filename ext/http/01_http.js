@@ -51,6 +51,7 @@ const {
   StringPrototypeIncludes,
   StringPrototypeToLowerCase,
   StringPrototypeSplit,
+  StringPrototypeTrim,
   Symbol,
   SymbolAsyncIterator,
   TypeError,
@@ -393,8 +394,9 @@ function upgradeWebSocket(request, options = {}) {
   const upgrade = request.headers.get("upgrade");
   const upgradeHasWebSocketOption = upgrade !== null &&
     ArrayPrototypeSome(
-      StringPrototypeSplit(upgrade, /\s*,\s*/),
-      (option) => StringPrototypeToLowerCase(option) === "websocket",
+      StringPrototypeSplit(upgrade, ","),
+      (option) =>
+        StringPrototypeToLowerCase(StringPrototypeTrim(option)) === "websocket",
     );
   if (!upgradeHasWebSocketOption) {
     throw new TypeError(
@@ -405,8 +407,9 @@ function upgradeWebSocket(request, options = {}) {
   const connection = request.headers.get("connection");
   const connectionHasUpgradeOption = connection !== null &&
     ArrayPrototypeSome(
-      StringPrototypeSplit(connection, /\s*,\s*/),
-      (option) => StringPrototypeToLowerCase(option) === "upgrade",
+      StringPrototypeSplit(connection, ","),
+      (option) =>
+        StringPrototypeToLowerCase(StringPrototypeTrim(option)) === "upgrade",
     );
   if (!connectionHasUpgradeOption) {
     throw new TypeError(
