@@ -17,6 +17,7 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::errors;
+use deno_runtime::deno_node::find_builtin_node_module;
 use deno_runtime::deno_node::get_closest_package_json;
 use deno_runtime::deno_node::legacy_main_resolve;
 use deno_runtime::deno_node::package_exports_resolve;
@@ -24,6 +25,7 @@ use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::path_to_declaration_path;
 use deno_runtime::deno_node::NodeModuleKind;
+use deno_runtime::deno_node::NodeModulePolyfillSpecifier;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
@@ -119,16 +121,18 @@ pub static MODULE_ALL_URL: Lazy<Url> =
   Lazy::new(|| NODE_COMPAT_URL.join("node/module_all.ts").unwrap());
 
 pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
-  // NOTE(bartlomieju): `module` is special, because we don't want to use
-  // `deno_std/node/module.ts`, but instead use a special shim that we
-  // provide in `ext/node`.
-  if specifier == "module" {
-    return Ok(Url::parse("node:module").unwrap());
-  }
-
-  if let Some(module) = deno_node::find_builtin_node_module(specifier) {
-    let module_url = NODE_COMPAT_URL.join(module.specifier).unwrap();
-    return Ok(module_url);
+  if let Some(module) = find_builtin_node_module(specifier) {
+    match module.specifier {
+      // We will load the source code from the `std/node` polyfill.
+      NodeModulePolyfillSpecifier::StdNode(specifier) => {
+        let module_url = NODE_COMPAT_URL.join(specifier).unwrap();
+        return Ok(module_url);
+      }
+      // The module has already been snapshotted and is present in the binary.
+      NodeModulePolyfillSpecifier::Embedded(specifier) => {
+        return Ok(ModuleSpecifier::parse(specifier).unwrap());
+      }
+    }
   }
 
   Err(generic_error(format!(

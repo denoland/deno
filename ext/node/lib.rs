@@ -22,6 +22,8 @@ pub use package_json::PackageJson;
 pub use path::PathClean;
 pub use polyfill::find_builtin_node_module;
 pub use polyfill::is_builtin_node_module;
+pub use polyfill::NodeModulePolyfill;
+pub use polyfill::NodeModulePolyfillSpecifier;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use resolution::get_closest_package_json;
 pub use resolution::get_package_scope_config;
@@ -85,7 +87,11 @@ pub fn init<P: NodePermissions + 'static>(
   maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
 ) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
-    .esm(include_js_files!("01_node.js", "02_require.js",))
+    .esm(include_js_files!(
+      "01_node.js",
+      "02_require.js",
+      "module_es_shim.js",
+    ))
     .ops(vec![
       ops::op_require_init_paths::decl(),
       ops::op_require_node_module_paths::decl::<P>(),
