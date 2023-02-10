@@ -42,7 +42,8 @@ pub async fn compile(
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   let deno_dir = &ps.dir;
 
-  let output_path = resolve_compile_executable_output_path(&compile_flags)?;
+  let output_path =
+    resolve_compile_executable_output_path(&compile_flags).await?;
 
   let graph = Arc::try_unwrap(
     create_graph_and_maybe_check(module_specifier.clone(), &ps).await?,
@@ -279,20 +280,33 @@ async fn write_standalone_binary(
   Ok(())
 }
 
-fn resolve_compile_executable_output_path(
+async fn resolve_compile_executable_output_path(
   compile_flags: &CompileFlags,
 ) -> Result<PathBuf, AnyError> {
   let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
-  compile_flags.output.as_ref().and_then(|output| {
-    if path_has_trailing_slash(output) {
-      let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
-      Some(output.join(infer_file_name))
+
+  let mut output = compile_flags.output.clone();
+
+  if let Some(out) = output.as_ref() {
+    if path_has_trailing_slash(out) {
+      if let Some(infer_file_name) = infer_name_from_url(&module_specifier)
+        .await
+        .map(PathBuf::from)
+      {
+        output = Some(out.join(infer_file_name));
+      }
     } else {
-      Some(output.to_path_buf())
+      output = Some(out.to_path_buf());
     }
-  }).or_else(|| {
-    infer_name_from_url(&module_specifier).map(PathBuf::from)
-  }).ok_or_else(|| generic_error(
+  }
+
+  if output.is_none() {
+    output = infer_name_from_url(&module_specifier)
+      .await
+      .map(PathBuf::from)
+  }
+
+  output.ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   )).map(|output| {
     get_os_specific_filepath(output, &compile_flags.target)
@@ -323,14 +337,15 @@ fn get_os_specific_filepath(
 mod test {
   pub use super::*;
 
-  #[test]
-  fn resolve_compile_executable_output_path_target_linux() {
+  #[tokio::test]
+  async fn resolve_compile_executable_output_path_target_linux() {
     let path = resolve_compile_executable_output_path(&CompileFlags {
       source_file: "mod.ts".to_string(),
       output: Some(PathBuf::from("./file")),
       args: Vec::new(),
       target: Some("x86_64-unknown-linux-gnu".to_string()),
     })
+    .await
     .unwrap();
 
     // no extension, no matter what the operating system is
@@ -339,14 +354,15 @@ mod test {
     assert_eq!(path.file_name().unwrap(), "file");
   }
 
-  #[test]
-  fn resolve_compile_executable_output_path_target_windows() {
+  #[tokio::test]
+  async fn resolve_compile_executable_output_path_target_windows() {
     let path = resolve_compile_executable_output_path(&CompileFlags {
       source_file: "mod.ts".to_string(),
       output: Some(PathBuf::from("./file")),
       args: Vec::new(),
       target: Some("x86_64-pc-windows-msvc".to_string()),
     })
+    .await
     .unwrap();
     assert_eq!(path.file_name().unwrap(), "file.exe");
   }

@@ -594,6 +594,28 @@ async fn absolute_redirect(
 ) -> hyper::Result<Response<Body>> {
   let path = req.uri().path();
 
+  if path == "/" {
+    // We have to manually extract query params here,
+    // as `req.uri()` returns `PathAndQuery` only,
+    // and we cannot use `Url::parse(req.uri()).query_pairs()`,
+    // as it requires url to have a proper base.
+    let query_params: HashMap<_, _> = req
+      .uri()
+      .query()
+      .unwrap_or_default()
+      .split('&')
+      .filter_map(|s| {
+        s.split_once('=').map(|t| (t.0.to_owned(), t.1.to_owned()))
+      })
+      .collect();
+
+    if let Some(url) = query_params.get("redirect_to") {
+      println!("URL: {url:?}");
+      let redirect = redirect_resp(url.to_owned());
+      return Ok(redirect);
+    }
+  }
+
   if path.starts_with("/REDIRECT") {
     let url = &req.uri().path()[9..];
     println!("URL: {url:?}");
