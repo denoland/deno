@@ -206,7 +206,7 @@ impl PermissionPrompter for TtyPrompter {
 
     // print to stderr so that if stdout is piped this is still displayed.
     let opts: &str = if is_unary {
-      "[y/n/Y/N] (y = yes, allow; n = no, deny; Y = yes to all, allow all; N = no to all, deny all)"
+      "[y/n/a/d] (y = yes, allow; n = no, deny; a = yes to all, allow all; d = no to all, deny all)"
     } else {
       "[y/n] (y = yes, allow; n = no, deny)"
     };
@@ -245,8 +245,8 @@ impl PermissionPrompter for TtyPrompter {
           eprintln!("❌ {}", colors::bold(&msg));
           break PromptResponse::Deny;
         }
-        'Y' => {
-          // Passthrough if 'Y' is used on the wrong permission
+        'a' => {
+          // Passthrough if 'a' is used on the wrong permission
           if is_unary {
             clear_n_lines(if api_name.is_some() { 4 } else { 3 });
             let msg = format!("Granted all {name} access.");
@@ -254,8 +254,8 @@ impl PermissionPrompter for TtyPrompter {
             break PromptResponse::AllowAll;
           }
         }
-        'N' => {
-          // Passthrough if 'N' is used on the wrong permission
+        'd' => {
+          // Passthrough if 'd' is used on the wrong permission
           if is_unary {
             clear_n_lines(if api_name.is_some() { 4 } else { 3 });
             let msg = format!("Denied all {name} access.");
