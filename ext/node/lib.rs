@@ -677,15 +677,17 @@ fn op_require_break_on_next_statement(state: &mut OpState) {
 }
 
 pub enum NodeModulePolyfillSpecifier {
+  /// An internal module specifier, like "internal:deno_node/assert.ts". The
+  /// module must be either embedded in the binary or snapshotted.
   Embedded(&'static str),
+
+  /// Specifier relative to the root of `deno_std` repo, like "node/assert.ts"
   StdNode(&'static str),
 }
 
 pub struct NodeModulePolyfill {
   /// Name of the module like "assert" or "timers/promises"
   pub name: &'static str,
-
-  /// Specifier relative to the root of `deno_std` repo, like "node/assert.ts"
   pub specifier: NodeModulePolyfillSpecifier,
 }
 
