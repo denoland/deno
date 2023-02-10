@@ -2,6 +2,7 @@
 
 use crate::bindings;
 use crate::error::generic_error;
+use crate::extensions::ExtensionFileSource;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
@@ -292,6 +293,153 @@ impl ModuleLoader for NoopModuleLoader {
   }
 }
 
+/// Helper function, that calls into `loader.resolve()`, but denies resolution
+/// of `internal` scheme if we are running with a snapshot loaded and not
+/// creating a snapshot
+pub(crate) fn resolve_helper(
+  snapshot_loaded_and_not_snapshotting: bool,
+  loader: Rc<dyn ModuleLoader>,
+  specifier: &str,
+  referrer: &str,
+  kind: ResolutionKind,
+) -> Result<ModuleSpecifier, Error> {
+  if snapshot_loaded_and_not_snapshotting && specifier.starts_with("internal:")
+  {
+    return Err(generic_error(
+      "Cannot load internal module from external code",
+    ));
+  }
+
+  loader.resolve(specifier, referrer, kind)
+}
+
+/// Function that can be passed to the `InternalModuleLoader` that allows to
+/// transpile sources before passing to V8.
+pub type InternalModuleLoaderCb =
+  Box<dyn Fn(&ExtensionFileSource) -> Result<String, Error>>;
+
+pub struct InternalModuleLoader {
+  module_loader: Rc<dyn ModuleLoader>,
+  esm_sources: Vec<ExtensionFileSource>,
+  maybe_load_callback: Option<InternalModuleLoaderCb>,
+}
+
+impl Default for InternalModuleLoader {
+  fn default() -> Self {
+    Self {
+      module_loader: Rc::new(NoopModuleLoader),
+      esm_sources: vec![],
+      maybe_load_callback: None,
+    }
+  }
+}
+
+impl InternalModuleLoader {
+  pub fn new(
+    module_loader: Option<Rc<dyn ModuleLoader>>,
+    esm_sources: Vec<ExtensionFileSource>,
+    maybe_load_callback: Option<InternalModuleLoaderCb>,
+  ) -> Self {
+    InternalModuleLoader {
+      module_loader: module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
+      esm_sources,
+      maybe_load_callback,
+    }
+  }
+}
+
+impl ModuleLoader for InternalModuleLoader {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+  ) -> Result<ModuleSpecifier, Error> {
+    if let Ok(url_specifier) = ModuleSpecifier::parse(specifier) {
+      if url_specifier.scheme() == "internal" {
+        let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
+        if referrer == "." || referrer_specifier.unwrap().scheme() == "internal"
+        {
+          return Ok(url_specifier);
+        } else {
+          return Err(generic_error(
+            "Cannot load internal module from external code",
+          ));
+        };
+      }
+    }
+
+    self.module_loader.resolve(specifier, referrer, kind)
+  }
+
+  fn load(
+    &self,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
+    is_dyn_import: bool,
+  ) -> Pin<Box<ModuleSourceFuture>> {
+    if module_specifier.scheme() != "internal" {
+      return self.module_loader.load(
+        module_specifier,
+        maybe_referrer,
+        is_dyn_import,
+      );
+    }
+
+    let specifier = module_specifier.to_string();
+    let maybe_file_source = self
+      .esm_sources
+      .iter()
+      .find(|file_source| file_source.specifier == module_specifier.as_str());
+
+    if let Some(file_source) = maybe_file_source {
+      let result = if let Some(load_callback) = &self.maybe_load_callback {
+        load_callback(file_source)
+      } else {
+        Ok(file_source.code.to_string())
+      };
+
+      return async move {
+        let code = result?;
+        let source = ModuleSource {
+          code: code.into_bytes().into_boxed_slice(),
+          module_type: ModuleType::JavaScript,
+          module_url_specified: specifier.clone(),
+          module_url_found: specifier.clone(),
+        };
+        Ok(source)
+      }
+      .boxed_local();
+    }
+
+    async move {
+      Err(generic_error(format!(
+        "Cannot find internal module source for specifier {specifier}"
+      )))
+    }
+    .boxed_local()
+  }
+
+  fn prepare_load(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<String>,
+    is_dyn_import: bool,
+  ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
+    if module_specifier.scheme() == "internal" {
+      return async { Ok(()) }.boxed_local();
+    }
+
+    self.module_loader.prepare_load(
+      op_state,
+      module_specifier,
+      maybe_referrer,
+      is_dyn_import,
+    )
+  }
+}
+
 /// Basic file system module loader.
 ///
 /// Note that this loader will **block** event loop
@@ -377,10 +525,11 @@ pub(crate) struct RecursiveModuleLoad {
   module_map_rc: Rc<RefCell<ModuleMap>>,
   pending: FuturesUnordered<Pin<Box<ModuleLoadFuture>>>,
   visited: HashSet<ModuleRequest>,
-  // These two fields are copied from `module_map_rc`, but they are cloned ahead
-  // of time to avoid already-borrowed errors.
+  // These three fields are copied from `module_map_rc`, but they are cloned
+  // ahead of time to avoid already-borrowed errors.
   op_state: Rc<RefCell<OpState>>,
   loader: Rc<dyn ModuleLoader>,
+  snapshot_loaded_and_not_snapshotting: bool,
 }
 
 impl RecursiveModuleLoad {
@@ -436,6 +585,9 @@ impl RecursiveModuleLoad {
       init,
       state: LoadState::Init,
       module_map_rc: module_map_rc.clone(),
+      snapshot_loaded_and_not_snapshotting: module_map_rc
+        .borrow()
+        .snapshot_loaded_and_not_snapshotting,
       op_state,
       loader,
       pending: FuturesUnordered::new(),
@@ -464,39 +616,60 @@ impl RecursiveModuleLoad {
 
   fn resolve_root(&self) -> Result<ModuleSpecifier, Error> {
     match self.init {
-      LoadInit::Main(ref specifier) => {
-        self
-          .loader
-          .resolve(specifier, ".", ResolutionKind::MainModule)
+      LoadInit::Main(ref specifier) => resolve_helper(
+        self.snapshot_loaded_and_not_snapshotting,
+        self.loader.clone(),
+        specifier,
+        ".",
+        ResolutionKind::MainModule,
+      ),
+      LoadInit::Side(ref specifier) => resolve_helper(
+        self.snapshot_loaded_and_not_snapshotting,
+        self.loader.clone(),
+        specifier,
+        ".",
+        ResolutionKind::Import,
+      ),
+      LoadInit::DynamicImport(ref specifier, ref referrer, _) => {
+        resolve_helper(
+          self.snapshot_loaded_and_not_snapshotting,
+          self.loader.clone(),
+          specifier,
+          referrer,
+          ResolutionKind::DynamicImport,
+        )
       }
-      LoadInit::Side(ref specifier) => {
-        self.loader.resolve(specifier, ".", ResolutionKind::Import)
-      }
-      LoadInit::DynamicImport(ref specifier, ref referrer, _) => self
-        .loader
-        .resolve(specifier, referrer, ResolutionKind::DynamicImport),
     }
   }
 
   async fn prepare(&self) -> Result<(), Error> {
     let op_state = self.op_state.clone();
+
     let (module_specifier, maybe_referrer) = match self.init {
       LoadInit::Main(ref specifier) => {
-        let spec =
-          self
-            .loader
-            .resolve(specifier, ".", ResolutionKind::MainModule)?;
+        let spec = resolve_helper(
+          self.snapshot_loaded_and_not_snapshotting,
+          self.loader.clone(),
+          specifier,
+          ".",
+          ResolutionKind::MainModule,
+        )?;
         (spec, None)
       }
       LoadInit::Side(ref specifier) => {
-        let spec =
-          self
-            .loader
-            .resolve(specifier, ".", ResolutionKind::Import)?;
+        let spec = resolve_helper(
+          self.snapshot_loaded_and_not_snapshotting,
+          self.loader.clone(),
+          specifier,
+          ".",
+          ResolutionKind::Import,
+        )?;
         (spec, None)
       }
       LoadInit::DynamicImport(ref specifier, ref referrer, _) => {
-        let spec = self.loader.resolve(
+        let spec = resolve_helper(
+          self.snapshot_loaded_and_not_snapshotting,
+          self.loader.clone(),
           specifier,
           referrer,
           ResolutionKind::DynamicImport,
@@ -805,6 +978,8 @@ pub(crate) struct ModuleMap {
   // This store is used temporarly, to forward parsed JSON
   // value from `new_json_module` to `json_module_evaluation_steps`
   json_value_store: HashMap<v8::Global<v8::Module>, v8::Global<v8::Value>>,
+
+  pub(crate) snapshot_loaded_and_not_snapshotting: bool,
 }
 
 impl ModuleMap {
@@ -882,6 +1057,7 @@ impl ModuleMap {
   pub(crate) fn new(
     loader: Rc<dyn ModuleLoader>,
     op_state: Rc<RefCell<OpState>>,
+    snapshot_loaded_and_not_snapshotting: bool,
   ) -> ModuleMap {
     Self {
       handles: vec![],
@@ -894,6 +1070,7 @@ impl ModuleMap {
       preparing_dynamic_imports: FuturesUnordered::new(),
       pending_dynamic_imports: FuturesUnordered::new(),
       json_value_store: HashMap::new(),
+      snapshot_loaded_and_not_snapshotting,
     }
   }
 
@@ -1020,7 +1197,9 @@ impl ModuleMap {
         return Err(ModuleError::Exception(exception));
       }
 
-      let module_specifier = match self.loader.resolve(
+      let module_specifier = match resolve_helper(
+        self.snapshot_loaded_and_not_snapshotting,
+        self.loader.clone(),
         &import_specifier,
         name,
         if is_dynamic_import {
@@ -1186,7 +1365,17 @@ impl ModuleMap {
       .borrow_mut()
       .dynamic_import_map
       .insert(load.id, resolver_handle);
-    let resolve_result = module_map_rc.borrow().loader.resolve(
+
+    let (loader, snapshot_loaded_and_not_snapshotting) = {
+      let module_map = module_map_rc.borrow();
+      (
+        module_map.loader.clone(),
+        module_map.snapshot_loaded_and_not_snapshotting,
+      )
+    };
+    let resolve_result = resolve_helper(
+      snapshot_loaded_and_not_snapshotting,
+      loader,
       specifier,
       referrer,
       ResolutionKind::DynamicImport,
@@ -1224,10 +1413,14 @@ impl ModuleMap {
     referrer: &str,
     import_assertions: HashMap<String, String>,
   ) -> Option<v8::Local<'s, v8::Module>> {
-    let resolved_specifier = self
-      .loader
-      .resolve(specifier, referrer, ResolutionKind::Import)
-      .expect("Module should have been already resolved");
+    let resolved_specifier = resolve_helper(
+      self.snapshot_loaded_and_not_snapshotting,
+      self.loader.clone(),
+      specifier,
+      referrer,
+      ResolutionKind::Import,
+    )
+    .expect("Module should have been already resolved");
 
     let module_type =
       get_asserted_module_type_from_assertions(&import_assertions);
@@ -1803,15 +1996,15 @@ import "/a.js";
       }
     }
 
-    // Test an erroneous dynamic import where the specified module isn't found.
-    run_in_task(|cx| {
-      let loader = Rc::new(DynImportErrLoader::default());
-      let count = loader.count.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
+    let loader = Rc::new(DynImportErrLoader::default());
+    let count = loader.count.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
 
+    // Test an erroneous dynamic import where the specified module isn't found.
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "file:///dyn_import2.js",
@@ -1886,16 +2079,15 @@ import "/a.js";
 
   #[test]
   fn dyn_import_ok() {
-    run_in_task(|cx| {
-      let loader = Rc::new(DynImportOkLoader::default());
-      let prepare_load_count = loader.prepare_load_count.clone();
-      let resolve_count = loader.resolve_count.clone();
-      let load_count = loader.load_count.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
-
+    let loader = Rc::new(DynImportOkLoader::default());
+    let prepare_load_count = loader.prepare_load_count.clone();
+    let resolve_count = loader.resolve_count.clone();
+    let load_count = loader.load_count.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+    run_in_task(move |cx| {
       // Dynamically import mod_b
       runtime
         .execute_script(
@@ -1935,13 +2127,14 @@ import "/a.js";
   #[test]
   fn dyn_import_borrow_mut_error() {
     // https://github.com/denoland/deno/issues/6054
-    run_in_task(|cx| {
-      let loader = Rc::new(DynImportOkLoader::default());
-      let prepare_load_count = loader.prepare_load_count.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
+    let loader = Rc::new(DynImportOkLoader::default());
+    let prepare_load_count = loader.prepare_load_count.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "file:///dyn_import3.js",
@@ -2193,13 +2386,14 @@ import "/a.js";
 
   #[test]
   fn slow_never_ready_modules() {
-    run_in_task(|cx| {
-      let loader = MockLoader::new();
-      let loads = loader.loads.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
+    let loader = MockLoader::new();
+    let loads = loader.loads.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    run_in_task(move |cx| {
       let spec = resolve_url("file:///main.js").unwrap();
       let mut recursive_load =
         runtime.load_main_module(&spec, None).boxed_local();
@@ -2238,12 +2432,13 @@ import "/a.js";
 
   #[test]
   fn loader_disappears_after_error() {
-    run_in_task(|cx| {
-      let loader = MockLoader::new();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
+    let loader = MockLoader::new();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    run_in_task(move |cx| {
       let spec = resolve_url("file:///bad_import.js").unwrap();
       let mut load_fut = runtime.load_main_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(cx);
@@ -2505,5 +2700,46 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
         "if (globalThis.url !== 'file:///main_with_code.js') throw Error('x')",
       )
       .unwrap();
+  }
+
+  #[test]
+  fn internal_module_loader() {
+    let loader = InternalModuleLoader::default();
+    assert!(loader
+      .resolve("internal:foo", "internal:bar", ResolutionKind::Import)
+      .is_ok());
+    assert_eq!(
+      loader
+        .resolve("internal:foo", "file://bar", ResolutionKind::Import)
+        .err()
+        .map(|e| e.to_string()),
+      Some("Cannot load internal module from external code".to_string())
+    );
+    assert_eq!(
+      loader
+        .resolve("file://foo", "file://bar", ResolutionKind::Import)
+        .err()
+        .map(|e| e.to_string()),
+      Some("Module loading is not supported".to_string())
+    );
+    assert_eq!(
+      loader
+        .resolve("file://foo", "internal:bar", ResolutionKind::Import)
+        .err()
+        .map(|e| e.to_string()),
+      Some("Module loading is not supported".to_string())
+    );
+    assert_eq!(
+      resolve_helper(
+        true,
+        Rc::new(loader),
+        "internal:core.js",
+        "file://bar",
+        ResolutionKind::Import,
+      )
+      .err()
+      .map(|e| e.to_string()),
+      Some("Cannot load internal module from external code".to_string())
+    );
   }
 }

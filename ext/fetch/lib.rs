@@ -97,9 +97,7 @@ where
 {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_console"])
-    .js(include_js_files!(
-      prefix "internal:ext/fetch",
-      "01_fetch_util.js",
+    .esm(include_js_files!(
       "20_headers.js",
       "21_formdata.js",
       "22_body.js",

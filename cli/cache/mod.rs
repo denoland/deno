@@ -45,6 +45,7 @@ pub struct FetchCacher {
   dynamic_permissions: PermissionsContainer,
   file_fetcher: Arc<FileFetcher>,
   root_permissions: PermissionsContainer,
+  cache_info_enabled: bool,
 }
 
 impl FetchCacher {
@@ -59,12 +60,23 @@ impl FetchCacher {
       dynamic_permissions,
       file_fetcher,
       root_permissions,
+      cache_info_enabled: false,
     }
+  }
+
+  /// The cache information takes a bit of time to fetch and it's
+  /// not always necessary. It should only be enabled for deno info.
+  pub fn enable_loading_cache_info(&mut self) {
+    self.cache_info_enabled = true;
   }
 }
 
 impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
+    if !self.cache_info_enabled {
+      return None;
+    }
+
     if matches!(specifier.scheme(), "npm" | "node") {
       return None;
     }

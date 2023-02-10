@@ -119,11 +119,7 @@ impl Resource for WebGpuQuerySet {
 pub fn init(unstable: bool) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_webidl", "deno_web"])
-    .js(include_js_files!(
-      prefix "internal:ext/webgpu",
-      "01_webgpu.js",
-      "02_idl_types.js",
-    ))
+    .esm(include_js_files!("01_webgpu.js", "02_idl_types.js",))
     .ops(declare_webgpu_ops())
     .state(move |state| {
       // TODO: check & possibly streamline this

@@ -26,7 +26,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 pub type MaybeImportsResult =
-  Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
+  Result<Vec<deno_graph::ReferrerImports>, AnyError>;
 
 #[derive(Hash)]
 pub struct JsxImportSourceConfig {
@@ -765,7 +765,7 @@ impl ConfigFile {
       if let Some(value) = self.json.compiler_options.as_ref() {
         value
       } else {
-        return Ok(None);
+        return Ok(Vec::new());
       };
     let compiler_options: CompilerOptions =
       serde_json::from_value(compiler_options_value.clone())?;
@@ -774,9 +774,9 @@ impl ConfigFile {
     }
     if !imports.is_empty() {
       let referrer = self.specifier.clone();
-      Ok(Some(vec![(referrer, imports)]))
+      Ok(vec![deno_graph::ReferrerImports { referrer, imports }])
     } else {
-      Ok(None)
+      Ok(Vec::new())
     }
   }
 

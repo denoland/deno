@@ -18,6 +18,7 @@ use import_map::SpecifierMap;
 
 use crate::args::Lockfile;
 use crate::cache::ParsedSourceCache;
+use crate::graph_util;
 use crate::graph_util::graph_lock_or_exit;
 
 use super::analyze::has_default_export;
@@ -72,18 +73,22 @@ pub fn build(
     validate_original_import_map(original_im, &output_dir_specifier)?;
   }
 
-  // build the graph
+  // check the lockfile
   if let Some(lockfile) = maybe_lockfile {
     graph_lock_or_exit(&graph, &mut lockfile.lock());
   }
 
-  let mut graph_errors = graph.errors().peekable();
-  if graph_errors.peek().is_some() {
-    for err in graph_errors {
-      log::error!("{}", err);
-    }
-    bail!("failed vendoring");
-  }
+  // surface any errors
+  graph_util::graph_valid(
+    &graph,
+    &graph.roots,
+    deno_graph::WalkOptions {
+      // surface all errors
+      check_js: true,
+      follow_dynamic: true,
+      follow_type_only: true,
+    },
+  )?;
 
   // figure out how to map remote modules to local
   let all_modules = graph.modules().collect::<Vec<_>>();
@@ -1119,7 +1124,13 @@ mod test {
       .err()
       .unwrap();
 
-    assert_eq!(err.to_string(), "failed vendoring");
+    assert_eq!(
+      err.to_string(),
+      concat!(
+        "500 Internal Server Error\n",
+        "    at https://localhost/mod.ts:1:14"
+      )
+    );
   }
 
   fn to_file_vec(items: &[(&str, &str)]) -> Vec<(String, String)> {
