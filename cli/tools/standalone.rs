@@ -52,8 +52,6 @@ pub async fn compile(
   // at the moment, we don't support npm specifiers in deno_compile, so show an error
   error_for_any_npm_specifier(&graph)?;
 
-  graph.valid()?;
-
   let parser = ps.parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
 

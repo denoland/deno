@@ -40,18 +40,17 @@ pub async fn print_docs(
         Vec::new(),
       );
       let analyzer = deno_graph::CapturingModuleAnalyzer::default();
-      let graph = deno_graph::create_graph(
-        vec![source_file_specifier.clone()],
-        &mut loader,
-        deno_graph::GraphOptions {
-          is_dynamic: false,
-          imports: None,
-          resolver: None,
-          module_analyzer: Some(&analyzer),
-          reporter: None,
-        },
-      )
-      .await;
+      let mut graph = deno_graph::ModuleGraph::default();
+      graph
+        .build(
+          vec![source_file_specifier.clone()],
+          &mut loader,
+          deno_graph::BuildOptions {
+            module_analyzer: Some(&analyzer),
+            ..Default::default()
+          },
+        )
+        .await;
       let doc_parser = doc::DocParser::new(
         graph,
         doc_flags.private,

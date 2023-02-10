@@ -2,7 +2,6 @@
 
 use crate::args::TsTypeLib;
 use crate::emit::emit_parsed_source;
-use crate::graph_util::ModuleEntry;
 use crate::node;
 use crate::proc_state::ProcState;
 use crate::util::text_encoding::code_without_source_map;
@@ -85,11 +84,13 @@ impl CliModuleLoader {
         media_type: MediaType::JavaScript,
       });
     }
-    let graph_data = self.ps.graph_data.read();
-    let found_url = graph_data.follow_redirect(specifier);
-    match graph_data.get(&found_url) {
-      Some(ModuleEntry::Module {
-        code, media_type, ..
+    let graph = self.ps.graph();
+    match graph.get(specifier) {
+      Some(deno_graph::Module {
+        maybe_source: Some(code),
+        media_type,
+        specifier,
+        ..
       }) => {
         let code = match media_type {
           MediaType::JavaScript
@@ -107,7 +108,7 @@ impl CliModuleLoader {
             emit_parsed_source(
               &self.ps.emit_cache,
               &self.ps.parsed_source_cache,
-              &found_url,
+              specifier,
               *media_type,
               code,
               &self.ps.emit_options,
@@ -115,7 +116,7 @@ impl CliModuleLoader {
             )?
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
-            panic!("Unexpected media type {media_type} for {found_url}")
+            panic!("Unexpected media type {media_type} for {specifier}")
           }
         };
 
@@ -124,7 +125,7 @@ impl CliModuleLoader {
 
         Ok(ModuleCodeSource {
           code,
-          found_url,
+          found_url: specifier.clone(),
           media_type: *media_type,
         })
       }
@@ -295,10 +296,12 @@ impl SourceMapGetter for CliModuleLoader {
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
-    let graph_data = self.ps.graph_data.read();
-    let specifier = graph_data.follow_redirect(&resolve_url(file_name).ok()?);
-    let code = match graph_data.get(&specifier) {
-      Some(ModuleEntry::Module { code, .. }) => code,
+    let graph = self.ps.graph();
+    let code = match graph.get(&resolve_url(file_name).ok()?) {
+      Some(deno_graph::Module {
+        maybe_source: Some(code),
+        ..
+      }) => code,
       _ => return None,
     };
     // Do NOT use .lines(): it skips the terminating empty line.
