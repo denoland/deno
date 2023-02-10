@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::assert_napi_ok;
+use crate::cstr;
 use napi_sys::PropertyAttributes::*;
 use napi_sys::*;
 use std::os::raw::c_char;
@@ -17,7 +18,7 @@ fn init_constants(env: napi_env) -> napi_value {
   assert_napi_ok!(napi_set_named_property(
     env,
     constants,
-    "nice\0".as_ptr() as _,
+    cstr!("nice"),
     value
   ));
   constants
@@ -31,7 +32,7 @@ pub fn init(env: napi_env, exports: napi_value) {
   let mut name_value: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    "key_v8_string".as_ptr() as *const c_char,
+    cstr!("key_v8_string"),
     usize::MAX,
     &mut name_value,
   ));
@@ -41,7 +42,7 @@ pub fn init(env: napi_env, exports: napi_value) {
   let mut name_symbol: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_create_string_utf8(
     env,
-    "key_v8_symbol".as_ptr() as *const c_char,
+    cstr!("key_v8_symbol"),
     usize::MAX,
     &mut symbol_description,
   ));
@@ -53,7 +54,7 @@ pub fn init(env: napi_env, exports: napi_value) {
 
   let properties = &[
     napi_property_descriptor {
-      utf8name: "test_simple_property\0".as_ptr() as *const c_char,
+      utf8name: cstr!("test_simple_property"),
       name: ptr::null_mut(),
       method: None,
       getter: None,
@@ -63,7 +64,7 @@ pub fn init(env: napi_env, exports: napi_value) {
       value: init_constants(env),
     },
     napi_property_descriptor {
-      utf8name: "test_property_rw\0".as_ptr() as *const c_char,
+      utf8name: cstr!("test_property_rw"),
       name: ptr::null_mut(),
       method: None,
       getter: None,
@@ -73,7 +74,7 @@ pub fn init(env: napi_env, exports: napi_value) {
       value: number,
     },
     napi_property_descriptor {
-      utf8name: "test_property_r\0".as_ptr() as *const c_char,
+      utf8name: cstr!("test_property_r\0"),
       name: ptr::null_mut(),
       method: None,
       getter: None,
