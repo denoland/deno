@@ -26,6 +26,7 @@ use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::path_to_declaration_path;
 use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::NodeModulePolyfill;
+use deno_runtime::deno_node::NodeModulePolyfillSpecifier;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
@@ -133,16 +134,18 @@ fn is_builtin_node_module(specifier: &str) -> bool {
 }
 
 pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
-  // NOTE(bartlomieju): `module` is special, because we don't want to use
-  // `deno_std/node/module.ts`, but instead use a special shim that we
-  // provide in `ext/node`.
-  if specifier == "module" {
-    return Ok(Url::parse("node:module").unwrap());
-  }
-
   if let Some(module) = find_builtin_node_module(specifier) {
-    let module_url = NODE_COMPAT_URL.join(module.specifier).unwrap();
-    return Ok(module_url);
+    match module.specifier {
+      // We will load the source code from the `std/node` polyfill.
+      NodeModulePolyfillSpecifier::StdNode(specifier) => {
+        let module_url = NODE_COMPAT_URL.join(specifier).unwrap();
+        return Ok(module_url);
+      }
+      // The module has already been snapshotted and is present in the binary.
+      NodeModulePolyfillSpecifier::Embedded(specifier) => {
+        return Ok(ModuleSpecifier::parse(specifier).unwrap());
+      }
+    }
   }
 
   Err(generic_error(format!(

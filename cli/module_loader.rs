@@ -77,13 +77,11 @@ impl CliModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleCodeSource, AnyError> {
-    if specifier.as_str() == "node:module" {
-      return Ok(ModuleCodeSource {
-        code: deno_runtime::deno_node::MODULE_ES_SHIM.to_string(),
-        found_url: specifier.to_owned(),
-        media_type: MediaType::JavaScript,
-      });
-    }
+    // TODO(bartlomieju): uncomment, when all `node:` module have been
+    // snapshotted
+    // if specifier.scheme() == "node" {
+    //   unreachable!("Node built-in modules should be handled internally.");
+    // }
     let graph = self.ps.graph();
     match graph.get(specifier) {
       Some(deno_graph::Module {
