@@ -146,6 +146,7 @@ incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 
+# Build release with debug symbols: cargo build --profile=release-with-debug
 [profile.release-with-debug]
 inherits = "release"
 debug = true

@@ -39,10 +39,10 @@ pub struct CheckOptions {
   /// If true, valid `.tsbuildinfo` files will be ignored and type checking
   /// will always occur.
   pub reload: bool,
-  /// If the graph data has a node built-in specifier.
+  /// If the graph has a node built-in specifier.
   ///
-  /// Although this could be derived from the graph, it requires traversing
-  /// the graph, so this helps speed things up.
+  /// Although this could be derived from the graph, this helps
+  /// speed things up.
   pub has_node_builtin_specifier: bool,
 }
 
