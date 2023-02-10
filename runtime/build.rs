@@ -26,6 +26,7 @@ mod not_docs {
 
     let should_transpile = match media_type {
       MediaType::JavaScript => false,
+      MediaType::Mjs => false,
       MediaType::TypeScript => true,
       _ => panic!("Unsupported media type for snapshotting {media_type:?}"),
     };

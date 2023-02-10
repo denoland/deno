@@ -275,21 +275,29 @@ pub struct NoopModuleLoader;
 impl ModuleLoader for NoopModuleLoader {
   fn resolve(
     &self,
-    _specifier: &str,
-    _referrer: &str,
+    specifier: &str,
+    referrer: &str,
     _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
-    Err(generic_error("Module loading is not supported"))
+    Err(generic_error(
+      format!("Module loading is not supported; attempted to resolve: \"{specifier}\" from \"{referrer}\"")
+    ))
   }
 
   fn load(
     &self,
-    _module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
     _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    async { Err(generic_error("Module loading is not supported")) }
-      .boxed_local()
+    let err = generic_error(
+      format!(
+        "Module loading is not supported; attempted to load: \"{}\" from \"{:?}\"", 
+        module_specifier, 
+        maybe_referrer
+      )
+    );
+    async move { Err(err) }.boxed_local()
   }
 }
 
