@@ -44,6 +44,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -654,7 +655,8 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
   // check if there are any stack frames coming from user code
   let should_filter = frames.iter().any(|f| {
     if let Some(file_name) = &f.file_name {
-      !(file_name.starts_with("[deno:") || file_name.starts_with("deno:"))
+      !(file_name.starts_with("[internal:")
+        || file_name.starts_with("internal:"))
     } else {
       true
     }
@@ -666,7 +668,8 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
       .rev()
       .skip_while(|f| {
         if let Some(file_name) = &f.file_name {
-          file_name.starts_with("[deno:") || file_name.starts_with("deno:")
+          file_name.starts_with("[internal:")
+            || file_name.starts_with("internal:")
         } else {
           false
         }
@@ -955,7 +958,6 @@ pub async fn check_specifiers(
       lib,
       PermissionsContainer::new(Permissions::allow_all()),
       PermissionsContainer::new(permissions.clone()),
-      false,
     )
     .await?;
   }
@@ -977,7 +979,6 @@ pub async fn check_specifiers(
     lib,
     PermissionsContainer::allow_all(),
     PermissionsContainer::new(permissions),
-    true,
   )
   .await?;
 
@@ -1353,12 +1354,14 @@ pub async fn run_tests_with_watch(
     Permissions::from_options(&ps.options.permissions_options())?;
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
+  let ps = RefCell::new(ps);
+
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let paths_to_watch = test_options.files.include.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
     let test_options = &test_options;
-    let ps = ps.clone();
+    let ps = ps.borrow().clone();
 
     async move {
       let test_modules = if test_options.doc {
@@ -1466,7 +1469,8 @@ pub async fn run_tests_with_watch(
   let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
     let permissions = &permissions;
     let test_options = &test_options;
-    let ps = ps.clone();
+    ps.borrow_mut().reset_for_file_watcher();
+    let ps = ps.borrow().clone();
 
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
@@ -1502,12 +1506,13 @@ pub async fn run_tests_with_watch(
     }
   };
 
+  let clear_screen = !ps.borrow().options.no_clear_screen();
   file_watcher::watch_func(
     resolver,
     operation,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),
-      clear_screen: !ps.options.no_clear_screen(),
+      clear_screen,
     },
   )
   .await?;

@@ -66,12 +66,11 @@ pub struct GraphData {
   /// error messages.
   referrer_map: HashMap<ModuleSpecifier, Box<Range>>,
   graph_imports: Vec<GraphImport>,
-  cjs_esm_translations: HashMap<ModuleSpecifier, String>,
 }
 
 impl GraphData {
   /// Store data from `graph` into `self`.
-  pub fn add_graph(&mut self, graph: &ModuleGraph, reload: bool) {
+  pub fn add_graph(&mut self, graph: &ModuleGraph) {
     for graph_import in &graph.imports {
       for dep in graph_import.dependencies.values() {
         for resolved in [&dep.maybe_code, &dep.maybe_type] {
@@ -90,7 +89,7 @@ impl GraphData {
     let mut has_npm_specifier_in_graph = false;
 
     for (specifier, result) in graph.specifiers() {
-      if !reload && self.modules.contains_key(specifier) {
+      if self.modules.contains_key(specifier) {
         continue;
       }
 
@@ -311,7 +310,6 @@ impl GraphData {
       npm_packages: self.npm_packages.clone(),
       referrer_map,
       graph_imports: self.graph_imports.to_vec(),
-      cjs_esm_translations: Default::default(),
     })
   }
 
@@ -465,19 +463,12 @@ impl GraphData {
     }
     None
   }
-
-  pub fn get_cjs_esm_translation<'a>(
-    &'a self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<&'a String> {
-    self.cjs_esm_translations.get(specifier)
-  }
 }
 
 impl From<&ModuleGraph> for GraphData {
   fn from(graph: &ModuleGraph) -> Self {
     let mut graph_data = GraphData::default();
-    graph_data.add_graph(graph, false);
+    graph_data.add_graph(graph);
     graph_data
   }
 }
@@ -549,7 +540,7 @@ pub async fn create_graph_and_maybe_check(
 
   let check_js = ps.options.check_js();
   let mut graph_data = GraphData::default();
-  graph_data.add_graph(&graph, false);
+  graph_data.add_graph(&graph);
   graph_data
     .check(
       &graph.roots,
