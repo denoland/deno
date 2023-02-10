@@ -82,27 +82,26 @@ pub fn init(env: napi_env, exports: napi_value) {
       attributes: enumerable,
       value: number,
     },
-    // TODO(@littledivy): Fix this.
-    // napi_property_descriptor {
-    //   utf8name: ptr::null(),
-    //   name: name_value,
-    //   method: None,
-    //   getter: None,
-    //   setter: None,
-    //   data: ptr::null_mut(),
-    //   attributes: enumerable,
-    //   value: number,
-    // },
-    // napi_property_descriptor {
-    //   utf8name: ptr::null(),
-    //   name: name_symbol,
-    //   method: None,
-    //   getter: None,
-    //   setter: None,
-    //   data: ptr::null_mut(),
-    //   attributes: enumerable,
-    //   value: number,
-    // },
+    napi_property_descriptor {
+      utf8name: ptr::null(),
+      name: name_value,
+      method: None,
+      getter: None,
+      setter: None,
+      data: ptr::null_mut(),
+      attributes: enumerable,
+      value: number,
+    },
+    napi_property_descriptor {
+      utf8name: ptr::null(),
+      name: name_symbol,
+      method: None,
+      getter: None,
+      setter: None,
+      data: ptr::null_mut(),
+      attributes: enumerable,
+      value: number,
+    },
   ];
 
   assert_napi_ok!(napi_define_properties(

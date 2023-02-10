@@ -1437,10 +1437,12 @@ fn napi_define_properties(
   for property in properties {
     let name = if !property.utf8name.is_null() {
       let name_str = CStr::from_ptr(property.utf8name).to_str().unwrap();
-      v8::String::new(scope, name_str).ok_or(Error::GenericFailure)?
+      v8::String::new(scope, name_str)
+        .ok_or(Error::GenericFailure)?
+        .into()
     } else {
       let property_value = napi_value_unchecked(property.name);
-      v8::Local::<v8::String>::try_from(property_value)
+      v8::Local::<v8::Name>::try_from(property_value)
         .map_err(|_| Error::NameExpected)?
     };
 
