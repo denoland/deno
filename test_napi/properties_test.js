@@ -15,4 +15,10 @@ Deno.test("napi properties", () => {
   assertEquals(properties.test_simple_property, {
     nice: 69,
   });
+
+  assertEquals(properties.key_v8_string, 1);
+  const symbols = Object.getOwnPropertySymbols(properties);
+  assertEquals(symbols.length, 1);
+  assertEquals(symbols[0].description, "key_v8_symbol");
+  assertEquals(properties[symbols[0]], 1);
 });
