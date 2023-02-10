@@ -15,6 +15,7 @@ use deno_core::v8;
 use deno_core::Extension;
 use deno_core::ModuleId;
 use deno_runtime::colors;
+use deno_runtime::deno_node;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
@@ -304,8 +305,9 @@ impl CliMainWorker {
 
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
     self.ps.prepare_node_std_graph().await?;
-    node::initialize_runtime(
+    deno_node::initialize_runtime(
       &mut self.worker.js_runtime,
+      node::MODULE_ALL_URL.as_str(),
       self.ps.options.node_modules_dir(),
     )
     .await?;
@@ -626,8 +628,9 @@ fn create_web_worker_pre_execute_module_callback(
     let fut = async move {
       // this will be up to date after pre-load
       if ps.npm_resolver.has_packages() {
-        node::initialize_runtime(
+        deno_node::initialize_runtime(
           &mut worker.js_runtime,
+          node::MODULE_ALL_URL.as_str(),
           ps.options.node_modules_dir(),
         )
         .await?;

@@ -32,7 +32,6 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
-use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
@@ -199,29 +198,6 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
     "static",
   ])
 });
-
-pub async fn initialize_runtime(
-  js_runtime: &mut JsRuntime,
-  uses_local_node_modules_dir: bool,
-) -> Result<(), AnyError> {
-  let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName, usesLocalNodeModulesDir) {{
-      const moduleAll = await import(moduleAllUrl);
-      Deno[Deno.internal].node.initialize(moduleAll.default, nodeGlobalThisName);
-      if (usesLocalNodeModulesDir) {{
-        Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
-      }}
-    }})('{}', '{}', {});"#,
-    MODULE_ALL_URL.as_str(),
-    NODE_GLOBAL_THIS_NAME.as_str(),
-    uses_local_node_modules_dir,
-  );
-
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
-  Ok(())
-}
 
 pub async fn initialize_binary_command(
   js_runtime: &mut JsRuntime,

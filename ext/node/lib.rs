@@ -3,10 +3,12 @@
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
+use deno_core::located_script_name;
 use deno_core::normalize_path;
 use deno_core::op;
 use deno_core::url::Url;
 use deno_core::Extension;
+use deno_core::JsRuntime;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
 use once_cell::sync::Lazy;
@@ -670,6 +672,30 @@ fn op_require_break_on_next_statement(state: &mut OpState) {
   inspector
     .borrow_mut()
     .wait_for_session_and_break_on_next_statement()
+}
+
+pub async fn initialize_runtime(
+  js_runtime: &mut JsRuntime,
+  module_all_url: &str,
+  uses_local_node_modules_dir: bool,
+) -> Result<(), AnyError> {
+  let source_code = &format!(
+    r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName, usesLocalNodeModulesDir) {{
+      const moduleAll = await import(moduleAllUrl);
+      Deno[Deno.internal].node.initialize(moduleAll.default, nodeGlobalThisName);
+      if (usesLocalNodeModulesDir) {{
+        Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
+      }}
+    }})('{}', '{}', {});"#,
+    module_all_url,
+    NODE_GLOBAL_THIS_NAME.as_str(),
+    uses_local_node_modules_dir,
+  );
+
+  let value =
+    js_runtime.execute_script(&located_script_name!(), source_code)?;
+  js_runtime.resolve_value(value).await?;
+  Ok(())
 }
 
 pub struct NodeModulePolyfill {
