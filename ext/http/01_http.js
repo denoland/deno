@@ -40,6 +40,7 @@ import {
 } from "internal:deno_web/06_streams.js";
 const {
   ArrayPrototypeIncludes,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSome,
   Error,
@@ -50,6 +51,7 @@ const {
   SetPrototypeDelete,
   StringPrototypeIncludes,
   StringPrototypeToLowerCase,
+  StringPrototypeTrim,
   StringPrototypeSplit,
   Symbol,
   SymbolAsyncIterator,
@@ -393,7 +395,10 @@ function upgradeWebSocket(request, options = {}) {
   const upgrade = request.headers.get("upgrade");
   const upgradeHasWebSocketOption = upgrade !== null &&
     ArrayPrototypeSome(
-      StringPrototypeSplit(upgrade, /\s*,\s*/),
+      ArrayPrototypeMap(
+        StringPrototypeSplit(upgrade, ","),
+        (s) => StringPrototypeTrim(s),
+      ),
       (option) => StringPrototypeToLowerCase(option) === "websocket",
     );
   if (!upgradeHasWebSocketOption) {
@@ -405,7 +410,10 @@ function upgradeWebSocket(request, options = {}) {
   const connection = request.headers.get("connection");
   const connectionHasUpgradeOption = connection !== null &&
     ArrayPrototypeSome(
-      StringPrototypeSplit(connection, /\s*,\s*/),
+      ArrayPrototypeMap(
+        StringPrototypeSplit(connection, ","),
+        (s) => StringPrototypeTrim(s),
+      ),
       (option) => StringPrototypeToLowerCase(option) === "upgrade",
     );
   if (!connectionHasUpgradeOption) {
