@@ -569,51 +569,37 @@ function createServe(opFn) {
             let resp;
             try {
               resp = handler(req, () => {
-                  const { 0: hostname, 1: port } = core.ops.op_flash_addr(
-                    serverId,
-                    i,
-                  );
-                  return {
-                    hostname,
-                    port,
-                  };
-                });
-                if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
-                  PromisePrototypeCatch(
-                    PromisePrototypeThen(
-                      resp,
-                      (resp) =>
-                        handleResponse(
-                          req,
-                          resp,
-                          body,
-                          hasBody,
-                          method,
-                          serverId,
-                          i,
-                          respondFast,
-                          respondChunked,
-                          tryRespondChunked,
-                        ),
-                    ),
-                    onError,
-                  );
-                } else if (typeof resp?.then === "function") {
-                  resp.then((resp) =>
-                    handleResponse(
-                      req,
-                      resp,
-                      body,
-                      hasBody,
-                      method,
-                      serverId,
-                      i,
-                      respondFast,
-                      respondChunked,
-                      tryRespondChunked,
-                    )
-                  ).catch(onError);
-                } else {
+                const { 0: hostname, 1: port } = core.ops.op_flash_addr(
+                  serverId,
+                  i,
+                );
+                return {
+                  hostname,
+                  port,
+                };
+              });
+              if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
+                PromisePrototypeCatch(
+                  PromisePrototypeThen(
+                    resp,
+                    (resp) =>
+                      handleResponse(
+                        req,
+                        resp,
+                        body,
+                        hasBody,
+                        method,
+                        serverId,
+                        i,
+                        respondFast,
+                        respondChunked,
+                        tryRespondChunked,
+                      ),
+                  ),
+                  onError,
+                );
+              } else if (typeof resp?.then === "function") {
+                resp.then((resp) =>
                   handleResponse(
                     req,
                     resp,
@@ -625,12 +611,26 @@ function createServe(opFn) {
                     respondFast,
                     respondChunked,
                     tryRespondChunked,
-                  ).catch(onError);
-                }
-              } catch (e) {
-                resp = await onError(e);
+                  )
+                ).catch(onError);
+              } else {
+                handleResponse(
+                  req,
+                  resp,
+                  body,
+                  hasBody,
+                  method,
+                  serverId,
+                  i,
+                  respondFast,
+                  respondChunked,
+                  tryRespondChunked,
+                ).catch(onError);
               }
+            } catch (e) {
+              resp = await onError(e);
             }
+          }
 
           offset += tokens;
         }
