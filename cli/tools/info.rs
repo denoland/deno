@@ -647,7 +647,7 @@ impl<'a> GraphDisplayContext<'a> {
         let resolved_specifier = self.graph.resolve(specifier);
         Some(match self.graph.try_get(&resolved_specifier) {
           Ok(Some(module)) => self.build_module_info(module, type_dep),
-          Err(err) => self.build_error_info(&err, &resolved_specifier),
+          Err(err) => self.build_error_info(err, &resolved_specifier),
           Ok(None) => TreeNode::from_text(format!(
             "{} {}",
             colors::red(specifier),
