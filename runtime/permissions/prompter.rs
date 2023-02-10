@@ -232,7 +232,7 @@ impl PermissionPrompter for TtyPrompter {
         None => break PromptResponse::Deny,
         Some(v) => v,
       };
-      match ch {
+      match ch.to_ascii_lowercase() {
         'y' => {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
           let msg = format!("Granted {message}.");
