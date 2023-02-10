@@ -85,7 +85,11 @@ pub fn init<P: NodePermissions + 'static>(
   maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
 ) -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
-    .esm(include_js_files!("01_node.js", "02_require.js",))
+    .esm(include_js_files!(
+      "01_node.js",
+      "02_require.js",
+      "module_es_shim.js",
+    ))
     .ops(vec![
       op_require_init_paths::decl(),
       op_require_node_module_paths::decl::<P>(),
@@ -672,196 +676,202 @@ fn op_require_break_on_next_statement(state: &mut OpState) {
     .wait_for_session_and_break_on_next_statement()
 }
 
+pub enum NodeModulePolyfillSpecifier {
+  Embedded(&'static str),
+  StdNode(&'static str),
+}
+
 pub struct NodeModulePolyfill {
   /// Name of the module like "assert" or "timers/promises"
   pub name: &'static str,
 
   /// Specifier relative to the root of `deno_std` repo, like "node/assert.ts"
-  pub specifier: &'static str,
+  pub specifier: NodeModulePolyfillSpecifier,
 }
 
 pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
   NodeModulePolyfill {
     name: "assert",
-    specifier: "node/assert.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/assert.ts"),
   },
   NodeModulePolyfill {
     name: "assert/strict",
-    specifier: "node/assert/strict.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/assert/strict.ts"),
   },
   NodeModulePolyfill {
     name: "async_hooks",
-    specifier: "node/async_hooks.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/async_hooks.ts"),
   },
   NodeModulePolyfill {
     name: "buffer",
-    specifier: "node/buffer.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/buffer.ts"),
   },
   NodeModulePolyfill {
     name: "child_process",
-    specifier: "node/child_process.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/child_process.ts"),
   },
   NodeModulePolyfill {
     name: "cluster",
-    specifier: "node/cluster.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/cluster.ts"),
   },
   NodeModulePolyfill {
     name: "console",
-    specifier: "node/console.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/console.ts"),
   },
   NodeModulePolyfill {
     name: "constants",
-    specifier: "node/constants.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/constants.ts"),
   },
   NodeModulePolyfill {
     name: "crypto",
-    specifier: "node/crypto.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/crypto.ts"),
   },
   NodeModulePolyfill {
     name: "dgram",
-    specifier: "node/dgram.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/dgram.ts"),
   },
   NodeModulePolyfill {
     name: "dns",
-    specifier: "node/dns.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/dns.ts"),
   },
   NodeModulePolyfill {
     name: "dns/promises",
-    specifier: "node/dns/promises.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/dns/promises.ts"),
   },
   NodeModulePolyfill {
     name: "domain",
-    specifier: "node/domain.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/domain.ts"),
   },
   NodeModulePolyfill {
     name: "events",
-    specifier: "node/events.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/events.ts"),
   },
   NodeModulePolyfill {
     name: "fs",
-    specifier: "node/fs.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/fs.ts"),
   },
   NodeModulePolyfill {
     name: "fs/promises",
-    specifier: "node/fs/promises.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/fs/promises.ts"),
   },
   NodeModulePolyfill {
     name: "http",
-    specifier: "node/http.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/http.ts"),
   },
   NodeModulePolyfill {
     name: "https",
-    specifier: "node/https.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/https.ts"),
   },
   NodeModulePolyfill {
     name: "module",
-    // NOTE(bartlomieju): `module` is special, because we don't want to use
-    // `deno_std/node/module.ts`, but instead use a special shim that we
-    // provide in `ext/node`.
-    specifier: "[USE `deno_node::MODULE_ES_SHIM` to get this module]",
+    specifier: NodeModulePolyfillSpecifier::Embedded(
+      "internal:deno_node/module_es_shim.js",
+    ),
   },
   NodeModulePolyfill {
     name: "net",
-    specifier: "node/net.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/net.ts"),
   },
   NodeModulePolyfill {
     name: "os",
-    specifier: "node/os.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/os.ts"),
   },
   NodeModulePolyfill {
     name: "path",
-    specifier: "node/path.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/path.ts"),
   },
   NodeModulePolyfill {
     name: "path/posix",
-    specifier: "node/path/posix.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/path/posix.ts"),
   },
   NodeModulePolyfill {
     name: "path/win32",
-    specifier: "node/path/win32.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/path/win32.ts"),
   },
   NodeModulePolyfill {
     name: "perf_hooks",
-    specifier: "node/perf_hooks.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/perf_hooks.ts"),
   },
   NodeModulePolyfill {
     name: "process",
-    specifier: "node/process.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/process.ts"),
   },
   NodeModulePolyfill {
     name: "querystring",
-    specifier: "node/querystring.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/querystring.ts"),
   },
   NodeModulePolyfill {
     name: "readline",
-    specifier: "node/readline.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/readline.ts"),
   },
   NodeModulePolyfill {
     name: "stream",
-    specifier: "node/stream.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/stream.ts"),
   },
   NodeModulePolyfill {
     name: "stream/consumers",
-    specifier: "node/stream/consumers.mjs",
+    specifier: NodeModulePolyfillSpecifier::StdNode(
+      "node/stream/consumers.mjs",
+    ),
   },
   NodeModulePolyfill {
     name: "stream/promises",
-    specifier: "node/stream/promises.mjs",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/stream/promises.mjs"),
   },
   NodeModulePolyfill {
     name: "stream/web",
-    specifier: "node/stream/web.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/stream/web.ts"),
   },
   NodeModulePolyfill {
     name: "string_decoder",
-    specifier: "node/string_decoder.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/string_decoder.ts"),
   },
   NodeModulePolyfill {
     name: "sys",
-    specifier: "node/sys.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/sys.ts"),
   },
   NodeModulePolyfill {
     name: "timers",
-    specifier: "node/timers.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/timers.ts"),
   },
   NodeModulePolyfill {
     name: "timers/promises",
-    specifier: "node/timers/promises.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/timers/promises.ts"),
   },
   NodeModulePolyfill {
     name: "tls",
-    specifier: "node/tls.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/tls.ts"),
   },
   NodeModulePolyfill {
     name: "tty",
-    specifier: "node/tty.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/tty.ts"),
   },
   NodeModulePolyfill {
     name: "url",
-    specifier: "node/url.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/url.ts"),
   },
   NodeModulePolyfill {
     name: "util",
-    specifier: "node/util.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/util.ts"),
   },
   NodeModulePolyfill {
     name: "util/types",
-    specifier: "node/util/types.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/util/types.ts"),
   },
   NodeModulePolyfill {
     name: "v8",
-    specifier: "node/v8.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/v8.ts"),
   },
   NodeModulePolyfill {
     name: "vm",
-    specifier: "node/vm.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/vm.ts"),
   },
   NodeModulePolyfill {
     name: "worker_threads",
-    specifier: "node/worker_threads.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/worker_threads.ts"),
   },
   NodeModulePolyfill {
     name: "zlib",
-    specifier: "node/zlib.ts",
+    specifier: NodeModulePolyfillSpecifier::StdNode("node/zlib.ts"),
   },
 ];

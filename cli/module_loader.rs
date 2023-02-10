@@ -78,12 +78,8 @@ impl CliModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleCodeSource, AnyError> {
-    if specifier.as_str() == "node:module" {
-      return Ok(ModuleCodeSource {
-        code: deno_runtime::deno_node::MODULE_ES_SHIM.to_string(),
-        found_url: specifier.to_owned(),
-        media_type: MediaType::JavaScript,
-      });
+    if specifier.scheme() == "node" {
+      unreachable!("Node built-in modules should be handled internally.");
     }
     let graph_data = self.ps.graph_data.read();
     let found_url = graph_data.follow_redirect(specifier);
