@@ -27,8 +27,8 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_graph::Resolution;
 use deno_graph::ResolutionError;
-use deno_graph::Resolved;
 use deno_graph::SpecifierError;
 use deno_lint::rules::LintRule;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -852,18 +852,17 @@ impl DenoDiagnostic {
   }
 }
 
-fn diagnose_resolved(
+fn diagnose_resolution(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   snapshot: &language_server::StateSnapshot,
-  resolved: &deno_graph::Resolved,
+  resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
 ) {
-  match resolved {
-    Resolved::Ok {
-      specifier, range, ..
-    } => {
-      let range = documents::to_lsp_range(range);
+  match resolution {
+    Resolution::Ok(resolved) => {
+      let specifier = &resolved.specifier;
+      let range = documents::to_lsp_range(&resolved.range);
       // If the module is a remote module and has a `X-Deno-Warning` header, we
       // want a warning diagnostic with that message.
       if let Some(metadata) = snapshot.cache_metadata.get(specifier) {
@@ -959,8 +958,8 @@ fn diagnose_resolved(
     }
     // The specifier resolution resulted in an error, so we want to issue a
     // diagnostic for that.
-    Resolved::Err(err) => diagnostics.push(
-      DenoDiagnostic::ResolutionError(err.clone())
+    Resolution::Err(err) => diagnostics.push(
+      DenoDiagnostic::ResolutionError(*err.clone())
         .to_lsp_diagnostic(&documents::to_lsp_range(err.range())),
     ),
     _ => (),
@@ -984,31 +983,28 @@ fn diagnose_dependency(
   }
 
   if let Some(import_map) = &snapshot.maybe_import_map {
-    if let Resolved::Ok {
-      specifier, range, ..
-    } = &dependency.maybe_code
-    {
-      if let Some(to) = import_map.lookup(specifier, referrer) {
+    if let Resolution::Ok(resolved) = &dependency.maybe_code {
+      if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {
         if dependency_key != to {
           diagnostics.push(
             DenoDiagnostic::ImportMapRemap {
               from: dependency_key.to_string(),
               to,
             }
-            .to_lsp_diagnostic(&documents::to_lsp_range(range)),
+            .to_lsp_diagnostic(&documents::to_lsp_range(&resolved.range)),
           );
         }
       }
     }
   }
-  diagnose_resolved(
+  diagnose_resolution(
     diagnostics,
     snapshot,
     &dependency.maybe_code,
     dependency.is_dynamic,
     dependency.maybe_assert_type.as_deref(),
   );
-  diagnose_resolved(
+  diagnose_resolution(
     diagnostics,
     snapshot,
     &dependency.maybe_type,
@@ -1064,6 +1060,7 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
+  use pretty_assertions::assert_eq;
   use std::path::Path;
   use std::path::PathBuf;
   use std::sync::Arc;

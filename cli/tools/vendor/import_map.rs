@@ -9,7 +9,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_graph::Range;
-use deno_graph::Resolved;
+use deno_graph::Resolution;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 use indexmap::IndexMap;
@@ -221,7 +221,7 @@ fn visit_modules(
     };
 
     for dep in module.dependencies.values() {
-      visit_maybe_resolved(
+      visit_resolution(
         &dep.maybe_code,
         graph,
         import_map,
@@ -230,7 +230,7 @@ fn visit_modules(
         &text_info,
         source_text,
       );
-      visit_maybe_resolved(
+      visit_resolution(
         &dep.maybe_type,
         graph,
         import_map,
@@ -241,9 +241,9 @@ fn visit_modules(
       );
     }
 
-    if let Some((_, maybe_resolved)) = &module.maybe_types_dependency {
-      visit_maybe_resolved(
-        maybe_resolved,
+    if let Some(types_dep) = &module.maybe_types_dependency {
+      visit_resolution(
+        &types_dep.dependency,
         graph,
         import_map,
         &module.specifier,
@@ -257,8 +257,8 @@ fn visit_modules(
   Ok(())
 }
 
-fn visit_maybe_resolved(
-  maybe_resolved: &Resolved,
+fn visit_resolution(
+  resolution: &Resolution,
   graph: &ModuleGraph,
   import_map: &mut ImportMapBuilder,
   referrer: &ModuleSpecifier,
@@ -266,15 +266,17 @@ fn visit_maybe_resolved(
   text_info: &SourceTextInfo,
   source_text: &str,
 ) {
-  if let Resolved::Ok {
-    specifier, range, ..
-  } = maybe_resolved
-  {
-    let text = text_from_range(text_info, source_text, range);
+  if let Some(resolved) = resolution.ok() {
+    let text = text_from_range(text_info, source_text, &resolved.range);
     // if the text is empty then it's probably an x-TypeScript-types
     if !text.is_empty() {
       handle_dep_specifier(
-        text, specifier, graph, import_map, referrer, mappings,
+        text,
+        &resolved.specifier,
+        graph,
+        import_map,
+        referrer,
+        mappings,
       );
     }
   }
