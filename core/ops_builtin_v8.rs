@@ -611,7 +611,7 @@ fn op_set_promise_hooks(
       Ok::<_, Error>(v8_fns)
     })?;
 
-  scope.get_current_context().set_promise_hooks(
+  scope.set_promise_hooks(
     v8_fns[0], // init
     v8_fns[1], // before
     v8_fns[2], // after
