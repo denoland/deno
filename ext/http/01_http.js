@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 const core = globalThis.Deno.core;
+const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
 import * as webidl from "internal:deno_webidl/00_webidl.js";
@@ -40,6 +41,7 @@ import {
 } from "internal:deno_web/06_streams.js";
 const {
   ArrayPrototypeIncludes,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSome,
   Error,
@@ -48,6 +50,7 @@ const {
   Set,
   SetPrototypeAdd,
   SetPrototypeDelete,
+  StringPrototypeCharCodeAt,
   StringPrototypeIncludes,
   StringPrototypeToLowerCase,
   StringPrototypeSplit,
@@ -389,15 +392,13 @@ function createRespondWith(
 }
 
 const _ws = Symbol("[[associated_ws]]");
+const websocketCvf = buildCaseInsensitiveCommaValueFinder("websocket");
+const upgradeCvf = buildCaseInsensitiveCommaValueFinder("upgrade");
 
 function upgradeWebSocket(request, options = {}) {
   const upgrade = request.headers.get("upgrade");
   const upgradeHasWebSocketOption = upgrade !== null &&
-    ArrayPrototypeSome(
-      StringPrototypeSplit(upgrade, ","),
-      (option) =>
-        StringPrototypeToLowerCase(StringPrototypeTrim(option)) === "websocket",
-    );
+    websocketCvf(upgrade);
   if (!upgradeHasWebSocketOption) {
     throw new TypeError(
       "Invalid Header: 'upgrade' header must contain 'websocket'",
@@ -406,11 +407,7 @@ function upgradeWebSocket(request, options = {}) {
 
   const connection = request.headers.get("connection");
   const connectionHasUpgradeOption = connection !== null &&
-    ArrayPrototypeSome(
-      StringPrototypeSplit(connection, ","),
-      (option) =>
-        StringPrototypeToLowerCase(StringPrototypeTrim(option)) === "upgrade",
-    );
+    upgradeCvf(connection);
   if (!connectionHasUpgradeOption) {
     throw new TypeError(
       "Invalid Header: 'connection' header must contain 'Upgrade'",
@@ -470,5 +467,84 @@ function upgradeHttp(req) {
   req[_deferred] = new Deferred();
   return req[_deferred].promise;
 }
+
+// todo: what space char codes are supported? Maybe only a regular space is ok?
+const spaceCharCodes = ArrayPrototypeMap(
+  StringPrototypeSplit(
+    "\u0009\u000B\u000C\u0020\u00A0\uFEFF\r\n\u2028\u2029",
+    "",
+  ),
+  (c) => c.charCodeAt(0),
+);
+const commaCharCode = StringPrototypeCharCodeAt(",", 0);
+
+/** Builds a case function that can be used to find a case insensitive
+ * value in some text that's separated by commas.
+ *
+ * This is done because it doesn't require any allocations.
+ * @param checkText {string} - The text to find. (ex. "websocket")
+ */
+function buildCaseInsensitiveCommaValueFinder(checkText) {
+  const charCodes = ArrayPrototypeMap(
+    StringPrototypeSplit(
+      StringPrototypeToLowerCase(checkText),
+      "",
+    ),
+    (c) => [c.charCodeAt(0), c.toUpperCase().charCodeAt(0)],
+  );
+  /** @type {number} */
+  let i;
+  /** @type {number} */
+  let char;
+
+  /** @param value {string} */
+  return function (value) {
+    for (i = 0; i < value.length; i++) {
+      char = value.charCodeAt(i);
+      skipWhitespace(value);
+
+      if (hasWord(value)) {
+        skipWhitespace(value);
+        if (i === value.length || char === commaCharCode) {
+          return true;
+        }
+      } else {
+        skipUntilComma(value);
+      }
+    }
+
+    return false;
+  };
+
+  /** @param value {string} */
+  function hasWord(value) {
+    for (const [cLower, cUpper] of charCodes) {
+      if (cLower === char || cUpper === char) {
+        char = StringPrototypeCharCodeAt(value, ++i);
+      } else {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** @param value {string} */
+  function skipWhitespace(value) {
+    while (ArrayPrototypeIncludes(spaceCharCodes, char)) {
+      char = StringPrototypeCharCodeAt(value, ++i);
+    }
+  }
+
+  /** @param value {string} */
+  function skipUntilComma(value) {
+    while (char !== commaCharCode && i < value.length) {
+      char = StringPrototypeCharCodeAt(value, ++i);
+    }
+  }
+}
+
+// Expose this function for unit tests
+internals.buildCaseInsensitiveCommaValueFinder =
+  buildCaseInsensitiveCommaValueFinder;
 
 export { _ws, HttpConn, upgradeHttp, upgradeWebSocket };
