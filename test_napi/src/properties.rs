@@ -4,7 +4,6 @@ use crate::assert_napi_ok;
 use crate::cstr;
 use napi_sys::PropertyAttributes::*;
 use napi_sys::*;
-use std::os::raw::c_char;
 use std::ptr;
 
 static NICE: i64 = 69;
@@ -74,7 +73,7 @@ pub fn init(env: napi_env, exports: napi_value) {
       value: number,
     },
     napi_property_descriptor {
-      utf8name: cstr!("test_property_r\0"),
+      utf8name: cstr!("test_property_r"),
       name: ptr::null_mut(),
       method: None,
       getter: None,
