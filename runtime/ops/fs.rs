@@ -2021,7 +2021,7 @@ fn op_readfile_sync(
   let err_mapper = |err: Error| {
     Error::new(
       err.kind(),
-      format!("{}, readlink '{}'", err, path.display()),
+      format!("{}, readfile '{}'", err, path.display()),
     )
   };
   Ok(std::fs::read(path).map_err(err_mapper)?.into())
