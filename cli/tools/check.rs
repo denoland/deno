@@ -5,7 +5,8 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::RwLock;
+use deno_graph::ModuleGraph;
+use deno_graph::ModuleKind;
 use deno_runtime::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -14,8 +15,6 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
-use crate::graph_util::GraphData;
-use crate::graph_util::ModuleEntry;
 use crate::npm::NpmPackageResolver;
 use crate::tsc;
 use crate::tsc::Diagnostics;
@@ -40,6 +39,11 @@ pub struct CheckOptions {
   /// If true, valid `.tsbuildinfo` files will be ignored and type checking
   /// will always occur.
   pub reload: bool,
+  /// If the graph has a node built-in specifier.
+  ///
+  /// Although this could be derived from the graph, this helps
+  /// speed things up.
+  pub has_node_builtin_specifier: bool,
 }
 
 /// The result of a check of a module graph.
@@ -54,18 +58,13 @@ pub struct CheckResult {
 /// It is expected that it is determined if a check and/or emit is validated
 /// before the function is called.
 pub fn check(
-  roots: &[ModuleSpecifier],
-  graph_data: Arc<RwLock<GraphData>>,
+  graph: Arc<ModuleGraph>,
   cache: &TypeCheckCache,
   npm_resolver: &NpmPackageResolver,
   options: CheckOptions,
 ) -> Result<CheckResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
-  let segment_graph_data = {
-    let graph_data = graph_data.read();
-    graph_data.graph_segment(roots).unwrap()
-  };
-  let check_hash = match get_check_hash(&segment_graph_data, &options) {
+  let check_hash = match get_check_hash(&graph, &options) {
     CheckHashResult::NoFiles => return Ok(Default::default()),
     CheckHashResult::Hash(hash) => hash,
   };
@@ -75,23 +74,22 @@ pub fn check(
     return Ok(Default::default());
   }
 
-  let root_names = get_tsc_roots(&segment_graph_data, check_js);
   if options.log_checks {
-    for root in roots {
+    for root in &graph.roots {
       let root_str = root.as_str();
-      // `$deno` specifiers are internal, don't print them.
-      if !root_str.contains("$deno") {
-        log::info!("{} {}", colors::green("Check"), root_str);
-      }
+      log::info!("{} {}", colors::green("Check"), root_str);
     }
   }
+
+  let root_names =
+    get_tsc_roots(&graph, options.has_node_builtin_specifier, check_js);
   // while there might be multiple roots, we can't "merge" the build info, so we
   // try to retrieve the build info for first root, which is the most common use
   // case.
   let maybe_tsbuildinfo = if options.reload {
     None
   } else {
-    cache.get_tsbuildinfo(&roots[0])
+    cache.get_tsbuildinfo(&graph.roots[0])
   };
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
@@ -104,7 +102,7 @@ pub fn check(
   let response = tsc::exec(tsc::Request {
     config: options.ts_config,
     debug: options.debug,
-    graph_data,
+    graph: graph.clone(),
     hash_data,
     maybe_config_specifier: options.maybe_config_specifier,
     maybe_npm_resolver: Some(npm_resolver.clone()),
@@ -136,7 +134,7 @@ pub fn check(
   };
 
   if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
-    cache.set_tsbuildinfo(&roots[0], &tsbuildinfo);
+    cache.set_tsbuildinfo(&graph.roots[0], &tsbuildinfo);
   }
 
   if diagnostics.is_empty() {
@@ -157,7 +155,7 @@ enum CheckHashResult {
 /// Gets a hash of the inputs for type checking. This can then
 /// be used to tell
 fn get_check_hash(
-  graph_data: &GraphData,
+  graph: &ModuleGraph,
   options: &CheckOptions,
 ) -> CheckHashResult {
   let mut hasher = FastInsecureHasher::new();
@@ -169,47 +167,45 @@ fn get_check_hash(
   hasher.write(&options.ts_config.as_bytes());
 
   let check_js = options.ts_config.get_check_js();
-  let mut sorted_entries = graph_data.entries().collect::<Vec<_>>();
-  sorted_entries.sort_by_key(|(s, _)| s.as_str()); // make it deterministic
+  let mut sorted_modules = graph.modules().collect::<Vec<_>>();
+  sorted_modules.sort_by_key(|m| m.specifier.as_str()); // make it deterministic
   let mut has_file = false;
   let mut has_file_to_type_check = false;
-  for (specifier, module_entry) in sorted_entries {
-    if let ModuleEntry::Module {
-      code, media_type, ..
-    } = module_entry
-    {
-      let ts_check = has_ts_check(*media_type, code);
-      if ts_check {
+  for module in sorted_modules {
+    let ts_check =
+      has_ts_check(module.media_type, module.maybe_source.as_deref());
+    if ts_check {
+      has_file_to_type_check = true;
+    }
+
+    match module.media_type {
+      MediaType::TypeScript
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Tsx => {
+        has_file = true;
         has_file_to_type_check = true;
       }
-
-      match media_type {
-        MediaType::TypeScript
-        | MediaType::Dts
-        | MediaType::Dmts
-        | MediaType::Dcts
-        | MediaType::Mts
-        | MediaType::Cts
-        | MediaType::Tsx => {
-          has_file = true;
-          has_file_to_type_check = true;
+      MediaType::JavaScript
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::Jsx => {
+        has_file = true;
+        if !check_js && !ts_check {
+          continue;
         }
-        MediaType::JavaScript
-        | MediaType::Mjs
-        | MediaType::Cjs
-        | MediaType::Jsx => {
-          has_file = true;
-          if !check_js && !ts_check {
-            continue;
-          }
-        }
-        MediaType::Json
-        | MediaType::TsBuildInfo
-        | MediaType::SourceMap
-        | MediaType::Wasm
-        | MediaType::Unknown => continue,
       }
-      hasher.write_str(specifier.as_str());
+      MediaType::Json
+      | MediaType::TsBuildInfo
+      | MediaType::SourceMap
+      | MediaType::Wasm
+      | MediaType::Unknown => continue,
+    }
+    hasher.write_str(module.specifier.as_str());
+    if let Some(code) = &module.maybe_source {
       hasher.write_str(code);
     }
   }
@@ -229,37 +225,40 @@ fn get_check_hash(
 /// the roots, so they get type checked and optionally emitted,
 /// otherwise they would be ignored if only imported into JavaScript.
 fn get_tsc_roots(
-  graph_data: &GraphData,
+  graph: &ModuleGraph,
+  has_node_builtin_specifier: bool,
   check_js: bool,
 ) -> Vec<(ModuleSpecifier, MediaType)> {
   let mut result = Vec::new();
-  if graph_data.has_node_builtin_specifier() {
+  if has_node_builtin_specifier {
     // inject a specifier that will resolve node types
     result.push((
       ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
       MediaType::Dts,
     ));
   }
-  result.extend(graph_data.entries().into_iter().filter_map(
-    |(specifier, module_entry)| match module_entry {
-      ModuleEntry::Module {
-        media_type, code, ..
-      } => match media_type {
-        MediaType::TypeScript
-        | MediaType::Tsx
-        | MediaType::Mts
-        | MediaType::Cts
-        | MediaType::Jsx => Some((specifier.clone(), *media_type)),
-        MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs
-          if check_js || has_ts_check(*media_type, code) =>
-        {
-          Some((specifier.clone(), *media_type))
-        }
-        _ => None,
-      },
+  result.extend(graph.modules().filter_map(|module| {
+    if module.kind == ModuleKind::External || module.maybe_source.is_none() {
+      return None;
+    }
+    match module.media_type {
+      MediaType::TypeScript
+      | MediaType::Tsx
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Jsx => Some((module.specifier.clone(), module.media_type)),
+      MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs
+        if check_js
+          || has_ts_check(
+            module.media_type,
+            module.maybe_source.as_deref(),
+          ) =>
+      {
+        Some((module.specifier.clone(), module.media_type))
+      }
       _ => None,
-    },
-  ));
+    }
+  }));
   result
 }
 
@@ -267,7 +266,11 @@ fn get_tsc_roots(
 static TS_CHECK_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r#"(?i)^\s*@ts-check(?:\s+|$)"#).unwrap());
 
-fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
+fn has_ts_check(media_type: MediaType, maybe_file_text: Option<&str>) -> bool {
+  let file_text = match maybe_file_text {
+    Some(text) => text,
+    None => return false,
+  };
   match &media_type {
     MediaType::JavaScript
     | MediaType::Mjs
@@ -371,19 +374,20 @@ mod test {
   fn has_ts_check_test() {
     assert!(has_ts_check(
       MediaType::JavaScript,
-      "// @ts-check\nconsole.log(5);"
+      Some("// @ts-check\nconsole.log(5);")
     ));
     assert!(has_ts_check(
       MediaType::JavaScript,
-      "// deno-lint-ignore\n// @ts-check\n"
+      Some("// deno-lint-ignore\n// @ts-check\n")
     ));
     assert!(!has_ts_check(
       MediaType::JavaScript,
-      "test;\n// @ts-check\n"
+      Some("test;\n// @ts-check\n")
     ));
     assert!(!has_ts_check(
       MediaType::JavaScript,
-      "// ts-check\nconsole.log(5);"
+      Some("// ts-check\nconsole.log(5);")
     ));
+    assert!(!has_ts_check(MediaType::TypeScript, None,));
   }
 }

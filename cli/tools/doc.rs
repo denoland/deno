@@ -26,7 +26,7 @@ pub async fn print_docs(
   let mut doc_nodes = match doc_flags.source_file {
     DocSourceFileFlag::Builtin => {
       let source_file_specifier =
-        ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
+        ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
       let content = get_types_declaration_file_text(ps.options.unstable());
       let mut loader = deno_graph::source::MemoryLoader::new(
         vec![(
@@ -40,18 +40,17 @@ pub async fn print_docs(
         Vec::new(),
       );
       let analyzer = deno_graph::CapturingModuleAnalyzer::default();
-      let graph = deno_graph::create_graph(
-        vec![source_file_specifier.clone()],
-        &mut loader,
-        deno_graph::GraphOptions {
-          is_dynamic: false,
-          imports: None,
-          resolver: None,
-          module_analyzer: Some(&analyzer),
-          reporter: None,
-        },
-      )
-      .await;
+      let mut graph = deno_graph::ModuleGraph::default();
+      graph
+        .build(
+          vec![source_file_specifier.clone()],
+          &mut loader,
+          deno_graph::BuildOptions {
+            module_analyzer: Some(&analyzer),
+            ..Default::default()
+          },
+        )
+        .await;
       let doc_parser = doc::DocParser::new(
         graph,
         doc_flags.private,
