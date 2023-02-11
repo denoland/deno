@@ -721,7 +721,7 @@ fn bench_subcommand<'a>() -> Command<'a> {
     .arg(
       Arg::new("json")
         .long("json")
-        .help("Output benchmark result in JSON format")
+        .help("UNSTABLE: Output benchmark result in JSON format")
         .takes_value(false),
     )
     .arg(
@@ -757,10 +757,6 @@ Evaluate the given modules, run all benches declared with 'Deno.bench()' \
 and report results to standard output:
 
   deno bench src/fetch_bench.ts src/signal_bench.ts
-
-Output benchmark result in JSON format:
-
-  deno bench --json src/fetch_bench.ts src/signal_bench.ts
 
 Directory arguments are expanded to all contained files matching the \
 glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
