@@ -4,7 +4,7 @@ use crate::args::BenchOptions;
 use crate::args::CliOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
-use crate::graph_util::graph_valid;
+use crate::graph_util::graph_valid_with_cli_options;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
@@ -549,7 +549,7 @@ pub async fn run_benchmarks_with_watch(
         bench_modules.clone()
       };
       let graph = ps.create_graph(bench_modules.clone()).await?;
-      graph_valid(&graph, !no_check, ps.options.check_js())?;
+      graph_valid_with_cli_options(&graph, &bench_modules, &ps.options)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in bench_modules {

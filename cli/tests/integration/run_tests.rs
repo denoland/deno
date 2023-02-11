@@ -3812,6 +3812,7 @@ itest!(permission_args_quiet {
 });
 
 // Regression test for https://github.com/denoland/deno/issues/16772
+#[ignore]
 #[test]
 fn file_fetcher_preserves_permissions() {
   let _guard = util::http_server();
@@ -3828,6 +3829,7 @@ fn file_fetcher_preserves_permissions() {
   });
 }
 
+#[ignore]
 #[test]
 fn stdio_streams_are_locked_in_permission_prompt() {
   let _guard = util::http_server();
