@@ -1539,7 +1539,7 @@ declare namespace Deno {
    */
   export interface CommandOptions {
     /** Arguments to pass to the process. */
-    args?: string[];
+    args?: readonly string[];
     /**
      * The working directory of the process.
      *
