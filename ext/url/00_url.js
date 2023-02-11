@@ -23,6 +23,7 @@ const {
   Symbol,
   SymbolFor,
   SymbolIterator,
+  TypedArrayPrototypeGetBuffer,
   TypeError,
 } = primordials;
 
@@ -46,7 +47,7 @@ function opUrlReparse(href, setter, value) {
     href,
     setter,
     value,
-    componentsBuf.buffer,
+    TypedArrayPrototypeGetBuffer(/** @type {any} */ (componentsBuf)),
   );
   return getSerialization(status, href);
 }
@@ -54,12 +55,15 @@ function opUrlReparse(href, setter, value) {
 function opUrlParse(href, maybeBase) {
   let status;
   if (maybeBase === undefined) {
-    status = ops.op_url_parse(href, componentsBuf.buffer);
+    status = ops.op_url_parse(
+      href,
+      TypedArrayPrototypeGetBuffer(/** @type {any} */ (componentsBuf)),
+    );
   } else {
     status = ops.op_url_parse_with_base(
       href,
       maybeBase,
-      componentsBuf.buffer,
+      TypedArrayPrototypeGetBuffer(/** @type {any} */ (componentsBuf)),
     );
   }
   return getSerialization(status, href, maybeBase);
