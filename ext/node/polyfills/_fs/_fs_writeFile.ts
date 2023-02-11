@@ -2,7 +2,6 @@
 import { Encodings } from "internal:deno_node/polyfills/_utils.ts";
 import { fromFileUrl } from "internal:deno_node/polyfills/path.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { writeAllSync } from "SOMETHING IS BROKEN HERE ../../streams/write_all.ts";
 import {
   CallbackWithError,
   checkEncoding,
@@ -138,7 +137,11 @@ export function writeFileSync(
       Deno.chmodSync(pathOrRid as string, mode);
     }
 
-    writeAllSync(file, data as Uint8Array);
+    // TODO(crowlKats): duplicate from runtime/js/13_buffer.js
+    let nwritten = 0;
+    while (nwritten < (data as Uint8Array).length) {
+      nwritten += file.writeSync((data as Uint8Array).subarray(nwritten));
+    }
   } catch (e) {
     error = e instanceof Error
       ? denoErrorToNodeError(e, { syscall: "write" })

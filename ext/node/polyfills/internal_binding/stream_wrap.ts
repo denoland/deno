@@ -32,7 +32,6 @@ import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 import { HandleWrap } from "internal:deno_node/polyfills/internal_binding/handle_wrap.ts";
 import { AsyncWrap, providerType } from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
 import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import { writeAll } from "SOMETHING IS BROKEN HERE ../../streams/write_all.ts";
 import type { Closer, Reader, Writer } from "SOMETHING IS BROKEN HERE ../../types.d.ts";
 
 type Ref = { ref(): void; unref(): void };
@@ -317,7 +316,11 @@ export class LibuvStreamWrap extends HandleWrap {
     const { byteLength } = data;
 
     try {
-      await writeAll(this[kStreamBaseField]!, data);
+      // TODO(crowlKats): duplicate from runtime/js/13_buffer.js
+      let nwritten = 0;
+      while (nwritten < data.length) {
+        nwritten += await this[kStreamBaseField]!.write(data.subarray(nwritten));
+      }
     } catch (e) {
       let status: number;
 
