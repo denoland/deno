@@ -19,10 +19,7 @@ concurrency:
 jobs:
   build:
     name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}'
-    if: |-
-      github.event_name == 'push' ||
-      !startsWith(github.event.pull_request.head.label, 'denoland:')
-    runs-on: '${{ matrix.os }}'
+    runs-on: '${{ matrix.runner || matrix.os }}'
     timeout-minutes: 120
     strategy:
       matrix:
@@ -38,6 +35,7 @@ jobs:
             job: test
             profile: fastci
           - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && ''windows-2022'' || (github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'') }}'
             job: test
             profile: release
             skip_pr: true
@@ -113,7 +111,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.8
+          python-version: 3.11
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job != ''lint''))'
       - name: Remove unused versions of Python
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job != ''lint'' && (startsWith(matrix.os, ''windows''))))'
@@ -268,7 +266,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-'
+          restore-keys: '19-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-'
       - name: Apply and update mtime cache
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (!startsWith(github.ref, ''refs/tags/'')))'
         uses: ./.github/mtime_cache

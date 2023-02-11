@@ -263,7 +263,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
   }
 
   fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
-    self.resolution.lock(lockfile, &self.snapshot())
+    self.resolution.lock(lockfile)
   }
 }
 

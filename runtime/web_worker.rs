@@ -98,7 +98,7 @@ impl Serialize for WorkerControlEvent {
         let value = match error.downcast_ref::<JsError>() {
           Some(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
-              Some(s) => !s.trim_start_matches('[').starts_with("deno:"),
+              Some(s) => !s.trim_start_matches('[').starts_with("internal:"),
               None => false,
             });
             json!({
@@ -243,7 +243,8 @@ impl WebWorkerHandle {
   /// This function will set the termination signal, close the message channel,
   /// and schedule to terminate the isolate after two seconds.
   pub fn terminate(self) {
-    use std::thread::{sleep, spawn};
+    use std::thread::sleep;
+    use std::thread::spawn;
     use std::time::Duration;
 
     let schedule_termination =

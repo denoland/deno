@@ -51,11 +51,12 @@ itest_flaky!(cafile_ts_fetch_unsafe_ssl {
     http_server: true,
   });
 
-itest!(deno_land_unsafe_ssl {
-    args:
-      "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/deno_land_unsafe_ssl.ts",
-    output: "cert/deno_land_unsafe_ssl.ts.out",
-  });
+// TODO(bartlomieju): reenable, this test was flaky on macOS CI during 1.30.3 release
+// itest!(deno_land_unsafe_ssl {
+//     args:
+//       "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/deno_land_unsafe_ssl.ts",
+//     output: "cert/deno_land_unsafe_ssl.ts.out",
+//   });
 
 itest!(ip_address_unsafe_ssl {
     args:
@@ -110,6 +111,40 @@ fn cafile_fetch() {
   assert!(output.status.success());
   let out = std::str::from_utf8(&output.stdout).unwrap();
   assert_eq!(out, "");
+}
+
+#[test]
+fn cafile_compile() {
+  let _g = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("cert.exe")
+  } else {
+    dir.path().join("cert")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--cert")
+    .arg("./tls/RootCA.pem")
+    .arg("--allow-net")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cert/cafile_ts_fetch.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"[WILDCARD]\nHello\n")
 }
 
 #[flaky_test::flaky_test]

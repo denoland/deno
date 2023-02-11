@@ -104,10 +104,10 @@ impl LspUrlMap {
           format!("deno:/asset{}", specifier.path())
         } else if specifier.scheme() == "data" {
           let data_url = DataUrl::process(specifier.as_str())
-            .map_err(|e| uri_error(format!("{:?}", e)))?;
+            .map_err(|e| uri_error(format!("{e:?}")))?;
           let mime = data_url.mime_type();
           let (media_type, _) =
-            map_content_type(specifier, Some(format!("{}", mime)));
+            map_content_type(specifier, Some(&format!("{mime}")));
           let extension = if media_type == MediaType::Unknown {
             ""
           } else {
@@ -128,7 +128,7 @@ impl LspUrlMap {
             })
             .collect();
           path.push_str(&parts.join("/"));
-          format!("deno:/{}", path)
+          format!("deno:/{path}")
         };
         let url = Url::parse(&specifier_str)?;
         inner.put(specifier.clone(), url.clone());

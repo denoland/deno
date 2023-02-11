@@ -2,6 +2,7 @@
 import {
   assert,
   assertEquals,
+  assertNotStrictEquals,
   assertStringIncludes,
   assertThrows,
   deferred,
@@ -48,6 +49,31 @@ Deno.test(function performanceMark() {
   assert(entries[entries.length - 1] === mark);
   const markEntries = performance.getEntriesByName("test", "mark");
   assert(markEntries[markEntries.length - 1] === mark);
+});
+
+Deno.test(function performanceMarkDetail() {
+  const detail = { foo: "foo" };
+  const mark = performance.mark("test", { detail });
+  assert(mark instanceof PerformanceMark);
+  assertEquals(mark.detail, { foo: "foo" });
+  assertNotStrictEquals(mark.detail, detail);
+});
+
+Deno.test(function performanceMarkDetailArrayBuffer() {
+  const detail = new ArrayBuffer(10);
+  const mark = performance.mark("test", { detail });
+  assert(mark instanceof PerformanceMark);
+  assertEquals(mark.detail, new ArrayBuffer(10));
+  assertNotStrictEquals(mark.detail, detail);
+});
+
+Deno.test(function performanceMarkDetailSubTypedArray() {
+  class SubUint8Array extends Uint8Array {}
+  const detail = new SubUint8Array([1, 2]);
+  const mark = performance.mark("test", { detail });
+  assert(mark instanceof PerformanceMark);
+  assertEquals(mark.detail, new Uint8Array([1, 2]));
+  assertNotStrictEquals(mark.detail, detail);
 });
 
 Deno.test(function performanceMeasure() {

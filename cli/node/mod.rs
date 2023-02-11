@@ -13,11 +13,11 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::located_script_name;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_core::JsRuntime;
+use deno_runtime::deno_node;
 use deno_runtime::deno_node::errors;
+use deno_runtime::deno_node::find_builtin_node_module;
 use deno_runtime::deno_node::get_closest_package_json;
 use deno_runtime::deno_node::legacy_main_resolve;
 use deno_runtime::deno_node::package_exports_resolve;
@@ -25,13 +25,13 @@ use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::path_to_declaration_path;
 use deno_runtime::deno_node::NodeModuleKind;
+use deno_runtime::deno_node::NodeModulePolyfillSpecifier;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
-use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -63,7 +63,7 @@ impl NodeResolution {
         if specifier.starts_with("node:") {
           ModuleSpecifier::parse(&specifier).unwrap()
         } else {
-          ModuleSpecifier::parse(&format!("node:{}", specifier)).unwrap()
+          ModuleSpecifier::parse(&format!("node:{specifier}")).unwrap()
         }
       }
     }
@@ -99,206 +99,12 @@ impl NodeResolution {
       }
       Some(resolution) => (resolution.into_url(), MediaType::Dts),
       None => (
-        ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap(),
+        ModuleSpecifier::parse("internal:///missing_dependency.d.ts").unwrap(),
         MediaType::Dts,
       ),
     }
   }
 }
-
-struct NodeModulePolyfill {
-  /// Name of the module like "assert" or "timers/promises"
-  name: &'static str,
-
-  /// Specifier relative to the root of `deno_std` repo, like "node/asser.ts"
-  specifier: &'static str,
-}
-
-static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
-  NodeModulePolyfill {
-    name: "assert",
-    specifier: "node/assert.ts",
-  },
-  NodeModulePolyfill {
-    name: "assert/strict",
-    specifier: "node/assert/strict.ts",
-  },
-  NodeModulePolyfill {
-    name: "async_hooks",
-    specifier: "node/async_hooks.ts",
-  },
-  NodeModulePolyfill {
-    name: "buffer",
-    specifier: "node/buffer.ts",
-  },
-  NodeModulePolyfill {
-    name: "child_process",
-    specifier: "node/child_process.ts",
-  },
-  NodeModulePolyfill {
-    name: "cluster",
-    specifier: "node/cluster.ts",
-  },
-  NodeModulePolyfill {
-    name: "console",
-    specifier: "node/console.ts",
-  },
-  NodeModulePolyfill {
-    name: "constants",
-    specifier: "node/constants.ts",
-  },
-  NodeModulePolyfill {
-    name: "crypto",
-    specifier: "node/crypto.ts",
-  },
-  NodeModulePolyfill {
-    name: "dgram",
-    specifier: "node/dgram.ts",
-  },
-  NodeModulePolyfill {
-    name: "dns",
-    specifier: "node/dns.ts",
-  },
-  NodeModulePolyfill {
-    name: "dns/promises",
-    specifier: "node/dns/promises.ts",
-  },
-  NodeModulePolyfill {
-    name: "domain",
-    specifier: "node/domain.ts",
-  },
-  NodeModulePolyfill {
-    name: "events",
-    specifier: "node/events.ts",
-  },
-  NodeModulePolyfill {
-    name: "fs",
-    specifier: "node/fs.ts",
-  },
-  NodeModulePolyfill {
-    name: "fs/promises",
-    specifier: "node/fs/promises.ts",
-  },
-  NodeModulePolyfill {
-    name: "http",
-    specifier: "node/http.ts",
-  },
-  NodeModulePolyfill {
-    name: "https",
-    specifier: "node/https.ts",
-  },
-  NodeModulePolyfill {
-    name: "module",
-    // NOTE(bartlomieju): `module` is special, because we don't want to use
-    // `deno_std/node/module.ts`, but instead use a special shim that we
-    // provide in `ext/node`.
-    specifier: "[USE `deno_node::MODULE_ES_SHIM` to get this module]",
-  },
-  NodeModulePolyfill {
-    name: "net",
-    specifier: "node/net.ts",
-  },
-  NodeModulePolyfill {
-    name: "os",
-    specifier: "node/os.ts",
-  },
-  NodeModulePolyfill {
-    name: "path",
-    specifier: "node/path.ts",
-  },
-  NodeModulePolyfill {
-    name: "path/posix",
-    specifier: "node/path/posix.ts",
-  },
-  NodeModulePolyfill {
-    name: "path/win32",
-    specifier: "node/path/win32.ts",
-  },
-  NodeModulePolyfill {
-    name: "perf_hooks",
-    specifier: "node/perf_hooks.ts",
-  },
-  NodeModulePolyfill {
-    name: "process",
-    specifier: "node/process.ts",
-  },
-  NodeModulePolyfill {
-    name: "querystring",
-    specifier: "node/querystring.ts",
-  },
-  NodeModulePolyfill {
-    name: "readline",
-    specifier: "node/readline.ts",
-  },
-  NodeModulePolyfill {
-    name: "stream",
-    specifier: "node/stream.ts",
-  },
-  NodeModulePolyfill {
-    name: "stream/consumers",
-    specifier: "node/stream/consumers.mjs",
-  },
-  NodeModulePolyfill {
-    name: "stream/promises",
-    specifier: "node/stream/promises.mjs",
-  },
-  NodeModulePolyfill {
-    name: "stream/web",
-    specifier: "node/stream/web.ts",
-  },
-  NodeModulePolyfill {
-    name: "string_decoder",
-    specifier: "node/string_decoder.ts",
-  },
-  NodeModulePolyfill {
-    name: "sys",
-    specifier: "node/sys.ts",
-  },
-  NodeModulePolyfill {
-    name: "timers",
-    specifier: "node/timers.ts",
-  },
-  NodeModulePolyfill {
-    name: "timers/promises",
-    specifier: "node/timers/promises.ts",
-  },
-  NodeModulePolyfill {
-    name: "tls",
-    specifier: "node/tls.ts",
-  },
-  NodeModulePolyfill {
-    name: "tty",
-    specifier: "node/tty.ts",
-  },
-  NodeModulePolyfill {
-    name: "url",
-    specifier: "node/url.ts",
-  },
-  NodeModulePolyfill {
-    name: "util",
-    specifier: "node/util.ts",
-  },
-  NodeModulePolyfill {
-    name: "util/types",
-    specifier: "node/util/types.ts",
-  },
-  NodeModulePolyfill {
-    name: "v8",
-    specifier: "node/v8.ts",
-  },
-  NodeModulePolyfill {
-    name: "vm",
-    specifier: "node/vm.ts",
-  },
-  NodeModulePolyfill {
-    name: "worker_threads",
-    specifier: "node/worker_threads.ts",
-  },
-  NodeModulePolyfill {
-    name: "zlib",
-    specifier: "node/zlib.ts",
-  },
-];
 
 static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
   if let Ok(url_str) = std::env::var("DENO_NODE_COMPAT_URL") {
@@ -314,30 +120,23 @@ static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
 pub static MODULE_ALL_URL: Lazy<Url> =
   Lazy::new(|| NODE_COMPAT_URL.join("node/module_all.ts").unwrap());
 
-fn find_builtin_node_module(specifier: &str) -> Option<&NodeModulePolyfill> {
-  SUPPORTED_MODULES.iter().find(|m| m.name == specifier)
-}
-
-fn is_builtin_node_module(specifier: &str) -> bool {
-  find_builtin_node_module(specifier).is_some()
-}
-
 pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
-  // NOTE(bartlomieju): `module` is special, because we don't want to use
-  // `deno_std/node/module.ts`, but instead use a special shim that we
-  // provide in `ext/node`.
-  if specifier == "module" {
-    return Ok(Url::parse("node:module").unwrap());
-  }
-
   if let Some(module) = find_builtin_node_module(specifier) {
-    let module_url = NODE_COMPAT_URL.join(module.specifier).unwrap();
-    return Ok(module_url);
+    match module.specifier {
+      // We will load the source code from the `std/node` polyfill.
+      NodeModulePolyfillSpecifier::StdNode(specifier) => {
+        let module_url = NODE_COMPAT_URL.join(specifier).unwrap();
+        return Ok(module_url);
+      }
+      // The module has already been snapshotted and is present in the binary.
+      NodeModulePolyfillSpecifier::Embedded(specifier) => {
+        return Ok(ModuleSpecifier::parse(specifier).unwrap());
+      }
+    }
   }
 
   Err(generic_error(format!(
-    "Unknown built-in Node module: {}",
-    specifier
+    "Unknown built-in \"node:\" module: {specifier}"
   )))
 }
 
@@ -391,50 +190,6 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
   ])
 });
 
-pub async fn initialize_runtime(
-  js_runtime: &mut JsRuntime,
-  uses_local_node_modules_dir: bool,
-) -> Result<(), AnyError> {
-  let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName, usesLocalNodeModulesDir) {{
-      const moduleAll = await import(moduleAllUrl);
-      Deno[Deno.internal].node.initialize(moduleAll.default, nodeGlobalThisName);
-      if (usesLocalNodeModulesDir) {{
-        Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
-      }}
-    }})('{}', '{}', {});"#,
-    MODULE_ALL_URL.as_str(),
-    NODE_GLOBAL_THIS_NAME.as_str(),
-    uses_local_node_modules_dir,
-  );
-
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
-  Ok(())
-}
-
-pub async fn initialize_binary_command(
-  js_runtime: &mut JsRuntime,
-  binary_name: &str,
-) -> Result<(), AnyError> {
-  // overwrite what's done in deno_std in order to set the binary arg name
-  let source_code = &format!(
-    r#"(async function initializeBinaryCommand(binaryName) {{
-      const process = Deno[Deno.internal].node.globalThis.process;
-      Object.defineProperty(process.argv, "0", {{
-        get: () => binaryName,
-      }});
-    }})('{}');"#,
-    binary_name,
-  );
-
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
-  Ok(())
-}
-
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
 pub fn node_resolve(
@@ -447,7 +202,7 @@ pub fn node_resolve(
   // Note: if we are here, then the referrer is an esm module
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-  if is_builtin_node_module(specifier) {
+  if deno_node::is_builtin_node_module(specifier) {
     return Ok(Some(NodeResolution::BuiltIn(specifier.to_string())));
   }
 
@@ -462,7 +217,7 @@ pub fn node_resolve(
       let split_specifier = url.as_str().split(':');
       let specifier = split_specifier.skip(1).collect::<String>();
 
-      if is_builtin_node_module(&specifier) {
+      if deno_node::is_builtin_node_module(&specifier) {
         return Ok(Some(NodeResolution::BuiltIn(specifier)));
       }
     }
@@ -523,7 +278,7 @@ pub fn node_resolve_npm_reference(
     &reference
       .sub_path
       .as_ref()
-      .map(|s| format!("./{}", s))
+      .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string()),
     &package_folder,
     node_module_kind,
@@ -533,7 +288,7 @@ pub fn node_resolve_npm_reference(
     permissions,
   )
   .with_context(|| {
-    format!("Error resolving package config for '{}'", reference)
+    format!("Error resolving package config for '{reference}'")
   })?;
   let resolved_path = match maybe_resolved_path {
     Some(resolved_path) => resolved_path,
@@ -615,7 +370,7 @@ fn resolve_bin_entry_value<'a>(
         .map(|o| {
           o.keys()
             .into_iter()
-            .map(|k| format!(" * npm:{}/{}", pkg_req, k))
+            .map(|k| format!(" * npm:{pkg_req}/{k}"))
             .collect::<Vec<_>>()
         })
         .unwrap_or_default();
@@ -638,32 +393,6 @@ fn resolve_bin_entry_value<'a>(
       pkg_req.name,
     ),
   }
-}
-
-pub fn load_cjs_module_from_ext_node(
-  js_runtime: &mut JsRuntime,
-  module: &str,
-  main: bool,
-  inspect_brk: bool,
-) -> Result<(), AnyError> {
-  fn escape_for_single_quote_string(text: &str) -> String {
-    text.replace('\\', r"\\").replace('\'', r"\'")
-  }
-
-  let source_code = &format!(
-    r#"(function loadCjsModule(module, inspectBrk) {{
-      if (inspectBrk) {{
-        Deno[Deno.internal].require.setInspectBrk();
-      }}
-      Deno[Deno.internal].require.Module._load(module, null, {main});
-    }})('{module}', {inspect_brk});"#,
-    main = main,
-    module = escape_for_single_quote_string(module),
-    inspect_brk = inspect_brk,
-  );
-
-  js_runtime.execute_script(&located_script_name!(), source_code)?;
-  Ok(())
 }
 
 fn package_config_resolve(
@@ -736,8 +465,7 @@ pub fn url_to_node_resolution(
     Ok(NodeResolution::Esm(url))
   } else if url_str.ends_with(".ts") {
     Err(generic_error(format!(
-      "TypeScript files are not supported in npm packages: {}",
-      url
+      "TypeScript files are not supported in npm packages: {url}"
     )))
   } else {
     Ok(NodeResolution::CommonJs(url))
@@ -871,15 +599,13 @@ fn add_export(
     // so assign it to a temporary variable that won't have a conflict, then re-export
     // it as a string
     source.push(format!(
-      "const __deno_export_{}__ = {};",
-      temp_var_count, initializer
+      "const __deno_export_{temp_var_count}__ = {initializer};"
     ));
     source.push(format!(
-      "export {{ __deno_export_{}__ as \"{}\" }};",
-      temp_var_count, name
+      "export {{ __deno_export_{temp_var_count}__ as \"{name}\" }};"
     ));
   } else {
-    source.push(format!("export const {} = {};", name, initializer));
+    source.push(format!("export const {name} = {initializer};"));
   }
 }
 
@@ -1028,7 +754,7 @@ pub fn translate_cjs_to_esm(
       add_export(
         &mut source,
         export,
-        &format!("mod[\"{}\"]", export),
+        &format!("mod[\"{export}\"]"),
         &mut temp_var_count,
       );
     }
@@ -1165,7 +891,7 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
 fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
   url
     .to_file_path()
-    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {}", url))
+    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {url}"))
 }
 
 fn to_file_path_string(url: &ModuleSpecifier) -> String {

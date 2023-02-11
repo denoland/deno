@@ -668,6 +668,25 @@ declare namespace Deno {
       name: string,
       fn: (t: TestContext) => void | Promise<void>,
     ): Promise<boolean>;
+
+    /** Run a sub step of the parent test or step. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     *
+     * The returned promise never rejects unless the arguments are invalid.
+     *
+     * If the test was ignored the promise returns `false`.
+     *
+     * ```ts
+     * Deno.test(async function aParentTest(t) {
+     *   console.log("before the step");
+     *   await t.step(function step1(t) {
+     *     console.log("current step:", t.name);
+     *   });
+     *   console.log("after the step");
+     * });
+     * ```
+     */
+    step(fn: (t: TestContext) => void | Promise<void>): Promise<boolean>;
   }
 
   /** @category Testing */
@@ -1392,9 +1411,9 @@ declare namespace Deno {
      * Implementations should not retain a reference to `p`.
      *
      * Use
-     * [`itereateReader`](https://deno.land/std/streams/conversion.ts?s=iterateReader)
+     * [`itereateReader`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReader)
      * from
-     * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+     * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
      * to turn a `Reader` into an {@linkcode AsyncIterator}.
      */
     read(p: Uint8Array): Promise<number | null>;
@@ -1426,9 +1445,9 @@ declare namespace Deno {
      * Implementations should not retain a reference to `p`.
      *
      * Use
-     * [`itereateReaderSync`](https://deno.land/std/streams/conversion.ts?s=iterateReaderSync)
+     * [`itereateReaderSync`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReaderSync)
      * from from
-     * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+     * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
      * to turn a `ReaderSync` into an {@linkcode Iterator}.
      */
     readSync(p: Uint8Array): number | null;
@@ -1498,7 +1517,7 @@ declare namespace Deno {
      *
      * It resolves with the updated offset.
      */
-    seek(offset: number, whence: SeekMode): Promise<number>;
+    seek(offset: number | bigint, whence: SeekMode): Promise<number>;
   }
 
   /**
@@ -1527,8 +1546,8 @@ declare namespace Deno {
    * the first error encountered while copying.
    *
    * @deprecated Use
-   * [`copy`](https://deno.land/std/streams/conversion.ts?s=copy) from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`copy`](https://deno.land/std/streams/copy.ts?s=copy) from
+   * [`std/streams/copy.ts`](https://deno.land/std/streams/copy.ts)
    * instead. `Deno.copy` will be removed in the future.
    *
    * @category I/O
@@ -1547,9 +1566,9 @@ declare namespace Deno {
    * Turns a Reader, `r`, into an async iterator.
    *
    * @deprecated Use
-   * [`iterateReader`](https://deno.land/std/streams/conversion.ts?s=iterateReader)
+   * [`iterateReader`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReader)
    * from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
    * instead. `Deno.iter` will be removed in the future.
    *
    * @category I/O
@@ -1563,9 +1582,9 @@ declare namespace Deno {
    * Turns a ReaderSync, `r`, into an iterator.
    *
    * @deprecated Use
-   * [`iterateReaderSync`](https://deno.land/std/streams/conversion.ts?s=iterateReaderSync)
+   * [`iterateReaderSync`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReaderSync)
    * from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
    * instead. `Deno.iterSync` will be removed in the future.
    *
    * @category I/O
@@ -1656,8 +1675,8 @@ declare namespace Deno {
    *
    * This function is one of the lowest level APIs and most users should not
    * work with this directly, but rather use
-   * [`readAll()`](https://deno.land/std/streams/conversion.ts?s=readAll) from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`readAll()`](https://deno.land/std/streams/read_all.ts?s=readAll) from
+   * [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
    * instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single call.**
@@ -1686,9 +1705,9 @@ declare namespace Deno {
    *
    * This function is one of the lowest level APIs and most users should not
    * work with this directly, but rather use
-   * [`readAllSync()`](https://deno.land/std/streams/conversion.ts?s=readAllSync)
+   * [`readAllSync()`](https://deno.land/std/streams/read_all.ts?s=readAllSync)
    * from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
    * instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single
@@ -1711,8 +1730,8 @@ declare namespace Deno {
    *
    * Resolves to the number of bytes written. This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather use
-   * [`writeAll()`](https://deno.land/std/streams/conversion.ts?s=writeAll) from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`writeAll()`](https://deno.land/std/streams/write_all.ts?s=writeAll) from
+   * [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
    * instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
@@ -1736,9 +1755,9 @@ declare namespace Deno {
    * Returns the number of bytes written. This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather
    * use
-   * [`writeAllSync()`](https://deno.land/std/streams/conversion.ts?s=writeAllSync)
+   * [`writeAllSync()`](https://deno.land/std/streams/write_all.ts?s=writeAllSync)
    * from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
    * instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
@@ -1799,7 +1818,7 @@ declare namespace Deno {
    */
   export function seek(
     rid: number,
-    offset: number,
+    offset: number | bigint,
     whence: SeekMode,
   ): Promise<number>;
 
@@ -2163,7 +2182,7 @@ declare namespace Deno {
      * console.log(await file.seek(-2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
      * ```
      */
-    seek(offset: number, whence: SeekMode): Promise<number>;
+    seek(offset: number | bigint, whence: SeekMode): Promise<number>;
     /** Synchronously seek to the given `offset` under mode given by `whence`.
      * The new position within the resource (bytes from the start) is returned.
      *
@@ -2202,7 +2221,7 @@ declare namespace Deno {
      * file.close();
      * ```
      */
-    seekSync(offset: number, whence: SeekMode): number;
+    seekSync(offset: number | bigint, whence: SeekMode): number;
     /** Resolves to a {@linkcode Deno.FileInfo} for the file.
      *
      * ```ts
@@ -2509,8 +2528,8 @@ declare namespace Deno {
    * Uint8Array`.
    *
    * @deprecated Use
-   *   [`readAll`](https://deno.land/std/streams/conversion.ts?s=readAll) from
-   *   [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   *   [`readAll`](https://deno.land/std/streams/read_all.ts?s=readAll) from
+   *   [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
    *   instead. `Deno.readAll` will be removed in the future.
    *
    * @category I/O
@@ -2522,9 +2541,9 @@ declare namespace Deno {
    * as `Uint8Array`.
    *
    * @deprecated Use
-   *   [`readAllSync`](https://deno.land/std/streams/conversion.ts?s=readAllSync)
+   *   [`readAllSync`](https://deno.land/std/streams/read_all.ts?s=readAllSync)
    *   from
-   *   [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   *   [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
    *   instead. `Deno.readAllSync` will be removed in the future.
    *
    * @category I/O
@@ -2535,8 +2554,8 @@ declare namespace Deno {
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
    * @deprecated Use
-   *   [`writeAll`](https://deno.land/std/streams/conversion.ts?s=writeAll) from
-   *   [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   *   [`writeAll`](https://deno.land/std/streams/write_all.ts?s=writeAll) from
+   *   [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
    *   instead. `Deno.writeAll` will be removed in the future.
    *
    * @category I/O
@@ -2548,9 +2567,9 @@ declare namespace Deno {
    * writer (`w`).
    *
    * @deprecated Use
-   *   [`writeAllSync`](https://deno.land/std/streams/conversion.ts?s=writeAllSync)
+   *   [`writeAllSync`](https://deno.land/std/streams/write_all.ts?s=writeAllSync)
    *   from
-   *   [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   *   [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
    *   instead. `Deno.writeAllSync` will be removed in the future.
    *
    * @category I/O
@@ -3322,7 +3341,7 @@ declare namespace Deno {
     /** If set to `true`, will append to a file instead of overwriting previous
      * contents.
      *
-     * @∂efault {false} */
+     * @default {false} */
     append?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
      * exist at the specified path.
@@ -3332,7 +3351,7 @@ declare namespace Deno {
     /** If set to `true`, no file, directory, or symlink is allowed to exist at
      * the target location. When createNew is set to `true`, `create` is ignored.
      *
-     * @∂efault {false} */
+     * @default {false} */
     createNew?: boolean;
     /** Permissions always applied to file. */
     mode?: number;
@@ -4260,6 +4279,20 @@ declare namespace Deno {
      */
     query(desc: PermissionDescriptor): Promise<PermissionStatus>;
 
+    /** Returns the current status of a permission.
+     *
+     * Note, if the permission is already granted, `request()` will not prompt
+     * the user again, therefore `querySync()` is only necessary if you are going
+     * to react differently existing permissions without wanting to modify them
+     * or prompt the user to modify them.
+     *
+     * ```ts
+     * const status = Deno.permissions.querySync({ name: "read", path: "/etc" });
+     * console.log(status.state);
+     * ```
+     */
+    querySync(desc: PermissionDescriptor): PermissionStatus;
+
     /** Revokes a permission, and resolves to the state of the permission.
      *
      * ```ts
@@ -4270,6 +4303,17 @@ declare namespace Deno {
      * ```
      */
     revoke(desc: PermissionDescriptor): Promise<PermissionStatus>;
+
+    /** Revokes a permission, and returns the state of the permission.
+     *
+     * ```ts
+     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     *
+     * const status = Deno.permissions.revokeSync({ name: "run" });
+     * assert(status.state !== "granted")
+     * ```
+     */
+    revokeSync(desc: PermissionDescriptor): PermissionStatus;
 
     /** Requests the permission, and resolves to the state of the permission.
      *
@@ -4286,6 +4330,23 @@ declare namespace Deno {
      * ```
      */
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
+
+
+    /** Requests the permission, and returns the state of the permission.
+     *
+     * If the permission is already granted, the user will not be prompted to
+     * grant the permission again.
+     *
+     * ```ts
+     * const status = Deno.permissions.requestSync({ name: "env" });
+     * if (status.state === "granted") {
+     *   console.log("'env' permission is granted.");
+     * } else {
+     *   console.log("'env' permission is denied.");
+     * }
+     * ```
+     */
+    requestSync(desc: PermissionDescriptor): PermissionStatus;
   }
 
   /** Deno's permission management API.
@@ -4316,6 +4377,11 @@ declare namespace Deno {
    * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
    * console.log(status.state);
    * ```
+   * 
+   * ```ts
+   * const status = Deno.permissions.querySync({ name: "read", path: "/etc" });
+   * console.log(status.state);
+   * ```
    *
    * ### Revoking
    *
@@ -4325,11 +4391,27 @@ declare namespace Deno {
    * const status = await Deno.permissions.revoke({ name: "run" });
    * assert(status.state !== "granted")
    * ```
+   * 
+   * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   *
+   * const status = Deno.permissions.revokeSync({ name: "run" });
+   * assert(status.state !== "granted")
+   * ```
    *
    * ### Requesting
    *
    * ```ts
    * const status = await Deno.permissions.request({ name: "env" });
+   * if (status.state === "granted") {
+   *   console.log("'env' permission is granted.");
+   * } else {
+   *   console.log("'env' permission is denied.");
+   * }
+   * ```
+   * 
+   * ```ts
+   * const status = Deno.permissions.requestSync({ name: "env" });
    * if (status.state === "granted") {
    *   console.log("'env' permission is granted.");
    * } else {

@@ -1,13 +1,14 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import * as yaml from "https://deno.land/std@0.171.0/encoding/yaml.ts";
+import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
+const windowsRunnerCondition =
+  "github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022'";
 const Runners = {
   linux:
     "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
   macos: "macos-12",
-  windows:
-    "${{ github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022' }}",
+  windows: `\${{ ${windowsRunnerCondition} }}`,
 };
 
 const installPkgsCommand =
@@ -85,7 +86,7 @@ const installRustStep = {
 const installPythonSteps = [{
   name: "Install Python",
   uses: "actions/setup-python@v4",
-  with: { "python-version": 3.8 },
+  with: { "python-version": 3.11 },
 }, {
   name: "Remove unused versions of Python",
   if: "startsWith(matrix.os, 'windows')",
@@ -200,11 +201,7 @@ const ci = {
   jobs: {
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
-      if: [
-        "github.event_name == 'push' ||",
-        "!startsWith(github.event.pull_request.head.label, 'denoland:')",
-      ].join("\n"),
-      "runs-on": "${{ matrix.os }}",
+      "runs-on": "${{ matrix.runner || matrix.os }}",
       "timeout-minutes": 120,
       strategy: {
         matrix: {
@@ -227,6 +224,9 @@ const ci = {
             },
             {
               os: Runners.windows,
+              // use a free runner on PRs since this will be skipped
+              runner:
+                `\${{ github.event_name == 'pull_request' && 'windows-2022' || (${windowsRunnerCondition}) }}`,
               job: "test",
               profile: "release",
               skip_pr: true,
@@ -438,7 +438,7 @@ const ci = {
               ].join("\n"),
               key: "never_saved",
               "restore-keys":
-                "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
+                "19-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
             },
           },
           {

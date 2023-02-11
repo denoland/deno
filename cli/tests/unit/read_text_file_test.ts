@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import {
   assert,
   assertEquals,
@@ -133,6 +135,17 @@ Deno.test(
     } catch (e) {
       assertEquals(e, "Some string");
     }
+  },
+);
+
+// Test that AbortController's cancel handle is cleaned-up correctly, and do not leak resources.
+Deno.test(
+  { permissions: { read: true } },
+  async function readTextFileWithAbortSignalNotCalled() {
+    const ac = new AbortController();
+    await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
+      signal: ac.signal,
+    });
   },
 );
 

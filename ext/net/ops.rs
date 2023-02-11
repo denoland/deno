@@ -505,7 +505,7 @@ where
 
   lookup
     .map_err(|e| {
-      let message = format!("{}", e);
+      let message = format!("{e}");
       match e.kind() {
         ResolveErrorKind::NoRecordsFound { .. } => {
           custom_error("NotFound", message)

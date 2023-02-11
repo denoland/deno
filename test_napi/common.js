@@ -4,6 +4,7 @@ export {
   assert,
   assertEquals,
   assertRejects,
+  assertThrows,
 } from "../test_util/std/testing/asserts.ts";
 export { fromFileUrl } from "../test_util/std/path/mod.ts";
 
@@ -16,5 +17,9 @@ const [libPrefix, libSuffix] = {
 
 export function loadTestLibrary() {
   const specifier = `${targetDir}/${libPrefix}test_napi.${libSuffix}`;
-  return Deno.core.ops.op_napi_open(specifier); // Internal, used in ext/node
+
+  // Internal, used in ext/node
+  return Deno[Deno.internal].core.ops.op_napi_open(specifier, {
+    Buffer: {},
+  });
 }

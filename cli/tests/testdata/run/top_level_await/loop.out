@@ -1,5 +1,5 @@
 loading [WILDCARD]a.js
-loaded Module { default: [Function: Foo] }
+loaded Module { default: [Class: Foo] }
 loading [WILDCARD]b.js
-loaded Module { default: [Function: Bar] }
+loaded Module { default: [Class: Bar] }
 all loaded

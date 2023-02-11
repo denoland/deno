@@ -14,22 +14,25 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
 use log::debug;
+use once_cell::sync::Lazy;
 
 use crate::npm::cache::should_sync_download;
 use crate::npm::registry::NpmDependencyEntry;
 use crate::npm::registry::NpmDependencyEntryKind;
 use crate::npm::registry::NpmPackageInfo;
 use crate::npm::registry::NpmPackageVersionInfo;
-use crate::npm::semver::NpmVersion;
-use crate::npm::semver::NpmVersionReq;
 use crate::npm::NpmRegistryApi;
+use crate::semver::Version;
+use crate::semver::VersionReq;
 
 use super::snapshot::NpmResolutionSnapshot;
 use super::snapshot::SnapshotPackageCopyIndexResolver;
 use super::NpmPackageId;
 use super::NpmPackageReq;
 use super::NpmResolutionPackage;
-use super::NpmVersionMatcher;
+
+pub static LATEST_VERSION_REQ: Lazy<VersionReq> =
+  Lazy::new(|| VersionReq::parse_from_specifier("latest").unwrap());
 
 /// A memory efficient path of visited name and versions in the graph
 /// which is used to detect cycles.
@@ -303,6 +306,7 @@ impl Graph {
     parent_id: &NpmPackageId,
   ) {
     let mut child = (*child).lock();
+    assert_ne!(child.id, *parent_id);
     let mut parent = (**self.packages.get(parent_id).unwrap_or_else(|| {
       panic!(
         "could not find {} in list of packages when setting child {}",
@@ -311,7 +315,6 @@ impl Graph {
       )
     }))
     .lock();
-    assert_ne!(parent.id, child.id);
     parent
       .children
       .insert(specifier.to_string(), child.id.clone());
@@ -419,11 +422,11 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
   fn resolve_best_package_version_and_info<'info>(
     &self,
-    version_matcher: &impl NpmVersionMatcher,
+    version_req: &VersionReq,
     package_info: &'info NpmPackageInfo,
   ) -> Result<VersionAndInfo<'info>, AnyError> {
     if let Some(version) =
-      self.resolve_best_package_version(package_info, version_matcher)?
+      self.resolve_best_package_version(package_info, version_req)?
     {
       match package_info.versions.get(&version.to_string()) {
         Some(version_info) => Ok(VersionAndInfo {
@@ -440,20 +443,19 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       }
     } else {
       // get the information
-      get_resolved_package_version_and_info(version_matcher, package_info, None)
+      get_resolved_package_version_and_info(version_req, package_info, None)
     }
   }
 
   fn resolve_best_package_version(
     &self,
     package_info: &NpmPackageInfo,
-    version_matcher: &impl NpmVersionMatcher,
-  ) -> Result<Option<NpmVersion>, AnyError> {
-    let mut maybe_best_version: Option<&NpmVersion> = None;
+    version_req: &VersionReq,
+  ) -> Result<Option<Version>, AnyError> {
+    let mut maybe_best_version: Option<&Version> = None;
     if let Some(ids) = self.graph.packages_by_name.get(&package_info.name) {
       for version in ids.iter().map(|id| &id.version) {
-        if version_req_satisfies(version_matcher, version, package_info, None)?
-        {
+        if version_req_satisfies(version_req, version, package_info, None)? {
           let is_best_version = maybe_best_version
             .as_ref()
             .map(|best_version| (*best_version).cmp(version).is_lt())
@@ -476,9 +478,12 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     package_req: &NpmPackageReq,
     package_info: &NpmPackageInfo,
   ) -> Result<(), AnyError> {
-    let node = self.resolve_node_from_info(
+    let (_, node) = self.resolve_node_from_info(
       &package_req.name,
-      package_req,
+      package_req
+        .version_req
+        .as_ref()
+        .unwrap_or(&*LATEST_VERSION_REQ),
       package_info,
       None,
     )?;
@@ -498,7 +503,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     parent_id: &NpmPackageId,
     visited_versions: &Arc<VisitedVersionsPath>,
   ) -> Result<Arc<Mutex<Node>>, AnyError> {
-    let node = self.resolve_node_from_info(
+    let (id, node) = self.resolve_node_from_info(
       &entry.name,
       match entry.kind {
         NpmDependencyEntryKind::Dep => &entry.version_req,
@@ -514,12 +519,17 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       package_info,
       Some(parent_id),
     )?;
-    self.graph.set_child_parent(
-      &entry.bare_specifier,
-      &node,
-      &NodeParent::Node(parent_id.clone()),
-    );
-    self.try_add_pending_unresolved_node(Some(visited_versions), &node);
+    // Some packages may resolves to themselves as a dependency. If this occurs,
+    // just ignore adding these as dependencies because this is likely a mistake
+    // in the package.
+    if id != *parent_id {
+      self.graph.set_child_parent(
+        &entry.bare_specifier,
+        &node,
+        &NodeParent::Node(parent_id.clone()),
+      );
+      self.try_add_pending_unresolved_node(Some(visited_versions), &node);
+    }
     Ok(node)
   }
 
@@ -552,12 +562,12 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   fn resolve_node_from_info(
     &mut self,
     pkg_req_name: &str,
-    version_matcher: &impl NpmVersionMatcher,
+    version_req: &VersionReq,
     package_info: &NpmPackageInfo,
     parent_id: Option<&NpmPackageId>,
-  ) -> Result<Arc<Mutex<Node>>, AnyError> {
-    let version_and_info = self
-      .resolve_best_package_version_and_info(version_matcher, package_info)?;
+  ) -> Result<(NpmPackageId, Arc<Mutex<Node>>), AnyError> {
+    let version_and_info =
+      self.resolve_best_package_version_and_info(version_req, package_info)?;
     let id = NpmPackageId {
       name: package_info.name.to_string(),
       version: version_and_info.version.clone(),
@@ -570,7 +580,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         None => "<package-req>".to_string(),
       },
       pkg_req_name,
-      version_matcher.version_text(),
+      version_req.version_text(),
       id.as_serialized(),
     );
     let (created, node) = self.graph.get_or_create_for_id(&id);
@@ -587,7 +597,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       node.no_peers = node.deps.is_empty();
     }
 
-    Ok(node)
+    Ok((id, node))
   }
 
   pub async fn resolve_pending(&mut self) -> Result<(), AnyError> {
@@ -991,22 +1001,22 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
 #[derive(Clone)]
 struct VersionAndInfo<'a> {
-  version: NpmVersion,
+  version: Version,
   info: &'a NpmPackageVersionInfo,
 }
 
 fn get_resolved_package_version_and_info<'a>(
-  version_matcher: &impl NpmVersionMatcher,
+  version_req: &VersionReq,
   info: &'a NpmPackageInfo,
   parent: Option<&NpmPackageId>,
 ) -> Result<VersionAndInfo<'a>, AnyError> {
-  if let Some(tag) = version_matcher.tag() {
+  if let Some(tag) = version_req.tag() {
     tag_to_version_info(info, tag, parent)
   } else {
     let mut maybe_best_version: Option<VersionAndInfo> = None;
     for version_info in info.versions.values() {
-      let version = NpmVersion::parse(&version_info.version)?;
-      if version_matcher.matches(&version) {
+      let version = Version::parse_from_npm(&version_info.version)?;
+      if version_req.matches(&version) {
         let is_best_version = maybe_best_version
           .as_ref()
           .map(|best_version| best_version.version.cmp(&version).is_lt())
@@ -1037,7 +1047,7 @@ fn get_resolved_package_version_and_info<'a>(
           "Try retrieving the latest npm package information by running with --reload",
         ),
         info.name,
-        version_matcher.version_text(),
+        version_req.version_text(),
         match parent {
           Some(id) => format!(" as specified in {}", id.display()),
           None => String::new(),
@@ -1048,17 +1058,17 @@ fn get_resolved_package_version_and_info<'a>(
 }
 
 fn version_req_satisfies(
-  matcher: &impl NpmVersionMatcher,
-  version: &NpmVersion,
+  version_req: &VersionReq,
+  version: &Version,
   package_info: &NpmPackageInfo,
   parent: Option<&NpmPackageId>,
 ) -> Result<bool, AnyError> {
-  match matcher.tag() {
+  match version_req.tag() {
     Some(tag) => {
       let tag_version = tag_to_version_info(package_info, tag, parent)?.version;
       Ok(tag_version == *version)
     }
-    None => Ok(matcher.matches(version)),
+    None => Ok(version_req.matches(version)),
   }
 }
 
@@ -1076,7 +1086,7 @@ fn tag_to_version_info<'a>(
   // explicit version.
   if tag == "latest" && info.name == "@types/node" {
     return get_resolved_package_version_and_info(
-      &NpmVersionReq::parse("18.0.0 - 18.8.2").unwrap(),
+      &VersionReq::parse_from_npm("18.0.0 - 18.11.18").unwrap(),
       info,
       parent,
     );
@@ -1085,7 +1095,7 @@ fn tag_to_version_info<'a>(
   if let Some(version) = info.dist_tags.get(tag) {
     match info.versions.get(version) {
       Some(info) => Ok(VersionAndInfo {
-        version: NpmVersion::parse(version)?,
+        version: Version::parse_from_npm(version)?,
         info,
       }),
       None => {
@@ -1123,7 +1133,11 @@ mod test {
       )]),
     };
     let result = get_resolved_package_version_and_info(
-      &package_ref.req,
+      package_ref
+        .req
+        .version_req
+        .as_ref()
+        .unwrap_or(&*LATEST_VERSION_REQ),
       &package_info,
       None,
     );
@@ -1152,7 +1166,11 @@ mod test {
       )]),
     };
     let result = get_resolved_package_version_and_info(
-      &package_ref.req,
+      package_ref
+        .req
+        .version_req
+        .as_ref()
+        .unwrap_or(&*LATEST_VERSION_REQ),
       &package_info,
       None,
     );
@@ -2652,6 +2670,65 @@ mod test {
         "package-a@1.0".to_string(),
         "package-a@1.0.0_package-d@1.0.0".to_string()
       ),]
+    );
+  }
+
+  #[tokio::test]
+  async fn package_has_self_as_dependency() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-a", "1"));
+
+    let (packages, package_reqs) =
+      run_resolver_and_get_output(api, vec!["npm:package-a@1.0"]).await;
+    assert_eq!(
+      packages,
+      vec![NpmResolutionPackage {
+        id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+        copy_index: 0,
+        // in this case, we just ignore that the package did this
+        dependencies: Default::default(),
+        dist: Default::default(),
+      }]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1.0".to_string(), "package-a@1.0.0".to_string())]
+    );
+  }
+
+  #[tokio::test]
+  async fn package_has_self_but_different_version_as_dependency() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-a", "0.5.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-a", "^0.5"));
+
+    let (packages, package_reqs) =
+      run_resolver_and_get_output(api, vec!["npm:package-a@1.0"]).await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-a@0.5.0").unwrap(),
+          copy_index: 0,
+          dependencies: Default::default(),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-a".to_string(),
+            NpmPackageId::from_serialized("package-a@0.5.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1.0".to_string(), "package-a@1.0.0".to_string())]
     );
   }
 

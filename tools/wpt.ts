@@ -33,7 +33,7 @@ import {
 } from "./wpt/utils.ts";
 import { pooledMap } from "../test_util/std/async/pool.ts";
 import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../test_util/std/streams/conversion.ts";
+import { writeAll, writeAllSync } from "../test_util/std/streams/write_all.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
@@ -285,7 +285,7 @@ function assertAllExpectationsHaveTests(
   const missingTests: string[] = [];
 
   function walk(parentExpectation: Expectation, parent: string) {
-    for (const key in parentExpectation) {
+    for (const [key, expectation] of Object.entries(parentExpectation)) {
       const path = `${parent}/${key}`;
       if (
         filter &&
@@ -293,7 +293,6 @@ function assertAllExpectationsHaveTests(
       ) {
         continue;
       }
-      const expectation = parentExpectation[key];
       if (typeof expectation == "boolean" || Array.isArray(expectation)) {
         if (!tests.has(path)) {
           missingTests.push(path);
@@ -368,8 +367,8 @@ async function update() {
 
   const currentExpectation = getExpectation();
 
-  for (const path in resultTests) {
-    const { passed, failed, testSucceeded } = resultTests[path];
+  for (const result of Object.values(resultTests)) {
+    const { passed, failed, testSucceeded } = result;
     let finalExpectation: boolean | string[];
     if (failed.length == 0 && testSucceeded) {
       finalExpectation = true;
@@ -655,9 +654,7 @@ function discoverTestsToRun(
     parentExpectation: Expectation | string[] | boolean,
     prefix: string,
   ) {
-    for (const key in parentFolder) {
-      const entry = parentFolder[key];
-
+    for (const [key, entry] of Object.entries(parentFolder)) {
       if (Array.isArray(entry)) {
         for (
           const [path, options] of entry.slice(

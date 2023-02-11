@@ -31,8 +31,7 @@ fn fmt_test() {
     .current_dir(&testdata_fmt_dir)
     .arg("fmt")
     .arg(format!(
-      "--ignore={},{},{}",
-      badly_formatted_js_str, badly_formatted_md_str, badly_formatted_json_str
+      "--ignore={badly_formatted_js_str},{badly_formatted_md_str},{badly_formatted_json_str}"
     ))
     .arg("--check")
     .arg(badly_formatted_js_str)
@@ -126,7 +125,8 @@ fn fmt_ignore_unexplicit_files() {
 
 #[test]
 fn fmt_auto_ignore_git_and_node_modules() {
-  use std::fs::{create_dir_all, File};
+  use std::fs::create_dir_all;
+  use std::fs::File;
   use std::io::Write;
   use std::path::PathBuf;
   fn create_bad_json(t: PathBuf) {
@@ -185,6 +185,12 @@ itest!(fmt_check_ignore {
 itest!(fmt_check_parse_error {
   args: "fmt --check fmt/parse_error/parse_error.ts",
   output: "fmt/fmt_check_parse_error.out",
+  exit_code: 1,
+});
+
+itest!(fmt_check_invalid_data {
+  args: "fmt --check fmt/invalid_data.json",
+  output: "fmt/invalid_data.out",
   exit_code: 1,
 });
 
