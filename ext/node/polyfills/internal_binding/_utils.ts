@@ -1,6 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import * as base64 from "SOMETHING IS BROKEN HERE ../../encoding/base64.ts";
-import * as base64url from "SOMETHING IS BROKEN HERE ../../encoding/base64url.ts";
+import {
+  forgivingBase64Decode,
+  forgivingBase64UrlEncode,
+} from "internal:deno_web/00_infra.js";
 
 export function asciiToBytes(str: string) {
   const byteArray = [];
@@ -13,7 +15,7 @@ export function asciiToBytes(str: string) {
 export function base64ToBytes(str: string) {
   str = base64clean(str);
   str = str.replaceAll("-", "+").replaceAll("_", "/");
-  return base64.decode(str);
+  return forgivingBase64Decode(str);
 }
 
 const INVALID_BASE64_RE = /[^+/0-9A-Za-z-_]/g;
@@ -34,7 +36,7 @@ function base64clean(str: string) {
 export function base64UrlToBytes(str: string) {
   str = base64clean(str);
   str = str.replaceAll("+", "-").replaceAll("/", "_");
-  return base64url.decode(str);
+  return forgivingBase64UrlEncode(str);
 }
 
 export function hexToBytes(str: string) {

@@ -9,8 +9,10 @@ import {
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import { Transform } from "internal:deno_node/polyfills/stream.ts";
 import { encode as encodeToHex } from "SOMETHING IS BROKEN HERE ../../../encoding/hex.ts";
-import { encode as encodeToBase64 } from "SOMETHING IS BROKEN HERE ../../../encoding/base64.ts";
-import { encode as encodeToBase64Url } from "SOMETHING IS BROKEN HERE ../../../encoding/base64url.ts";
+import {
+  forgivingBase64Encode as encodeToBase64,
+  forgivingBase64UrlEncode as encodeToBase64Url,
+} from "internal:deno_web/00_infra.js";
 import type { TransformOptions } from "internal:deno_node/polyfills/_stream.d.ts";
 import { validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
 import type { BinaryToTextEncoding, Encoding } from "internal:deno_node/polyfills/internal/crypto/types.ts";

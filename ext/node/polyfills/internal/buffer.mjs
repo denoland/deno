@@ -18,8 +18,7 @@ import { isAnyArrayBuffer, isArrayBufferView } from "internal:deno_node/polyfill
 import { normalizeEncoding } from "internal:deno_node/polyfills/internal/util.mjs";
 import { validateBuffer } from "internal:deno_node/polyfills/internal/validators.mjs";
 import { isUint8Array } from "internal:deno_node/polyfills/internal/util/types.ts";
-import * as base64 from "SOMETHING IS BROKEN HERE ../../encoding/base64.ts";
-import * as base64url from "SOMETHING IS BROKEN HERE ../../encoding/base64url.ts";
+import { forgivingBase64Encode, forgivingBase64UrlEncode } from "internal:deno_web/00_infra.js";
 
 const utf8Encoder = new TextEncoder();
 
@@ -642,9 +641,9 @@ Buffer.prototype.base64Slice = function base64Slice(
   length,
 ) {
   if (offset === 0 && length === this.length) {
-    return base64.encode(this);
+    return forgivingBase64Encode(this);
   } else {
-    return base64.encode(this.slice(offset, length));
+    return forgivingBase64Encode(this.slice(offset, length));
   }
 };
 
@@ -661,9 +660,9 @@ Buffer.prototype.base64urlSlice = function base64urlSlice(
   length,
 ) {
   if (offset === 0 && length === this.length) {
-    return base64url.encode(this);
+    return forgivingBase64UrlEncode(this);
   } else {
-    return base64url.encode(this.slice(offset, length));
+    return forgivingBase64UrlEncode(this.slice(offset, length));
   }
 };
 
@@ -819,9 +818,9 @@ function fromArrayBuffer(obj, byteOffset, length) {
 
 function _base64Slice(buf, start, end) {
   if (start === 0 && end === buf.length) {
-    return base64.encode(buf);
+    return forgivingBase64Encode(buf);
   } else {
-    return base64.encode(buf.slice(start, end));
+    return forgivingBase64Encode(buf.slice(start, end));
   }
 }
 
