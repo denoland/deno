@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { setUnrefTimeout, Timeout } from "internal:deno_node/polyfills/internal/timers.mjs";
+import {
+  setUnrefTimeout,
+  Timeout,
+} from "internal:deno_node/polyfills/internal/timers.mjs";
 import { validateFunction } from "internal:deno_node/polyfills/internal/validators.mjs";
 import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
 export { setUnrefTimeout } from "internal:deno_node/polyfills/internal/timers.mjs";

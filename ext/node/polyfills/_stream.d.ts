@@ -4,7 +4,10 @@
 // Forked from https://github.com/DefinitelyTyped/DefinitelyTyped/blob/4f538975138678878fed5b2555c0672aa578ab7d/types/node/stream.d.ts
 
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { Abortable, EventEmitter } from "internal:deno_node/polyfills/_events.d.ts";
+import {
+  Abortable,
+  EventEmitter,
+} from "internal:deno_node/polyfills/_events.d.ts";
 import {
   Buffered,
   BufferEncoding,

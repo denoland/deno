@@ -6,8 +6,14 @@ import {
   WriteFileOptions,
 } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
 import { Encodings } from "internal:deno_node/polyfills/_utils.ts";
-import { copyObject, getOptions } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import { writeFile, writeFileSync } from "internal:deno_node/polyfills/_fs/_fs_writeFile.ts";
+import {
+  copyObject,
+  getOptions,
+} from "internal:deno_node/polyfills/internal/fs/utils.mjs";
+import {
+  writeFile,
+  writeFileSync,
+} from "internal:deno_node/polyfills/_fs/_fs_writeFile.ts";
 import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
 
 /**

@@ -1,9 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { type CallbackWithError, makeCallback } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
+import {
+  type CallbackWithError,
+  makeCallback,
+} from "internal:deno_node/polyfills/_fs/_fs_common.ts";
 import { fs } from "internal:deno_node/polyfills/internal_binding/constants.ts";
 import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import { getValidatedPath, getValidMode } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
+import {
+  getValidatedPath,
+  getValidMode,
+} from "internal:deno_node/polyfills/internal/fs/utils.mjs";
 import type { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
 

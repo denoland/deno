@@ -25,8 +25,15 @@
 // - https://github.com/nodejs/node/blob/master/src/connection_wrap.h
 
 import { LibuvStreamWrap } from "internal:deno_node/polyfills/internal_binding/stream_wrap.ts";
-import { AsyncWrap, providerType } from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
-import type { Closer, Reader, Writer } from "SOMETHING IS BROKEN HERE ../../types.d.ts";
+import {
+  AsyncWrap,
+  providerType,
+} from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
+import type {
+  Closer,
+  Reader,
+  Writer,
+} from "SOMETHING IS BROKEN HERE ../../types.d.ts";
 
 type Ref = { ref(): void; unref(): void };
 

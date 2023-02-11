@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { encodeStr, hexTable } from "internal:deno_node/polyfills/internal/querystring.ts";
+import {
+  encodeStr,
+  hexTable,
+} from "internal:deno_node/polyfills/internal/querystring.ts";
 
 /**
  * Alias of querystring.parse()

@@ -2,11 +2,20 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { isAnyArrayBuffer, isArrayBufferView } from "internal:deno_node/polyfills/internal/util/types.ts";
+import {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} from "internal:deno_node/polyfills/internal/util/types.ts";
 import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/polyfills/internal/errors.ts";
-import { validateInt32, validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
+import {
+  validateInt32,
+  validateString,
+} from "internal:deno_node/polyfills/internal/validators.mjs";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { getDefaultEncoding, toBuf } from "internal:deno_node/polyfills/internal/crypto/util.ts";
+import {
+  getDefaultEncoding,
+  toBuf,
+} from "internal:deno_node/polyfills/internal/crypto/util.ts";
 import type {
   BinaryLike,
   BinaryToTextEncoding,

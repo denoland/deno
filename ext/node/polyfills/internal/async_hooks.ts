@@ -4,7 +4,10 @@
 // deno-lint-ignore camelcase
 import * as async_wrap from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
 import { ERR_ASYNC_CALLBACK } from "internal:deno_node/polyfills/internal/errors.ts";
-export { asyncIdSymbol, ownerSymbol } from "internal:deno_node/polyfills/internal_binding/symbols.ts";
+export {
+  asyncIdSymbol,
+  ownerSymbol,
+} from "internal:deno_node/polyfills/internal_binding/symbols.ts";
 
 interface ActiveHooks {
   array: AsyncHook[];

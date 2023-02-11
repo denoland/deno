@@ -27,13 +27,22 @@ import type {
   GeneratePrimeOptionsBigInt,
   LargeNumberLike,
 } from "internal:deno_node/polyfills/internal/crypto/random.ts";
-import { pbkdf2, pbkdf2Sync } from "internal:deno_node/polyfills/internal/crypto/pbkdf2.ts";
+import {
+  pbkdf2,
+  pbkdf2Sync,
+} from "internal:deno_node/polyfills/internal/crypto/pbkdf2.ts";
 import type {
   Algorithms,
   NormalizedAlgorithms,
 } from "internal:deno_node/polyfills/internal/crypto/pbkdf2.ts";
-import { scrypt, scryptSync } from "internal:deno_node/polyfills/internal/crypto/scrypt.ts";
-import { hkdf, hkdfSync } from "internal:deno_node/polyfills/internal/crypto/hkdf.ts";
+import {
+  scrypt,
+  scryptSync,
+} from "internal:deno_node/polyfills/internal/crypto/scrypt.ts";
+import {
+  hkdf,
+  hkdfSync,
+} from "internal:deno_node/polyfills/internal/crypto/hkdf.ts";
 import {
   generateKey,
   generateKeyPair,
@@ -134,7 +143,11 @@ import type {
   VerifyKeyObjectInput,
   VerifyPublicKeyInput,
 } from "internal:deno_node/polyfills/internal/crypto/sig.ts";
-import { createHash, Hash, Hmac } from "internal:deno_node/polyfills/internal/crypto/hash.ts";
+import {
+  createHash,
+  Hash,
+  Hmac,
+} from "internal:deno_node/polyfills/internal/crypto/hash.ts";
 import { X509Certificate } from "internal:deno_node/polyfills/internal/crypto/x509.ts";
 import type {
   PeerCertificate,
@@ -149,7 +162,10 @@ import {
 } from "internal:deno_node/polyfills/internal/crypto/util.ts";
 import type { SecureHeapUsage } from "internal:deno_node/polyfills/internal/crypto/util.ts";
 import Certificate from "internal:deno_node/polyfills/internal/crypto/certificate.ts";
-import type { TransformOptions, WritableOptions } from "internal:deno_node/polyfills/_stream.d.ts";
+import type {
+  TransformOptions,
+  WritableOptions,
+} from "internal:deno_node/polyfills/_stream.d.ts";
 
 const webcrypto = globalThis.crypto;
 const fipsForced = getOptionValue("--force-fips");

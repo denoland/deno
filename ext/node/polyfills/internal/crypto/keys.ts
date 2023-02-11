@@ -1,7 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { kHandle, kKeyObject } from "internal:deno_node/polyfills/internal/crypto/constants.ts";
+import {
+  kHandle,
+  kKeyObject,
+} from "internal:deno_node/polyfills/internal/crypto/constants.ts";
 import {
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
@@ -15,7 +18,10 @@ import type {
   PublicKeyInput,
 } from "internal:deno_node/polyfills/internal/crypto/types.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { isAnyArrayBuffer, isArrayBufferView } from "internal:deno_node/polyfills/internal/util/types.ts";
+import {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} from "internal:deno_node/polyfills/internal/util/types.ts";
 import { hideStackFrames } from "internal:deno_node/polyfills/internal/errors.ts";
 import {
   isCryptoKey as isCryptoKey_,

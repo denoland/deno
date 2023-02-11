@@ -3,11 +3,16 @@
 
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 import randomBytes from "internal:deno_node/polyfills/internal/crypto/_randomBytes.ts";
-import randomFill, { randomFillSync } from "internal:deno_node/polyfills/internal/crypto/_randomFill.ts";
+import randomFill, {
+  randomFillSync,
+} from "internal:deno_node/polyfills/internal/crypto/_randomFill.ts";
 import randomInt from "internal:deno_node/polyfills/internal/crypto/_randomInt.ts";
 
 export { default as randomBytes } from "internal:deno_node/polyfills/internal/crypto/_randomBytes.ts";
-export { default as randomFill, randomFillSync } from "internal:deno_node/polyfills/internal/crypto/_randomFill.ts";
+export {
+  default as randomFill,
+  randomFillSync,
+} from "internal:deno_node/polyfills/internal/crypto/_randomFill.ts";
 export { default as randomInt } from "internal:deno_node/polyfills/internal/crypto/_randomInt.ts";
 
 export type LargeNumberLike =

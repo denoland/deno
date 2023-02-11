@@ -29,6 +29,9 @@ export const {
 } = path;
 
 export * from "internal:deno_node/polyfills/path/common.ts";
-export { SEP, SEP_PATTERN } from "internal:deno_node/polyfills/path/separator.ts";
+export {
+  SEP,
+  SEP_PATTERN,
+} from "internal:deno_node/polyfills/path/separator.ts";
 export * from "internal:deno_node/polyfills/path/_interface.ts";
 export * from "internal:deno_node/polyfills/path/glob.ts";

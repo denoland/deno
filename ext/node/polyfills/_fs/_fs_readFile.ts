@@ -7,7 +7,11 @@ import {
 } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import { fromFileUrl } from "internal:deno_node/polyfills/path.ts";
-import { BinaryEncodings, Encodings, TextEncodings } from "internal:deno_node/polyfills/_utils.ts";
+import {
+  BinaryEncodings,
+  Encodings,
+  TextEncodings,
+} from "internal:deno_node/polyfills/_utils.ts";
 import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
 
 function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;

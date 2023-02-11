@@ -1,7 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 import { existsSync } from "internal:deno_node/polyfills/_fs/_fs_exists.ts";
-import { mkdir, mkdirSync } from "internal:deno_node/polyfills/_fs/_fs_mkdir.ts";
+import {
+  mkdir,
+  mkdirSync,
+} from "internal:deno_node/polyfills/_fs/_fs_mkdir.ts";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_OPT_VALUE_ENCODING,

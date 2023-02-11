@@ -11,7 +11,10 @@ import {
   WriteFileOptions,
 } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
 import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
-import { AbortError, denoErrorToNodeError } from "internal:deno_node/polyfills/internal/errors.ts";
+import {
+  AbortError,
+  denoErrorToNodeError,
+} from "internal:deno_node/polyfills/internal/errors.ts";
 import {
   showStringCoercionDeprecation,
   validateStringAfterArrayBufferView,

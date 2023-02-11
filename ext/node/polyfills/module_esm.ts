@@ -26,7 +26,10 @@
  * Unfortunately we have no way to call ESM resolution in Rust from TypeScript code.
  */
 
-import { fileURLToPath, pathToFileURL } from "internal:deno_node/polyfills/url.ts";
+import {
+  fileURLToPath,
+  pathToFileURL,
+} from "internal:deno_node/polyfills/url.ts";
 import {
   ERR_INVALID_MODULE_SPECIFIER,
   ERR_INVALID_PACKAGE_CONFIG,

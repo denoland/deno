@@ -2,7 +2,10 @@
 // Copyright 2017 Fedor Indutny. All rights reserved. MIT license.
 
 import { Reporter } from "internal:deno_node/polyfills/_crypto/crypto_browserify/asn1.js/base/reporter.js";
-import { DecoderBuffer, EncoderBuffer } from "internal:deno_node/polyfills/_crypto/crypto_browserify/asn1.js/base/buffer.js";
+import {
+  DecoderBuffer,
+  EncoderBuffer,
+} from "internal:deno_node/polyfills/_crypto/crypto_browserify/asn1.js/base/buffer.js";
 import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
 
 // Supported tags

@@ -13,7 +13,10 @@ import { kStreamBaseField } from "internal:deno_node/polyfills/internal_binding/
 import { connResetException } from "internal:deno_node/polyfills/internal/errors.ts";
 import { emitWarning } from "internal:deno_node/polyfills/process.ts";
 import { debuglog } from "internal:deno_node/polyfills/internal/util/debuglog.ts";
-import { constants as TCPConstants, TCP } from "internal:deno_node/polyfills/internal_binding/tcp_wrap.ts";
+import {
+  constants as TCPConstants,
+  TCP,
+} from "internal:deno_node/polyfills/internal_binding/tcp_wrap.ts";
 import {
   constants as PipeConstants,
   Pipe,

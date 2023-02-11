@@ -31,7 +31,10 @@ import {
 } from "internal:deno_node/polyfills/internal_binding/stream_wrap.ts";
 import { isUint8Array } from "internal:deno_node/polyfills/internal/util/types.ts";
 import { errnoException } from "internal:deno_node/polyfills/internal/errors.ts";
-import { getTimerDuration, kTimeout } from "internal:deno_node/polyfills/internal/timers.mjs";
+import {
+  getTimerDuration,
+  kTimeout,
+} from "internal:deno_node/polyfills/internal/timers.mjs";
 import { setUnrefTimeout } from "internal:deno_node/polyfills/timers.ts";
 import { validateFunction } from "internal:deno_node/polyfills/internal/validators.mjs";
 import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";

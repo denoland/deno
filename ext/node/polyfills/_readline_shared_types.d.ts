@@ -4,7 +4,10 @@
 
 // This .d.ts file is provided to avoid circular dependencies.
 
-import type { ReadableStream, WritableStream } from "internal:deno_node/polyfills/_global.d.ts";
+import type {
+  ReadableStream,
+  WritableStream,
+} from "internal:deno_node/polyfills/_global.d.ts";
 
 export type Completer = (line: string) => CompleterResult;
 export type AsyncCompleter = (

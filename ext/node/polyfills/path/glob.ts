@@ -1,7 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import { isWindows, osType } from "internal:deno_node/polyfills/_util/os.ts";
-import { SEP, SEP_PATTERN } from "internal:deno_node/polyfills/path/separator.ts";
+import {
+  SEP,
+  SEP_PATTERN,
+} from "internal:deno_node/polyfills/path/separator.ts";
 import * as _win32 from "internal:deno_node/polyfills/path/win32.ts";
 import * as _posix from "internal:deno_node/polyfills/path/posix.ts";
 import type { OSType } from "internal:deno_node/polyfills/_util/os.ts";

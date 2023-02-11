@@ -27,7 +27,10 @@ import {
   AI_ALL,
   AI_V4MAPPED,
 } from "internal:deno_node/polyfills/internal_binding/ares.ts";
-import { ChannelWrap, strerror } from "internal:deno_node/polyfills/internal_binding/cares_wrap.ts";
+import {
+  ChannelWrap,
+  strerror,
+} from "internal:deno_node/polyfills/internal_binding/cares_wrap.ts";
 import {
   ERR_DNS_SET_SERVERS_FAILED,
   ERR_INVALID_ARG_VALUE,

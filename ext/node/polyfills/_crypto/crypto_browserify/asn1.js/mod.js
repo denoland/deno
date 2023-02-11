@@ -3,7 +3,10 @@
 
 import bignum from "internal:deno_node/polyfills/_crypto/crypto_browserify/bn.js/bn.js";
 import { Node } from "internal:deno_node/polyfills/_crypto/crypto_browserify/asn1.js/base/node.js";
-import { DecoderBuffer, EncoderBuffer } from "internal:deno_node/polyfills/_crypto/crypto_browserify/asn1.js/base/buffer.js";
+import {
+  DecoderBuffer,
+  EncoderBuffer,
+} from "internal:deno_node/polyfills/_crypto/crypto_browserify/asn1.js/base/buffer.js";
 import { Reporter } from "internal:deno_node/polyfills/_crypto/crypto_browserify/asn1.js/base/reporter.js";
 import { DEREncoder } from "internal:deno_node/polyfills/_crypto/crypto_browserify/asn1.js/encoders/der.js";
 import { PEMEncoder } from "internal:deno_node/polyfills/_crypto/crypto_browserify/asn1.js/encoders/pem.js";

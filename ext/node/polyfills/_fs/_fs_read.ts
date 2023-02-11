@@ -5,7 +5,10 @@ import {
   validateOffsetLengthRead,
   validatePosition,
 } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import { validateBuffer, validateInteger } from "internal:deno_node/polyfills/internal/validators.mjs";
+import {
+  validateBuffer,
+  validateInteger,
+} from "internal:deno_node/polyfills/internal/validators.mjs";
 
 type readOptions = {
   buffer: Buffer | Uint8Array;

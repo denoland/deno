@@ -2,7 +2,10 @@
 import type { CallbackWithError } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
 import { makeCallback } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { getValidatedPath, getValidMode } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
+import {
+  getValidatedPath,
+  getValidMode,
+} from "internal:deno_node/polyfills/internal/fs/utils.mjs";
 import { fs } from "internal:deno_node/polyfills/internal_binding/constants.ts";
 import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
 import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";

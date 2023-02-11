@@ -19,7 +19,10 @@ import type {
   ReadLineOptions,
 } from "internal:deno_node/polyfills/_readline_shared_types.d.ts";
 
-import type { ReadableStream, WritableStream } from "internal:deno_node/polyfills/_global.d.ts";
+import type {
+  ReadableStream,
+  WritableStream,
+} from "internal:deno_node/polyfills/_global.d.ts";
 
 /**
  * The `readline/promise` module provides an API for reading lines of input from a Readable stream one line at a time.

@@ -25,7 +25,10 @@
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.h
 
 import { unreachable } from "internal:deno_node/polyfills/_util/asserts.ts";
-import { AsyncWrap, providerType } from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
+import {
+  AsyncWrap,
+  providerType,
+} from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
 
 export class HandleWrap extends AsyncWrap {
   constructor(provider: providerType) {

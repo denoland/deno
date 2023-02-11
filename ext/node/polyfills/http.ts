@@ -1,7 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { type Deferred, deferred } from "internal:deno_node/polyfills/_util/async.ts";
-import { _normalizeArgs, ListenOptions, Socket } from "internal:deno_node/polyfills/net.ts";
+import {
+  type Deferred,
+  deferred,
+} from "internal:deno_node/polyfills/_util/async.ts";
+import {
+  _normalizeArgs,
+  ListenOptions,
+  Socket,
+} from "internal:deno_node/polyfills/net.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import { ERR_SERVER_NOT_RUNNING } from "internal:deno_node/polyfills/internal/errors.ts";
 import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
@@ -16,7 +23,10 @@ import { OutgoingMessage } from "internal:deno_node/polyfills/_http_outgoing.ts"
 import { Agent } from "internal:deno_node/polyfills/_http_agent.mjs";
 import { chunkExpression as RE_TE_CHUNKED } from "internal:deno_node/polyfills/_http_common.ts";
 import { urlToHttpOptions } from "internal:deno_node/polyfills/internal/url.ts";
-import { constants, TCP } from "internal:deno_node/polyfills/internal_binding/tcp_wrap.ts";
+import {
+  constants,
+  TCP,
+} from "internal:deno_node/polyfills/internal_binding/tcp_wrap.ts";
 
 const METHODS = [
   "ACL",

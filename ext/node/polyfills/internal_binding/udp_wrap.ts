@@ -20,11 +20,17 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { AsyncWrap, providerType } from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
+import {
+  AsyncWrap,
+  providerType,
+} from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
 import { GetAddrInfoReqWrap } from "internal:deno_node/polyfills/internal_binding/cares_wrap.ts";
 import { HandleWrap } from "internal:deno_node/polyfills/internal_binding/handle_wrap.ts";
 import { ownerSymbol } from "internal:deno_node/polyfills/internal_binding/symbols.ts";
-import { codeMap, errorMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
+import {
+  codeMap,
+  errorMap,
+} from "internal:deno_node/polyfills/internal_binding/uv.ts";
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import type { ErrnoException } from "internal:deno_node/polyfills/internal/errors.ts";

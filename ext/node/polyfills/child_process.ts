@@ -35,11 +35,17 @@ import {
   ObjectAssign,
   StringPrototypeSlice,
 } from "internal:deno_node/polyfills/internal/primordials.mjs";
-import { getSystemErrorName, promisify } from "internal:deno_node/polyfills/util.ts";
+import {
+  getSystemErrorName,
+  promisify,
+} from "internal:deno_node/polyfills/util.ts";
 import { createDeferredPromise } from "internal:deno_node/polyfills/internal/util.mjs";
 import { process } from "internal:deno_node/polyfills/process.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { convertToValidSignal, kEmptyObject } from "internal:deno_node/polyfills/internal/util.mjs";
+import {
+  convertToValidSignal,
+  kEmptyObject,
+} from "internal:deno_node/polyfills/internal/util.mjs";
 
 const MAX_BUFFER = 1024 * 1024;
 

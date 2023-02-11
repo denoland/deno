@@ -7,14 +7,21 @@ import EE from "internal:deno_node/polyfills/events.ts";
 import { Stream } from "internal:deno_node/polyfills/stream.ts";
 import { deprecate } from "internal:deno_node/polyfills/util.ts";
 import type { Socket } from "internal:deno_node/polyfills/net.ts";
-import { kNeedDrain, kOutHeaders, utcDate } from "internal:deno_node/polyfills/internal/http.ts";
+import {
+  kNeedDrain,
+  kOutHeaders,
+  utcDate,
+} from "internal:deno_node/polyfills/internal/http.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,
   chunkExpression as RE_TE_CHUNKED,
 } from "internal:deno_node/polyfills/_http_common.ts";
-import { defaultTriggerAsyncIdScope, symbols } from "internal:deno_node/polyfills/internal/async_hooks.ts";
+import {
+  defaultTriggerAsyncIdScope,
+  symbols,
+} from "internal:deno_node/polyfills/internal/async_hooks.ts";
 // deno-lint-ignore camelcase
 const { async_id_symbol } = symbols;
 import {

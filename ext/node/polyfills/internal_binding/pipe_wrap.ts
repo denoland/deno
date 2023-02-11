@@ -27,7 +27,10 @@
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 import { unreachable } from "internal:deno_node/polyfills/_util/asserts.ts";
 import { ConnectionWrap } from "internal:deno_node/polyfills/internal_binding/connection_wrap.ts";
-import { AsyncWrap, providerType } from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
+import {
+  AsyncWrap,
+  providerType,
+} from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
 import { LibuvStreamWrap } from "internal:deno_node/polyfills/internal_binding/stream_wrap.ts";
 import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
 import { delay } from "internal:deno_node/polyfills/_util/async.ts";

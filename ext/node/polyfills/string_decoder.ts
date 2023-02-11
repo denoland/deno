@@ -21,7 +21,10 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { normalizeEncoding as castEncoding, notImplemented } from "internal:deno_node/polyfills/_utils.ts";
+import {
+  normalizeEncoding as castEncoding,
+  notImplemented,
+} from "internal:deno_node/polyfills/_utils.ts";
 
 enum NotImplemented {
   "ascii",

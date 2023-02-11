@@ -1,7 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { notImplemented, warnNotImplemented } from "internal:deno_node/polyfills/_utils.ts";
+import {
+  notImplemented,
+  warnNotImplemented,
+} from "internal:deno_node/polyfills/_utils.ts";
 import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
 import { validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
 import {

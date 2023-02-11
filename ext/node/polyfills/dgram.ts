@@ -23,7 +23,10 @@
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
 import { lookup as defaultLookup } from "internal:deno_node/polyfills/dns.ts";
-import type { ErrnoException, NodeSystemErrorCtx } from "internal:deno_node/polyfills/internal/errors.ts";
+import type {
+  ErrnoException,
+  NodeSystemErrorCtx,
+} from "internal:deno_node/polyfills/internal/errors.ts";
 import {
   ERR_BUFFER_OUT_OF_BOUNDS,
   ERR_INVALID_ARG_TYPE,
@@ -39,14 +42,20 @@ import {
   exceptionWithHostPort,
 } from "internal:deno_node/polyfills/internal/errors.ts";
 import type { Abortable } from "internal:deno_node/polyfills/_events.d.ts";
-import { kStateSymbol, newHandle } from "internal:deno_node/polyfills/internal/dgram.ts";
+import {
+  kStateSymbol,
+  newHandle,
+} from "internal:deno_node/polyfills/internal/dgram.ts";
 import type { SocketType } from "internal:deno_node/polyfills/internal/dgram.ts";
 import {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
   ownerSymbol,
 } from "internal:deno_node/polyfills/internal/async_hooks.ts";
-import { SendWrap, UDP } from "internal:deno_node/polyfills/internal_binding/udp_wrap.ts";
+import {
+  SendWrap,
+  UDP,
+} from "internal:deno_node/polyfills/internal_binding/udp_wrap.ts";
 import {
   isInt32,
   validateAbortSignal,

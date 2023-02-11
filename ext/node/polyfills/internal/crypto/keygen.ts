@@ -4,7 +4,10 @@
 import { KeyObject } from "internal:deno_node/polyfills/internal/crypto/keys.ts";
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { KeyFormat, KeyType } from "internal:deno_node/polyfills/internal/crypto/types.ts";
+import {
+  KeyFormat,
+  KeyType,
+} from "internal:deno_node/polyfills/internal/crypto/types.ts";
 
 export function generateKey(
   _type: "hmac" | "aes",

@@ -1,6 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { type CallbackWithError, makeCallback } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
-import { getValidatedPath, kMaxUserId } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
+import {
+  type CallbackWithError,
+  makeCallback,
+} from "internal:deno_node/polyfills/_fs/_fs_common.ts";
+import {
+  getValidatedPath,
+  kMaxUserId,
+} from "internal:deno_node/polyfills/internal/fs/utils.mjs";
 import * as pathModule from "internal:deno_node/polyfills/path.ts";
 import { validateInteger } from "internal:deno_node/polyfills/internal/validators.mjs";
 import type { Buffer } from "internal:deno_node/polyfills/buffer.ts";

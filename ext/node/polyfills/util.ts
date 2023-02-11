@@ -151,7 +151,11 @@ export function inherits<T, U>(
   Object.setPrototypeOf(ctor.prototype, superCtor.prototype);
 }
 
-import { _TextDecoder, _TextEncoder, getSystemErrorName } from "internal:deno_node/polyfills/_utils.ts";
+import {
+  _TextDecoder,
+  _TextEncoder,
+  getSystemErrorName,
+} from "internal:deno_node/polyfills/_utils.ts";
 
 /** The global TextDecoder */
 export type TextDecoder = import("./_utils.ts")._TextDecoder;

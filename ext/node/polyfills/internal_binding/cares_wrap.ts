@@ -27,7 +27,10 @@
 import type { ErrnoException } from "internal:deno_node/polyfills/internal/errors.ts";
 import { isIPv4 } from "internal:deno_node/polyfills/internal/net.ts";
 import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import { AsyncWrap, providerType } from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
+import {
+  AsyncWrap,
+  providerType,
+} from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
 import { ares_strerror } from "internal:deno_node/polyfills/internal_binding/ares.ts";
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";

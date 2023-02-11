@@ -6,7 +6,10 @@ import * as stream from "internal:deno_node/polyfills/_stream.d.ts";
 import * as promises from "internal:deno_node/polyfills/fs/promises.ts";
 
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { BufferEncoding, ErrnoException } from "internal:deno_node/polyfills/_global.d.ts";
+import {
+  BufferEncoding,
+  ErrnoException,
+} from "internal:deno_node/polyfills/_global.d.ts";
 
 type PathLike = string | Buffer | URL;
 

@@ -2,14 +2,20 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/polyfills/internal/errors.ts";
-import { validateInt32, validateObject } from "internal:deno_node/polyfills/internal/validators.mjs";
+import {
+  validateInt32,
+  validateObject,
+} from "internal:deno_node/polyfills/internal/validators.mjs";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 import type { TransformOptions } from "internal:deno_node/polyfills/_stream.d.ts";
 import { Transform } from "internal:deno_node/polyfills/_stream.mjs";
 import { KeyObject } from "internal:deno_node/polyfills/internal/crypto/keys.ts";
 import type { BufferEncoding } from "internal:deno_node/polyfills/_global.d.ts";
-import type { BinaryLike, Encoding } from "internal:deno_node/polyfills/internal/crypto/types.ts";
+import type {
+  BinaryLike,
+  Encoding,
+} from "internal:deno_node/polyfills/internal/crypto/types.ts";
 import {
   privateDecrypt,
   privateEncrypt,

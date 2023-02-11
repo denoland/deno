@@ -74,9 +74,15 @@ import {
   toUnicode,
 } from "internal:deno_node/polyfills/internal/idna.ts";
 import { isWindows, osType } from "internal:deno_node/polyfills/_util/os.ts";
-import { encodeStr, hexTable } from "internal:deno_node/polyfills/internal/querystring.ts";
+import {
+  encodeStr,
+  hexTable,
+} from "internal:deno_node/polyfills/internal/querystring.ts";
 import querystring from "internal:deno_node/polyfills/querystring.ts";
-import type { ParsedUrlQuery, ParsedUrlQueryInput } from "internal:deno_node/polyfills/querystring.ts";
+import type {
+  ParsedUrlQuery,
+  ParsedUrlQueryInput,
+} from "internal:deno_node/polyfills/querystring.ts";
 
 const forwardSlashRegEx = /\//g;
 const percentRegEx = /%/g;
