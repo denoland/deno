@@ -468,14 +468,7 @@ function upgradeHttp(req) {
   return req[_deferred].promise;
 }
 
-// todo: what space char codes are supported? Maybe only a regular space is ok?
-const spaceCharCodes = ArrayPrototypeMap(
-  StringPrototypeSplit(
-    "\u0009\u000B\u000C\u0020\u00A0\uFEFF\r\n\u2028\u2029",
-    "",
-  ),
-  (c) => c.charCodeAt(0),
-);
+const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
 const commaCharCode = StringPrototypeCharCodeAt(",", 0);
 
 /** Builds a case function that can be used to find a case insensitive
@@ -530,7 +523,7 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 
   /** @param value {string} */
   function skipWhitespace(value) {
-    while (ArrayPrototypeIncludes(spaceCharCodes, char)) {
+    while (char === spaceCharCode) {
       char = StringPrototypeCharCodeAt(value, ++i);
     }
   }
