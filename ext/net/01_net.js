@@ -8,7 +8,7 @@ import {
   readableStreamForRidUnrefableUnref,
   writableStreamForRid,
 } from "internal:deno_web/06_streams.js";
-import * as abortSignal from "interna:deno_web/03_abort_signal.js";
+import * as abortSignal from "internal:deno_web/03_abort_signal.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
@@ -54,7 +54,6 @@ async function resolveDns(query, recordType, options) {
 
       // always throw the abort error when aborted
       options.signal.throwIfAborted();
-      core.tryClose(cancelRid);
     }
   }
 }

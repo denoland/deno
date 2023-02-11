@@ -489,16 +489,22 @@ where
 
   let lookup_fut = resolver.lookup(query, record_type);
 
-  let lookup = if let Some(cancel_rid) = cancel_rid {
-    let cancel_handle = state
+  let cancel_handle = cancel_rid.and_then(|rid| {
+    state
       .borrow_mut()
       .resource_table
-      .get::<CancelHandle>(cancel_rid);
-    if let Ok(cancel_handle) = cancel_handle {
-      lookup_fut.or_cancel(cancel_handle).await?
-    } else {
-      lookup_fut.await
-    }
+      .get::<CancelHandle>(rid)
+      .ok()
+  });
+
+  let lookup = if let Some(cancel_handle) = cancel_handle {
+    let lookup_rv = lookup_fut.or_cancel(cancel_handle).await;
+
+    if let Some(cancel_rid) = cancel_rid {
+      state.borrow_mut().resource_table.close(cancel_rid).ok();
+    };
+
+    lookup_rv?
   } else {
     lookup_fut.await
   };
