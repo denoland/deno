@@ -182,9 +182,7 @@ class UnsafePointer {
   }
 
   static equals(a, b) {
-    if (a === b) {
-      return true;
-    } else if (a === null || b === null) {
+    if (a === null || b === null) {
       return a === b;
     }
     return ops.op_ffi_ptr_equals(a, b);
