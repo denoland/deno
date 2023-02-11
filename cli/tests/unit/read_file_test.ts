@@ -140,6 +140,17 @@ Deno.test(
   },
 );
 
+// Test that AbortController's cancel handle is cleaned-up correctly, and do not leak resources.
+Deno.test(
+  { permissions: { read: true } },
+  async function readFileWithAbortSignalNotCalled() {
+    const ac = new AbortController();
+    await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+      signal: ac.signal,
+    });
+  },
+);
+
 Deno.test(
   { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
   async function readFileProcFs() {
