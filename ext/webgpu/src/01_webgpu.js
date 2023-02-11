@@ -992,7 +992,7 @@ class GPUDevice extends EventTarget {
       context: "Argument 1",
     });
     const device = assertDevice(this, { prefix, context: "this" });
-    const { rid, err } = ops.op_webgpu_create_texture({
+    const { rid, err } = ops.op_webgpu_create_sampler({
       deviceRid: device.rid,
       ...descriptor,
     });
