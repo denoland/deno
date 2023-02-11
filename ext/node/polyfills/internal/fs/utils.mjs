@@ -78,11 +78,6 @@ const {
   UV_DIRENT_CHAR,
   UV_DIRENT_BLOCK,
 } = fsConstants;
-const {
-  errno: {
-    EISDIR,
-  },
-} = osConstants;
 
 // The access modes can be any of F_OK, R_OK, W_OK or X_OK. Some might not be
 // available on specific systems. They can be used in combination as well
@@ -864,7 +859,7 @@ export const validateRmOptions = hideStackFrames(
             message: "is a directory",
             path,
             syscall: "rm",
-            errno: EISDIR,
+            errno: osConstants.errno.EISDIR,
           }),
         );
       }

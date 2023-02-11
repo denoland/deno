@@ -23,9 +23,6 @@ import {
 import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
 import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
 import { os as osConstants } from "internal:deno_node/polyfills/internal_binding/constants.ts";
-const {
-  errno: { ENOTDIR, ENOENT },
-} = osConstants;
 import { hideStackFrames } from "internal:deno_node/polyfills/internal/hide_stack_frames.ts";
 import { getSystemErrorName } from "internal:deno_node/polyfills/_utils.ts";
 
@@ -2481,7 +2478,7 @@ export class ERR_FS_RMDIR_ENOTDIR extends NodeSystemError {
       path,
       syscall: "rmdir",
       code,
-      errno: isWindows ? ENOENT : ENOTDIR,
+      errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
     };
     super(code, ctx, "Path is not a directory");
   }
