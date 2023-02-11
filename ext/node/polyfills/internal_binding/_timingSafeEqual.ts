@@ -2,14 +2,14 @@
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 
 function assert(cond) {
-  if (!cond) { {
+  if (!cond) {
     throw new Error("assertion failed");
   }
 }
 
 /** Compare to array buffers or data views in a way that timing based attacks
  * cannot gain information about the platform. */
-export function timingSafeEqual(
+function stdTimingSafeEqual(
   a: ArrayBufferView | ArrayBufferLike | DataView,
   b: ArrayBufferView | ArrayBufferLike | DataView,
 ): boolean {
