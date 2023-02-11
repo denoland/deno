@@ -12,6 +12,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+mod crypto;
 pub mod errors;
 mod ops;
 mod package_json;
