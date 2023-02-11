@@ -5,8 +5,15 @@
 import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
 import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
 import { os } from "internal:deno_node/polyfills/internal_binding/constants.ts";
-import { notImplemented, warnNotImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { Readable, Stream, Writable } from "internal:deno_node/polyfills/stream.ts";
+import {
+  notImplemented,
+  warnNotImplemented,
+} from "internal:deno_node/polyfills/_utils.ts";
+import {
+  Readable,
+  Stream,
+  Writable,
+} from "internal:deno_node/polyfills/stream.ts";
 import { deferred } from "internal:deno_node/polyfills/_util/async.ts";
 import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
 import { nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
@@ -16,7 +23,6 @@ import {
   ERR_INVALID_ARG_VALUE,
   ERR_UNKNOWN_SIGNAL,
 } from "internal:deno_node/polyfills/internal/errors.ts";
-import { mapValues } from "SOMETHING IS BROKEN HERE ../../collections/map_values.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import { errnoException } from "internal:deno_node/polyfills/internal/errors.ts";
 import { ErrnoException } from "internal:deno_node/polyfills/_global.d.ts";
@@ -41,6 +47,22 @@ import {
 import { kEmptyObject } from "internal:deno_node/polyfills/internal/util.mjs";
 import { getValidatedPath } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
 import process from "internal:deno_node/polyfills/process.ts";
+
+export function mapValues<T, O>(
+  record: Readonly<Record<string, T>>,
+  transformer: (value: T) => O,
+): Record<string, O> {
+  const ret: Record<string, O> = {};
+  const entries = Object.entries(record);
+
+  for (const [key, value] of entries) {
+    const mappedValue = transformer(value);
+
+    ret[key] = mappedValue;
+  }
+
+  return ret;
+}
 
 type NodeStdio = "pipe" | "overlapped" | "ignore" | "inherit" | "ipc";
 type DenoStdio = "inherit" | "piped" | "null";

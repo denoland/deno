@@ -28,7 +28,10 @@ import upstreamMods from "internal:deno_node/polyfills/upstream_modules.ts";
 
 import * as path from "internal:deno_node/polyfills/path.ts";
 import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
-import { fileURLToPath, pathToFileURL } from "internal:deno_node/polyfills/url.ts";
+import {
+  fileURLToPath,
+  pathToFileURL,
+} from "internal:deno_node/polyfills/url.ts";
 import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
 import {
   ERR_INVALID_MODULE_SPECIFIER,
@@ -663,14 +666,6 @@ class Module {
    * Follows CommonJS resolution similar to that of Node.js,
    * with `node_modules` lookup and `index.js` lookup support.
    * Also injects available Node.js builtin module polyfills.
-   *
-   * ```ts
-   *     import { createRequire } from "SOMETHING IS BROKEN HERE https://deno.land/std@$STD_VERSION/node/module.ts";
-   *     const require = createRequire(import.meta.url);
-   *     const fs = require("fs");
-   *     const leftPad = require("left-pad");
-   *     const cjsModule = require("./cjs_mod");
-   * ```
    *
    * @param filename path or URL to current module
    * @return Require function to import CJS modules

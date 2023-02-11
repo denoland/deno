@@ -22,7 +22,12 @@
 
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
-import { isIP, isIPv4, isIPv6, normalizedArgsSymbol } from "internal:deno_node/polyfills/internal/net.ts";
+import {
+  isIP,
+  isIPv4,
+  isIPv6,
+  normalizedArgsSymbol,
+} from "internal:deno_node/polyfills/internal/net.ts";
 import { Duplex } from "internal:deno_node/polyfills/stream.ts";
 import {
   asyncIdSymbol,
@@ -89,7 +94,10 @@ import {
 import { ShutdownWrap } from "internal:deno_node/polyfills/internal_binding/stream_wrap.ts";
 import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
 import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
-import { ADDRCONFIG, lookup as dnsLookup } from "internal:deno_node/polyfills/dns.ts";
+import {
+  ADDRCONFIG,
+  lookup as dnsLookup,
+} from "internal:deno_node/polyfills/dns.ts";
 import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
 import { guessHandleType } from "internal:deno_node/polyfills/internal_binding/util.ts";
 import { debuglog } from "internal:deno_node/polyfills/internal/util/debuglog.ts";
@@ -984,20 +992,6 @@ export class Socket extends Duplex {
    *
    * When an idle timeout is triggered the socket will receive a `"timeout"` event but the connection will not be severed. The user must manually call `socket.end()` or `socket.destroy()` to
    * end the connection.
-   *
-   * ```ts
-   * import { createRequire } from "SOMETHING IS BROKEN HERE https://deno.land/std@$STD_VERSION/node/module.ts";
-   *
-   * const require = createRequire(import.meta.url);
-   * const net = require("net");
-   *
-   * const socket = new net.Socket();
-   * socket.setTimeout(3000);
-   * socket.on("timeout", () => {
-   *   console.log("socket timeout");
-   *   socket.end();
-   * });
-   * ```
    *
    * If `timeout` is `0`, then the existing idle timeout is disabled.
    *
@@ -2044,27 +2038,6 @@ export class Server extends EventEmitter {
    * One of the most common errors raised when listening is `EADDRINUSE`.
    * This happens when another server is already listening on the requested`port`/`path`/`handle`. One way to handle this would be to retry
    * after a certain amount of time:
-   *
-   * ```ts
-   * import { createRequire } from "SOMETHING IS BROKEN HERE https://deno.land/std@$STD_VERSION/node/module.ts";
-   *
-   * const require = createRequire(import.meta.url);
-   * const net = require("net");
-   *
-   * const PORT = 3000;
-   * const HOST = "127.0.0.1";
-   * const server = new net.Server();
-   *
-   * server.on("error", (e: Error & { code: string; }) => {
-   *   if (e.code === "EADDRINUSE") {
-   *     console.log("Address in use, retrying...");
-   *     setTimeout(() => {
-   *       server.close();
-   *       server.listen(PORT, HOST);
-   *     }, 1000);
-   *   }
-   * });
-   * ```
    */
   listen(
     port?: number,
@@ -2293,26 +2266,6 @@ export class Server extends EventEmitter {
    * For a server listening on a pipe or Unix domain socket, the name is returned
    * as a string.
    *
-   * ```ts
-   * import { createRequire } from "SOMETHING IS BROKEN HERE https://deno.land/std@$STD_VERSION/node/module.ts";
-   * import { Socket } from "SOMETHING IS BROKEN HERE https://deno.land/std@$STD_VERSION/node/net.ts";
-   *
-   * const require = createRequire(import.meta.url);
-   * const net = require("net");
-   *
-   * const server = net.createServer((socket: Socket) => {
-   *   socket.end("goodbye\n");
-   * }).on("error", (err: Error) => {
-   *   // Handle errors here.
-   *   throw err;
-   * });
-   *
-   * // Grab an arbitrary unused port.
-   * server.listen(() => {
-   *   console.log("opened server on", server.address());
-   * });
-   * ```
-   *
    * `server.address()` returns `null` before the `"listening"` event has been
    * emitted or after calling `server.close()`.
    */
@@ -2501,38 +2454,6 @@ export class Server extends EventEmitter {
  *
  * Here is an example of an TCP echo server which listens for connections on
  * port 8124:
- *
- * ```ts
- * import { createRequire } from "SOMETHING IS BROKEN HERE https://deno.land/std@$STD_VERSION/node/module.ts";
- * import { Socket } from "SOMETHING IS BROKEN HERE https://deno.land/std@$STD_VERSION/node/net.ts";
- *
- * const require = createRequire(import.meta.url);
- * const net = require("net");
- *
- * const server = net.createServer((c: Socket) => {
- *   // "connection" listener.
- *   console.log("client connected");
- *   c.on("end", () => {
- *     console.log("client disconnected");
- *   });
- *   c.write("hello\r\n");
- *   c.pipe(c);
- * });
- *
- * server.on("error", (err: Error) => {
- *   throw err;
- * });
- *
- * server.listen(8124, () => {
- *   console.log("server bound");
- * });
- * ```
- *
- * Test this by using `telnet`:
- *
- * ```console
- * $ telnet localhost 8124
- * ```
  *
  * @param options Socket options.
  * @param connectionListener Automatically set as a listener for the `"connection"` event.

@@ -3,9 +3,15 @@
 
 // Forked from https://github.com/DefinitelyTyped/DefinitelyTyped/blob/cd61f5b4d3d143108569ec3f88adc0eb34b961c4/types/node/readline.d.ts
 
-import { Abortable, EventEmitter } from "internal:deno_node/polyfills/_events.d.ts";
+import {
+  Abortable,
+  EventEmitter,
+} from "internal:deno_node/polyfills/_events.d.ts";
 import * as promises from "internal:deno_node/polyfills/readline/promises.ts";
-import { ReadableStream, WritableStream } from "internal:deno_node/polyfills/_global.d.ts";
+import {
+  ReadableStream,
+  WritableStream,
+} from "internal:deno_node/polyfills/_global.d.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import type {
   AsyncCompleter,
@@ -18,31 +24,6 @@ import type {
  * The `readline` module provides an interface for reading data from a `Readable` stream (such as `process.stdin`) one line at a time.
  *
  * To use the promise-based APIs:
- *
- * ```js
- * import * as readline from "SOMETHING IS BROKEN HERE node:readline/promises";
- * ```
- *
- * To use the callback and sync APIs:
- *
- * ```js
- * import * as readline from "SOMETHING IS BROKEN HERE node:readline";
- * ```
- *
- * The following simple example illustrates the basic use of the `readline` module.
- *
- * ```js
- * import * as readline from "SOMETHING IS BROKEN HERE node:readline/promises";
- * import { stdin as input, stdout as output } from "SOMETHING IS BROKEN HERE node:process";
- *
- * const rl = readline.createInterface({ input, output });
- *
- * const answer = await rl.question('What do you think of Node.js? ');
- *
- * console.log(`Thank you for your valuable feedback: ${answer}`);
- *
- * rl.close();
- * ```
  *
  * Once this code is invoked, the Node.js application will not terminate until the`readline.Interface` is closed because the interface waits for data to be
  * received on the `input` stream.

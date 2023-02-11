@@ -2,8 +2,14 @@
 // Ported from https://github.com/browserify/path-browserify/
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import type { FormatInputPathObject, ParsedPath } from "internal:deno_node/polyfills/path/_interface.ts";
-import { CHAR_DOT, CHAR_FORWARD_SLASH } from "internal:deno_node/polyfills/path/_constants.ts";
+import type {
+  FormatInputPathObject,
+  ParsedPath,
+} from "internal:deno_node/polyfills/path/_interface.ts";
+import {
+  CHAR_DOT,
+  CHAR_FORWARD_SLASH,
+} from "internal:deno_node/polyfills/path/_constants.ts";
 import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/polyfills/internal/errors.ts";
 
 import {
@@ -478,7 +484,6 @@ export function parse(path: string): ParsedPath {
  * Converts a file URL to a path string.
  *
  * ```ts
- *      import { fromFileUrl } from "SOMETHING IS BROKEN HERE https://deno.land/std@$STD_VERSION/node/path/posix.ts";
  *      fromFileUrl("file:///home/foo"); // "/home/foo"
  * ```
  * @param url of a file URL
@@ -497,7 +502,6 @@ export function fromFileUrl(url: string | URL): string {
  * Converts a path string to a file URL.
  *
  * ```ts
- *      import { toFileUrl } from "SOMETHING IS BROKEN HERE https://deno.land/std@$STD_VERSION/node/path/posix.ts";
  *      toFileUrl("/home/foo"); // new URL("file:///home/foo")
  * ```
  * @param path to convert to file URL

@@ -1,6 +1,36 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { Encodings } from "internal:deno_node/polyfills/internal_binding/_node.ts";
-import { indexOfNeedle } from "SOMETHING IS BROKEN HERE ../../bytes/index_of_needle.ts";
+
+export function indexOfNeedle(
+  source: Uint8Array,
+  needle: Uint8Array,
+  start = 0,
+): number {
+  if (start >= source.length) {
+    return -1;
+  }
+  if (start < 0) {
+    start = Math.max(0, source.length + start);
+  }
+  const s = needle[0];
+  for (let i = start; i < source.length; i++) {
+    if (source[i] !== s) continue;
+    const pin = i;
+    let matched = 1;
+    let j = i;
+    while (matched < needle.length) {
+      j++;
+      if (source[j] !== needle[j - pin]) {
+        break;
+      }
+      matched++;
+    }
+    if (matched === needle.length) {
+      return pin;
+    }
+  }
+  return -1;
+}
 
 export function numberToBytes(n: number): Uint8Array {
   if (n === 0) return new Uint8Array([0]);
