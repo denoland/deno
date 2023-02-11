@@ -1,18 +1,20 @@
-use async_trait::async_trait;
-use deno_core::error::type_error;
-use deno_core::op;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::parking_lot::Mutex;
-use deno_core::url::Url;
-use deno_core::ZeroCopyBuf;
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
+use deno_core::ZeroCopyBuf;
+use serde::Deserialize;
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::Location;
@@ -64,7 +66,7 @@ impl BlobStore {
       "null".to_string()
     };
     let id = Uuid::new_v4();
-    let url = Url::parse(&format!("blob:{}/{}", origin, id)).unwrap();
+    let url = Url::parse(&format!("blob:{origin}/{id}")).unwrap();
 
     let mut blob_store = self.object_urls.lock();
     blob_store.insert(url.clone(), Arc::new(blob));

@@ -1,7 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use serde::Serialize;
 use serde_json::json;
-use serde_v8::utils::{js_exec, v8_do};
+use serde_v8::utils::js_exec;
+use serde_v8::utils::v8_do;
 
 #[derive(Debug, Serialize, PartialEq)]
 struct MathOp {
@@ -64,7 +65,7 @@ fn sercheck<T: Serialize>(val: T, code: &str, pollute: bool) -> bool {
     // Pollution check
     if let Some(message) = scope.message() {
       let msg = message.get(scope).to_rust_string_lossy(scope);
-      panic!("JS Exception: {}", msg);
+      panic!("JS Exception: {msg}");
     }
 
     // Execute equality check in JS (e.g: x == ...)

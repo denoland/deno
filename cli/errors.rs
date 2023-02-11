@@ -25,15 +25,17 @@ fn get_diagnostic_class(_: &Diagnostic) -> &'static str {
 
 fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
   match err {
-    ModuleGraphError::LoadingErr(_, err) => get_error_class_name(err.as_ref()),
+    ModuleGraphError::LoadingErr(_, _, err) => {
+      get_error_class_name(err.as_ref())
+    }
     ModuleGraphError::InvalidTypeAssertion { .. } => "SyntaxError",
     ModuleGraphError::ParseErr(_, diagnostic) => {
       get_diagnostic_class(diagnostic)
     }
     ModuleGraphError::ResolutionError(err) => get_resolution_error_class(err),
-    ModuleGraphError::UnsupportedMediaType(_, _)
-    | ModuleGraphError::UnsupportedImportAssertionType(_, _) => "TypeError",
-    ModuleGraphError::Missing(_) => "NotFound",
+    ModuleGraphError::UnsupportedMediaType { .. }
+    | ModuleGraphError::UnsupportedImportAssertionType { .. } => "TypeError",
+    ModuleGraphError::Missing(_, _) => "NotFound",
   }
 }
 
@@ -65,9 +67,7 @@ pub fn get_error_class_name(e: &AnyError) -> &'static str {
       eprintln!(
         "Error '{}' contains boxed error of unknown type:{}",
         e,
-        e.chain()
-          .map(|e| format!("\n  {:?}", e))
-          .collect::<String>()
+        e.chain().map(|e| format!("\n  {e:?}")).collect::<String>()
       );
       "Error"
     })

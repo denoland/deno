@@ -11,6 +11,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::args::Lockfile;
+use crate::semver::Version;
 
 use self::graph::GraphDependencyResolver;
 use self::snapshot::NpmPackagesPartitioned;
@@ -19,33 +20,25 @@ use super::cache::should_sync_download;
 use super::cache::NpmPackageCacheFolderId;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::RealNpmRegistryApi;
-use super::semver::NpmVersion;
 use super::NpmRegistryApi;
 
 mod graph;
+mod reference;
 mod snapshot;
 mod specifier;
 
 use graph::Graph;
+pub use reference::NpmPackageReference;
+pub use reference::NpmPackageReq;
 pub use snapshot::NpmResolutionSnapshot;
-pub use specifier::resolve_npm_package_reqs;
-pub use specifier::NpmPackageReference;
-pub use specifier::NpmPackageReq;
-
-/// The version matcher used for npm schemed urls is more strict than
-/// the one used by npm packages and so we represent either via a trait.
-pub trait NpmVersionMatcher {
-  fn tag(&self) -> Option<&str>;
-  fn matches(&self, version: &NpmVersion) -> bool;
-  fn version_text(&self) -> String;
-}
+pub use specifier::resolve_graph_npm_info;
 
 #[derive(
   Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize,
 )]
 pub struct NpmPackageId {
   pub name: String,
-  pub version: NpmVersion,
+  pub version: Version,
   pub peer_dependencies: Vec<NpmPackageId>,
 }
 
@@ -103,16 +96,14 @@ impl NpmPackageId {
       if_not_empty(substring(skip_while(|c| c != '_')))(input)
     }
 
-    fn parse_name_and_version(
-      input: &str,
-    ) -> ParseResult<(String, NpmVersion)> {
+    fn parse_name_and_version(input: &str) -> ParseResult<(String, Version)> {
       let (input, name) = parse_name(input)?;
       let (input, _) = ch('@')(input)?;
       let at_version_input = input;
       let (input, version) = parse_version(input)?;
-      match NpmVersion::parse(version) {
+      match Version::parse_from_npm(version) {
         Ok(version) => Ok((input, (name.to_string(), version))),
-        Err(err) => ParseError::fail(at_version_input, format!("{:#}", err)),
+        Err(err) => ParseError::fail(at_version_input, format!("{err:#}")),
       }
     }
 
@@ -173,7 +164,7 @@ impl NpmPackageId {
     }
 
     with_failure_handling(parse_id_at_level(0))(id)
-      .with_context(|| format!("Invalid npm package id '{}'.", id))
+      .with_context(|| format!("Invalid npm package id '{id}'."))
   }
 
   pub fn display(&self) -> String {
@@ -239,7 +230,7 @@ impl NpmResolution {
     package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
-    let _permit = self.update_semaphore.acquire().await.unwrap();
+    let _permit = self.update_semaphore.acquire().await?;
     let snapshot = self.snapshot.read().clone();
 
     let snapshot = self
@@ -255,7 +246,7 @@ impl NpmResolution {
     package_reqs: HashSet<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
-    let _permit = self.update_semaphore.acquire().await.unwrap();
+    let _permit = self.update_semaphore.acquire().await?;
     let snapshot = self.snapshot.read().clone();
 
     let has_removed_package = !snapshot
@@ -382,10 +373,6 @@ impl NpmResolution {
       .cloned()
   }
 
-  pub fn all_packages(&self) -> Vec<NpmResolutionPackage> {
-    self.snapshot.read().all_packages()
-  }
-
   pub fn all_packages_partitioned(&self) -> NpmPackagesPartitioned {
     self.snapshot.read().all_packages_partitioned()
   }
@@ -398,16 +385,16 @@ impl NpmResolution {
     self.snapshot.read().clone()
   }
 
-  pub fn lock(
-    &self,
-    lockfile: &mut Lockfile,
-    snapshot: &NpmResolutionSnapshot,
-  ) -> Result<(), AnyError> {
+  pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+    let snapshot = self.snapshot.read();
     for (package_req, package_id) in snapshot.package_reqs.iter() {
-      lockfile.insert_npm_specifier(package_req, package_id);
+      lockfile.insert_npm_specifier(
+        package_req.to_string(),
+        package_id.as_serialized(),
+      );
     }
-    for package in self.all_packages() {
-      lockfile.check_or_insert_npm_package(&package)?;
+    for package in snapshot.all_packages() {
+      lockfile.check_or_insert_npm_package(package.into())?;
     }
     Ok(())
   }
@@ -421,30 +408,30 @@ mod tests {
   fn serialize_npm_package_id() {
     let id = NpmPackageId {
       name: "pkg-a".to_string(),
-      version: NpmVersion::parse("1.2.3").unwrap(),
+      version: Version::parse_from_npm("1.2.3").unwrap(),
       peer_dependencies: vec![
         NpmPackageId {
           name: "pkg-b".to_string(),
-          version: NpmVersion::parse("3.2.1").unwrap(),
+          version: Version::parse_from_npm("3.2.1").unwrap(),
           peer_dependencies: vec![
             NpmPackageId {
               name: "pkg-c".to_string(),
-              version: NpmVersion::parse("1.3.2").unwrap(),
+              version: Version::parse_from_npm("1.3.2").unwrap(),
               peer_dependencies: vec![],
             },
             NpmPackageId {
               name: "pkg-d".to_string(),
-              version: NpmVersion::parse("2.3.4").unwrap(),
+              version: Version::parse_from_npm("2.3.4").unwrap(),
               peer_dependencies: vec![],
             },
           ],
         },
         NpmPackageId {
           name: "pkg-e".to_string(),
-          version: NpmVersion::parse("2.3.1").unwrap(),
+          version: Version::parse_from_npm("2.3.1").unwrap(),
           peer_dependencies: vec![NpmPackageId {
             name: "pkg-f".to_string(),
-            version: NpmVersion::parse("2.3.1").unwrap(),
+            version: Version::parse_from_npm("2.3.1").unwrap(),
             peer_dependencies: vec![],
           }],
         },

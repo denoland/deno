@@ -6,6 +6,129 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.30.3 / 2023.02.07
+
+- fix(ext/console): log class for class constructor (#17615)
+- fix(lsp): prevent crash analyzing module (#17642)
+
+### 1.30.2 / 2023.02.03
+
+- Revert "chore(core): remove have_unpolled_ops on rt state (#17601)" (#17631)
+- fix(webgpu): specify viewFormats in surface configuration (#17626)
+
+### 1.30.1 / 2023.02.02
+
+- Revert "fix(watch): preserve `ProcState::file_fetcher` between restarts
+  (#15466) (#17591)
+- fix(core): Add lint check for core (#17223)
+- fix(ext): internal `structuredClone` for `ArrayBuffer` and `TypedArray`
+  subclasses (#17431)
+- fix(fmt): semiColons: false - handle prop with following generator and do
+  while with no block body (#17567)
+- fix(install): tsconfig.json -> deno.json for config file suffix (#17573)
+- fix(lockfile): emit trailing newline (#17618)
+- fix(lsp): update document dependencies on configuration change (#17556)
+- fix(napi): guard threadsafe function counters behind a mutex (#17552)
+- fix(napi): remove wrong length check in napi_create_function (#17614)
+- fix(napi): return node globalThis from napi_get_global (#17613)
+- fix(repl): handle @types/node not being cached in the repl (#17617)
+- fix(upgrade): ensure temp dir cleanup on failure (#17535)
+- fix: ensure "fs" -> "node:fs" error/quick fix works when user has import map
+  (#17566)
+- perf(ops): Remove unnecessary fast call fallback options usage (#17585)
+
+### 1.30.0 / 2023.01.25
+
+- feat(cli): add `DENO_V8_FLAGS` env var (#17313)
+- feat(fmt): add ability to configure semicolons (#17292)
+- feat(fmt): make semi-colon option a boolean (#17527)
+- feat(runtime): add bigint to seek typings (#17314)
+- feat(runtime/command): make stdin default to inherit for spawn() (#17334)
+- feat(runtime/os): add `Deno.env.has()` (#17315)
+- feat(upgrade): link to release notes & blog post (#17073)
+- feat: Add sync APIs for "Deno.permissions" (#17019)
+- feat: ES module snapshotting (#17460)
+- feat: Stabilize Deno.Listener.ref/unref (#17477)
+- feat: allow first arg in test step to be a function (#17096)
+- feat: allow passing a ReadableStream to Deno.writeFile/Deno.writeTextFile
+  (#17329)
+- feat: embed import map in the config file (#17478)
+- feat: log detection of config file (#17338)
+- feat: suggest adding a "node:" prefix for bare specifiers that look like
+  built-in Node modules (#17519)
+- feat: support node built-in module imports (#17264)
+- fix(ext/ffi): disallow empty ffi structs (#17487)
+- fix(napi) use c_char instead of hardcoding i8 to avoid incompatibility with
+  aarch64 (#17458)
+- fix(napi): correctly handle name in napi_create_function (#17489)
+- fix(napi): don't hold on to borrow during iteration (#17461)
+- fix(napi): handle return value from initializer (#17502)
+- fix(napi): improve napi_adjust_external_memory (#17501)
+- fix(napi): improve napi_detach_arraybuffer (#17499)
+- fix(napi): improve napi_is_detached_arraybuffer (#17498)
+- fix(upgrade): don't display release information for canary (#17516)
+- fix: remove leftover Deno.spawn references (#17524)
+- fix: support import map specified as data uri (#17531)
+- fix: update expected output for config auto-discovery debug log (#17514)
+
+### 1.29.4 / 2023.01.16
+
+- feat(core): Reland support for async ops in realms (#17204)
+- fix(cli/fmt): show filepath for InvalidData error (#17361)
+- fix(core): Add `Generator` and `AsyncGenerator` to promordials (#17241)
+- fix(ext/fetch) Fix request clone error in flash server (#16174)
+- fix(ext/fetch): remove Response.trailer from types (#17284)
+- fix(ext/ffi): use SafeMap in getTypeSizeAndAlignment (#17305)
+- fix(ext/flash): Correctly handle errors for chunked responses (#17303)
+- fix(ext/flash): Fix panic when JS caller doesn't consume request body (#16173)
+- fix(ext/flash): Fix typo in 'chunked' flash ops (#17302)
+- fix(napi): allow cleanup hook to remove itself (#17402)
+- fix(napi): correct arguments for napi_get_typedarray_info (#17306)
+- fix(napi): functions related to errors (#17370)
+- fix(napi): update node version to lts (#17399)
+- fix(npm): handle an npm package that has itself as a dependency (#17425)
+- fix(npm): use original node regex in npm resolution (#17404)
+- fix(ops): disallow memory slices as inputs to async ops (#16738)
+- fix(repl): improve validator to mark more code as incomplete (#17443)
+- fix(runtime/fs): preserve permissions in copyFileSync for macOS (#17412)
+- fix(runtime/os): use GetPerformanceInfo for swap info on Windows (#17433)
+
+### 1.29.3 / 2023.01.13
+
+- feat(core): allow specifying name and dependencies of an Extension (#17301)
+- feat(ext/ffi): structs by value (#15060)
+- fix(cli): uninstall command accept short flags (#17259)
+- fix(cli/args): update value_name of inspect args to resolve broken completions
+  (#17287)
+- fix(core): get v8 console from context extra bindings (#17243)
+- fix(ext/web/streams): fix ReadableStream asyncIterator (#16276)
+- fix(fmt): better handling of link reference definitions when formatting
+  markdown (#17352)
+- fix(install): should always include `--no-config` in shim unless `--config` is
+  specified (#17300)
+- fix(napi): Implement `napi_threadsafe_function` ref and unref (#17304)
+- fix(napi): date and unwrap handling (#17369)
+- fix(napi): handle static properties in classes (#17320)
+- fix(napi): support for env cleanup hooks (#17324)
+- fix(npm): allow to read package.json if permissions are granted (#17209)
+- fix(npm): handle declaration file resolution where packages incorrectly define
+  "types" last in "exports" (#17290)
+- fix(npm): panic resolving some dependencies with dist tags (#17278)
+- fix(npm): reduce copy packages when resolving optional peer dependencies
+  (#17280)
+- fix(npm): support old packages and registries with no integrity, but with a
+  sha1sum (#17289)
+- fix(permissions): lock stdio streams when prompt is shown (#17392)
+- fix(watch): preserve `ProcState::file_fetcher` between restarts (#15466)
+- fix(webidl): properly implement setlike (#17363)
+- fix: check if BroadcastChannel is open before sending (#17366)
+- fix: don't panic on resolveDns if unsupported record type is specified
+  (#17336)
+- fix: don't unwrap in test pipe handling logic (#17341)
+- fix: make self and window getters only & make getterOnly ignore setting
+  (#17362)
+- perf(ext,runtime): remove using `SafeArrayIterator` from `for-of` (#17255)
+
 ### 1.29.2 / 2023.01.05
 
 - feat(unstable): Add "Deno.osUptime()" API (#17179)

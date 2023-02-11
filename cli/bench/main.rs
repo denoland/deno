@@ -189,7 +189,7 @@ fn run_exec_time(
     let ret_code_test = if let Some(code) = return_code {
       // Bash test which asserts the return code value of the previous command
       // $? contains the return code of the previous command
-      format!("; test $? -eq {}", code)
+      format!("; test $? -eq {code}")
     } else {
       "".to_string()
     };
@@ -244,11 +244,11 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> i64 {
     if name.starts_with(prefix) && name.ends_with(".rlib") {
       let start = name.split('-').next().unwrap().to_string();
       if seen.contains(&start) {
-        println!("skip {}", name);
+        println!("skip {name}");
       } else {
         seen.insert(start);
         size += entry.metadata().unwrap().len();
-        println!("check size {} {}", name, size);
+        println!("check size {name} {size}");
       }
     }
   }
@@ -269,11 +269,11 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
 
   // add up size for everything in target/release/deps/libswc*
   let swc_size = rlib_size(target_dir, "libswc");
-  println!("swc {} bytes", swc_size);
+  println!("swc {swc_size} bytes");
   sizes.insert("swc_rlib".to_string(), swc_size);
 
   let v8_size = rlib_size(target_dir, "libv8");
-  println!("v8 {} bytes", v8_size);
+  println!("v8 {v8_size} bytes");
   sizes.insert("rusty_v8_rlib".to_string(), v8_size);
 
   // Because cargo's OUT_DIR is not predictable, search the build tree for
@@ -314,7 +314,7 @@ fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
   let mut sizes = HashMap::<String, i64>::new();
 
   for (name, url) in BUNDLES {
-    let path = format!("{}.bundle.js", name);
+    let path = format!("{name}.bundle.js");
     test_util::run(
       &[
         deno_exe.to_str().unwrap(),
@@ -374,7 +374,7 @@ fn cargo_deps() -> usize {
       count += 1
     }
   }
-  println!("cargo_deps {}", count);
+  println!("cargo_deps {count}");
   assert!(count > 10); // Sanity check.
   count
 }

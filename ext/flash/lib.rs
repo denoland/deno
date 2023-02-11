@@ -107,7 +107,7 @@ fn op_flash_respond(
 }
 
 #[op(fast)]
-fn op_try_flash_respond_chuncked(
+fn op_try_flash_respond_chunked(
   op_state: &mut OpState,
   server_id: u32,
   token: u32,
@@ -184,7 +184,7 @@ async fn op_flash_respond_async(
 }
 
 #[op]
-async fn op_flash_respond_chuncked(
+async fn op_flash_respond_chunked(
   op_state: Rc<RefCell<OpState>>,
   server_id: u32,
   token: u32,
@@ -373,11 +373,9 @@ unsafe fn op_flash_respond_fast(
   let ctx = &mut *(ptr as *mut ServerContext);
 
   let response = &*response;
-  if let Some(response) = response.get_storage_if_aligned() {
-    flash_respond(ctx, token, shutdown, response)
-  } else {
-    todo!();
-  }
+  // Uint8Array is always byte-aligned.
+  let response = response.get_storage_if_aligned().unwrap_unchecked();
+  flash_respond(ctx, token, shutdown, response)
 }
 
 macro_rules! get_request {
@@ -723,7 +721,7 @@ fn op_flash_first_packet(
           return Ok(Some(buf.into()));
         }
         Err(e) => {
-          return Err(type_error(format!("{}", e)));
+          return Err(type_error(format!("{e}")));
         }
       }
     }
@@ -754,7 +752,11 @@ async fn op_flash_read_body(
     .as_mut()
     .unwrap()
   };
-  let tx = ctx.requests.get_mut(&token).unwrap();
+  let tx = match ctx.requests.get_mut(&token) {
+    Some(tx) => tx,
+    // request was already consumed by caller
+    None => return 0,
+  };
 
   if tx.te_chunked {
     let mut decoder =
@@ -769,7 +771,7 @@ async fn op_flash_read_body(
           return n;
         }
         Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => {
-          panic!("chunked read error: {}", e);
+          panic!("chunked read error: {e}");
         }
         Err(_) => {
           drop(_lock);
@@ -1489,8 +1491,7 @@ fn check_unstable(state: &OpState, api_name: &str) {
 
   if !unstable.0 {
     eprintln!(
-      "Unstable API '{}'. The --unstable flag must be provided.",
-      api_name
+      "Unstable API '{api_name}'. The --unstable flag must be provided."
     );
     std::process::exit(70);
   }
@@ -1513,16 +1514,13 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
       "deno_websocket",
       "deno_http",
     ])
-    .js(deno_core::include_js_files!(
-      prefix "deno:ext/flash",
-      "01_http.js",
-    ))
+    .esm(deno_core::include_js_files!("01_http.js",))
     .ops(vec![
       op_flash_serve::decl::<P>(),
       op_node_unstable_flash_serve::decl::<P>(),
       op_flash_respond::decl(),
       op_flash_respond_async::decl(),
-      op_flash_respond_chuncked::decl(),
+      op_flash_respond_chunked::decl(),
       op_flash_method::decl(),
       op_flash_path::decl(),
       op_flash_headers::decl(),
@@ -1538,7 +1536,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
       op_flash_close_server::decl(),
       op_flash_make_request::decl(),
       op_flash_write_resource::decl(),
-      op_try_flash_respond_chuncked::decl(),
+      op_try_flash_respond_chunked::decl(),
     ])
     .state(move |op_state| {
       op_state.put(Unstable(unstable));

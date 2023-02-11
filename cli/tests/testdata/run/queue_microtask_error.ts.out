@@ -3,4 +3,4 @@ error: Uncaught Error: foo
   throw new Error("foo");
         ^
     at [WILDCARD]/queue_microtask_error.ts:2:9
-    at deno:core/[WILDCARD]
+    at internal:core/[WILDCARD]

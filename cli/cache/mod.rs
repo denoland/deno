@@ -45,6 +45,7 @@ pub struct FetchCacher {
   dynamic_permissions: PermissionsContainer,
   file_fetcher: Arc<FileFetcher>,
   root_permissions: PermissionsContainer,
+  cache_info_enabled: bool,
 }
 
 impl FetchCacher {
@@ -59,13 +60,24 @@ impl FetchCacher {
       dynamic_permissions,
       file_fetcher,
       root_permissions,
+      cache_info_enabled: false,
     }
+  }
+
+  /// The cache information takes a bit of time to fetch and it's
+  /// not always necessary. It should only be enabled for deno info.
+  pub fn enable_loading_cache_info(&mut self) {
+    self.cache_info_enabled = true;
   }
 }
 
 impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
-    if specifier.scheme() == "npm" {
+    if !self.cache_info_enabled {
+      return None;
+    }
+
+    if matches!(specifier.scheme(), "npm" | "node") {
       return None;
     }
 
@@ -101,7 +113,26 @@ impl Loader for FetchCacher {
       ));
     }
 
-    let specifier = specifier.clone();
+    let specifier =
+      if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
+        if module_name == "module" {
+          // the source code for "node:module" is built-in rather than
+          // being from deno_std like the other modules
+          return Box::pin(futures::future::ready(Ok(Some(
+            deno_graph::source::LoadResponse::External {
+              specifier: specifier.clone(),
+            },
+          ))));
+        }
+
+        match crate::node::resolve_builtin_node_module(module_name) {
+          Ok(specifier) => specifier,
+          Err(err) => return Box::pin(futures::future::ready(Err(err))),
+        }
+      } else {
+        specifier.clone()
+      };
+
     let permissions = if is_dynamic {
       self.dynamic_permissions.clone()
     } else {

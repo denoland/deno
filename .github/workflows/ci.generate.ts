@@ -1,15 +1,18 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import * as yaml from "https://deno.land/std@0.171.0/encoding/yaml.ts";
+import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
+const windowsRunnerCondition =
+  "github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022'";
 const Runners = {
   linux:
     "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
   macos: "macos-12",
-  windows:
-    "${{ github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022' }}",
+  windows: `\${{ ${windowsRunnerCondition} }}`,
 };
 
+const installPkgsCommand =
+  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Avoid running man-db triggers, which sometimes takes several minutes
@@ -23,8 +26,8 @@ curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
 sudo apt-get update
-sudo apt-get install --no-install-recommends debootstrap     \\
-                                             clang-15 lld-15
+# this was unreliable sometimes, so try again if it fails
+${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
 
 # Create ubuntu-16.04 sysroot environment, which is used to avoid
 # depending on a very recent version of glibc.
@@ -83,7 +86,7 @@ const installRustStep = {
 const installPythonSteps = [{
   name: "Install Python",
   uses: "actions/setup-python@v4",
-  with: { "python-version": 3.8 },
+  with: { "python-version": 3.11 },
 }, {
   name: "Remove unused versions of Python",
   if: "startsWith(matrix.os, 'windows')",
@@ -198,11 +201,7 @@ const ci = {
   jobs: {
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
-      if: [
-        "github.event_name == 'push' ||",
-        "!startsWith(github.event.pull_request.head.label, 'denoland:')",
-      ].join("\n"),
-      "runs-on": "${{ matrix.os }}",
+      "runs-on": "${{ matrix.runner || matrix.os }}",
       "timeout-minutes": 120,
       strategy: {
         matrix: {
@@ -225,6 +224,9 @@ const ci = {
             },
             {
               os: Runners.windows,
+              // use a free runner on PRs since this will be skipped
+              runner:
+                `\${{ github.event_name == 'pull_request' && 'windows-2022' || (${windowsRunnerCondition}) }}`,
               job: "test",
               profile: "release",
               skip_pr: true,
@@ -436,7 +438,7 @@ const ci = {
               ].join("\n"),
               key: "never_saved",
               "restore-keys":
-                "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
+                "19-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
             },
           },
           {
@@ -592,14 +594,17 @@ const ci = {
               "matrix.job == 'test' && matrix.profile == 'debug' &&",
               "!startsWith(github.ref, 'refs/tags/')",
             ].join("\n"),
-            run: ["cargo test --locked --doc", "cargo test --locked"].join(
-              "\n",
-            ),
+            run: "cargo test --locked",
           },
           {
             name: "Test fastci",
-            if: "(matrix.job == 'test' && matrix.profile == 'fastci')",
-            run: "cargo test --locked",
+            if: "matrix.job == 'test' && matrix.profile == 'fastci'",
+            run: [
+              // Run unit then integration tests. Skip doc tests here
+              // since they are sometimes very slow on Mac.
+              "cargo test --locked --lib",
+              "cargo test --locked --test '*'",
+            ].join("\n"),
             env: {
               CARGO_PROFILE_DEV_DEBUG: 0,
             },

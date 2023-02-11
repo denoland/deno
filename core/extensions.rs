@@ -1,10 +1,16 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::OpState;
 use anyhow::Error;
-use std::{cell::RefCell, rc::Rc, task::Context};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::task::Context;
 use v8::fast_api::FastFunction;
 
-pub type SourcePair = (&'static str, &'static str);
+#[derive(Clone, Debug)]
+pub struct ExtensionFileSource {
+  pub specifier: String,
+  pub code: &'static str,
+}
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
@@ -35,7 +41,8 @@ impl OpDecl {
 
 #[derive(Default)]
 pub struct Extension {
-  js_files: Option<Vec<SourcePair>>,
+  js_files: Option<Vec<ExtensionFileSource>>,
+  esm_files: Option<Vec<ExtensionFileSource>>,
   ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
@@ -79,8 +86,15 @@ impl Extension {
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn init_js(&self) -> &[SourcePair] {
+  pub fn get_js_sources(&self) -> &[ExtensionFileSource] {
     match &self.js_files {
+      Some(files) => files,
+      None => &[],
+    }
+  }
+
+  pub fn get_esm_sources(&self) -> &[ExtensionFileSource] {
+    match &self.esm_files {
       Some(files) => files,
       None => &[],
     }
@@ -142,7 +156,8 @@ impl Extension {
 // Provides a convenient builder pattern to declare Extensions
 #[derive(Default)]
 pub struct ExtensionBuilder {
-  js: Vec<SourcePair>,
+  js: Vec<ExtensionFileSource>,
+  esm: Vec<ExtensionFileSource>,
   ops: Vec<OpDecl>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
@@ -157,8 +172,28 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn js(&mut self, js_files: Vec<SourcePair>) -> &mut Self {
+  pub fn js(&mut self, js_files: Vec<ExtensionFileSource>) -> &mut Self {
+    let js_files =
+      js_files.into_iter().map(|file_source| ExtensionFileSource {
+        specifier: format!("internal:{}/{}", self.name, file_source.specifier),
+        code: file_source.code,
+      });
     self.js.extend(js_files);
+    self
+  }
+
+  pub fn esm(&mut self, esm_files: Vec<ExtensionFileSource>) -> &mut Self {
+    let esm_files =
+      esm_files
+        .into_iter()
+        .map(|file_source| ExtensionFileSource {
+          specifier: format!(
+            "internal:{}/{}",
+            self.name, file_source.specifier
+          ),
+          code: file_source.code,
+        });
+    self.esm.extend(esm_files);
     self
   }
 
@@ -193,10 +228,12 @@ impl ExtensionBuilder {
 
   pub fn build(&mut self) -> Extension {
     let js_files = Some(std::mem::take(&mut self.js));
+    let esm_files = Some(std::mem::take(&mut self.esm));
     let ops = Some(std::mem::take(&mut self.ops));
     let deps = Some(std::mem::take(&mut self.deps));
     Extension {
       js_files,
+      esm_files,
       ops,
       opstate_fn: self.state.take(),
       middleware_fn: self.middleware.take(),
@@ -208,25 +245,51 @@ impl ExtensionBuilder {
     }
   }
 }
-/// Helps embed JS files in an extension. Returns Vec<(&'static str, &'static str)>
-/// representing the filename and source code.
+
+/// Helps embed JS files in an extension. Returns a vector of
+/// `ExtensionFileSource`, that represent the filename and source code.
 ///
 /// Example:
 /// ```ignore
 /// include_js_files!(
-///   prefix "deno:extensions/hello",
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
 /// ```
 #[macro_export]
 macro_rules! include_js_files {
-  (prefix $prefix:literal, $($file:literal,)+) => {
+  ($($file:literal,)+) => {
     vec![
-      $((
-        concat!($prefix, "/", $file),
-        include_str!($file),
-      ),)+
+      $($crate::ExtensionFileSource {
+        specifier: $file.to_string(),
+        code: include_str!($file),
+      },)+
+    ]
+  };
+}
+
+/// Helps embed JS files in an extension. Returns a vector of
+/// `ExtensionFileSource`, that represent the filename and source code.
+/// Additional "dir" option is required, that specifies which directory in the
+/// crate root contains the listed files. "dir" option will be prepended to
+/// each file name.
+///
+/// Example:
+/// ```ignore
+/// include_js_files_dir!(
+///   dir "example",
+///   "01_hello.js",
+///   "02_goodbye.js",
+/// )
+/// ```
+#[macro_export]
+macro_rules! include_js_files_dir {
+  (dir $dir:literal, $($file:literal,)+) => {
+    vec![
+      $($crate::ExtensionFileSource {
+        specifier: concat!($dir, "/", $file).to_string(),
+        code: include_str!(concat!($dir, "/", $file)),
+      },)+
     ]
   };
 }

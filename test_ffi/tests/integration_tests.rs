@@ -38,8 +38,8 @@ fn basic() {
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
   if !output.status.success() {
-    println!("stdout {}", stdout);
-    println!("stderr {}", stderr);
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
   }
   println!("{:?}", output.status);
   assert!(output.status.success());
@@ -158,8 +158,8 @@ fn symbol_types() {
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
   if !output.status.success() {
-    println!("stdout {}", stdout);
-    println!("stderr {}", stderr);
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
   }
   println!("{:?}", output.status);
   assert!(output.status.success());
@@ -183,8 +183,8 @@ fn thread_safe_callback() {
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
   if !output.status.success() {
-    println!("stdout {}", stdout);
-    println!("stderr {}", stderr);
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
   }
   println!("{:?}", output.status);
   assert!(output.status.success());
@@ -215,8 +215,8 @@ fn event_loop_integration() {
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
   if !output.status.success() {
-    println!("stdout {}", stdout);
-    println!("stderr {}", stderr);
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
   }
   println!("{:?}", output.status);
   assert!(output.status.success());

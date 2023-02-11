@@ -2,10 +2,12 @@
 
 mod config_file;
 mod flags;
+mod flags_allow_net;
+mod import_map;
 mod lockfile;
 
-mod flags_allow_net;
-
+pub use self::import_map::resolve_import_map_from_specifier;
+use ::import_map::ImportMap;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
@@ -42,12 +44,14 @@ use deno_runtime::permissions::PermissionsOptions;
 use std::collections::BTreeMap;
 use std::env;
 use std::io::BufReader;
+use std::io::Cursor;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cache::DenoDir;
+use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
@@ -86,7 +90,7 @@ impl CacheSetting {
         if list.iter().any(|i| i == "npm:") {
           return false;
         }
-        let specifier = format!("npm:{}", package_name);
+        let specifier = format!("npm:{package_name}");
         if list.contains(&specifier) {
           return false;
         }
@@ -197,6 +201,10 @@ fn resolve_fmt_options(
         // validators in `flags.rs` makes other values unreachable
         _ => unreachable!(),
       });
+    }
+
+    if let Some(no_semis) = &fmt_flags.no_semicolons {
+      options.semi_colons = Some(!no_semis);
     }
   }
 
@@ -370,7 +378,7 @@ fn resolve_lint_rules_options(
 pub fn get_root_cert_store(
   maybe_root_path: Option<PathBuf>,
   maybe_ca_stores: Option<Vec<String>>,
-  maybe_ca_file: Option<String>,
+  maybe_ca_data: Option<CaData>,
 ) -> Result<RootCertStore, AnyError> {
   let mut root_cert_store = RootCertStore::empty();
   let ca_stores: Vec<String> = maybe_ca_stores
@@ -413,17 +421,27 @@ pub fn get_root_cert_store(
     }
   }
 
-  let ca_file = maybe_ca_file.or_else(|| env::var("DENO_CERT").ok());
-  if let Some(ca_file) = ca_file {
-    let ca_file = if let Some(root) = &maybe_root_path {
-      root.join(&ca_file)
-    } else {
-      PathBuf::from(ca_file)
+  let ca_data =
+    maybe_ca_data.or_else(|| env::var("DENO_CERT").ok().map(CaData::File));
+  if let Some(ca_data) = ca_data {
+    let result = match ca_data {
+      CaData::File(ca_file) => {
+        let ca_file = if let Some(root) = &maybe_root_path {
+          root.join(&ca_file)
+        } else {
+          PathBuf::from(ca_file)
+        };
+        let certfile = std::fs::File::open(ca_file)?;
+        let mut reader = BufReader::new(certfile);
+        rustls_pemfile::certs(&mut reader)
+      }
+      CaData::Bytes(data) => {
+        let mut reader = BufReader::new(Cursor::new(data));
+        rustls_pemfile::certs(&mut reader)
+      }
     };
-    let certfile = std::fs::File::open(ca_file)?;
-    let mut reader = BufReader::new(certfile);
 
-    match rustls_pemfile::certs(&mut reader) {
+    match result {
       Ok(certs) => {
         root_cert_store.add_parsable_certificates(&certs);
       }
@@ -473,7 +491,7 @@ impl CliOptions {
         format!("for: {}", insecure_allowlist.join(", "))
       };
       let msg =
-        format!("DANGER: TLS certificate validation is disabled {}", domains);
+        format!("DANGER: TLS certificate validation is disabled {domains}");
       // use eprintln instead of log::warn so this always gets shown
       eprintln!("{}", colors::yellow(msg));
     }
@@ -491,7 +509,7 @@ impl CliOptions {
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let maybe_config_file = ConfigFile::discover(&flags)?;
     let maybe_lock_file =
-      Lockfile::discover(&flags, maybe_config_file.as_ref())?;
+      lockfile::discover(&flags, maybe_config_file.as_ref())?;
     Ok(Self::new(flags, maybe_config_file, maybe_lock_file))
   }
 
@@ -532,17 +550,38 @@ impl CliOptions {
   }
 
   /// Based on an optional command line import map path and an optional
-  /// configuration file, return a resolved module specifier to an import map.
+  /// configuration file, return a resolved module specifier to an import map
+  /// and a boolean indicating if unknown keys should not result in diagnostics.
   pub fn resolve_import_map_specifier(
     &self,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     match self.overrides.import_map_specifier.clone() {
-      Some(path) => Ok(path),
+      Some(maybe_path) => Ok(maybe_path),
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
         self.maybe_config_file.as_ref(),
       ),
     }
+  }
+
+  pub async fn resolve_import_map(
+    &self,
+    file_fetcher: &FileFetcher,
+  ) -> Result<Option<ImportMap>, AnyError> {
+    let import_map_specifier = match self.resolve_import_map_specifier()? {
+      Some(specifier) => specifier,
+      None => return Ok(None),
+    };
+    resolve_import_map_from_specifier(
+      &import_map_specifier,
+      self.get_maybe_config_file().as_ref(),
+      file_fetcher,
+    )
+    .await
+    .context(format!(
+      "Unable to load '{import_map_specifier}' import map"
+    ))
+    .map(Some)
   }
 
   /// Overrides the import map specifier to use.
@@ -576,7 +615,7 @@ impl CliOptions {
     get_root_cert_store(
       None,
       self.flags.ca_stores.clone(),
-      self.flags.ca_file.clone(),
+      self.flags.ca_data.clone(),
     )
   }
 
@@ -651,16 +690,10 @@ impl CliOptions {
   /// Return any imports that should be brought into the scope of the module
   /// graph.
   pub fn to_maybe_imports(&self) -> MaybeImportsResult {
-    let mut imports = Vec::new();
     if let Some(config_file) = &self.maybe_config_file {
-      if let Some(config_imports) = config_file.to_maybe_imports()? {
-        imports.extend(config_imports);
-      }
-    }
-    if imports.is_empty() {
-      Ok(None)
+      config_file.to_maybe_imports()
     } else {
-      Ok(Some(imports))
+      Ok(Vec::new())
     }
   }
 
@@ -722,8 +755,8 @@ impl CliOptions {
     &self.flags.argv
   }
 
-  pub fn ca_file(&self) -> &Option<String> {
-    &self.flags.ca_file
+  pub fn ca_data(&self) -> &Option<CaData> {
+    &self.flags.ca_data
   }
 
   pub fn ca_stores(&self) -> &Option<Vec<String>> {
@@ -889,9 +922,19 @@ fn resolve_import_map_specifier(
       }
     }
     let specifier = deno_core::resolve_url_or_path(import_map_path)
-      .context(format!("Bad URL (\"{}\") for import map.", import_map_path))?;
+      .context(format!("Bad URL (\"{import_map_path}\") for import map."))?;
     return Ok(Some(specifier));
   } else if let Some(config_file) = &maybe_config_file {
+    // if the config file is an import map we prefer to use it, over `importMap`
+    // field
+    if config_file.is_an_import_map() {
+      if let Some(_import_map_path) = config_file.to_import_map_path() {
+        log::warn!("{} \"importMap\" setting is ignored when \"imports\" or \"scopes\" are specified in the config file.", colors::yellow("Warning"));
+      }
+
+      return Ok(Some(config_file.specifier.clone()));
+    }
+
     // when the import map is specifier in a config file, it needs to be
     // resolved relative to the config file, versus the CWD like with the flag
     // and with config files, we support both local and remote config files,
@@ -920,8 +963,7 @@ fn resolve_import_map_specifier(
           } else {
             deno_core::resolve_import(&import_map_path, config_file.specifier.as_str())
               .context(format!(
-                "Bad URL (\"{}\") for import map.",
-                import_map_path
+                "Bad URL (\"{import_map_path}\") for import map."
               ))?
           };
       return Ok(Some(specifier));
@@ -975,7 +1017,7 @@ mod test {
     let actual = actual.unwrap();
     assert_eq!(
       actual,
-      Some(ModuleSpecifier::parse("file:///deno/import_map.json").unwrap())
+      Some(ModuleSpecifier::parse("file:///deno/import_map.json").unwrap(),)
     );
   }
 
@@ -1034,6 +1076,21 @@ mod test {
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, Some(expected_specifier));
+  }
+
+  #[test]
+  fn resolve_import_map_embedded_take_precedence() {
+    let config_text = r#"{
+      "importMap": "import_map.json",
+      "imports": {},
+    }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let actual = resolve_import_map_specifier(None, Some(&config_file));
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert_eq!(actual, Some(config_specifier));
   }
 
   #[test]

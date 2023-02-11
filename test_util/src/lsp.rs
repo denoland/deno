@@ -14,8 +14,9 @@ use regex::Regex;
 use serde::de;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::json;
+use serde_json::to_value;
 use serde_json::Value;
-use serde_json::{json, to_value};
 use std::io;
 use std::io::Write;
 use std::path::Path;
@@ -169,8 +170,8 @@ impl Drop for LspClient {
         self.child.kill().unwrap();
         let _ = self.child.wait();
       }
-      Ok(Some(status)) => panic!("deno lsp exited unexpectedly {}", status),
-      Err(e) => panic!("pebble error: {}", e),
+      Ok(Some(status)) => panic!("deno lsp exited unexpectedly {status}"),
+      Err(e) => panic!("pebble error: {e}"),
     }
   }
 }

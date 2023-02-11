@@ -11,7 +11,7 @@
   },
   "exec": {
     "associations": "**/*.rs",
-    "rustfmt": "rustfmt"
+    "rustfmt": "rustfmt --config imports_granularity=item"
   },
   "includes": [
     "**/*.{ts,tsx,js,jsx,json,md,toml,rs}"
@@ -43,7 +43,7 @@
     "tools/wpt/manifest.json"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.80.2.wasm",
+    "https://plugins.dprint.dev/typescript-0.81.1.wasm",
     "https://plugins.dprint.dev/json-0.17.0.wasm",
     "https://plugins.dprint.dev/markdown-0.15.2.wasm",
     "https://plugins.dprint.dev/toml-0.5.4.wasm",
