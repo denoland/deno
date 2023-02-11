@@ -17,9 +17,13 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
   ArrayBufferPrototypeSlice,
+  ArrayBufferPrototypeGetByteLength,
   ArrayBufferIsView,
   ArrayPrototypePush,
   AsyncGeneratorPrototypeNext,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   Date,
   DatePrototypeGetTime,
   FinalizationRegistry,
@@ -35,6 +39,10 @@ const {
   Symbol,
   SymbolFor,
   TypedArrayPrototypeSet,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint8Array,
 } = primordials;
@@ -98,6 +106,7 @@ function convertLineEndingsToNative(s) {
 /** @param {(BlobReference | Blob)[]} parts */
 async function* toIterator(parts) {
   for (let i = 0; i < parts.length; ++i) {
+    // deno-lint-ignore prefer-primordials
     yield* parts[i].stream();
   }
 }
@@ -118,15 +127,31 @@ function processBlobParts(parts, endings) {
     if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, element)) {
       const chunk = new Uint8Array(ArrayBufferPrototypeSlice(element, 0));
       ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
-      size += element.byteLength;
+      size += ArrayBufferPrototypeGetByteLength(element);
     } else if (ArrayBufferIsView(element)) {
-      const chunk = new Uint8Array(
-        element.buffer,
-        element.byteOffset,
-        element.byteLength,
-      );
-      size += element.byteLength;
-      ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
+      if (TypedArrayPrototypeGetSymbolToStringTag(element) !== undefined) {
+        // TypedArray
+        const chunk = new Uint8Array(
+          TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (element)),
+          TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (element)),
+          TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (element)),
+        );
+        size += TypedArrayPrototypeGetByteLength(
+          /** @type {Uint8Array} */ (element),
+        );
+        ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
+      } else {
+        // DataView
+        const chunk = new Uint8Array(
+          DataViewPrototypeGetBuffer(/** @type {DataView} */ (element)),
+          DataViewPrototypeGetByteOffset(/** @type {DataView} */ (element)),
+          DataViewPrototypeGetByteLength(/** @type {DataView} */ (element)),
+        );
+        size += DataViewPrototypeGetByteLength(
+          /** @type {DataView} */ (element),
+        );
+        ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
+      }
     } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, element)) {
       ArrayPrototypePush(processedParts, element);
       size += element.size;
@@ -134,7 +159,7 @@ function processBlobParts(parts, endings) {
       const chunk = core.encode(
         endings == "native" ? convertLineEndingsToNative(element) : element,
       );
-      size += chunk.byteLength;
+      size += TypedArrayPrototypeGetByteLength(chunk);
       ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
     } else {
       throw new TypeError("Unreachable code (invalid element type)");
@@ -260,8 +285,10 @@ class Blob {
       relativeStart = 0;
     } else {
       if (start < 0) {
+        // deno-lint-ignore prefer-primordials
         relativeStart = MathMax(O.size + start, 0);
       } else {
+        // deno-lint-ignore prefer-primordials
         relativeStart = MathMin(start, O.size);
       }
     }
@@ -271,8 +298,10 @@ class Blob {
       relativeEnd = O.size;
     } else {
       if (end < 0) {
+        // deno-lint-ignore prefer-primordials
         relativeEnd = MathMax(O.size + end, 0);
       } else {
+        // deno-lint-ignore prefer-primordials
         relativeEnd = MathMin(end, O.size);
       }
     }
@@ -290,6 +319,7 @@ class Blob {
         // and only use relativeEnd?
         break;
       }
+      // deno-lint-ignore prefer-primordials
       const size = part.size;
       if (relativeStart && size <= relativeStart) {
         // Skip the beginning and change the relative
@@ -299,6 +329,7 @@ class Blob {
       } else {
         const chunk = part.slice(
           relativeStart,
+          // deno-lint-ignore prefer-primordials
           MathMin(part.size, relativeEnd),
         );
         added += chunk.size;
@@ -337,7 +368,7 @@ class Blob {
             partIterator,
           );
           if (done) return controller.close();
-          if (value.byteLength > 0) {
+          if (TypedArrayPrototypeGetByteLength(value) > 0) {
             return controller.enqueue(value);
           }
         }
@@ -351,6 +382,7 @@ class Blob {
    */
   async text() {
     webidl.assertBranded(this, BlobPrototype);
+    // deno-lint-ignore prefer-primordials
     const buffer = await this.#u8Array(this.size);
     return core.decode(buffer);
   }
@@ -364,7 +396,7 @@ class Blob {
         partIterator,
       );
       if (done) break;
-      const byteLength = value.byteLength;
+      const byteLength = TypedArrayPrototypeGetByteLength(value);
       if (byteLength > 0) {
         TypedArrayPrototypeSet(bytes, value, offset);
         offset += byteLength;
@@ -378,8 +410,9 @@ class Blob {
    */
   async arrayBuffer() {
     webidl.assertBranded(this, BlobPrototype);
+    // deno-lint-ignore prefer-primordials
     const buf = await this.#u8Array(this.size);
-    return buf.buffer;
+    return TypedArrayPrototypeGetBuffer(buf);
   }
 
   [SymbolFor("Deno.customInspect")](inspect) {
@@ -550,7 +583,7 @@ class BlobReference {
    */
   static fromUint8Array(data) {
     const id = ops.op_blob_create_part(data);
-    return new BlobReference(id, data.byteLength);
+    return new BlobReference(id, TypedArrayPrototypeGetByteLength(data));
   }
 
   /**

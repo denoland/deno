@@ -14,6 +14,9 @@ const ops = core.ops;
 import * as webidl from "internal:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   PromiseReject,
   PromiseResolve,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
@@ -21,6 +24,10 @@ const {
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   TypedArrayPrototypeSubarray,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   ObjectPrototypeIsPrototypeOf,
   ArrayBufferIsView,
@@ -110,6 +117,8 @@ class TextDecoder {
         ObjectPrototypeIsPrototypeOf(
           // deno-lint-ignore prefer-primordials
           SharedArrayBuffer.prototype,
+          // TODO(petamoriken): use premordials
+          // deno-lint-ignore prefer-primordials
           input || input.buffer,
         )
       ) {
@@ -118,11 +127,25 @@ class TextDecoder {
         // `input` is now a Uint8Array, and calling the TypedArray constructor
         // with a TypedArray argument copies the data.
         if (ArrayBufferIsView(input)) {
-          input = new Uint8Array(
-            input.buffer,
-            input.byteOffset,
-            input.byteLength,
-          );
+          if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
+            // TypedArray
+            input = new Uint8Array(
+              TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (input)),
+              TypedArrayPrototypeGetByteOffset(
+                /** @type {Uint8Array} */ (input),
+              ),
+              TypedArrayPrototypeGetByteLength(
+                /** @type {Uint8Array} */ (input),
+              ),
+            );
+          } else {
+            // DataView
+            input = new Uint8Array(
+              DataViewPrototypeGetBuffer(/** @type {DataView} */ (input)),
+              DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
+              DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
+            );
+          }
         } else {
           input = new Uint8Array(input);
         }
