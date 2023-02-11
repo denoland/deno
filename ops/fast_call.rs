@@ -68,9 +68,9 @@ pub(crate) fn generate(
   // - op_foo_fast, the fast call type.
   // - op_foo_fast_fn, the fast call function.
   let ident = item_fn.sig.ident.clone();
-  let fast_ident = Ident::new(&format!("{}_fast", ident), Span::call_site());
+  let fast_ident = Ident::new(&format!("{ident}_fast"), Span::call_site());
   let fast_fn_ident =
-    Ident::new(&format!("{}_fast_fn", ident), Span::call_site());
+    Ident::new(&format!("{ident}_fast_fn"), Span::call_site());
 
   // Deal with generics.
   let generics = &item_fn.sig.generics;
@@ -141,9 +141,9 @@ pub(crate) fn generate(
 
   // Retain only *pure* parameters.
   let mut fast_fn_inputs = if optimizer.has_opstate_in_parameters() {
-    inputs.iter().skip(1).cloned().collect()
+    inputs.into_iter().skip(1).collect()
   } else {
-    inputs.clone()
+    inputs
   };
 
   let mut input_variants = optimizer

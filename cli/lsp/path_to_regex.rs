@@ -220,8 +220,8 @@ pub enum StringOrNumber {
 impl fmt::Display for StringOrNumber {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match &self {
-      Self::Number(n) => write!(f, "{}", n),
-      Self::String(s) => write!(f, "{}", s),
+      Self::Number(n) => write!(f, "{n}"),
+      Self::String(s) => write!(f, "{s}"),
     }
   }
 }
@@ -269,9 +269,9 @@ impl StringOrVec {
         let mut s = String::new();
         for (i, segment) in v.iter().enumerate() {
           if omit_initial_prefix && i == 0 {
-            write!(s, "{}{}", segment, suffix).unwrap();
+            write!(s, "{segment}{suffix}").unwrap();
           } else {
-            write!(s, "{}{}{}", prefix, segment, suffix).unwrap();
+            write!(s, "{prefix}{segment}{suffix}").unwrap();
           }
         }
         s
@@ -610,7 +610,7 @@ pub fn tokens_to_regex(
           }
         } else {
           let modifier = key.modifier.clone().unwrap_or_default();
-          format!(r"(?:{}{}){}", prefix, suffix, modifier)
+          format!(r"(?:{prefix}{suffix}){modifier}")
         }
       }
     };
@@ -619,10 +619,10 @@ pub fn tokens_to_regex(
 
   if end {
     if !strict {
-      write!(route, r"{}?", delimiter).unwrap();
+      write!(route, r"{delimiter}?").unwrap();
     }
     if has_ends_with {
-      write!(route, r"(?={})", ends_with).unwrap();
+      write!(route, r"(?={ends_with})").unwrap();
     } else {
       route.push('$');
     }
@@ -640,16 +640,16 @@ pub fn tokens_to_regex(
     };
 
     if !strict {
-      write!(route, r"(?:{}(?={}))?", delimiter, ends_with).unwrap();
+      write!(route, r"(?:{delimiter}(?={ends_with}))?").unwrap();
     }
 
     if !is_end_deliminated {
-      write!(route, r"(?={}|{})", delimiter, ends_with).unwrap();
+      write!(route, r"(?={delimiter}|{ends_with})").unwrap();
     }
   }
 
   let flags = if sensitive { "" } else { "(?i)" };
-  let re = FancyRegex::new(&format!("{}{}", flags, route))?;
+  let re = FancyRegex::new(&format!("{flags}{route}"))?;
   let maybe_keys = if keys.is_empty() { None } else { Some(keys) };
 
   Ok((re, maybe_keys))
@@ -754,7 +754,7 @@ impl Compiler {
                       }
                     }
                   }
-                  write!(path, "{}{}{}", prefix, segment, suffix).unwrap();
+                  write!(path, "{prefix}{segment}{suffix}").unwrap();
                 }
               }
             }
@@ -773,7 +773,7 @@ impl Compiler {
               }
               let prefix = k.prefix.clone().unwrap_or_default();
               let suffix = k.suffix.clone().unwrap_or_default();
-              write!(path, "{}{}{}", prefix, s, suffix).unwrap();
+              write!(path, "{prefix}{s}{suffix}").unwrap();
             }
             None => {
               if !optional {
@@ -874,25 +874,23 @@ mod tests {
     fixtures: &[Fixture],
   ) {
     let result = string_to_regex(path, maybe_options);
-    assert!(result.is_ok(), "Could not parse path: \"{}\"", path);
+    assert!(result.is_ok(), "Could not parse path: \"{path}\"");
     let (re, _) = result.unwrap();
     for (fixture, expected) in fixtures {
       let result = re.find(fixture);
       assert!(
         result.is_ok(),
-        "Find failure for path \"{}\" and fixture \"{}\"",
-        path,
-        fixture
+        "Find failure for path \"{path}\" and fixture \"{fixture}\""
       );
       let actual = result.unwrap();
       if let Some((text, start, end)) = *expected {
-        assert!(actual.is_some(), "Match failure for path \"{}\" and fixture \"{}\". Expected Some got None", path, fixture);
+        assert!(actual.is_some(), "Match failure for path \"{path}\" and fixture \"{fixture}\". Expected Some got None");
         let actual = actual.unwrap();
         assert_eq!(actual.as_str(), text, "Match failure for path \"{}\" and fixture \"{}\".  Expected \"{}\" got \"{}\".", path, fixture, text, actual.as_str());
         assert_eq!(actual.start(), start);
         assert_eq!(actual.end(), end);
       } else {
-        assert!(actual.is_none(), "Match failure for path \"{}\" and fixture \"{}\". Expected None got {:?}", path, fixture, actual);
+        assert!(actual.is_none(), "Match failure for path \"{path}\" and fixture \"{fixture}\". Expected None got {actual:?}");
       }
     }
   }

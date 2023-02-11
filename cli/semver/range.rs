@@ -5,14 +5,14 @@ use std::cmp::Ordering;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::NpmVersion;
+use super::Version;
 
 /// Collection of ranges.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct VersionRangeSet(pub Vec<VersionRange>);
 
 impl VersionRangeSet {
-  pub fn satisfies(&self, version: &NpmVersion) -> bool {
+  pub fn satisfies(&self, version: &Version) -> bool {
     self.0.iter().any(|r| r.satisfies(version))
   }
 }
@@ -24,15 +24,15 @@ pub enum RangeBound {
 }
 
 impl RangeBound {
-  pub fn inclusive(version: NpmVersion) -> Self {
+  pub fn inclusive(version: Version) -> Self {
     Self::version(VersionBoundKind::Inclusive, version)
   }
 
-  pub fn exclusive(version: NpmVersion) -> Self {
+  pub fn exclusive(version: Version) -> Self {
     Self::version(VersionBoundKind::Exclusive, version)
   }
 
-  pub fn version(kind: VersionBoundKind, version: NpmVersion) -> Self {
+  pub fn version(kind: VersionBoundKind, version: Version) -> Self {
     Self::Version(VersionBound::new(kind, version))
   }
 
@@ -79,7 +79,7 @@ impl RangeBound {
 
   pub fn has_pre_with_exact_major_minor_patch(
     &self,
-    version: &NpmVersion,
+    version: &Version,
   ) -> bool {
     if let RangeBound::Version(self_version) = &self {
       if !self_version.version.pre.is_empty()
@@ -103,11 +103,11 @@ pub enum VersionBoundKind {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct VersionBound {
   pub kind: VersionBoundKind,
-  pub version: NpmVersion,
+  pub version: Version,
 }
 
 impl VersionBound {
-  pub fn new(kind: VersionBoundKind, version: NpmVersion) -> Self {
+  pub fn new(kind: VersionBoundKind, version: Version) -> Self {
     Self { kind, version }
   }
 }
@@ -123,7 +123,7 @@ impl VersionRange {
     VersionRange {
       start: RangeBound::Version(VersionBound {
         kind: VersionBoundKind::Inclusive,
-        version: NpmVersion::default(),
+        version: Version::default(),
       }),
       end: RangeBound::Unbounded,
     }
@@ -133,11 +133,11 @@ impl VersionRange {
     VersionRange {
       start: RangeBound::Version(VersionBound {
         kind: VersionBoundKind::Inclusive,
-        version: NpmVersion::default(),
+        version: Version::default(),
       }),
       end: RangeBound::Version(VersionBound {
         kind: VersionBoundKind::Exclusive,
-        version: NpmVersion::default(),
+        version: Version::default(),
       }),
     }
   }
@@ -154,7 +154,7 @@ impl VersionRange {
     }
   }
 
-  pub fn satisfies(&self, version: &NpmVersion) -> bool {
+  pub fn satisfies(&self, version: &Version) -> bool {
     let satisfies = self.min_satisfies(version) && self.max_satisfies(version);
     if satisfies && !version.pre.is_empty() {
       // check either side of the range has a pre and same version
@@ -165,7 +165,7 @@ impl VersionRange {
     }
   }
 
-  fn min_satisfies(&self, version: &NpmVersion) -> bool {
+  fn min_satisfies(&self, version: &Version) -> bool {
     match &self.start {
       RangeBound::Unbounded => true,
       RangeBound::Version(bound) => match version.cmp(&bound.version) {
@@ -176,7 +176,7 @@ impl VersionRange {
     }
   }
 
-  fn max_satisfies(&self, version: &NpmVersion) -> bool {
+  fn max_satisfies(&self, version: &Version) -> bool {
     match &self.end {
       RangeBound::Unbounded => true,
       RangeBound::Version(bound) => match version.cmp(&bound.version) {
@@ -219,14 +219,14 @@ impl Partial {
     let end = match self.major {
       XRange::Wildcard => return VersionRange::all(),
       XRange::Val(major) => match self.minor {
-        XRange::Wildcard => NpmVersion {
+        XRange::Wildcard => Version {
           major: major + 1,
           minor: 0,
           patch: 0,
           pre: Vec::new(),
           build: Vec::new(),
         },
-        XRange::Val(minor) => NpmVersion {
+        XRange::Val(minor) => Version {
           major,
           minor: minor + 1,
           patch: 0,
@@ -248,7 +248,7 @@ impl Partial {
     let end = match self.major {
       XRange::Wildcard => return VersionRange::all(),
       XRange::Val(major) => {
-        let next_major = NpmVersion {
+        let next_major = Version {
           major: major + 1,
           ..Default::default()
         };
@@ -258,7 +258,7 @@ impl Partial {
           match self.minor {
             XRange::Wildcard => next_major,
             XRange::Val(minor) => {
-              let next_minor = NpmVersion {
+              let next_minor = Version {
                 minor: minor + 1,
                 ..Default::default()
               };
@@ -267,7 +267,7 @@ impl Partial {
               } else {
                 match self.patch {
                   XRange::Wildcard => next_minor,
-                  XRange::Val(patch) => NpmVersion {
+                  XRange::Val(patch) => Version {
                     patch: patch + 1,
                     ..Default::default()
                   },
@@ -288,7 +288,7 @@ impl Partial {
   }
 
   pub fn as_lower_bound(&self) -> RangeBound {
-    RangeBound::inclusive(NpmVersion {
+    RangeBound::inclusive(Version {
       major: match self.major {
         XRange::Val(val) => val,
         XRange::Wildcard => 0,
@@ -307,7 +307,7 @@ impl Partial {
   }
 
   pub fn as_upper_bound(&self) -> RangeBound {
-    let mut end = NpmVersion::default();
+    let mut end = Version::default();
     let mut kind = VersionBoundKind::Inclusive;
     match self.patch {
       XRange::Wildcard => {
@@ -363,7 +363,7 @@ impl Partial {
       }
       XRange::Val(val) => val,
     };
-    let version = NpmVersion {
+    let version = Version {
       major,
       minor,
       patch,
@@ -387,7 +387,7 @@ impl Partial {
       },
       XRange::Val(major) => major,
     };
-    let mut start = NpmVersion::default();
+    let mut start = Version::default();
 
     if start_kind == VersionBoundKind::Inclusive {
       start.pre = self.pre.clone();
@@ -431,7 +431,7 @@ impl Partial {
       },
       XRange::Val(major) => major,
     };
-    let mut end = NpmVersion {
+    let mut end = Version {
       major,
       ..Default::default()
     };
@@ -471,8 +471,8 @@ impl Partial {
       XRange::Wildcard => return VersionRange::all(),
       XRange::Val(major) => major,
     };
-    let mut start = NpmVersion::default();
-    let mut end = NpmVersion::default();
+    let mut start = Version::default();
+    let mut end = Version::default();
     start.major = major;
     end.major = major;
     match self.patch {

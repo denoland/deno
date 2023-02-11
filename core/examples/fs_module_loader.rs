@@ -13,7 +13,7 @@ fn main() -> Result<(), Error> {
     std::process::exit(1);
   }
   let main_url = &args[1];
-  println!("Run {}", main_url);
+  println!("Run {main_url}");
 
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(Rc::new(FsModuleLoader)),

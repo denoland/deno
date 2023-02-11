@@ -46,8 +46,7 @@ impl DynamicLibraryResource {
     match unsafe { self.lib.symbol::<*const c_void>(&symbol) } {
       Ok(value) => Ok(Ok(value)),
       Err(err) => Err(generic_error(format!(
-        "Failed to register symbol {}: {}",
-        symbol, err
+        "Failed to register symbol {symbol}: {err}"
       ))),
     }?
   }
@@ -156,8 +155,7 @@ where
           match unsafe { resource.lib.symbol::<*const c_void>(symbol) } {
             Ok(value) => Ok(value),
             Err(err) => Err(generic_error(format!(
-              "Failed to register symbol {}: {}",
-              symbol, err
+              "Failed to register symbol {symbol}: {err}"
             ))),
           }?;
         let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
@@ -166,8 +164,9 @@ where
             .parameters
             .clone()
             .into_iter()
-            .map(libffi::middle::Type::from),
-          foreign_fn.result.clone().into(),
+            .map(libffi::middle::Type::try_from)
+            .collect::<Result<Vec<_>, _>>()?,
+          foreign_fn.result.clone().try_into()?,
         );
 
         let func_key = v8::String::new(scope, &symbol_key).unwrap();

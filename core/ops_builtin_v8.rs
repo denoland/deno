@@ -50,9 +50,9 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_apply_source_map::decl(),
     op_set_format_exception_callback::decl(),
     op_event_loop_has_more_work::decl(),
-    op_store_pending_promise_exception::decl(),
-    op_remove_pending_promise_exception::decl(),
-    op_has_pending_promise_exception::decl(),
+    op_store_pending_promise_rejection::decl(),
+    op_remove_pending_promise_rejection::decl(),
+    op_has_pending_promise_rejection::decl(),
     op_arraybuffer_was_detached::decl(),
   ]
 }
@@ -471,7 +471,7 @@ fn op_serialize(
         if buf.was_detached() {
           return Err(custom_error(
             "DOMExceptionOperationError",
-            format!("ArrayBuffer at index {} is already detached", index),
+            format!("ArrayBuffer at index {index} is already detached"),
           ));
         }
 
@@ -593,27 +593,29 @@ fn op_get_promise_details<'a>(
 }
 
 #[op(v8)]
-fn op_set_promise_hooks<'a>(
-  scope: &mut v8::HandleScope<'a>,
-  init_cb: serde_v8::Value,
-  before_cb: serde_v8::Value,
-  after_cb: serde_v8::Value,
-  resolve_cb: serde_v8::Value,
+fn op_set_promise_hooks(
+  scope: &mut v8::HandleScope,
+  init_hook: serde_v8::Value,
+  before_hook: serde_v8::Value,
+  after_hook: serde_v8::Value,
+  resolve_hook: serde_v8::Value,
 ) -> Result<(), Error> {
-  let init_hook_global = to_v8_fn(scope, init_cb)?;
-  let before_hook_global = to_v8_fn(scope, before_cb)?;
-  let after_hook_global = to_v8_fn(scope, after_cb)?;
-  let resolve_hook_global = to_v8_fn(scope, resolve_cb)?;
-  let init_hook = v8::Local::new(scope, init_hook_global);
-  let before_hook = v8::Local::new(scope, before_hook_global);
-  let after_hook = v8::Local::new(scope, after_hook_global);
-  let resolve_hook = v8::Local::new(scope, resolve_hook_global);
+  let v8_fns = [init_hook, before_hook, after_hook, resolve_hook]
+    .into_iter()
+    .enumerate()
+    .filter(|(_, hook)| !hook.v8_value.is_undefined())
+    .try_fold([None; 4], |mut v8_fns, (i, hook)| {
+      let v8_fn = v8::Local::<v8::Function>::try_from(hook.v8_value)
+        .map_err(|err| type_error(err.to_string()))?;
+      v8_fns[i] = Some(v8_fn);
+      Ok::<_, Error>(v8_fns)
+    })?;
 
-  scope.get_current_context().set_promise_hooks(
-    init_hook,
-    before_hook,
-    after_hook,
-    resolve_hook,
+  scope.set_promise_hooks(
+    v8_fns[0], // init
+    v8_fns[1], // before
+    v8_fns[2], // after
+    v8_fns[3], // resolve
   );
 
   Ok(())
@@ -859,47 +861,49 @@ fn op_event_loop_has_more_work(scope: &mut v8::HandleScope) -> bool {
 }
 
 #[op(v8)]
-fn op_store_pending_promise_exception<'a>(
+fn op_store_pending_promise_rejection<'a>(
   scope: &mut v8::HandleScope<'a>,
   promise: serde_v8::Value<'a>,
   reason: serde_v8::Value<'a>,
 ) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let mut context_state = context_state_rc.borrow_mut();
   let promise_value =
     v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
   let promise_global = v8::Global::new(scope, promise_value);
   let error_global = v8::Global::new(scope, reason.v8_value);
-  state
-    .pending_promise_exceptions
+  context_state
+    .pending_promise_rejections
     .insert(promise_global, error_global);
 }
 
 #[op(v8)]
-fn op_remove_pending_promise_exception<'a>(
+fn op_remove_pending_promise_rejection<'a>(
   scope: &mut v8::HandleScope<'a>,
   promise: serde_v8::Value<'a>,
 ) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let mut context_state = context_state_rc.borrow_mut();
   let promise_value =
     v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
   let promise_global = v8::Global::new(scope, promise_value);
-  state.pending_promise_exceptions.remove(&promise_global);
+  context_state
+    .pending_promise_rejections
+    .remove(&promise_global);
 }
 
 #[op(v8)]
-fn op_has_pending_promise_exception<'a>(
+fn op_has_pending_promise_rejection<'a>(
   scope: &mut v8::HandleScope<'a>,
   promise: serde_v8::Value<'a>,
 ) -> bool {
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let context_state = context_state_rc.borrow();
   let promise_value =
     v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
   let promise_global = v8::Global::new(scope, promise_value);
-  state
-    .pending_promise_exceptions
+  context_state
+    .pending_promise_rejections
     .contains_key(&promise_global)
 }
 

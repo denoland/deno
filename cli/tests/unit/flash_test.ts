@@ -2,11 +2,7 @@
 
 // deno-lint-ignore-file
 
-import {
-  Buffer,
-  BufReader,
-  BufWriter,
-} from "../../../test_util/std/io/buffer.ts";
+import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,

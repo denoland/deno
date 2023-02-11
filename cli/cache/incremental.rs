@@ -185,7 +185,7 @@ impl SqlIncrementalCache {
       Ok(option) => option,
       Err(err) => {
         if cfg!(debug_assertions) {
-          panic!("Error retrieving hash: {}", err);
+          panic!("Error retrieving hash: {err}");
         } else {
           // fail silently when not debugging
           None
@@ -232,7 +232,7 @@ impl SqlIncrementalCache {
     stmt.execute(params![
       path.to_string_lossy(),
       &self.state_hash.to_string(),
-      &source_hash.to_string(),
+      &source_hash,
     ])?;
     Ok(())
   }
@@ -267,7 +267,7 @@ fn create_tables(
       |row| row.get(0),
     )
     .ok();
-  if data_cli_version != Some(cli_version.to_string()) {
+  if data_cli_version.as_deref() != Some(&cli_version) {
     conn.execute("DELETE FROM incrementalcache", params![])?;
     let mut stmt = conn
       .prepare("INSERT OR REPLACE INTO info (key, value) VALUES (?1, ?2)")?;

@@ -42,7 +42,10 @@ pub async fn bundle(
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()
-        .filter_map(|(_, r)| r.ok().and_then(|(s, _, _)| s.to_file_path().ok()))
+        .filter_map(|(_, r)| {
+          r.ok()
+            .and_then(|module| module.specifier.to_file_path().ok())
+        })
         .collect();
 
       if let Ok(Some(import_map_path)) = ps
@@ -138,7 +141,7 @@ fn bundle_module_graph(
   graph: &deno_graph::ModuleGraph,
   ps: &ProcState,
 ) -> Result<deno_emit::BundleEmit, AnyError> {
-  log::info!("{} {}", colors::green("Bundle"), graph.roots[0].0);
+  log::info!("{} {}", colors::green("Bundle"), graph.roots[0]);
 
   let ts_config_result = ps
     .options
@@ -149,29 +152,12 @@ fn bundle_module_graph(
     }
   }
 
-  let mut output = deno_emit::bundle_graph(
+  deno_emit::bundle_graph(
     graph,
     deno_emit::BundleOptions {
       bundle_type: deno_emit::BundleType::Module,
       emit_options: ts_config_result.ts_config.into(),
       emit_ignore_directives: true,
     },
-  )?;
-
-  // todo(https://github.com/denoland/deno_emit/issues/85): move to deno_emit
-  if let Some(shebang) = shebang_file(graph) {
-    output.code = format!("{}\n{}", shebang, output.code);
-  }
-
-  Ok(output)
-}
-
-fn shebang_file(graph: &deno_graph::ModuleGraph) -> Option<String> {
-  let source = graph.get(&graph.roots[0].0)?.maybe_source.as_ref()?;
-  let first_line = source.lines().next()?;
-  if first_line.starts_with("#!") {
-    Some(first_line.to_string())
-  } else {
-    None
-  }
+  )
 }
