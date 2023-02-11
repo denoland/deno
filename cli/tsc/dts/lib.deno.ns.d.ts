@@ -4989,6 +4989,12 @@ declare namespace Deno {
        * @default {53} */
       port?: number;
     };
+    /**
+     * An abort signal to allow cancellation of the DNS resolution operation.
+     * If the signal becomes aborted the resolveDns operation will be stopped
+     * and the promise returned will be rejected with an AbortError.
+     */
+    signal?: AbortSignal;
   }
 
   /** If {@linkcode Deno.resolveDns} is called with `"CAA"` record type
