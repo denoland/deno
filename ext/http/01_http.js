@@ -214,6 +214,7 @@ function createRespondWith(
             innerResp.body.length === null ||
             ObjectPrototypeIsPrototypeOf(
               BlobPrototype,
+              // deno-lint-ignore prefer-primordials
               innerResp.body.source,
             )
           ) {

@@ -5,13 +5,19 @@ const ops = core.ops;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayBufferIsView,
+  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeMap,
   ArrayPrototypeJoin,
+  DataViewPrototypeGetByteLength,
   ObjectDefineProperty,
   ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
   Number,
   NumberIsSafeInteger,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint8Array,
   Int32Array,
@@ -27,9 +33,26 @@ const {
   SafeArrayIterator,
 } = primordials;
 
+/**
+ * @param {BufferSource} source
+ * @returns {number}
+ */
+function getBufferSourceByteLength(source) {
+  if (ArrayBufferIsView(source)) {
+    if (TypedArrayPrototypeGetSymbolToStringTag(source) !== undefined) {
+      // TypedArray
+      return TypedArrayPrototypeGetByteLength(source);
+    } else {
+      // DataView
+      return DataViewPrototypeGetByteLength(source);
+    }
+  }
+  return ArrayBufferPrototypeGetByteLength(source);
+}
+
 const U32_BUFFER = new Uint32Array(2);
-const U64_BUFFER = new BigUint64Array(U32_BUFFER.buffer);
-const I64_BUFFER = new BigInt64Array(U32_BUFFER.buffer);
+const U64_BUFFER = new BigUint64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
+const I64_BUFFER = new BigInt64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
 class UnsafePointerView {
   pointer;
 
@@ -153,7 +176,7 @@ class UnsafePointerView {
       this.pointer,
       offset,
       destination,
-      destination.byteLength,
+      getBufferSourceByteLength(destination),
     );
   }
 
@@ -162,13 +185,15 @@ class UnsafePointerView {
       pointer,
       offset,
       destination,
-      destination.byteLength,
+      getBufferSourceByteLength(destination),
     );
   }
 }
 
 const OUT_BUFFER = new Uint32Array(2);
-const OUT_BUFFER_64 = new BigInt64Array(OUT_BUFFER.buffer);
+const OUT_BUFFER_64 = new BigInt64Array(
+  TypedArrayPrototypeGetBuffer(OUT_BUFFER),
+);
 class UnsafePointer {
   static of(value) {
     if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
@@ -443,8 +468,8 @@ class DynamicLibrary {
         const call = this.symbols[symbol];
         const parameters = symbols[symbol].parameters;
         const vi = new Int32Array(2);
-        const vui = new Uint32Array(vi.buffer);
-        const b = new BigInt64Array(vi.buffer);
+        const vui = new Uint32Array(TypedArrayPrototypeGetBuffer(vi));
+        const b = new BigInt64Array(TypedArrayPrototypeGetBuffer(vi));
 
         const params = ArrayPrototypeJoin(
           ArrayPrototypeMap(parameters, (_, index) => `p${index}`),

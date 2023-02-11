@@ -31,6 +31,7 @@ const {
   PromisePrototypeCatch,
   PromisePrototypeThen,
   SafePromiseAll,
+  TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeSubarray,
   TypeError,
   Uint8Array,
@@ -178,9 +179,13 @@ function http1Response(
     str += body ?? "";
   } else {
     const head = core.encode(str);
-    const response = new Uint8Array(head.byteLength + body.byteLength);
+    // TODO(petamoriken): use primordials
+    const response = new Uint8Array(
+      // deno-lint-ignore prefer-primordials
+      TypedArrayPrototypeGetByteLength(head) + body.byteLength,
+    );
     response.set(head, 0);
-    response.set(body, head.byteLength);
+    response.set(body, TypedArrayPrototypeGetByteLength(head));
     return response;
   }
 
@@ -276,6 +281,7 @@ async function handleResponse(
         innerResp.body.length === null ||
         ObjectPrototypeIsPrototypeOf(
           BlobPrototype,
+          // deno-lint-ignore prefer-primordials
           innerResp.body.source,
         )
       ) {
@@ -308,7 +314,8 @@ async function handleResponse(
 
   const ws = resp[_ws];
   if (isStreamingResponseBody === false) {
-    const length = respBody.byteLength || core.byteLength(respBody);
+    const length = TypedArrayPrototypeGetByteLength(respBody) ||
+      core.byteLength(respBody);
     const responseStr = http1Response(
       method,
       innerResp.status ?? 200,
@@ -381,9 +388,13 @@ async function handleResponse(
             method,
             innerResp.status ?? 200,
             innerResp.headerList,
+            // TODO(petamoriken): use primordials
+            // deno-lint-ignore prefer-primordials
             respBody.byteLength,
             null,
           ),
+          // TODO(petamoriken): use primordials
+          // deno-lint-ignore prefer-primordials
           respBody.byteLength,
           false,
           respondFast,
@@ -698,7 +709,7 @@ function createRequestBodyStream(serverId, token) {
     token,
   );
   if (!firstRead) return null;
-  let firstEnqueued = firstRead.byteLength == 0;
+  let firstEnqueued = TypedArrayPrototypeGetByteLength(firstRead) === 0;
 
   return new ReadableStream({
     type: "bytes",
