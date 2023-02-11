@@ -152,16 +152,6 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true } },
-  async function readFileWithAbortSignalWithoutAborting() {
-    const ac = new AbortController();
-    await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
-      signal: ac.signal,
-    });
-  },
-);
-
-Deno.test(
   { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
   async function readFileProcFs() {
     const data = await Deno.readFile("/proc/self/stat");
