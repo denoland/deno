@@ -25,15 +25,16 @@
 // - https://github.com/nodejs/node/blob/master/src/node_options.cc
 // - https://github.com/nodejs/node/blob/master/src/node_options.h
 
-import { parse } from "SOMETHING IS BROKEN HERE ../../flags/mod.ts";
+import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 
 export function getOptions() {
-  // deno-lint-ignore no-explicit-any
-  const { Deno } = globalThis as any;
-  const args = parse(Deno?.args ?? []);
-  const options = new Map(
-    Object.entries(args).map(([key, value]) => [key, { value }]),
-  );
+  notImplemented("getOptions");
 
-  return { options };
+  // const { Deno } = globalThis as any;
+  // const args = parse(Deno?.args ?? []);
+  // const options = new Map(
+  //   Object.entries(args).map(([key, value]) => [key, { value }]),
+  // );
+  //
+  // return { options };
 }
