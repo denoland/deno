@@ -1,11 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import {
-  DigestAlgorithm,
-  DigestContext,
-  instantiateWasm,
-} from "SOMETHING IS BROKEN HERE ../../../crypto/_wasm/mod.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import { Transform } from "internal:deno_node/polyfills/stream.ts";
 import { encode as encodeToHex } from "internal:deno_node/polyfills/internal/crypto/_hex.ts";
@@ -49,10 +44,10 @@ const coerceToBytes = (data: string | BufferSource): Uint8Array => {
  * The crypto.createHash() method is used to create Hash instances. Hash objects are not to be created directly using the new keyword.
  */
 export class Hash extends Transform {
-  #context: DigestContext;
+  #context: number;
 
   constructor(
-    algorithm: string | DigestContext,
+    algorithm: string | number,
     _opts?: TransformOptions,
   ) {
     super({
@@ -73,8 +68,8 @@ export class Hash extends Transform {
       if (opensslToWebCryptoDigestNames[algorithm]) {
         algorithm = opensslToWebCryptoDigestNames[algorithm];
       }
-      this.#context = new (instantiateWasm().DigestContext)(
-        algorithm as DigestAlgorithm,
+      this.#context = ops.op_node_create_hash(
+        algorithm,
       );
     } else {
       this.#context = algorithm;
@@ -84,7 +79,7 @@ export class Hash extends Transform {
   }
 
   copy(): Hash {
-    return new Hash(this.#context.clone());
+    return new Hash(ops.op_node_clone_hash(this.#context));
   }
 
   /**
@@ -99,7 +94,7 @@ export class Hash extends Transform {
       bytes = coerceToBytes(data);
     }
 
-    this.#context.update(bytes);
+    ops.op_node_hash_update(this.#context, bytes);
 
     return this;
   }
