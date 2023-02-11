@@ -158,7 +158,7 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_import_spki_x25519_fas
     fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
         use deno_core::v8::fast_api::Type::*;
         use deno_core::v8::fast_api::CType;
-        &[V8Value, TypedArray(CType::Uint8), TypedArray(CType::Uint8), CallbackOptions]
+        &[V8Value, TypedArray(CType::Uint8), TypedArray(CType::Uint8)]
     }
     fn return_type(&self) -> deno_core::v8::fast_api::CType {
         deno_core::v8::fast_api::CType::Bool
@@ -168,24 +168,11 @@ fn op_import_spki_x25519_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     key_data: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,
     out: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,
-    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
 ) -> bool {
     use deno_core::v8;
     use deno_core::_ops;
-    let key_data = match unsafe { &*key_data }.get_storage_if_aligned() {
-        Some(v) => v,
-        None => {
-            unsafe { &mut *fast_api_callback_options }.fallback = true;
-            return Default::default();
-        }
-    };
-    let out = match unsafe { &*out }.get_storage_if_aligned() {
-        Some(v) => v,
-        None => {
-            unsafe { &mut *fast_api_callback_options }.fallback = true;
-            return Default::default();
-        }
-    };
+    let key_data = unsafe { (&*key_data).get_storage_if_aligned().unwrap_unchecked() };
+    let out = unsafe { (&*out).get_storage_if_aligned().unwrap_unchecked() };
     let result = op_import_spki_x25519::call(key_data, out);
     result
 }

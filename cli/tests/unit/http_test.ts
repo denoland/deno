@@ -2080,6 +2080,7 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
+      // deno-lint-ignore no-deprecated-deno-api
       const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
       const status = await proc.status();
       assert(status.success);
@@ -2142,6 +2143,7 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
+      // deno-lint-ignore no-deprecated-deno-api
       const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
       const status = await proc.status();
       assert(status.success);

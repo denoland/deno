@@ -54,6 +54,7 @@ pub use crate::async_cell::RcLike;
 pub use crate::async_cell::RcRef;
 pub use crate::extensions::Extension;
 pub use crate::extensions::ExtensionBuilder;
+pub use crate::extensions::ExtensionFileSource;
 pub use crate::extensions::OpDecl;
 pub use crate::extensions::OpMiddlewareFn;
 pub use crate::flags::v8_set_flags;
@@ -73,6 +74,8 @@ pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
 pub use crate::module_specifier::DUMMY_SPECIFIER;
 pub use crate::modules::FsModuleLoader;
+pub use crate::modules::InternalModuleLoader;
+pub use crate::modules::InternalModuleLoaderCb;
 pub use crate::modules::ModuleId;
 pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;
@@ -134,12 +137,12 @@ pub mod _ops {
 /// A helper macro that will return a call site in Rust code. Should be
 /// used when executing internal one-line scripts for JsRuntime lifecycle.
 ///
-/// Returns a string in form of: "`[deno:<filename>:<line>:<column>]`"
+/// Returns a string in form of: "`[internal:<filename>:<line>:<column>]`"
 #[macro_export]
 macro_rules! located_script_name {
   () => {
     format!(
-      "[deno:{}:{}:{}]",
+      "[internal:{}:{}:{}]",
       std::file!(),
       std::line!(),
       std::column!()

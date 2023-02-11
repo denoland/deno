@@ -193,7 +193,7 @@ fn create_command(
   args: SpawnArgs,
   api_name: &str,
 ) -> Result<std::process::Command, AnyError> {
-  super::check_unstable(state, "Deno.spawn");
+  super::check_unstable(state, "Deno.Command");
   state
     .borrow_mut::<PermissionsContainer>()
     .check_run(&args.cmd, api_name)?;
@@ -223,12 +223,12 @@ fn create_command(
 
   #[cfg(unix)]
   if let Some(gid) = args.gid {
-    super::check_unstable(state, "Deno.spawn.gid");
+    super::check_unstable(state, "Deno.CommandOptions.gid");
     command.gid(gid);
   }
   #[cfg(unix)]
   if let Some(uid) = args.uid {
-    super::check_unstable(state, "Deno.spawn.uid");
+    super::check_unstable(state, "Deno.CommandOptions.uid");
     command.uid(uid);
   }
   #[cfg(unix)]

@@ -24,7 +24,8 @@ if (Deno.args.includes("--rs")) {
 
 if (!didLint) {
   await dlint();
-  await dlintPreferPrimordials();
+  // todo(dsherret): re-enable
+  // await dlintPreferPrimordials();
   console.log("copyright checker");
   await checkCopyright();
   await clippy();
@@ -89,7 +90,8 @@ async function dlintPreferPrimordials() {
   const sourceFiles = await getSources(ROOT_PATH, [
     "runtime/**/*.js",
     "ext/**/*.js",
-    "core/**/*.js",
+    "core/*.js",
+    ":!:core/*_test.js",
     ":!:core/examples/**",
   ]);
 

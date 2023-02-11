@@ -71,7 +71,7 @@ impl TypeCheckCache {
       Ok(val) => val,
       Err(err) => {
         if cfg!(debug_assertions) {
-          panic!("Error retrieving hash: {}", err);
+          panic!("Error retrieving hash: {err}");
         } else {
           log::debug!("Error retrieving hash: {}", err);
           // fail silently when not debugging
@@ -94,7 +94,7 @@ impl TypeCheckCache {
   pub fn add_check_hash(&self, check_hash: u64) {
     if let Err(err) = self.add_check_hash_result(check_hash) {
       if cfg!(debug_assertions) {
-        panic!("Error saving check hash: {}", err);
+        panic!("Error saving check hash: {err}");
       } else {
         log::debug!("Error saving check hash: {}", err);
       }
@@ -134,7 +134,7 @@ impl TypeCheckCache {
     if let Err(err) = self.set_tsbuildinfo_result(specifier, text) {
       // should never error here, but if it ever does don't fail
       if cfg!(debug_assertions) {
-        panic!("Error saving tsbuildinfo: {}", err);
+        panic!("Error saving tsbuildinfo: {err}");
       } else {
         log::debug!("Error saving tsbuildinfo: {}", err);
       }
@@ -192,7 +192,7 @@ fn create_tables(
       |row| row.get(0),
     )
     .ok();
-  if data_cli_version != Some(cli_version.to_string()) {
+  if data_cli_version.as_deref() != Some(&cli_version) {
     conn.execute("DELETE FROM checkcache", params![])?;
     conn.execute("DELETE FROM tsbuildinfo", params![])?;
     let mut stmt = conn

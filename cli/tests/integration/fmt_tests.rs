@@ -31,8 +31,7 @@ fn fmt_test() {
     .current_dir(&testdata_fmt_dir)
     .arg("fmt")
     .arg(format!(
-      "--ignore={},{},{}",
-      badly_formatted_js_str, badly_formatted_md_str, badly_formatted_json_str
+      "--ignore={badly_formatted_js_str},{badly_formatted_md_str},{badly_formatted_json_str}"
     ))
     .arg("--check")
     .arg(badly_formatted_js_str)
