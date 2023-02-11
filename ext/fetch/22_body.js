@@ -38,13 +38,21 @@ import {
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
+  ArrayBufferPrototypeGetByteLength,
   ArrayBufferIsView,
   ArrayPrototypeMap,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   JSONParse,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSlice,
   TypeError,
   Uint8Array,
@@ -191,6 +199,7 @@ class InnerBody {
     const { 0: out1, 1: out2 } = this.stream.tee();
     this.streamOrStatic = out1;
     const second = new InnerBody(out2);
+    // deno-lint-ignore prefer-primordials
     second.source = core.deserialize(core.serialize(this.source));
     second.length = this.length;
     return second;
@@ -328,7 +337,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
 function packageData(bytes, type, mimeType) {
   switch (type) {
     case "ArrayBuffer":
-      return chunkToU8(bytes).buffer;
+      return TypedArrayPrototypeGetBuffer(chunkToU8(bytes));
     case "Blob":
       return new Blob([bytes], {
         type: mimeType !== null ? mimesniff.serializeMimeType(mimeType) : "",
@@ -385,22 +394,45 @@ function extractBody(object) {
     if (object.type.length !== 0) {
       contentType = object.type;
     }
-  } else if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, object)) {
-    // Fast(er) path for common case of Uint8Array
-    const copy = TypedArrayPrototypeSlice(object, 0, object.byteLength);
-    source = copy;
-  } else if (
-    ArrayBufferIsView(object) ||
-    ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, object)
-  ) {
-    const u8 = ArrayBufferIsView(object)
-      ? new Uint8Array(
-        object.buffer,
-        object.byteOffset,
-        object.byteLength,
-      )
-      : new Uint8Array(object);
-    const copy = TypedArrayPrototypeSlice(u8, 0, u8.byteLength);
+  } else if (ArrayBufferIsView(object)) {
+    const tag = TypedArrayPrototypeGetSymbolToStringTag(object);
+    if (tag === "Uint8Array") {
+      // Fast(er) path for common case of Uint8Array
+      const copy = TypedArrayPrototypeSlice(
+        object,
+        TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (object)),
+        TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (object)),
+      );
+      source = copy;
+    } else if (tag !== undefined) {
+      // TypedArray
+      const copy = TypedArrayPrototypeSlice(
+        new Uint8Array(
+          TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (object)),
+          TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (object)),
+          TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (object)),
+        ),
+      );
+      source = copy;
+    } else {
+      // DataView
+      const copy = TypedArrayPrototypeSlice(
+        new Uint8Array(
+          DataViewPrototypeGetBuffer(/** @type {DataView} */ (object)),
+          DataViewPrototypeGetByteOffset(/** @type {DataView} */ (object)),
+          DataViewPrototypeGetByteLength(/** @type {DataView} */ (object)),
+        ),
+      );
+      source = copy;
+    }
+  } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, object)) {
+    const copy = TypedArrayPrototypeSlice(
+      new Uint8Array(
+        object,
+        0,
+        ArrayBufferPrototypeGetByteLength(object),
+      ),
+    );
     source = copy;
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, object)) {
     const res = formDataToBlob(object);

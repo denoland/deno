@@ -129,6 +129,7 @@ async function mainFetch(req, recursive, terminator) {
 
     return {
       headerList: [
+        // deno-lint-ignore prefer-primordials
         ["content-length", String(req.blobUrlEntry.size)],
         ["content-type", req.blobUrlEntry.type],
       ],
@@ -158,6 +159,7 @@ async function mainFetch(req, recursive, terminator) {
     ) {
       if (
         req.body.length === null ||
+        // deno-lint-ignore prefer-primordials
         ObjectPrototypeIsPrototypeOf(BlobPrototype, req.body.source)
       ) {
         reqBody = req.body.stream;
@@ -368,6 +370,7 @@ function httpRedirectFetch(request, response, terminator) {
   if (
     response.status !== 303 &&
     request.body !== null &&
+    // deno-lint-ignore prefer-primordials
     request.body.source === null
   ) {
     return networkError(
@@ -396,6 +399,7 @@ function httpRedirectFetch(request, response, terminator) {
     }
   }
   if (request.body !== null) {
+    // deno-lint-ignore prefer-primordials
     const res = extractBody(request.body.source);
     request.body = res.body;
   }
