@@ -1,10 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
-use crate::fs_util;
 use crate::proc_state::ProcState;
+use crate::util::fs::canonicalize_path;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -25,10 +25,6 @@ pub async fn execute_script(
   flags: Flags,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
-  log::warn!(
-    "{} deno task is unstable and may drastically change in the future",
-    crate::colors::yellow("Warning"),
-  );
   let ps = ProcState::build(flags).await?;
   let tasks_config = ps.options.resolve_tasks_config()?;
   let config_file_url = ps.options.maybe_config_file_specifier().unwrap();
@@ -44,7 +40,7 @@ pub async fn execute_script(
   }
 
   let cwd = match task_flags.cwd {
-    Some(path) => fs_util::canonicalize_path(&PathBuf::from(path))?,
+    Some(path) => canonicalize_path(&PathBuf::from(path))?,
     None => config_file_path.parent().unwrap().to_owned(),
   };
   let task_name = task_flags.task;
@@ -60,7 +56,7 @@ pub async fn execute_script(
       .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
       .collect::<Vec<_>>()
       .join(" ");
-    let script = format!("{} {}", script, additional_args);
+    let script = format!("{script} {additional_args}");
     let script = script.trim();
     log::info!(
       "{} {} {}",
@@ -69,12 +65,23 @@ pub async fn execute_script(
       script,
     );
     let seq_list = deno_task_shell::parser::parse(script)
-      .with_context(|| format!("Error parsing script '{}'.", task_name))?;
-    let env_vars = std::env::vars().collect::<HashMap<String, String>>();
+      .with_context(|| format!("Error parsing script '{task_name}'."))?;
+
+    // get the starting env vars (the PWD env var will be set by deno_task_shell)
+    let mut env_vars = std::env::vars().collect::<HashMap<String, String>>();
+    const INIT_CWD_NAME: &str = "INIT_CWD";
+    if !env_vars.contains_key(INIT_CWD_NAME) {
+      if let Ok(cwd) = std::env::current_dir() {
+        // if not set, set an INIT_CWD env var that has the cwd
+        env_vars
+          .insert(INIT_CWD_NAME.to_string(), cwd.to_string_lossy().to_string());
+      }
+    }
+
     let exit_code = deno_task_shell::execute(seq_list, env_vars, &cwd).await;
     Ok(exit_code)
   } else {
-    eprintln!("Task not found: {}", task_name);
+    eprintln!("Task not found: {task_name}");
     print_available_tasks(tasks_config);
     Ok(1)
   }

@@ -1,0 +1,11 @@
+error: TS2581 [ERROR]: Cannot find name '$'. Did you mean to import jQuery? Try adding `import $ from "npm:jquery";`.
+$;
+^
+    at file:///[WILDCARD]/npm_install_diagnostics/main.ts:1:1
+
+TS2580 [ERROR]: Cannot find name 'process'.
+process;
+~~~~~~~
+    at file:///[WILDCARD]/npm_install_diagnostics/main.ts:2:1
+
+Found 2 errors.

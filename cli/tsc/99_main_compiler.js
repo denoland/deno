@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="./compiler.d.ts" />
@@ -29,6 +29,7 @@ delete Object.prototype.__proto__;
   // This map stores that relationship, and the original can be restored by the
   // normalized specifier.
   // See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
+  /** @type {Map<string, string>} */
   const normalizedToOriginalMap = new Map();
 
   /**
@@ -38,6 +39,16 @@ delete Object.prototype.__proto__;
   function isCreateSourceFileOptions(value) {
     return value != null && typeof value === "object" &&
       "languageVersion" in value;
+  }
+
+  /**
+   * @param {ts.ScriptTarget | ts.CreateSourceFileOptions | undefined} versionOrOptions
+   * @returns {ts.CreateSourceFileOptions}
+   */
+  function getCreateSourceFileOptions(versionOrOptions) {
+    return isCreateSourceFileOptions(versionOrOptions)
+      ? versionOrOptions
+      : { languageVersion: versionOrOptions ?? ts.ScriptTarget.ESNext };
   }
 
   function setLogDebug(debug, source) {
@@ -119,8 +130,23 @@ delete Object.prototype.__proto__;
     return result;
   }
 
-  // In the case of the LSP, this is initialized with the assets
-  // when snapshotting and never added to or removed after that.
+  class SpecifierIsCjsCache {
+    /** @type {Set<string>} */
+    #cache = new Set();
+
+    /** @param {[string, ts.Extension]} param */
+    add([specifier, ext]) {
+      if (ext === ".cjs" || ext === ".d.cts" || ext === ".cts") {
+        this.#cache.add(specifier);
+      }
+    }
+
+    has(specifier) {
+      return this.#cache.has(specifier);
+    }
+  }
+
+  // In the case of the LSP, this will only ever contain the assets.
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
@@ -129,6 +155,181 @@ delete Object.prototype.__proto__;
 
   /** @type {Map<string, string>} */
   const scriptVersionCache = new Map();
+
+  /** @type {Map<string, boolean>} */
+  const isNodeSourceFileCache = new Map();
+
+  const isCjsCache = new SpecifierIsCjsCache();
+
+  /**
+   * @param {ts.CompilerOptions | ts.MinimalResolutionCacheHost} settingsOrHost
+   * @returns {ts.CompilerOptions}
+   */
+  function getCompilationSettings(settingsOrHost) {
+    if (typeof settingsOrHost.getCompilationSettings === "function") {
+      return settingsOrHost.getCompilationSettings();
+    }
+    return /** @type {ts.CompilerOptions} */ (settingsOrHost);
+  }
+
+  // We need to use a custom document registry in order to provide source files
+  // with an impliedNodeFormat to the ts language service
+
+  /** @type {Map<string, ts.SourceFile} */
+  const documentRegistrySourceFileCache = new Map();
+  const { getKeyForCompilationSettings } = ts.createDocumentRegistry(); // reuse this code
+  /** @type {ts.DocumentRegistry} */
+  const documentRegistry = {
+    acquireDocument(
+      fileName,
+      compilationSettingsOrHost,
+      scriptSnapshot,
+      version,
+      scriptKind,
+      sourceFileOptions,
+    ) {
+      const key = getKeyForCompilationSettings(
+        getCompilationSettings(compilationSettingsOrHost),
+      );
+      return this.acquireDocumentWithKey(
+        fileName,
+        /** @type {ts.Path} */ (fileName),
+        compilationSettingsOrHost,
+        key,
+        scriptSnapshot,
+        version,
+        scriptKind,
+        sourceFileOptions,
+      );
+    },
+
+    acquireDocumentWithKey(
+      fileName,
+      path,
+      _compilationSettingsOrHost,
+      key,
+      scriptSnapshot,
+      version,
+      scriptKind,
+      sourceFileOptions,
+    ) {
+      const mapKey = path + key;
+      let sourceFile = documentRegistrySourceFileCache.get(mapKey);
+      if (!sourceFile || sourceFile.version !== version) {
+        sourceFile = ts.createLanguageServiceSourceFile(
+          fileName,
+          scriptSnapshot,
+          {
+            ...getCreateSourceFileOptions(sourceFileOptions),
+            impliedNodeFormat: isCjsCache.has(fileName)
+              ? ts.ModuleKind.CommonJS
+              : ts.ModuleKind.ESNext,
+          },
+          version,
+          true,
+          scriptKind,
+        );
+        documentRegistrySourceFileCache.set(mapKey, sourceFile);
+      }
+      return sourceFile;
+    },
+
+    updateDocument(
+      fileName,
+      compilationSettingsOrHost,
+      scriptSnapshot,
+      version,
+      scriptKind,
+      sourceFileOptions,
+    ) {
+      const key = getKeyForCompilationSettings(
+        getCompilationSettings(compilationSettingsOrHost),
+      );
+      return this.updateDocumentWithKey(
+        fileName,
+        /** @type {ts.Path} */ (fileName),
+        compilationSettingsOrHost,
+        key,
+        scriptSnapshot,
+        version,
+        scriptKind,
+        sourceFileOptions,
+      );
+    },
+
+    updateDocumentWithKey(
+      fileName,
+      path,
+      compilationSettingsOrHost,
+      key,
+      scriptSnapshot,
+      version,
+      scriptKind,
+      sourceFileOptions,
+    ) {
+      const mapKey = path + key;
+      let sourceFile = documentRegistrySourceFileCache.get(mapKey) ??
+        this.acquireDocumentWithKey(
+          fileName,
+          path,
+          compilationSettingsOrHost,
+          key,
+          scriptSnapshot,
+          version,
+          scriptKind,
+          sourceFileOptions,
+        );
+
+      if (sourceFile.version !== version) {
+        sourceFile = ts.updateLanguageServiceSourceFile(
+          sourceFile,
+          scriptSnapshot,
+          version,
+          scriptSnapshot.getChangeRange(sourceFile.scriptSnapShot),
+        );
+      }
+      return sourceFile;
+    },
+
+    getKeyForCompilationSettings(settings) {
+      return getKeyForCompilationSettings(settings);
+    },
+
+    releaseDocument(
+      fileName,
+      compilationSettings,
+      scriptKind,
+      impliedNodeFormat,
+    ) {
+      const key = getKeyForCompilationSettings(compilationSettings);
+      return this.releaseDocumentWithKey(
+        /** @type {ts.Path} */ (fileName),
+        key,
+        scriptKind,
+        impliedNodeFormat,
+      );
+    },
+
+    releaseDocumentWithKey(path, key, _scriptKind, _impliedNodeFormat) {
+      const mapKey = path + key;
+      documentRegistrySourceFileCache.delete(mapKey);
+    },
+
+    reportStats() {
+      return "[]";
+    },
+  };
+
+  ts.deno.setIsNodeSourceFileCallback((sourceFile) => {
+    const fileName = sourceFile.fileName;
+    let isNodeSourceFile = isNodeSourceFileCache.get(fileName);
+    if (isNodeSourceFile == null) {
+      const result = ops.op_is_node_file(fileName);
+      isNodeSourceFile = /** @type {boolean} */ (result);
+      isNodeSourceFileCache.set(fileName, isNodeSourceFile);
+    }
+    return isNodeSourceFile;
+  });
 
   /** @param {ts.DiagnosticRelatedInformation} diagnostic */
   function fromRelatedInformation({
@@ -184,11 +385,15 @@ delete Object.prototype.__proto__;
   // paths must be either relative or absolute. Since
   // analysis in Rust operates on fully resolved URLs,
   // it makes sense to use the same scheme here.
-  const ASSETS = "asset:///";
+  const ASSETS_URL_PREFIX = "asset:///";
 
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
   const IGNORED_DIAGNOSTICS = [
+    // TS1452: 'resolution-mode' assertions are only supported when `moduleResolution` is `node16` or `nodenext`.
+    // We specify the resolution mode to be CommonJS for some npm files and this
+    // diagnostic gets generated even though we're using custom module resolution.
+    1452,
     // TS2306: File '.../index.d.ts' is not a module.
     // We get this for `x-typescript-types` declaration files which don't export
     // anything. We prefer to treat these as modules with no exports.
@@ -226,12 +431,15 @@ delete Object.prototype.__proto__;
     noEmit: true,
     strict: true,
     target: ts.ScriptTarget.ESNext,
+    lib: ["lib.deno.window.d.ts"],
   };
 
+  // todo(dsherret): can we remove this and just use ts.OperationCanceledException?
   /** Error thrown on cancellation. */
   class OperationCanceledError extends Error {
   }
 
+  // todo(dsherret): we should investigate if throttling is really necessary
   /**
    * Inspired by ThrottledCancellationToken in ts server.
    *
@@ -273,12 +481,16 @@ delete Object.prototype.__proto__;
    * @type {ts.CompilerHost & ts.LanguageServiceHost} */
   const host = {
     fileExists(specifier) {
-      debug(`host.fileExists("${specifier}")`);
+      if (logDebug) {
+        debug(`host.fileExists("${specifier}")`);
+      }
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
       return ops.op_exists({ specifier });
     },
     readFile(specifier) {
-      debug(`host.readFile("${specifier}")`);
+      if (logDebug) {
+        debug(`host.readFile("${specifier}")`);
+      }
       return ops.op_load({ specifier }).data;
     },
     getCancellationToken() {
@@ -291,15 +503,14 @@ delete Object.prototype.__proto__;
       _onError,
       _shouldCreateNewSourceFile,
     ) {
-      debug(
-        `host.getSourceFile("${specifier}", ${
-          ts.ScriptTarget[
-            isCreateSourceFileOptions(languageVersion)
-              ? languageVersion.languageVersion
-              : languageVersion
-          ]
-        })`,
-      );
+      const createOptions = getCreateSourceFileOptions(languageVersion);
+      if (logDebug) {
+        debug(
+          `host.getSourceFile("${specifier}", ${
+            ts.ScriptTarget[createOptions.languageVersion]
+          })`,
+        );
+      }
 
       // Needs the original specifier
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
@@ -320,7 +531,12 @@ delete Object.prototype.__proto__;
       sourceFile = ts.createSourceFile(
         specifier,
         data,
-        languageVersion,
+        {
+          ...createOptions,
+          impliedNodeFormat: isCjsCache.has(specifier)
+            ? ts.ModuleKind.CommonJS
+            : ts.ModuleKind.ESNext,
+        },
         false,
         scriptKind,
       );
@@ -331,19 +547,23 @@ delete Object.prototype.__proto__;
       return sourceFile;
     },
     getDefaultLibFileName() {
-      return `${ASSETS}/lib.esnext.d.ts`;
+      return `${ASSETS_URL_PREFIX}lib.esnext.d.ts`;
     },
     getDefaultLibLocation() {
-      return ASSETS;
+      return ASSETS_URL_PREFIX;
     },
     writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
-      debug(`host.writeFile("${fileName}")`);
+      if (logDebug) {
+        debug(`host.writeFile("${fileName}")`);
+      }
       return ops.op_emit(
         { fileName, data },
       );
     },
     getCurrentDirectory() {
-      debug(`host.getCurrentDirectory()`);
+      if (logDebug) {
+        debug(`host.getCurrentDirectory()`);
+      }
       return cwd ?? ops.op_cwd();
     },
     getCanonicalFileName(fileName) {
@@ -355,10 +575,56 @@ delete Object.prototype.__proto__;
     getNewLine() {
       return "\n";
     },
+    resolveTypeReferenceDirectives(
+      typeDirectiveNames,
+      containingFilePath,
+      redirectedReference,
+      options,
+      containingFileMode,
+    ) {
+      return typeDirectiveNames.map((arg) => {
+        /** @type {ts.FileReference} */
+        const fileReference = typeof arg === "string"
+          ? {
+            pos: -1,
+            end: -1,
+            fileName: arg,
+          }
+          : arg;
+        if (fileReference.fileName.startsWith("npm:")) {
+          /** @type {[string, ts.Extension] | undefined} */
+          const resolved = ops.op_resolve({
+            specifiers: [fileReference.fileName],
+            base: containingFilePath,
+          })?.[0];
+          if (resolved) {
+            isCjsCache.add(resolved);
+            return {
+              primary: true,
+              resolvedFileName: resolved[0],
+            };
+          } else {
+            return undefined;
+          }
+        } else {
+          return ts.resolveTypeReferenceDirective(
+            fileReference.fileName,
+            containingFilePath,
+            options,
+            host,
+            redirectedReference,
+            undefined,
+            containingFileMode ?? fileReference.resolutionMode,
+          ).resolvedTypeReferenceDirective;
+        }
+      });
+    },
     resolveModuleNames(specifiers, base) {
-      debug(`host.resolveModuleNames()`);
-      debug(`  base: ${base}`);
-      debug(`  specifiers: ${specifiers.join(", ")}`);
+      if (logDebug) {
+        debug(`host.resolveModuleNames()`);
+        debug(`  base: ${base}`);
+        debug(`  specifiers: ${specifiers.join(", ")}`);
+      }
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve({
         specifiers,
@@ -367,7 +633,12 @@ delete Object.prototype.__proto__;
       if (resolved) {
         const result = resolved.map((item) => {
           if (item) {
+            isCjsCache.add(item);
             const [resolvedFileName, extension] = item;
+            if (resolvedFileName.startsWith("node:")) {
+              // probably means the user doesn't have @types/node, so resolve to undefined
+              return undefined;
+            }
             return {
               resolvedFileName,
               extension,
@@ -388,11 +659,15 @@ delete Object.prototype.__proto__;
 
     // LanguageServiceHost
     getCompilationSettings() {
-      debug("host.getCompilationSettings()");
+      if (logDebug) {
+        debug("host.getCompilationSettings()");
+      }
       return compilationSettings;
     },
     getScriptFileNames() {
-      debug("host.getScriptFileNames()");
+      if (logDebug) {
+        debug("host.getScriptFileNames()");
+      }
       // tsc requests the script file names multiple times even though it can't
       // possibly have changed, so we will memoize it on a per request basis.
       if (scriptFileNamesCache) {
@@ -401,7 +676,9 @@ delete Object.prototype.__proto__;
       return scriptFileNamesCache = ops.op_script_names();
     },
     getScriptVersion(specifier) {
-      debug(`host.getScriptVersion("${specifier}")`);
+      if (logDebug) {
+        debug(`host.getScriptVersion("${specifier}")`);
+      }
       const sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
         return sourceFile.version ?? "1";
@@ -416,7 +693,9 @@ delete Object.prototype.__proto__;
       return scriptVersion;
     },
     getScriptSnapshot(specifier) {
-      debug(`host.getScriptSnapshot("${specifier}")`);
+      if (logDebug) {
+        debug(`host.getScriptSnapshot("${specifier}")`);
+      }
       const sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
         return {
@@ -443,6 +722,23 @@ delete Object.prototype.__proto__;
       }
     },
   };
+
+  // override the npm install @types package diagnostics to be deno specific
+  ts.setLocalizedDiagnosticMessages((() => {
+    const nodeMessage = "Cannot find name '{0}'."; // don't offer any suggestions
+    const jqueryMessage =
+      "Cannot find name '{0}'. Did you mean to import jQuery? Try adding `import $ from \"npm:jquery\";`.";
+    return {
+      "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_node_Try_npm_i_save_dev_types_Slashno_2580":
+        nodeMessage,
+      "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_node_Try_npm_i_save_dev_types_Slashno_2591":
+        nodeMessage,
+      "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_jQuery_Try_npm_i_save_dev_types_Slash_2581":
+        jqueryMessage,
+      "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_jQuery_Try_npm_i_save_dev_types_Slash_2592":
+        jqueryMessage,
+    };
+  })());
 
   /** @type {Array<[string, number]>} */
   const stats = [];
@@ -532,8 +828,10 @@ delete Object.prototype.__proto__;
 
     setLogDebug(debugFlag, "TS");
     performanceStart();
-    debug(">>> exec start", { rootNames });
-    debug(config);
+    if (logDebug) {
+      debug(">>> exec start", { rootNames });
+      debug(config);
+    }
 
     rootNames.forEach(checkNormalizedPath);
 
@@ -557,7 +855,7 @@ delete Object.prototype.__proto__;
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
       ...program.getSemanticDiagnostics(),
-    ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+    ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code));
 
     // emit the tsbuildinfo file
     // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
@@ -572,6 +870,20 @@ delete Object.prototype.__proto__;
     debug("<<< exec stop");
   }
 
+  function getAssets() {
+    /** @type {{ specifier: string; text: string; }[]} */
+    const assets = [];
+    for (const sourceFile of sourceFileCache.values()) {
+      if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
+        assets.push({
+          specifier: sourceFile.fileName,
+          text: sourceFile.text,
+        });
+      }
+    }
+    return assets;
+  }
+
   /**
    * @param {number} id
    * @param {any} data
@@ -584,7 +896,9 @@ delete Object.prototype.__proto__;
    * @param {LanguageServerRequest} request
    */
   function serverRequest({ id, ...request }) {
-    debug(`serverRequest()`, { id, ...request });
+    if (logDebug) {
+      debug(`serverRequest()`, { id, ...request });
+    }
 
     // reset all memoized source files names
     scriptFileNamesCache = undefined;
@@ -618,16 +932,7 @@ delete Object.prototype.__proto__;
         );
       }
       case "getAssets": {
-        const assets = [];
-        for (const sourceFile of sourceFileCache.values()) {
-          if (sourceFile.fileName.startsWith(ASSETS)) {
-            assets.push({
-              specifier: sourceFile.fileName,
-              text: sourceFile.text,
-            });
-          }
-        }
-        return respond(id, assets);
+        return respond(id, getAssets());
       }
       case "getApplicableRefactors": {
         return respond(
@@ -707,7 +1012,9 @@ delete Object.prototype.__proto__;
         );
       }
       case "getCompletionDetails": {
-        debug("request", request);
+        if (logDebug) {
+          debug("request", request);
+        }
         return respond(
           id,
           languageService.getCompletionEntryDetails(
@@ -898,6 +1205,15 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "provideInlayHints":
+        return respond(
+          id,
+          languageService.provideInlayHints(
+            request.specifier,
+            request.span,
+            request.preferences,
+          ),
+        );
       default:
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
@@ -913,13 +1229,14 @@ delete Object.prototype.__proto__;
     }
     hasStarted = true;
     cwd = rootUri;
-    languageService = ts.createLanguageService(host);
+    languageService = ts.createLanguageService(host, documentRegistry);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
   }
 
   function serverRestart() {
-    languageService = ts.createLanguageService(host);
+    languageService = ts.createLanguageService(host, documentRegistry);
+    isNodeSourceFileCache.clear();
     debug("serverRestart()");
   }
 
@@ -938,9 +1255,11 @@ delete Object.prototype.__proto__;
 
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.
-  /** @type {{ buildSpecifier: string; libs: string[] }} */
+  /** @type {{ buildSpecifier: string; libs: string[]; nodeBuiltInModuleNames: string[] }} */
+  const { buildSpecifier, libs, nodeBuiltInModuleNames } = ops.op_build_info();
 
-  const { buildSpecifier, libs } = ops.op_build_info();
+  ts.deno.setNodeBuiltInModuleNames(nodeBuiltInModuleNames);
+
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into
@@ -952,7 +1271,10 @@ delete Object.prototype.__proto__;
     // we are caching in memory common type libraries that will be re-used by
     // tsc on when the snapshot is restored
     assert(
-      host.getSourceFile(`${ASSETS}${specifier}`, ts.ScriptTarget.ESNext),
+      host.getSourceFile(
+        `${ASSETS_URL_PREFIX}${specifier}`,
+        ts.ScriptTarget.ESNext,
+      ),
     );
   }
   // this helps ensure as much as possible is in memory that is re-usable
@@ -963,12 +1285,16 @@ delete Object.prototype.__proto__;
     options: SNAPSHOT_COMPILE_OPTIONS,
     host,
   });
-  ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM);
+  assert(ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0);
+
+  // remove this now that we don't need it anymore for warming up tsc
+  sourceFileCache.delete(buildSpecifier);
 
   // exposes the two functions that are called by `tsc::exec()` when type
   // checking TypeScript.
   globalThis.startup = startup;
   globalThis.exec = exec;
+  globalThis.getAssets = getAssets;
 
   // exposes the functions that are called when the compiler is used as a
   // language service.

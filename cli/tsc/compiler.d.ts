@@ -1,8 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // Contains types that can be used to validate and check `99_main_compiler.js`
 
-import * as _ts from "../dts/typescript";
+import * as _ts from "./dts/typescript";
 
 declare global {
   namespace ts {
@@ -12,6 +12,7 @@ declare global {
     var normalizePath: (path: string) => string;
     interface SourceFile {
       version?: string;
+      fileName: string;
     }
 
     interface CompilerHost {
@@ -24,6 +25,13 @@ declare global {
     }
 
     var performance: Performance;
+
+    namespace deno {
+      function setIsNodeSourceFileCallback(
+        callback: (sourceFile: SourceFile) => boolean,
+      );
+      function setNodeBuiltInModuleNames(names: string[]);
+    }
   }
 
   namespace ts {
@@ -37,8 +45,6 @@ declare global {
 
   interface DenoCore {
     encode(value: string): Uint8Array;
-    // deno-lint-ignore no-explicit-any
-    opSync<T>(name: string, params: T): any;
     // deno-lint-ignore no-explicit-any
     ops: Record<string, (...args: unknown[]) => any>;
     print(msg: string, stderr: boolean): void;
@@ -77,7 +83,8 @@ declare global {
     | GetTypeDefinitionRequest
     | PrepareCallHierarchy
     | ProvideCallHierarchyIncomingCalls
-    | ProvideCallHierarchyOutgoingCalls;
+    | ProvideCallHierarchyOutgoingCalls
+    | ProvideInlayHints;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -253,6 +260,13 @@ declare global {
     method: "provideCallHierarchyOutgoingCalls";
     specifier: string;
     position: number;
+  }
+
+  interface ProvideInlayHints extends BaseLanguageServerRequest {
+    method: "provideInlayHints";
+    specifier: string;
+    span: ts.TextSpan;
+    preferences?: ts.UserPreferences;
   }
 
   interface Restart extends BaseLanguageServerRequest {

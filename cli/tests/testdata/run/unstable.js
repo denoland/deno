@@ -1,1 +1,1 @@
-console.log(Deno.loadavg);
+console.log(Deno.umask);

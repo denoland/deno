@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
 Deno.test(function btoaSuccess() {
@@ -247,6 +247,7 @@ Deno.test(function toStringShouldBeWebCompatibility() {
   const decoder = new TextDecoder();
   assertEquals(decoder.toString(), "[object TextDecoder]");
 });
+
 Deno.test(function textEncoderShouldCoerceToString() {
   const encoder = new TextEncoder();
   const fixutreText = "text";
@@ -260,4 +261,61 @@ Deno.test(function textEncoderShouldCoerceToString() {
   const decoder = new TextDecoder();
   const decoded = decoder.decode(bytes);
   assertEquals(decoded, fixutreText);
+});
+
+Deno.test(function binaryEncode() {
+  // @ts-ignore: Deno[Deno.internal].core allowed
+  const ops = Deno[Deno.internal].core.ops;
+  function asBinaryString(bytes: Uint8Array): string {
+    return Array.from(bytes).map(
+      (v: number) => String.fromCodePoint(v),
+    ).join("");
+  }
+
+  function decodeBinary(binaryString: string) {
+    const chars: string[] = Array.from(binaryString);
+    return chars.map((v: string): number | undefined => v.codePointAt(0));
+  }
+
+  // invalid utf-8 code points
+  const invalid = new Uint8Array([0xC0]);
+  assertEquals(
+    ops.op_encode_binary_string(invalid),
+    asBinaryString(invalid),
+  );
+
+  const invalid2 = new Uint8Array([0xC1]);
+  assertEquals(
+    ops.op_encode_binary_string(invalid2),
+    asBinaryString(invalid2),
+  );
+
+  for (let i = 0, j = 255; i <= 255; i++, j--) {
+    const bytes = new Uint8Array([i, j]);
+    const binaryString = ops.op_encode_binary_string(bytes);
+    assertEquals(
+      binaryString,
+      asBinaryString(bytes),
+    );
+    assertEquals(Array.from(bytes), decodeBinary(binaryString));
+  }
+
+  const inputs = [
+    "σ😀",
+    "Кириллица is Cyrillic",
+    "𝓽𝓮𝔁𝓽",
+    "lone𝄞\ud888surrogate",
+    "\udc00\ud800",
+    "\ud800",
+  ];
+  for (const input of inputs) {
+    const bytes = new TextEncoder().encode(input);
+    const binaryString = ops.op_encode_binary_string(bytes);
+    assertEquals(
+      binaryString,
+      asBinaryString(bytes),
+    );
+
+    assertEquals(Array.from(bytes), decodeBinary(binaryString));
+  }
 });

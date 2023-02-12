@@ -1,10 +1,7 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::process::Command;
 use std::process::Stdio;
-
-use crate::itest;
-
 use test_util as util;
 use util::TempDir;
 
@@ -27,7 +24,7 @@ itest!(check_random_extension {
 });
 
 itest!(check_all {
-  args: "check --quiet --remote check/check_all.ts",
+  args: "check --quiet --all check/check_all.ts",
   output: "check/check_all.out",
   http_server: true,
   exit_code: 1,
@@ -49,6 +46,42 @@ itest!(declaration_header_file_with_no_exports {
   args: "check --quiet check/declaration_header_file_with_no_exports.ts",
   output_str: Some(""),
 });
+
+itest!(check_npm_install_diagnostics {
+  args: "check --quiet check/npm_install_diagnostics/main.ts",
+  output: "check/npm_install_diagnostics/main.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  exit_code: 1,
+});
+
+itest!(check_export_equals_declaration_file {
+  args: "check --quiet check/export_equals_declaration_file/main.ts",
+  exit_code: 0,
+});
+
+itest!(check_static_response_json {
+  args: "check --quiet check/response_json.ts",
+  exit_code: 0,
+});
+
+itest!(check_node_builtin_modules_ts {
+  args: "check --quiet check/node_builtin_modules/mod.ts",
+  output: "check/node_builtin_modules/mod.ts.out",
+  exit_code: 1,
+});
+
+itest!(check_node_builtin_modules_js {
+  args: "check --quiet check/node_builtin_modules/mod.js",
+  output: "check/node_builtin_modules/mod.js.out",
+  exit_code: 1,
+});
+
+itest!(check_no_error_truncation {
+    args: "check --quiet check/no_error_truncation/main.ts --config check/no_error_truncation/deno.json",
+    output: "check/no_error_truncation/main.out",
+    envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+    exit_code: 1,
+  });
 
 #[test]
 fn cache_switching_config_then_no_config() {
@@ -114,7 +147,7 @@ fn typecheck_declarations_ns() {
   let output = util::deno_cmd()
     .arg("test")
     .arg("--doc")
-    .arg(util::root_path().join("cli/dts/lib.deno.ns.d.ts"))
+    .arg(util::root_path().join("cli/tsc/dts/lib.deno.ns.d.ts"))
     .output()
     .unwrap();
   println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
@@ -128,7 +161,7 @@ fn typecheck_declarations_unstable() {
     .arg("test")
     .arg("--doc")
     .arg("--unstable")
-    .arg(util::root_path().join("cli/dts/lib.deno.unstable.d.ts"))
+    .arg(util::root_path().join("cli/tsc/dts/lib.deno.unstable.d.ts"))
     .output()
     .unwrap();
   println!("stdout: {}", String::from_utf8(output.stdout).unwrap());

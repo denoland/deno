@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
@@ -11,55 +11,73 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use std::sync::Arc;
 
 mod check;
 mod common;
+mod deno_dir;
 mod disk_cache;
 mod emit;
+mod http_cache;
 mod incremental;
 mod node;
 mod parsed_source;
 
 pub use check::TypeCheckCache;
 pub use common::FastInsecureHasher;
+pub use deno_dir::DenoDir;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
+pub use http_cache::CachedUrlMetadata;
+pub use http_cache::HttpCache;
 pub use incremental::IncrementalCache;
 pub use node::NodeAnalysisCache;
 pub use parsed_source::ParsedSourceCache;
+
+/// Permissions used to save a file in the disk caches.
+pub const CACHE_PERM: u32 = 0o644;
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
   emit_cache: EmitCache,
-  dynamic_permissions: Permissions,
+  dynamic_permissions: PermissionsContainer,
   file_fetcher: Arc<FileFetcher>,
-  root_permissions: Permissions,
+  root_permissions: PermissionsContainer,
+  cache_info_enabled: bool,
 }
 
 impl FetchCacher {
   pub fn new(
     emit_cache: EmitCache,
-    file_fetcher: FileFetcher,
-    root_permissions: Permissions,
-    dynamic_permissions: Permissions,
+    file_fetcher: Arc<FileFetcher>,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
   ) -> Self {
-    let file_fetcher = Arc::new(file_fetcher);
-
     Self {
       emit_cache,
       dynamic_permissions,
       file_fetcher,
       root_permissions,
+      cache_info_enabled: false,
     }
+  }
+
+  /// The cache information takes a bit of time to fetch and it's
+  /// not always necessary. It should only be enabled for deno info.
+  pub fn enable_loading_cache_info(&mut self) {
+    self.cache_info_enabled = true;
   }
 }
 
 impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
-    if specifier.scheme() == "npm" {
+    if !self.cache_info_enabled {
+      return None;
+    }
+
+    if matches!(specifier.scheme(), "npm" | "node") {
       return None;
     }
 
@@ -95,8 +113,27 @@ impl Loader for FetchCacher {
       ));
     }
 
-    let specifier = specifier.clone();
-    let mut permissions = if is_dynamic {
+    let specifier =
+      if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
+        if module_name == "module" {
+          // the source code for "node:module" is built-in rather than
+          // being from deno_std like the other modules
+          return Box::pin(futures::future::ready(Ok(Some(
+            deno_graph::source::LoadResponse::External {
+              specifier: specifier.clone(),
+            },
+          ))));
+        }
+
+        match crate::node::resolve_builtin_node_module(module_name) {
+          Ok(specifier) => specifier,
+          Err(err) => return Box::pin(futures::future::ready(Err(err))),
+        }
+      } else {
+        specifier.clone()
+      };
+
+    let permissions = if is_dynamic {
       self.dynamic_permissions.clone()
     } else {
       self.root_permissions.clone()
@@ -105,7 +142,7 @@ impl Loader for FetchCacher {
 
     async move {
       file_fetcher
-        .fetch(&specifier, &mut permissions)
+        .fetch(&specifier, permissions)
         .await
         .map_or_else(
           |err| {

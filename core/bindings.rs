@@ -1,19 +1,24 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::option::Option;
+use std::os::raw::c_void;
+
+use log::debug;
+use v8::fast_api::FastFunction;
+use v8::MapFnTo;
 
 use crate::error::is_instance_of_error;
 use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
+use crate::modules::resolve_helper;
 use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
+use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
+use crate::runtime::SnapshotOptions;
 use crate::JsRealm;
 use crate::JsRuntime;
-use log::debug;
-use std::option::Option;
-use std::os::raw::c_void;
-use v8::fast_api::FastFunction;
-use v8::MapFnTo;
 
 pub fn external_references(
   ops: &[OpCtx],
@@ -97,7 +102,7 @@ pub fn module_origin<'a>(
 pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
-  snapshot_loaded: bool,
+  snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
@@ -108,29 +113,44 @@ pub fn initialize_context<'s>(
 
   // Snapshot already registered `Deno.core.ops` but
   // extensions may provide ops that aren't part of the snapshot.
-  //
-  // TODO(@littledivy): This is extra complexity for
-  // a really weird usecase. Remove this once all
-  // tsc ops are static at snapshot time.
-  if snapshot_loaded {
+  if snapshot_options.loaded() {
     // Grab the Deno.core.ops object & init it
-    let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
+    let ops_obj = JsRuntime::eval::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
-    initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded);
-
+    initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
+    if snapshot_options != SnapshotOptions::CreateFromExisting {
+      initialize_async_ops_info(scope, ops_obj, op_ctxs);
+    }
     return scope.escape(context);
   }
 
   // global.Deno = { core: { } };
-  let core_val = JsRuntime::ensure_objs(scope, global, "Deno.core").unwrap();
+  let deno_obj = v8::Object::new(scope);
+  let deno_str = v8::String::new(scope, "Deno").unwrap();
+  global.set(scope, deno_str.into(), deno_obj.into());
+
+  let core_obj = v8::Object::new(scope);
+  let core_str = v8::String::new(scope, "core").unwrap();
+  deno_obj.set(scope, core_str.into(), core_obj.into());
 
   // Bind functions to Deno.core.*
-  set_func(scope, core_val, "callConsole", call_console);
+  set_func(scope, core_obj, "callConsole", call_console);
+
+  // Bind v8 console object to Deno.core.console
+  let extra_binding_obj = context.get_extras_binding_object(scope);
+  let console_str = v8::String::new(scope, "console").unwrap();
+  let console_obj = extra_binding_obj.get(scope, console_str.into()).unwrap();
+  core_obj.set(scope, console_str.into(), console_obj);
 
   // Bind functions to Deno.core.ops.*
-  let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
+  let ops_obj = v8::Object::new(scope);
+  let ops_str = v8::String::new(scope, "ops").unwrap();
+  core_obj.set(scope, ops_str.into(), ops_obj.into());
 
-  initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded);
+  if !snapshot_options.will_snapshot() {
+    initialize_async_ops_info(scope, ops_obj, op_ctxs);
+  }
+  initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
   scope.escape(context)
 }
 
@@ -138,14 +158,14 @@ fn initialize_ops(
   scope: &mut v8::HandleScope,
   ops_obj: v8::Local<v8::Object>,
   op_ctxs: &[OpCtx],
-  snapshot_loaded: bool,
+  snapshot_options: SnapshotOptions,
 ) {
   for ctx in op_ctxs {
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
 
     // If this is a fast op, we don't want it to be in the snapshot.
     // Only initialize once snapshot is loaded.
-    if ctx.decl.fast_fn.is_some() && snapshot_loaded {
+    if ctx.decl.fast_fn.is_some() && snapshot_options.loaded() {
       set_func_raw(
         scope,
         ops_obj,
@@ -153,7 +173,7 @@ fn initialize_ops(
         ctx.decl.v8_fn_ptr,
         ctx_ptr,
         &ctx.decl.fast_fn,
-        snapshot_loaded,
+        snapshot_options,
       );
     } else {
       set_func_raw(
@@ -163,7 +183,7 @@ fn initialize_ops(
         ctx.decl.v8_fn_ptr,
         ctx_ptr,
         &None,
-        snapshot_loaded,
+        snapshot_options,
       );
     }
   }
@@ -190,7 +210,7 @@ pub fn set_func_raw(
   callback: v8::FunctionCallback,
   external_data: *const c_void,
   fast_function: &Option<Box<dyn FastFunction>>,
-  snapshot_loaded: bool,
+  snapshot_options: SnapshotOptions,
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let external = v8::External::new(scope, external_data as *mut c_void);
@@ -198,11 +218,14 @@ pub fn set_func_raw(
     v8::FunctionTemplate::builder_raw(callback).data(external.into());
   let templ = if let Some(fast_function) = fast_function {
     // Don't initialize fast ops when snapshotting, the external references count mismatch.
-    if !snapshot_loaded {
-      builder.build(scope)
-    } else {
+    if matches!(
+      snapshot_options,
+      SnapshotOptions::Load | SnapshotOptions::None
+    ) {
       // TODO(@littledivy): Support fast api overloads in ops.
       builder.build_fast(scope, &**fast_function, None)
+    } else {
+      builder.build(scope)
     }
   } else {
     builder.build(scope)
@@ -228,16 +251,13 @@ pub extern "C" fn wasm_async_resolve_promise_callback(
   }
 }
 
-pub extern "C" fn host_import_module_dynamically_callback(
-  context: v8::Local<v8::Context>,
-  _host_defined_options: v8::Local<v8::Data>,
-  resource_name: v8::Local<v8::Value>,
-  specifier: v8::Local<v8::String>,
-  import_assertions: v8::Local<v8::FixedArray>,
-) -> *mut v8::Promise {
-  // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
-  let scope = &mut unsafe { v8::CallbackScope::new(context) };
-
+pub fn host_import_module_dynamically_callback<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  _host_defined_options: v8::Local<'s, v8::Data>,
+  resource_name: v8::Local<'s, v8::Value>,
+  specifier: v8::Local<'s, v8::String>,
+  import_assertions: v8::Local<'s, v8::FixedArray>,
+) -> Option<v8::Local<'s, v8::Promise>> {
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
   let specifier_str = specifier
     .to_string(scope)
@@ -248,45 +268,47 @@ pub extern "C" fn host_import_module_dynamically_callback(
     .unwrap()
     .to_rust_string_lossy(scope);
 
+  let is_internal_module = specifier_str.starts_with("internal:");
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
-  let assertions = parse_import_assertions(
-    scope,
-    import_assertions,
-    ImportAssertionsKind::DynamicImport,
-  );
+  if !is_internal_module {
+    let assertions = parse_import_assertions(
+      scope,
+      import_assertions,
+      ImportAssertionsKind::DynamicImport,
+    );
 
-  {
-    let tc_scope = &mut v8::TryCatch::new(scope);
-    validate_import_assertions(tc_scope, &assertions);
-    if tc_scope.has_caught() {
-      let e = tc_scope.exception().unwrap();
-      resolver.reject(tc_scope, e);
+    {
+      let tc_scope = &mut v8::TryCatch::new(scope);
+      validate_import_assertions(tc_scope, &assertions);
+      if tc_scope.has_caught() {
+        let e = tc_scope.exception().unwrap();
+        resolver.reject(tc_scope, e);
+      }
+    }
+    let asserted_module_type =
+      get_asserted_module_type_from_assertions(&assertions);
+
+    let resolver_handle = v8::Global::new(scope, resolver);
+    {
+      let state_rc = JsRuntime::state(scope);
+      let module_map_rc = JsRuntime::module_map(scope);
+
+      debug!(
+        "dyn_import specifier {} referrer {} ",
+        specifier_str, referrer_name_str
+      );
+      ModuleMap::load_dynamic_import(
+        module_map_rc,
+        &specifier_str,
+        &referrer_name_str,
+        asserted_module_type,
+        resolver_handle,
+      );
+      state_rc.borrow_mut().notify_new_dynamic_import();
     }
   }
-  let asserted_module_type =
-    get_asserted_module_type_from_assertions(&assertions);
-
-  let resolver_handle = v8::Global::new(scope, resolver);
-  {
-    let state_rc = JsRuntime::state(scope);
-    let module_map_rc = JsRuntime::module_map(scope);
-
-    debug!(
-      "dyn_import specifier {} referrer {} ",
-      specifier_str, referrer_name_str
-    );
-    ModuleMap::load_dynamic_import(
-      module_map_rc,
-      &specifier_str,
-      &referrer_name_str,
-      asserted_module_type,
-      resolver_handle,
-    );
-    state_rc.borrow_mut().notify_new_dynamic_import();
-  }
-
   // Map errors from module resolution (not JS errors from module execution) to
   // ones rethrown from this scope, so they include the call stack of the
   // dynamic import site. Error objects without any stack frames are assumed to
@@ -298,7 +320,15 @@ pub extern "C" fn host_import_module_dynamically_callback(
 
   let promise = promise.catch(scope, map_err).unwrap();
 
-  &*promise as *const _ as *mut _
+  if is_internal_module {
+    let message =
+      v8::String::new(scope, "Cannot load internal module from external code")
+        .unwrap();
+    let exception = v8::Exception::type_error(scope, message);
+    resolver.reject(scope, exception);
+  }
+
+  Some(promise)
 }
 
 pub extern "C" fn host_initialize_import_meta_object_callback(
@@ -346,16 +376,31 @@ fn import_meta_resolve(
   }
   let specifier = maybe_arg_str.unwrap();
   let referrer = {
-    let url_prop = args.data().unwrap();
+    let url_prop = args.data();
     url_prop.to_rust_string_lossy(scope)
   };
   let module_map_rc = JsRuntime::module_map(scope);
-  let loader = {
+  let (loader, snapshot_loaded_and_not_snapshotting) = {
     let module_map = module_map_rc.borrow();
-    module_map.loader.clone()
+    (
+      module_map.loader.clone(),
+      module_map.snapshot_loaded_and_not_snapshotting,
+    )
   };
-  match loader.resolve(&specifier.to_rust_string_lossy(scope), &referrer, false)
-  {
+  let specifier_str = specifier.to_rust_string_lossy(scope);
+
+  if specifier_str.starts_with("npm:") {
+    throw_type_error(scope, "\"npm:\" specifiers are currently not supported in import.meta.resolve()");
+    return;
+  }
+
+  match resolve_helper(
+    snapshot_loaded_and_not_snapshotting,
+    loader,
+    &specifier_str,
+    &referrer,
+    ResolutionKind::DynamicImport,
+  ) {
     Ok(resolved) => {
       let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();
       rv.set(resolved_val);
@@ -428,11 +473,13 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   // SAFETY: `CallbackScope` can be safely constructed from `&PromiseRejectMessage`
   let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
-  let realm_state_rc = JsRealm::state_from_scope(scope);
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let mut context_state = context_state_rc.borrow_mut();
 
-  if let Some(js_promise_reject_cb) =
-    realm_state_rc.borrow().js_promise_reject_cb.clone()
+  if let Some(js_promise_reject_cb) = context_state.js_promise_reject_cb.clone()
   {
+    drop(context_state);
+
     let tc_scope = &mut v8::TryCatch::new(scope);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
@@ -470,27 +517,27 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       }
     }
   } else {
-    let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
     let promise = message.get_promise();
     let promise_global = v8::Global::new(scope, promise);
     match message.get_event() {
       PromiseRejectWithNoHandler => {
         let error = message.get_value().unwrap();
         let error_global = v8::Global::new(scope, error);
-        state
-          .pending_promise_exceptions
+        context_state
+          .pending_promise_rejections
           .insert(promise_global, error_global);
       }
       PromiseHandlerAddedAfterReject => {
-        state.pending_promise_exceptions.remove(&promise_global);
+        context_state
+          .pending_promise_rejections
+          .remove(&promise_global);
       }
       PromiseRejectAfterResolved => {}
       PromiseResolveAfterResolved => {
         // Should not warn. See #1272
       }
     }
-  };
+  }
 }
 
 /// This binding should be used if there's a custom console implementation
@@ -585,8 +632,7 @@ pub fn module_resolve_callback<'s>(
   }
 
   let msg = format!(
-    r#"Cannot resolve module "{}" from "{}""#,
-    specifier_str, referrer_name
+    r#"Cannot resolve module "{specifier_str}" from "{referrer_name}""#
   );
   throw_type_error(scope, msg);
   None
@@ -596,4 +642,85 @@ pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);
+}
+
+struct AsyncOpsInfo {
+  ptr: *const OpCtx,
+  len: usize,
+}
+
+impl<'s> IntoIterator for &'s AsyncOpsInfo {
+  type Item = &'s OpCtx;
+  type IntoIter = AsyncOpsInfoIterator<'s>;
+
+  fn into_iter(self) -> Self::IntoIter {
+    AsyncOpsInfoIterator {
+      // SAFETY: OpCtx slice is valid for the lifetime of the Isolate
+      info: unsafe { std::slice::from_raw_parts(self.ptr, self.len) },
+      index: 0,
+    }
+  }
+}
+
+struct AsyncOpsInfoIterator<'s> {
+  info: &'s [OpCtx],
+  index: usize,
+}
+
+impl<'s> Iterator for AsyncOpsInfoIterator<'s> {
+  type Item = &'s OpCtx;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    loop {
+      match self.info.get(self.index) {
+        Some(ctx) if ctx.decl.is_async => {
+          self.index += 1;
+          return Some(ctx);
+        }
+        Some(_) => {
+          self.index += 1;
+        }
+        None => return None,
+      }
+    }
+  }
+}
+
+fn async_ops_info(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let async_op_names = v8::Object::new(scope);
+  let external: v8::Local<v8::External> = args.data().try_into().unwrap();
+  let info: &AsyncOpsInfo =
+    // SAFETY: external is guaranteed to be a valid pointer to AsyncOpsInfo
+    unsafe { &*(external.value() as *const AsyncOpsInfo) };
+  for ctx in info {
+    let name = v8::String::new(scope, ctx.decl.name).unwrap();
+    let argc = v8::Integer::new(scope, ctx.decl.argc as i32);
+    async_op_names.set(scope, name.into(), argc.into());
+  }
+  rv.set(async_op_names.into());
+}
+
+fn initialize_async_ops_info(
+  scope: &mut v8::HandleScope,
+  ops_obj: v8::Local<v8::Object>,
+  op_ctxs: &[OpCtx],
+) {
+  let key = v8::String::new(scope, "asyncOpsInfo").unwrap();
+  let external = v8::External::new(
+    scope,
+    Box::into_raw(Box::new(AsyncOpsInfo {
+      ptr: op_ctxs as *const [OpCtx] as _,
+      len: op_ctxs.len(),
+    })) as *mut c_void,
+  );
+  let val = v8::Function::builder(async_ops_info)
+    .data(external.into())
+    .build(scope)
+    .unwrap();
+  val.set_name(key);
+  ops_obj.set(scope, key.into(), val.into());
 }

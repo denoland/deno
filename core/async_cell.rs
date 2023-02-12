@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::any::type_name;
 use std::any::Any;
@@ -220,13 +220,13 @@ impl<T> Deref for RcRef<T> {
 
 impl<T> Borrow<T> for RcRef<T> {
   fn borrow(&self) -> &T {
-    &**self
+    self
   }
 }
 
 impl<T> AsRef<T> for RcRef<T> {
   fn as_ref(&self) -> &T {
-    &**self
+    self
   }
 }
 
@@ -257,7 +257,7 @@ mod internal {
   use std::pin::Pin;
 
   impl<T> AsyncRefCell<T> {
-    /// Borrow the cell's contents synchronouslym without creating an
+    /// Borrow the cell's contents synchronously without creating an
     /// intermediate future. If the cell has already been borrowed and either
     /// the existing or the requested borrow is exclusive, this function returns
     /// `None`.
@@ -478,13 +478,13 @@ mod internal {
 
   impl<T, M: BorrowModeTrait> Borrow<T> for AsyncBorrowImpl<T, M> {
     fn borrow(&self) -> &T {
-      &**self
+      self
     }
   }
 
   impl<T, M: BorrowModeTrait> AsRef<T> for AsyncBorrowImpl<T, M> {
     fn as_ref(&self) -> &T {
-      &**self
+      self
     }
   }
 
@@ -500,13 +500,13 @@ mod internal {
 
   impl<T> BorrowMut<T> for AsyncBorrowImpl<T, Exclusive> {
     fn borrow_mut(&mut self) -> &mut T {
-      &mut **self
+      self
     }
   }
 
   impl<T> AsMut<T> for AsyncBorrowImpl<T, Exclusive> {
     fn as_mut(&mut self) -> &mut T {
-      &mut **self
+      self
     }
   }
 
@@ -577,7 +577,7 @@ mod internal {
     pub fn add(self, mode: BorrowMode) -> BorrowCount {
       match self.try_add(mode) {
         Some(value) => value,
-        None => panic!("Can't add {:?} to {:?}", mode, self),
+        None => panic!("Can't add {mode:?} to {self:?}"),
       }
     }
 
@@ -596,7 +596,7 @@ mod internal {
     pub fn remove(self, mode: BorrowMode) -> BorrowCount {
       match self.try_remove(mode) {
         Some(value) => value,
-        None => panic!("Can't remove {:?} from {:?}", mode, self),
+        None => panic!("Can't remove {mode:?} from {self:?}"),
       }
     }
   }

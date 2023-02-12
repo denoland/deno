@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 
@@ -19,6 +19,7 @@ static NODE_GLOBALS: &[&str] = &[
   "clearImmediate",
   "clearInterval",
   "clearTimeout",
+  "console",
   "global",
   "process",
   "setImmediate",
@@ -75,11 +76,11 @@ pub fn esm_code_with_node_globals(
   let global_this_expr = if has_global_this {
     global_this_expr
   } else {
-    write!(result, "var globalThis = {};", global_this_expr).unwrap();
+    write!(result, "var globalThis = {global_this_expr};").unwrap();
     "globalThis"
   };
   for global in globals {
-    write!(result, "var {0} = {1}.{0};", global, global_this_expr).unwrap();
+    write!(result, "var {global} = {global_this_expr}.{global};").unwrap();
   }
 
   let file_text = text_info.text_str();
@@ -194,9 +195,10 @@ mod tests {
           "var globalThis = {}",
           ";var Buffer = globalThis.Buffer;",
           "var clearImmediate = globalThis.clearImmediate;var clearInterval = globalThis.clearInterval;",
-          "var clearTimeout = globalThis.clearTimeout;var global = globalThis.global;",
-          "var process = globalThis.process;var setImmediate = globalThis.setImmediate;",
-          "var setInterval = globalThis.setInterval;var setTimeout = globalThis.setTimeout;\n",
+          "var clearTimeout = globalThis.clearTimeout;var console = globalThis.console;",
+          "var global = globalThis.global;var process = globalThis.process;",
+          "var setImmediate = globalThis.setImmediate;var setInterval = globalThis.setInterval;",
+          "var setTimeout = globalThis.setTimeout;\n",
           "export const x = 1;"
         ),
         NODE_GLOBAL_THIS_NAME.as_str(),

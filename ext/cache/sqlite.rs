@@ -1,4 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::borrow::Cow;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
@@ -7,19 +14,11 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::Resource;
-use deno_core::ZeroCopyBuf;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-
-use std::borrow::Cow;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
 use crate::deserialize_headers;
 use crate::get_header;
@@ -46,6 +45,16 @@ impl SqliteBackedCache {
       let connection = rusqlite::Connection::open(&path).unwrap_or_else(|_| {
         panic!("failed to open cache db at {}", path.display())
       });
+      // Enable write-ahead-logging mode.
+      let initial_pragmas = "
+        -- enable write-ahead-logging mode
+        PRAGMA journal_mode=WAL;
+        PRAGMA synchronous=NORMAL;
+        PRAGMA optimize;
+      ";
+      connection
+        .execute_batch(initial_pragmas)
+        .expect("failed to execute pragmas");
       connection
         .execute(
           "CREATE TABLE IF NOT EXISTS cache_storage (
@@ -105,7 +114,7 @@ impl Cache for SqliteBackedCache {
         },
       )?;
       let responses_dir = get_responses_dir(cache_storage_dir, cache_id);
-      std::fs::create_dir_all(&responses_dir)?;
+      std::fs::create_dir_all(responses_dir)?;
       Ok::<i64, AnyError>(cache_id)
     })
     .await?
@@ -118,7 +127,7 @@ impl Cache for SqliteBackedCache {
     tokio::task::spawn_blocking(move || {
       let db = db.lock();
       let cache_exists = db.query_row(
-        "SELECT count(cache_name) FROM cache_storage WHERE cache_name = ?1",
+        "SELECT count(id) FROM cache_storage WHERE cache_name = ?1",
         params![cache_name],
         |row| {
           let count: i64 = row.get(0)?;
@@ -347,10 +356,10 @@ pub struct CachePutResource {
 }
 
 impl CachePutResource {
-  async fn write(self: Rc<Self>, data: ZeroCopyBuf) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
-    file.write_all(&data).await?;
+    file.write_all(data).await?;
     Ok(data.len())
   }
 
@@ -374,9 +383,7 @@ impl Resource for CachePutResource {
     "CachePutResource".into()
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
-  }
+  deno_core::impl_writable!();
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
     Box::pin(self.shutdown())
@@ -394,27 +401,19 @@ impl CacheResponseResource {
     }
   }
 
-  async fn read(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
-    let nread = file.read(&mut buf).await?;
-    Ok((nread, buf))
+    let nread = file.read(data).await?;
+    Ok(nread)
   }
 }
 
 impl Resource for CacheResponseResource {
+  deno_core::impl_readable_byob!();
+
   fn name(&self) -> Cow<str> {
     "CacheResponseResource".into()
-  }
-
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
   }
 }
 

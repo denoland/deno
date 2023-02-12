@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "types-ambient": "npm:@denotest/types-ambient"
+  }
+}

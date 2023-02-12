@@ -1,4 +1,4 @@
-[WILDCARD][Function: Location]
+[WILDCARD][Class: Location]
 Location {}
 Location {
   hash: "#bat",

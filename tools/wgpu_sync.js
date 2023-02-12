@@ -1,20 +1,20 @@
 #!/usr/bin/env -S deno run --unstable --allow-read --allow-write --allow-run
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { join, ROOT_PATH, walk } from "./util.js";
+import { join, ROOT_PATH } from "./util.js";
 
-const COMMIT = "076df1a56812eee01614b7a3a4c88798012e79ab";
+const COMMIT = "659f6977051345e4e06ab4832c6f7d268f25a1ad";
 const REPO = "gfx-rs/wgpu";
-const V_WGPU = "0.13";
+const V_WGPU = "0.15";
 const TARGET_DIR = join(ROOT_PATH, "ext", "webgpu");
 
 async function bash(subcmd, opts = {}) {
-  const { success, code } = await Deno.spawn("bash", {
+  const { success, code } = await new Deno.Command("bash", {
     ...opts,
     args: ["-c", subcmd],
     stdout: "inherit",
     sdterr: "inherit",
-  });
+  }).output();
 
   // Exit process on failure
   if (!success) {
@@ -37,17 +37,11 @@ async function checkoutUpstream() {
   await bash(cmd);
 }
 
-async function denoCoreVersion() {
-  const coreCargo = join(ROOT_PATH, "core", "Cargo.toml");
-  const contents = await Deno.readTextFile(coreCargo);
-  return contents.match(/^version = "(\d+\.\d+\.\d+)"$/m)[1];
-}
-
 async function denoWebgpuVersion() {
-  const coreCargo = join(ROOT_PATH, "runtime", "Cargo.toml");
+  const coreCargo = join(ROOT_PATH, "Cargo.toml");
   const contents = await Deno.readTextFile(coreCargo);
   return contents.match(
-    /^deno_webgpu = { version = "(\d+\.\d+\.\d+)", path = "..\/ext\/webgpu" }$/m,
+    /^deno_webgpu = { version = "(\d+\.\d+\.\d+)", path = ".\/ext\/webgpu" }$/m,
   )[1];
 }
 
@@ -58,34 +52,32 @@ async function patchFile(path, patcher) {
 }
 
 async function patchCargo() {
-  const vDenoCore = await denoCoreVersion();
   const vDenoWebgpu = await denoWebgpuVersion();
   await patchFile(
     join(TARGET_DIR, "Cargo.toml"),
     (data) =>
       data
         .replace(/^version = .*/m, `version = "${vDenoWebgpu}"`)
-        .replace(`edition = "2018"`, `edition = "2021"`)
         .replace(
-          /^deno_core \= .*$/gm,
-          `deno_core = { version = "${vDenoCore}", path = "../../core" }`,
+          /^repository.workspace = true/m,
+          `repository = "https://github.com/gfx-rs/wgpu"`,
         )
         .replace(
-          /^wgpu-core \= .*$/gm,
-          `wgpu-core = { version = "${V_WGPU}", features = ["trace", "replay", "serde"] }`,
+          /^serde = { workspace = true, features = ["derive"] }/m,
+          `serde.workspace = true`,
         )
         .replace(
-          /^wgpu-types \= .*$/gm,
-          `wgpu-types = { version = "${V_WGPU}", features = ["trace", "replay", "serde"] }`,
+          /^tokio = { workspace = true, features = ["full"] }/m,
+          `tokio.workspace = true`,
         ),
-    // .replace(
-    //   /^wgpu-core \= .*$/gm,
-    //   `wgpu-core = { git = "https://github.com/${REPO}", rev = "${COMMIT}", features = ["trace", "replay", "serde"] }`,
-    // )
-    // .replace(
-    //   /^wgpu-types \= .*$/gm,
-    //   `wgpu-types = { git = "https://github.com/${REPO}", rev = "${COMMIT}", features = ["trace", "replay", "serde"] }`,
-    // )
+  );
+
+  await patchFile(
+    join(ROOT_PATH, "Cargo.toml"),
+    (data) =>
+      data
+        .replace(/^wgpu-core = .*/m, `wgpu-core = "${V_WGPU}"`)
+        .replace(/^wgpu-types = .*/m, `wgpu-types = "${V_WGPU}"`),
   );
 }
 
@@ -93,19 +85,22 @@ async function patchSrcLib() {
   await patchFile(
     join(TARGET_DIR, "src", "lib.rs"),
     (data) =>
-      data.replace(`prefix "deno:deno_webgpu",`, `prefix "deno:ext/webgpu",`),
+      data.replace(
+        `prefix "internal:deno_webgpu",`,
+        `prefix "internal:deno_webgpu",`,
+      ),
   );
 }
 
-async function patchCopyrights() {
-  const walker = walk(TARGET_DIR, { includeDirs: false });
-  for await (const entry of walker) {
-    await patchFile(
-      entry.path,
-      (data) =>
-        data.replace(/^\/\/ Copyright 2018-2021/, "// Copyright 2018-2022"),
-    );
-  }
+async function patchSurface() {
+  await patchFile(
+    join(TARGET_DIR, "src", "surface.rs"),
+    (data) =>
+      data.replace(
+        `prefix "internal:deno_webgpu",`,
+        `prefix "internal:deno_webgpu",`,
+      ),
+  );
 }
 
 async function main() {
@@ -113,7 +108,7 @@ async function main() {
   await checkoutUpstream();
   await patchCargo();
   await patchSrcLib();
-  await patchCopyrights();
+  await patchSurface();
   await bash(join(ROOT_PATH, "tools", "format.js"));
 }
 

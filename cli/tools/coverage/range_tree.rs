@@ -1,6 +1,7 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+//
 // Forked from https://github.com/demurgos/v8-coverage/tree/d0ca18da8740198681e0bc68971b0a6cdb11db3e/rust
 // Copyright 2021 Charles Samborski. All rights reserved. MIT license.
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::json_types::CoverageRange;
 use std::iter::Peekable;
@@ -71,10 +72,7 @@ impl<'rt> RangeTree<'rt> {
     (rta.alloc(left), rta.alloc(right))
   }
 
-  pub fn normalize<'a>(
-    rta: &'a RangeTreeArena<'a>,
-    tree: &'a mut RangeTree<'a>,
-  ) -> &'a mut RangeTree<'a> {
+  pub fn normalize<'a>(tree: &'a mut RangeTree<'a>) -> &'a mut RangeTree<'a> {
     tree.children = {
       let mut children: Vec<&'a mut RangeTree<'a>> = Vec::new();
       let mut chain: Vec<&'a mut RangeTree<'a>> = Vec::new();
@@ -96,7 +94,7 @@ impl<'rt> RangeTree<'rt> {
               head.children.push(sub_child);
             }
           }
-          children.push(RangeTree::normalize(rta, head));
+          children.push(RangeTree::normalize(head));
         }
         chain.push(child)
       }
@@ -110,7 +108,7 @@ impl<'rt> RangeTree<'rt> {
             head.children.push(sub_child);
           }
         }
-        children.push(RangeTree::normalize(rta, head));
+        children.push(RangeTree::normalize(head));
       }
 
       if children.len() == 1

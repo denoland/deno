@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -164,6 +164,7 @@ struct SqlIncrementalCache {
 
 impl SqlIncrementalCache {
   pub fn new(db_file_path: &Path, state_hash: u64) -> Result<Self, AnyError> {
+    log::debug!("Loading incremental cache.");
     let conn = Connection::open(db_file_path)?;
     Self::from_connection(conn, state_hash, crate::version::deno())
   }
@@ -184,7 +185,7 @@ impl SqlIncrementalCache {
       Ok(option) => option,
       Err(err) => {
         if cfg!(debug_assertions) {
-          panic!("Error retrieving hash: {}", err);
+          panic!("Error retrieving hash: {err}");
         } else {
           // fail silently when not debugging
           None
@@ -231,7 +232,7 @@ impl SqlIncrementalCache {
     stmt.execute(params![
       path.to_string_lossy(),
       &self.state_hash.to_string(),
-      &source_hash.to_string(),
+      &source_hash,
     ])?;
     Ok(())
   }
@@ -266,7 +267,7 @@ fn create_tables(
       |row| row.get(0),
     )
     .ok();
-  if data_cli_version != Some(cli_version.to_string()) {
+  if data_cli_version.as_deref() != Some(&cli_version) {
     conn.execute("DELETE FROM incrementalcache", params![])?;
     let mut stmt = conn
       .prepare("INSERT OR REPLACE INTO info (key, value) VALUES (?1, ?2)")?;

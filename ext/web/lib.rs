@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod blob;
 mod compression;
@@ -62,9 +62,9 @@ pub fn init<P: TimersPermission + 'static>(
   blob_store: BlobStore,
   maybe_location: Option<Url>,
 ) -> Extension {
-  Extension::builder()
-    .js(include_js_files!(
-      prefix "deno:ext/web",
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl", "deno_console", "deno_url"])
+    .esm(include_js_files!(
       "00_infra.js",
       "01_dom_exception.js",
       "01_mimesniff.js",
@@ -91,9 +91,11 @@ pub fn init<P: TimersPermission + 'static>(
       op_base64_btoa::decl(),
       op_encoding_normalize_label::decl(),
       op_encoding_decode_single::decl(),
+      op_encoding_decode_utf8::decl(),
       op_encoding_new_decoder::decl(),
       op_encoding_decode::decl(),
       op_encoding_encode_into::decl(),
+      op_encode_binary_string::decl(),
       op_blob_create_part::decl(),
       op_blob_slice_part::decl(),
       op_blob_read_part::decl(),
@@ -111,6 +113,7 @@ pub fn init<P: TimersPermission + 'static>(
       op_timer_handle::decl(),
       op_cancel_handle::decl(),
       op_sleep::decl(),
+      op_transfer_arraybuffer::decl(),
     ])
     .state(move |state| {
       state.put(blob_store.clone());
@@ -126,25 +129,27 @@ pub fn init<P: TimersPermission + 'static>(
 #[op]
 fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {
   let mut s = input.into_bytes();
-  let decoded_len = forgiving_base64_decode(&mut s)?;
+  let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
   Ok(s.into())
 }
 
 #[op]
 fn op_base64_atob(mut s: ByteString) -> Result<ByteString, AnyError> {
-  let decoded_len = forgiving_base64_decode(&mut s)?;
+  let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
   Ok(s)
 }
 
 /// See <https://infra.spec.whatwg.org/#forgiving-base64>
 #[inline]
-fn forgiving_base64_decode(input: &mut [u8]) -> Result<usize, AnyError> {
+fn forgiving_base64_decode_inplace(
+  input: &mut [u8],
+) -> Result<usize, AnyError> {
   let error: _ =
     || DomExceptionInvalidCharacterError::new("Failed to decode base64");
-  let decoded = base64_simd::Base64::forgiving_decode_inplace(input)
-    .map_err(|_| error())?;
+  let decoded =
+    base64_simd::forgiving_decode_inplace(input).map_err(|_| error())?;
   Ok(decoded.len())
 }
 
@@ -161,8 +166,7 @@ fn op_base64_btoa(s: ByteString) -> String {
 /// See <https://infra.spec.whatwg.org/#forgiving-base64>
 #[inline]
 fn forgiving_base64_encode(s: &[u8]) -> String {
-  const BASE64_STANDARD: base64_simd::Base64 = base64_simd::Base64::STANDARD;
-  BASE64_STANDARD.encode_to_boxed_str(s).into_string()
+  base64_simd::STANDARD.encode_to_string(s)
 }
 
 #[op]
@@ -170,11 +174,43 @@ fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
   let encoding = Encoding::for_label_no_replacement(label.as_bytes())
     .ok_or_else(|| {
       range_error(format!(
-        "The encoding label provided ('{}') is invalid.",
-        label
+        "The encoding label provided ('{label}') is invalid."
       ))
     })?;
   Ok(encoding.name().to_lowercase())
+}
+
+#[op(v8)]
+fn op_encoding_decode_utf8<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  zero_copy: &[u8],
+  ignore_bom: bool,
+) -> Result<serde_v8::Value<'a>, AnyError> {
+  let buf = &zero_copy;
+
+  let buf = if !ignore_bom
+    && buf.len() >= 3
+    && buf[0] == 0xef
+    && buf[1] == 0xbb
+    && buf[2] == 0xbf
+  {
+    &buf[3..]
+  } else {
+    buf
+  };
+
+  // If `String::new_from_utf8()` returns `None`, this means that the
+  // length of the decoded string would be longer than what V8 can
+  // handle. In this case we return `RangeError`.
+  //
+  // For more details see:
+  // - https://encoding.spec.whatwg.org/#dom-textdecoder-decode
+  // - https://github.com/denoland/deno/issues/6649
+  // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
+  match v8::String::new_from_utf8(scope, buf, v8::NewStringType::Normal) {
+    Some(text) => Ok(serde_v8::from_v8(scope, text.into())?),
+    None => Err(type_error("buffer exceeds maximum length")),
+  }
 }
 
 #[op]
@@ -186,8 +222,7 @@ fn op_encoding_decode_single(
 ) -> Result<U16String, AnyError> {
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
-      "The encoding label provided ('{}') is invalid.",
-      label
+      "The encoding label provided ('{label}') is invalid."
     ))
   })?;
 
@@ -240,8 +275,7 @@ fn op_encoding_new_decoder(
 ) -> Result<ResourceId, AnyError> {
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
-      "The encoding label provided ('{}') is invalid.",
-      label
+      "The encoding label provided ('{label}') is invalid."
     ))
   })?;
 
@@ -337,9 +371,31 @@ fn op_encoding_encode_into(
   Ok(())
 }
 
-/// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
+#[op(v8)]
+fn op_transfer_arraybuffer<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  input: serde_v8::Value<'a>,
+) -> Result<serde_v8::Value<'a>, AnyError> {
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(input.v8_value)?;
+  if !ab.is_detachable() {
+    return Err(type_error("ArrayBuffer is not detachable"));
+  }
+  let bs = ab.get_backing_store();
+  ab.detach(None);
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
+  Ok(serde_v8::Value {
+    v8_value: ab.into(),
+  })
+}
+
 #[op]
-pub fn op_cancel_handle(state: &mut OpState) -> ResourceId {
+fn op_encode_binary_string(s: &[u8]) -> ByteString {
+  ByteString::from(s)
+}
+
+/// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
+#[op(fast)]
+pub fn op_cancel_handle(state: &mut OpState) -> u32 {
   state.resource_table.add(CancelHandle::new())
 }
 

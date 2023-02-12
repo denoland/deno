@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import {
   assert,
   assertEquals,
@@ -91,17 +93,15 @@ Deno.test(
   async function readTextFileWithAbortSignal() {
     const ac = new AbortController();
     queueMicrotask(() => ac.abort());
-    await assertRejects(
+    const error = await assertRejects(
       async () => {
-        await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+        await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
           signal: ac.signal,
         });
       },
-      (error: Error) => {
-        assert(error instanceof DOMException);
-        assertEquals(error.name, "AbortError");
-      },
     );
+    assert(error instanceof DOMException);
+    assertEquals(error.name, "AbortError");
   },
 );
 
@@ -111,16 +111,14 @@ Deno.test(
     const ac = new AbortController();
     const abortReason = new Error();
     queueMicrotask(() => ac.abort(abortReason));
-    await assertRejects(
+    const error = await assertRejects(
       async () => {
-        await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+        await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
           signal: ac.signal,
         });
       },
-      (error: Error) => {
-        assertEquals(error, abortReason);
-      },
     );
+    assertEquals(error, abortReason);
   },
 );
 
@@ -130,13 +128,24 @@ Deno.test(
     const ac = new AbortController();
     queueMicrotask(() => ac.abort("Some string"));
     try {
-      await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+      await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
         signal: ac.signal,
       });
       unreachable();
     } catch (e) {
       assertEquals(e, "Some string");
     }
+  },
+);
+
+// Test that AbortController's cancel handle is cleaned-up correctly, and do not leak resources.
+Deno.test(
+  { permissions: { read: true } },
+  async function readTextFileWithAbortSignalNotCalled() {
+    const ac = new AbortController();
+    await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
+      signal: ac.signal,
+    });
   },
 );
 

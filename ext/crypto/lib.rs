@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use aes_kw::KekAes128;
 use aes_kw::KekAes192;
@@ -34,17 +34,17 @@ use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
 use ring::signature::EcdsaVerificationAlgorithm;
 use ring::signature::KeyPair;
-use rsa::padding::PaddingScheme;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
-use rsa::PublicKey;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
 use sha1::Sha1;
-use sha2::Digest;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
+use signature::RandomizedSigner;
+use signature::Signer;
+use signature::Verifier;
 use std::convert::TryFrom;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -73,12 +73,9 @@ use crate::key::HkdfOutput;
 use crate::shared::RawKeyData;
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
-  Extension::builder()
-    .js(include_js_files!(
-      prefix "deno:ext/crypto",
-      "00_crypto.js",
-      "01_webidl.js",
-    ))
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_webidl", "deno_web"])
+    .esm(include_js_files!("00_crypto.js", "01_webidl.js",))
     .ops(vec![
       op_crypto_get_random_values::decl(),
       op_crypto_generate_key::decl(),
@@ -132,24 +129,24 @@ pub fn op_crypto_base64url_encode(data: ZeroCopyBuf) -> String {
   data
 }
 
-#[op]
+#[op(fast)]
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
-  mut zero_copy: ZeroCopyBuf,
+  out: &mut [u8],
 ) -> Result<(), AnyError> {
-  if zero_copy.len() > 65536 {
+  if out.len() > 65536 {
     return Err(
-      deno_web::DomExceptionQuotaExceededError::new(&format!("The ArrayBufferView's byte length ({}) exceeds the number of bytes of entropy available via this API (65536)", zero_copy.len()))
+      deno_web::DomExceptionQuotaExceededError::new(&format!("The ArrayBufferView's byte length ({}) exceeds the number of bytes of entropy available via this API (65536)", out.len()))
         .into(),
     );
   }
 
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   if let Some(seeded_rng) = maybe_seeded_rng {
-    seeded_rng.fill(&mut *zero_copy);
+    seeded_rng.fill(out);
   } else {
     let mut rng = thread_rng();
-    rng.fill(&mut *zero_copy);
+    rng.fill(out);
   }
 
   Ok(())
@@ -198,57 +195,34 @@ pub async fn op_crypto_sign_key(
 
   let signature = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
-      let private_key = RsaPrivateKey::from_pkcs1_der(&*args.key.data)?;
-      let (padding, hashed) = match args
+      use rsa::pkcs1v15::SigningKey;
+      let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
+      match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let mut hasher = Sha1::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA1),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key = SigningKey::<Sha1>::new_with_prefix(private_key);
+          signing_key.sign(data)
         }
         CryptoHash::Sha256 => {
-          let mut hasher = Sha256::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA2_256),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key = SigningKey::<Sha256>::new_with_prefix(private_key);
+          signing_key.sign(data)
         }
         CryptoHash::Sha384 => {
-          let mut hasher = Sha384::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA2_384),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key = SigningKey::<Sha384>::new_with_prefix(private_key);
+          signing_key.sign(data)
         }
         CryptoHash::Sha512 => {
-          let mut hasher = Sha512::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA2_512),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key = SigningKey::<Sha512>::new_with_prefix(private_key);
+          signing_key.sign(data)
         }
-      };
-
-      private_key.sign(padding, &hashed)?
+      }
+      .to_vec()
     }
     Algorithm::RsaPss => {
-      let private_key = RsaPrivateKey::from_pkcs1_der(&*args.key.data)?;
+      use rsa::pss::SigningKey;
+      let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
 
       let salt_len = args
         .salt_length
@@ -256,52 +230,38 @@ pub async fn op_crypto_sign_key(
         as usize;
 
       let rng = OsRng;
-      let (padding, digest_in) = match args
+      match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let mut hasher = Sha1::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key =
+            SigningKey::<Sha1>::new_with_salt_len(private_key, salt_len);
+          signing_key.sign_with_rng(rng, data)
         }
         CryptoHash::Sha256 => {
-          let mut hasher = Sha256::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha256, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key =
+            SigningKey::<Sha256>::new_with_salt_len(private_key, salt_len);
+          signing_key.sign_with_rng(rng, data)
         }
         CryptoHash::Sha384 => {
-          let mut hasher = Sha384::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha384, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key =
+            SigningKey::<Sha384>::new_with_salt_len(private_key, salt_len);
+          signing_key.sign_with_rng(rng, data)
         }
         CryptoHash::Sha512 => {
-          let mut hasher = Sha512::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha512, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let signing_key =
+            SigningKey::<Sha512>::new_with_salt_len(private_key, salt_len);
+          signing_key.sign_with_rng(rng, data)
         }
-      };
-
-      // Sign data based on computed padding and return buffer
-      private_key.sign(padding, &digest_in)?
+      }
+      .to_vec()
     }
     Algorithm::Ecdsa => {
       let curve: &EcdsaSigningAlgorithm =
         args.named_curve.ok_or_else(not_supported)?.try_into()?;
 
-      let key_pair = EcdsaKeyPair::from_pkcs8(curve, &*args.key.data)?;
+      let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data)?;
       // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
       // https://briansmith.org/rustdoc/ring/signature/index.html#statics
       if let Some(hash) = args.hash {
@@ -320,7 +280,7 @@ pub async fn op_crypto_sign_key(
     Algorithm::Hmac => {
       let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
 
-      let key = HmacKey::new(hash, &*args.key.data);
+      let key = HmacKey::new(hash, &args.key.data);
 
       let signature = ring::hmac::sign(&key, data);
       signature.as_ref().to_vec()
@@ -336,7 +296,6 @@ pub async fn op_crypto_sign_key(
 pub struct VerifyArg {
   key: KeyData,
   algorithm: Algorithm,
-  salt_length: Option<u32>,
   hash: Option<CryptoHash>,
   signature: ZeroCopyBuf,
   named_curve: Option<CryptoNamedCurve>,
@@ -352,111 +311,67 @@ pub async fn op_crypto_verify_key(
 
   let verification = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
+      use rsa::pkcs1v15::Signature;
+      use rsa::pkcs1v15::VerifyingKey;
       let public_key = read_rsa_public_key(args.key)?;
-      let (padding, hashed) = match args
+      let signature: Signature = args.signature.to_vec().into();
+      match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let mut hasher = Sha1::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA1),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key = VerifyingKey::<Sha1>::new_with_prefix(public_key);
+          verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha256 => {
-          let mut hasher = Sha256::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA2_256),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key =
+            VerifyingKey::<Sha256>::new_with_prefix(public_key);
+          verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha384 => {
-          let mut hasher = Sha384::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA2_384),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key =
+            VerifyingKey::<Sha384>::new_with_prefix(public_key);
+          verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha512 => {
-          let mut hasher = Sha512::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::PKCS1v15Sign {
-              hash: Some(rsa::hash::Hash::SHA2_512),
-            },
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key =
+            VerifyingKey::<Sha512>::new_with_prefix(public_key);
+          verifying_key.verify(data, &signature).is_ok()
         }
-      };
-
-      public_key
-        .verify(padding, &hashed, &*args.signature)
-        .is_ok()
+      }
     }
     Algorithm::RsaPss => {
-      let salt_len = args
-        .salt_length
-        .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
-        as usize;
+      use rsa::pss::Signature;
+      use rsa::pss::VerifyingKey;
       let public_key = read_rsa_public_key(args.key)?;
+      let signature: Signature = args.signature.to_vec().into();
 
-      let rng = OsRng;
-      let (padding, hashed) = match args
+      match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         CryptoHash::Sha1 => {
-          let mut hasher = Sha1::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key: VerifyingKey<Sha1> = public_key.into();
+          verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha256 => {
-          let mut hasher = Sha256::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha256, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key: VerifyingKey<Sha256> = public_key.into();
+          verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha384 => {
-          let mut hasher = Sha384::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha384, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key: VerifyingKey<Sha384> = public_key.into();
+          verifying_key.verify(data, &signature).is_ok()
         }
         CryptoHash::Sha512 => {
-          let mut hasher = Sha512::new();
-          hasher.update(&data);
-          (
-            PaddingScheme::new_pss_with_salt::<Sha512, _>(rng, salt_len),
-            hasher.finalize()[..].to_vec(),
-          )
+          let verifying_key: VerifyingKey<Sha512> = public_key.into();
+          verifying_key.verify(data, &signature).is_ok()
         }
-      };
-
-      public_key
-        .verify(padding, &hashed, &*args.signature)
-        .is_ok()
+      }
     }
     Algorithm::Hmac => {
       let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
-      let key = HmacKey::new(hash, &*args.key.data);
-      ring::hmac::verify(&key, data, &*args.signature).is_ok()
+      let key = HmacKey::new(hash, &args.key.data);
+      ring::hmac::verify(&key, data, &args.signature).is_ok()
     }
     Algorithm::Ecdsa => {
       let signing_alg: &EcdsaSigningAlgorithm =
@@ -468,7 +383,7 @@ pub async fn op_crypto_verify_key(
 
       let public_key_bytes = match args.key.r#type {
         KeyType::Private => {
-          private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &*args.key.data)?;
+          private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data)?;
 
           private_key.public_key().as_ref()
         }
@@ -479,7 +394,7 @@ pub async fn op_crypto_verify_key(
       let public_key =
         ring::signature::UnparsedPublicKey::new(verify_alg, public_key_bytes);
 
-      public_key.verify(data, &*args.signature).is_ok()
+      public_key.verify(data, &args.signature).is_ok()
     }
     _ => return Err(type_error("Unsupported algorithm".to_string())),
   };
@@ -659,9 +574,9 @@ pub async fn op_crypto_derive_bits(
 fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, AnyError> {
   let public_key = match key_data.r#type {
     KeyType::Private => {
-      RsaPrivateKey::from_pkcs1_der(&*key_data.data)?.to_public_key()
+      RsaPrivateKey::from_pkcs1_der(&key_data.data)?.to_public_key()
     }
-    KeyType::Public => RsaPublicKey::from_pkcs1_der(&*key_data.data)?,
+    KeyType::Public => RsaPublicKey::from_pkcs1_der(&key_data.data)?,
     KeyType::Secret => unreachable!("unexpected KeyType::Secret"),
   };
   Ok(public_key)

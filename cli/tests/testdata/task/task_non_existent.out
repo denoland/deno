@@ -1,4 +1,3 @@
-Warning deno task is unstable and may drastically change in the future
 Task not found: non_existent
 Available tasks:
 - boolean_logic
@@ -9,6 +8,10 @@ Available tasks:
     echo 1
 - echo_cwd
     echo $(pwd)
+- echo_emoji
+    echo 🔥
+- echo_init_cwd
+    echo $INIT_CWD
 - exit_code_5
     echo $(echo 10 ; exit 2) && exit 5
 - piped

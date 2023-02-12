@@ -1,14 +1,25 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use atty;
 use once_cell::sync::Lazy;
 use std::fmt;
 use std::io::Write;
-use termcolor::Color::{Ansi256, Black, Blue, Cyan, Green, Red, White, Yellow};
-use termcolor::{Ansi, ColorSpec, WriteColor};
+use termcolor::Ansi;
+use termcolor::Color::Ansi256;
+use termcolor::Color::Black;
+use termcolor::Color::Blue;
+use termcolor::Color::Cyan;
+use termcolor::Color::Green;
+use termcolor::Color::Red;
+use termcolor::Color::White;
+use termcolor::Color::Yellow;
+use termcolor::ColorSpec;
+use termcolor::WriteColor;
 
 #[cfg(windows)]
-use termcolor::{BufferWriter, ColorChoice};
+use termcolor::BufferWriter;
+#[cfg(windows)]
+use termcolor::ColorChoice;
 
 static NO_COLOR: Lazy<bool> =
   Lazy::new(|| std::env::var_os("NO_COLOR").is_some());

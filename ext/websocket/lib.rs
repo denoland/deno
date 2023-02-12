@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
@@ -321,7 +321,7 @@ where
     Some("ws") => 80,
     _ => unreachable!(),
   });
-  let addr = format!("{}:{}", domain, port);
+  let addr = format!("{domain}:{port}");
   let tcp_socket = TcpStream::connect(addr).await?;
 
   let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
@@ -359,8 +359,7 @@ where
     }
     .map_err(|err| {
       DomExceptionNetworkError::new(&format!(
-        "failed to connect to WebSocket: {}",
-        err
+        "failed to connect to WebSocket: {err}"
       ))
     })?;
 
@@ -489,7 +488,9 @@ pub async fn op_ws_next_event(
     Some(Ok(Message::Pong(_))) => NextEventResponse::Pong,
     Some(Err(e)) => NextEventResponse::Error(e.to_string()),
     None => {
-      state.borrow_mut().resource_table.close(rid).unwrap();
+      // No message was received, presumably the socket closed while we waited.
+      // Try close the stream, ignoring any errors, and report closed status to JavaScript.
+      let _ = state.borrow_mut().resource_table.close(rid);
       NextEventResponse::Closed
     }
   };
@@ -501,9 +502,9 @@ pub fn init<P: WebSocketPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
-  Extension::builder()
-    .js(include_js_files!(
-      prefix "deno:ext/websocket",
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .dependencies(vec!["deno_url", "deno_webidl"])
+    .esm(include_js_files!(
       "01_websocket.js",
       "02_websocketstream.js",
     ))

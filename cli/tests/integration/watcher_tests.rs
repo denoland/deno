@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use flaky_test::flaky_test;
 use std::fs::write;
@@ -6,6 +6,8 @@ use std::io::BufRead;
 use test_util as util;
 use test_util::assert_contains;
 use test_util::TempDir;
+
+use util::assert_not_contains;
 
 const CLEAR_SCREEN: &str = r#"[2J"#;
 
@@ -72,14 +74,14 @@ fn child_lines(
     .lines()
     .map(|r| {
       let line = r.unwrap();
-      eprintln!("STDOUT: {}", line);
+      eprintln!("STDOUT: {line}");
       line
     });
   let stderr_lines = std::io::BufReader::new(child.stderr.take().unwrap())
     .lines()
     .map(|r| {
       let line = r.unwrap();
-      eprintln!("STERR: {}", line);
+      eprintln!("STDERR: {line}");
       line
     });
   (stdout_lines, stderr_lines)
@@ -102,7 +104,7 @@ fn lint_watch_test() {
     util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
   let badly_linted = t.path().join("badly_linted.js");
 
-  std::fs::copy(&badly_linted_original, &badly_linted).unwrap();
+  std::fs::copy(badly_linted_original, &badly_linted).unwrap();
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -121,16 +123,16 @@ fn lint_watch_test() {
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
   assert_eq!(output, expected);
 
-  // Change content of the file again to be badly-linted1
-  std::fs::copy(&badly_linted_fixed1, &badly_linted).unwrap();
+  // Change content of the file again to be badly-linted
+  std::fs::copy(badly_linted_fixed1, &badly_linted).unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
 
   output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
   assert_eq!(output, expected);
 
-  // Change content of the file again to be badly-linted1
-  std::fs::copy(&badly_linted_fixed2, &badly_linted).unwrap();
+  // Change content of the file again to be badly-linted
+  std::fs::copy(badly_linted_fixed2, &badly_linted).unwrap();
 
   output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_fixed2_output).unwrap();
@@ -160,7 +162,7 @@ fn lint_watch_without_args_test() {
     util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
   let badly_linted = t.path().join("badly_linted.js");
 
-  std::fs::copy(&badly_linted_original, &badly_linted).unwrap();
+  std::fs::copy(badly_linted_original, &badly_linted).unwrap();
 
   let mut child = util::deno_cmd()
     .current_dir(t.path())
@@ -179,15 +181,15 @@ fn lint_watch_without_args_test() {
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
   assert_eq!(output, expected);
 
-  // Change content of the file again to be badly-linted1
-  std::fs::copy(&badly_linted_fixed1, &badly_linted).unwrap();
+  // Change content of the file again to be badly-linted
+  std::fs::copy(badly_linted_fixed1, &badly_linted).unwrap();
 
   output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
   assert_eq!(output, expected);
 
-  // Change content of the file again to be badly-linted1
-  std::fs::copy(&badly_linted_fixed2, &badly_linted).unwrap();
+  // Change content of the file again to be badly-linted
+  std::fs::copy(badly_linted_fixed2, &badly_linted).unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
 
   output = read_all_lints(&mut stderr_lines);
@@ -213,13 +215,13 @@ fn lint_all_files_on_each_change_test() {
 
   let badly_linted_1 = t.path().join("badly_linted_1.js");
   let badly_linted_2 = t.path().join("badly_linted_2.js");
-  std::fs::copy(&badly_linted_fixed0, &badly_linted_1).unwrap();
-  std::fs::copy(&badly_linted_fixed1, &badly_linted_2).unwrap();
+  std::fs::copy(badly_linted_fixed0, badly_linted_1).unwrap();
+  std::fs::copy(badly_linted_fixed1, &badly_linted_2).unwrap();
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("lint")
-    .arg(&t.path())
+    .arg(t.path())
     .arg("--watch")
     .arg("--unstable")
     .stdout(std::process::Stdio::piped())
@@ -230,7 +232,7 @@ fn lint_all_files_on_each_change_test() {
 
   assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 2 files");
 
-  std::fs::copy(&badly_linted_fixed2, &badly_linted_2).unwrap();
+  std::fs::copy(badly_linted_fixed2, badly_linted_2).unwrap();
 
   assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 2 files");
 
@@ -344,12 +346,12 @@ fn fmt_check_all_files_on_each_change_test() {
   let badly_formatted_1 = t.path().join("badly_formatted_1.js");
   let badly_formatted_2 = t.path().join("badly_formatted_2.js");
   std::fs::copy(&badly_formatted_original, &badly_formatted_1).unwrap();
-  std::fs::copy(&badly_formatted_original, &badly_formatted_2).unwrap();
+  std::fs::copy(&badly_formatted_original, badly_formatted_2).unwrap();
 
   let mut child = util::deno_cmd()
     .current_dir(&fmt_testdata_path)
     .arg("fmt")
-    .arg(&t.path())
+    .arg(t.path())
     .arg("--watch")
     .arg("--check")
     .arg("--unstable")
@@ -413,7 +415,8 @@ fn bundle_js_watch() {
 
   assert_contains!(stderr_lines.next().unwrap(), "Check");
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
+  // Should not clear screen, as we are in non-TTY environment
+  assert_not_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "File change detected!");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.ts");
   assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
@@ -455,6 +458,9 @@ fn bundle_watch_not_exit() {
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
+  assert_eq!(stderr_lines.next().unwrap(), "");
+  assert_eq!(stderr_lines.next().unwrap(), "  syntax error ^^");
+  assert_eq!(stderr_lines.next().unwrap(), "         ~~~~~");
   assert_contains!(stderr_lines.next().unwrap(), "Bundle failed");
   // the target file hasn't been created yet
   assert!(!target_file.is_file());
@@ -464,7 +470,8 @@ fn bundle_watch_not_exit() {
 
   assert_contains!(stderr_lines.next().unwrap(), "Check");
   let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
+  // Should not clear screen, as we are in non-TTY environment
+  assert_not_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "File change detected!");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.ts");
   assert_contains!(stderr_lines.next().unwrap(), "target.js");
@@ -582,6 +589,10 @@ fn run_watch_no_dynamic() {
   check_alive_then_kill(child);
 }
 
+// TODO(bartlomieju): this test became flaky on macOS runner; it is unclear
+// if that's because of a bug in code or the runner itself. We should reenable
+// it once we upgrade to XL runners for macOS.
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn run_watch_external_watch_files() {
   let t = TempDir::new();
@@ -624,9 +635,14 @@ fn run_watch_external_watch_files() {
 
   // Change content of the external file
   write(&external_file_to_watch, "Hello world2").unwrap();
-
   wait_contains("Restarting", &mut stderr_lines);
   wait_contains("Process finished", &mut stderr_lines);
+
+  // Again (https://github.com/denoland/deno/issues/17584)
+  write(&external_file_to_watch, "Hello world3").unwrap();
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("Process finished", &mut stderr_lines);
+
   check_alive_then_kill(child);
 }
 
@@ -828,7 +844,7 @@ fn test_watch() {
     .arg("--watch")
     .arg("--unstable")
     .arg("--no-check")
-    .arg(&t.path())
+    .arg(t.path())
     .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
@@ -852,7 +868,7 @@ fn test_watch() {
   )
   .unwrap();
   write(
-    &bar_test,
+    bar_test,
     "import bar from './bar.js'; Deno.test('bar', bar);",
   )
   .unwrap();
@@ -909,6 +925,9 @@ fn test_watch() {
   write(&another_test, "syntax error ^^").unwrap();
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
+  assert_eq!(stderr_lines.next().unwrap(), "");
+  assert_eq!(stderr_lines.next().unwrap(), "  syntax error ^^");
+  assert_eq!(stderr_lines.next().unwrap(), "         ~~~~~");
   assert_contains!(stderr_lines.next().unwrap(), "Test failed");
 
   // Then restore the file
@@ -969,7 +988,7 @@ fn test_watch_doc() {
     .arg("--watch")
     .arg("--doc")
     .arg("--unstable")
-    .arg(&t.path())
+    .arg(t.path())
     .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
@@ -1072,6 +1091,44 @@ fn test_watch_unload_handler_error_on_drop() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/15465.
+#[test]
+fn run_watch_reload_once() {
+  let _g = util::http_server();
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  let file_content = r#"
+      import { time } from "http://localhost:4545/dynamic_module.ts";
+      console.log(time);
+    "#;
+  write(&file_to_watch, file_content).unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--reload")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("finished", &mut stderr_lines);
+  let first_output = stdout_lines.next().unwrap();
+
+  write(&file_to_watch, file_content).unwrap();
+  // The remote dynamic module should not have been reloaded again.
+
+  wait_contains("finished", &mut stderr_lines);
+  let second_output = stdout_lines.next().unwrap();
+  assert_eq!(second_output, first_output);
+
+  check_alive_then_kill(child);
+}
+
 #[test]
 fn run_watch_dynamic_imports() {
   let t = TempDir::new();
@@ -1086,7 +1143,7 @@ fn run_watch_dynamic_imports() {
   .unwrap();
   let file_to_watch2 = t.path().join("imported.js");
   write(
-    &file_to_watch2,
+    file_to_watch2,
     r#"
     import "./imported2.js";
     console.log("I'm dynamically imported and I cause restarts!");
@@ -1133,11 +1190,11 @@ fn run_watch_dynamic_imports() {
     &mut stdout_lines,
   );
 
-  wait_contains("finished", &mut stderr_lines);
   wait_for(
     |m| m.contains("Watching paths") && m.contains("imported2.js"),
     &mut stderr_lines,
   );
+  wait_contains("finished", &mut stderr_lines);
 
   write(
     &file_to_watch3,

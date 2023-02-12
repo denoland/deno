@@ -1,4 +1,7 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use crate::npm_registry_url;
+use crate::std_file_url;
 
 use super::new_deno_dir;
 use super::TempDir;
@@ -11,8 +14,9 @@ use regex::Regex;
 use serde::de;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::json;
+use serde_json::to_value;
 use serde_json::Value;
-use serde_json::{json, to_value};
 use std::io;
 use std::io::Write;
 use std::path::Path;
@@ -156,7 +160,7 @@ pub struct LspClient {
   request_id: u64,
   start: Instant,
   writer: io::BufWriter<ChildStdin>,
-  _temp_deno_dir: TempDir, // directory will be deleted on drop
+  deno_dir: TempDir,
 }
 
 impl Drop for LspClient {
@@ -166,8 +170,8 @@ impl Drop for LspClient {
         self.child.kill().unwrap();
         let _ = self.child.wait();
       }
-      Ok(Some(status)) => panic!("deno lsp exited unexpectedly {}", status),
-      Err(e) => panic!("pebble error: {}", e),
+      Ok(Some(status)) => panic!("deno lsp exited unexpectedly {status}"),
+      Err(e) => panic!("pebble error: {e}"),
     }
   }
 }
@@ -230,6 +234,8 @@ impl LspClient {
     let mut command = Command::new(deno_exe);
     command
       .env("DENO_DIR", deno_dir.path())
+      .env("DENO_NODE_COMPAT_URL", std_file_url())
+      .env("NPM_CONFIG_REGISTRY", npm_registry_url())
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
@@ -250,8 +256,12 @@ impl LspClient {
       request_id: 1,
       start: Instant::now(),
       writer,
-      _temp_deno_dir: deno_dir,
+      deno_dir,
     })
+  }
+
+  pub fn deno_dir(&self) -> &TempDir {
+    &self.deno_dir
   }
 
   pub fn duration(&self) -> Duration {

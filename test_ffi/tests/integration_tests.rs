@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::process::Command;
 use test_util::deno_cmd;
@@ -38,8 +38,8 @@ fn basic() {
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
   if !output.status.success() {
-    println!("stdout {}", stdout);
-    println!("stderr {}", stderr);
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
   }
   println!("{:?}", output.status);
   assert!(output.status.success());
@@ -57,7 +57,7 @@ fn basic() {
     false\n\
     true\n\
     false\n\
-    false\n\
+    true\n\
     false\n\
     579\n\
     true\n\
@@ -127,6 +127,10 @@ fn basic() {
     Static i64: -1242464576485\n\
     Static ptr: true\n\
     Static ptr value: 42\n\
+    Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }\n\
+    Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }\n\
+    Rect { x: 20.0, y: 20.0, w: 100.0, h: 200.0 }\n\
+    Mixed { u8: 3, f32: 12.515, rect: Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }, usize: 12456789, array: [8, 32] }\n\
     arrayBuffer.byteLength: 4\n\
     uint32Array.length: 1\n\
     uint32Array[0]: 42\n\
@@ -154,8 +158,8 @@ fn symbol_types() {
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
   if !output.status.success() {
-    println!("stdout {}", stdout);
-    println!("stderr {}", stderr);
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
   }
   println!("{:?}", output.status);
   assert!(output.status.success());
@@ -179,8 +183,8 @@ fn thread_safe_callback() {
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
   if !output.status.success() {
-    println!("stdout {}", stdout);
-    println!("stderr {}", stderr);
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
   }
   println!("{:?}", output.status);
   assert!(output.status.success());
@@ -211,8 +215,8 @@ fn event_loop_integration() {
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
   if !output.status.success() {
-    println!("stdout {}", stdout);
-    println!("stderr {}", stderr);
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
   }
   println!("{:?}", output.status);
   assert!(output.status.success());

@@ -1,0 +1,6 @@
+Download http://localhost:4545/npm/registry/@denotest/typescript-file
+Download http://localhost:4545/npm/registry/@denotest/typescript-file/1.0.0.tgz
+error: Could not resolve 'npm:@denotest/typescript-file'.
+
+Caused by:
+    TypeScript files are not supported in npm packages: file:///[WILDCARD]/@denotest/typescript-file/1.0.0/index.ts

@@ -1,11 +1,11 @@
 Node esm importing node cjs
 ===========================
-{ default: [Function], named: [Function], MyClass: [Function: MyClass] }
+{ default: [Function], named: [Function], MyClass: [Class: MyClass] }
 { default: [Function], named: [Function] }
 Module {
-  MyClass: [Function: MyClass],
+  MyClass: [Class: MyClass],
   __esModule: true,
-  default: { default: [Function], named: [Function], MyClass: [Function: MyClass] },
+  default: { default: [Function], named: [Function], MyClass: [Class: MyClass] },
   named: [Function]
 }
 Module {
@@ -17,11 +17,11 @@ Module {
 static method
 Deno esm importing node cjs
 ===========================
-{ default: [Function], named: [Function], MyClass: [Function: MyClass] }
+{ default: [Function], named: [Function], MyClass: [Class: MyClass] }
 Module {
-  MyClass: [Function: MyClass],
+  MyClass: [Class: MyClass],
   __esModule: true,
-  default: { default: [Function], named: [Function], MyClass: [Function: MyClass] },
+  default: { default: [Function], named: [Function], MyClass: [Class: MyClass] },
   named: [Function]
 }
 ===========================

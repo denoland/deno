@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::*;
 
 #[repr(C)]
@@ -27,13 +27,12 @@ impl CallbackInfo {
 }
 
 extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
-  let args =
-    unsafe { v8::FunctionCallbackArguments::from_function_callback_info(info) };
-  let mut rv = unsafe { v8::ReturnValue::from_function_callback_info(info) };
+  let info = unsafe { &*info };
+  let args = v8::FunctionCallbackArguments::from_function_callback_info(info);
+  let mut rv = v8::ReturnValue::from_function_callback_info(info);
   // SAFETY: create_function guarantees that the data is a CallbackInfo external.
   let info_ptr: *mut CallbackInfo = unsafe {
-    let external_value =
-      v8::Local::<v8::External>::cast(args.data().unwrap_unchecked());
+    let external_value = v8::Local::<v8::External>::cast(args.data());
     external_value.value() as _
   };
 
@@ -52,7 +51,7 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn create_function<'a>(
   env_ptr: *mut Env,
-  name: Option<&str>,
+  name: Option<v8::Local<v8::String>>,
   cb: napi_callback,
   cb_info: napi_callback_info,
 ) -> v8::Local<'a, v8::Function> {
@@ -68,8 +67,7 @@ pub fn create_function<'a>(
     .build(scope)
     .unwrap();
 
-  if let Some(name) = name {
-    let v8str = v8::String::new(scope, name).unwrap();
+  if let Some(v8str) = name {
     function.set_name(v8str);
   }
 

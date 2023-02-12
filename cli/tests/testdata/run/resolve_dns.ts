@@ -62,3 +62,32 @@ try {
     } thrown for not-found-example.com`,
   );
 }
+
+try {
+  // @ts-ignore testing invalid overloads
+  await Deno.resolveDns("example.com", "SSHFP", nameServer);
+} catch (e) {
+  console.log(e.message);
+}
+
+try {
+  const ac = new AbortController();
+  queueMicrotask(() => ac.abort());
+  await Deno.resolveDns("www.example.com", "A", {
+    ...nameServer,
+    signal: ac.signal,
+  });
+} catch (e) {
+  console.log(e.name);
+}
+
+try {
+  const ac = new AbortController();
+  ac.abort();
+  await Deno.resolveDns("www.example.com", "A", {
+    ...nameServer,
+    signal: ac.signal,
+  });
+} catch (e) {
+  console.log(e.name);
+}
