@@ -302,9 +302,8 @@ class WebSocket extends EventTarget {
       throw new DOMException("readyState not OPEN", "InvalidStateError");
     }
 
+    // TODO(petamoriken): use primordials
     const sendTypedArray = (ta) => {
-      // TODO(petamoriken): use primordials
-      // deno-lint-ignore prefer-primordials
       this[_bufferedAmount] += ta.byteLength;
       PromisePrototypeThen(
         core.opAsync("op_ws_send", this[_rid], {
@@ -312,8 +311,6 @@ class WebSocket extends EventTarget {
           value: ta,
         }),
         () => {
-          // TODO(petamoriken): use primordials
-          // deno-lint-ignore prefer-primordials
           this[_bufferedAmount] -= ta.byteLength;
         },
       );
