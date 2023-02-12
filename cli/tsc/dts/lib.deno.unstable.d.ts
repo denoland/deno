@@ -753,7 +753,7 @@ declare namespace Deno {
     /** Set an optional timeout for idle sockets being kept-alive.
      * Set to false to disable the timeout. */
     poolIdleTimeout?: number | false;
-    /** Specify whether only wanting HTTP1 or HTTP2 */
+    /** Specify whether only wanting HTTP/1.1 or HTTP/2 */
     only?: "http1" | "http2";
   }
 
