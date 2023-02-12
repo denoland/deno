@@ -314,8 +314,9 @@ async function handleResponse(
 
   const ws = resp[_ws];
   if (isStreamingResponseBody === false) {
-    const length = TypedArrayPrototypeGetByteLength(respBody) ||
-      core.byteLength(respBody);
+    // TODO(petamoriken): use prefer-primordials
+    // deno-lint-ignore prefer-primordials
+    const length = respBody.byteLength || core.byteLength(respBody);
     const responseStr = http1Response(
       method,
       innerResp.status ?? 200,
