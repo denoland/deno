@@ -118,14 +118,20 @@ where
       state.put::<reqwest::Client>({
         create_http_client(
           options.user_agent.clone(),
-          options.root_cert_store.clone(),
-          vec![],
-          options.proxy.clone(),
-          options.unsafely_ignore_certificate_errors.clone(),
-          options.client_cert_chain_and_key.clone(),
-          None,
-          None,
-          None,
+          CreateHttpClientOptions {
+            root_cert_store: options.root_cert_store.clone(),
+            ca_certs: vec![],
+            proxy: options.proxy.clone(),
+            unsafely_ignore_certificate_errors: options
+              .unsafely_ignore_certificate_errors
+              .clone(),
+            client_cert_chain_and_key: options
+              .client_cert_chain_and_key
+              .clone(),
+            pool_max_idle_per_host: None,
+            pool_idle_timeout: None,
+            only: None,
+          },
         )
         .unwrap()
       });
