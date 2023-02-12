@@ -8,7 +8,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[derive(Clone)]
 pub enum Hash {
   Md4(Box<md4::Md4>),
   Md5(Box<md5::Md5>),
