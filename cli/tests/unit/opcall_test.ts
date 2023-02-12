@@ -16,8 +16,8 @@ Deno.test(async function sendAsyncStackTrace() {
     assertStringIncludes(s, "opcall_test.ts");
     assertStringIncludes(s, "read");
     assert(
-      !s.includes("deno:core"),
-      "opcall stack traces should NOT include deno:core internals such as unwrapOpResult",
+      !s.includes("internal:core"),
+      "opcall stack traces should NOT include internal:core internals such as unwrapOpResult",
     );
   }
 });

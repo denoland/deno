@@ -32,9 +32,8 @@ use deno_core::futures::future;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
-use deno_graph::DefaultParsedSourceStore;
 use deno_graph::GraphImport;
-use deno_graph::Resolved;
+use deno_graph::Resolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
@@ -244,7 +243,7 @@ impl AssetOrDocument {
 #[derive(Debug, Default)]
 struct DocumentDependencies {
   deps: BTreeMap<String, deno_graph::Dependency>,
-  maybe_types_dependency: Option<(String, Resolved)>,
+  maybe_types_dependency: Option<deno_graph::TypesDependency>,
 }
 
 impl DocumentDependencies {
@@ -509,13 +508,12 @@ impl Document {
     self.0.maybe_lsp_version.is_some()
   }
 
-  pub fn maybe_types_dependency(&self) -> deno_graph::Resolved {
-    if let Some((_, maybe_dep)) =
-      self.0.dependencies.maybe_types_dependency.as_ref()
+  pub fn maybe_types_dependency(&self) -> Resolution {
+    if let Some(types_dep) = self.0.dependencies.maybe_types_dependency.as_ref()
     {
-      maybe_dep.clone()
+      types_dep.dependency.clone()
     } else {
-      deno_graph::Resolved::None
+      Resolution::None
     }
   }
 
@@ -598,20 +596,23 @@ impl Document {
   }
 }
 
-pub fn to_hover_text(result: &Resolved) -> String {
+pub fn to_hover_text(result: &Resolution) -> String {
   match result {
-    Resolved::Ok { specifier, .. } => match specifier.scheme() {
-      "data" => "_(a data url)_".to_string(),
-      "blob" => "_(a blob url)_".to_string(),
-      _ => format!(
-        "{}&#8203;{}",
-        &specifier[..url::Position::AfterScheme],
-        &specifier[url::Position::AfterScheme..],
-      )
-      .replace('@', "&#8203;@"),
-    },
-    Resolved::Err(_) => "_[errored]_".to_string(),
-    Resolved::None => "_[missing]_".to_string(),
+    Resolution::Ok(resolved) => {
+      let specifier = &resolved.specifier;
+      match specifier.scheme() {
+        "data" => "_(a data url)_".to_string(),
+        "blob" => "_(a blob url)_".to_string(),
+        _ => format!(
+          "{}&#8203;{}",
+          &specifier[..url::Position::AfterScheme],
+          &specifier[url::Position::AfterScheme..],
+        )
+        .replace('@', "&#8203;@"),
+      }
+    }
+    Resolution::Err(_) => "_[errored]_".to_string(),
+    Resolution::None => "_[missing]_".to_string(),
   }
 }
 
@@ -1095,15 +1096,16 @@ impl Documents {
       } else if let Some(dep) =
         dependencies.as_ref().and_then(|d| d.deps.get(&specifier))
       {
-        if let Resolved::Ok { specifier, .. } = &dep.maybe_type {
+        if let Some(specifier) = dep.maybe_type.maybe_specifier() {
           results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
-        } else if let Resolved::Ok { specifier, .. } = &dep.maybe_code {
+        } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
           results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
         } else {
           results.push(None);
         }
-      } else if let Some(Resolved::Ok { specifier, .. }) =
-        self.resolve_imports_dependency(&specifier)
+      } else if let Some(specifier) = self
+        .resolve_imports_dependency(&specifier)
+        .and_then(|r| r.maybe_specifier())
       {
         results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
       } else if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
@@ -1187,18 +1189,18 @@ impl Documents {
     self.maybe_resolver =
       CliResolver::maybe_new(maybe_jsx_config, maybe_import_map, None);
     self.imports = Arc::new(
-      if let Some(Ok(Some(imports))) =
+      if let Some(Ok(imports)) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
       {
         imports
           .into_iter()
-          .map(|(referrer, dependencies)| {
+          .map(|import| {
             let graph_import = GraphImport::new(
-              referrer.clone(),
-              dependencies,
+              &import.referrer,
+              import.imports,
               self.get_maybe_resolver(),
             );
-            (referrer, graph_import)
+            (import.referrer, graph_import)
           })
           .collect()
       } else {
@@ -1275,10 +1277,8 @@ impl Documents {
             self.add(dep, specifier);
           }
         }
-        if let Resolved::Ok { specifier: dep, .. } =
-          doc.maybe_types_dependency()
-        {
-          self.add(&dep, specifier);
+        if let Some(dep) = doc.maybe_types_dependency().maybe_specifier() {
+          self.add(dep, specifier);
         }
       }
     }
@@ -1346,13 +1346,12 @@ impl Documents {
     }
     let doc = self.get(specifier)?;
     let maybe_module = doc.maybe_module().and_then(|r| r.as_ref().ok());
-    let maybe_types_dependency = maybe_module.and_then(|m| {
-      m.maybe_types_dependency
-        .as_ref()
-        .map(|(_, resolved)| resolved.clone())
-    });
-    if let Some(Resolved::Ok { specifier, .. }) = maybe_types_dependency {
-      self.resolve_dependency(&specifier, maybe_npm_resolver)
+    let maybe_types_dependency = maybe_module
+      .and_then(|m| m.maybe_types_dependency.as_ref().map(|d| &d.dependency));
+    if let Some(specifier) =
+      maybe_types_dependency.and_then(|d| d.maybe_specifier())
+    {
+      self.resolve_dependency(specifier, maybe_npm_resolver)
     } else {
       let media_type = doc.media_type();
       Some((specifier.clone(), media_type))
@@ -1362,10 +1361,7 @@ impl Documents {
   /// Iterate through any "imported" modules, checking to see if a dependency
   /// is available. This is used to provide "global" imports like the JSX import
   /// source.
-  fn resolve_imports_dependency(
-    &self,
-    specifier: &str,
-  ) -> Option<&deno_graph::Resolved> {
+  fn resolve_imports_dependency(&self, specifier: &str) -> Option<&Resolution> {
     for graph_imports in self.imports.values() {
       let maybe_dep = graph_imports.dependencies.get(specifier);
       if maybe_dep.is_some() {
@@ -1440,40 +1436,14 @@ fn analyze_module(
   maybe_headers: Option<&HashMap<String, String>>,
   maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
 ) -> ModuleResult {
-  use deno_graph::ParsedSourceStore;
-
-  struct UnreachableParser;
-
-  impl deno_graph::ModuleParser for UnreachableParser {
-    fn parse_module(
-      &self,
-      _specifier: &deno_graph::ModuleSpecifier,
-      _source: Arc<str>,
-      _media_type: MediaType,
-    ) -> deno_core::anyhow::Result<ParsedSource, deno_ast::Diagnostic> {
-      // should have re-used the parsed source from the store
-      unreachable!()
-    }
-  }
-
   match parsed_source_result {
-    Ok(parsed_source) => {
-      let store = DefaultParsedSourceStore::default();
-      store.set_parsed_source(specifier.clone(), parsed_source.clone());
-      let analyzer = deno_graph::CapturingModuleAnalyzer::new(
-        // should never parse because it will get the parsed source from the store
-        Some(Box::new(UnreachableParser)),
-        Some(Box::new(store)),
-      );
-      deno_graph::parse_module(
-        specifier,
-        maybe_headers,
-        parsed_source.text_info().text(),
-        Some(deno_graph::ModuleKind::Esm),
-        maybe_resolver,
-        Some(&analyzer),
-      )
-    }
+    Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
+      specifier,
+      deno_graph::ModuleKind::Esm,
+      maybe_headers,
+      parsed_source,
+      maybe_resolver,
+    )),
     Err(err) => Err(deno_graph::ModuleGraphError::ParseErr(
       specifier.clone(),
       err.clone(),

@@ -113,6 +113,7 @@ impl CacheSetting {
 pub struct BenchOptions {
   pub files: FilesConfig,
   pub filter: Option<String>,
+  pub json: bool,
 }
 
 impl BenchOptions {
@@ -127,6 +128,7 @@ impl BenchOptions {
         Some(bench_flags.files),
       ),
       filter: bench_flags.filter,
+      json: bench_flags.json,
     })
   }
 }
@@ -795,16 +797,10 @@ impl CliOptions {
   /// Return any imports that should be brought into the scope of the module
   /// graph.
   pub fn to_maybe_imports(&self) -> MaybeImportsResult {
-    let mut imports = Vec::new();
     if let Some(config_file) = &self.maybe_config_file {
-      if let Some(config_imports) = config_file.to_maybe_imports()? {
-        imports.extend(config_imports);
-      }
-    }
-    if imports.is_empty() {
-      Ok(None)
+      config_file.to_maybe_imports()
     } else {
-      Ok(Some(imports))
+      Ok(Vec::new())
     }
   }
 

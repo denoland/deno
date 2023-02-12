@@ -11,9 +11,14 @@ use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::PathBuf;
+
+thread_local! {
+  static CACHE: RefCell<HashMap<PathBuf, PackageJson>> = RefCell::new(HashMap::new());
+}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct PackageJson {
@@ -63,6 +68,12 @@ impl PackageJson {
   pub fn load_skip_read_permission(
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
+    assert!(path.is_absolute());
+
+    if CACHE.with(|cache| cache.borrow().contains_key(&path)) {
+      return Ok(CACHE.with(|cache| cache.borrow()[&path].clone()));
+    }
+
     let source = match std::fs::read_to_string(&path) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
@@ -169,6 +180,12 @@ impl PackageJson {
       dependencies,
       dev_dependencies,
     };
+
+    CACHE.with(|cache| {
+      cache
+        .borrow_mut()
+        .insert(package_json.path.clone(), package_json.clone());
+    });
     Ok(package_json)
   }
 
