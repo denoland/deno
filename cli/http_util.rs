@@ -11,7 +11,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::url::Url;
-use deno_runtime::deno_fetch::create_http_client;
+use deno_runtime::deno_fetch::{create_http_client, CreateHttpClientOptions};
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::header::LOCATION;
 use deno_runtime::deno_fetch::reqwest::Response;
@@ -227,14 +227,11 @@ impl HttpClient {
   ) -> Result<Self, AnyError> {
     Ok(HttpClient::from_client(create_http_client(
       get_user_agent(),
-      root_cert_store,
-      vec![],
-      None,
-      unsafely_ignore_certificate_errors,
-      None,
-      None,
-      None,
-      None,
+      CreateHttpClientOptions {
+        root_cert_store,
+        unsafely_ignore_certificate_errors,
+        ..Default::default()
+      }
     )?))
   }
 

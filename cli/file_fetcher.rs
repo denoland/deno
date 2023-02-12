@@ -749,7 +749,7 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::resolve_url_or_path;
   use deno_core::url::Url;
-  use deno_runtime::deno_fetch::create_http_client;
+  use deno_runtime::deno_fetch::{create_http_client, CreateHttpClientOptions};
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
   use std::fs::read;
@@ -1760,14 +1760,7 @@ mod tests {
     HttpClient::from_client(
       create_http_client(
         "test_client".to_string(),
-        None,
-        vec![],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+        CreateHttpClientOptions::default(),
       )
       .unwrap(),
     )
@@ -1965,20 +1958,16 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
-        vec![read(
-          test_util::testdata_path()
-            .join("tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap()],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+        CreateHttpClientOptions {
+          ca_certs: vec![read(
+            test_util::testdata_path()
+              .join("tls/RootCA.pem")
+              .to_str()
+              .unwrap(),
+          )
+            .unwrap()],
+          ..Default::default()
+        },
       )
       .unwrap(),
     );
@@ -2011,14 +2000,7 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None, // This will load mozilla certs by default
-        vec![],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+        CreateHttpClientOptions::default(),
       )
       .unwrap(),
     );
@@ -2087,20 +2069,16 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
-        vec![read(
-          test_util::testdata_path()
-            .join("tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap()],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+        CreateHttpClientOptions {
+          ca_certs: vec![read(
+            test_util::testdata_path()
+              .join("tls/RootCA.pem")
+              .to_str()
+              .unwrap(),
+          )
+            .unwrap()],
+          ..Default::default()
+        },
       )
       .unwrap(),
     );
@@ -2135,20 +2113,16 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
-        vec![read(
-          test_util::testdata_path()
-            .join("tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap()],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+        CreateHttpClientOptions {
+          ca_certs: vec![read(
+            test_util::testdata_path()
+              .join("tls/RootCA.pem")
+              .to_str()
+              .unwrap(),
+          )
+            .unwrap()],
+          ..Default::default()
+        },
       )
       .unwrap(),
     );
@@ -2200,20 +2174,16 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
-        vec![read(
-          test_util::testdata_path()
-            .join("tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap()],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+        CreateHttpClientOptions {
+          ca_certs: vec![read(
+            test_util::testdata_path()
+              .join("tls/RootCA.pem")
+              .to_str()
+              .unwrap(),
+          )
+            .unwrap()],
+          ..Default::default()
+        },
       )
       .unwrap(),
     );

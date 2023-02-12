@@ -609,7 +609,7 @@ pub enum PoolIdleTimeout {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateHttpClientOptions {
+pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
   cert_chain: Option<String>,
@@ -622,7 +622,7 @@ pub struct CreateHttpClientOptions {
 #[op]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
-  args: CreateHttpClientOptions,
+  args: CreateHttpClientArgs,
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
@@ -657,43 +657,49 @@ where
 
   let client = create_http_client(
     options.user_agent.clone(),
-    options.root_cert_store.clone(),
-    ca_certs,
-    args.proxy,
-    options.unsafely_ignore_certificate_errors.clone(),
-    client_cert_chain_and_key,
-    args.pool_max_idle_per_host,
-    args.pool_idle_timeout.and_then(|timeout| match timeout {
-      PoolIdleTimeout::State(true) => None,
-      PoolIdleTimeout::State(false) => Some(None),
-      PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
-    }),
-    args.only,
+    CreateHttpClientOptions {
+      root_cert_store: options.root_cert_store.clone(),
+      ca_certs,
+      proxy: args.proxy,
+      unsafely_ignore_certificate_errors: options.unsafely_ignore_certificate_errors.clone(),
+      client_cert_chain_and_key,
+      pool_max_idle_per_host: args.pool_max_idle_per_host,
+      pool_idle_timeout: args.pool_idle_timeout.and_then(|timeout| match timeout {
+        PoolIdleTimeout::State(true) => None,
+        PoolIdleTimeout::State(false) => Some(None),
+        PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
+      }),
+      only: args.only,
+    },
   )?;
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(rid)
 }
 
+#[derive(Default)]
+pub struct CreateHttpClientOptions {
+  pub root_cert_store: Option<RootCertStore>,
+  pub ca_certs: Vec<Vec<u8>>,
+  pub proxy: Option<Proxy>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub client_cert_chain_and_key: Option<(String, String)>,
+  pub pool_max_idle_per_host: Option<usize>,
+  pub pool_idle_timeout: Option<Option<u64>>,
+  pub only: Option<HttpOnly>,
+}
+
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-#[allow(clippy::too_many_arguments)]
 pub fn create_http_client(
   user_agent: String,
-  root_cert_store: Option<RootCertStore>,
-  ca_certs: Vec<Vec<u8>>,
-  proxy: Option<Proxy>,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  client_cert_chain_and_key: Option<(String, String)>,
-  pool_max_idle_per_host: Option<usize>,
-  pool_idle_timeout: Option<Option<u64>>,
-  only: Option<HttpOnly>,
+  options: CreateHttpClientOptions,
 ) -> Result<Client, AnyError> {
   let mut tls_config = deno_tls::create_client_config(
-    root_cert_store,
-    ca_certs,
-    unsafely_ignore_certificate_errors,
-    client_cert_chain_and_key,
+    options.root_cert_store,
+    options.ca_certs,
+    options.unsafely_ignore_certificate_errors,
+    options.client_cert_chain_and_key,
   )?;
 
   tls_config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
@@ -705,7 +711,7 @@ pub fn create_http_client(
     .default_headers(headers)
     .use_preconfigured_tls(tls_config);
 
-  if let Some(proxy) = proxy {
+  if let Some(proxy) = options.proxy {
     let mut reqwest_proxy = reqwest::Proxy::all(&proxy.url)?;
     if let Some(basic_auth) = &proxy.basic_auth {
       reqwest_proxy =
@@ -714,17 +720,17 @@ pub fn create_http_client(
     builder = builder.proxy(reqwest_proxy);
   }
 
-  if let Some(pool_max_idle_per_host) = pool_max_idle_per_host {
+  if let Some(pool_max_idle_per_host) = options.pool_max_idle_per_host {
     builder = builder.pool_max_idle_per_host(pool_max_idle_per_host);
   }
 
-  if let Some(pool_idle_timeout) = pool_idle_timeout {
+  if let Some(pool_idle_timeout) = options.pool_idle_timeout {
     builder = builder.pool_idle_timeout(
       pool_idle_timeout.map(std::time::Duration::from_millis),
     );
   }
 
-  if let Some(only) = only {
+  if let Some(only) = options.only {
     builder = match only {
       HttpOnly::Http1 => builder.http1_only(),
       HttpOnly::Http2 => builder.http2_prior_knowledge(),
