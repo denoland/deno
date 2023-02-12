@@ -106,6 +106,7 @@ function convertLineEndingsToNative(s) {
 /** @param {(BlobReference | Blob)[]} parts */
 async function* toIterator(parts) {
   for (let i = 0; i < parts.length; ++i) {
+    // TODO(petamoriken): use primordials
     // deno-lint-ignore prefer-primordials
     yield* parts[i].stream();
   }

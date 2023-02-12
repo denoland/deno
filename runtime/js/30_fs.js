@@ -128,6 +128,8 @@ function readDir(path) {
   );
   return {
     async *[SymbolAsyncIterator]() {
+      // TODO(petamoriken): use primordials
+      // deno-lint-ignore prefer-primordials
       yield* await array;
     },
   };
@@ -267,6 +269,7 @@ function parseFileInfo(response) {
     isFile: response.isFile,
     isDirectory: response.isDirectory,
     isSymlink: response.isSymlink,
+    // deno-lint-ignore prefer-primordials
     size: response.size,
     mtime: response.mtimeSet !== null ? new Date(response.mtime) : null,
     atime: response.atimeSet !== null ? new Date(response.atime) : null,
