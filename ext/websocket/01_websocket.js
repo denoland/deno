@@ -303,14 +303,18 @@ class WebSocket extends EventTarget {
     }
 
     const sendTypedArray = (ta) => {
-      this[_bufferedAmount] += TypedArrayPrototypeGetByteLength(ta);
+      // TODO(petamoriken): use primordials
+      // deno-lint-ignore prefer-primordials
+      this[_bufferedAmount] += ta.byteLength;
       PromisePrototypeThen(
         core.opAsync("op_ws_send", this[_rid], {
           kind: "binary",
           value: ta,
         }),
         () => {
-          this[_bufferedAmount] -= TypedArrayPrototypeGetByteLength(ta);
+          // TODO(petamoriken): use primordials
+          // deno-lint-ignore prefer-primordials
+          this[_bufferedAmount] -= ta.byteLength;
         },
       );
     };

@@ -314,7 +314,7 @@ async function handleResponse(
 
   const ws = resp[_ws];
   if (isStreamingResponseBody === false) {
-    // TODO(petamoriken): use prefer-primordials
+    // TODO(petamoriken): use primordials
     // deno-lint-ignore prefer-primordials
     const length = respBody.byteLength || core.byteLength(respBody);
     const responseStr = http1Response(
