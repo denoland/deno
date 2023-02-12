@@ -99,8 +99,10 @@ impl Hash {
       Sha512(context) => context.finalize(),
     }
   }
+}
 
-  pub fn clone(&self) -> Self {
+impl Clone for Hash {
+  fn clone(&self) -> Self {
     match self {
       Md4(_) => Md4(Default::default()),
       Md5(_) => Md5(Default::default()),
