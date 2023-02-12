@@ -2625,7 +2625,7 @@ Deno.test("case insensitive comma value finder", async (t) => {
     [",wEbSOcKET,", true],
     [", wEbSOcKET  ,", true],
     ["test, wEbSOcKET  ,", true],
-    ["test  , wEbSOcKET  ,", true],
+    ["test  ,\twEbSOcKET\t\t ,", true],
     ["test  , wEbSOcKET", true],
     ["test, asdf,web,wEbSOcKET", true],
     ["test, asdf,web,wEbSOcKETs", false],

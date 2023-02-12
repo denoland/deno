@@ -466,7 +466,10 @@ function upgradeHttp(req) {
   return req[_deferred].promise;
 }
 
-const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
+const spaceCharCodes = ArrayPrototypeMap(
+  [" ", "\t"],
+  (c) => c.charCodeAt(0),
+);
 const commaCharCode = StringPrototypeCharCodeAt(",", 0);
 
 /** Builds a case function that can be used to find a case insensitive
@@ -521,7 +524,7 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 
   /** @param value {string} */
   function skipWhitespace(value) {
-    while (char === spaceCharCode) {
+    while (ArrayPrototypeIncludes(spaceCharCodes, char)) {
       char = StringPrototypeCharCodeAt(value, ++i);
     }
   }
