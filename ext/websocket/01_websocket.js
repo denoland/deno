@@ -32,6 +32,7 @@ const {
   PromisePrototypeThen,
   RegExpPrototypeTest,
   Set,
+  SetPrototypeGetSize,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
   String,
@@ -41,6 +42,7 @@ const {
   SymbolIterator,
   PromisePrototypeCatch,
   SymbolFor,
+  TypedArrayPrototypeGetByteLength,
 } = primordials;
 
 webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
@@ -211,9 +213,11 @@ class WebSocket extends EventTarget {
 
     if (
       protocols.length !==
-        new Set(
-          ArrayPrototypeMap(protocols, (p) => StringPrototypeToLowerCase(p)),
-        ).size
+        SetPrototypeGetSize(
+          new Set(
+            ArrayPrototypeMap(protocols, (p) => StringPrototypeToLowerCase(p)),
+          ),
+        )
     ) {
       throw new DOMException(
         "Can't supply multiple times the same protocol.",
@@ -299,14 +303,14 @@ class WebSocket extends EventTarget {
     }
 
     const sendTypedArray = (ta) => {
-      this[_bufferedAmount] += ta.byteLength;
+      this[_bufferedAmount] += TypedArrayPrototypeGetByteLength(ta);
       PromisePrototypeThen(
         core.opAsync("op_ws_send", this[_rid], {
           kind: "binary",
           value: ta,
         }),
         () => {
-          this[_bufferedAmount] -= ta.byteLength;
+          this[_bufferedAmount] -= TypedArrayPrototypeGetByteLength(ta);
         },
       );
     };
@@ -323,14 +327,14 @@ class WebSocket extends EventTarget {
     } else {
       const string = String(data);
       const d = core.encode(string);
-      this[_bufferedAmount] += d.byteLength;
+      this[_bufferedAmount] += TypedArrayPrototypeGetByteLength(d);
       PromisePrototypeThen(
         core.opAsync("op_ws_send", this[_rid], {
           kind: "text",
           value: string,
         }),
         () => {
-          this[_bufferedAmount] -= d.byteLength;
+          this[_bufferedAmount] -= TypedArrayPrototypeGetByteLength(d);
         },
       );
     }
@@ -367,7 +371,10 @@ class WebSocket extends EventTarget {
       }
     }
 
-    if (reason !== undefined && core.encode(reason).byteLength > 123) {
+    if (
+      reason !== undefined &&
+      TypedArrayPrototypeGetByteLength(core.encode(reason)) > 123
+    ) {
       throw new DOMException(
         "The close reason may not be longer than 123 bytes.",
         "SyntaxError",
