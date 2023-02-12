@@ -4,6 +4,7 @@ use crate::args::BenchOptions;
 use crate::args::CliOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
+use crate::display::write_json_to_stdout;
 use crate::graph_util::graph_valid_with_cli_options;
 use crate::ops;
 use crate::proc_state::ProcState;
@@ -13,6 +14,7 @@ use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_supported_ext;
+use crate::version::get_user_agent;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
@@ -41,6 +43,7 @@ use tokio::sync::mpsc::UnboundedSender;
 #[derive(Debug, Clone)]
 struct BenchSpecifierOptions {
   filter: TestFilter,
+  json: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
@@ -62,7 +65,7 @@ pub enum BenchEvent {
   Result(usize, BenchResult),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BenchResult {
   Ok(BenchStats),
@@ -109,7 +112,13 @@ impl BenchReport {
   }
 }
 
-fn create_reporter(show_output: bool) -> Box<dyn BenchReporter + Send> {
+fn create_reporter(
+  show_output: bool,
+  json: bool,
+) -> Box<dyn BenchReporter + Send> {
+  if json {
+    return Box::new(JsonReporter::new());
+  }
   Box::new(ConsoleReporter::new(show_output))
 }
 
@@ -121,6 +130,74 @@ pub trait BenchReporter {
   fn report_wait(&mut self, desc: &BenchDescription);
   fn report_output(&mut self, output: &str);
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult);
+}
+
+#[derive(Debug, Serialize)]
+struct JsonReporterResult {
+  runtime: String,
+  cpu: String,
+  origin: String,
+  group: Option<String>,
+  name: String,
+  baseline: bool,
+  result: BenchResult,
+}
+
+impl JsonReporterResult {
+  fn new(
+    origin: String,
+    group: Option<String>,
+    name: String,
+    baseline: bool,
+    result: BenchResult,
+  ) -> Self {
+    Self {
+      runtime: format!("{} {}", get_user_agent(), env!("TARGET")),
+      cpu: mitata::cpu::name(),
+      origin,
+      group,
+      name,
+      baseline,
+      result,
+    }
+  }
+}
+
+#[derive(Debug, Serialize)]
+struct JsonReporter(Vec<JsonReporterResult>);
+impl JsonReporter {
+  fn new() -> Self {
+    Self(vec![])
+  }
+}
+
+impl BenchReporter for JsonReporter {
+  fn report_group_summary(&mut self) {}
+  #[cold]
+  fn report_plan(&mut self, _plan: &BenchPlan) {}
+
+  fn report_end(&mut self, _report: &BenchReport) {
+    match write_json_to_stdout(self) {
+      Ok(_) => (),
+      Err(e) => println!("{e}"),
+    }
+  }
+
+  fn report_register(&mut self, _desc: &BenchDescription) {}
+
+  fn report_wait(&mut self, _desc: &BenchDescription) {}
+
+  fn report_output(&mut self, _output: &str) {}
+
+  fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
+    self.0.push(JsonReporterResult::new(
+      desc.origin.clone(),
+      desc.group.clone(),
+      desc.name.clone(),
+      desc.baseline,
+      result.clone(),
+    ));
+  }
 }
 
 struct ConsoleReporter {
@@ -376,12 +453,14 @@ async fn bench_specifiers(
 
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
 
+  let option_for_handles = options.clone();
+
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let ps = ps.clone();
     let permissions = permissions.clone();
     let specifier = specifier;
     let sender = sender.clone();
-    let options = options.clone();
+    let options = option_for_handles.clone();
 
     tokio::task::spawn_blocking(move || {
       let future = bench_specifier(ps, permissions, specifier, sender, options);
@@ -398,7 +477,8 @@ async fn bench_specifiers(
     tokio::task::spawn(async move {
       let mut used_only = false;
       let mut report = BenchReport::new();
-      let mut reporter = create_reporter(log_level != Some(Level::Error));
+      let mut reporter =
+        create_reporter(log_level != Some(Level::Error), options.json);
       let mut benches = IndexMap::new();
 
       while let Some(event) = receiver.recv().await {
@@ -509,6 +589,7 @@ pub async fn run_benchmarks(
     specifiers,
     BenchSpecifierOptions {
       filter: TestFilter::from_flag(&bench_options.filter),
+      json: bench_options.json,
     },
   )
   .await?;
@@ -658,6 +739,7 @@ pub async fn run_benchmarks_with_watch(
         specifiers,
         BenchSpecifierOptions {
           filter: TestFilter::from_flag(&bench_options.filter),
+          json: bench_options.json,
         },
       )
       .await?;
