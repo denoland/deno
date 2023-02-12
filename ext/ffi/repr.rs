@@ -202,11 +202,9 @@ where
     return Err(type_error("Invalid CString pointer, pointer is null"));
   }
 
-  // SAFETY: Offset is user defined.
-  let ptr = unsafe { ptr.add(offset) };
-
-  // SAFETY: Pointer is user provided.
-  let cstr = unsafe { CStr::from_ptr(ptr.offset(offset) as *const c_char) }.to_bytes();
+  let cstr =
+  // SAFETY: Pointer and offset are user provided.
+    unsafe { CStr::from_ptr(ptr.offset(offset) as *const c_char) }.to_bytes();
   let value: v8::Local<v8::Value> =
     v8::String::new_from_utf8(scope, cstr, v8::NewStringType::Normal)
       .ok_or_else(|| {
