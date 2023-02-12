@@ -22,7 +22,6 @@
 
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 import { validateIntegerRange } from "internal:deno_node/polyfills/_utils.ts";
-import { EOL as fsEOL } from "SOMETHING IS BROKEN HERE ../fs/eol.ts";
 import process from "internal:deno_node/polyfills/process.ts";
 import { isWindows, osType } from "internal:deno_node/polyfills/_util/os.ts";
 import { os } from "internal:deno_node/polyfills/internal_binding/constants.ts";
@@ -322,7 +321,7 @@ export function userInfo(
   notImplemented(SEE_GITHUB_ISSUE);
 }
 
-export const EOL = isWindows ? fsEOL.CRLF : fsEOL.LF;
+export const EOL = isWindows ? "\r\n" : "\n";
 export const devNull = isWindows ? "\\\\.\\nul" : "/dev/null";
 
 export default {
