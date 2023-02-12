@@ -65,7 +65,7 @@ import {
   CHAR_UPPERCASE_Z,
   CHAR_VERTICAL_LINE,
   CHAR_ZERO_WIDTH_NOBREAK_SPACE,
-} from "SOMETHING IS BROKEN HERE ../path/_constants.ts";
+} from "internal:deno_node/polyfills/path/_constants.ts";
 import * as path from "internal:deno_node/polyfills/path.ts";
 import {
   regexNonASCII,
