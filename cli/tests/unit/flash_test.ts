@@ -1701,7 +1701,7 @@ Deno.test(
     const server = Deno.serve({
       handler: () => {
         promise.resolve();
-        return new Response("foo bar baz");
+        return new Response("NaN".repeat(100));
       },
       port: 4503,
       signal: ac.signal,
@@ -1726,7 +1726,7 @@ Deno.test(
     assert(readResult);
     const msg = decoder.decode(buf.subarray(0, readResult));
 
-    assert(msg.endsWith("Content-Length: 11\r\n\r\n"));
+    assert(msg.endsWith("Content-Length: 300\r\n\r\n"));
 
     conn.close();
 
