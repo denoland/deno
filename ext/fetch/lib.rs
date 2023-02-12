@@ -661,14 +661,18 @@ where
       root_cert_store: options.root_cert_store.clone(),
       ca_certs,
       proxy: args.proxy,
-      unsafely_ignore_certificate_errors: options.unsafely_ignore_certificate_errors.clone(),
+      unsafely_ignore_certificate_errors: options
+        .unsafely_ignore_certificate_errors
+        .clone(),
       client_cert_chain_and_key,
       pool_max_idle_per_host: args.pool_max_idle_per_host,
-      pool_idle_timeout: args.pool_idle_timeout.and_then(|timeout| match timeout {
-        PoolIdleTimeout::State(true) => None,
-        PoolIdleTimeout::State(false) => Some(None),
-        PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
-      }),
+      pool_idle_timeout: args.pool_idle_timeout.and_then(
+        |timeout| match timeout {
+          PoolIdleTimeout::State(true) => None,
+          PoolIdleTimeout::State(false) => Some(None),
+          PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
+        },
+      ),
       only: args.only,
     },
   )?;

@@ -749,7 +749,8 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::resolve_url_or_path;
   use deno_core::url::Url;
-  use deno_runtime::deno_fetch::{create_http_client, CreateHttpClientOptions};
+  use deno_runtime::deno_fetch::create_http_client;
+  use deno_runtime::deno_fetch::CreateHttpClientOptions;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
   use std::fs::read;
@@ -1965,7 +1966,7 @@ mod tests {
               .to_str()
               .unwrap(),
           )
-            .unwrap()],
+          .unwrap()],
           ..Default::default()
         },
       )
@@ -2076,7 +2077,7 @@ mod tests {
               .to_str()
               .unwrap(),
           )
-            .unwrap()],
+          .unwrap()],
           ..Default::default()
         },
       )
@@ -2120,7 +2121,7 @@ mod tests {
               .to_str()
               .unwrap(),
           )
-            .unwrap()],
+          .unwrap()],
           ..Default::default()
         },
       )
@@ -2181,7 +2182,7 @@ mod tests {
               .to_str()
               .unwrap(),
           )
-            .unwrap()],
+          .unwrap()],
           ..Default::default()
         },
       )

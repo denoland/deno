@@ -11,10 +11,11 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::url::Url;
-use deno_runtime::deno_fetch::{create_http_client, CreateHttpClientOptions};
+use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::header::LOCATION;
 use deno_runtime::deno_fetch::reqwest::Response;
+use deno_runtime::deno_fetch::CreateHttpClientOptions;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -231,7 +232,7 @@ impl HttpClient {
         root_cert_store,
         unsafely_ignore_certificate_errors,
         ..Default::default()
-      }
+      },
     )?))
   }
 
