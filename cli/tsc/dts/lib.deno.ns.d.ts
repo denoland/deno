@@ -220,6 +220,12 @@ declare namespace Deno {
      * @category Errors */
     export class Interrupted extends Error {}
     /**
+     * Raised when the underlying operating system would need to block to
+     * complete but an asynchronous (non-blocking) API is used.
+     *
+     * @category Errors */
+    export class WouldBlock extends Error {}
+    /**
      * Raised when expecting to write to a IO buffer resulted in zero bytes
      * being written.
      *
@@ -4377,7 +4383,7 @@ declare namespace Deno {
    * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
    * console.log(status.state);
    * ```
-   * 
+   *
    * ```ts
    * const status = Deno.permissions.querySync({ name: "read", path: "/etc" });
    * console.log(status.state);
@@ -4391,7 +4397,7 @@ declare namespace Deno {
    * const status = await Deno.permissions.revoke({ name: "run" });
    * assert(status.state !== "granted")
    * ```
-   * 
+   *
    * ```ts
    * import { assert } from "https://deno.land/std/testing/asserts.ts";
    *
@@ -4409,7 +4415,7 @@ declare namespace Deno {
    *   console.log("'env' permission is denied.");
    * }
    * ```
-   * 
+   *
    * ```ts
    * const status = Deno.permissions.requestSync({ name: "env" });
    * if (status.state === "granted") {
