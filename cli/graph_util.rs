@@ -57,6 +57,10 @@ pub fn graph_valid(
   walk_options: deno_graph::WalkOptions,
 ) -> Result<(), AnyError> {
   graph.walk(roots, walk_options).validate().map_err(|error| {
+    let is_root = match &error {
+      ModuleGraphError::ResolutionError(_) => false,
+      _ => roots.contains(error.specifier()),
+    };
     let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
       enhanced_resolution_error_message(err)
     } else {
@@ -64,7 +68,7 @@ pub fn graph_valid(
     };
 
     if let Some(range) = error.maybe_range() {
-      if !range.specifier.as_str().contains("/$deno$eval") {
+      if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
         message.push_str(&format!("\n    at {range}"));
       }
     }

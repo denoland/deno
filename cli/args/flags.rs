@@ -54,6 +54,7 @@ pub struct FileFlags {
 pub struct BenchFlags {
   pub files: FileFlags,
   pub filter: Option<String>,
+  pub json: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -718,6 +719,12 @@ fn bench_subcommand<'a>() -> Command<'a> {
   runtime_args(Command::new("bench"), true, false)
     .trailing_var_arg(true)
     .arg(
+      Arg::new("json")
+        .long("json")
+        .help("UNSTABLE: Output benchmark result in JSON format")
+        .takes_value(false),
+    )
+    .arg(
       Arg::new("ignore")
         .long("ignore")
         .takes_value(true)
@@ -1176,8 +1183,9 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
     .arg(watch_arg(false))
     .arg(no_clear_screen_arg())
     .arg(
-      Arg::new("options-use-tabs")
-        .long("options-use-tabs")
+      Arg::new("use-tabs")
+        .long("use-tabs")
+        .alias("options-use-tabs")
         .takes_value(true)
         .min_values(0)
         .max_values(1)
@@ -1186,32 +1194,33 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .help("Use tabs instead of spaces for indentation. Defaults to false."),
     )
     .arg(
-      Arg::new("options-line-width")
-        .long("options-line-width")
+      Arg::new("line-width")
+        .long("line-width")
+        .alias("options-line-width")
         .help("Define maximum line width. Defaults to 80.")
         .takes_value(true)
         .validator(|val: &str| match val.parse::<NonZeroUsize>() {
           Ok(_) => Ok(()),
-          Err(_) => {
-            Err("options-line-width should be a non zero integer".to_string())
-          }
+          Err(_) => Err("line-width should be a non zero integer".to_string()),
         }),
     )
     .arg(
-      Arg::new("options-indent-width")
-        .long("options-indent-width")
+      Arg::new("indent-width")
+        .long("indent-width")
+        .alias("options-indent-width")
         .help("Define indentation width. Defaults to 2.")
         .takes_value(true)
         .validator(|val: &str| match val.parse::<NonZeroUsize>() {
           Ok(_) => Ok(()),
           Err(_) => {
-            Err("options-indent-width should be a non zero integer".to_string())
+            Err("indent-width should be a non zero integer".to_string())
           }
         }),
     )
     .arg(
-      Arg::new("options-single-quote")
-        .long("options-single-quote")
+      Arg::new("single-quote")
+        .long("single-quote")
+        .alias("options-single-quote")
         .min_values(0)
         .max_values(1)
         .takes_value(true)
@@ -1220,15 +1229,17 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .help("Use single quotes. Defaults to false."),
     )
     .arg(
-      Arg::new("options-prose-wrap")
-        .long("options-prose-wrap")
+      Arg::new("prose-wrap")
+        .long("prose-wrap")
+        .alias("options-prose-wrap")
         .takes_value(true)
         .possible_values(["always", "never", "preserve"])
         .help("Define how prose should be wrapped. Defaults to always."),
     )
     .arg(
-      Arg::new("options-no-semicolons")
-        .long("options-no-semicolons")
+      Arg::new("no-semicolons")
+        .long("no-semicolons")
+        .alias("options-no-semicolons")
         .min_values(0)
         .max_values(1)
         .takes_value(true)
@@ -2321,6 +2332,8 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   // interactive prompts, unless done by user code
   flags.no_prompt = true;
 
+  let json = matches.is_present("json");
+
   let ignore = match matches.values_of("ignore") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -2355,6 +2368,7 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Bench(BenchFlags {
     files: FileFlags { include, ignore },
     filter,
+    json,
   });
 }
 
@@ -2559,22 +2573,16 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
   let ext = matches.value_of("ext").unwrap().to_string();
 
-  let use_tabs = optional_bool_parse(matches, "options-use-tabs");
-  let line_width = if matches.is_present("options-line-width") {
-    Some(
-      matches
-        .value_of("options-line-width")
-        .unwrap()
-        .parse()
-        .unwrap(),
-    )
+  let use_tabs = optional_bool_parse(matches, "use-tabs");
+  let line_width = if matches.is_present("line-width") {
+    Some(matches.value_of("line-width").unwrap().parse().unwrap())
   } else {
     None
   };
-  let indent_width = if matches.is_present("options-indent-width") {
+  let indent_width = if matches.is_present("indent-width") {
     Some(
       matches
-        .value_of("options-indent-width")
+        .value_of("indent-width")
         .unwrap_or("true")
         .parse()
         .unwrap(),
@@ -2582,11 +2590,9 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   } else {
     None
   };
-  let single_quote = optional_bool_parse(matches, "options-single-quote");
-  let prose_wrap = matches
-    .value_of("options-prose-wrap")
-    .map(ToString::to_string);
-  let no_semicolons = optional_bool_parse(matches, "options-no-semicolons");
+  let single_quote = optional_bool_parse(matches, "single-quote");
+  let prose_wrap = matches.value_of("prose-wrap").map(ToString::to_string);
+  let no_semicolons = optional_bool_parse(matches, "no-semicolons");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.is_present("check"),
@@ -3808,15 +3814,15 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "fmt",
-      "--options-use-tabs",
-      "--options-line-width",
+      "--use-tabs",
+      "--line-width",
       "60",
-      "--options-indent-width",
+      "--indent-width",
       "4",
-      "--options-single-quote",
-      "--options-prose-wrap",
+      "--single-quote",
+      "--prose-wrap",
       "never",
-      "--options-no-semicolons",
+      "--no-semicolons",
     ]);
     assert_eq!(
       r.unwrap(),
@@ -3843,9 +3849,9 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "fmt",
-      "--options-use-tabs=false",
-      "--options-single-quote=false",
-      "--options-no-semicolons=false",
+      "--use-tabs=false",
+      "--single-quote=false",
+      "--no-semicolons=false",
     ]);
     assert_eq!(
       r.unwrap(),
@@ -6539,6 +6545,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "bench",
+      "--json",
       "--unstable",
       "--filter",
       "- foo",
@@ -6556,6 +6563,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: Some("- foo".to_string()),
+          json: true,
           files: FileFlags {
             include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
             ignore: vec![],
@@ -6580,6 +6588,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: None,
+          json: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
