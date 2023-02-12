@@ -210,7 +210,7 @@ impl PermissionPrompter for TtyPrompter {
     } else {
       "[y/n] (y = yes, allow; n = no, deny)"
     };
-    eprint!("{PERMISSION_EMOJI}  ┌ ");
+    eprint!("┌ {PERMISSION_EMOJI}  ");
     eprint!("{}", colors::bold("Deno requests "));
     eprint!("{}", colors::bold(message));
     eprintln!("{}", colors::bold("."));
@@ -218,8 +218,8 @@ impl PermissionPrompter for TtyPrompter {
       eprintln!("├ Requested by `{api_name}` API");
     }
     let msg = format!("Run again with --allow-{name} to bypass this prompt.");
-    eprintln!("   ├ {}", colors::italic(&msg));
-    eprint!("   └ {}", colors::bold("Allow?"));
+    eprintln!("├ {}", colors::italic(&msg));
+    eprint!("└ {}", colors::bold("Allow?"));
     eprint!(" {opts} > ");
     let value = loop {
       let mut input = String::new();
@@ -266,7 +266,7 @@ impl PermissionPrompter for TtyPrompter {
         _ => {
           // If we don't get a recognized option try again.
           clear_n_lines(1);
-          eprint!("   └ {}", colors::bold("Unrecognized option. Allow?"));
+          eprint!("└ {}", colors::bold("Unrecognized option. Allow?"));
           eprint!(" {opts} > ");
         }
       };
