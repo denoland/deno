@@ -27,14 +27,14 @@ const {
   MapPrototypeGet,
   MapPrototypeSet,
   ObjectDefineProperty,
-  ObjectPrototypeIsPrototypeOf,
   queueMicrotask,
   SafeArrayIterator,
   Symbol,
   TypedArrayPrototypeSet,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint8Array,
-  Uint8ArrayPrototype,
 } = primordials;
 
 const state = Symbol("[[state]]");
@@ -119,7 +119,8 @@ class FileReader extends EventTarget {
           // and whose value property is a Uint8Array object, run these steps:
           if (
             !chunk.done &&
-            ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk.value)
+            TypedArrayPrototypeGetSymbolToStringTag(chunk.value) ===
+              "Uint8Array"
           ) {
             ArrayPrototypePush(chunks, chunk.value);
 
@@ -127,7 +128,7 @@ class FileReader extends EventTarget {
             {
               const size = ArrayPrototypeReduce(
                 chunks,
-                (p, i) => p + i.byteLength,
+                (p, i) => p + TypedArrayPrototypeGetByteLength(i),
                 0,
               );
               const ev = new ProgressEvent("progress", {
@@ -151,7 +152,7 @@ class FileReader extends EventTarget {
               // 2. Let result be the result of package data given bytes, type, blob’s type, and encodingName.
               const size = ArrayPrototypeReduce(
                 chunks,
-                (p, i) => p + i.byteLength,
+                (p, i) => p + TypedArrayPrototypeGetByteLength(i),
                 0,
               );
               const bytes = new Uint8Array(size);
