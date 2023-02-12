@@ -35,11 +35,18 @@ import {
   providerType,
 } from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
 import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import type {
-  Closer,
-  Reader,
-  Writer,
-} from "SOMETHING IS BROKEN HERE ../../types.d.ts";
+
+interface Reader {
+  read(p: Uint8Array): Promise<number | null>;
+}
+
+interface Writer {
+  write(p: Uint8Array): Promise<number>;
+}
+
+export interface Closer {
+  close(): void;
+}
 
 type Ref = { ref(): void; unref(): void };
 

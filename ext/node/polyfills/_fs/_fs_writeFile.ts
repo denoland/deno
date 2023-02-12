@@ -20,7 +20,10 @@ import {
   validateStringAfterArrayBufferView,
 } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
 import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
-import type { Writer } from "SOMETHING IS BROKEN HERE ../../types.d.ts";
+
+interface Writer {
+  write(p: Uint8Array): Promise<number>;
+}
 
 export function writeFile(
   pathOrRid: string | number | URL,
