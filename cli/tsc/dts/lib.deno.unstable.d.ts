@@ -340,6 +340,9 @@ declare namespace Deno {
     [K in keyof T]: StaticForeignSymbol<T[K]>;
   };
 
+  const brand: unique symbol;
+  type PointerObject = { [brand]: unknown };
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Pointer type depends on the architecture and actual pointer value.
@@ -350,7 +353,7 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type PointerValue = null | Record<string | number | symbol, never>;
+  export type PointerValue = null | PointerObject;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *

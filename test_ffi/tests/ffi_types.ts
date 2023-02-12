@@ -140,7 +140,8 @@ remote.symbols.method14(0);
 remote.symbols.method15("foo");
 // @ts-expect-error: Invalid argument
 remote.symbols.method15(new Uint16Array(1));
-remote.symbols.method15({});
+remote.symbols.method15(null);
+remote.symbols.method15({} as Deno.PointerValue);
 
 const result = remote.symbols.method16();
 // @ts-expect-error: Invalid argument
@@ -163,7 +164,7 @@ result4.then((_0: Deno.BufferSource) => {});
 result4.then((_1: null | Deno.UnsafePointer) => {});
 
 const fnptr = new Deno.UnsafeFnPointer(
-  {},
+  {} as NonNullable<Deno.PointerValue>,
   {
     parameters: ["u32", "pointer"],
     result: "void",
@@ -376,9 +377,9 @@ type __Tests__ = [
       symbols: {
         pushBuf: (
           buf: BufferSource | null,
-          ptr: Deno.PointerValue | null,
-          func: Deno.PointerValue | null,
-        ) => null | Deno.PointerValue;
+          ptr: Deno.PointerValue,
+          func: Deno.PointerValue,
+        ) => Deno.PointerValue;
       };
       close(): void;
     },
