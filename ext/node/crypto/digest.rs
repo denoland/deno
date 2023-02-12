@@ -8,6 +8,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[derive(Clone)]
 pub enum Hash {
   Md4(Box<md4::Md4>),
   Md5(Box<md5::Md5>),
@@ -40,6 +41,14 @@ impl Context {
 
     let hash = hash.into_inner();
     Ok(hash.digest_and_drop())
+  }
+}
+
+impl Clone for Context {
+  fn clone(&self) -> Self {
+    Self {
+      hash: Rc::new(RefCell::new(self.hash.borrow().clone())),
+    }
   }
 }
 
@@ -89,6 +98,19 @@ impl Hash {
       Sha256(context) => context.finalize(),
       Sha384(context) => context.finalize(),
       Sha512(context) => context.finalize(),
+    }
+  }
+
+  pub fn clone(&self) -> Self {
+    match self {
+      Md4(_) => Md4(Default::default()),
+      Md5(_) => Md5(Default::default()),
+      Ripemd160(_) => Ripemd160(Default::default()),
+      Sha1(_) => Sha1(Default::default()),
+      Sha224(_) => Sha224(Default::default()),
+      Sha256(_) => Sha256(Default::default()),
+      Sha384(_) => Sha384(Default::default()),
+      Sha512(_) => Sha512(Default::default()),
     }
   }
 }

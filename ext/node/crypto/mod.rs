@@ -1,3 +1,4 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -43,8 +44,6 @@ pub fn op_node_hash_clone(
   state: &mut OpState,
   rid: ResourceId,
 ) -> Result<ResourceId, AnyError> {
-  let _context = state.resource_table.get::<digest::Context>(rid)?;
-
-  // Ok(state.resource_table.add(context.clone()))
-  Ok(0)
+  let context = state.resource_table.get::<digest::Context>(rid)?;
+  Ok(state.resource_table.add(context.as_ref().clone()))
 }
