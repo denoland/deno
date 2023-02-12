@@ -14,11 +14,8 @@ description = "Node compatibility for Deno"
 path = "lib.rs"
 
 [dependencies]
-blake2 = "0.10.4"
-blake3 = { version = "1.3.1", features = ["traits-preview"] }
 deno_core.workspace = true
 digest = { version = "0.10.5", features = ["core-api", "std"] }
-generic-array = "0.14.6"
 md-5 = "0.10.5"
 md4 = "0.10.2"
 once_cell.workspace = true
@@ -29,5 +26,4 @@ serde = "1.0.149"
 sha-1 = "0.10.0"
 sha2 = "0.10.6"
 sha3 = "0.10.5"
-tiger = "0.2.1"
 typenum = "1.15.0"
