@@ -3002,7 +3002,7 @@ itest!(followup_dyn_import_resolved {
 });
 
 itest!(allow_run_allowlist_resolution {
-  args: "run --quiet -A allow_run_allowlist_resolution.ts",
+  args: "run --quiet --unstable -A allow_run_allowlist_resolution.ts",
   output: "allow_run_allowlist_resolution.ts.out",
 });
 
