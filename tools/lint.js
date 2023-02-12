@@ -24,8 +24,7 @@ if (Deno.args.includes("--rs")) {
 
 if (!didLint) {
   await dlint();
-  // todo(dsherret): re-enable
-  // await dlintPreferPrimordials();
+  await dlintPreferPrimordials();
   console.log("copyright checker");
   await checkCopyright();
   await clippy();
