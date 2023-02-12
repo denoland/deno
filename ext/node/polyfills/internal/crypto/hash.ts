@@ -20,6 +20,8 @@ import {
 } from "internal:deno_node/polyfills/internal/crypto/keys.ts";
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 
+const { ops } = Deno[Deno.internal].core;
+
 const coerceToBytes = (data: string | BufferSource): Uint8Array => {
   if (data instanceof Uint8Array) {
     return data;
@@ -52,7 +54,7 @@ export class Hash extends Transform {
   ) {
     super({
       transform(chunk: string, _encoding: string, callback: () => void) {
-        context.update(coerceToBytes(chunk));
+        ops.op_node_hash_update(context, coerceToBytes(chunk));
         callback();
       },
       flush(callback: () => void) {
@@ -62,12 +64,6 @@ export class Hash extends Transform {
     });
 
     if (typeof algorithm === "string") {
-      // Node/OpenSSL and WebCrypto format some digest names differently;
-      // we attempt to handle those here.
-      algorithm = algorithm.toUpperCase();
-      if (opensslToWebCryptoDigestNames[algorithm]) {
-        algorithm = opensslToWebCryptoDigestNames[algorithm];
-      }
       this.#context = ops.op_node_create_hash(
         algorithm,
       );
@@ -214,23 +210,6 @@ class HmacImpl extends Transform {
 }
 
 Hmac.prototype = HmacImpl.prototype;
-
-/**
- * Supported digest names that OpenSSL/Node and WebCrypto identify differently.
- */
-const opensslToWebCryptoDigestNames: Record<string, DigestAlgorithm> = {
-  BLAKE2B256: "BLAKE2B-256",
-  BLAKE2B384: "BLAKE2B-384",
-  BLAKE2B512: "BLAKE2B",
-  BLAKE2S256: "BLAKE2S",
-  RIPEMD160: "RIPEMD-160",
-  RMD160: "RIPEMD-160",
-  SHA1: "SHA-1",
-  SHA224: "SHA-224",
-  SHA256: "SHA-256",
-  SHA384: "SHA-384",
-  SHA512: "SHA-512",
-};
 
 /**
  * Creates and returns a Hash object that can be used to generate hash digests

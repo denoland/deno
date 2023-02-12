@@ -481,6 +481,10 @@ pub fn init<P: NodePermissions + 'static>(
       ops::op_require_read_package_scope::decl::<P>(),
       ops::op_require_package_imports_resolve::decl::<P>(),
       ops::op_require_break_on_next_statement::decl(),
+      crypto::op_node_create_hash::decl(),
+      crypto::op_node_hash_update::decl(),
+      crypto::op_node_hash_digest::decl(),
+      crypto::op_node_hash_clone::decl(),
     ])
     .state(move |state| {
       if let Some(npm_resolver) = maybe_npm_resolver.clone() {
