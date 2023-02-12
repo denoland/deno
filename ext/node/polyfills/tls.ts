@@ -2,8 +2,8 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import _tls_common from "internal:deno_node/polyfills/_tls_common.ts";
-import _tls_wrap from "internal:deno_node/polyfills/_tls_wrap.ts";
+import tlsCommon from "internal:deno_node/polyfills/_tls_common.ts";
+import tlsWrap from "internal:deno_node/polyfills/_tls_wrap.ts";
 
 // openssl -> rustls
 const cipherMap = {
@@ -34,7 +34,7 @@ export const DEFAULT_MIN_VERSION = "TLSv1.2";
 
 export class CryptoStream {}
 export class SecurePair {}
-export const Server = _tls_wrap.Server;
+export const Server = tlsWrap.Server;
 export function createSecurePair() {
   notImplemented("tls.createSecurePair");
 }
@@ -43,23 +43,23 @@ export default {
   CryptoStream,
   SecurePair,
   Server,
-  TLSSocket: _tls_wrap.TLSSocket,
-  checkServerIdentity: _tls_wrap.checkServerIdentity,
-  connect: _tls_wrap.connect,
-  createSecureContext: _tls_common.createSecureContext,
+  TLSSocket: tlsWrap.TLSSocket,
+  checkServerIdentity: tlsWrap.checkServerIdentity,
+  connect: tlsWrap.connect,
+  createSecureContext: tlsCommon.createSecureContext,
   createSecurePair,
-  createServer: _tls_wrap.createServer,
+  createServer: tlsWrap.createServer,
   getCiphers,
   rootCertificates,
-  DEFAULT_CIPHERS: _tls_wrap.DEFAULT_CIPHERS,
+  DEFAULT_CIPHERS: tlsWrap.DEFAULT_CIPHERS,
   DEFAULT_ECDH_CURVE,
   DEFAULT_MAX_VERSION,
   DEFAULT_MIN_VERSION,
 };
 
-export const checkServerIdentity = _tls_wrap.checkServerIdentity;
-export const connect = _tls_wrap.connect;
-export const createSecureContext = _tls_common.createSecureContext;
-export const createServer = _tls_wrap.createServer;
-export const DEFAULT_CIPHERS = _tls_wrap.DEFAULT_CIPHERS;
-export const TLSSocket = _tls_wrap.TLSSocket;
+export const checkServerIdentity = tlsWrap.checkServerIdentity;
+export const connect = tlsWrap.connect;
+export const createSecureContext = tlsCommon.createSecureContext;
+export const createServer = tlsWrap.createServer;
+export const DEFAULT_CIPHERS = tlsWrap.DEFAULT_CIPHERS;
+export const TLSSocket = tlsWrap.TLSSocket;

@@ -319,7 +319,6 @@ pub fn init<P: NodePermissions + 'static>(
     "_crypto/crypto_browserify/public_encrypt/xor.js",
     "_crypto/crypto_browserify/README.md",
     "_crypto/crypto_browserify/package.json",
-    "_crypto/crypto_browserify/asn1.js/test/util.js",
     "_crypto/crypto_browserify/asn1.js/constants/der.js",
     "_crypto/crypto_browserify/asn1.js/encoders/pem.js",
     "_crypto/crypto_browserify/asn1.js/encoders/der.js",

@@ -394,8 +394,10 @@ function _storeHeader(this: any, firstLine: any, headers: any) {
   if (headers) {
     if (headers === this[kOutHeaders]) {
       for (const key in headers) {
-        const entry = headers[key];
-        processHeader(this, state, entry[0], entry[1], false);
+        if (Object.hasOwn(headers, key)) {
+          const entry = headers[key];
+          processHeader(this, state, entry[0], entry[1], false);
+        }
       }
     } else if (Array.isArray(headers)) {
       if (headers.length && Array.isArray(headers[0])) {

@@ -50,9 +50,10 @@ const active_hooks: ActiveHooks = {
 };
 
 export const registerDestroyHook = async_wrap.registerDestroyHook;
-// deno-lint-ignore camelcase
 const {
+  // deno-lint-ignore camelcase
   async_hook_fields,
+  // deno-lint-ignore camelcase
   asyncIdFields: async_id_fields,
   newAsyncId,
   constants,

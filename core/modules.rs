@@ -292,9 +292,7 @@ impl ModuleLoader for NoopModuleLoader {
   ) -> Pin<Box<ModuleSourceFuture>> {
     let err = generic_error(
       format!(
-        "Module loading is not supported; attempted to load: \"{}\" from \"{:?}\"",
-        module_specifier,
-        maybe_referrer
+        "Module loading is not supported; attempted to load: \"{module_specifier}\" from \"{maybe_referrer:?}\"",
       )
     );
     async move { Err(err) }.boxed_local()

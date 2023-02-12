@@ -31,6 +31,7 @@ import {
   AsyncWrap,
   providerType,
 } from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
+// deno-lint-ignore camelcase
 import { ares_strerror } from "internal:deno_node/polyfills/internal_binding/ares.ts";
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
@@ -104,7 +105,7 @@ export function getaddrinfo(
       });
     }
 
-    // TODO: Forces IPv4 as a workaround for Deno not
+    // TODO(@bartlomieju): Forces IPv4 as a workaround for Deno not
     // aligning with Node on implicit binding on Windows
     // REF: https://github.com/denoland/deno/issues/10762
     if (isWindows && hostname === "localhost") {
@@ -192,7 +193,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   async #query(query: string, recordType: Deno.RecordType) {
-    // TODO: TTL logic.
+    // TODO(@bartlomieju): TTL logic.
 
     let code: number;
     let ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
@@ -249,7 +250,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryAny(req: QueryReqWrap, name: string): number {
-    // TODO: implemented temporary measure to allow limited usage of
+    // TODO(@bartlomieju): implemented temporary measure to allow limited usage of
     // `resolveAny` like APIs.
     //
     // Ideally we move to using the "ANY" / "*" DNS query in future
@@ -501,7 +502,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   getHostByAddr(_req: QueryReqWrap, _name: string): number {
-    // TODO: https://github.com/denoland/deno/issues/14432
+    // TODO(@bartlomieju): https://github.com/denoland/deno/issues/14432
     notImplemented("cares.ChannelWrap.prototype.getHostByAddr");
   }
 

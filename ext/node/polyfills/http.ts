@@ -101,7 +101,7 @@ export interface RequestOptions {
   href?: string;
 }
 
-// TODO: Implement ClientRequest methods (e.g. setHeader())
+// TODO(@bartlomieju): Implement ClientRequest methods (e.g. setHeader())
 /** ClientRequest represents the http(s) request from the client */
 class ClientRequest extends NodeWritable {
   defaultProtocol = "http:";
@@ -386,7 +386,9 @@ export class ServerResponse extends NodeWritable {
   writeHead(status: number, headers: Record<string, string>) {
     this.statusCode = status;
     for (const k in headers) {
-      this.#headers.set(k, headers[k]);
+      if (Object.hasOwn(headers, k)) {
+        this.#headers.set(k, headers[k]);
+      }
     }
     return this;
   }
@@ -481,7 +483,7 @@ export class IncomingMessageForServer extends NodeReadable {
         reader?.cancel().finally(() => cb(err));
       },
     });
-    // TODO: consider more robust path extraction, e.g:
+    // TODO(@bartlomieju): consider more robust path extraction, e.g:
     // url: (new URL(request.url).pathname),
     this.url = req.url?.slice(req.url.indexOf("/", 8));
     this.method = req.method;

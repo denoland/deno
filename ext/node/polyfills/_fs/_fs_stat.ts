@@ -82,42 +82,42 @@ export type BigIntStats = {
   /** ID of the device containing the file.
    *
    * _Linux/Mac OS only._ */
-  dev: BigInt | null;
+  dev: bigint | null;
   /** Inode number.
    *
    * _Linux/Mac OS only._ */
-  ino: BigInt | null;
+  ino: bigint | null;
   /** **UNSTABLE**: Match behavior with Go on Windows for `mode`.
    *
    * The underlying raw `st_mode` bits that contain the standard Unix
    * permissions for this file/directory. */
-  mode: BigInt | null;
+  mode: bigint | null;
   /** Number of hard links pointing to this file.
    *
    * _Linux/Mac OS only._ */
-  nlink: BigInt | null;
+  nlink: bigint | null;
   /** User ID of the owner of this file.
    *
    * _Linux/Mac OS only._ */
-  uid: BigInt | null;
+  uid: bigint | null;
   /** Group ID of the owner of this file.
    *
    * _Linux/Mac OS only._ */
-  gid: BigInt | null;
+  gid: bigint | null;
   /** Device ID of this file.
    *
    * _Linux/Mac OS only._ */
-  rdev: BigInt | null;
+  rdev: bigint | null;
   /** The size of the file, in bytes. */
-  size: BigInt;
+  size: bigint;
   /** Blocksize for filesystem I/O.
    *
    * _Linux/Mac OS only._ */
-  blksize: BigInt | null;
+  blksize: bigint | null;
   /** Number of blocks allocated to the file, in 512-byte units.
    *
    * _Linux/Mac OS only._ */
-  blocks: BigInt | null;
+  blocks: bigint | null;
   /** The last modification time of the file. This corresponds to the `mtime`
    * field from `stat` on Linux/Mac OS and `ftLastWriteTime` on Windows. This
    * may not be available on all platforms. */
@@ -133,21 +133,21 @@ export type BigIntStats = {
   /** change time */
   ctime: Date | null;
   /** atime in milliseconds */
-  atimeMs: BigInt | null;
+  atimeMs: bigint | null;
   /** atime in milliseconds */
-  mtimeMs: BigInt | null;
+  mtimeMs: bigint | null;
   /** atime in milliseconds */
-  ctimeMs: BigInt | null;
+  ctimeMs: bigint | null;
   /** atime in nanoseconds */
-  birthtimeMs: BigInt | null;
+  birthtimeMs: bigint | null;
   /** atime in nanoseconds */
-  atimeNs: BigInt | null;
+  atimeNs: bigint | null;
   /** atime in nanoseconds */
-  mtimeNs: BigInt | null;
+  mtimeNs: bigint | null;
   /** atime in nanoseconds */
-  ctimeNs: BigInt | null;
+  ctimeNs: bigint | null;
   /** atime in nanoseconds */
-  birthtimeNs: BigInt | null;
+  birthtimeNs: bigint | null;
   isBlockDevice: () => boolean;
   isCharacterDevice: () => boolean;
   isDirectory: () => boolean;

@@ -1773,7 +1773,7 @@ export function _createServerHandle(
     debug("bind to", address || "any");
 
     if (!address) {
-      // TODO: differs from Node which tries to bind to IPv6 first when no
+      // TODO(@bartlomieju): differs from Node which tries to bind to IPv6 first when no
       // address is provided.
       //
       // Forcing IPv4 as a workaround for Deno not aligning with Node on
@@ -1845,7 +1845,7 @@ function _onconnection(this: any, err: number, clientHandle?: Handle) {
     writable: true,
   });
 
-  // TODO: implement noDelay and setKeepAlive
+  // TODO(@bartlomieju): implement noDelay and setKeepAlive
 
   self._connections++;
   socket.server = self;
@@ -1883,8 +1883,8 @@ function _setupListenHandle(
 
     // Try to bind to the unspecified IPv6 address, see if IPv6 is available
     if (!address && typeof fd !== "number") {
-      // TODO: differs from Node which tries to bind to IPv6 first when no
-      // address is provided.
+      // TODO(@bartlomieju): differs from Node which tries to bind to IPv6 first
+      // when no address is provided.
       //
       // Forcing IPv4 as a workaround for Deno not aligning with Node on
       // implicit binding on Windows.

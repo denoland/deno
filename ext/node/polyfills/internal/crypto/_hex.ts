@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 // deno-fmt-ignore
 const hexTable = new Uint8Array([
   48,  49,  50,  51, 52, 53,

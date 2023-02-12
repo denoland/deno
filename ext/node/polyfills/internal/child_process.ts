@@ -603,7 +603,9 @@ export function normalizeSpawnArguments(
   let envKeys: string[] = [];
   // Prototype values are intentionally included.
   for (const key in env) {
-    ArrayPrototypePush(envKeys, key);
+    if (Object.hasOwn(env, key)) {
+      ArrayPrototypePush(envKeys, key);
+    }
   }
 
   if (process.platform === "win32") {

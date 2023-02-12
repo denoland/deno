@@ -28,6 +28,7 @@ export const ARES_AI_ENVHOSTS = 1 << 8;
 
 // REF: https://github.com/nodejs/node/blob/master/deps/cares/src/lib/ares_strerror.c
 
+// deno-lint-ignore camelcase
 export function ares_strerror(code: number) {
   /* Return a string literal from a table. */
   const errorText = [

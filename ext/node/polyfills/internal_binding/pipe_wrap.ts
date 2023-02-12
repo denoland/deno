@@ -260,19 +260,19 @@ export class Pipe extends ConnectionWrap {
       return codeMap.get("EINVAL");
     }
 
-    let desired_mode = 0;
+    let desiredMode = 0;
 
     if (mode & constants.UV_READABLE) {
-      desired_mode |= fs.S_IRUSR | fs.S_IRGRP | fs.S_IROTH;
+      desiredMode |= fs.S_IRUSR | fs.S_IRGRP | fs.S_IROTH;
     }
     if (mode & constants.UV_WRITABLE) {
-      desired_mode |= fs.S_IWUSR | fs.S_IWGRP | fs.S_IWOTH;
+      desiredMode |= fs.S_IWUSR | fs.S_IWGRP | fs.S_IWOTH;
     }
 
     // TODO(cmorten): this will incorrectly throw on Windows
     // REF: https://github.com/denoland/deno/issues/4357
     try {
-      Deno.chmodSync(this.#address!, desired_mode);
+      Deno.chmodSync(this.#address!, desiredMode);
     } catch {
       // TODO(cmorten): map errors to appropriate error codes.
       return codeMap.get("UNKNOWN")!;

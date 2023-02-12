@@ -235,7 +235,7 @@ export function hrtime(time?: [number, number]): [number, number] {
   return [sec - prevSec, nano - prevNano];
 }
 
-hrtime.bigint = function (): BigInt {
+hrtime.bigint = function (): bigint {
   const [sec, nano] = hrtime();
   return BigInt(sec) * 1_000_000_000n + BigInt(nano);
 };

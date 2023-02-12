@@ -230,7 +230,7 @@ export function isNumberObject(value: unknown): value is Number {
   }
 }
 
-export function isBigIntObject(value: unknown): value is BigInt {
+export function isBigIntObject(value: unknown): value is bigint {
   if (!isObjectLike(value)) {
     return false;
   }

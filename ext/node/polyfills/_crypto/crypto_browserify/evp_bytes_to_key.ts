@@ -4,6 +4,7 @@
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import { createHash } from "internal:deno_node/polyfills/internal/crypto/hash.ts";
 
+// deno-lint-ignore camelcase
 export function EVP_BytesToKey(
   password: string | Buffer,
   salt: string | Buffer,

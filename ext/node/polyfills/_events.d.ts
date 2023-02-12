@@ -818,7 +818,7 @@ export class EventEmitter {
   /**
    * Sets or gets the default captureRejection value for all emitters.
    */
-  // TODO: These should be described using static getter/setter pairs:
+  // TODO(@bartlomieju): These should be described using static getter/setter pairs:
   static captureRejections: boolean;
   static defaultMaxListeners: number;
 }

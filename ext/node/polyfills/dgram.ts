@@ -501,7 +501,7 @@ export class Socket extends EventEmitter {
         state.bindState = BIND_STATE_UNBOUND;
         this.emit("error", ex);
 
-        // Todo: close?
+        // Todo(@bartlomieju): close?
         return;
       }
 
@@ -1240,7 +1240,7 @@ function startListening(socket: Socket) {
   const state = socket[kStateSymbol];
 
   state.handle!.onmessage = onMessage;
-  // Todo: handle errors
+  // Todo(@bartlomieju): handle errors
   state.handle!.recvStart();
   state.receiving = true;
   state.bindState = BIND_STATE_BOUND;

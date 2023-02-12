@@ -567,7 +567,7 @@ export function packageExportsResolve(
       //
       // To match "imports" and the spec.
       if (packageSubpath.endsWith("/")) {
-        // TODO:
+        // TODO(@bartlomieju):
         // emitTrailingSlashPatternDeprecation(
         //   packageSubpath,
         //   packageJSONUrl,

@@ -68,15 +68,15 @@ export class AbortError extends Error {
   }
 }
 
-let maxStack_ErrorName: string | undefined;
-let maxStack_ErrorMessage: string | undefined;
+let maxStackErrorName: string | undefined;
+let maxStackErrorMessage: string | undefined;
 /**
  * Returns true if `err.name` and `err.message` are equal to engine-specific
  * values indicating max call stack size has been exceeded.
  * "Maximum call stack size exceeded" in V8.
  */
 export function isStackOverflowError(err: Error): boolean {
-  if (maxStack_ErrorMessage === undefined) {
+  if (maxStackErrorMessage === undefined) {
     try {
       // deno-lint-ignore no-inner-declarations
       function overflowStack() {
@@ -85,13 +85,13 @@ export function isStackOverflowError(err: Error): boolean {
       overflowStack();
       // deno-lint-ignore no-explicit-any
     } catch (err: any) {
-      maxStack_ErrorMessage = err.message;
-      maxStack_ErrorName = err.name;
+      maxStackErrorMessage = err.message;
+      maxStackErrorName = err.name;
     }
   }
 
-  return err && err.name === maxStack_ErrorName &&
-    err.message === maxStack_ErrorMessage;
+  return err && err.name === maxStackErrorName &&
+    err.message === maxStackErrorMessage;
 }
 
 function addNumericalSeparator(val: string) {
