@@ -6,8 +6,6 @@ import { ObjectCreate, StringPrototypeToUpperCase } from "internal:deno_node/pol
 import { ERR_UNKNOWN_SIGNAL } from "internal:deno_node/polyfills/internal/errors.ts";
 import { os } from "internal:deno_node/polyfills/internal_binding/constants.ts";
 
-const { signals } = os;
-
 export const customInspectSymbol = Symbol.for("nodejs.util.inspect.custom");
 export const kEnumerableProperty = Object.create(null);
 kEnumerableProperty.enumerable = true;
@@ -107,8 +105,8 @@ function getSignalsToNamesMapping() {
   }
 
   signalsToNamesMapping = ObjectCreate(null);
-  for (const key in signals) {
-    signalsToNamesMapping[signals[key]] = key;
+  for (const key in os.signals) {
+    signalsToNamesMapping[os.signals[key]] = key;
   }
 
   return signalsToNamesMapping;
@@ -120,7 +118,7 @@ export function convertToValidSignal(signal) {
   }
 
   if (typeof signal === "string") {
-    const signalName = signals[StringPrototypeToUpperCase(signal)];
+    const signalName = os.signals[StringPrototypeToUpperCase(signal)];
     if (signalName) return signalName;
   }
 
