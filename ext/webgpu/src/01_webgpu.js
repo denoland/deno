@@ -15,6 +15,7 @@ import DOMException from "internal:deno_web/01_dom_exception.js";
 const {
   ArrayBuffer,
   ArrayBufferIsView,
+  ArrayBufferPrototypeGetByteLength,
   ArrayIsArray,
   ArrayPrototypeFilter,
   ArrayPrototypeMap,
@@ -444,6 +445,7 @@ class GPUAdapterInfo {
         vendor: this.vendor,
         architecture: this.architecture,
         device: this.device,
+        // deno-lint-ignore prefer-primordials
         description: this.description,
       })
     }`;
@@ -917,6 +919,7 @@ class GPUDevice extends EventTarget {
     const { rid, err } = ops.op_webgpu_create_buffer(
       device.rid,
       descriptor.label,
+      // deno-lint-ignore prefer-primordials
       descriptor.size,
       descriptor.usage,
       descriptor.mappedAtCreation,
@@ -926,7 +929,9 @@ class GPUDevice extends EventTarget {
     let options;
     if (descriptor.mappedAtCreation) {
       options = {
+        // deno-lint-ignore prefer-primordials
         mapping: new ArrayBuffer(descriptor.size),
+        // deno-lint-ignore prefer-primordials
         mappingRange: [0, descriptor.size],
         mappedRanges: [],
         state: "mapped at creation",
@@ -943,6 +948,7 @@ class GPUDevice extends EventTarget {
       descriptor.label,
       device,
       rid,
+      // deno-lint-ignore prefer-primordials
       descriptor.size,
       descriptor.usage,
       options,
@@ -967,6 +973,7 @@ class GPUDevice extends EventTarget {
     const { rid, err } = ops.op_webgpu_create_texture({
       deviceRid: device.rid,
       ...descriptor,
+      // deno-lint-ignore prefer-primordials
       size: normalizeGPUExtent3D(descriptor.size),
     });
     device.pushError(err);
@@ -1024,6 +1031,7 @@ class GPUDevice extends EventTarget {
       const entry = descriptor.entries[i];
 
       let j = 0;
+      // deno-lint-ignore prefer-primordials
       if (entry.buffer) j++;
       if (entry.sampler) j++;
       if (entry.texture) j++;
@@ -1154,7 +1162,9 @@ class GPUDevice extends EventTarget {
           resource: rid,
         };
       } else {
+        // deno-lint-ignore prefer-primordials
         const rid = assertResource(resource.buffer, { prefix, context });
+        // deno-lint-ignore prefer-primordials
         assertDeviceMatch(device, resource.buffer, {
           prefix,
           resourceContext: context,
@@ -1165,6 +1175,7 @@ class GPUDevice extends EventTarget {
           kind: "GPUBufferBinding",
           resource: rid,
           offset: entry.resource.offset,
+          // deno-lint-ignore prefer-primordials
           size: entry.resource.size,
         };
       }
@@ -1621,6 +1632,8 @@ class GPUQueue {
       bufferOffset,
       dataOffset,
       size,
+      // TODO(petamoriken): use primordials
+      // deno-lint-ignore prefer-primordials
       new Uint8Array(ArrayBufferIsView(data) ? data.buffer : data),
     );
     device.pushError(err);
@@ -1674,6 +1687,8 @@ class GPUQueue {
       },
       dataLayout,
       normalizeGPUExtent3D(size),
+      // TODO(petamoriken): use primordials
+      // deno-lint-ignore prefer-primordials
       new Uint8Array(ArrayBufferIsView(data) ? data.buffer : data),
     );
     device.pushError(err);
@@ -1919,7 +1934,7 @@ class GPUBuffer {
     for (let i = 0; i < mappedRanges.length; ++i) {
       const { 0: buffer, /* 1: rid, */ 2: start } = mappedRanges[i];
       // TODO(lucacasonato): is this logic correct?
-      const end = start + buffer.byteLength;
+      const end = start + ArrayBufferPrototypeGetByteLength(buffer);
       if (
         (start >= offset && start < (offset + rangeSize)) ||
         (end >= offset && end < (offset + rangeSize))
@@ -2081,8 +2096,11 @@ function createGPUTexture(descriptor, device, rid) {
   texture[_device] = device;
   texture[_rid] = rid;
   texture[_views] = [];
+  // deno-lint-ignore prefer-primordials
   texture[_width] = descriptor.size.width;
+  // deno-lint-ignore prefer-primordials
   texture[_height] = descriptor.size.height;
+  // deno-lint-ignore prefer-primordials
   texture[_depthOrArrayLayers] = descriptor.size.depthOrArrayLayers;
   texture[_mipLevelCount] = descriptor.mipLevelCount;
   texture[_sampleCount] = descriptor.sampleCount;
@@ -2992,10 +3010,12 @@ class GPUCommandEncoder {
       prefix,
       context: "this",
     });
+    // deno-lint-ignore prefer-primordials
     const sourceBufferRid = assertResource(source.buffer, {
       prefix,
       context: "source in Argument 1",
     });
+    // deno-lint-ignore prefer-primordials
     assertDeviceMatch(device, source.buffer, {
       prefix,
       resourceContext: "source in Argument 1",
@@ -3066,10 +3086,12 @@ class GPUCommandEncoder {
       resourceContext: "texture in Argument 1",
       selfContext: "this",
     });
+    // deno-lint-ignore prefer-primordials
     const destinationBufferRid = assertResource(destination.buffer, {
       prefix,
       context: "buffer in Argument 2",
     });
+    // deno-lint-ignore prefer-primordials
     assertDeviceMatch(device, destination.buffer, {
       prefix,
       resourceContext: "buffer in Argument 2",
