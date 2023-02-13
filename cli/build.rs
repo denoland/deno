@@ -351,8 +351,13 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     specifier: "runtime/js/99_main.js".to_string(),
     code: deno_runtime::js::SOURCE_CODE_FOR_99_MAIN_JS,
   });
-  let extensions_with_js =
-    vec![Extension::builder("cli").esm(esm_files).build()];
+  let extensions_with_js = vec![Extension::builder("cli")
+    // FIXME(bartlomieju): information about which extensions were
+    // already snapshotted is not preserved in the snapshot. This should be
+    // fixed, so we can reliably depend on that information.
+    // .dependencies(vec!["runtime"])
+    .esm(esm_files)
+    .build()];
 
   create_snapshot(CreateSnapshotOptions {
     cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
