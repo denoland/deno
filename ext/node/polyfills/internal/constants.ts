@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 const { ops } = globalThis.__bootstrap.core;
-const isWindows = ops.op_build_os() === "windows";
+const isWindows = ops.op_node_build_os() === "windows";
 
 // Alphabet chars.
 export const CHAR_UPPERCASE_A = 65; /* A */

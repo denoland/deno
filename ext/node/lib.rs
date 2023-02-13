@@ -4,6 +4,7 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::include_js_files_dir;
 use deno_core::located_script_name;
+use deno_core::op;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
@@ -82,6 +83,16 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   set.insert("NODE_OPTIONS".to_string());
   set
 });
+
+#[op]
+fn op_node_build_os() -> String {
+  std::env::var("TARGET")
+    .unwrap()
+    .split('-')
+    .nth(2)
+    .unwrap()
+    .to_string()
+}
 
 pub fn init<P: NodePermissions + 'static>(
   maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
@@ -430,6 +441,7 @@ pub fn init<P: NodePermissions + 'static>(
       crypto::op_node_hash_update::decl(),
       crypto::op_node_hash_digest::decl(),
       crypto::op_node_hash_clone::decl(),
+      op_node_build_os::decl(),
     ])
     .state(move |state| {
       if let Some(npm_resolver) = maybe_npm_resolver.clone() {
