@@ -349,7 +349,10 @@ let execPath: string | null = null;
 class Process extends EventEmitter {
   constructor() {
     super();
+  }
 
+  // only call this from runtime's main.js
+  __bootstrap() {
     globalThis.addEventListener("unhandledrejection", (event) => {
       if (process.listenerCount("unhandledRejection") === 0) {
         // The Node.js default behavior is to raise an uncaught exception if

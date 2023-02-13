@@ -25,10 +25,9 @@
 // - https://github.com/nodejs/node/blob/master/src/node_options.cc
 // - https://github.com/nodejs/node/blob/master/src/node_options.h
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-
 export function getOptions() {
-  notImplemented("getOptions");
+  // TODO(kt3k): Return option arguments as parsed object
+  return { options: new Map() };
 
   // const { Deno } = globalThis as any;
   // const args = parse(Deno?.args ?? []);

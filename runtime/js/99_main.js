@@ -72,6 +72,7 @@ import {
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
 } from "internal:runtime/js/98_global_scope.js";
+import process from "internal:deno_node/polyfills/process.ts";
 
 let windowIsClosing = false;
 let globalThis_;
@@ -531,6 +532,9 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
 
   util.log("args", runtimeOptions.args);
+
+  // Initialize Node polyfills
+  process.__bootstrap();
 }
 
 function bootstrapWorkerRuntime(
