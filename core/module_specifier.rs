@@ -94,7 +94,7 @@ pub fn resolve_import(
         let path = current_dir().unwrap().join(base);
         Url::from_file_path(path).unwrap()
       } else {
-        Url::parse(base).map_err(InvalidBaseUrl)?
+        Url::parse_with_params(base).map_err(InvalidBaseUrl)?
       };
       base.join(specifier).map_err(InvalidUrl)?
     }
@@ -113,7 +113,7 @@ pub fn resolve_import(
 pub fn resolve_url(
   url_str: &str,
 ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-  Url::parse(url_str).map_err(ModuleResolutionError::InvalidUrl)
+  Url::parse_with_params(url_str).map_err(ModuleResolutionError::InvalidUrl)
 }
 
 /// Takes a string representing either an absolute URL or a file path,
@@ -203,6 +203,12 @@ mod tests {
         "../005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
         "http://deno.land/core/005_more_imports.ts",
+      ),
+      (
+        "../005_more_imports.ts?version=100",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        "http://deno.land/core/005_more_imports.ts?version=100",
+
       ),
       (
         "http://deno.land/core/tests/005_more_imports.ts",
