@@ -28,7 +28,6 @@ mod not_docs {
       MediaType::JavaScript => false,
       MediaType::Mjs => false,
       MediaType::TypeScript => true,
-      MediaType::Dts => true,
       _ => panic!("Unsupported media type for snapshotting {media_type:?}"),
     };
 
@@ -44,7 +43,12 @@ mod not_docs {
       scope_analysis: false,
       maybe_syntax: None,
     })?;
-    let transpiled_source = parsed.transpile(&Default::default())?;
+    let transpiled_source = parsed.transpile(&deno_ast::EmitOptions {
+      imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+      inline_source_map: false,
+      ..Default::default()
+    })?;
+
     Ok(transpiled_source.text)
   }
 

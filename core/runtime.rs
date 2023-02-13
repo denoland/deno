@@ -836,21 +836,27 @@ impl JsRuntime {
         let esm_files = ext.get_esm_sources();
         for file_source in esm_files {
           futures::executor::block_on(async {
-            let id = self
+            let result = self
               .load_side_module(
                 &ModuleSpecifier::parse(&file_source.specifier)?,
                 None,
               )
-              .await?;
+              .await;
+            // eprintln!("result from load {:#?}", result);
+            let id = result?;
 
             let mut receiver = self.mod_evaluate(id);
 
             futures::select! {
               result = self.run_event_loop(false).fuse() => {
-                result?;
+                let r = result;
+                // eprintln!("result {:#?}", r);
+                r?;
               }
               receiver_result = receiver => {
-                receiver_result??;
+                let result = receiver_result?;
+                // eprintln!("result in receiver {:#?}", result);
+                result?;
               }
             }
             Ok::<(), anyhow::Error>(())
