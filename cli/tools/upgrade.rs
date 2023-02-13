@@ -510,7 +510,17 @@ pub fn unpack_into_dir(
         .arg(format!("'{}'", &archive_path.to_str().unwrap()))
         .arg("-DestinationPath")
         .arg(format!("'{}'", &temp_dir_path.to_str().unwrap()))
-        .spawn()?
+        .spawn()
+        .map_err(|err| {
+          if err.kind() == std::io::ErrorKind::NotFound {
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              "`powershell.exe` was not found on your PATH",
+            )
+          } else {
+            err
+          }
+        })?
         .wait()?
     }
     "zip" => {
