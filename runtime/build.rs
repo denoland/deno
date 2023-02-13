@@ -164,9 +164,58 @@ mod not_docs {
 
   fn create_runtime_snapshot(
     snapshot_path: PathBuf,
-    additional_extension: Extension,
+    maybe_additional_extension: Option<Extension>,
   ) {
-    let extensions_with_js: Vec<Extension> = vec![
+    let runtime_extension = Extension::builder("runtime")
+      .dependencies(vec![
+        "deno_webidl",
+        "deno_console",
+        "deno_url",
+        "deno_tls",
+        "deno_web",
+        "deno_fetch",
+        "deno_cache",
+        "deno_websocket",
+        "deno_webstorage",
+        "deno_crypto",
+        "deno_webgpu",
+        "deno_broadcast_channel",
+        "deno_node",
+        "deno_ffi",
+        "deno_net",
+        "deno_napi",
+        "deno_http",
+        "deno_flash",
+      ])
+      .esm(include_js_files_dir!(
+        dir "js",
+        "01_build.js",
+        "01_errors.js",
+        "01_version.ts",
+        "06_util.js",
+        "10_permissions.js",
+        "11_workers.js",
+        "12_io.js",
+        "13_buffer.js",
+        "30_fs.js",
+        "30_os.js",
+        "40_diagnostics.js",
+        "40_files.js",
+        "40_fs_events.js",
+        "40_http.js",
+        "40_process.js",
+        "40_read_file.js",
+        "40_signals.js",
+        "40_spawn.js",
+        "40_tty.js",
+        "40_write_file.js",
+        "41_prompt.js",
+        "90_deno_ns.js",
+        "98_global_scope.js",
+      ))
+      .build();
+
+    let mut extensions_with_js: Vec<Extension> = vec![
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
@@ -194,8 +243,12 @@ mod not_docs {
       deno_napi::init::<Permissions>(false),
       deno_http::init(),
       deno_flash::init::<Permissions>(false), // No --unstable
-      additional_extension,
+      runtime_extension,
     ];
+
+    if let Some(additional_extension) = maybe_additional_extension {
+      extensions_with_js.push(additional_extension);
+    }
 
     create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
@@ -217,44 +270,22 @@ mod not_docs {
 
   pub fn build_snapshot(runtime_snapshot_path: PathBuf) {
     #[allow(unused_mut, unused_assignments)]
-    let mut esm_files = include_js_files_dir!(
-      dir "js",
-      "01_build.js",
-      "01_errors.js",
-      "01_version.ts",
-      "06_util.js",
-      "10_permissions.js",
-      "11_workers.js",
-      "12_io.js",
-      "13_buffer.js",
-      "30_fs.js",
-      "30_os.js",
-      "40_diagnostics.js",
-      "40_files.js",
-      "40_fs_events.js",
-      "40_http.js",
-      "40_process.js",
-      "40_read_file.js",
-      "40_signals.js",
-      "40_spawn.js",
-      "40_tty.js",
-      "40_write_file.js",
-      "41_prompt.js",
-      "90_deno_ns.js",
-      "98_global_scope.js",
-    );
+    let mut maybe_additional_extension = None;
 
     #[cfg(not(feature = "snapshot_from_snapshot"))]
     {
-      esm_files.push(ExtensionFileSource {
-        specifier: "js/99_main.js".to_string(),
-        code: include_str!("js/99_main.js"),
-      });
+      maybe_additional_extension = Some(
+        Extension::builder("runtime_main")
+          .dependencies(vec!["runtime"])
+          .esm(vec![ExtensionFileSource {
+            specifier: "js/99_main.js".to_string(),
+            code: include_str!("js/99_main.js"),
+          }])
+          .build(),
+      );
     }
 
-    let additional_extension =
-      Extension::builder("runtime").esm(esm_files).build();
-    create_runtime_snapshot(runtime_snapshot_path, additional_extension);
+    create_runtime_snapshot(runtime_snapshot_path, maybe_additional_extension);
   }
 }
 
