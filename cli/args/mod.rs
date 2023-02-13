@@ -90,7 +90,7 @@ impl CacheSetting {
         if list.iter().any(|i| i == "npm:") {
           return false;
         }
-        let specifier = format!("npm:{}", package_name);
+        let specifier = format!("npm:{package_name}");
         if list.contains(&specifier) {
           return false;
         }
@@ -105,6 +105,7 @@ impl CacheSetting {
 pub struct BenchOptions {
   pub files: FilesConfig,
   pub filter: Option<String>,
+  pub json: bool,
 }
 
 impl BenchOptions {
@@ -119,6 +120,7 @@ impl BenchOptions {
         Some(bench_flags.files),
       ),
       filter: bench_flags.filter,
+      json: bench_flags.json,
     })
   }
 }
@@ -491,7 +493,7 @@ impl CliOptions {
         format!("for: {}", insecure_allowlist.join(", "))
       };
       let msg =
-        format!("DANGER: TLS certificate validation is disabled {}", domains);
+        format!("DANGER: TLS certificate validation is disabled {domains}");
       // use eprintln instead of log::warn so this always gets shown
       eprintln!("{}", colors::yellow(msg));
     }
@@ -579,8 +581,7 @@ impl CliOptions {
     )
     .await
     .context(format!(
-      "Unable to load '{}' import map",
-      import_map_specifier
+      "Unable to load '{import_map_specifier}' import map"
     ))
     .map(Some)
   }
@@ -691,16 +692,10 @@ impl CliOptions {
   /// Return any imports that should be brought into the scope of the module
   /// graph.
   pub fn to_maybe_imports(&self) -> MaybeImportsResult {
-    let mut imports = Vec::new();
     if let Some(config_file) = &self.maybe_config_file {
-      if let Some(config_imports) = config_file.to_maybe_imports()? {
-        imports.extend(config_imports);
-      }
-    }
-    if imports.is_empty() {
-      Ok(None)
+      config_file.to_maybe_imports()
     } else {
-      Ok(Some(imports))
+      Ok(Vec::new())
     }
   }
 
@@ -929,7 +924,7 @@ fn resolve_import_map_specifier(
       }
     }
     let specifier = deno_core::resolve_url_or_path(import_map_path)
-      .context(format!("Bad URL (\"{}\") for import map.", import_map_path))?;
+      .context(format!("Bad URL (\"{import_map_path}\") for import map."))?;
     return Ok(Some(specifier));
   } else if let Some(config_file) = &maybe_config_file {
     // if the config file is an import map we prefer to use it, over `importMap`
@@ -970,8 +965,7 @@ fn resolve_import_map_specifier(
           } else {
             deno_core::resolve_import(&import_map_path, config_file.specifier.as_str())
               .context(format!(
-                "Bad URL (\"{}\") for import map.",
-                import_map_path
+                "Bad URL (\"{import_map_path}\") for import map."
               ))?
           };
       return Ok(Some(specifier));

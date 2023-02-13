@@ -39,7 +39,7 @@ pub fn convert_to_utf8<'a>(
       .ok_or_else(|| ErrorKind::InvalidData.into()),
     None => Err(Error::new(
       ErrorKind::InvalidInput,
-      format!("Unsupported charset: {}", charset),
+      format!("Unsupported charset: {charset}"),
     )),
   }
 }

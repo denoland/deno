@@ -32,7 +32,7 @@ fn gen_checksum(v: &[impl AsRef<[u8]>]) -> String {
   let out: Vec<String> = digest
     .as_ref()
     .iter()
-    .map(|byte| format!("{:02x}", byte))
+    .map(|byte| format!("{byte:02x}"))
     .collect();
   out.join("")
 }
@@ -187,7 +187,8 @@ impl Lockfile {
       return Ok(());
     }
 
-    let json_string = serde_json::to_string_pretty(&self.content).unwrap();
+    let mut json_string = serde_json::to_string_pretty(&self.content).unwrap();
+    json_string.push('\n'); // trailing newline in file
     let mut f = std::fs::OpenOptions::new()
       .write(true)
       .create(true)

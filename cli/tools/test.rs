@@ -7,7 +7,7 @@ use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display;
 use crate::file_fetcher::File;
-use crate::graph_util::graph_valid;
+use crate::graph_util::graph_valid_with_cli_options;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::util::checksum;
@@ -323,7 +323,7 @@ impl PrettyTestReporter {
     if url.scheme() == "file" {
       if let Some(mut r) = self.cwd.make_relative(&url) {
         if !r.starts_with("../") {
-          r = format!("./{}", r);
+          r = format!("./{r}");
         }
         return r;
       }
@@ -513,7 +513,7 @@ impl PrettyTestReporter {
       );
       print!(" {} ...", root.name);
       for name in ancestor_names {
-        print!(" {} ...", name);
+        print!(" {name} ...");
       }
       print!(" {} ...", description.name);
       self.in_new_line = false;
@@ -584,7 +584,7 @@ impl PrettyTestReporter {
       }
       println!("{}\n", colors::white_bold_on_red(" FAILURES "));
       for failure_title in failure_titles {
-        println!("{}", failure_title);
+        println!("{failure_title}");
       }
     }
 
@@ -600,7 +600,7 @@ impl PrettyTestReporter {
       } else if count == 1 {
         " (1 step)".to_string()
       } else {
-        format!(" ({} steps)", count)
+        format!(" ({count} steps)")
       }
     };
 
@@ -655,7 +655,8 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
   // check if there are any stack frames coming from user code
   let should_filter = frames.iter().any(|f| {
     if let Some(file_name) = &f.file_name {
-      !(file_name.starts_with("[deno:") || file_name.starts_with("deno:"))
+      !(file_name.starts_with("[internal:")
+        || file_name.starts_with("internal:"))
     } else {
       true
     }
@@ -667,7 +668,8 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
       .rev()
       .skip_while(|f| {
         if let Some(file_name) = &f.file_name {
-          file_name.starts_with("[deno:") || file_name.starts_with("deno:")
+          file_name.starts_with("[internal:")
+            || file_name.starts_with("internal:")
         } else {
           false
         }
@@ -1375,7 +1377,7 @@ pub async fn run_tests_with_watch(
         test_modules.clone()
       };
       let graph = ps.create_graph(test_modules.clone()).await?;
-      graph_valid(&graph, !no_check, ps.options.check_js())?;
+      graph_valid_with_cli_options(&graph, &test_modules, &ps.options)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {

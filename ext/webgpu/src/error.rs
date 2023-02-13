@@ -5,7 +5,6 @@ use serde::Serialize;
 use std::convert::From;
 use std::error::Error;
 use std::fmt;
-use std::fmt::Write;
 use wgpu_core::binding_model::CreateBindGroupError;
 use wgpu_core::binding_model::CreateBindGroupLayoutError;
 use wgpu_core::binding_model::CreatePipelineLayoutError;
@@ -24,6 +23,8 @@ use wgpu_core::device::DeviceError;
 use wgpu_core::pipeline::CreateComputePipelineError;
 use wgpu_core::pipeline::CreateRenderPipelineError;
 use wgpu_core::pipeline::CreateShaderModuleError;
+#[cfg(feature = "surface")]
+use wgpu_core::present::ConfigureSurfaceError;
 use wgpu_core::resource::BufferAccessError;
 use wgpu_core::resource::CreateBufferError;
 use wgpu_core::resource::CreateQuerySetError;
@@ -36,9 +37,7 @@ fn fmt_err(err: &(dyn Error + 'static)) -> String {
 
   let mut e = err.source();
   while let Some(source) = e {
-    // No error possible, unwrap is fine here.
-    // https://github.com/rust-lang/rust/blob/1.47.0/library/alloc/src/string.rs#L2414-L2427
-    write!(output, ": {source}").unwrap();
+    output.push_str(&format!(": {source}"));
     e = source.source();
   }
 
@@ -277,6 +276,13 @@ impl From<QueueWriteError> for WebGpuError {
 
 impl From<ClearError> for WebGpuError {
   fn from(err: ClearError) -> Self {
+    WebGpuError::Validation(fmt_err(&err))
+  }
+}
+
+#[cfg(feature = "surface")]
+impl From<ConfigureSurfaceError> for WebGpuError {
+  fn from(err: ConfigureSurfaceError) -> Self {
     WebGpuError::Validation(fmt_err(&err))
   }
 }

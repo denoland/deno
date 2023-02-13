@@ -255,8 +255,11 @@ declare namespace __bootstrap {
     export const ArrayBuffer: typeof globalThis.ArrayBuffer;
     export const ArrayBufferLength: typeof ArrayBuffer.length;
     export const ArrayBufferName: typeof ArrayBuffer.name;
-    export const ArrayBufferPrototype: typeof ArrayBuffer.prototype;
     export const ArrayBufferIsView: typeof ArrayBuffer.isView;
+    export const ArrayBufferPrototype: typeof ArrayBuffer.prototype;
+    export const ArrayBufferPrototypeGetByteLength: (
+      buffer: ArrayBuffer,
+    ) => number;
     export const ArrayBufferPrototypeSlice: UncurryThis<
       typeof ArrayBuffer.prototype.slice
     >;
@@ -301,6 +304,11 @@ declare namespace __bootstrap {
     export const DataViewLength: typeof DataView.length;
     export const DataViewName: typeof DataView.name;
     export const DataViewPrototype: typeof DataView.prototype;
+    export const DataViewPrototypeGetBuffer: (
+      view: DataView,
+    ) => ArrayBuffer | SharedArrayBuffer;
+    export const DataViewPrototypeGetByteLength: (view: DataView) => number;
+    export const DataViewPrototypeGetByteOffset: (view: DataView) => number;
     export const DataViewPrototypeGetInt8: UncurryThis<
       typeof DataView.prototype.getInt8
     >;
@@ -979,6 +987,19 @@ declare namespace __bootstrap {
       constructor: Uint8ArrayConstructor,
       arrayLike: ArrayLike<number>,
     ) => Uint8Array;
+    export const TypedArrayPrototypeGetBuffer: (
+      array: Uint8Array,
+    ) => ArrayBuffer | SharedArrayBuffer;
+    export const TypedArrayPrototypeGetByteLength: (
+      array: Uint8Array,
+    ) => number;
+    export const TypedArrayPrototypeGetByteOffset: (
+      array: Uint8Array,
+    ) => number;
+    export const TypedArrayPrototypeGetLength: (array: Uint8Array) => number;
+    export const TypedArrayPrototypeGetSymbolToStringTag: (
+      v: unknown,
+    ) => string | undefined;
     export const TypedArrayPrototypeCopyWithin: UncurryThis<
       typeof Uint8Array.prototype.copyWithin
     >;

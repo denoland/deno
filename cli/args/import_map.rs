@@ -56,7 +56,7 @@ fn print_import_map_diagnostics(diagnostics: &[ImportMapDiagnostic]) {
       "Import map diagnostics:\n{}",
       diagnostics
         .iter()
-        .map(|d| format!("  - {}", d))
+        .map(|d| format!("  - {d}"))
         .collect::<Vec<_>>()
         .join("\n")
     );

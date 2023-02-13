@@ -65,6 +65,6 @@ pub fn op_webgpu_create_sampler(
   gfx_put!(device => instance.device_create_sampler(
     device,
     &descriptor,
-    std::marker::PhantomData
+    ()
   ) => state, WebGpuSampler)
 }

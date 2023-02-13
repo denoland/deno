@@ -217,10 +217,10 @@ fn get_endpoint_with_match(
         Token::Key(k) if k.name == *key => Some(k),
         _ => None,
       });
-      url = url
-        .replace(&format!("${{{}}}", name), &value.to_string(maybe_key, true));
+      url =
+        url.replace(&format!("${{{name}}}"), &value.to_string(maybe_key, true));
       url = url.replace(
-        &format!("${{{{{}}}}}", name),
+        &format!("${{{{{name}}}}}"),
         &percent_encoding::percent_encode(
           value.to_string(maybe_key, true).as_bytes(),
           COMPONENT,
@@ -278,8 +278,8 @@ fn replace_variable(
   let value = maybe_value.unwrap_or("");
   if let StringOrNumber::String(name) = &variable.name {
     url_str
-      .replace(&format!("${{{}}}", name), value)
-      .replace(&format! {"${{{{{}}}}}", name}, value)
+      .replace(&format!("${{{name}}}"), value)
+      .replace(&format! {"${{{{{name}}}}}"}, value)
   } else {
     url_str
   }
@@ -723,7 +723,7 @@ impl ModuleRegistry {
                         }
                         for (idx, item) in items.into_iter().enumerate() {
                           let mut label = if let Some(p) = &prefix {
-                            format!("{}{}", p, item)
+                            format!("{p}{item}")
                           } else {
                             item.clone()
                           };
@@ -880,7 +880,7 @@ impl ModuleRegistry {
                             is_incomplete = true;
                           }
                           for (idx, item) in items.into_iter().enumerate() {
-                            let path = format!("{}{}", prefix, item);
+                            let path = format!("{prefix}{item}");
                             let kind = Some(lsp::CompletionItemKind::FOLDER);
                             let item_specifier = base.join(&path).ok()?;
                             let full_text = item_specifier.as_str();

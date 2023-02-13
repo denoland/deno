@@ -46,8 +46,7 @@ impl DynamicLibraryResource {
     match unsafe { self.lib.symbol::<*const c_void>(&symbol) } {
       Ok(value) => Ok(Ok(value)),
       Err(err) => Err(generic_error(format!(
-        "Failed to register symbol {}: {}",
-        symbol, err
+        "Failed to register symbol {symbol}: {err}"
       ))),
     }?
   }
@@ -156,8 +155,7 @@ where
           match unsafe { resource.lib.symbol::<*const c_void>(symbol) } {
             Ok(value) => Ok(value),
             Err(err) => Err(generic_error(format!(
-              "Failed to register symbol {}: {}",
-              symbol, err
+              "Failed to register symbol {symbol}: {err}"
             ))),
           }?;
         let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);

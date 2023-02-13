@@ -257,7 +257,7 @@ mod internal {
   use std::pin::Pin;
 
   impl<T> AsyncRefCell<T> {
-    /// Borrow the cell's contents synchronouslym without creating an
+    /// Borrow the cell's contents synchronously without creating an
     /// intermediate future. If the cell has already been borrowed and either
     /// the existing or the requested borrow is exclusive, this function returns
     /// `None`.
@@ -577,7 +577,7 @@ mod internal {
     pub fn add(self, mode: BorrowMode) -> BorrowCount {
       match self.try_add(mode) {
         Some(value) => value,
-        None => panic!("Can't add {:?} to {:?}", mode, self),
+        None => panic!("Can't add {mode:?} to {self:?}"),
       }
     }
 
@@ -596,7 +596,7 @@ mod internal {
     pub fn remove(self, mode: BorrowMode) -> BorrowCount {
       match self.try_remove(mode) {
         Some(value) => value,
-        None => panic!("Can't remove {:?} from {:?}", mode, self),
+        None => panic!("Can't remove {mode:?} from {self:?}"),
       }
     }
   }

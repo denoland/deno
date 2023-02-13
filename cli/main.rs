@@ -18,6 +18,7 @@ mod npm;
 mod ops;
 mod proc_state;
 mod resolver;
+mod semver;
 mod standalone;
 mod tools;
 mod tsc;
@@ -139,7 +140,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Test(test_flags) => {
       if let Some(ref coverage_dir) = flags.coverage_dir {
         std::fs::create_dir_all(coverage_dir)
-          .with_context(|| format!("Failed creating: {}", coverage_dir))?;
+          .with_context(|| format!("Failed creating: {coverage_dir}"))?;
         // this is set in order to ensure spawned processes use the same
         // coverage directory
         env::set_var(
@@ -206,7 +207,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      let mut error_string = format!("{:?}", error);
+      let mut error_string = format!("{error:?}");
       let mut error_code = 1;
 
       if let Some(e) = error.downcast_ref::<JsError>() {

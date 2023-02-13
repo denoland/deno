@@ -438,7 +438,7 @@ const ci = {
               ].join("\n"),
               key: "never_saved",
               "restore-keys":
-                "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
+                "19-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
             },
           },
           {

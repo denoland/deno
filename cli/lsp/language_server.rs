@@ -173,8 +173,18 @@ impl LanguageServer {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
       };
-      let graph = ps.create_graph_with_loader(roots, &mut loader).await?;
-      graph_valid(&graph, true, false)?;
+      let graph = ps
+        .create_graph_with_loader(roots.clone(), &mut loader)
+        .await?;
+      graph_valid(
+        &graph,
+        &roots,
+        deno_graph::WalkOptions {
+          follow_dynamic: false,
+          follow_type_only: true,
+          check_js: false,
+        },
+      )?;
       Ok(())
     }
 
@@ -375,8 +385,7 @@ impl Inner {
     self.get_maybe_asset_or_document(specifier).map_or_else(
       || {
         Err(LspError::invalid_params(format!(
-          "Unable to find asset or document for: {}",
-          specifier
+          "Unable to find asset or document for: {specifier}"
         )))
       },
       Ok,
@@ -1162,7 +1171,9 @@ impl Inner {
         self.maybe_import_map.clone(),
         self.maybe_config_file.as_ref(),
       );
+      self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate_all();
+      self.restart_ts_server().await;
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1296,7 +1307,7 @@ impl Inner {
         Ok(Some(text_edits))
       }
     } else {
-      self.client.show_message(MessageType::WARNING, format!("Unable to format \"{}\". Likely due to unrecoverable syntax errors in the file.", specifier)).await;
+      self.client.show_message(MessageType::WARNING, format!("Unable to format \"{specifier}\". Likely due to unrecoverable syntax errors in the file.")).await;
       Ok(None)
     }
   }
@@ -1354,7 +1365,7 @@ impl Inner {
       };
       let value =
         if let Some(docs) = self.module_registries.get_hover(&dep).await {
-          format!("{}\n\n---\n\n{}", value, docs)
+          format!("{value}\n\n---\n\n{docs}")
         } else {
           value
         };
@@ -1528,7 +1539,7 @@ impl Inner {
         .extend(refactor_info.to_code_actions(&specifier, &params.range));
     }
     all_actions.extend(
-      refactor::prune_invalid_actions(&refactor_actions, 5)
+      refactor::prune_invalid_actions(refactor_actions, 5)
         .into_iter()
         .map(CodeActionOrCommand::CodeAction),
     );
@@ -3025,15 +3036,19 @@ impl Inner {
     // the language server for TypeScript (as it might hold to some stale
     // documents).
     self.diagnostics_server.invalidate_all();
+    self.restart_ts_server().await;
+    self.send_diagnostics_update();
+    self.send_testing_update();
+
+    self.performance.measure(mark);
+  }
+
+  async fn restart_ts_server(&self) {
     let _: bool = self
       .ts_server
       .request(self.snapshot(), tsc::RequestMethod::Restart)
       .await
       .unwrap();
-    self.send_diagnostics_update();
-    self.send_testing_update();
-
-    self.performance.measure(mark);
   }
 
   fn get_performance(&self) -> Value {
