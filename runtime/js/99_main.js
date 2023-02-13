@@ -519,6 +519,8 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   util.log("args", runtimeOptions.args);
 
+  // FIXME(bartlomieju): this should be a helper function that is placed in
+  // "internals" namespace
   // Initialize Node polyfills
   process.__bootstrap();
 }
