@@ -515,7 +515,7 @@ pub fn unpack_into_dir(
           if err.kind() == std::io::ErrorKind::NotFound {
             std::io::Error::new(
               std::io::ErrorKind::NotFound,
-              "`powershell.exe` was not found on your PATH",
+              "`powershell.exe` was not found in your PATH",
             )
           } else {
             err
@@ -533,7 +533,7 @@ pub fn unpack_into_dir(
           if err.kind() == std::io::ErrorKind::NotFound {
             std::io::Error::new(
               std::io::ErrorKind::NotFound,
-              "`unzip` was not found on your PATH, please install `unzip`",
+              "`unzip` was not found in your PATH, please install `unzip`",
             )
           } else {
             err
