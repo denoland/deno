@@ -28,6 +28,7 @@ mod not_docs {
       MediaType::JavaScript => false,
       MediaType::Mjs => false,
       MediaType::TypeScript => true,
+      MediaType::Dts => true,
       _ => panic!("Unsupported media type for snapshotting {media_type:?}"),
     };
 

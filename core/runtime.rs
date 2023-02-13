@@ -842,9 +842,21 @@ impl JsRuntime {
                 None,
               )
               .await?;
-            let receiver = self.mod_evaluate(id);
-            self.run_event_loop(false).await?;
-            receiver.await?
+
+            let mut receiver = self.mod_evaluate(id);
+
+            futures::select! {
+              result = self.run_event_loop(false).fuse() => {
+                result?;
+              }
+              receiver_result = receiver => {
+                receiver_result??;
+              }
+            }
+            Ok::<(), anyhow::Error>(())
+            // let receiver = self.mod_evaluate(id);
+            // self.run_event_loop(false).await?;
+            // receiver.await?
           })
           .with_context(|| {
             format!("Couldn't execute '{}'", file_source.specifier)
@@ -1770,6 +1782,14 @@ impl JsRuntime {
       .map(|handle| v8::Local::new(tc_scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
+
+    // FIXME(bartlomieju): this is a hack, when snapshotting we shouldn't
+    // be trying to evaluate same module multiple times
+    if status == v8::ModuleStatus::Evaluated {
+      let (sender, receiver) = oneshot::channel();
+      sender.send(Ok(())).unwrap();
+      return receiver;
+    }
     assert_eq!(status, v8::ModuleStatus::Instantiated);
 
     let (sender, receiver) = oneshot::channel();
