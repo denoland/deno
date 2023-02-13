@@ -123,7 +123,7 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
     let file = self.maybe_file.as_ref()?;
     // If the current version saved is not the actualy current version of the binary
     // It means
-    // - We already check for a new vesion today
+    // - We already check for a new version today
     // - The user have probably upgraded today
     // So we should not prompt and wait for tomorrow for the latest version to be updated again
     if file.current_version != self.env.current_version() {
@@ -373,7 +373,7 @@ pub async fn upgrade(
 
   let archive_data = download_package(client, &download_url)
     .await
-    .with_context(|| format!("Failed downloading {}", download_url))?;
+    .with_context(|| format!("Failed downloading {download_url}"))?;
 
   log::info!("Deno is upgrading to version {}", &install_version);
 
@@ -531,7 +531,7 @@ pub fn unpack_into_dir(
         })?
         .wait()?
     }
-    ext => panic!("Unsupported archive type: '{}'", ext),
+    ext => panic!("Unsupported archive type: '{ext}'"),
   };
   assert!(unpack_status.success());
   assert!(exe_path.exists());

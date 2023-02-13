@@ -97,7 +97,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .arg("--quiet")
     .arg("--unstable")
     .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
-    .arg(format!("coverage/{}_test.{}", test_name, extension))
+    .arg(format!("coverage/{test_name}_test.{extension}"))
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::inherit())
     .status()
@@ -123,13 +123,13 @@ fn run_coverage_text(test_name: &str, extension: &str) {
       .to_string();
 
   let expected = fs::read_to_string(
-    util::testdata_path().join(format!("coverage/{}_expected.out", test_name)),
+    util::testdata_path().join(format!("coverage/{test_name}_expected.out")),
   )
   .unwrap();
 
   if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{}\nOUTPUT", actual);
-    println!("EXPECTED\n{}\nEXPECTED", expected);
+    println!("OUTPUT\n{actual}\nOUTPUT");
+    println!("EXPECTED\n{expected}\nEXPECTED");
     panic!("pattern match failed");
   }
 
@@ -152,13 +152,13 @@ fn run_coverage_text(test_name: &str, extension: &str) {
       .to_string();
 
   let expected = fs::read_to_string(
-    util::testdata_path().join(format!("coverage/{}_expected.lcov", test_name)),
+    util::testdata_path().join(format!("coverage/{test_name}_expected.lcov")),
   )
   .unwrap();
 
   if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{}\nOUTPUT", actual);
-    println!("EXPECTED\n{}\nEXPECTED", expected);
+    println!("OUTPUT\n{actual}\nOUTPUT");
+    println!("EXPECTED\n{expected}\nEXPECTED");
     panic!("pattern match failed");
   }
 
@@ -208,8 +208,8 @@ fn multifile_coverage() {
   .unwrap();
 
   if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{}\nOUTPUT", actual);
-    println!("EXPECTED\n{}\nEXPECTED", expected);
+    println!("OUTPUT\n{actual}\nOUTPUT");
+    println!("EXPECTED\n{expected}\nEXPECTED");
     panic!("pattern match failed");
   }
 
@@ -237,8 +237,8 @@ fn multifile_coverage() {
   .unwrap();
 
   if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{}\nOUTPUT", actual);
-    println!("EXPECTED\n{}\nEXPECTED", expected);
+    println!("OUTPUT\n{actual}\nOUTPUT");
+    println!("EXPECTED\n{expected}\nEXPECTED");
     panic!("pattern match failed");
   }
 
@@ -258,8 +258,7 @@ fn no_snaps_included(test_name: &str, extension: &str) {
     .arg("--allow-read")
     .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
     .arg(format!(
-      "coverage/no_snaps_included/{}_test.{}",
-      test_name, extension
+      "coverage/no_snaps_included/{test_name}_test.{extension}"
     ))
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
@@ -292,8 +291,8 @@ fn no_snaps_included(test_name: &str, extension: &str) {
   .unwrap();
 
   if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{}\nOUTPUT", actual);
-    println!("EXPECTED\n{}\nEXPECTED", expected);
+    println!("OUTPUT\n{actual}\nOUTPUT");
+    println!("EXPECTED\n{expected}\nEXPECTED");
     panic!("pattern match failed");
   }
 
@@ -339,8 +338,8 @@ fn no_transpiled_lines() {
   .unwrap();
 
   if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{}\nOUTPUT", actual);
-    println!("EXPECTED\n{}\nEXPECTED", expected);
+    println!("OUTPUT\n{actual}\nOUTPUT");
+    println!("EXPECTED\n{expected}\nEXPECTED");
     panic!("pattern match failed");
   }
 
@@ -367,8 +366,8 @@ fn no_transpiled_lines() {
   .unwrap();
 
   if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{}\nOUTPUT", actual);
-    println!("EXPECTED\n{}\nEXPECTED", expected);
+    println!("OUTPUT\n{actual}\nOUTPUT");
+    println!("EXPECTED\n{expected}\nEXPECTED");
     panic!("pattern match failed");
   }
 

@@ -103,7 +103,7 @@ pub fn ensure_directory_specifier(
 ) -> ModuleSpecifier {
   let path = specifier.path();
   if !path.ends_with('/') {
-    let new_path = format!("{}/", path);
+    let new_path = format!("{path}/");
     specifier.set_path(&new_path);
   }
   specifier
@@ -508,15 +508,11 @@ fn lsp_import_map_config_file() {
     map.insert("config".to_string(), json!("./deno.import_map.jsonc"));
     params.initialization_options = Some(Value::Object(map));
   }
-  let import_map =
-    serde_json::to_vec_pretty(&load_fixture("import-map.json")).unwrap();
-  fs::write(temp_dir.path().join("import-map.json"), import_map).unwrap();
-  fs::create_dir(temp_dir.path().join("lib")).unwrap();
-  fs::write(
-    temp_dir.path().join("lib").join("b.ts"),
-    r#"export const b = "b";"#,
-  )
-  .unwrap();
+  let import_map_text =
+    serde_json::to_string_pretty(&load_fixture("import-map.json")).unwrap();
+  temp_dir.write("import-map.json", import_map_text);
+  temp_dir.create_dir_all("lib");
+  temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let deno_exe = deno_exe_path();
   let mut client = LspClient::new(&deno_exe, false).unwrap();
@@ -4563,7 +4559,7 @@ fn lsp_completions_node_specifier() {
     .filter(|d| {
       d.code
         == Some(lsp::NumberOrString::String(
-          "import-prefix-missing".to_string(),
+          "import-node-prefix-missing".to_string(),
         ))
     })
     .collect::<Vec<_>>();
@@ -4602,7 +4598,7 @@ fn lsp_completions_node_specifier() {
             "end": { "line": 0, "character": 19 }
           },
           "severity": 1,
-          "code": "import-prefix-missing",
+          "code": "import-node-prefix-missing",
           "source": "deno",
           "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\nIf you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
           "data": {

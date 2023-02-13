@@ -29,7 +29,7 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
   let rand: String = (0..4)
     .map(|_| format!("{:02x}", rand::random::<u8>()))
     .collect();
-  let extension = format!("{}.tmp", rand);
+  let extension = format!("{rand}.tmp");
   let tmp_file = filename.with_extension(extension);
   write_file(&tmp_file, data, mode)?;
   std::fs::rename(tmp_file, filename)?;
@@ -710,13 +710,13 @@ mod tests {
     .to_string();
     let expected: Vec<ModuleSpecifier> = [
       "http://localhost:8080",
-      &format!("{}/a.ts", root_dir_url),
-      &format!("{}/b.js", root_dir_url),
-      &format!("{}/c.tsx", root_dir_url),
-      &format!("{}/child/README.md", root_dir_url),
-      &format!("{}/child/e.mjs", root_dir_url),
-      &format!("{}/child/f.mjsx", root_dir_url),
-      &format!("{}/d.jsx", root_dir_url),
+      &format!("{root_dir_url}/a.ts"),
+      &format!("{root_dir_url}/b.js"),
+      &format!("{root_dir_url}/c.tsx"),
+      &format!("{root_dir_url}/child/README.md"),
+      &format!("{root_dir_url}/child/e.mjs"),
+      &format!("{root_dir_url}/child/f.mjsx"),
+      &format!("{root_dir_url}/d.jsx"),
       "https://localhost:8080",
     ]
     .iter()
@@ -748,9 +748,9 @@ mod tests {
     .unwrap();
 
     let expected: Vec<ModuleSpecifier> = [
-      &format!("{}/child/README.md", root_dir_url),
-      &format!("{}/child/e.mjs", root_dir_url),
-      &format!("{}/child/f.mjsx", root_dir_url),
+      &format!("{root_dir_url}/child/README.md"),
+      &format!("{root_dir_url}/child/e.mjs"),
+      &format!("{root_dir_url}/child/f.mjsx"),
     ]
     .iter()
     .map(|f| ModuleSpecifier::parse(f).unwrap())

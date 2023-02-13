@@ -18,7 +18,7 @@ fn create_file(
     .write(true)
     .create_new(true)
     .open(dir.join(filename))
-    .with_context(|| format!("Failed to create {} file", filename))?;
+    .with_context(|| format!("Failed to create {filename} file"))?;
   file.write_all(content.as_bytes())?;
   Ok(())
 }

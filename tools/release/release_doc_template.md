@@ -13,6 +13,8 @@
 release from) should be frozen and no commits should land until the release is
 cut.**
 
+- [ ] Check https://deno.land/benchmarks?-100 and ensure there's no recent
+      regressions.
 - [ ] Write a message in company's #cli channel:
       `:lock: deno and deno_std are now locked (<LINK TO THIS FORKED GIST GOES HERE>)`
 

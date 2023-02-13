@@ -32,7 +32,7 @@ fn dedo(
 }
 
 fn dedo_json(code: &str, f: impl FnOnce(String)) {
-  let code = format!("JSON.stringify({})", code);
+  let code = format!("JSON.stringify({code})");
   dedo(&code[..], |scope, v| {
     let s: String = serde_v8::from_v8(scope, v).unwrap();
     f(s);

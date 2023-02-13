@@ -47,7 +47,7 @@ impl ModuleLoader for TypescriptModuleLoader {
     async move {
       let path = module_specifier
         .to_file_path()
-        .map_err(|_| anyhow!("Only file: URLs are supported."))?;
+        .map_err(|_| anyhow!("Only file:// URLs are supported."))?;
 
       let media_type = MediaType::from(&path);
       let (module_type, should_transpile) = match MediaType::from(&path) {
@@ -99,7 +99,7 @@ fn main() -> Result<(), Error> {
     std::process::exit(1);
   }
   let main_url = &args[1];
-  println!("Run {}", main_url);
+  println!("Run {main_url}");
 
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(Rc::new(TypescriptModuleLoader)),

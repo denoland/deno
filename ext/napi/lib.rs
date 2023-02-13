@@ -11,6 +11,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::StreamExt;
 use deno_core::op;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -338,7 +339,7 @@ pub struct NapiState {
     mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
   pub env_cleanup_hooks:
     Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
-  pub tsfn_ref_counters: Rc<RefCell<ThreadsafeFunctionRefCounters>>,
+  pub tsfn_ref_counters: Arc<Mutex<ThreadsafeFunctionRefCounters>>,
 }
 
 impl Drop for NapiState {
@@ -415,8 +416,9 @@ pub struct Env {
     mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
   pub cleanup_hooks:
     Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
-  pub tsfn_ref_counters: Rc<RefCell<ThreadsafeFunctionRefCounters>>,
+  pub tsfn_ref_counters: Arc<Mutex<ThreadsafeFunctionRefCounters>>,
   pub last_error: napi_extended_error_info,
+  pub global: NonNull<v8::Value>,
 }
 
 unsafe impl Send for Env {}
@@ -426,12 +428,13 @@ impl Env {
   pub fn new(
     isolate_ptr: *mut v8::OwnedIsolate,
     context: v8::Global<v8::Context>,
+    global: v8::Global<v8::Value>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
     threadsafe_function_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
     cleanup_hooks: Rc<
       RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>,
     >,
-    tsfn_ref_counters: Rc<RefCell<ThreadsafeFunctionRefCounters>>,
+    tsfn_ref_counters: Arc<Mutex<ThreadsafeFunctionRefCounters>>,
   ) -> Self {
     let sc = sender.clone();
     ASYNC_WORK_SENDER.with(|s| {
@@ -445,6 +448,7 @@ impl Env {
     Self {
       isolate_ptr,
       context: context.into_raw(),
+      global: global.into_raw(),
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       async_work_sender: sender,
@@ -498,13 +502,13 @@ impl Env {
     id: usize,
     counter: Arc<AtomicUsize>,
   ) {
-    let mut counters = self.tsfn_ref_counters.borrow_mut();
+    let mut counters = self.tsfn_ref_counters.lock();
     assert!(!counters.iter().any(|(i, _)| *i == id));
     counters.push((id, counter));
   }
 
   pub fn remove_threadsafe_function_ref_counter(&mut self, id: usize) {
-    let mut counters = self.tsfn_ref_counters.borrow_mut();
+    let mut counters = self.tsfn_ref_counters.lock();
     let index = counters.iter().position(|(i, _)| *i == id).unwrap();
     counters.remove(index);
   }
@@ -533,7 +537,7 @@ pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
           maybe_scheduling = true;
         }
 
-        let tsfn_ref_counters = napi_state.tsfn_ref_counters.borrow().clone();
+        let tsfn_ref_counters = napi_state.tsfn_ref_counters.lock().clone();
         for (_id, counter) in tsfn_ref_counters.iter() {
           if counter.load(std::sync::atomic::Ordering::SeqCst) > 0 {
             maybe_scheduling = true;
@@ -572,7 +576,7 @@ pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
         threadsafe_function_receiver,
         active_threadsafe_functions: 0,
         env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
-        tsfn_ref_counters: Rc::new(RefCell::new(vec![])),
+        tsfn_ref_counters: Arc::new(Mutex::new(vec![])),
       });
       state.put(Unstable(unstable));
       Ok(())
@@ -601,6 +605,7 @@ fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   op_state: &mut OpState,
   path: String,
+  global: serde_v8::Value,
 ) -> std::result::Result<serde_v8::Value<'scope>, AnyError>
 where
   NP: NapiPermissions + 'static,
@@ -643,6 +648,7 @@ where
   let mut env = Env::new(
     isolate_ptr,
     v8::Global::new(scope, ctx),
+    v8::Global::new(scope, global.v8_value),
     async_work_sender,
     tsfn_sender,
     cleanup_hooks,

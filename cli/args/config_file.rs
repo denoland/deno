@@ -26,8 +26,9 @@ use std::path::Path;
 use std::path::PathBuf;
 
 pub type MaybeImportsResult =
-  Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
+  Result<Vec<deno_graph::ReferrerImports>, AnyError>;
 
+#[derive(Hash)]
 pub struct JsxImportSourceConfig {
   pub default_specifier: Option<String>,
   pub module: String,
@@ -163,7 +164,7 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
 /// A function that works like JavaScript's `Object.assign()`.
 pub fn json_merge(a: &mut Value, b: &Value) {
   match (a, b) {
-    (&mut Value::Object(ref mut a), &Value::Object(ref b)) => {
+    (&mut Value::Object(ref mut a), Value::Object(b)) => {
       for (k, v) in b {
         json_merge(a.entry(k.clone()).or_insert(Value::Null), v);
       }
@@ -764,7 +765,7 @@ impl ConfigFile {
       if let Some(value) = self.json.compiler_options.as_ref() {
         value
       } else {
-        return Ok(None);
+        return Ok(Vec::new());
       };
     let compiler_options: CompilerOptions =
       serde_json::from_value(compiler_options_value.clone())?;
@@ -773,9 +774,9 @@ impl ConfigFile {
     }
     if !imports.is_empty() {
       let referrer = self.specifier.clone();
-      Ok(Some(vec![(referrer, imports)]))
+      Ok(vec![deno_graph::ReferrerImports { referrer, imports }])
     } else {
-      Ok(None)
+      Ok(Vec::new())
     }
   }
 
@@ -924,7 +925,7 @@ pub fn get_ts_config_for_emit(
       "sourceMap": false,
       "strict": true,
       "target": "esnext",
-      "tsBuildInfoFile": "deno:///.tsbuildinfo",
+      "tsBuildInfoFile": "internal:///.tsbuildinfo",
       "useDefineForClassFields": true,
       // TODO(@kitsonk) remove for Deno 2.0
       "useUnknownInCatchVariables": false,

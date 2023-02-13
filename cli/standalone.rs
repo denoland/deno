@@ -320,9 +320,7 @@ fn get_error_class_name(e: &AnyError) -> &'static str {
     panic!(
       "Error '{}' contains boxed error of unsupported type:{}",
       e,
-      e.chain()
-        .map(|e| format!("\n  {:?}", e))
-        .collect::<String>()
+      e.chain().map(|e| format!("\n  {e:?}")).collect::<String>()
     );
   })
 }

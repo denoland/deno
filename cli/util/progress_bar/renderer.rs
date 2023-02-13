@@ -154,7 +154,7 @@ fn get_elapsed_text(elapsed: Duration) -> String {
   let elapsed_secs = elapsed.as_secs();
   let seconds = elapsed_secs % 60;
   let minutes = elapsed_secs / 60;
-  format!("[{:0>2}:{:0>2}]", minutes, seconds)
+  format!("[{minutes:0>2}:{seconds:0>2}]")
 }
 
 #[cfg(test)]
