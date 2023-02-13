@@ -7,13 +7,24 @@ import {
   O_TRUNC,
   O_WRONLY,
 } from "internal:deno_node/polyfills/_fs/_fs_constants.ts";
-import { existsSync } from "SOMETHING IS BROKEN HERE ../../fs/exists.ts";
 import { getOpenOptions } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
 import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
 import { parseFileMode } from "internal:deno_node/polyfills/internal/validators.mjs";
 import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/polyfills/internal/errors.ts";
 import { getValidatedPath } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
 import type { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+
+function existsSync(filePath: string | URL): boolean {
+  try {
+    Deno.lstatSync(filePath);
+    return true;
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      return false;
+    }
+    throw error;
+  }
+}
 
 const FLAGS_AX = O_APPEND | O_CREAT | O_WRONLY | O_EXCL;
 const FLAGS_AX_PLUS = O_APPEND | O_CREAT | O_RDWR | O_EXCL;
