@@ -28,7 +28,7 @@ mod not_docs {
       MediaType::JavaScript => false,
       MediaType::Mjs => false,
       MediaType::TypeScript => true,
-      _ => panic!("Unsupported media type for snapshotting {media_type:?}"),
+      _ => panic!("Unsupported media type for snapshotting {media_type:?} for file {}", file_source.specifier),
     };
 
     if !should_transpile {

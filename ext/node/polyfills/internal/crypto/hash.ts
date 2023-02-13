@@ -24,7 +24,7 @@ import {
 } from "internal:deno_node/polyfills/internal/crypto/keys.ts";
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 
-const { ops } = Deno[Deno.internal].core;
+const { ops } = globalThis.__bootstrap.core;
 
 const coerceToBytes = (data: string | BufferSource): Uint8Array => {
   if (data instanceof Uint8Array) {
