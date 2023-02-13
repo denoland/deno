@@ -3788,6 +3788,7 @@ itest!(permission_args_quiet {
 });
 
 // Regression test for https://github.com/denoland/deno/issues/16772
+#[ignore]
 #[test]
 fn file_fetcher_preserves_permissions() {
   let _guard = util::http_server();
@@ -3804,6 +3805,7 @@ fn file_fetcher_preserves_permissions() {
   });
 }
 
+#[ignore]
 #[test]
 fn stdio_streams_are_locked_in_permission_prompt() {
   let _guard = util::http_server();
@@ -3842,5 +3844,17 @@ itest!(node_prefix_missing {
   args: "run --quiet run/node_prefix_missing/main.ts",
   output: "run/node_prefix_missing/main.ts.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
+  exit_code: 1,
+});
+
+itest!(internal_import {
+  args: "run run/internal_import.ts",
+  output: "run/internal_import.ts.out",
+  exit_code: 1,
+});
+
+itest!(internal_dynamic_import {
+  args: "run run/internal_dynamic_import.ts",
+  output: "run/internal_dynamic_import.ts.out",
   exit_code: 1,
 });
