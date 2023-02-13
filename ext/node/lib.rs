@@ -270,7 +270,6 @@ pub fn init<P: NodePermissions + 'static>(
     "_global.d.ts",
     "assert.ts",
     "child_process.ts",
-    "_test_utils.ts",
     "_tls_wrap.ts",
     "http2.ts",
     "module_all.ts",
