@@ -433,12 +433,6 @@ class WebSocket extends EventTarget {
           this.dispatchEvent(event);
           break;
         }
-        case "ping": {
-          core.opAsync("op_ws_send", this[_rid], {
-            kind: "pong",
-          });
-          break;
-        }
         case "pong": {
           this[_serverHandleIdleTimeout]();
           break;
