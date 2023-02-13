@@ -288,6 +288,9 @@ impl NpmRegistryApi for RealNpmRegistryApi {
   ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
     let api = self.clone();
     let name = name.to_string();
+    if name == "." {
+      panic!();
+    }
     async move { api.0.maybe_package_info(&name).await }.boxed()
   }
 
