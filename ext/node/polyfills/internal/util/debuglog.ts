@@ -103,6 +103,9 @@ export function debuglog(
 }
 
 let debugEnv;
+/* TODO(kt3k): enable initializing debugEnv.
+It's not possible to access env var when snapshotting.
+
 try {
   debugEnv = Deno.env.get("NODE_DEBUG") ?? "";
 } catch (error) {
@@ -112,6 +115,7 @@ try {
     throw error;
   }
 }
+*/
 initializeDebugEnv(debugEnv);
 
 export default { debuglog };
