@@ -729,5 +729,5 @@ export default process;
 //TODO(Soremwar)
 //Remove on 1.0
 //Kept for backwards compatibility with std
-// globalThis.process = process;
+globalThis.process = process;
 export { process };

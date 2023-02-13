@@ -180,7 +180,8 @@ mod not_docs {
         "deno_crypto",
         "deno_webgpu",
         "deno_broadcast_channel",
-        "deno_node",
+        // FIXME(bartlomieju): this should be reenabled
+        // "deno_node",
         "deno_ffi",
         "deno_net",
         "deno_napi",
@@ -234,8 +235,6 @@ mod not_docs {
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
-      deno_node::init_polyfill(),
-      deno_node::init::<Permissions>(None),
       deno_ffi::init::<Permissions>(false),
       deno_net::init::<Permissions>(
         None, false, // No --unstable.
@@ -245,6 +244,10 @@ mod not_docs {
       deno_http::init(),
       deno_flash::init::<Permissions>(false), // No --unstable
       runtime_extension,
+      // FIXME(bartlomieju): these extensions are specified last, because they
+      // depend on `runtime`, even though it should be other way around
+      deno_node::init_polyfill(),
+      deno_node::init::<Permissions>(None),
     ];
 
     if let Some(additional_extension) = maybe_additional_extension {

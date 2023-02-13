@@ -850,6 +850,10 @@ impl JsRuntime {
             eprintln!("result from load entry point {:#?}", result);
             let id = result?;
 
+            eprintln!(
+              "mod evaluate entry point {} {}",
+              id, file_source.specifier
+            );
             let mut receiver = self.mod_evaluate(id);
 
             futures::select! {
@@ -885,6 +889,10 @@ impl JsRuntime {
               // eprintln!("result from load {:#?}", result);
               let id = result?;
 
+              eprintln!(
+                "mod evaluate non entry point {} {}",
+                id, file_source.specifier
+              );
               let mut receiver = self.mod_evaluate(id);
 
               futures::select! {
@@ -1833,15 +1841,12 @@ impl JsRuntime {
       .map(|handle| v8::Local::new(tc_scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
-
-    // FIXME(bartlomieju): this is a hack, when snapshotting we shouldn't
-    // be trying to evaluate same module multiple times
-    if status == v8::ModuleStatus::Evaluated {
-      let (sender, receiver) = oneshot::channel();
-      sender.send(Ok(())).unwrap();
-      return receiver;
-    }
-    assert_eq!(status, v8::ModuleStatus::Instantiated);
+    assert_eq!(
+      status,
+      v8::ModuleStatus::Instantiated,
+      "Module not instantiated {}",
+      id
+    );
 
     let (sender, receiver) = oneshot::channel();
 
