@@ -59,7 +59,7 @@ pub fn resolve_import(
   specifier: &str,
   base: &str,
 ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-  let url = match Url::parse(specifier) {
+  let url = match Url::parse_with_params(specifier) {
     // 1. Apply the URL parser to specifier.
     //    If the result is not failure, return he result.
     Ok(url) => url,
@@ -94,7 +94,9 @@ pub fn resolve_import(
         let path = current_dir().unwrap().join(base);
         Url::from_file_path(path).unwrap()
       } else {
-        Url::parse_with_params(base).map_err(InvalidBaseUrl)?
+        // TODO Use params from base and combine with the params
+        // on specifier and canonicalize
+        Url::parse(base).map_err(InvalidBaseUrl)?
       };
       base.join(specifier).map_err(InvalidUrl)?
     }
