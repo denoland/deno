@@ -2726,14 +2726,20 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
         .resolve("file://foo", "file://bar", ResolutionKind::Import)
         .err()
         .map(|e| e.to_string()),
-      Some("Module loading is not supported".to_string())
+      Some(
+        "Module loading is not supported; attempted to resolve: \"file://foo\" from \"file://bar\""
+          .to_string()
+      )
     );
     assert_eq!(
       loader
         .resolve("file://foo", "internal:bar", ResolutionKind::Import)
         .err()
         .map(|e| e.to_string()),
-      Some("Module loading is not supported".to_string())
+      Some(
+        "Module loading is not supported; attempted to resolve: \"file://foo\" from \"internal:bar\""
+        .to_string()
+      )
     );
     assert_eq!(
       resolve_helper(
