@@ -83,6 +83,7 @@ import type {
   ParsedUrlQuery,
   ParsedUrlQueryInput,
 } from "internal:deno_node/polyfills/querystring.ts";
+import { URL, URLSearchParams } from "internal:deno_url/00_url.js";
 
 const forwardSlashRegEx = /\//g;
 const percentRegEx = /%/g;
