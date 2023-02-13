@@ -84,9 +84,7 @@ const nodeGlobalThis = new Proxy(globalThis, {
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
 
-import nodeModules from "internal:deno_node/polyfills/module_all.ts";
-
-function initialize(nodeGlobalThisName) {
+function initialize(nodeModules, nodeGlobalThisName) {
   assert(!initialized);
   initialized = true;
   for (const [name, exports] of ObjectEntries(nodeModules)) {
