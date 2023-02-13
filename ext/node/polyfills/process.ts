@@ -21,23 +21,11 @@ import {
   cwd,
   env,
   nextTick as _nextTick,
-  pid,
-  platform,
   version,
   versions,
 } from "internal:deno_node/polyfills/_process/process.ts";
 import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
-export {
-  _nextTick as nextTick,
-  argv,
-  chdir,
-  cwd,
-  env,
-  pid,
-  platform,
-  version,
-  versions,
-};
+export { _nextTick as nextTick, chdir, cwd, env, version, versions };
 import {
   stderr as stderr_,
   stdin as stdin_,
@@ -46,7 +34,14 @@ import {
 import { core } from "internal:deno_node/polyfills/_core.ts";
 import { processTicksAndRejections } from "internal:deno_node/polyfills/_next_tick.ts";
 
+// TODO(kt3k): This should be set at start up time
 export let arch = "";
+
+// TODO(kt3k): This should be set at start up time
+export let platform = "";
+
+// TODO(kt3k): This should be set at start up time
+export let pid = 0;
 
 // TODO(kt3k): Give better types to stdio objects
 // deno-lint-ignore no-explicit-any
@@ -55,6 +50,7 @@ const stderr = stderr_ as any;
 const stdin = stdin_ as any;
 // deno-lint-ignore no-explicit-any
 const stdout = stdout_ as any;
+
 export { stderr, stdin, stdout };
 import { getBinding } from "internal:deno_node/polyfills/internal_binding/mod.ts";
 import * as constants from "internal:deno_node/polyfills/internal_binding/constants.ts";
@@ -74,9 +70,8 @@ const notImplementedEvents = [
   "worker",
 ];
 
-// The first 2 items are placeholders.
-// They will be overwritten by the below Object.defineProperty calls.
-const argv = ["", "", ...Deno.args];
+export const argv = [];
+
 // Overwrites the 1st item with getter.
 Object.defineProperty(argv, "0", { get: Deno.execPath });
 // Overwrites the 2st item with getter.
@@ -89,6 +84,13 @@ Object.defineProperty(argv, "1", {
     }
   },
 });
+
+// TODO(kt3k): Set the rest of args at start up time instead of defining
+// random number of getters.
+for (let i = 0; i < 30; i++) {
+  const j = i;
+  Object.defineProperty(argv, j + 2, { get: () => Deno.args[j] });
+}
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
@@ -539,10 +541,20 @@ class Process extends EventEmitter {
   }
 
   /** https://nodejs.org/api/process.html#process_process_pid */
-  pid = pid;
+  get pid() {
+    if (!pid) {
+      pid = Deno.pid;
+    }
+    return pid;
+  }
 
   /** https://nodejs.org/api/process.html#process_process_platform */
-  platform = platform;
+  get platform() {
+    if (!platform) {
+      platform = isWindows ? "win32" : Deno.build.os;
+    }
+    return platform;
+  }
 
   override addListener(event: "exit", listener: (code: number) => void): this;
   override addListener(
@@ -685,10 +697,13 @@ class Process extends EventEmitter {
   noDeprecation = false;
 }
 
+// TODO(kt3k): Do the below at start up time.
+/*
 if (Deno.build.os === "windows") {
   delete Process.prototype.getgid;
   delete Process.prototype.getuid;
 }
+*/
 
 /** https://nodejs.org/api/process.html#process_process */
 const process = new Process();

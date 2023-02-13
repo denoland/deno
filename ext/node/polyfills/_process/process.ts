@@ -5,7 +5,6 @@
 // They have to be split this way to prevent a circular dependency
 
 import { build } from "internal:runtime/js/01_build.js";
-import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
 import { nextTick as _nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
 import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
 
@@ -90,12 +89,6 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
     },
     has: (_target, prop) => typeof denoEnvGet(String(prop)) === "string",
   });
-
-/** https://nodejs.org/api/process.html#process_process_pid */
-export const pid = Deno.pid;
-
-/** https://nodejs.org/api/process.html#process_process_platform */
-export const platform = isWindows ? "win32" : Deno.build.os;
 
 /**
  * https://nodejs.org/api/process.html#process_process_version
