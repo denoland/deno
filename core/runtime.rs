@@ -835,7 +835,11 @@ impl JsRuntime {
       {
         let esm_files = ext.get_esm_sources();
         if let Some(entry_point) = ext.get_esm_entry_point() {
-          let file_source = esm_files.iter().find(|file| file.specifier == entry_point).unwrap();
+          eprintln!("entry point {}", entry_point);
+          let file_source = esm_files
+            .iter()
+            .find(|file| file.specifier == entry_point)
+            .unwrap();
           futures::executor::block_on(async {
             let result = self
               .load_side_module(
@@ -843,32 +847,32 @@ impl JsRuntime {
                 None,
               )
               .await;
-            // eprintln!("result from load {:#?}", result);
+            eprintln!("result from load entry point {:#?}", result);
             let id = result?;
 
             let mut receiver = self.mod_evaluate(id);
 
             futures::select! {
-                result = self.run_event_loop(false).fuse() => {
-                  let r = result;
-                  // eprintln!("result {:#?}", r);
-                  r?;
-                }
-                receiver_result = receiver => {
-                  let result = receiver_result?;
-                  // eprintln!("result in receiver {:#?}", result);
-                  result?;
-                }
+              result = self.run_event_loop(false).fuse() => {
+                let r = result;
+                eprintln!("result entry point {:#?}", r);
+                r?;
               }
+              receiver_result = receiver => {
+                let result = receiver_result?;
+                eprintln!("result in receiver entry point {:#?}", result);
+                result?;
+              }
+            }
 
             Ok::<(), anyhow::Error>(())
             // let receiver = self.mod_evaluate(id);
             // self.run_event_loop(false).await?;
             // receiver.await?
           })
-            .with_context(|| {
-              format!("Couldn't execute '{}'", file_source.specifier)
-            })?;
+          .with_context(|| {
+            format!("Couldn't execute '{}'", file_source.specifier)
+          })?;
         } else {
           for file_source in esm_files {
             futures::executor::block_on(async {
@@ -881,33 +885,33 @@ impl JsRuntime {
               // eprintln!("result from load {:#?}", result);
               let id = result?;
 
-                let mut receiver = self.mod_evaluate(id);
+              let mut receiver = self.mod_evaluate(id);
 
-                futures::select! {
-                  result = self.run_event_loop(false).fuse() => {
-                    let r = result;
-                    // eprintln!("result {:#?}", r);
-                    r?;
-                  }
-                  receiver_result = receiver => {
-                    let result = receiver_result?;
-                    // eprintln!("result in receiver {:#?}", result);
-                    result?;
-                  }
+              futures::select! {
+                result = self.run_event_loop(false).fuse() => {
+                  let r = result;
+                  // eprintln!("result {:#?}", r);
+                  r?;
                 }
-
-                Ok::<(), anyhow::Error>(())
-                // let receiver = self.mod_evaluate(id);
-                // self.run_event_loop(false).await?;
-                // receiver.await?
-              })
-              .with_context(|| {
-                format!("Couldn't execute '{}'", file_source.specifier)
-              })?;
-              if ext.get_esm_entry_point().is_some() {
-                break;
+                receiver_result = receiver => {
+                  let result = receiver_result?;
+                  // eprintln!("result in receiver {:#?}", result);
+                  result?;
+                }
               }
+
+              Ok::<(), anyhow::Error>(())
+              // let receiver = self.mod_evaluate(id);
+              // self.run_event_loop(false).await?;
+              // receiver.await?
+            })
+            .with_context(|| {
+              format!("Couldn't execute '{}'", file_source.specifier)
+            })?;
+            if ext.get_esm_entry_point().is_some() {
+              break;
             }
+          }
         }
       }
 

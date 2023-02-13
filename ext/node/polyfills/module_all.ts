@@ -185,5 +185,3 @@ export default {
   worker_threads: workerThreads,
   zlib,
 } as Record<string, unknown>;
-
-globalThis.zlib = zlib;
