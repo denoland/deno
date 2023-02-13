@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -379,16 +380,11 @@ impl RealNpmRegistryApiInner {
       }
 
       if maybe_package_info.is_none() {
-        maybe_package_info = self
-          .load_package_info_from_registry(name)
-          .await
-          .with_context(|| {
-          format!(
-            "Error getting response at {} for package \"{}\"",
-            self.get_package_url(name),
-            name
-          )
-        })?;
+        maybe_package_info =
+          self
+            .load_package_info_from_registry(name)
+            .await
+            .with_context(|| format!("Error getting npm package {name:?}"))?;
       }
       let maybe_package_info = maybe_package_info.map(Arc::new);
 
@@ -488,7 +484,7 @@ impl RealNpmRegistryApiInner {
       ));
     }
 
-    let package_url = self.get_package_url(name);
+    let package_url = self.get_package_url(name)?;
     let guard = self.progress_bar.update(package_url.as_str());
 
     let maybe_bytes = self
@@ -505,8 +501,11 @@ impl RealNpmRegistryApiInner {
     }
   }
 
-  fn get_package_url(&self, name: &str) -> Url {
-    self.base_url.join(name).unwrap()
+  fn get_package_url(&self, name: &str) -> Result<Url, AnyError> {
+    match self.base_url.join(name) {
+      Ok(url) => Ok(url),
+      Err(_err) => Err(anyhow!(format!("Invalid npm package name {name:?}"))),
+    }
   }
 
   fn get_package_file_cache_path(&self, name: &str) -> PathBuf {
