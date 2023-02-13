@@ -249,8 +249,20 @@ mod not_docs {
       });
     }
 
+
+    use deno_core::op;
+
+    #[op]
+    fn op_build_os() -> String {
+      env::var("TARGET").unwrap().split('-').nth(2).unwrap().to_string()
+    }
+
     let additional_extension =
-      Extension::builder("runtime").esm(esm_files).build();
+      Extension::builder("runtime").esm(esm_files).ops(
+        vec![
+          op_build_os::decl(),
+        ]
+      ).build();
     create_runtime_snapshot(runtime_snapshot_path, additional_extension);
   }
 }
