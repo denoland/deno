@@ -829,26 +829,39 @@ impl JsRuntime {
 
   /// Initializes JS of provided Extensions in the given realm
   fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
+    fn load_and_evaluate_module(
+      runtime: &mut JsRuntime,
+      file_source: &ExtensionFileSource,
+    ) -> Result<(), Error> {
+      futures::executor::block_on(async {
+        let id = runtime
+          .load_side_module(
+            &ModuleSpecifier::parse(&file_source.specifier)?,
+            None,
+          )
+          .await?;
+        let receiver = runtime.mod_evaluate(id);
+        runtime.run_event_loop(false).await?;
+        receiver.await?
+      })
+      .with_context(|| format!("Couldn't execute '{}'", file_source.specifier))
+    }
+
     // Take extensions to avoid double-borrow
     let extensions = std::mem::take(&mut self.extensions_with_js);
     for ext in &extensions {
       {
         let esm_files = ext.get_esm_sources();
-        for file_source in esm_files {
-          futures::executor::block_on(async {
-            let id = self
-              .load_side_module(
-                &ModuleSpecifier::parse(&file_source.specifier)?,
-                None,
-              )
-              .await?;
-            let receiver = self.mod_evaluate(id);
-            self.run_event_loop(false).await?;
-            receiver.await?
-          })
-          .with_context(|| {
-            format!("Couldn't execute '{}'", file_source.specifier)
-          })?;
+        if let Some(entry_point) = ext.get_esm_entry_point() {
+          let file_source = esm_files
+            .iter()
+            .find(|file| file.specifier == entry_point)
+            .unwrap();
+          load_and_evaluate_module(self, file_source)?;
+        } else {
+          for file_source in esm_files {
+            load_and_evaluate_module(self, file_source)?;
+          }
         }
       }
 
@@ -1770,7 +1783,11 @@ impl JsRuntime {
       .map(|handle| v8::Local::new(tc_scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
-    assert_eq!(status, v8::ModuleStatus::Instantiated);
+    assert_eq!(
+      status,
+      v8::ModuleStatus::Instantiated,
+      "Module not instantiated {id}"
+    );
 
     let (sender, receiver) = oneshot::channel();
 
@@ -4974,7 +4991,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         let source = r#"
-        // This module doesn't really exist, just verifying that we'll get 
+        // This module doesn't really exist, just verifying that we'll get
         // an error when specifier starts with "internal:".
         import { core } from "internal:core.js";
         "#;
