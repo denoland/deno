@@ -153,7 +153,6 @@ pub fn init<P: NodePermissions + 'static>(
     "util/types.ts",
     "_tls_common.ts",
     "_zlib.mjs",
-    "module.ts",
     "async_hooks.ts",
     "process.ts",
     "assertion_error.ts",
