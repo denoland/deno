@@ -22,7 +22,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import { inspect } from "internal:deno_node/polyfills/util.ts";
-import { stripColor as removeColors } from "internal:deno_node/polyfills/_util/strip_color.ts";
+import { stripColor as removeColors } from "internal:deno_node/polyfills/_util/std_fmt_colors.ts";
 
 function getConsoleWidth(): number {
   try {

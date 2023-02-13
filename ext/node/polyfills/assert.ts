@@ -4,7 +4,7 @@ import {
   AssertionError,
   AssertionErrorConstructorOptions,
 } from "internal:deno_node/polyfills/assertion_error.ts";
-import * as asserts from "SOMETHING IS BROKEN HERE ../testing/asserts.ts";
+import * as asserts from "internal:deno_node/polyfills/_util/std_asserts.ts";
 import { inspect } from "internal:deno_node/polyfills/util.ts";
 import {
   ERR_AMBIGUOUS_ARGUMENT,
