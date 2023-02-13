@@ -152,6 +152,9 @@ const denoNs = {
   consoleSize: tty.consoleSize,
   gid: os.gid,
   uid: os.uid,
+  Command: spawn.Command,
+  // TODO(bartlomieju): why is this exported?
+  ChildProcess: spawn.ChildProcess,
 };
 
 const denoNsUnstable = {
@@ -171,9 +174,6 @@ const denoNsUnstable = {
   flockSync: fs.flockSync,
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
-  Child: spawn.Child,
-  ChildProcess: spawn.ChildProcess,
-  Command: spawn.Command,
   upgradeHttp: http.upgradeHttp,
   upgradeHttpRaw: flash.upgradeHttpRaw,
 };
