@@ -22,6 +22,7 @@ pub struct CreateSnapshotOptions {
 }
 
 pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
+  let start = std::time::Instant::now();
   let js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
     startup_snapshot: create_snapshot_options.startup_snapshot,
@@ -33,7 +34,12 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
 
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &snapshot;
-  println!("Snapshot size: {}", snapshot_slice.len());
+  println!(
+    "Snapshot size: {}, took {}s ({})",
+    snapshot_slice.len(),
+    start.elapsed().as_secs_f64(),
+    create_snapshot_options.snapshot_path.display()
+  );
 
   let maybe_compressed_snapshot: Box<dyn AsRef<[u8]>> =
     if let Some(compression_cb) = create_snapshot_options.compression_cb {
@@ -47,7 +53,12 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
 
       (compression_cb)(&mut vec, snapshot_slice);
 
-      println!("Snapshot compressed size: {}", vec.len());
+      println!(
+        "Snapshot compressed size: {}, took {}s ({})",
+        vec.len(),
+        start.elapsed().as_secs_f64(),
+        create_snapshot_options.snapshot_path.display()
+      );
 
       Box::new(vec)
     } else {
@@ -60,8 +71,9 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   )
   .unwrap();
   println!(
-    "Snapshot written to: {} ",
-    create_snapshot_options.snapshot_path.display()
+    "Snapshot written to: {}, took: {}s",
+    create_snapshot_options.snapshot_path.display(),
+    start.elapsed().as_secs_f64()
   );
 }
 
