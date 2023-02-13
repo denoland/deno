@@ -595,25 +595,27 @@ fn op_get_promise_details<'a>(
 #[op(v8)]
 fn op_set_promise_hooks(
   scope: &mut v8::HandleScope,
-  init_cb: serde_v8::Value,
-  before_cb: serde_v8::Value,
-  after_cb: serde_v8::Value,
-  resolve_cb: serde_v8::Value,
+  init_hook: serde_v8::Value,
+  before_hook: serde_v8::Value,
+  after_hook: serde_v8::Value,
+  resolve_hook: serde_v8::Value,
 ) -> Result<(), Error> {
-  let init_hook_global = to_v8_fn(scope, init_cb)?;
-  let before_hook_global = to_v8_fn(scope, before_cb)?;
-  let after_hook_global = to_v8_fn(scope, after_cb)?;
-  let resolve_hook_global = to_v8_fn(scope, resolve_cb)?;
-  let init_hook = v8::Local::new(scope, init_hook_global);
-  let before_hook = v8::Local::new(scope, before_hook_global);
-  let after_hook = v8::Local::new(scope, after_hook_global);
-  let resolve_hook = v8::Local::new(scope, resolve_hook_global);
+  let v8_fns = [init_hook, before_hook, after_hook, resolve_hook]
+    .into_iter()
+    .enumerate()
+    .filter(|(_, hook)| !hook.v8_value.is_undefined())
+    .try_fold([None; 4], |mut v8_fns, (i, hook)| {
+      let v8_fn = v8::Local::<v8::Function>::try_from(hook.v8_value)
+        .map_err(|err| type_error(err.to_string()))?;
+      v8_fns[i] = Some(v8_fn);
+      Ok::<_, Error>(v8_fns)
+    })?;
 
-  scope.get_current_context().set_promise_hooks(
-    Some(init_hook),
-    Some(before_hook),
-    Some(after_hook),
-    Some(resolve_hook),
+  scope.set_promise_hooks(
+    v8_fns[0], // init
+    v8_fns[1], // before
+    v8_fns[2], // after
+    v8_fns[3], // resolve
   );
 
   Ok(())

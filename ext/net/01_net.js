@@ -8,6 +8,7 @@ import {
   readableStreamForRidUnrefableUnref,
   writableStreamForRid,
 } from "internal:deno_web/06_streams.js";
+import * as abortSignal from "internal:deno_web/03_abort_signal.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
@@ -30,8 +31,31 @@ function shutdown(rid) {
   return core.shutdown(rid);
 }
 
-function resolveDns(query, recordType, options) {
-  return core.opAsync("op_dns_resolve", { query, recordType, options });
+async function resolveDns(query, recordType, options) {
+  let cancelRid;
+  let abortHandler;
+  if (options?.signal) {
+    options.signal.throwIfAborted();
+    cancelRid = ops.op_cancel_handle();
+    abortHandler = () => core.tryClose(cancelRid);
+    options.signal[abortSignal.add](abortHandler);
+  }
+
+  try {
+    return await core.opAsync("op_dns_resolve", {
+      cancelRid,
+      query,
+      recordType,
+      options,
+    });
+  } finally {
+    if (options?.signal) {
+      options.signal[abortSignal.remove](abortHandler);
+
+      // always throw the abort error when aborted
+      options.signal.throwIfAborted();
+    }
+  }
 }
 
 class Conn {

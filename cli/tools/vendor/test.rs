@@ -262,18 +262,19 @@ async fn build_test_graph(
 ) -> ModuleGraph {
   let resolver =
     original_import_map.map(|m| CliResolver::with_import_map(Arc::new(m)));
-  deno_graph::create_graph(
-    roots,
-    &mut loader,
-    deno_graph::GraphOptions {
-      is_dynamic: false,
-      imports: None,
-      resolver: resolver.as_ref().map(|r| r.as_graph_resolver()),
-      module_analyzer: Some(analyzer),
-      reporter: None,
-    },
-  )
-  .await
+  let mut graph = ModuleGraph::default();
+  graph
+    .build(
+      roots,
+      &mut loader,
+      deno_graph::BuildOptions {
+        resolver: resolver.as_ref().map(|r| r.as_graph_resolver()),
+        module_analyzer: Some(analyzer),
+        ..Default::default()
+      },
+    )
+    .await;
+  graph
 }
 
 fn make_path(text: &str) -> PathBuf {

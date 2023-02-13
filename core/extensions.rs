@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::task::Context;
 use v8::fast_api::FastFunction;
 
+#[derive(Clone, Debug)]
 pub struct ExtensionFileSource {
   pub specifier: String,
   pub code: &'static str,
@@ -244,8 +245,9 @@ impl ExtensionBuilder {
     }
   }
 }
-/// Helps embed JS files in an extension. Returns Vec<(&'static str, &'static str)>
-/// representing the filename and source code.
+
+/// Helps embed JS files in an extension. Returns a vector of
+/// `ExtensionFileSource`, that represent the filename and source code.
 ///
 /// Example:
 /// ```ignore
@@ -261,6 +263,32 @@ macro_rules! include_js_files {
       $($crate::ExtensionFileSource {
         specifier: $file.to_string(),
         code: include_str!($file),
+      },)+
+    ]
+  };
+}
+
+/// Helps embed JS files in an extension. Returns a vector of
+/// `ExtensionFileSource`, that represent the filename and source code.
+/// Additional "dir" option is required, that specifies which directory in the
+/// crate root contains the listed files. "dir" option will be prepended to
+/// each file name.
+///
+/// Example:
+/// ```ignore
+/// include_js_files_dir!(
+///   dir "example",
+///   "01_hello.js",
+///   "02_goodbye.js",
+/// )
+/// ```
+#[macro_export]
+macro_rules! include_js_files_dir {
+  (dir $dir:literal, $($file:literal,)+) => {
+    vec![
+      $($crate::ExtensionFileSource {
+        specifier: concat!($dir, "/", $file).to_string(),
+        code: include_str!(concat!($dir, "/", $file)),
       },)+
     ]
   };

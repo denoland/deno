@@ -699,10 +699,26 @@ assertEquals([...uint8Array], [
   0x00
 ]);
 
-try {
-  assertThrows(() => charView.getCString(), TypeError, "Invalid CString pointer, not valid UTF-8");
-} catch (_err) {
-  console.log("Invalid UTF-8 characters to `v8::String`:", charView.getCString());
+// Check that `getCString` works equally to `TextDecoder`
+assertEquals(charView.getCString(), new TextDecoder().decode(uint8Array.subarray(0, uint8Array.length - 1)));
+
+// Check a selection of various invalid UTF-8 sequences in C strings and verify
+// that the `getCString` API does not cause unexpected behaviour.
+for (const charBuffer of [
+  Uint8Array.from([0xA0, 0xA1, 0x00]),
+  Uint8Array.from([0xE2, 0x28, 0xA1, 0x00]),
+  Uint8Array.from([0xE2, 0x82, 0x28, 0x00]),
+  Uint8Array.from([0xF0, 0x28, 0x8C, 0xBC, 0x00]),
+  Uint8Array.from([0xF0, 0x90, 0x28, 0xBC, 0x00]),
+  Uint8Array.from([0xF0, 0x28, 0x8C, 0x28, 0x00]),
+  Uint8Array.from([0xF8, 0xA1, 0xA1, 0xA1, 0xA1, 0x00]),
+  Uint8Array.from([0xFC, 0xA1, 0xA1, 0xA1, 0xA1, 0xA1, 0x00]),
+]) {
+  const charBufferPointer = Deno.UnsafePointer.of(charBuffer);
+  const charString = Deno.UnsafePointerView.getCString(charBufferPointer);
+  const charBufferPointerArrayBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(charBufferPointer, charBuffer.length - 1));
+  assertEquals(charString, new TextDecoder().decode(charBufferPointerArrayBuffer));
+  assertEquals([...charBuffer.subarray(0, charBuffer.length - 1)], [...charBufferPointerArrayBuffer]);
 }
 
 

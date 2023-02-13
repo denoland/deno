@@ -12,8 +12,12 @@ const {
   ObjectDefineProperty,
   Proxy,
   ReflectDefineProperty,
+  ReflectDeleteProperty,
+  ReflectGet,
   ReflectGetOwnPropertyDescriptor,
+  ReflectHas,
   ReflectOwnKeys,
+  ReflectSet,
   Set,
   SetPrototypeHas,
 } = primordials;
@@ -27,61 +31,53 @@ function assert(cond) {
 let initialized = false;
 const nodeGlobals = {};
 const nodeGlobalThis = new Proxy(globalThis, {
-  get(_target, prop, _receiver) {
-    if (prop in nodeGlobals) {
-      return nodeGlobals[prop];
+  get(target, prop) {
+    if (ReflectHas(nodeGlobals, prop)) {
+      return ReflectGet(nodeGlobals, prop);
     } else {
-      return globalThis[prop];
+      return ReflectGet(target, prop);
     }
   },
-  set(_target, prop, value) {
-    if (prop in nodeGlobals) {
-      nodeGlobals[prop] = value;
+  set(target, prop, value) {
+    if (ReflectHas(nodeGlobals, prop)) {
+      return ReflectSet(nodeGlobals, prop, value);
     } else {
-      globalThis[prop] = value;
+      return ReflectSet(target, prop, value);
     }
-    return true;
   },
-  deleteProperty(_target, prop) {
-    let success = false;
-    if (prop in nodeGlobals) {
-      delete nodeGlobals[prop];
-      success = true;
-    }
-    if (prop in globalThis) {
-      delete globalThis[prop];
-      success = true;
-    }
-    return success;
+  has(target, prop) {
+    return ReflectHas(nodeGlobals, prop) || ReflectHas(target, prop);
   },
-  ownKeys(_target) {
-    const globalThisKeys = ReflectOwnKeys(globalThis);
+  deleteProperty(target, prop) {
+    const nodeDeleted = ReflectDeleteProperty(nodeGlobals, prop);
+    const targetDeleted = ReflectDeleteProperty(target, prop);
+    return nodeDeleted || targetDeleted;
+  },
+  ownKeys(target) {
+    const targetKeys = ReflectOwnKeys(target);
     const nodeGlobalsKeys = ReflectOwnKeys(nodeGlobals);
     const nodeGlobalsKeySet = new Set(nodeGlobalsKeys);
     return [
       ...ArrayPrototypeFilter(
-        globalThisKeys,
+        targetKeys,
         (k) => !SetPrototypeHas(nodeGlobalsKeySet, k),
       ),
       ...nodeGlobalsKeys,
     ];
   },
-  defineProperty(_target, prop, desc) {
-    if (prop in nodeGlobals) {
+  defineProperty(target, prop, desc) {
+    if (ReflectHas(nodeGlobals, prop)) {
       return ReflectDefineProperty(nodeGlobals, prop, desc);
     } else {
-      return ReflectDefineProperty(globalThis, prop, desc);
+      return ReflectDefineProperty(target, prop, desc);
     }
   },
-  getOwnPropertyDescriptor(_target, prop) {
-    if (prop in nodeGlobals) {
+  getOwnPropertyDescriptor(target, prop) {
+    if (ReflectHas(nodeGlobals, prop)) {
       return ReflectGetOwnPropertyDescriptor(nodeGlobals, prop);
     } else {
-      return ReflectGetOwnPropertyDescriptor(globalThis, prop);
+      return ReflectGetOwnPropertyDescriptor(target, prop);
     }
-  },
-  has(_target, prop) {
-    return prop in nodeGlobals || prop in globalThis;
   },
 });
 
