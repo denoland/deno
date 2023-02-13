@@ -94,11 +94,8 @@ fn op_node_build_os() -> String {
     .to_string()
 }
 
-pub fn init<P: NodePermissions + 'static>(
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> Extension {
-  let mut esm_files = include_js_files!("01_node.js", "02_require.js",);
-  esm_files.extend(include_js_files_dir!(
+pub fn init_polyfill() -> Extension {
+  let esm_files = include_js_files_dir!(
     dir "polyfills",
     "module.js",
     "worker_threads.ts",
@@ -410,10 +407,26 @@ pub fn init<P: NodePermissions + 'static>(
     "punycode.ts",
     "module_esm.ts",
     "_pako.mjs",
-  ));
+  );
 
   Extension::builder(env!("CARGO_PKG_NAME"))
     .esm(esm_files)
+    .esm_entry_point("internal:deno_node/polyfills/module_all.ts")
+    .ops(vec![
+      crypto::op_node_create_hash::decl(),
+      crypto::op_node_hash_update::decl(),
+      crypto::op_node_hash_digest::decl(),
+      crypto::op_node_hash_clone::decl(),
+      op_node_build_os::decl(),
+    ])
+    .build()
+}
+
+pub fn init<P: NodePermissions + 'static>(
+  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+) -> Extension {
+  Extension::builder("deno_node_loading")
+    .esm(include_js_files!("01_node.js", "02_require.js",))
     .ops(vec![
       ops::op_require_init_paths::decl(),
       ops::op_require_node_module_paths::decl::<P>(),
@@ -437,11 +450,6 @@ pub fn init<P: NodePermissions + 'static>(
       ops::op_require_read_package_scope::decl::<P>(),
       ops::op_require_package_imports_resolve::decl::<P>(),
       ops::op_require_break_on_next_statement::decl(),
-      crypto::op_node_create_hash::decl(),
-      crypto::op_node_hash_update::decl(),
-      crypto::op_node_hash_digest::decl(),
-      crypto::op_node_hash_clone::decl(),
-      op_node_build_os::decl(),
     ])
     .state(move |state| {
       if let Some(npm_resolver) = maybe_npm_resolver.clone() {
@@ -454,18 +462,16 @@ pub fn init<P: NodePermissions + 'static>(
 
 pub async fn initialize_runtime(
   js_runtime: &mut JsRuntime,
-  module_all_url: &str,
+  _module_all_url: &str,
   uses_local_node_modules_dir: bool,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName, usesLocalNodeModulesDir) {{
-      const moduleAll = await import(moduleAllUrl);
-      Deno[Deno.internal].node.initialize(moduleAll.default, nodeGlobalThisName);
+    r#"(async function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir) {{
+      Deno[Deno.internal].node.initialize(nodeGlobalThisName);
       if (usesLocalNodeModulesDir) {{
         Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
       }}
-    }})('{}', '{}', {});"#,
-    module_all_url,
+    }})('{}', {});"#,
     NODE_GLOBAL_THIS_NAME.as_str(),
     uses_local_node_modules_dir,
   );
