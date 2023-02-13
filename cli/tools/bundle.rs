@@ -27,11 +27,11 @@ pub async fn bundle(
   let cli_options = Arc::new(CliOptions::from_flags(flags)?);
 
   log::info!(
-    "{} \"deno bundle\" is deprecated and will be removed in Deno 2.0.",
+    "{} \"deno bundle\" is deprecated and will be removed in the future.",
     colors::yellow("Warning"),
   );
   log::info!(
-    "Use alternative bundlers like \"deno_emit\" or \"esbuild\" instead."
+    "Use alternative bundlers like \"deno_emit\", \"esbuild\" or \"rollup\" instead."
   );
 
   let resolver = |_| {

@@ -767,6 +767,7 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 
 fn bundle_subcommand<'a>() -> Command<'a> {
   compile_args(Command::new("bundle"))
+    .hide(true)
     .arg(
       Arg::new("source_file")
         .takes_value(true)
