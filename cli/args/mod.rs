@@ -417,7 +417,7 @@ fn discover_package_json(
           ),
         };
 
-        let package_json = PackageJson::load_from_string(path, source)?;
+        let package_json = PackageJson::load_from_string(path.clone(), source)?;
         log::debug!("package.json file found at '{}'", path.display());
         return Ok(Some(package_json));
       }
@@ -589,6 +589,7 @@ impl CliOptions {
 
     let mut maybe_package_json = None;
     if let Some(config_file) = &maybe_config_file {
+      eprintln!("maybe_package_json Some");
       let specifier = config_file.specifier.clone();
       if specifier.scheme() == "file" {
         maybe_package_json = discover_package_json(
@@ -604,9 +605,10 @@ impl CliOptions {
         )?;
       }
     } else {
+      eprintln!("maybe_package_json None");
       maybe_package_json = discover_package_json(&flags, None)?;
     }
-
+    eprintln!("maybe_package_json: {:?}", maybe_package_json);
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
     Ok(Self::new(

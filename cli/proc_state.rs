@@ -228,6 +228,7 @@ impl ProcState {
       Vec::new()
     };
 
+    eprintln!("maybe package_json deps {:#?}", maybe_package_json_deps);
     let maybe_cli_resolver = CliResolver::maybe_new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
@@ -322,6 +323,7 @@ impl ProcState {
     dynamic_permissions: PermissionsContainer,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
+    eprintln!("prepare_module_load {:?} {}", roots, is_dynamic);
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let mut cache = cache::FetchCacher::new(
@@ -369,6 +371,7 @@ impl ProcState {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
 
+    eprintln!("check if graph is valid");
     let (npm_package_reqs, has_node_builtin_specifier) = {
       graph_valid_with_cli_options(&graph, &roots, &self.options)?;
       let mut graph_data = self.graph_data.write();
@@ -378,6 +381,7 @@ impl ProcState {
         graph_data.has_node_builtin_specifier,
       )
     };
+    eprintln!("graph is valid");
 
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;

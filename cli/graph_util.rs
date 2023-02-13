@@ -57,6 +57,7 @@ pub fn graph_valid(
   walk_options: deno_graph::WalkOptions,
 ) -> Result<(), AnyError> {
   graph.walk(roots, walk_options).validate().map_err(|error| {
+    eprintln!("graph is not valid: {error}");
     let is_root = match &error {
       ModuleGraphError::ResolutionError(_) => false,
       _ => roots.contains(error.specifier()),
@@ -119,6 +120,7 @@ pub async fn create_graph_and_maybe_check(
     maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
   let analyzer = ps.parsed_source_cache.as_analyzer();
   let mut graph = ModuleGraph::default();
+  eprintln!("create graph and maybe check");
   graph
     .build(
       vec![root],

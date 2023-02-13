@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::args::JsxImportSourceConfig;
+use crate::node::resolve_builtin_node_module;
 use crate::npm::NpmPackageReq;
 
 /// A resolver that takes care of resolution, taking into account loaded
@@ -28,6 +29,7 @@ impl CliResolver {
     maybe_import_map: Option<Arc<ImportMap>>,
     maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
   ) -> Option<Self> {
+    eprintln!("maybe new");
     if maybe_jsx_import_source_config.is_some()
       || maybe_import_map.is_some()
       || maybe_package_json_deps.is_some()
@@ -72,6 +74,11 @@ impl Resolver for CliResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
+    eprintln!(
+      "maybe resolver, resolving {} {}",
+      specifier,
+      referrer.as_str()
+    );
     if let Some(import_map) = &self.maybe_import_map {
       return import_map
         .resolve(specifier, referrer)
@@ -82,6 +89,16 @@ impl Resolver for CliResolver {
       if let Some(req) = deps.get(specifier) {
         return Ok(ModuleSpecifier::parse(&format!("npm:{req}")).unwrap());
       }
+    }
+
+    if let Ok(node_builtin_module) = resolve_builtin_node_module(specifier) {
+      eprintln!("resolve built-in: {}", node_builtin_module);
+      return Ok(node_builtin_module);
+    }
+
+    // FIXME(bartlomieju): check using `npm_resolver.in_npm_package()`
+    if referrer.as_str().contains("node_modules") {
+      return Ok(ModuleSpecifier::parse(&format!("npm:{specifier}")).unwrap());
     }
 
     resolve_import(specifier, referrer.as_str()).map_err(|err| err.into())
