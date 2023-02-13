@@ -1,5 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
+
+import {
+  TextDecoder,
+  TextEncoder,
+} from "internal:deno_web/08_text_encoding.js";
 import { existsSync } from "internal:deno_node/polyfills/_fs/_fs_exists.ts";
 import {
   mkdir,

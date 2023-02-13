@@ -2,6 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Copyright Feross Aboukhadijeh, and other contributors. All rights reserved. MIT license.
 
+import { TextDecoder, TextEncoder } from "internal:deno_web/08_text_encoding.js";
 import { codes } from "internal:deno_node/polyfills/internal/error_codes.ts";
 import { encodings } from "internal:deno_node/polyfills/internal_binding/string_decoder.ts";
 import { indexOfBuffer, indexOfNumber } from "internal:deno_node/polyfills/internal_binding/buffer.ts";

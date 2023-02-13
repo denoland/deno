@@ -21,6 +21,8 @@
 
 // deno-lint-ignore-file
 
+import { TextDecoder, TextEncoder } from "internal:deno_web/08_text_encoding.js";
+
 /* eslint-disable space-unary-ops */
 
 /* Public constants ==========================================================*/

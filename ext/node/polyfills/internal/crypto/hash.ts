@@ -1,6 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+import {
+  TextDecoder,
+  TextEncoder,
+} from "internal:deno_web/08_text_encoding.js";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import { Transform } from "internal:deno_node/polyfills/stream.ts";
 import { encode as encodeToHex } from "internal:deno_node/polyfills/internal/crypto/_hex.ts";

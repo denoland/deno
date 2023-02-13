@@ -4,23 +4,21 @@
 // The following are all the process APIs that don't depend on the stream module
 // They have to be split this way to prevent a circular dependency
 
+import { build } from "internal:runtime/js/01_build.js";
 import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
 import { nextTick as _nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
 import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
-function _arch(): string {
-  if (Deno.build.arch == "x86_64") {
+export function arch(): string {
+  if (build.arch == "x86_64") {
     return "x64";
-  } else if (Deno.build.arch == "aarch64") {
+  } else if (build.arch == "aarch64") {
     return "arm64";
   } else {
     throw Error("unreachable");
   }
 }
-
-/** https://nodejs.org/api/process.html#process_process_arch */
-export const arch = _arch();
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
 export const chdir = Deno.chdir;

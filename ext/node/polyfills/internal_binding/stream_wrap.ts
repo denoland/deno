@@ -27,6 +27,7 @@
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.h
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.cc
 
+import { TextEncoder } from "internal:deno_web/08_text_encoding.js";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 import { HandleWrap } from "internal:deno_node/polyfills/internal_binding/handle_wrap.ts";

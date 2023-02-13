@@ -1,4 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+import { TextEncoder } from "internal:deno_web/08_text_encoding.js";
 import {
   intoCallbackAPIWithIntercept,
   MaybeEmpty,

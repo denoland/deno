@@ -1,4 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+import {
+  TextDecoder,
+  TextEncoder,
+} from "internal:deno_web/08_text_encoding.js";
 import { asyncIterableToCallback } from "internal:deno_node/polyfills/_fs/_fs_watch.ts";
 import Dirent from "internal:deno_node/polyfills/_fs/_fs_dirent.ts";
 import { denoErrorToNodeError } from "internal:deno_node/polyfills/internal/errors.ts";

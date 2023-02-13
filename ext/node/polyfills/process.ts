@@ -16,7 +16,7 @@ import { getOptionValue } from "internal:deno_node/polyfills/internal/options.ts
 import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
 import { fromFileUrl, join } from "internal:deno_node/polyfills/path.ts";
 import {
-  arch,
+  arch as arch_,
   chdir,
   cwd,
   env,
@@ -29,7 +29,6 @@ import {
 import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
 export {
   _nextTick as nextTick,
-  arch,
   argv,
   chdir,
   cwd,
@@ -46,6 +45,8 @@ import {
 } from "internal:deno_node/polyfills/_process/streams.mjs";
 import { core } from "internal:deno_node/polyfills/_core.ts";
 import { processTicksAndRejections } from "internal:deno_node/polyfills/_next_tick.ts";
+
+export let arch = "";
 
 // TODO(kt3k): Give better types to stdio objects
 // deno-lint-ignore no-explicit-any
@@ -390,7 +391,12 @@ class Process extends EventEmitter {
   }
 
   /** https://nodejs.org/api/process.html#process_process_arch */
-  arch = arch;
+  get arch() {
+    if (!arch) {
+      arch = arch_();
+    }
+    return arch;
+  }
 
   /**
    * https://nodejs.org/api/process.html#process_process_argv

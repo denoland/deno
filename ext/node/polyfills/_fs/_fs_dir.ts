@@ -2,6 +2,7 @@
 import Dirent from "internal:deno_node/polyfills/_fs/_fs_dirent.ts";
 import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
 import { ERR_MISSING_ARGS } from "internal:deno_node/polyfills/internal/errors.ts";
+import { TextDecoder } from "internal:deno_web/08_text_encoding.js";
 
 export default class Dir {
   #dirPath: string | Uint8Array;

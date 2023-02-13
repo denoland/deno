@@ -22,6 +22,7 @@
 
 import "./global.ts";
 
+import { TextDecoder } from "internal:deno_web/08_text_encoding.js";
 import { core } from "internal:deno_node/polyfills/_core.ts";
 import nodeMods from "internal:deno_node/polyfills/module_all.ts";
 import upstreamMods from "internal:deno_node/polyfills/upstream_modules.ts";
