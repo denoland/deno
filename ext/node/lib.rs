@@ -26,7 +26,6 @@ pub use path::PathClean;
 pub use polyfill::find_builtin_node_module;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::NodeModulePolyfill;
-pub use polyfill::NodeModulePolyfillSpecifier;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use resolution::get_closest_package_json;
 pub use resolution::get_package_scope_config;
@@ -462,7 +461,6 @@ pub fn init<P: NodePermissions + 'static>(
 
 pub async fn initialize_runtime(
   js_runtime: &mut JsRuntime,
-  _module_all_url: &str,
   uses_local_node_modules_dir: bool,
 ) -> Result<(), AnyError> {
   let source_code = &format!(

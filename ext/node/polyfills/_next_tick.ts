@@ -1,8 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 
-// deno-lint-ignore-file no-inner-declarations
-
 import { core } from "internal:deno_node/polyfills/_core.ts";
 import { validateFunction } from "internal:deno_node/polyfills/internal/validators.mjs";
 import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
