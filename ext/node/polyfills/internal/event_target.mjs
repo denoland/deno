@@ -10,6 +10,7 @@ import {
 import { validateObject, validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
 import { emitWarning } from "internal:deno_node/polyfills/process.ts";
 import { nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
+import { Event as WebEvent, EventTarget as WebEventTarget } from "internal:deno_web/02_event.js";
 
 import {
   customInspectSymbol,
@@ -54,7 +55,7 @@ function isEvent(value) {
   return typeof value?.[kType] === "string";
 }
 
-class Event extends globalThis.Event {
+class Event extends WebEvent {
   /**
    * @param {string} type
    * @param {{
@@ -450,7 +451,7 @@ function initEventTarget(self) {
   self[kMaxEventTargetListenersWarned] = false;
 }
 
-class EventTarget extends globalThis.EventTarget {
+class EventTarget extends WebEventTarget {
   // Used in checking whether an object is an EventTarget. This is a well-known
   // symbol as EventTarget may be used cross-realm.
   // Ref: https://github.com/nodejs/node/pull/33661

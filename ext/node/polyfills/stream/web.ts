@@ -1,33 +1,37 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const _ByteLengthQueuingStrategy = ByteLengthQueuingStrategy,
-  _CountQueuingStrategy = CountQueuingStrategy,
-  _ReadableByteStreamController = ReadableByteStreamController,
-  _ReadableStream = ReadableStream,
-  _ReadableStreamDefaultController = ReadableStreamDefaultController,
-  _ReadableStreamDefaultReader = ReadableStreamDefaultReader,
-  _TextDecoderStream = TextDecoderStream,
-  _TextEncoderStream = TextEncoderStream,
-  _TransformStream = TransformStream,
-  _TransformStreamDefaultController = TransformStreamDefaultController,
-  _WritableStream = WritableStream,
-  _WritableStreamDefaultController = WritableStreamDefaultController,
-  _WritableStreamDefaultWriter = WritableStreamDefaultWriter;
+import {
+  ByteLengthQueuingStrategy,
+  CountQueuingStrategy,
+  ReadableByteStreamController,
+  ReadableStream,
+  ReadableStreamDefaultController,
+  ReadableStreamDefaultReader,
+  TransformStream,
+  TransformStreamDefaultController,
+  WritableStream,
+  WritableStreamDefaultController,
+  WritableStreamDefaultWriter,
+} from "internal:deno_web/06_streams.js";
+import {
+  TextDecoderStream,
+  TextEncoderStream,
+} from "internal:deno_web/08_text_encoding.js";
 
 export {
-  _ByteLengthQueuingStrategy as ByteLengthQueuingStrategy,
-  _CountQueuingStrategy as CountQueuingStrategy,
-  _ReadableByteStreamController as ReadableByteStreamController,
-  _ReadableStream as ReadableStream,
-  _ReadableStreamDefaultController as ReadableStreamDefaultController,
-  _ReadableStreamDefaultReader as ReadableStreamDefaultReader,
-  _TextDecoderStream as TextDecoderStream,
-  _TextEncoderStream as TextEncoderStream,
-  _TransformStream as TransformStream,
-  _TransformStreamDefaultController as TransformStreamDefaultController,
-  _WritableStream as WritableStream,
-  _WritableStreamDefaultController as WritableStreamDefaultController,
-  _WritableStreamDefaultWriter as WritableStreamDefaultWriter,
+  ByteLengthQueuingStrategy,
+  CountQueuingStrategy,
+  ReadableByteStreamController,
+  ReadableStream,
+  ReadableStreamDefaultController,
+  ReadableStreamDefaultReader,
+  TextDecoderStream,
+  TextEncoderStream,
+  TransformStream,
+  TransformStreamDefaultController,
+  WritableStream,
+  WritableStreamDefaultController,
+  WritableStreamDefaultWriter,
 };
 
 export default {

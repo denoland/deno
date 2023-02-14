@@ -1,12 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
+import {
+  performance as shimPerformance,
+  PerformanceEntry,
+} from "internal:deno_web/15_performance.js";
 
-const { PerformanceObserver, PerformanceEntry, performance: shimPerformance } =
-  globalThis as typeof globalThis & {
-    PerformanceEntry: PerformanceEntry;
-    // deno-lint-ignore no-explicit-any
-    PerformanceObserver: any;
-  };
+// FIXME(bartlomieju)
+const PerformanceObserver = undefined;
 const constants = {};
 
 const performance:
