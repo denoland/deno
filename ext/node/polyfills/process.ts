@@ -37,6 +37,7 @@ import {
   processTicksAndRejections,
   runNextTicks,
 } from "internal:deno_node/polyfills/_next_tick.ts";
+import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -77,7 +78,9 @@ const notImplementedEvents = [
 export const argv = [];
 
 // Overwrites the 1st item with getter.
-Object.defineProperty(argv, "0", { get: Deno.execPath });
+// TODO(bartlomieju): added "configurable: true" to make this work for binary
+// commands, but that is probably a wrong solution
+Object.defineProperty(argv, "0", { get: Deno.execPath, configurable: true });
 // Overwrites the 2st item with getter.
 Object.defineProperty(argv, "1", {
   get: () => {
