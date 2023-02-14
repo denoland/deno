@@ -534,6 +534,11 @@ impl ProcState {
       match maybe_resolved {
         Some((found_referrer, Resolution::Ok(resolved))) => {
           let specifier = &resolved.specifier;
+
+          if specifier.scheme() == "node" {
+            return node::resolve_builtin_node_module(specifier.path());
+          }
+
           if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
           {
             if !self.options.unstable()
