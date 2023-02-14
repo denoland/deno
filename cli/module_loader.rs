@@ -82,6 +82,7 @@ impl CliModuleLoader {
     // if specifier.scheme() == "node" {
     //   unreachable!("Node built-in modules should be handled internally.");
     // }
+
     let graph = self.ps.graph();
     match graph.get(specifier) {
       Some(deno_graph::Module {
@@ -229,6 +230,11 @@ impl ModuleLoader for CliModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
+    eprintln!("load {} {:?}", specifier.as_str(), maybe_referrer);
+
+    // if specifier.as_str().starts_with("node:") {
+    //   panic!();
+    // }
     // NOTE: this block is async only because of `deno_core` interface
     // requirements; module was already loaded when constructing module graph
     // during call to `prepare_load` so we can load it synchronously.

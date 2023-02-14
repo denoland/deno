@@ -12,6 +12,8 @@ mod not_docs {
   use deno_cache::SqliteBackedCache;
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
+  use deno_core::ModuleSource;
+  use deno_core::ModuleType;
 
   use deno_ast::MediaType;
   use deno_ast::ParseParams;
@@ -21,7 +23,7 @@ mod not_docs {
 
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
-  ) -> Result<String, AnyError> {
+  ) -> Result<ModuleSource, AnyError> {
     let media_type = MediaType::from(Path::new(&file_source.specifier));
 
     let should_transpile = match media_type {
@@ -30,8 +32,18 @@ mod not_docs {
       _ => panic!("Unsupported media type for snapshotting {media_type:?}"),
     };
 
+    let module_url_found = file_source
+      .maybe_alias
+      .clone()
+      .unwrap_or_else(|| file_source.specifier.clone());
+
     if !should_transpile {
-      return Ok(file_source.code.to_string());
+      return Ok(ModuleSource {
+        code: file_source.code.as_bytes().to_vec().into_boxed_slice(),
+        module_url_specified: file_source.specifier.to_string(),
+        module_url_found,
+        module_type: ModuleType::JavaScript,
+      });
     }
 
     let parsed = deno_ast::parse_module(ParseParams {
@@ -43,7 +55,12 @@ mod not_docs {
       maybe_syntax: None,
     })?;
     let transpiled_source = parsed.transpile(&Default::default())?;
-    Ok(transpiled_source.text)
+    Ok(ModuleSource {
+      code: transpiled_source.text.into_bytes().into_boxed_slice(),
+      module_url_specified: file_source.specifier.to_string(),
+      module_url_found,
+      module_type: ModuleType::JavaScript,
+    })
   }
 
   struct Permissions;
@@ -270,6 +287,7 @@ mod not_docs {
           .dependencies(vec!["runtime"])
           .esm(vec![ExtensionFileSource {
             specifier: "js/99_main.js".to_string(),
+            maybe_alias: None,
             code: include_str!("js/99_main.js"),
           }])
           .build(),

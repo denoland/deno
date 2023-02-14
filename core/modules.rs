@@ -316,13 +316,14 @@ pub(crate) fn resolve_helper(
     ));
   }
 
+  eprintln!("resolving using loader {}", specifier);
   loader.resolve(specifier, referrer, kind)
 }
 
 /// Function that can be passed to the `InternalModuleLoader` that allows to
 /// transpile sources before passing to V8.
 pub type InternalModuleLoaderCb =
-  Box<dyn Fn(&ExtensionFileSource) -> Result<String, Error>>;
+  Box<dyn Fn(&ExtensionFileSource) -> Result<ModuleSource, Error>>;
 
 pub struct InternalModuleLoader {
   module_loader: Rc<dyn ModuleLoader>,
@@ -361,11 +362,17 @@ impl ModuleLoader for InternalModuleLoader {
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
+    eprintln!("resolving using internal module loader");
     if let Ok(url_specifier) = ModuleSpecifier::parse(specifier) {
       if url_specifier.scheme() == "internal" {
         let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
         if referrer == "." || referrer_specifier.unwrap().scheme() == "internal"
         {
+          eprintln!(
+            "resolved using internal module loader {} {}",
+            specifier,
+            url_specifier.as_str()
+          );
           return Ok(url_specifier);
         } else {
           return Err(generic_error(
@@ -375,6 +382,7 @@ impl ModuleLoader for InternalModuleLoader {
       }
     }
 
+    eprintln!("resolving using module loader {} {}", specifier, referrer);
     self.module_loader.resolve(specifier, referrer, kind)
   }
 
@@ -402,17 +410,20 @@ impl ModuleLoader for InternalModuleLoader {
       let result = if let Some(load_callback) = &self.maybe_load_callback {
         load_callback(file_source)
       } else {
-        Ok(file_source.code.to_string())
+        let module_url_found = file_source
+          .maybe_alias
+          .clone()
+          .unwrap_or_else(|| specifier.clone());
+        Ok(ModuleSource {
+          code: file_source.code.as_bytes().to_vec().into_boxed_slice(),
+          module_type: ModuleType::JavaScript,
+          module_url_specified: specifier,
+          module_url_found,
+        })
       };
 
       return async move {
-        let code = result?;
-        let source = ModuleSource {
-          code: code.into_bytes().into_boxed_slice(),
-          module_type: ModuleType::JavaScript,
-          module_url_specified: specifier.clone(),
-          module_url_found: specifier.clone(),
-        };
+        let source = result?;
         Ok(source)
       }
       .boxed_local();
@@ -719,9 +730,16 @@ impl RecursiveModuleLoad {
       ))));
     }
 
+    eprintln!("module request {:#?}", module_request);
+    if module_request.specifier.as_str()
+      == "internal:deno_node/module_es_shim.js"
+    {
+      eprintln!("module source {:#?}", module_source);
+    }
     // Register the module in the module map unless it's already there. If the
     // specified URL and the "true" URL are different, register the alias.
     if module_source.module_url_specified != module_source.module_url_found {
+      eprintln!("aliasing!");
       self.module_map_rc.borrow_mut().alias(
         &module_source.module_url_specified,
         expected_asserted_module_type,
@@ -786,6 +804,7 @@ impl RecursiveModuleLoad {
           ) {
             already_registered.push_back((module_id, module_request.clone()));
           } else {
+            eprintln!("gonna load");
             let referrer = referrer.clone();
             let request = module_request.clone();
             let loader = self.loader.clone();
@@ -1203,6 +1222,7 @@ impl ModuleMap {
         return Err(ModuleError::Exception(exception));
       }
 
+      eprintln!("before resolve helper {import_specifier}");
       let module_specifier = match resolve_helper(
         self.snapshot_loaded_and_not_snapshotting,
         self.loader.clone(),
@@ -1217,6 +1237,7 @@ impl ModuleMap {
         Ok(s) => s,
         Err(e) => return Err(ModuleError::Other(e)),
       };
+      eprintln!("after resolve helper {}", module_specifier.as_str());
       let asserted_module_type =
         get_asserted_module_type_from_assertions(&assertions);
       let request = ModuleRequest {
@@ -1297,6 +1318,7 @@ impl ModuleMap {
     asserted_module_type: AssertedModuleType,
     target: &str,
   ) {
+    eprintln!("aliasing {} {}", name, target);
     self.by_name.insert(
       (name.to_string(), asserted_module_type),
       SymbolicModule::Alias(target.to_string()),

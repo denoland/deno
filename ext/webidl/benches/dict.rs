@@ -14,6 +14,7 @@ fn setup() -> Vec<Extension> {
     Extension::builder("deno_webidl_bench")
       .esm(vec![ExtensionFileSource {
         specifier: "internal:setup".to_string(),
+        maybe_alias: None,
         code: include_str!("dict.js"),
       }])
       .build(),

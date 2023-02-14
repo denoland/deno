@@ -116,11 +116,15 @@ impl Loader for FetchCacher {
     let specifier =
       if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
         if module_name == "module" {
+          eprintln!("load external module");
           // the source code for "node:module" is built-in rather than
           // being from deno_std like the other modules
           return Box::pin(futures::future::ready(Ok(Some(
             deno_graph::source::LoadResponse::External {
-              specifier: specifier.clone(),
+              specifier: ModuleSpecifier::parse(
+                "internal:deno_node/module_es_shim.js",
+              )
+              .unwrap(),
             },
           ))));
         }

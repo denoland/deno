@@ -459,6 +459,7 @@ impl ProcState {
 
   /// Add the builtin node modules to the graph data.
   pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
+    eprintln!("prepare node std graph");
     if self.node_std_graph_prepared.load(Ordering::Relaxed) {
       return Ok(());
     }
@@ -505,6 +506,7 @@ impl ProcState {
     referrer: &str,
     permissions: &mut PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
+    eprintln!("resolving using CLI resolver {} {}", specifier, referrer);
     if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
       if self.npm_resolver.in_npm_package(&referrer) {
         // we're in an npm package, so use node resolution
@@ -531,9 +533,17 @@ impl ProcState {
         _ => None,
       };
 
+      eprintln!("maybe resolved {:#?}", maybe_resolved);
       match maybe_resolved {
         Some((found_referrer, Resolution::Ok(resolved))) => {
           let specifier = &resolved.specifier;
+
+          if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
+            let r = node::resolve_builtin_node_module(module_name);
+            eprintln!("resolve built-in node module here {:#?}", r);
+            return r;
+          }
+
           if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
           {
             if !self.options.unstable()
@@ -569,7 +579,9 @@ impl ProcState {
 
     // Built-in Node modules
     if let Some(module_name) = specifier.strip_prefix("node:") {
-      return node::resolve_builtin_node_module(module_name);
+      let r = node::resolve_builtin_node_module(module_name);
+      eprintln!("resolve built-in node module {:#?}", r);
+      return r;
     }
 
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL

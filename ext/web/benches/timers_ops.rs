@@ -32,6 +32,7 @@ fn setup() -> Vec<Extension> {
     .esm(vec![
       ExtensionFileSource {
         specifier: "internal:setup".to_string(), 
+        maybe_alias: None,
         code: r#"
       import { setTimeout, handleTimerMacrotask } from "internal:deno_web/02_timers.js";
       globalThis.setTimeout = setTimeout;

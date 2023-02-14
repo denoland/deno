@@ -4,6 +4,7 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::located_script_name;
 use deno_core::Extension;
+use deno_core::ExtensionFileSource;
 use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
@@ -86,12 +87,16 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
 pub fn init<P: NodePermissions + 'static>(
   maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
 ) -> Extension {
+  let mut esm_files = include_js_files!("01_node.js", "02_require.js",);
+
+  esm_files.push(ExtensionFileSource {
+    specifier: "module_es_shim.js".to_string(),
+    maybe_alias: Some("node:module".to_string()),
+    code: MODULE_ES_SHIM,
+  });
+
   Extension::builder(env!("CARGO_PKG_NAME"))
-    .esm(include_js_files!(
-      "01_node.js",
-      "02_require.js",
-      "module_es_shim.js",
-    ))
+    .esm(esm_files)
     .ops(vec![
       ops::op_require_init_paths::decl(),
       ops::op_require_node_module_paths::decl::<P>(),

@@ -9,6 +9,7 @@ use v8::fast_api::FastFunction;
 #[derive(Clone, Debug)]
 pub struct ExtensionFileSource {
   pub specifier: String,
+  pub maybe_alias: Option<String>,
   pub code: &'static str,
 }
 pub type OpFnRef = v8::FunctionCallback;
@@ -182,6 +183,7 @@ impl ExtensionBuilder {
     let js_files =
       js_files.into_iter().map(|file_source| ExtensionFileSource {
         specifier: format!("internal:{}/{}", self.name, file_source.specifier),
+        maybe_alias: file_source.maybe_alias,
         code: file_source.code,
       });
     self.js.extend(js_files);
@@ -197,6 +199,7 @@ impl ExtensionBuilder {
             "internal:{}/{}",
             self.name, file_source.specifier
           ),
+          maybe_alias: file_source.maybe_alias,
           code: file_source.code,
         });
     self.esm.extend(esm_files);
@@ -274,6 +277,7 @@ macro_rules! include_js_files {
     vec![
       $($crate::ExtensionFileSource {
         specifier: $file.to_string(),
+        maybe_alias: None,
         code: include_str!($file),
       },)+
     ]
@@ -300,6 +304,7 @@ macro_rules! include_js_files_dir {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!($dir, "/", $file).to_string(),
+        maybe_alias: None,
         code: include_str!(concat!($dir, "/", $file)),
       },)+
     ]

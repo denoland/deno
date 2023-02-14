@@ -12,6 +12,7 @@ fn setup() -> Vec<Extension> {
   vec![Extension::builder("bench_setup")
     .js(vec![ExtensionFileSource {
       specifier: "setup.js".to_string(),
+      maybe_alias: None,
       code: r#"
       const hello = "hello world\n";
       const hello1k = hello.repeat(1e3);
