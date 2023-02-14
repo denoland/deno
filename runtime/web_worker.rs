@@ -434,7 +434,7 @@ impl WebWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init::<PermissionsContainer>(unstable),
+      deno_napi::init::<PermissionsContainer>(),
       deno_node::init_polyfill(),
       deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),

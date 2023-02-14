@@ -240,7 +240,7 @@ mod not_docs {
         None, false, // No --unstable.
         None,
       ),
-      deno_napi::init::<Permissions>(false),
+      deno_napi::init::<Permissions>(),
       deno_http::init(),
       deno_flash::init::<Permissions>(false), // No --unstable
       runtime_extension,
