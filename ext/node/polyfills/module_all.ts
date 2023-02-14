@@ -1,4 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+const internals = globalThis.__bootstrap.internals;
 import _httpAgent from "internal:deno_node/polyfills/_http_agent.mjs";
 import _httpOutgoing from "internal:deno_node/polyfills/_http_outgoing.ts";
 import _streamDuplex from "internal:deno_node/polyfills/internal/streams/duplex.mjs";
@@ -88,7 +89,7 @@ import wasi from "internal:deno_node/polyfills/wasi.ts";
 import zlib from "internal:deno_node/polyfills/zlib.ts";
 
 // Canonical mapping of supported modules
-export default {
+const moduleAll = {
   "_http_agent": _httpAgent,
   "_http_outgoing": _httpOutgoing,
   "_stream_duplex": _streamDuplex,
@@ -185,3 +186,6 @@ export default {
   worker_threads: workerThreads,
   zlib,
 } as Record<string, unknown>;
+
+internals.nodeModuleAll = moduleAll;
+export default moduleAll;

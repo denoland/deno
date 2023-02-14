@@ -109,6 +109,7 @@ function initialize(nodeModules, nodeGlobalThisName) {
     writable: false,
     value: nodeGlobalThis,
   });
+  internals.__bootstrapNodeProcess();
 }
 
 internals.node = {

@@ -2,6 +2,7 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 const internals = globalThis.__bootstrap.internals;
+import { core } from "internal:deno_node/polyfills/_core.ts";
 import {
   notImplemented,
   warnNotImplemented,
@@ -32,8 +33,10 @@ import {
   stdin as stdin_,
   stdout as stdout_,
 } from "internal:deno_node/polyfills/_process/streams.mjs";
-import { core } from "internal:deno_node/polyfills/_core.ts";
-import { processTicksAndRejections } from "internal:deno_node/polyfills/_next_tick.ts";
+import {
+  processTicksAndRejections,
+  runNextTicks,
+} from "internal:deno_node/polyfills/_next_tick.ts";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -684,6 +687,11 @@ export const removeAllListeners = process.removeAllListeners;
 // FIXME(bartlomieju): currently it's not called
 // only call this from runtime's main.js
 internals.__bootstrapNodeProcess = function () {
+  core.setNextTickCallback(processTicksAndRejections);
+  core.setMacrotaskCallback(runNextTicks);
+
+  // TODO(bartlomieju): this is buggy, see https://github.com/denoland/deno/issues/16928
+  // We should use a specialized API in 99_main.js instead
   globalThis.addEventListener("unhandledrejection", (event) => {
     if (process.listenerCount("unhandledRejection") === 0) {
       // The Node.js default behavior is to raise an uncaught exception if
