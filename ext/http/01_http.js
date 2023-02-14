@@ -46,7 +46,6 @@ const {
   Error,
   ObjectPrototypeIsPrototypeOf,
   SafeSetIterator,
-  SafeRegExp,
   Set,
   SetPrototypeAdd,
   SetPrototypeDelete,
