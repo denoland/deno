@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::resolve_import;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Resolver;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
@@ -20,26 +19,18 @@ pub struct CliResolver {
 }
 
 impl CliResolver {
-  pub fn maybe_new(
+  pub fn new(
     maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
     maybe_import_map: Option<Arc<ImportMap>>,
-  ) -> Option<Self> {
-    if maybe_jsx_import_source_config.is_some() || maybe_import_map.is_some() {
-      Some(Self {
-        maybe_import_map,
-        maybe_default_jsx_import_source: maybe_jsx_import_source_config
-          .as_ref()
-          .and_then(|c| c.default_specifier.clone()),
-        maybe_jsx_import_source_module: maybe_jsx_import_source_config
-          .map(|c| c.module),
-      })
-    } else {
-      None
+  ) -> Self {
+    Self {
+      maybe_import_map,
+      maybe_default_jsx_import_source: maybe_jsx_import_source_config
+        .as_ref()
+        .and_then(|c| c.default_specifier.clone()),
+      maybe_jsx_import_source_module: maybe_jsx_import_source_config
+        .map(|c| c.module),
     }
-  }
-
-  pub fn with_import_map(import_map: Arc<ImportMap>) -> Self {
-    Self::maybe_new(None, Some(import_map)).unwrap()
   }
 
   pub fn as_graph_resolver(&self) -> &dyn Resolver {
@@ -69,7 +60,7 @@ impl Resolver for CliResolver {
         .resolve(specifier, referrer)
         .map_err(|err| err.into())
     } else {
-      resolve_import(specifier, referrer.as_str()).map_err(|err| err.into())
+      deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
     }
   }
 }

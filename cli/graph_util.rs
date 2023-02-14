@@ -109,12 +109,11 @@ pub async fn create_graph_and_maybe_check(
     PermissionsContainer::allow_all(),
   );
   let maybe_imports = ps.options.to_maybe_imports()?;
-  let maybe_cli_resolver = CliResolver::maybe_new(
+  let cli_resolver = CliResolver::new(
     ps.options.to_maybe_jsx_import_source_config(),
     ps.maybe_import_map.clone(),
   );
-  let maybe_graph_resolver =
-    maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
+  let graph_resolver = cli_resolver.as_graph_resolver();
   let analyzer = ps.parsed_source_cache.as_analyzer();
   let mut graph = ModuleGraph::default();
   graph
@@ -124,7 +123,7 @@ pub async fn create_graph_and_maybe_check(
       deno_graph::BuildOptions {
         is_dynamic: false,
         imports: maybe_imports,
-        resolver: maybe_graph_resolver,
+        resolver: Some(graph_resolver),
         module_analyzer: Some(&*analyzer),
         reporter: None,
       },

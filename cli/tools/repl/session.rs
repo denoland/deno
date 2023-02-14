@@ -444,9 +444,9 @@ impl ReplSession {
       .flat_map(|i| {
         self
           .proc_state
-          .maybe_resolver
-          .as_ref()
-          .and_then(|resolver| resolver.resolve(i, &self.referrer).ok())
+          .resolver
+          .resolve(i, &self.referrer)
+          .ok()
           .or_else(|| ModuleSpecifier::parse(i).ok())
       })
       .collect::<Vec<_>>();

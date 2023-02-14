@@ -235,9 +235,12 @@ pub async fn run(
     eszip,
     maybe_import_map_resolver: metadata.maybe_import_map.map(
       |(base, source)| {
-        CliResolver::with_import_map(Arc::new(
-          parse_from_json(&base, &source).unwrap().import_map,
-        ))
+        CliResolver::new(
+          None,
+          Some(Arc::new(
+            parse_from_json(&base, &source).unwrap().import_map,
+          )),
+        )
       },
     ),
   });
