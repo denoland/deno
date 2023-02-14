@@ -71,7 +71,6 @@ import {
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
 } from "internal:runtime/js/98_global_scope.js";
-import process from "internal:deno_node/polyfills/process.ts";
 
 let windowIsClosing = false;
 let globalThis_;
@@ -522,7 +521,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   // FIXME(bartlomieju): this should be a helper function that is placed in
   // "internals" namespace
   // Initialize Node polyfills
-  process.__bootstrap();
+  // internals.__bootstrapNodeProcess();
 }
 
 function bootstrapWorkerRuntime(

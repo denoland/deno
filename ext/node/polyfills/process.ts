@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+const internals = globalThis.__bootstrap.internals;
 import {
   notImplemented,
   warnNotImplemented,
@@ -351,50 +352,6 @@ class Process extends EventEmitter {
     super();
   }
 
-  // only call this from runtime's main.js
-  __bootstrap() {
-    globalThis.addEventListener("unhandledrejection", (event) => {
-      if (process.listenerCount("unhandledRejection") === 0) {
-        // The Node.js default behavior is to raise an uncaught exception if
-        // an unhandled rejection occurs and there are no unhandledRejection
-        // listeners.
-        if (process.listenerCount("uncaughtException") === 0) {
-          throw event.reason;
-        }
-
-        event.preventDefault();
-        uncaughtExceptionHandler(event.reason, "unhandledRejection");
-        return;
-      }
-
-      event.preventDefault();
-      process.emit("unhandledRejection", event.reason, event.promise);
-    });
-
-    globalThis.addEventListener("error", (event) => {
-      if (process.listenerCount("uncaughtException") > 0) {
-        event.preventDefault();
-      }
-
-      uncaughtExceptionHandler(event.error, "uncaughtException");
-    });
-
-    globalThis.addEventListener("beforeunload", (e) => {
-      super.emit("beforeExit", process.exitCode || 0);
-      processTicksAndRejections();
-      if (core.eventLoopHasMoreWork()) {
-        e.preventDefault();
-      }
-    });
-
-    globalThis.addEventListener("unload", () => {
-      if (!process._exiting) {
-        process._exiting = true;
-        super.emit("exit", process.exitCode || 0);
-      }
-    });
-  }
-
   /** https://nodejs.org/api/process.html#process_process_arch */
   get arch() {
     if (!arch) {
@@ -723,6 +680,51 @@ addReadOnlyProcessAlias("throwDeprecation", "--throw-deprecation");
 
 export const removeListener = process.removeListener;
 export const removeAllListeners = process.removeAllListeners;
+
+// FIXME(bartlomieju): currently it's not called
+// only call this from runtime's main.js
+internals.__bootstrapNodeProcess = function () {
+  globalThis.addEventListener("unhandledrejection", (event) => {
+    if (process.listenerCount("unhandledRejection") === 0) {
+      // The Node.js default behavior is to raise an uncaught exception if
+      // an unhandled rejection occurs and there are no unhandledRejection
+      // listeners.
+      if (process.listenerCount("uncaughtException") === 0) {
+        throw event.reason;
+      }
+
+      event.preventDefault();
+      uncaughtExceptionHandler(event.reason, "unhandledRejection");
+      return;
+    }
+
+    event.preventDefault();
+    process.emit("unhandledRejection", event.reason, event.promise);
+  });
+
+  globalThis.addEventListener("error", (event) => {
+    if (process.listenerCount("uncaughtException") > 0) {
+      event.preventDefault();
+    }
+
+    uncaughtExceptionHandler(event.error, "uncaughtException");
+  });
+
+  globalThis.addEventListener("beforeunload", (e) => {
+    process.emit("beforeExit", process.exitCode || 0);
+    processTicksAndRejections();
+    if (core.eventLoopHasMoreWork()) {
+      e.preventDefault();
+    }
+  });
+
+  globalThis.addEventListener("unload", () => {
+    if (!process._exiting) {
+      process._exiting = true;
+      process.emit("exit", process.exitCode || 0);
+    }
+  });
+};
 
 export default process;
 
