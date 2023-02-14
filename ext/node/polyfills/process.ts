@@ -80,7 +80,12 @@ export const argv = [];
 // Overwrites the 1st item with getter.
 // TODO(bartlomieju): added "configurable: true" to make this work for binary
 // commands, but that is probably a wrong solution
-Object.defineProperty(argv, "0", { get: Deno.execPath, configurable: true });
+Object.defineProperty(argv, "0", {
+  get: () => {
+    return Deno.execPath();
+  },
+  configurable: true,
+});
 // Overwrites the 2st item with getter.
 Object.defineProperty(argv, "1", {
   get: () => {
@@ -685,7 +690,7 @@ export const removeAllListeners = process.removeAllListeners;
 internals.__bootstrapNodeProcess = function (args: string[]) {
   for (let i = 0; i < args.length; i++) {
     const j = i;
-    Object.defineProperty(argv, j + 2, { get: () => args[j] });
+    Object.defineProperty(argv, `${j + 2}`, { get: () => args[j] });
   }
 
   core.setNextTickCallback(processTicksAndRejections);
