@@ -290,7 +290,7 @@ mod ts {
 
       #[cfg(not(debug_assertions))]
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
-        eprintln!("hello from compression cb");
+        eprintln!("Compressing TSC snapshot...");
         vec.extend_from_slice(
           &zstd::bulk::compress(snapshot_slice, 22)
             .expect("snapshot compression failed"),
