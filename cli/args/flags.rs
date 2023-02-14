@@ -54,6 +54,7 @@ pub struct FileFlags {
 pub struct BenchFlags {
   pub files: FileFlags,
   pub filter: Option<String>,
+  pub json: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -718,6 +719,12 @@ fn bench_subcommand<'a>() -> Command<'a> {
   runtime_args(Command::new("bench"), true, false)
     .trailing_var_arg(true)
     .arg(
+      Arg::new("json")
+        .long("json")
+        .help("UNSTABLE: Output benchmark result in JSON format")
+        .takes_value(false),
+    )
+    .arg(
       Arg::new("ignore")
         .long("ignore")
         .takes_value(true)
@@ -760,6 +767,7 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 
 fn bundle_subcommand<'a>() -> Command<'a> {
   compile_args(Command::new("bundle"))
+    .hide(true)
     .arg(
       Arg::new("source_file")
         .takes_value(true)
@@ -2325,6 +2333,8 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   // interactive prompts, unless done by user code
   flags.no_prompt = true;
 
+  let json = matches.is_present("json");
+
   let ignore = match matches.values_of("ignore") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -2359,6 +2369,7 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Bench(BenchFlags {
     files: FileFlags { include, ignore },
     filter,
+    json,
   });
 }
 
@@ -6535,6 +6546,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "bench",
+      "--json",
       "--unstable",
       "--filter",
       "- foo",
@@ -6552,6 +6564,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: Some("- foo".to_string()),
+          json: true,
           files: FileFlags {
             include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
             ignore: vec![],
@@ -6576,6 +6589,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: None,
+          json: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
