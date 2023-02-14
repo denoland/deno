@@ -281,9 +281,9 @@ mod ts {
       extensions: vec![],
       extensions_with_js: vec![tsc_extension],
 
-      // NOTE(bartlomieju): compressing the TSC snapshot during build time took
-      // ~45s on M1 MacBook Pro, so for debug build. When not using compression,
-      // it takes ~1s. Thus we're not not using compressed snapshot, trading off
+      // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
+      // ~45s on M1 MacBook Pro; without compression it took ~1s.
+      // Thus we're not not using compressed snapshot, trading off
       // a lot of build time for some startup time in debug build.
       #[cfg(debug_assertions)]
       compression_cb: None,

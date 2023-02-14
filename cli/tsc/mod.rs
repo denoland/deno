@@ -56,9 +56,9 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
     static COMPRESSED_COMPILER_SNAPSHOT: &[u8] =
       include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
 
-    // NOTE(bartlomieju): compressing the TSC snapshot during build time took
-    // ~45s on M1 MacBook Pro, so for debug build. When not using compression,
-    // it takes ~1s. Thus we're not not using compressed snapshot, trading off
+    // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
+    // ~45s on M1 MacBook Pro; without compression it took ~1s.
+    // Thus we're not not using compressed snapshot, trading off
     // a lot of build time for some startup time in debug build.
     #[cfg(debug_assertions)]
     return COMPRESSED_COMPILER_SNAPSHOT.to_vec().into_boxed_slice();
