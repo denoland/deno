@@ -11,6 +11,7 @@ import {
 import { Duplex, Readable, Writable } from "internal:deno_node/polyfills/stream.ts";
 import { stdio } from "internal:deno_node/polyfills/_process/stdio.mjs";
 import { fs as fsConstants } from "internal:deno_node/polyfills/internal_binding/constants.ts";
+import * as files from "internal:runtime/js/40_files.js";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 function createWritableStdioStream(writer, name) {
@@ -92,13 +93,13 @@ function createWritableStdioStream(writer, name) {
 
 /** https://nodejs.org/api/process.html#process_process_stderr */
 export const stderr = stdio.stderr = createWritableStdioStream(
-  Deno.stderr,
+  files.stderr,
   "stderr",
 );
 
 /** https://nodejs.org/api/process.html#process_process_stdout */
 export const stdout = stdio.stdout = createWritableStdioStream(
-  Deno.stdout,
+  files.stdout,
   "stdout",
 );
 
