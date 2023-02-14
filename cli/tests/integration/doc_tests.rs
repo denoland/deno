@@ -47,6 +47,11 @@ itest!(deno_doc_types_ref {
   output: "doc/types_ref.out",
 });
 
+itest!(deno_doc_json {
+  args: "doc doc/json.js --json",
+  output: "doc/json.out",
+});
+
 itest!(deno_doc_types_header {
   args: "doc --reload doc/types_header.ts",
   output: "doc/types_header.out",

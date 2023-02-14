@@ -50,6 +50,7 @@
     }
   ],
   "redirects": {},
+  "version": "[WILDCARD]",
   "npmPackages": {
     "ansi-styles@4.3.0": {
       "name": "ansi-styles",

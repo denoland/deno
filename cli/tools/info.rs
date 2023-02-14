@@ -28,6 +28,7 @@ use crate::npm::NpmResolutionPackage;
 use crate::npm::NpmResolutionSnapshot;
 use crate::proc_state::ProcState;
 use crate::util::checksum;
+use crate::version;
 
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
@@ -41,6 +42,9 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
 
     if info_flags.json {
       let mut json_graph = json!(graph);
+      if let Some(output) = json_graph.as_object_mut() {
+        output.insert("version".to_string(), version::deno().into());
+      }
       add_npm_packages_to_json(&mut json_graph, &ps.npm_resolver);
       display::write_json_to_stdout(&json_graph)?;
     } else {
@@ -79,7 +83,8 @@ fn print_cache_info(
   let local_storage_dir = origin_dir.join("local_storage");
 
   if json {
-    let mut output = json!({
+    let mut json_output = json!({
+      "version": version::deno(),
       "denoDir": deno_dir.to_string(),
       "modulesCache": modules_cache,
       "npmCache": npm_cache,
@@ -89,10 +94,10 @@ fn print_cache_info(
     });
 
     if location.is_some() {
-      output["localStorage"] = serde_json::to_value(local_storage_dir)?;
+      json_output["localStorage"] = serde_json::to_value(local_storage_dir)?;
     }
 
-    display::write_json_to_stdout(&output)
+    display::write_json_to_stdout(&json_output)
   } else {
     println!("{} {}", colors::bold("DENO_DIR location:"), deno_dir);
     println!(

@@ -160,5 +160,6 @@
     }
   ],
   "redirects": {},
+  "version": "[WILDCARD]",
   "npmPackages": {}
 }

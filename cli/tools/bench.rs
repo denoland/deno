@@ -14,7 +14,7 @@ use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_supported_ext;
-use crate::version::get_user_agent;
+use crate::version;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
@@ -134,6 +134,7 @@ pub trait BenchReporter {
 
 #[derive(Debug, Serialize)]
 struct JsonReporterResult {
+  version: String,
   runtime: String,
   cpu: String,
   origin: String,
@@ -152,7 +153,8 @@ impl JsonReporterResult {
     result: BenchResult,
   ) -> Self {
     Self {
-      runtime: format!("{} {}", get_user_agent(), env!("TARGET")),
+      version: version::deno(),
+      runtime: format!("{} {}", version::get_user_agent(), env!("TARGET")),
       cpu: mitata::cpu::name(),
       origin,
       group,

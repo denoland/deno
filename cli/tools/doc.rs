@@ -4,15 +4,16 @@ use crate::args::DocFlags;
 use crate::args::DocSourceFileFlag;
 use crate::args::Flags;
 use crate::colors;
-use crate::display::write_json_to_stdout;
-use crate::display::write_to_stdout_ignore_sigpipe;
+use crate::display;
 use crate::file_fetcher::File;
 use crate::proc_state::ProcState;
 use crate::tsc::get_types_declaration_file_text;
+use crate::version;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
+use deno_core::serde_json;
 use deno_doc as doc;
 use deno_graph::ModuleSpecifier;
 use std::path::PathBuf;
@@ -87,7 +88,11 @@ pub async fn print_docs(
   };
 
   if doc_flags.json {
-    write_json_to_stdout(&doc_nodes)
+    let json_output = serde_json::json!({
+      "version": version::deno(),
+      "nodes": &doc_nodes
+    });
+    display::write_json_to_stdout(&json_output)
   } else {
     doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
     let details = if let Some(filter) = doc_flags.filter {
@@ -111,6 +116,7 @@ pub async fn print_docs(
       )
     };
 
-    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(AnyError::from)
+    display::write_to_stdout_ignore_sigpipe(details.as_bytes())
+      .map_err(AnyError::from)
   }
 }

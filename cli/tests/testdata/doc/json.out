@@ -1,0 +1,26 @@
+{
+  "version": "[WILDCARD]",
+  "nodes": [
+    {
+      "kind": "variable",
+      "name": "foo",
+      "location": {
+        "filename": "[WILDCARD]/deno/deno/cli/tests/testdata/type_definitions/foo.d.ts",
+        "line": 2,
+        "col": 13
+      },
+      "declarationKind": "export",
+      "jsDoc": {
+        "doc": "An exported value."
+      },
+      "variableDef": {
+        "tsType": {
+          "repr": "string",
+          "kind": "keyword",
+          "keyword": "string"
+        },
+        "kind": "const"
+      }
+    }
+  ]
+}
