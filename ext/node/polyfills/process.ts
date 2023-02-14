@@ -92,13 +92,6 @@ Object.defineProperty(argv, "1", {
   },
 });
 
-// TODO(kt3k): Set the rest of args at start up time instead of defining
-// random number of getters.
-for (let i = 0; i < 30; i++) {
-  const j = i;
-  Object.defineProperty(argv, j + 2, { get: () => Deno.args[j] });
-}
-
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
   if (code || code === 0) {
@@ -689,7 +682,12 @@ export const removeAllListeners = process.removeAllListeners;
 
 // FIXME(bartlomieju): currently it's not called
 // only call this from runtime's main.js
-internals.__bootstrapNodeProcess = function () {
+internals.__bootstrapNodeProcess = function (args: string[]) {
+  for (let i = 0; i < args.length; i++) {
+    const j = i;
+    Object.defineProperty(argv, j + 2, { get: () => args[j] });
+  }
+
   core.setNextTickCallback(processTicksAndRejections);
   core.setMacrotaskCallback(runNextTicks);
 

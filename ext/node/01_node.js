@@ -109,7 +109,8 @@ function initialize(nodeModules, nodeGlobalThisName) {
     writable: false,
     value: nodeGlobalThis,
   });
-  internals.__bootstrapNodeProcess();
+  // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
+  internals.__bootstrapNodeProcess(Deno.args);
 }
 
 internals.node = {
