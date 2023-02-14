@@ -1186,10 +1186,18 @@ name = "deno_node"
 version = "0.26.0"
 dependencies = [
  "deno_core",
+ "digest 0.10.6",
+ "md-5",
+ "md4",
  "once_cell",
  "path-clean",
  "regex",
+ "ripemd",
  "serde",
+ "sha-1 0.10.0",
+ "sha2",
+ "sha3",
+ "typenum",
 ]
 
 [[package]]
@@ -2522,6 +2530,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "keccak"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3afef3b6eff9ce9d8ff9b3601125eec7f0c8cbac7abd14f355d053fa56c98768"
+dependencies = [
+ "cpufeatures",
+]
+
+[[package]]
 name = "khronos-egl"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2778,6 +2795,24 @@ name = "matches"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2532096657941c2fea9c289d370a250971c689d4f143798ff67113ec042024a5"
+
+[[package]]
+name = "md-5"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6365506850d44bff6e2fbcb5176cf63650e48bd45ef2fe2665ae1570e0f4b9ca"
+dependencies = [
+ "digest 0.10.6",
+]
+
+[[package]]
+name = "md4"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7da5ac363534dce5fabf69949225e174fbf111a498bf0ff794c8ea1fba9f3dda"
+dependencies = [
+ "digest 0.10.6",
+]
 
 [[package]]
 name = "memchr"
@@ -3694,6 +3729,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ripemd"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd124222d17ad93a644ed9d011a40f4fb64aa54275c08cc216524a9ea82fb09f"
+dependencies = [
+ "digest 0.10.6",
+]
+
+[[package]]
 name = "ron"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4081,6 +4125,16 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest 0.10.6",
+]
+
+[[package]]
+name = "sha3"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdf0c33fae925bdc080598b84bc15c55e7b9a4a43b3c704da051f977469691c9"
+dependencies = [
+ "digest 0.10.6",
+ "keccak",
 ]
 
 [[package]]

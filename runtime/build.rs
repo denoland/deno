@@ -26,8 +26,12 @@ mod not_docs {
 
     let should_transpile = match media_type {
       MediaType::JavaScript => false,
+      MediaType::Mjs => false,
       MediaType::TypeScript => true,
-      _ => panic!("Unsupported media type for snapshotting {media_type:?}"),
+      _ => panic!(
+        "Unsupported media type for snapshotting {media_type:?} for file {}",
+        file_source.specifier
+      ),
     };
 
     if !should_transpile {
@@ -42,7 +46,12 @@ mod not_docs {
       scope_analysis: false,
       maybe_syntax: None,
     })?;
-    let transpiled_source = parsed.transpile(&Default::default())?;
+    let transpiled_source = parsed.transpile(&deno_ast::EmitOptions {
+      imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+      inline_source_map: false,
+      ..Default::default()
+    })?;
+
     Ok(transpiled_source.text)
   }
 
@@ -171,7 +180,8 @@ mod not_docs {
         "deno_crypto",
         "deno_webgpu",
         "deno_broadcast_channel",
-        "deno_node",
+        // FIXME(bartlomieju): this should be reenabled
+        // "deno_node",
         "deno_ffi",
         "deno_net",
         "deno_napi",
@@ -225,7 +235,6 @@ mod not_docs {
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
-      deno_node::init::<Permissions>(None),
       deno_ffi::init::<Permissions>(false),
       deno_net::init::<Permissions>(
         None, false, // No --unstable.
@@ -235,6 +244,10 @@ mod not_docs {
       deno_http::init(),
       deno_flash::init::<Permissions>(false), // No --unstable
       runtime_extension,
+      // FIXME(bartlomieju): these extensions are specified last, because they
+      // depend on `runtime`, even though it should be other way around
+      deno_node::init::<Permissions>(None),
+      deno_node::init_polyfill(),
     ];
 
     if let Some(additional_extension) = maybe_additional_extension {
