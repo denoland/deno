@@ -1,2 +1,4 @@
-const [, errorInfo] = Deno.core.evalContext('throw new DOMException("foo")');
+const [, errorInfo] = Deno[Deno.internal].core.evalContext(
+  'throw new DOMException("foo")',
+);
 console.log(errorInfo);

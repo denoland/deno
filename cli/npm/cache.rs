@@ -17,13 +17,13 @@ use deno_core::url::Url;
 use crate::args::CacheSetting;
 use crate::cache::DenoDir;
 use crate::http_util::HttpClient;
+use crate::semver::Version;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::hard_link_dir_recursive;
 use crate::util::path::root_url_to_safe_local_dirname;
 use crate::util::progress_bar::ProgressBar;
 
 use super::registry::NpmPackageVersionDistInfo;
-use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
 
 /// For some of the tests, we want downloading of packages
@@ -35,7 +35,7 @@ pub fn should_sync_download() -> bool {
 const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
 pub fn with_folder_sync_lock(
-  package: (&str, &NpmVersion),
+  package: (&str, &Version),
   output_folder: &Path,
   action: impl FnOnce() -> Result<(), AnyError>,
 ) -> Result<(), AnyError> {
@@ -108,7 +108,7 @@ pub fn with_folder_sync_lock(
 
 pub struct NpmPackageCacheFolderId {
   pub name: String,
-  pub version: NpmVersion,
+  pub version: Version,
   /// Peer dependency resolution may require us to have duplicate copies
   /// of the same package.
   pub copy_index: usize,
@@ -202,7 +202,7 @@ impl ReadonlyNpmCache {
   pub fn package_folder_for_name_and_version(
     &self,
     name: &str,
-    version: &NpmVersion,
+    version: &Version,
     registry_url: &Url,
   ) -> PathBuf {
     self
@@ -216,7 +216,7 @@ impl ReadonlyNpmCache {
       let encoded_name = mixed_case_package_name_encode(name);
       // Using the encoded directory may have a collision with an actual package name
       // so prefix it with an underscore since npm packages can't start with that
-      dir.join(format!("_{}", encoded_name))
+      dir.join(format!("_{encoded_name}"))
     } else {
       // ensure backslashes are used on windows
       for part in name.split('/') {
@@ -305,7 +305,7 @@ impl ReadonlyNpmCache {
       };
     Some(NpmPackageCacheFolderId {
       name,
-      version: NpmVersion::parse(version).ok()?,
+      version: Version::parse_from_npm(version).ok()?,
       copy_index,
     })
   }
@@ -357,7 +357,7 @@ impl NpmCache {
   /// and imports a dynamic import that imports the same package again for example.
   fn should_use_global_cache_for_package(
     &self,
-    package: (&str, &NpmVersion),
+    package: (&str, &Version),
   ) -> bool {
     self.cache_setting.should_use_for_npm_package(package.0)
       || !self
@@ -368,7 +368,7 @@ impl NpmCache {
 
   pub async fn ensure_package(
     &self,
-    package: (&str, &NpmVersion),
+    package: (&str, &Version),
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
@@ -382,7 +382,7 @@ impl NpmCache {
 
   async fn ensure_package_inner(
     &self,
-    package: (&str, &NpmVersion),
+    package: (&str, &Version),
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
@@ -467,7 +467,7 @@ impl NpmCache {
   pub fn package_folder_for_name_and_version(
     &self,
     name: &str,
-    version: &NpmVersion,
+    version: &Version,
     registry_url: &Url,
   ) -> PathBuf {
     self.readonly.package_folder_for_name_and_version(
@@ -517,7 +517,7 @@ mod test {
 
   use super::ReadonlyNpmCache;
   use crate::npm::cache::NpmPackageCacheFolderId;
-  use crate::npm::semver::NpmVersion;
+  use crate::semver::Version;
 
   #[test]
   fn should_get_package_folder() {
@@ -530,7 +530,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "json".to_string(),
-          version: NpmVersion::parse("1.2.5").unwrap(),
+          version: Version::parse_from_npm("1.2.5").unwrap(),
           copy_index: 0,
         },
         &registry_url,
@@ -545,7 +545,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "json".to_string(),
-          version: NpmVersion::parse("1.2.5").unwrap(),
+          version: Version::parse_from_npm("1.2.5").unwrap(),
           copy_index: 1,
         },
         &registry_url,
@@ -560,7 +560,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "JSON".to_string(),
-          version: NpmVersion::parse("2.1.5").unwrap(),
+          version: Version::parse_from_npm("2.1.5").unwrap(),
           copy_index: 0,
         },
         &registry_url,
@@ -575,7 +575,7 @@ mod test {
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "@types/JSON".to_string(),
-          version: NpmVersion::parse("2.1.5").unwrap(),
+          version: Version::parse_from_npm("2.1.5").unwrap(),
           copy_index: 0,
         },
         &registry_url,

@@ -13,7 +13,8 @@ use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ZeroCopyBuf;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::Location;
@@ -65,7 +66,7 @@ impl BlobStore {
       "null".to_string()
     };
     let id = Uuid::new_v4();
-    let url = Url::parse(&format!("blob:{}/{}", origin, id)).unwrap();
+    let url = Url::parse(&format!("blob:{origin}/{id}")).unwrap();
 
     let mut blob_store = self.object_urls.lock();
     blob_store.insert(url.clone(), Arc::new(blob));

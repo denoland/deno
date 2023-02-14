@@ -9,6 +9,7 @@ export {
   assertFalse,
   assertMatch,
   assertNotEquals,
+  assertNotStrictEquals,
   assertRejects,
   assertStrictEquals,
   assertStringIncludes,
@@ -20,7 +21,7 @@ export {
 export { deferred } from "../../../test_util/std/async/deferred.ts";
 export type { Deferred } from "../../../test_util/std/async/deferred.ts";
 export { delay } from "../../../test_util/std/async/delay.ts";
-export { readLines } from "../../../test_util/std/io/buffer.ts";
+export { readLines } from "../../../test_util/std/io/read_lines.ts";
 export { parse as parseArgs } from "../../../test_util/std/flags/mod.ts";
 
 export function pathToAbsoluteFileUrl(path: string): URL {

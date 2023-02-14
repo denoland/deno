@@ -107,7 +107,7 @@ impl Client {
   ) {
     self
       .0
-      .show_message(message_type, format!("{}", message))
+      .show_message(message_type, format!("{message}"))
       .await
   }
 

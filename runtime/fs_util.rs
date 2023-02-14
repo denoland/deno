@@ -5,7 +5,8 @@ use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
 use std::env::current_dir;
 use std::io::Error;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {

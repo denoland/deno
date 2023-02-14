@@ -10,12 +10,15 @@ use crate::profiling::is_profiling;
 pub fn create_js_runtime(setup: impl FnOnce() -> Vec<Extension>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
     extensions_with_js: setup(),
+    module_loader: Some(std::rc::Rc::new(
+      deno_core::InternalModuleLoader::default(),
+    )),
     ..Default::default()
   })
 }
 
 fn loop_code(iters: u64, src: &str) -> String {
-  format!(r#"for(let i=0; i < {}; i++) {{ {} }}"#, iters, src,)
+  format!(r#"for(let i=0; i < {iters}; i++) {{ {src} }}"#,)
 }
 
 #[derive(Copy, Clone)]

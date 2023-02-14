@@ -202,7 +202,7 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
       "textDocument/didOpen",
       json!({
         "textDocument": {
-          "uri": format!("file:///a/file_{}.ts", i),
+          "uri": format!("file:///a/file_{i}.ts"),
           "languageId": "typescript",
           "version": 1,
           "text": "console.log(\"000\");\n"
@@ -223,7 +223,7 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
   }
 
   for i in 0..10 {
-    let file_name = format!("file:///a/file_{}.ts", i);
+    let file_name = format!("file:///a/file_{i}.ts");
     client.write_notification(
       "textDocument/didChange",
       lsp::DidChangeTextDocumentParams {
@@ -250,7 +250,7 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
   }
 
   for i in 0..10 {
-    let file_name = format!("file:///a/file_{}.ts", i);
+    let file_name = format!("file:///a/file_{i}.ts");
     let (maybe_res, maybe_err) = client.write_request::<_, _, Value>(
       "textDocument/formatting",
       lsp::DocumentFormattingParams {

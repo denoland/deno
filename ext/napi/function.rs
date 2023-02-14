@@ -51,7 +51,7 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn create_function<'a>(
   env_ptr: *mut Env,
-  name: Option<&str>,
+  name: Option<v8::Local<v8::String>>,
   cb: napi_callback,
   cb_info: napi_callback_info,
 ) -> v8::Local<'a, v8::Function> {
@@ -67,8 +67,7 @@ pub fn create_function<'a>(
     .build(scope)
     .unwrap();
 
-  if let Some(name) = name {
-    let v8str = v8::String::new(scope, name).unwrap();
+  if let Some(v8str) = name {
     function.set_name(v8str);
   }
 

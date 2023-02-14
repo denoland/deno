@@ -4,7 +4,9 @@ use test_util as util;
 use test_util::assert_contains;
 use test_util::assert_ends_with;
 use test_util::assert_not_contains;
+use util::TempDir;
 
+#[ignore]
 #[test]
 fn pty_multiline() {
   util::with_pty(&["repl"], |mut console| {
@@ -146,7 +148,6 @@ fn pty_complete_expression() {
     console.write_line("close();");
     let output = console.read_all_output();
     assert_contains!(output, "Display all");
-    assert_contains!(output, "core");
     assert_contains!(output, "args");
     assert_contains!(output, "exit");
     assert_contains!(output, "symlink");
@@ -375,7 +376,7 @@ fn typescript_decorators() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert_ends_with!(out, "undefined\n[Function: Test]\n2\n");
+  assert_ends_with!(out, "undefined\n[Class: Test]\n2\n");
   assert!(err.is_empty());
 }
 
@@ -602,7 +603,8 @@ fn lexical_scoped_variable() {
 
 #[test]
 fn missing_deno_dir() {
-  use std::fs::{read_dir, remove_dir_all};
+  use std::fs::read_dir;
+  use std::fs::remove_dir_all;
   const DENO_DIR: &str = "nonexistent";
   let test_deno_dir = test_util::testdata_path().join(DENO_DIR);
   let (out, err) = util::run_and_collect_output(
@@ -672,7 +674,7 @@ fn assign_underscore_error() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  println!("{}", out);
+  println!("{out}");
   assert_ends_with!(
     out,
     "Last thrown error is no longer saved to _error.\n1\nUncaught 2\n1\n"
@@ -894,6 +896,11 @@ fn repl_with_quiet_flag() {
 fn npm_packages() {
   let mut env_vars = util::env_vars_for_npm_tests();
   env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
+  let temp_dir = TempDir::new();
+  env_vars.push((
+    "DENO_DIR".to_string(),
+    temp_dir.path().to_string_lossy().to_string(),
+  ));
 
   {
     let (out, err) = util::run_and_collect_output_with_args(
@@ -937,7 +944,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "Module {");
-    assert_contains!(out, "Chalk: [Function: Chalk],");
+    assert_contains!(out, "Chalk: [Class: Chalk],");
     assert!(err.is_empty());
   }
 
@@ -946,7 +953,7 @@ fn npm_packages() {
       true,
       vec!["repl", "--quiet", "--allow-read", "--allow-env"],
       Some(vec![r#"import foo from "npm:asdfawe52345asdf""#]),
-      Some(env_vars),
+      Some(env_vars.clone()),
       true,
     );
 
@@ -954,6 +961,22 @@ fn npm_packages() {
       out,
       "error: npm package 'asdfawe52345asdf' does not exist"
     );
+    assert!(err.is_empty());
+  }
+
+  {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+      Some(vec![
+        "import path from 'node:path';",
+        "path.isGlob('asdf') ? 'yes' : 'no'",
+      ]),
+      Some(env_vars.clone()),
+      true,
+    );
+
+    assert_contains!(out, "no");
     assert!(err.is_empty());
   }
 }

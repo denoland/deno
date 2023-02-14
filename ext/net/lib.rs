@@ -45,8 +45,7 @@ impl UnstableChecker {
   pub fn check_unstable(&self, api_name: &str) {
     if !self.unstable {
       eprintln!(
-        "Unstable API '{}'. The --unstable flag must be provided.",
-        api_name
+        "Unstable API '{api_name}'. The --unstable flag must be provided."
       );
       std::process::exit(70);
     }
@@ -87,11 +86,7 @@ pub fn init<P: NetPermissions + 'static>(
   ops.extend(ops_tls::init::<P>());
   Extension::builder(env!("CARGO_PKG_NAME"))
     .dependencies(vec!["deno_web"])
-    .js(include_js_files!(
-      prefix "deno:ext/net",
-      "01_net.js",
-      "02_tls.js",
-    ))
+    .esm(include_js_files!("01_net.js", "02_tls.js",))
     .ops(ops)
     .state(move |state| {
       state.put(DefaultTlsOptions {

@@ -85,6 +85,24 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
+  async function commandStdinPiped() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["info"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const child = command.spawn();
+
+    assertThrows(() => child.stdin, TypeError, "stdin is not piped");
+    assertThrows(() => child.stdout, TypeError, "stdout is not piped");
+    assertThrows(() => child.stderr, TypeError, "stderr is not piped");
+
+    await child.status;
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
   async function commandStdoutPiped() {
     const command = new Deno.Command(Deno.execPath(), {
       args: [
