@@ -77,11 +77,10 @@ impl CliModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleCodeSource, AnyError> {
-    // TODO(bartlomieju): uncomment, when all `node:` module have been
-    // snapshotted
-    // if specifier.scheme() == "node" {
-    //   unreachable!("Node built-in modules should be handled internally.");
-    // }
+    if specifier.scheme() == "node" {
+      unreachable!("Node built-in modules should be handled internally.");
+    }
+
     let graph = self.ps.graph();
     match graph.get(specifier) {
       Some(deno_graph::Module {
