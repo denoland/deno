@@ -95,7 +95,7 @@ Deno.test(
     queueMicrotask(() => ac.abort());
     const error = await assertRejects(
       async () => {
-        await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+        await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
           signal: ac.signal,
         });
       },
@@ -113,7 +113,7 @@ Deno.test(
     queueMicrotask(() => ac.abort(abortReason));
     const error = await assertRejects(
       async () => {
-        await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+        await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
           signal: ac.signal,
         });
       },
@@ -128,13 +128,24 @@ Deno.test(
     const ac = new AbortController();
     queueMicrotask(() => ac.abort("Some string"));
     try {
-      await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+      await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
         signal: ac.signal,
       });
       unreachable();
     } catch (e) {
       assertEquals(e, "Some string");
     }
+  },
+);
+
+// Test that AbortController's cancel handle is cleaned-up correctly, and do not leak resources.
+Deno.test(
+  { permissions: { read: true } },
+  async function readTextFileWithAbortSignalNotCalled() {
+    const ac = new AbortController();
+    await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
+      signal: ac.signal,
+    });
   },
 );
 

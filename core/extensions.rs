@@ -43,6 +43,7 @@ impl OpDecl {
 pub struct Extension {
   js_files: Option<Vec<ExtensionFileSource>>,
   esm_files: Option<Vec<ExtensionFileSource>>,
+  esm_entry_point: Option<&'static str>,
   ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
@@ -98,6 +99,10 @@ impl Extension {
       Some(files) => files,
       None => &[],
     }
+  }
+
+  pub fn get_esm_entry_point(&self) -> Option<&'static str> {
+    self.esm_entry_point
   }
 
   /// Called at JsRuntime startup to initialize ops in the isolate.
@@ -158,6 +163,7 @@ impl Extension {
 pub struct ExtensionBuilder {
   js: Vec<ExtensionFileSource>,
   esm: Vec<ExtensionFileSource>,
+  esm_entry_point: Option<&'static str>,
   ops: Vec<OpDecl>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
@@ -194,6 +200,11 @@ impl ExtensionBuilder {
           code: file_source.code,
         });
     self.esm.extend(esm_files);
+    self
+  }
+
+  pub fn esm_entry_point(&mut self, entry_point: &'static str) -> &mut Self {
+    self.esm_entry_point = Some(entry_point);
     self
   }
 
@@ -234,6 +245,7 @@ impl ExtensionBuilder {
     Extension {
       js_files,
       esm_files,
+      esm_entry_point: self.esm_entry_point.take(),
       ops,
       opstate_fn: self.state.take(),
       middleware_fn: self.middleware.take(),

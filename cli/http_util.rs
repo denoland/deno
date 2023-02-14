@@ -300,7 +300,7 @@ impl HttpClient {
       .map(Some)
   }
 
-  async fn get_redirected_response<U: reqwest::IntoUrl>(
+  pub async fn get_redirected_response<U: reqwest::IntoUrl>(
     &self,
     url: U,
   ) -> Result<Response, AnyError> {

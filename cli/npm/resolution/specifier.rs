@@ -7,7 +7,6 @@ use std::collections::VecDeque;
 
 use deno_ast::ModuleSpecifier;
 use deno_graph::ModuleGraph;
-use deno_graph::Resolved;
 
 use crate::semver::VersionReq;
 
@@ -70,14 +69,17 @@ pub fn resolve_graph_npm_info(graph: &ModuleGraph) -> GraphNpmInfo {
     module: &'a deno_graph::Module,
   ) -> Vec<&'a ModuleSpecifier> {
     let mut specifiers = Vec::with_capacity(module.dependencies.len() * 2 + 1);
-    let maybe_types = module.maybe_types_dependency.as_ref().map(|(_, r)| r);
-    if let Some(Resolved::Ok { specifier, .. }) = &maybe_types {
+    let maybe_types = module
+      .maybe_types_dependency
+      .as_ref()
+      .map(|d| &d.dependency);
+    if let Some(specifier) = maybe_types.and_then(|d| d.maybe_specifier()) {
       specifiers.push(specifier);
     }
     for dep in module.dependencies.values() {
       #[allow(clippy::manual_flatten)]
       for resolved in [&dep.maybe_code, &dep.maybe_type] {
-        if let Resolved::Ok { specifier, .. } = resolved {
+        if let Some(specifier) = resolved.maybe_specifier() {
           specifiers.push(specifier);
         }
       }
@@ -686,23 +688,22 @@ mod tests {
       Vec::new(),
     );
     let analyzer = deno_graph::CapturingModuleAnalyzer::default();
-    let graph = deno_graph::create_graph(
-      vec![
-        ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
-        // test redirect at root
-        ModuleSpecifier::parse("https://deno.land/x/module_redirect/mod.ts")
-          .unwrap(),
-      ],
-      &mut loader,
-      deno_graph::GraphOptions {
-        is_dynamic: false,
-        imports: None,
-        resolver: None,
-        module_analyzer: Some(&analyzer),
-        reporter: None,
-      },
-    )
-    .await;
+    let mut graph = deno_graph::ModuleGraph::default();
+    graph
+      .build(
+        vec![
+          ModuleSpecifier::parse("file:///dev/local_module_a/mod.ts").unwrap(),
+          // test redirect at root
+          ModuleSpecifier::parse("https://deno.land/x/module_redirect/mod.ts")
+            .unwrap(),
+        ],
+        &mut loader,
+        deno_graph::BuildOptions {
+          module_analyzer: Some(&analyzer),
+          ..Default::default()
+        },
+      )
+      .await;
     let reqs = resolve_graph_npm_info(&graph)
       .package_reqs
       .into_iter()
