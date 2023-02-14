@@ -103,7 +103,7 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
   NodeModulePolyfill {
     name: "module",
     specifier: NodeModulePolyfillSpecifier::Embedded(
-      "internal:deno_node/module_es_shim.js",
+      "internal:deno_node_loading/module_es_shim.js",
     ),
   },
   NodeModulePolyfill {
