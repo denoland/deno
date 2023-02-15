@@ -459,12 +459,12 @@ pub fn init<P: NodePermissions + 'static>(
     .build()
 }
 
-pub async fn initialize_runtime(
+pub fn initialize_runtime(
   js_runtime: &mut JsRuntime,
   uses_local_node_modules_dir: bool,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir) {{
+    r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir) {{
       Deno[Deno.internal].node.initialize(Deno[Deno.internal].nodeModuleAll, nodeGlobalThisName);
       if (usesLocalNodeModulesDir) {{
         Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
@@ -474,9 +474,7 @@ pub async fn initialize_runtime(
     uses_local_node_modules_dir,
   );
 
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
+  js_runtime.execute_script(&located_script_name!(), source_code)?;
   Ok(())
 }
 
