@@ -618,7 +618,8 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleGraphError::UnsupportedMediaType { .. } => {
         self.build_error_msg(specifier, "(unsupported)")
       }
-      ModuleGraphError::Missing(_, _) => {
+      ModuleGraphError::Missing(_, _)
+      | ModuleGraphError::MissingDynamic(_, _) => {
         self.build_error_msg(specifier, "(missing)")
       }
     }
