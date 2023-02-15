@@ -5,10 +5,11 @@ import { inspect } from "internal:deno_node/polyfills/internal/util/inspect.mjs"
 import { validateFunction, validateNumber } from "internal:deno_node/polyfills/internal/validators.mjs";
 import { ERR_OUT_OF_RANGE } from "internal:deno_node/polyfills/internal/errors.ts";
 import { emitWarning } from "internal:deno_node/polyfills/process.ts";
-
-const setTimeout_ = globalThis.setTimeout;
-const clearTimeout_ = globalThis.clearTimeout;
-const setInterval_ = globalThis.setInterval;
+import {
+  setTimeout as setTimeout_,
+  clearTimeout as clearTimeout_,
+  setInterval as setInterval_,
+} from "internal:deno_web/02_timers.js";
 
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;

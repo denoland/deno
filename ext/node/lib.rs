@@ -26,7 +26,6 @@ pub use path::PathClean;
 pub use polyfill::find_builtin_node_module;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::NodeModulePolyfill;
-pub use polyfill::NodeModulePolyfillSpecifier;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use resolution::get_closest_package_json;
 pub use resolution::get_package_scope_config;
@@ -462,18 +461,15 @@ pub fn init<P: NodePermissions + 'static>(
 
 pub async fn initialize_runtime(
   js_runtime: &mut JsRuntime,
-  module_all_url: &str,
   uses_local_node_modules_dir: bool,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName, usesLocalNodeModulesDir) {{
-      const moduleAll = await import(moduleAllUrl);
-      Deno[Deno.internal].node.initialize(moduleAll.default, nodeGlobalThisName);
+    r#"(async function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir) {{
+      Deno[Deno.internal].node.initialize(Deno[Deno.internal].nodeModuleAll, nodeGlobalThisName);
       if (usesLocalNodeModulesDir) {{
         Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
       }}
-    }})('{}', '{}', {});"#,
-    module_all_url,
+    }})('{}', {});"#,
     NODE_GLOBAL_THIS_NAME.as_str(),
     uses_local_node_modules_dir,
   );

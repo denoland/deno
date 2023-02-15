@@ -10,7 +10,9 @@ import {
 } from "internal:deno_node/polyfills/internal/readline/callbacks.mjs";
 import { Duplex, Readable, Writable } from "internal:deno_node/polyfills/stream.ts";
 import { stdio } from "internal:deno_node/polyfills/_process/stdio.mjs";
+import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
 import { fs as fsConstants } from "internal:deno_node/polyfills/internal_binding/constants.ts";
+import * as files from "internal:runtime/js/40_files.js";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 function createWritableStdioStream(writer, name) {
@@ -92,13 +94,13 @@ function createWritableStdioStream(writer, name) {
 
 /** https://nodejs.org/api/process.html#process_process_stderr */
 export const stderr = stdio.stderr = createWritableStdioStream(
-  Deno.stderr,
+  files.stderr,
   "stderr",
 );
 
 /** https://nodejs.org/api/process.html#process_process_stdout */
 export const stdout = stdio.stdout = createWritableStdioStream(
-  Deno.stdout,
+  files.stdout,
   "stdout",
 );
 
@@ -113,7 +115,7 @@ function _guessStdinType(fd) {
     const fileInfo = Deno.fstatSync?.(fd);
 
     // https://github.com/nodejs/node/blob/v18.12.1/deps/uv/src/unix/tty.c#L333
-    if (Deno.build.os !== "windows") {
+    if (!isWindows) {
       switch (fileInfo.mode & fsConstants.S_IFMT) {
         case fsConstants.S_IFREG:
         case fsConstants.S_IFCHR:
@@ -143,7 +145,7 @@ function _guessStdinType(fd) {
     // TODO(PolarETech): Need a better way to identify a character file on Windows.
     // "EISDIR" error occurs when stdin is "null" on Windows,
     // so use the error as a workaround.
-    if (Deno.build.os === "windows" && e.code === "EISDIR") return "FILE";
+    if (isWindows && e.code === "EISDIR") return "FILE";
   }
 
   return "UNKNOWN";
@@ -151,7 +153,7 @@ function _guessStdinType(fd) {
 
 const _read = function (size) {
   const p = Buffer.alloc(size || 16 * 1024);
-  Deno.stdin?.read(p).then((length) => {
+  files.stdin?.read(p).then((length) => {
     this.push(length === null ? null : p.slice(0, length));
   }, (error) => {
     this.destroy(error);
@@ -161,7 +163,7 @@ const _read = function (size) {
 /** https://nodejs.org/api/process.html#process_process_stdin */
 // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L189
 export const stdin = stdio.stdin = (() => {
-  const fd = Deno.stdin?.rid;
+  const fd = files.stdin?.rid;
   let _stdin;
   const stdinType = _guessStdinType(fd);
 
@@ -222,8 +224,8 @@ export const stdin = stdio.stdin = (() => {
 
   return _stdin;
 })();
-stdin.on("close", () => Deno.stdin?.close());
-stdin.fd = Deno.stdin?.rid ?? -1;
+stdin.on("close", () => files.stdin?.close());
+stdin.fd = files.stdin?.rid ?? -1;
 Object.defineProperty(stdin, "isTTY", {
   enumerable: true,
   configurable: true,
@@ -233,7 +235,7 @@ Object.defineProperty(stdin, "isTTY", {
 });
 stdin._isRawMode = false;
 stdin.setRawMode = (enable) => {
-  Deno.stdin?.setRaw?.(enable);
+  files.stdin?.setRaw?.(enable);
   stdin._isRawMode = enable;
   return stdin;
 };

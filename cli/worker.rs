@@ -67,7 +67,6 @@ impl CliMainWorker {
     log::debug!("main_module {}", self.main_module);
 
     if self.is_main_cjs {
-      self.ps.prepare_node_std_graph().await?;
       self.initialize_main_module_for_node().await?;
       deno_node::load_cjs_module(
         &mut self.worker.js_runtime,
@@ -279,9 +278,6 @@ impl CliMainWorker {
   async fn execute_main_module_possibly_with_npm(
     &mut self,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages() {
-      self.ps.prepare_node_std_graph().await?;
-    }
     let id = self.worker.preload_main_module(&self.main_module).await?;
     self.evaluate_module_possibly_with_npm(id).await
   }
@@ -297,17 +293,17 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages() {
+    if self.ps.npm_resolver.has_packages()
+      || self.ps.has_node_builtin_specifier()
+    {
       self.initialize_main_module_for_node().await?;
     }
     self.worker.evaluate_module(id).await
   }
 
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
-    self.ps.prepare_node_std_graph().await?;
     deno_node::initialize_runtime(
       &mut self.worker.js_runtime,
-      node::MODULE_ALL_URL.as_str(),
       self.ps.options.node_modules_dir(),
     )
     .await?;
@@ -630,7 +626,6 @@ fn create_web_worker_pre_execute_module_callback(
       if ps.npm_resolver.has_packages() {
         deno_node::initialize_runtime(
           &mut worker.js_runtime,
-          node::MODULE_ALL_URL.as_str(),
           ps.options.node_modules_dir(),
         )
         .await?;

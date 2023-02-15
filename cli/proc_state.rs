@@ -63,8 +63,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
@@ -98,7 +96,6 @@ pub struct Inner {
   pub npm_resolver: NpmPackageResolver,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
   progress_bar: ProgressBar,
-  node_std_graph_prepared: AtomicBool,
 }
 
 impl Deref for ProcState {
@@ -160,7 +157,6 @@ impl ProcState {
       npm_resolver: self.npm_resolver.clone(),
       cjs_resolutions: Default::default(),
       progress_bar: self.progress_bar.clone(),
-      node_std_graph_prepared: AtomicBool::new(false),
     });
     self.init_watcher();
   }
@@ -293,7 +289,6 @@ impl ProcState {
       npm_resolver,
       cjs_resolutions: Default::default(),
       progress_bar,
-      node_std_graph_prepared: AtomicBool::new(false),
     })))
   }
 
@@ -369,7 +364,6 @@ impl ProcState {
 
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
-      self.prepare_node_std_graph().await?;
     }
 
     if has_node_builtin_specifier
@@ -384,9 +378,7 @@ impl ProcState {
     drop(_pb_clear_guard);
 
     // type check if necessary
-    let is_std_node = roots.len() == 1 && roots[0] == *node::MODULE_ALL_URL;
     if self.options.type_check_mode() != TypeCheckMode::None
-      && !is_std_node
       && !self.graph_data.read().is_type_checked(&roots, lib)
     {
       log::debug!("Type checking.");
@@ -454,31 +446,6 @@ impl ProcState {
         PermissionsContainer::allow_all(),
       )
       .await
-  }
-
-  /// Add the builtin node modules to the graph data.
-  pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
-    if self.node_std_graph_prepared.load(Ordering::Relaxed) {
-      return Ok(());
-    }
-
-    let mut graph = self.graph_data.read().graph_inner_clone();
-    let mut loader = self.create_graph_loader();
-    let analyzer = self.parsed_source_cache.as_analyzer();
-    graph
-      .build(
-        vec![node::MODULE_ALL_URL.clone()],
-        &mut loader,
-        deno_graph::BuildOptions {
-          module_analyzer: Some(&*analyzer),
-          ..Default::default()
-        },
-      )
-      .await;
-
-    self.graph_data.write().update_graph(Arc::new(graph));
-    self.node_std_graph_prepared.store(true, Ordering::Relaxed);
-    Ok(())
   }
 
   fn handle_node_resolve_result(
@@ -711,6 +678,10 @@ impl ProcState {
 
   pub fn graph(&self) -> Arc<ModuleGraph> {
     self.graph_data.read().graph.clone()
+  }
+
+  pub fn has_node_builtin_specifier(&self) -> bool {
+    self.graph_data.read().has_node_builtin_specifier
   }
 }
 

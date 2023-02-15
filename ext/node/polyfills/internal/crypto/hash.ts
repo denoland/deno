@@ -107,7 +107,7 @@ export class Hash extends Transform {
    * Supported encodings are currently 'hex', 'binary', 'base64', 'base64url'.
    */
   digest(encoding?: string): Buffer | string {
-    const digest = this.#context.digest(undefined);
+    const digest = ops.op_node_hash_digest(this.#context);
     if (encoding === undefined) {
       return Buffer.from(digest);
     }

@@ -461,10 +461,8 @@ impl ReplSession {
       resolved_imports.iter().any(|url| url.scheme() == "node");
     if !npm_imports.is_empty() || has_node_specifier {
       if !self.has_initialized_node_runtime {
-        self.proc_state.prepare_node_std_graph().await?;
         deno_node::initialize_runtime(
           &mut self.worker.js_runtime,
-          crate::node::MODULE_ALL_URL.as_str(),
           self.proc_state.options.node_modules_dir(),
         )
         .await?;
