@@ -385,6 +385,8 @@ trait CoverageReporter {
 struct ReportOutput {
   branches_found: usize,
   branches_hit: usize,
+  functions_found: usize,
+  functions_hit: usize,
   lines_found: usize,
   lines_hit: usize,
 }
@@ -490,6 +492,8 @@ impl CoverageReporter for LcovCoverageReporter {
       branches_hit,
       lines_found,
       lines_hit,
+      functions_found,
+      functions_hit,
     })
   }
 
@@ -512,6 +516,14 @@ impl CoverageReporter for PrettyCoverageReporter {
   ) -> Result<ReportOutput, AnyError> {
     let lines = file_text.split('\n').collect::<Vec<_>>();
     print!("cover {} ... ", coverage_report.url);
+
+    let functions_found = coverage_report.named_functions.len();
+
+    let functions_hit = coverage_report
+      .named_functions
+      .iter()
+      .filter(|f| f.execution_count > 0)
+      .count();
 
     let branches_found = coverage_report.branches.len();
     let branches_hit =
@@ -572,6 +584,8 @@ impl CoverageReporter for PrettyCoverageReporter {
       branches_hit,
       lines_found,
       lines_hit,
+      functions_found,
+      functions_hit,
     })
   }
 
@@ -749,6 +763,8 @@ pub async fn cover_files(
     .map(|output| output.branches_hit as f32)
     .sum::<f32>();
 
+  let branch_coverage = total_branches_hit / total_branches_found * 100.0;
+
   let total_lines_found = report_outputs
     .iter()
     .map(|output| output.lines_found as f32)
@@ -758,14 +774,32 @@ pub async fn cover_files(
     .map(|output| output.lines_hit as f32)
     .sum::<f32>();
 
-  let aggregate = (total_lines_hit + total_branches_hit)
-    / (total_lines_found + total_branches_found)
-    * 100.0;
+  let line_coverage = total_lines_hit / total_lines_found * 100.0;
 
-  if aggregate < coverage_flags.threshold as f32 {
+  let total_functions_found = report_outputs
+    .iter()
+    .map(|output| output.functions_found as f32)
+    .sum::<f32>();
+  let total_functions_hit = report_outputs
+    .iter()
+    .map(|output| output.functions_hit as f32)
+    .sum::<f32>();
+
+  let function_coverage = total_functions_hit / total_functions_found * 100.0;
+  println!("{line_coverage}, {branch_coverage}, {function_coverage}");
+
+  let threshold = coverage_flags.threshold as f32;
+
+  if line_coverage < threshold
+    || branch_coverage < threshold
+    || function_coverage < threshold
+  {
     return Err(generic_error(format!(
-      "Coverage did not surpass {}% threshold",
-      coverage_flags.threshold
+      "One or more coverages did not surpass the {}% threshold.\nlines: {}\nbranches: {}\nfunctions: {}\n",
+      coverage_flags.threshold,
+      line_coverage,
+      branch_coverage,
+      function_coverage
     )));
   }
 

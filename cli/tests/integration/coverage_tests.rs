@@ -269,7 +269,7 @@ fn coverage_threshold() {
   let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("coverage")
-    .arg(format!("--threshold={}", test_threshold))
+    .arg(format!("--threshold={test_threshold}"))
     .arg("--unstable")
     .arg(format!("{}/", tempdir.to_str().unwrap()))
     .stdout(std::process::Stdio::piped())
@@ -283,10 +283,7 @@ fn coverage_threshold() {
 
   assert_eq!(
     err_content,
-    format!(
-      "error: Coverage did not surpass {}% threshold\n",
-      test_threshold
-    )
+    format!("error: Coverage did not surpass {test_threshold}% threshold\n",)
   );
 
   let actual =
@@ -299,8 +296,8 @@ fn coverage_threshold() {
   .unwrap();
 
   if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{}\nOUTPUT", actual);
-    println!("EXPECTED\n{}\nEXPECTED", expected);
+    println!("OUTPUT\n{actual}\nOUTPUT");
+    println!("EXPECTED\n{expected}\nEXPECTED");
     panic!("pattern match failed");
   }
 
@@ -328,8 +325,8 @@ fn coverage_threshold() {
   .unwrap();
 
   if !util::wildcard_match(&expected, &actual) {
-    println!("OUTPUT\n{}\nOUTPUT", actual);
-    println!("EXPECTED\n{}\nEXPECTED", expected);
+    println!("OUTPUT\n{actual}\nOUTPUT");
+    println!("EXPECTED\n{expected}\nEXPECTED");
     panic!("pattern match failed");
   }
 
