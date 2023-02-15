@@ -427,17 +427,11 @@ pub async fn upgrade(
   Ok(())
 }
 
-fn parse_version(text: &str) -> Result<deno_graph::semver::Version, AnyError> {
-  // todo(dsherret): remove this after https://github.com/denoland/deno_graph/issues/234
-  match deno_graph::semver::Version::parse_from_npm(text) {
-    Ok(version) => Ok(version),
-    Err(err) => {
-      let result = err.to_string();
-      // Hack to remove the npm specifier message
-      // Message format: Invalid npm version '{source}'
-      bail!("{}", &result[21..result.len() - 1])
-    }
-  }
+fn parse_version(
+  text: &str,
+) -> Result<deno_graph::semver::Version, deno_graph::semver::VersionParseError>
+{
+  deno_graph::semver::Version::parse_standard(text)
 }
 
 async fn get_latest_release_version(
