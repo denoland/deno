@@ -12,13 +12,13 @@ use crate::args::JsxImportSourceConfig;
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug, Clone, Default)]
-pub struct CliResolver {
+pub struct CliGraphResolver {
   maybe_import_map: Option<Arc<ImportMap>>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
 }
 
-impl CliResolver {
+impl CliGraphResolver {
   pub fn new(
     maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
     maybe_import_map: Option<Arc<ImportMap>>,
@@ -38,7 +38,7 @@ impl CliResolver {
   }
 }
 
-impl Resolver for CliResolver {
+impl Resolver for CliGraphResolver {
   fn default_jsx_import_source(&self) -> Option<String> {
     self.maybe_default_jsx_import_source.clone()
   }

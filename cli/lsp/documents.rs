@@ -19,7 +19,7 @@ use crate::node::NodeResolution;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
-use crate::resolver::CliResolver;
+use crate::resolver::CliGraphResolver;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
 
@@ -817,7 +817,7 @@ pub struct Documents {
   imports: Arc<HashMap<ModuleSpecifier, GraphImport>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
-  resolver: CliResolver,
+  resolver: CliGraphResolver,
   /// The npm package requirements.
   npm_reqs: Arc<HashSet<NpmPackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -837,7 +837,7 @@ impl Documents {
       file_system_docs: Default::default(),
       resolver_config_hash: 0,
       imports: Default::default(),
-      resolver: CliResolver::default(),
+      resolver: CliGraphResolver::default(),
       npm_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
@@ -1181,7 +1181,7 @@ impl Documents {
       maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
     );
-    self.resolver = CliResolver::new(maybe_jsx_config, maybe_import_map);
+    self.resolver = CliGraphResolver::new(maybe_jsx_config, maybe_import_map);
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())

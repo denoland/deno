@@ -10,7 +10,7 @@ use crate::colors;
 use crate::errors::get_error_class_name;
 use crate::npm::resolve_graph_npm_info;
 use crate::proc_state::ProcState;
-use crate::resolver::CliResolver;
+use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 
 use deno_core::anyhow::bail;
@@ -150,7 +150,7 @@ pub async fn create_graph_and_maybe_check(
     PermissionsContainer::allow_all(),
   );
   let maybe_imports = ps.options.to_maybe_imports()?;
-  let cli_resolver = CliResolver::new(
+  let cli_resolver = CliGraphResolver::new(
     ps.options.to_maybe_jsx_import_source_config(),
     ps.maybe_import_map.clone(),
   );
