@@ -2,7 +2,7 @@
 v[WILDCARD].[WILDCARD].[WILDCARD]
 [
   "[WILDCARD]deno",
-  "[WILDCARD]/node_builtin_modules/mod.ts",
+  "[WILDCARD]mod.ts",
   "hello",
   "there"
 ]
