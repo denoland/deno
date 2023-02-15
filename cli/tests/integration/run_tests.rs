@@ -3380,7 +3380,7 @@ async fn test_resolve_dns() {
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
     if !output.status.success() {
-      eprintln!("stderr: {}", err);
+      eprintln!("stderr: {err}");
     }
     assert!(output.status.success());
     assert!(err.starts_with("Check file"));
