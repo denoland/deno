@@ -16,6 +16,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
+use deno_graph::semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
@@ -133,8 +134,8 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
       return None;
     }
 
-    if let Ok(current) = parse_version(&self.env.current_version()) {
-      if let Ok(latest) = parse_version(&file.latest_version) {
+    if let Ok(current) = Version::parse_standard(&self.env.current_version()) {
+      if let Ok(latest) = Version::parse_standard(&file.latest_version) {
         if current >= latest {
           return None;
         }
@@ -291,7 +292,8 @@ pub async fn upgrade(
         && !regex::Regex::new("^[0-9a-f]{40}$")?.is_match(&passed_version)
       {
         bail!("Invalid commit hash passed");
-      } else if !upgrade_flags.canary && parse_version(&passed_version).is_err()
+      } else if !upgrade_flags.canary
+        && Version::parse_standard(&passed_version).is_err()
       {
         bail!("Invalid version passed");
       }
@@ -327,8 +329,8 @@ pub async fn upgrade(
         let latest_hash = latest_version.clone();
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
-        let current = parse_version(&crate::version::deno()).unwrap();
-        let latest = parse_version(&latest_version).unwrap();
+        let current = Version::parse_standard(&crate::version::deno()).unwrap();
+        let latest = Version::parse_standard(&latest_version).unwrap();
         current >= latest
       } else {
         false
@@ -425,13 +427,6 @@ pub async fn upgrade(
 
   drop(temp_dir); // delete the temp dir
   Ok(())
-}
-
-fn parse_version(
-  text: &str,
-) -> Result<deno_graph::semver::Version, deno_graph::semver::VersionParseError>
-{
-  deno_graph::semver::Version::parse_standard(text)
 }
 
 async fn get_latest_release_version(
