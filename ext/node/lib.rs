@@ -230,7 +230,6 @@ pub fn init_polyfill() -> Extension {
     "internal_binding/_node.ts",
     "internal_binding/_timingSafeEqual.ts",
     "internal_binding/_utils.ts",
-    "internal_binding/_winerror.ts",
     "internal_binding/ares.ts",
     "internal_binding/async_wrap.ts",
     "internal_binding/buffer.ts",
