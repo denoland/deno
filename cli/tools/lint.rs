@@ -44,6 +44,8 @@ use std::sync::Mutex;
 
 use crate::cache::IncrementalCache;
 
+const JSON_SCHEMA_VERSION: u8 = 1;
+
 static STDIN_FILE_NAME: &str = "_stdin.ts";
 
 fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
@@ -210,7 +212,7 @@ pub fn print_rules_list(json: bool) {
 
   if json {
     let json_output = serde_json::json!({
-      "version": 1,
+      "version": JSON_SCHEMA_VERSION,
       "rules": lint_rules
         .iter()
         .map(|rule| {
@@ -488,7 +490,7 @@ struct JsonLintReporter {
 impl JsonLintReporter {
   fn new() -> JsonLintReporter {
     JsonLintReporter {
-      version: 1,
+      version: JSON_SCHEMA_VERSION,
       diagnostics: Vec::new(),
       errors: Vec::new(),
     }

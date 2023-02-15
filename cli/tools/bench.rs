@@ -40,6 +40,8 @@ use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
+const JSON_SCHEMA_VERSION: u8 = 1;
+
 #[derive(Debug, Clone)]
 struct BenchSpecifierOptions {
   filter: TestFilter,
@@ -153,7 +155,7 @@ impl JsonReporterResult {
     result: BenchResult,
   ) -> Self {
     Self {
-      version: 1,
+      version: JSON_SCHEMA_VERSION,
       runtime: format!("{} {}", version::get_user_agent(), env!("TARGET")),
       cpu: mitata::cpu::name(),
       origin,

@@ -28,6 +28,8 @@ use crate::npm::NpmResolutionSnapshot;
 use crate::proc_state::ProcState;
 use crate::util::checksum;
 
+const JSON_SCHEMA_VERSION: u8 = 1;
+
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
@@ -41,7 +43,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     if info_flags.json {
       let mut json_graph = serde_json::json!(graph);
       if let Some(output) = json_graph.as_object_mut() {
-        output.insert("version".to_string(), 1.into());
+        output.insert("version".to_string(), JSON_SCHEMA_VERSION.into());
       }
       add_npm_packages_to_json(&mut json_graph, &ps.npm_resolver);
       display::write_json_to_stdout(&json_graph)?;
@@ -82,7 +84,7 @@ fn print_cache_info(
 
   if json {
     let mut json_output = serde_json::json!({
-      "version": 1,
+      "version": JSON_SCHEMA_VERSION,
       "denoDir": deno_dir.to_string(),
       "modulesCache": modules_cache,
       "npmCache": npm_cache,

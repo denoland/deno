@@ -17,6 +17,8 @@ use deno_doc as doc;
 use deno_graph::ModuleSpecifier;
 use std::path::PathBuf;
 
+const JSON_SCHEMA_VERSION: u8 = 1;
+
 pub async fn print_docs(
   flags: Flags,
   doc_flags: DocFlags,
@@ -88,7 +90,7 @@ pub async fn print_docs(
 
   if doc_flags.json {
     let json_output = serde_json::json!({
-      "version": 1,
+      "version": JSON_SCHEMA_VERSION,
       "nodes": &doc_nodes
     });
     display::write_json_to_stdout(&json_output)
