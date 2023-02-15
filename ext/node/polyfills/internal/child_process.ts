@@ -67,10 +67,6 @@ export function mapValues<T, O>(
 type NodeStdio = "pipe" | "overlapped" | "ignore" | "inherit" | "ipc";
 type DenoStdio = "inherit" | "piped" | "null";
 
-// @ts-ignore Deno[Deno.internal] is used on purpose here
-const DenoCommand = Deno[Deno.internal]?.nodeUnstable?.Command ||
-  Deno.Command;
-
 export function stdioStringToArray(
   stdio: NodeStdio,
   channel: NodeStdio | number,
@@ -183,9 +179,8 @@ export class ChildProcess extends EventEmitter {
     this.spawnargs = [cmd, ...cmdArgs];
 
     const stringEnv = mapValues(env, (value) => value.toString());
-
     try {
-      this.#process = new DenoCommand(cmd, {
+      this.#process = new Deno.Command(cmd, {
         args: cmdArgs,
         cwd,
         env: stringEnv,
@@ -804,7 +799,7 @@ export function spawnSync(
 
   const result: SpawnSyncResult = {};
   try {
-    const output = new DenoCommand(command, {
+    const output = new Deno.Command(command, {
       args,
       cwd,
       env,
