@@ -75,7 +75,7 @@ const notImplementedEvents = [
   "worker",
 ];
 
-export const argv = [];
+export const argv: string[] = [];
 
 // Overwrites the 1st item with getter.
 // TODO(bartlomieju): added "configurable: true" to make this work for binary
@@ -691,8 +691,7 @@ export const removeAllListeners = process.removeAllListeners;
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (args: string[]) {
   for (let i = 0; i < args.length; i++) {
-    const j = i;
-    Object.defineProperty(argv, `${j + 2}`, { get: () => args[j] });
+    argv[i + 2] = args[i];
   }
 
   core.setNextTickCallback(processTicksAndRejections);
