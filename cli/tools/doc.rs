@@ -8,7 +8,6 @@ use crate::display;
 use crate::file_fetcher::File;
 use crate::proc_state::ProcState;
 use crate::tsc::get_types_declaration_file_text;
-use crate::version;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -89,7 +88,7 @@ pub async fn print_docs(
 
   if doc_flags.json {
     let json_output = serde_json::json!({
-      "version": version::deno(),
+      "version": 1,
       "nodes": &doc_nodes
     });
     display::write_json_to_stdout(&json_output)

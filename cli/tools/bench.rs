@@ -134,7 +134,7 @@ pub trait BenchReporter {
 
 #[derive(Debug, Serialize)]
 struct JsonReporterResult {
-  version: String,
+  version: u8,
   runtime: String,
   cpu: String,
   origin: String,
@@ -153,7 +153,7 @@ impl JsonReporterResult {
     result: BenchResult,
   ) -> Self {
     Self {
-      version: version::deno(),
+      version: 1,
       runtime: format!("{} {}", version::get_user_agent(), env!("TARGET")),
       cpu: mitata::cpu::name(),
       origin,

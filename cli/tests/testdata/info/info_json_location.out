@@ -1,5 +1,5 @@
 {
-  "version": "[WILDCARD]",
+  "version": 1,
   "denoDir": "[WILDCARD]",
   "modulesCache": "[WILDCARD]deps",
   "npmCache": "[WILDCARD]npm",

@@ -18,7 +18,6 @@ use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::FileCollector;
 use crate::util::path::is_supported_ext;
-use crate::version;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
@@ -211,7 +210,7 @@ pub fn print_rules_list(json: bool) {
 
   if json {
     let json_output = serde_json::json!({
-      "version": version::deno(),
+      "version": 1,
       "rules": lint_rules
         .iter()
         .map(|rule| {
@@ -481,7 +480,7 @@ pub fn format_diagnostic(
 
 #[derive(Serialize)]
 struct JsonLintReporter {
-  version: String,
+  version: u8,
   diagnostics: Vec<LintDiagnostic>,
   errors: Vec<LintError>,
 }
@@ -489,7 +488,7 @@ struct JsonLintReporter {
 impl JsonLintReporter {
   fn new() -> JsonLintReporter {
     JsonLintReporter {
-      version: version::deno(),
+      version: 1,
       diagnostics: Vec::new(),
       errors: Vec::new(),
     }

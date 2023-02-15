@@ -1,5 +1,5 @@
 {
-  "version": "[WILDCARD]",
+  "version": 1,
   "nodes": [
     {
       "kind": "variable",
