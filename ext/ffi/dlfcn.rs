@@ -15,6 +15,7 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use dlopen::raw::Library;
 use serde::Deserialize;
+use serde_value::ValueDeserializer;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -97,11 +98,29 @@ struct ForeignStatic {
   _type: String,
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
+#[derive(Debug)]
 enum ForeignSymbol {
   ForeignFunction(ForeignFunction),
   ForeignStatic(ForeignStatic),
+}
+
+impl<'de> Deserialize<'de> for ForeignSymbol {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    let value = serde_value::Value::deserialize(deserializer)?;
+
+    // Probe a ForeignStatic and if that doesn't match, assume ForeignFunction to improve error messages
+    if let Ok(res) = ForeignStatic::deserialize(
+      ValueDeserializer::<D::Error>::new(value.clone()),
+    ) {
+      Ok(ForeignSymbol::ForeignStatic(res))
+    } else {
+      ForeignFunction::deserialize(ValueDeserializer::<D::Error>::new(value))
+        .map(ForeignSymbol::ForeignFunction)
+    }
+  }
 }
 
 #[derive(Deserialize, Debug)]
@@ -395,6 +414,11 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
 
 #[cfg(test)]
 mod tests {
+  use super::ForeignFunction;
+  use super::ForeignSymbol;
+  use crate::symbol::NativeType;
+  use serde_json::json;
+
   #[cfg(target_os = "windows")]
   #[test]
   fn test_format_error() {
@@ -408,5 +432,53 @@ mod tests {
       format_error(err, "foo.dll".to_string()),
       "foo.dll is not a valid Win32 application.\r\n".to_string(),
     );
+  }
+
+  /// Ensure that our custom serialize for ForeignSymbol is working using `serde_json`.
+  #[test]
+  fn test_serialize_foreign_symbol() {
+    let symbol: ForeignSymbol = serde_json::from_value(json! {{
+      "name": "test",
+      "type": "type is unused"
+    }})
+    .expect("Failed to parse");
+    assert!(matches!(symbol, ForeignSymbol::ForeignStatic(..)));
+
+    let symbol: ForeignSymbol = serde_json::from_value(json! {{
+      "name": "test",
+      "parameters": ["i64"],
+      "result": "bool"
+    }})
+    .expect("Failed to parse");
+    if let ForeignSymbol::ForeignFunction(ForeignFunction {
+      name: Some(expected_name),
+      parameters,
+      ..
+    }) = symbol
+    {
+      assert_eq!(expected_name, "test");
+      assert_eq!(parameters, vec![NativeType::I64]);
+    } else {
+      panic!("Failed to parse ForeignFunction as expected");
+    }
+  }
+
+  #[test]
+  fn test_serialize_foreign_symbol_failures() {
+    let error = serde_json::from_value::<ForeignSymbol>(json! {{
+      "name": "test",
+      "parameters": ["int"],
+      "result": "bool"
+    }})
+    .expect_err("Expected this to fail");
+    assert!(error.to_string().contains("expected one of"));
+
+    let error = serde_json::from_value::<ForeignSymbol>(json! {{
+      "name": "test",
+      "parameters": ["i64"],
+      "result": "int"
+    }})
+    .expect_err("Expected this to fail");
+    assert!(error.to_string().contains("expected one of"));
   }
 }
