@@ -692,12 +692,15 @@ export const removeAllListeners = process.removeAllListeners;
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
   args: string[],
-  v8Version: string,
+  denoVersions: Record<string, string>,
 ) {
   for (let i = 0; i < args.length; i++) {
     argv[i + 2] = args[i];
   }
-  versions.v8 = v8Version;
+
+  for (const [key, value] of Object.entries(denoVersions)) {
+    versions[key] = value;
+  }
 
   core.setNextTickCallback(processTicksAndRejections);
   core.setMacrotaskCallback(runNextTicks);

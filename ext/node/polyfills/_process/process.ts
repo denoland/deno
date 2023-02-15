@@ -127,5 +127,7 @@ export const versions = {
   ngtcp2: "0.8.1",
   nghttp3: "0.7.0",
   // Will be filled when calling "__bootstrapNodeProcess()",
+  deno: "",
   v8: "",
+  typescript: "",
 };
