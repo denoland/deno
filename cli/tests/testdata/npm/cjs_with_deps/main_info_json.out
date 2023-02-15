@@ -50,6 +50,7 @@
     }
   ],
   "redirects": {},
+  "version": 1,
   "npmPackages": {
     "ansi-styles@4.3.0": {
       "name": "ansi-styles",

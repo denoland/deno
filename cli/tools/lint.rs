@@ -13,6 +13,7 @@ use crate::args::LintReporterKind;
 use crate::args::LintRulesConfig;
 use crate::colors;
 use crate::tools::fmt::run_parallelized;
+use crate::util::display;
 use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::FileCollector;
@@ -42,6 +43,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::cache::IncrementalCache;
+
+const JSON_SCHEMA_VERSION: u8 = 1;
 
 static STDIN_FILE_NAME: &str = "_stdin.ts";
 
@@ -208,18 +211,20 @@ pub fn print_rules_list(json: bool) {
   let lint_rules = rules::get_recommended_rules();
 
   if json {
-    let json_rules: Vec<serde_json::Value> = lint_rules
-      .iter()
-      .map(|rule| {
-        serde_json::json!({
-          "code": rule.code(),
-          "tags": rule.tags(),
-          "docs": rule.docs(),
+    let json_output = serde_json::json!({
+      "version": JSON_SCHEMA_VERSION,
+      "rules": lint_rules
+        .iter()
+        .map(|rule| {
+          serde_json::json!({
+            "code": rule.code(),
+            "tags": rule.tags(),
+            "docs": rule.docs(),
+          })
         })
-      })
-      .collect();
-    let json_str = serde_json::to_string_pretty(&json_rules).unwrap();
-    println!("{json_str}");
+        .collect::<Vec<serde_json::Value>>(),
+    });
+    display::write_json_to_stdout(&json_output).unwrap();
   } else {
     // The rules should still be printed even if `--quiet` option is enabled,
     // so use `println!` here instead of `info!`.
@@ -477,6 +482,7 @@ pub fn format_diagnostic(
 
 #[derive(Serialize)]
 struct JsonLintReporter {
+  version: u8,
   diagnostics: Vec<LintDiagnostic>,
   errors: Vec<LintError>,
 }
@@ -484,6 +490,7 @@ struct JsonLintReporter {
 impl JsonLintReporter {
   fn new() -> JsonLintReporter {
     JsonLintReporter {
+      version: JSON_SCHEMA_VERSION,
       diagnostics: Vec::new(),
       errors: Vec::new(),
     }

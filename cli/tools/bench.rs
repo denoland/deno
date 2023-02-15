@@ -14,7 +14,7 @@ use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_supported_ext;
-use crate::version::get_user_agent;
+use crate::version;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
@@ -39,6 +39,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
+
+const JSON_SCHEMA_VERSION: u8 = 1;
 
 #[derive(Debug, Clone)]
 struct BenchSpecifierOptions {
@@ -134,6 +136,7 @@ pub trait BenchReporter {
 
 #[derive(Debug, Serialize)]
 struct JsonReporterResult {
+  version: u8,
   runtime: String,
   cpu: String,
   origin: String,
@@ -152,7 +155,8 @@ impl JsonReporterResult {
     result: BenchResult,
   ) -> Self {
     Self {
-      runtime: format!("{} {}", get_user_agent(), env!("TARGET")),
+      version: JSON_SCHEMA_VERSION,
+      runtime: format!("{} {}", version::get_user_agent(), env!("TARGET")),
       cpu: mitata::cpu::name(),
       origin,
       group,

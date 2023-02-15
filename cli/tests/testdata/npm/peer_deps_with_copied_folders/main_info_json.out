@@ -50,6 +50,7 @@
     }
   ],
   "redirects": {},
+  "version": 1,
   "npmPackages": {
     "@denotest/peer-dep-test-child@1.0.0_@denotest+peer-dep-test-peer@1.0.0": {
       "name": "@denotest/peer-dep-test-child",
