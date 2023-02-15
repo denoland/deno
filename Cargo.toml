@@ -25,7 +25,6 @@ members = [
   "ext/node",
   "ext/url",
   "ext/web",
-  "ext/webgpu",
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
@@ -67,7 +66,6 @@ deno_node = { version = "0.26.0", path = "./ext/node" }
 deno_tls = { version = "0.76.0", path = "./ext/tls" }
 deno_url = { version = "0.89.0", path = "./ext/url" }
 deno_web = { version = "0.120.0", path = "./ext/web" }
-deno_webgpu = { version = "0.90.0", path = "./ext/webgpu" }
 deno_webidl = { version = "0.89.0", path = "./ext/webidl" }
 deno_websocket = { version = "0.94.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.84.0", path = "./ext/webstorage" }
@@ -120,11 +118,6 @@ tokio-util = "=0.7.4"
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 uuid = { version = "=1.1.2", features = ["v4"] }
 zstd = "=0.11.2"
-
-# webgpu
-raw-window-handle = "0.5.0"
-wgpu-core = "0.15"
-wgpu-types = "0.15"
 
 # macros
 proc-macro2 = "1"

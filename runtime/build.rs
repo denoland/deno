@@ -178,7 +178,6 @@ mod not_docs {
         "deno_websocket",
         "deno_webstorage",
         "deno_crypto",
-        "deno_webgpu",
         "deno_broadcast_channel",
         // FIXME(bartlomieju): this should be reenabled
         // "deno_node",

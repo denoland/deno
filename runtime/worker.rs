@@ -244,7 +244,6 @@ impl MainWorker {
       deno_webstorage::init(options.origin_storage_dir.clone()),
       deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
       deno_crypto::init(options.seed),
-      deno_webgpu::init(unstable),
       // ffi
       deno_ffi::init::<PermissionsContainer>(unstable),
       // Runtime ops
