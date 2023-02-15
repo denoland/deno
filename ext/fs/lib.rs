@@ -1878,8 +1878,7 @@ fn make_temp(
         use std::os::unix::fs::OpenOptionsExt;
         open_options.mode(0o600);
       }
-      open_options.open(buf.as_path())?;
-      Ok(())
+      open_options.open(buf.as_path()).map(drop)
     };
     match r {
       Err(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
