@@ -20,7 +20,7 @@ use deno_graph::ModuleGraph;
 use import_map::ImportMap;
 
 use crate::cache::ParsedSourceCache;
-use crate::resolver::CliResolver;
+use crate::resolver::CliGraphResolver;
 
 use super::build::VendorEnvironment;
 
@@ -261,7 +261,7 @@ async fn build_test_graph(
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
   let resolver =
-    original_import_map.map(|m| CliResolver::with_import_map(Arc::new(m)));
+    original_import_map.map(|m| CliGraphResolver::new(None, Some(Arc::new(m))));
   let mut graph = ModuleGraph::default();
   graph
     .build(

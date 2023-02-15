@@ -665,6 +665,26 @@ fn op_flash_headers(
   )
 }
 
+#[op]
+fn op_flash_addr(
+  state: Rc<RefCell<OpState>>,
+  server_id: u32,
+  token: u32,
+) -> Result<(String, u16), AnyError> {
+  let mut op_state = state.borrow_mut();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx
+    .servers
+    .get_mut(&server_id)
+    .ok_or_else(|| type_error("server closed"))?;
+  let req = &ctx
+    .requests
+    .get(&token)
+    .ok_or_else(|| type_error("request closed"))?;
+  let socket = req.socket();
+  Ok((socket.addr.ip().to_string(), socket.addr.port()))
+}
+
 // Remember the first packet we read? It probably also has some body data. This op quickly copies it into
 // a buffer and sets up channels for streaming the rest.
 #[op]
@@ -934,7 +954,7 @@ fn run_server(
       match token {
         Token(0) => loop {
           match listener.accept() {
-            Ok((mut socket, _)) => {
+            Ok((mut socket, addr)) => {
               counter += 1;
               let token = Token(counter);
               poll
@@ -960,6 +980,7 @@ fn run_server(
                 read_lock: Arc::new(Mutex::new(())),
                 parse_done: ParseStatus::None,
                 buffer: UnsafeCell::new(vec![0_u8; 1024]),
+                addr,
               });
 
               trace!("New connection: {}", token.0);
@@ -1524,6 +1545,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
       op_flash_method::decl(),
       op_flash_path::decl(),
       op_flash_headers::decl(),
+      op_flash_addr::decl(),
       op_flash_next::decl(),
       op_flash_next_server::decl(),
       op_flash_next_async::decl(),

@@ -28,7 +28,7 @@ use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 use crate::npm::RealNpmRegistryApi;
-use crate::resolver::CliResolver;
+use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -58,6 +58,7 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
 use log::warn;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Deref;
@@ -88,7 +89,7 @@ pub struct Inner {
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
   pub parsed_source_cache: ParsedSourceCache,
-  pub maybe_resolver: Option<Arc<CliResolver>>,
+  pub resolver: Arc<CliGraphResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
   pub npm_cache: NpmCache,
@@ -149,7 +150,7 @@ impl ProcState {
       shared_array_buffer_store: Default::default(),
       compiled_wasm_module_store: Default::default(),
       parsed_source_cache: self.parsed_source_cache.reset_for_file_watcher(),
-      maybe_resolver: self.maybe_resolver.clone(),
+      resolver: self.resolver.clone(),
       maybe_file_watcher_reporter: self.maybe_file_watcher_reporter.clone(),
       node_analysis_cache: self.node_analysis_cache.clone(),
       npm_cache: self.npm_cache.clone(),
@@ -215,11 +216,10 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    let maybe_cli_resolver = CliResolver::maybe_new(
+    let resolver = Arc::new(CliGraphResolver::new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
-    );
-    let maybe_resolver = maybe_cli_resolver.map(Arc::new);
+    ));
 
     let maybe_file_watcher_reporter =
       maybe_sender.map(|sender| FileWatcherReporter {
@@ -282,7 +282,7 @@ impl ProcState {
       shared_array_buffer_store,
       compiled_wasm_module_store,
       parsed_source_cache,
-      maybe_resolver,
+      resolver,
       maybe_file_watcher_reporter,
       node_analysis_cache,
       npm_cache,
@@ -315,8 +315,7 @@ impl ProcState {
       dynamic_permissions,
     );
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_resolver =
-      self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
+    let resolver = self.resolver.as_graph_resolver();
     let maybe_file_watcher_reporter: Option<&dyn deno_graph::source::Reporter> =
       if let Some(reporter) = &self.maybe_file_watcher_reporter {
         Some(reporter)
@@ -341,7 +340,7 @@ impl ProcState {
         deno_graph::BuildOptions {
           is_dynamic,
           imports: maybe_imports,
-          resolver: maybe_resolver,
+          resolver: Some(resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
         },
@@ -556,12 +555,14 @@ impl ProcState {
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier
     // support in REPL. This should be fixed.
+    let resolution = self.resolver.resolve(specifier, &referrer);
+
     if is_repl {
-      let specifier = self
-        .maybe_resolver
+      let specifier = resolution
         .as_ref()
-        .and_then(|resolver| resolver.resolve(specifier, &referrer).ok())
-        .or_else(|| ModuleSpecifier::parse(specifier).ok());
+        .ok()
+        .map(Cow::Borrowed)
+        .or_else(|| ModuleSpecifier::parse(specifier).ok().map(Cow::Owned));
       if let Some(specifier) = specifier {
         if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
           return self
@@ -576,12 +577,7 @@ impl ProcState {
       }
     }
 
-    if let Some(resolver) = &self.maybe_resolver {
-      resolver.resolve(specifier, &referrer)
-    } else {
-      deno_core::resolve_import(specifier, referrer.as_str())
-        .map_err(|err| err.into())
-    }
+    resolution
   }
 
   pub fn cache_module_emits(&self) -> Result<(), AnyError> {
@@ -638,12 +634,11 @@ impl ProcState {
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
 
-    let maybe_cli_resolver = CliResolver::maybe_new(
+    let cli_resolver = CliGraphResolver::new(
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
     );
-    let maybe_graph_resolver =
-      maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
+    let graph_resolver = cli_resolver.as_graph_resolver();
     let analyzer = self.parsed_source_cache.as_analyzer();
 
     let mut graph = ModuleGraph::default();
@@ -654,7 +649,7 @@ impl ProcState {
         deno_graph::BuildOptions {
           is_dynamic: false,
           imports: maybe_imports,
-          resolver: maybe_graph_resolver,
+          resolver: Some(graph_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: None,
         },
