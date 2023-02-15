@@ -34,6 +34,7 @@ import {
   stdout as stdout_,
 } from "internal:deno_node/polyfills/_process/streams.mjs";
 import {
+  enableNextTick,
   processTicksAndRejections,
   runNextTicks,
 } from "internal:deno_node/polyfills/_next_tick.ts";
@@ -689,13 +690,18 @@ export const removeAllListeners = process.removeAllListeners;
 
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
-internals.__bootstrapNodeProcess = function (args: string[]) {
+internals.__bootstrapNodeProcess = function (
+  args: string[],
+  v8Version: string,
+) {
   for (let i = 0; i < args.length; i++) {
     argv[i + 2] = args[i];
   }
+  versions.v8 = v8Version;
 
   core.setNextTickCallback(processTicksAndRejections);
   core.setMacrotaskCallback(runNextTicks);
+  enableNextTick();
 
   // TODO(bartlomieju): this is buggy, see https://github.com/denoland/deno/issues/16928
   // We should use a specialized API in 99_main.js instead

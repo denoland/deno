@@ -11,6 +11,11 @@ interface Tock {
   args: Array<unknown>;
 }
 
+let nextTickEnabled = false;
+export function enableNextTick() {
+  nextTickEnabled = true;
+}
+
 const queue = new FixedQueue();
 
 export function processTicksAndRejections() {
@@ -71,8 +76,6 @@ export function runNextTicks() {
   //   return;
   if (!core.hasTickScheduled()) {
     core.runMicrotasks();
-  }
-  if (!core.hasTickScheduled()) {
     return true;
   }
 
@@ -93,6 +96,12 @@ export function nextTick<T extends Array<unknown>>(
   callback: (...args: T) => void,
   ...args: T
 ) {
+  // If we're snapshotting we don't want to push nextTick to be run. We'll
+  // enable next ticks in "__bootstrapNodeProcess()";
+  if (!nextTickEnabled) {
+    return;
+  }
+
   validateFunction(callback, "callback");
 
   if (_exiting) {
