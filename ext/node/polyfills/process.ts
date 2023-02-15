@@ -685,8 +685,8 @@ addReadOnlyProcessAlias("throwDeprecation", "--throw-deprecation");
 export const removeListener = process.removeListener;
 export const removeAllListeners = process.removeAllListeners;
 
-// FIXME(bartlomieju): currently it's not called
-// only call this from runtime's main.js
+// Should be called only once, in `runtime/js/99_main.js` when the runtime is
+// bootstrapped.
 internals.__bootstrapNodeProcess = function (args: string[]) {
   for (let i = 0; i < args.length; i++) {
     const j = i;
@@ -738,6 +738,8 @@ internals.__bootstrapNodeProcess = function (args: string[]) {
       process.emit("exit", process.exitCode || 0);
     }
   });
+
+  delete internals.__bootstrapNodeProcess;
 };
 
 export default process;
