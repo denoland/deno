@@ -89,7 +89,9 @@ Deno.test({
   fn() {
     assertEquals(process.mainModule, undefined);
     // Check that it is writable
+    // @ts-ignore these are deprecated now
     process.mainModule = "foo";
+    // @ts-ignore these are deprecated now
     assertEquals(process.mainModule, "foo");
   },
 });
@@ -125,6 +127,7 @@ Deno.test({
     process.on("exit", () => {
       triggered = true;
     });
+    // @ts-ignore fix the type here
     process.emit("exit");
     assert(triggered);
 
@@ -660,6 +663,7 @@ Deno.test("process.config", () => {
 });
 
 Deno.test("process._exiting", () => {
+  // @ts-ignore fix the type here
   assert(process._exiting === false);
 });
 
