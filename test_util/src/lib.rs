@@ -96,7 +96,6 @@ lazy_static! {
 
 pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
   vec![
-    ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
@@ -594,6 +593,28 @@ async fn absolute_redirect(
 ) -> hyper::Result<Response<Body>> {
   let path = req.uri().path();
 
+  if path == "/" {
+    // We have to manually extract query params here,
+    // as `req.uri()` returns `PathAndQuery` only,
+    // and we cannot use `Url::parse(req.uri()).query_pairs()`,
+    // as it requires url to have a proper base.
+    let query_params: HashMap<_, _> = req
+      .uri()
+      .query()
+      .unwrap_or_default()
+      .split('&')
+      .filter_map(|s| {
+        s.split_once('=').map(|t| (t.0.to_owned(), t.1.to_owned()))
+      })
+      .collect();
+
+    if let Some(url) = query_params.get("redirect_to") {
+      println!("URL: {url:?}");
+      let redirect = redirect_resp(url.to_owned());
+      return Ok(redirect);
+    }
+  }
+
   if path.starts_with("/REDIRECT") {
     let url = &req.uri().path()[9..];
     println!("URL: {url:?}");
@@ -968,6 +989,17 @@ async fn main_server(
       res.headers_mut().insert(
         "cache-control",
         HeaderValue::from_static("public, max-age=604800, immutable"),
+      );
+      Ok(res)
+    }
+    (_, "/dynamic_module.ts") => {
+      let mut res = Response::new(Body::from(format!(
+        r#"export const time = {};"#,
+        std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+      )));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
       );
       Ok(res)
     }

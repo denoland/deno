@@ -14,7 +14,9 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::ModuleId;
+use deno_graph::npm::NpmPackageReference;
 use deno_runtime::colors;
+use deno_runtime::deno_node;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
@@ -29,7 +31,6 @@ use crate::args::DenoSubcommand;
 use crate::errors;
 use crate::module_loader::CliModuleLoader;
 use crate::node;
-use crate::npm::NpmPackageReference;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools;
@@ -66,9 +67,8 @@ impl CliMainWorker {
     log::debug!("main_module {}", self.main_module);
 
     if self.is_main_cjs {
-      self.ps.prepare_node_std_graph().await?;
       self.initialize_main_module_for_node().await?;
-      node::load_cjs_module_from_ext_node(
+      deno_node::load_cjs_module(
         &mut self.worker.js_runtime,
         &self.main_module.to_file_path().unwrap().to_string_lossy(),
         true,
@@ -278,9 +278,6 @@ impl CliMainWorker {
   async fn execute_main_module_possibly_with_npm(
     &mut self,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages() {
-      self.ps.prepare_node_std_graph().await?;
-    }
     let id = self.worker.preload_main_module(&self.main_module).await?;
     self.evaluate_module_possibly_with_npm(id).await
   }
@@ -296,15 +293,16 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages() {
+    if self.ps.npm_resolver.has_packages()
+      || self.ps.has_node_builtin_specifier()
+    {
       self.initialize_main_module_for_node().await?;
     }
     self.worker.evaluate_module(id).await
   }
 
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
-    self.ps.prepare_node_std_graph().await?;
-    node::initialize_runtime(
+    deno_node::initialize_runtime(
       &mut self.worker.js_runtime,
       self.ps.options.node_modules_dir(),
     )
@@ -317,7 +315,7 @@ impl CliMainWorker {
           .sub_path
           .as_deref()
           .unwrap_or(pkg_ref.req.name.as_str());
-        node::initialize_binary_command(
+        deno_node::initialize_binary_command(
           &mut self.worker.js_runtime,
           binary_name,
         )
@@ -626,7 +624,7 @@ fn create_web_worker_pre_execute_module_callback(
     let fut = async move {
       // this will be up to date after pre-load
       if ps.npm_resolver.has_packages() {
-        node::initialize_runtime(
+        deno_node::initialize_runtime(
           &mut worker.js_runtime,
           ps.options.node_modules_dir(),
         )

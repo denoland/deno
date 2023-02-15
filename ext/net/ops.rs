@@ -9,6 +9,7 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::CancelFuture;
 
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -416,6 +417,7 @@ pub enum DnsReturnRecord {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveAddrArgs {
+  cancel_rid: Option<ResourceId>,
   query: String,
   record_type: RecordType,
   options: Option<ResolveDnsOption>,
@@ -451,6 +453,7 @@ where
     query,
     record_type,
     options,
+    cancel_rid,
   } = args;
 
   let (config, opts) = if let Some(name_server) =
@@ -484,9 +487,29 @@ where
 
   let resolver = AsyncResolver::tokio(config, opts)?;
 
-  resolver
-    .lookup(query, record_type)
-    .await
+  let lookup_fut = resolver.lookup(query, record_type);
+
+  let cancel_handle = cancel_rid.and_then(|rid| {
+    state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(rid)
+      .ok()
+  });
+
+  let lookup = if let Some(cancel_handle) = cancel_handle {
+    let lookup_rv = lookup_fut.or_cancel(cancel_handle).await;
+
+    if let Some(cancel_rid) = cancel_rid {
+      state.borrow_mut().resource_table.close(cancel_rid).ok();
+    };
+
+    lookup_rv?
+  } else {
+    lookup_fut.await
+  };
+
+  lookup
     .map_err(|e| {
       let message = format!("{e}");
       match e.kind() {

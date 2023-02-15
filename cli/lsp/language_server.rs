@@ -69,7 +69,7 @@ use crate::args::TsConfig;
 use crate::cache::DenoDir;
 use crate::cache::HttpCache;
 use crate::file_fetcher::FileFetcher;
-use crate::graph_util::graph_valid;
+use crate::graph_util;
 use crate::http_util::HttpClient;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
@@ -173,8 +173,18 @@ impl LanguageServer {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
       };
-      let graph = ps.create_graph_with_loader(roots, &mut loader).await?;
-      graph_valid(&graph, true, false)?;
+      let graph = ps
+        .create_graph_with_loader(roots.clone(), &mut loader)
+        .await?;
+      graph_util::graph_valid(
+        &graph,
+        &roots,
+        graph_util::GraphValidOptions {
+          is_vendoring: false,
+          follow_type_only: true,
+          check_js: false,
+        },
+      )?;
       Ok(())
     }
 

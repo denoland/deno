@@ -2,7 +2,6 @@
 
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
-use crate::npm;
 
 use deno_core::futures;
 use deno_core::futures::FutureExt;
@@ -45,28 +44,38 @@ pub struct FetchCacher {
   dynamic_permissions: PermissionsContainer,
   file_fetcher: Arc<FileFetcher>,
   root_permissions: PermissionsContainer,
+  cache_info_enabled: bool,
 }
 
 impl FetchCacher {
   pub fn new(
     emit_cache: EmitCache,
-    file_fetcher: FileFetcher,
+    file_fetcher: Arc<FileFetcher>,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
   ) -> Self {
-    let file_fetcher = Arc::new(file_fetcher);
-
     Self {
       emit_cache,
       dynamic_permissions,
       file_fetcher,
       root_permissions,
+      cache_info_enabled: false,
     }
+  }
+
+  /// The cache information takes a bit of time to fetch and it's
+  /// not always necessary. It should only be enabled for deno info.
+  pub fn enable_loading_cache_info(&mut self) {
+    self.cache_info_enabled = true;
   }
 }
 
 impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
+    if !self.cache_info_enabled {
+      return None;
+    }
+
     if matches!(specifier.scheme(), "npm" | "node") {
       return None;
     }
@@ -94,29 +103,25 @@ impl Loader for FetchCacher {
   ) -> LoadFuture {
     if specifier.scheme() == "npm" {
       return Box::pin(futures::future::ready(
-        match npm::NpmPackageReference::from_specifier(specifier) {
+        match deno_graph::npm::NpmPackageReference::from_specifier(specifier) {
           Ok(_) => Ok(Some(deno_graph::source::LoadResponse::External {
             specifier: specifier.clone(),
           })),
-          Err(err) => Err(err),
+          Err(err) => Err(err.into()),
         },
       ));
     }
 
     let specifier =
       if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
-        if module_name == "module" {
-          // the source code for "node:module" is built-in rather than
-          // being from deno_std like the other modules
-          return Box::pin(futures::future::ready(Ok(Some(
-            deno_graph::source::LoadResponse::External {
-              specifier: specifier.clone(),
-            },
-          ))));
-        }
-
+        // Built-in Node modules are embedded in the Deno binary (in V8 snapshot)
+        // so we don't want them to be loaded by the "deno graph".
         match crate::node::resolve_builtin_node_module(module_name) {
-          Ok(specifier) => specifier,
+          Ok(specifier) => {
+            return Box::pin(futures::future::ready(Ok(Some(
+              deno_graph::source::LoadResponse::External { specifier },
+            ))))
+          }
           Err(err) => return Box::pin(futures::future::ready(Err(err))),
         }
       } else {

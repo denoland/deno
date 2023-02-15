@@ -10,6 +10,9 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
+use deno_graph::npm::NpmPackageId;
+use deno_graph::npm::NpmPackageReq;
+use deno_graph::semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -19,10 +22,7 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::registry::NpmPackageVersionDistInfo;
 use crate::npm::registry::NpmRegistryApi;
 use crate::npm::registry::RealNpmRegistryApi;
-use crate::semver::VersionReq;
 
-use super::NpmPackageId;
-use super::NpmPackageReq;
 use super::NpmResolutionPackage;
 
 /// Packages partitioned by if they are "copy" packages or not.

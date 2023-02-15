@@ -2,8 +2,10 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crate::Extension;
+use crate::InternalModuleLoaderCb;
 use crate::JsRuntime;
 use crate::RuntimeOptions;
 use crate::Snapshot;
@@ -16,38 +18,31 @@ pub struct CreateSnapshotOptions {
   pub startup_snapshot: Option<Snapshot>,
   pub extensions: Vec<Extension>,
   pub extensions_with_js: Vec<Extension>,
-  pub additional_files: Vec<PathBuf>,
   pub compression_cb: Option<Box<CompressionCb>>,
+  pub snapshot_module_load_cb: Option<InternalModuleLoaderCb>,
 }
 
 pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
-  let mut js_runtime = JsRuntime::new(RuntimeOptions {
+  let mut mark = Instant::now();
+
+  let js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
     startup_snapshot: create_snapshot_options.startup_snapshot,
     extensions: create_snapshot_options.extensions,
     extensions_with_js: create_snapshot_options.extensions_with_js,
+    snapshot_module_load_cb: create_snapshot_options.snapshot_module_load_cb,
     ..Default::default()
   });
 
-  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
-  // workspace root.
-  let display_root = Path::new(create_snapshot_options.cargo_manifest_dir)
-    .parent()
-    .unwrap();
-  for file in create_snapshot_options.additional_files {
-    let display_path = file.strip_prefix(display_root).unwrap_or(&file);
-    let display_path_str = display_path.display().to_string();
-    js_runtime
-      .execute_script(
-        &("deno:".to_string() + &display_path_str.replace('\\', "/")),
-        &std::fs::read_to_string(&file).unwrap(),
-      )
-      .unwrap();
-  }
-
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &snapshot;
-  println!("Snapshot size: {}", snapshot_slice.len());
+  println!(
+    "Snapshot size: {}, took {:#?} ({})",
+    snapshot_slice.len(),
+    Instant::now().saturating_duration_since(mark),
+    create_snapshot_options.snapshot_path.display()
+  );
+  mark = Instant::now();
 
   let maybe_compressed_snapshot: Box<dyn AsRef<[u8]>> =
     if let Some(compression_cb) = create_snapshot_options.compression_cb {
@@ -61,7 +56,13 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
 
       (compression_cb)(&mut vec, snapshot_slice);
 
-      println!("Snapshot compressed size: {}", vec.len());
+      println!(
+        "Snapshot compressed size: {}, took {:#?} ({})",
+        vec.len(),
+        Instant::now().saturating_duration_since(mark),
+        create_snapshot_options.snapshot_path.display()
+      );
+      mark = std::time::Instant::now();
 
       Box::new(vec)
     } else {
@@ -74,14 +75,18 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   )
   .unwrap();
   println!(
-    "Snapshot written to: {} ",
-    create_snapshot_options.snapshot_path.display()
+    "Snapshot written, took: {:#?} ({})",
+    Instant::now().saturating_duration_since(mark),
+    create_snapshot_options.snapshot_path.display(),
   );
 }
+
+pub type FilterFn = Box<dyn Fn(&PathBuf) -> bool>;
 
 pub fn get_js_files(
   cargo_manifest_dir: &'static str,
   directory: &str,
+  filter: Option<FilterFn>,
 ) -> Vec<PathBuf> {
   let manifest_dir = Path::new(cargo_manifest_dir);
   let mut js_files = std::fs::read_dir(directory)
@@ -92,7 +97,7 @@ pub fn get_js_files(
     })
     .filter(|path| {
       path.extension().unwrap_or_default() == "js"
-        && !path.ends_with("99_main.js")
+        && filter.as_ref().map(|filter| filter(path)).unwrap_or(true)
     })
     .collect::<Vec<PathBuf>>();
   js_files.sort();

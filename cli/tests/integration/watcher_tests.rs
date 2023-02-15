@@ -402,6 +402,8 @@ fn bundle_js_watch() {
 
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
+  assert_contains!(stderr_lines.next().unwrap(), "Warning");
+  assert_contains!(stderr_lines.next().unwrap(), "deno_emit");
   assert_contains!(stderr_lines.next().unwrap(), "Check");
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, "Bundle started");
@@ -455,8 +457,9 @@ fn bundle_watch_not_exit() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
-  let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, "Bundle started");
+  assert_contains!(stderr_lines.next().unwrap(), "Warning");
+  assert_contains!(stderr_lines.next().unwrap(), "deno_emit");
+  assert_contains!(stderr_lines.next().unwrap(), "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   assert_eq!(stderr_lines.next().unwrap(), "");
   assert_eq!(stderr_lines.next().unwrap(), "  syntax error ^^");
@@ -635,9 +638,14 @@ fn run_watch_external_watch_files() {
 
   // Change content of the external file
   write(&external_file_to_watch, "Hello world2").unwrap();
-
   wait_contains("Restarting", &mut stderr_lines);
   wait_contains("Process finished", &mut stderr_lines);
+
+  // Again (https://github.com/denoland/deno/issues/17584)
+  write(&external_file_to_watch, "Hello world3").unwrap();
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("Process finished", &mut stderr_lines);
+
   check_alive_then_kill(child);
 }
 
@@ -1086,6 +1094,44 @@ fn test_watch_unload_handler_error_on_drop() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/15465.
+#[test]
+fn run_watch_reload_once() {
+  let _g = util::http_server();
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  let file_content = r#"
+      import { time } from "http://localhost:4545/dynamic_module.ts";
+      console.log(time);
+    "#;
+  write(&file_to_watch, file_content).unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--reload")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("finished", &mut stderr_lines);
+  let first_output = stdout_lines.next().unwrap();
+
+  write(&file_to_watch, file_content).unwrap();
+  // The remote dynamic module should not have been reloaded again.
+
+  wait_contains("finished", &mut stderr_lines);
+  let second_output = stdout_lines.next().unwrap();
+  assert_eq!(second_output, first_output);
+
+  check_alive_then_kill(child);
+}
+
 #[test]
 fn run_watch_dynamic_imports() {
   let t = TempDir::new();
@@ -1147,11 +1193,11 @@ fn run_watch_dynamic_imports() {
     &mut stdout_lines,
   );
 
-  wait_contains("finished", &mut stderr_lines);
   wait_for(
     |m| m.contains("Watching paths") && m.contains("imported2.js"),
     &mut stderr_lines,
   );
+  wait_contains("finished", &mut stderr_lines);
 
   write(
     &file_to_watch3,

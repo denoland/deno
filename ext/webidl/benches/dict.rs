@@ -6,12 +6,16 @@ use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 
 use deno_core::Extension;
+use deno_core::ExtensionFileSource;
 
 fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::init(),
     Extension::builder("deno_webidl_bench")
-      .js(vec![("setup", include_str!("dict.js"))])
+      .esm(vec![ExtensionFileSource {
+        specifier: "internal:setup".to_string(),
+        code: include_str!("dict.js"),
+      }])
       .build(),
   ]
 }

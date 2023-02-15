@@ -1,13 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Read;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
+use deno_graph::npm::NpmPackageReference;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 
@@ -15,7 +15,6 @@ use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
 use crate::file_fetcher::File;
-use crate::npm::NpmPackageReference;
 use crate::proc_state::ProcState;
 use crate::util;
 use crate::worker::create_main_worker;
@@ -103,16 +102,13 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   let flags = Arc::new(flags);
   let main_module = resolve_url_or_path(&script)?;
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+  let mut ps =
+    ProcState::build_for_file_watcher((*flags).clone(), sender.clone()).await?;
 
-  let operation = |(sender, main_module): (
-    tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
-    ModuleSpecifier,
-  )| {
-    let flags = flags.clone();
+  let operation = |main_module: ModuleSpecifier| {
+    ps.reset_for_file_watcher();
+    let ps = ps.clone();
     Ok(async move {
-      let ps =
-        ProcState::build_for_file_watcher((*flags).clone(), sender.clone())
-          .await?;
       let permissions = PermissionsContainer::new(Permissions::from_options(
         &ps.options.permissions_options(),
       )?);
@@ -126,7 +122,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   util::file_watcher::watch_func2(
     receiver,
     operation,
-    (sender, main_module),
+    main_module,
     util::file_watcher::PrintConfig {
       job_name: "Process".to_string(),
       clear_screen: !flags.no_clear_screen,

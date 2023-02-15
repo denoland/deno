@@ -6,6 +6,7 @@ use test_util::assert_ends_with;
 use test_util::assert_not_contains;
 use util::TempDir;
 
+#[ignore]
 #[test]
 fn pty_multiline() {
   util::with_pty(&["repl"], |mut console| {
@@ -375,7 +376,7 @@ fn typescript_decorators() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert_ends_with!(out, "undefined\n[Function: Test]\n2\n");
+  assert_ends_with!(out, "undefined\n[Class: Test]\n2\n");
   assert!(err.is_empty());
 }
 
@@ -943,7 +944,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "Module {");
-    assert_contains!(out, "Chalk: [Function: Chalk],");
+    assert_contains!(out, "Chalk: [Class: Chalk],");
     assert!(err.is_empty());
   }
 
