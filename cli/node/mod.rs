@@ -104,7 +104,7 @@ impl NodeResolution {
   }
 }
 
-// FIXME(bartlomieju): seems super wasteful to parse specified each time
+// TODO(bartlomieju): seems super wasteful to parse specified each time
 pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
   if let Some(module) = find_builtin_node_module(specifier) {
     return Ok(ModuleSpecifier::parse(module.specifier).unwrap());

@@ -80,6 +80,8 @@ export const argv = [];
 // Overwrites the 1st item with getter.
 // TODO(bartlomieju): added "configurable: true" to make this work for binary
 // commands, but that is probably a wrong solution
+// TODO(bartlomieju): move the configuration for all "argv" to
+// "internals.__bootstrapNodeProcess"
 Object.defineProperty(argv, "0", {
   get: () => {
     return Deno.execPath();

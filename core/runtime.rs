@@ -843,7 +843,7 @@ impl JsRuntime {
         let receiver = runtime.mod_evaluate(id);
         poll_fn(|cx| {
           let r = runtime.poll_event_loop(cx, false);
-          // FIXME(bartlomieju): some code in readable-stream polyfill in `ext/node`
+          // TODO(bartlomieju): some code in readable-stream polyfill in `ext/node`
           // is calling `nextTick()` during snapshotting, which causes infinite loop
           runtime.state.borrow_mut().has_tick_scheduled = false;
           r
