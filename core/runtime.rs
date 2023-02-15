@@ -93,6 +93,7 @@ pub struct JsRuntime {
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
+  previous_snapshot_extensions: Vec<String>,
 }
 
 pub(crate) struct DynImportModEvaluate {
@@ -439,7 +440,11 @@ impl JsRuntime {
     fn get_context_data(
       scope: &mut v8::HandleScope<()>,
       context: v8::Local<v8::Context>,
-    ) -> (Vec<String>, Vec<v8::Global<v8::Module>>, v8::Global<v8::Object>) {
+    ) -> (
+      Vec<String>,
+      Vec<v8::Global<v8::Module>>,
+      v8::Global<v8::Object>,
+    ) {
       fn data_error_to_panic(err: v8::DataError) -> ! {
         match err {
           v8::DataError::BadType { actual, expected } => {
@@ -456,10 +461,11 @@ impl JsRuntime {
       let mut module_handles = vec![];
       let mut scope = v8::ContextScope::new(scope, context);
 
-      let extensions: Vec<String> = match scope.get_context_data_from_snapshot_once::<v8::Value>(0) {
-        Ok(val) => serde_v8::from_v8(&mut scope, val).unwrap(),
-        Err(err) => data_error_to_panic(err),
-      };
+      let extensions: Vec<String> =
+        match scope.get_context_data_from_snapshot_once::<v8::Value>(0) {
+          Ok(val) => serde_v8::from_v8(&mut scope, val).unwrap(),
+          Err(err) => data_error_to_panic(err),
+        };
 
       // The 1st element is the module map itself, followed by X number of module
       // handles. We need to deserialize the "next_module_id" field from the
@@ -665,13 +671,15 @@ impl JsRuntime {
 
       dbg!(&snapshot_extensions);
 
-      for (ext, previous_exts) in
-      exts.iter().enumerate().map(|(i, ext)| {
+      for (ext, previous_exts) in exts.iter().enumerate().map(|(i, ext)| {
         let mut previous_exts = snapshot_extensions.clone();
-        previous_exts.extend(exts[..i].iter().map(|prev_ext| prev_ext.get_name().to_string()));
+        previous_exts.extend(
+          exts[..i]
+            .iter()
+            .map(|prev_ext| prev_ext.get_name().to_string()),
+        );
         (ext, previous_exts)
-      })
-      {
+      }) {
         ext.check_dependencies(&previous_exts);
       }
     }
@@ -701,6 +709,7 @@ impl JsRuntime {
       state: state_rc,
       module_map: Some(module_map_rc),
       is_main: options.is_main,
+      previous_snapshot_extensions: snapshot_extensions,
     };
 
     // Init resources and ops before extensions to make sure they are
@@ -1089,7 +1098,13 @@ impl JsRuntime {
 
     // Serialize the extensions & module map list and store its data in the snapshot.
     {
-      let ext_name_list = self.extensions_with_js.iter().map(|ext| ext.get_name().to_string()).collect::<Vec<_>>();
+      let mut ext_name_list = self.previous_snapshot_extensions;
+      ext_name_list.extend(
+        self
+          .extensions_with_js
+          .iter()
+          .map(|ext| ext.get_name().to_string()),
+      );
 
       let module_map_rc = self.module_map.take().unwrap();
       let module_map = module_map_rc.borrow();
