@@ -293,7 +293,9 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages() {
+    if self.ps.npm_resolver.has_packages()
+      || self.ps.has_node_builtin_specifier()
+    {
       self.initialize_main_module_for_node().await?;
     }
     self.worker.evaluate_module(id).await

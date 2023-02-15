@@ -684,6 +684,10 @@ impl ProcState {
   pub fn graph(&self) -> Arc<ModuleGraph> {
     self.graph_data.read().graph.clone()
   }
+
+  pub fn has_node_builtin_specifier(&self) -> bool {
+    self.graph_data.read().has_node_builtin_specifier
+  }
 }
 
 #[derive(Clone, Debug)]

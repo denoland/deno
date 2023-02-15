@@ -1,2 +1,8 @@
 [Function: createRequire]
 v[WILDCARD].[WILDCARD].[WILDCARD]
+[
+  "[WILDCARD]deno",
+  "[WILDCARD]/node_builtin_modules/mod.js",
+  "hello",
+  "there"
+]
