@@ -1126,7 +1126,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export type ServeHandler = (request: Request) => Response | Promise<Response>;
+  export type ServeHandler = (request: Request, getRemoteAddr: () => Deno.NetAddr) => Response | Promise<Response>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
