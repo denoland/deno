@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::env;
-use std::path::Path;
 use std::path::PathBuf;
 
 use deno_core::include_js_files_dir;

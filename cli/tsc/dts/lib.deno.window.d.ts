@@ -93,7 +93,6 @@ declare var caches: CacheStorage;
 /** @category Web APIs */
 declare class Navigator {
   constructor();
-  readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
   readonly language: string;

@@ -38,9 +38,6 @@ pub fn init(maybe_level: Option<log::Level>) {
   )
   // https://github.com/denoland/deno/issues/6641
   .filter_module("rustyline", log::LevelFilter::Off)
-  // wgpu crates (gfx_backend), have a lot of useless INFO and WARN logs
-  .filter_module("wgpu", log::LevelFilter::Error)
-  .filter_module("gfx", log::LevelFilter::Error)
   // used to make available the lsp_debug which is then filtered out at runtime
   // in the cli logger
   .filter_module("deno::lsp::performance", log::LevelFilter::Debug)

@@ -229,7 +229,6 @@ mod not_docs {
       deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),
       deno_crypto::init(None),
-      deno_webgpu::init(false),
       deno_broadcast_channel::init(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
