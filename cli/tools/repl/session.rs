@@ -2,8 +2,8 @@
 
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
-use crate::npm::NpmPackageReference;
 use crate::ProcState;
+
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::visit::noop_visit_type;
 use deno_ast::swc::visit::Visit;
@@ -18,6 +18,7 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
+use deno_graph::npm::NpmPackageReference;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_node;
 use deno_runtime::worker::MainWorker;

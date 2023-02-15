@@ -15,6 +15,8 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
+use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::errors;
 use deno_runtime::deno_node::find_builtin_node_module;
@@ -39,8 +41,6 @@ use regex::Regex;
 use crate::cache::NodeAnalysisCache;
 use crate::deno_std::CURRENT_STD_URL;
 use crate::file_fetcher::FileFetcher;
-use crate::npm::NpmPackageReference;
-use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 
 mod analyze;

@@ -7,14 +7,15 @@ use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::TypeCheckMode;
 use crate::http_util::HttpClient;
-use crate::npm::NpmPackageReference;
 use crate::proc_state::ProcState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
+use deno_graph::npm::NpmPackageReference;
 use log::Level;
 use once_cell::sync::Lazy;
 use regex::Regex;

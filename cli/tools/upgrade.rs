@@ -133,8 +133,8 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
       return None;
     }
 
-    if let Ok(current) = semver::Version::parse(&self.env.current_version()) {
-      if let Ok(latest) = semver::Version::parse(&file.latest_version) {
+    if let Ok(current) = parse_version(&self.env.current_version()) {
+      if let Ok(latest) = parse_version(&file.latest_version) {
         if current >= latest {
           return None;
         }
@@ -291,10 +291,9 @@ pub async fn upgrade(
         && !regex::Regex::new("^[0-9a-f]{40}$")?.is_match(&passed_version)
       {
         bail!("Invalid commit hash passed");
-      } else if !upgrade_flags.canary
-        && semver::Version::parse(&passed_version).is_err()
+      } else if !upgrade_flags.canary && parse_version(&passed_version).is_err()
       {
-        bail!("Invalid semver passed");
+        bail!("Invalid version passed");
       }
 
       let current_is_passed = if upgrade_flags.canary {
@@ -328,8 +327,8 @@ pub async fn upgrade(
         let latest_hash = latest_version.clone();
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
-        let current = semver::Version::parse(&crate::version::deno()).unwrap();
-        let latest = semver::Version::parse(&latest_version).unwrap();
+        let current = parse_version(&crate::version::deno()).unwrap();
+        let latest = parse_version(&latest_version).unwrap();
         current >= latest
       } else {
         false
@@ -426,6 +425,19 @@ pub async fn upgrade(
 
   drop(temp_dir); // delete the temp dir
   Ok(())
+}
+
+fn parse_version(text: &str) -> Result<deno_graph::semver::Version, AnyError> {
+  // todo(dsherret): remove this after https://github.com/denoland/deno_graph/issues/234
+  match deno_graph::semver::Version::parse_from_npm(text) {
+    Ok(version) => Ok(version),
+    Err(err) => {
+      let result = err.to_string();
+      // Hack to remove the npm specifier message
+      // Message format: Invalid npm version '{source}'
+      bail!("{}", &result[21..result.len() - 1])
+    }
+  }
 }
 
 async fn get_latest_release_version(

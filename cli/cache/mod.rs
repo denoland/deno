@@ -2,7 +2,6 @@
 
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
-use crate::npm;
 
 use deno_core::futures;
 use deno_core::futures::FutureExt;
@@ -104,11 +103,11 @@ impl Loader for FetchCacher {
   ) -> LoadFuture {
     if specifier.scheme() == "npm" {
       return Box::pin(futures::future::ready(
-        match npm::NpmPackageReference::from_specifier(specifier) {
+        match deno_graph::npm::NpmPackageReference::from_specifier(specifier) {
           Ok(_) => Ok(Some(deno_graph::source::LoadResponse::External {
             specifier: specifier.clone(),
           })),
-          Err(err) => Err(err),
+          Err(err) => Err(err.into()),
         },
       ));
     }

@@ -13,6 +13,10 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
+use deno_graph::npm::NpmPackageId;
+use deno_graph::npm::NpmPackageReq;
+use deno_graph::semver::Version;
+use deno_graph::semver::VersionReq;
 use log::debug;
 use once_cell::sync::Lazy;
 
@@ -22,13 +26,9 @@ use crate::npm::registry::NpmDependencyEntryKind;
 use crate::npm::registry::NpmPackageInfo;
 use crate::npm::registry::NpmPackageVersionInfo;
 use crate::npm::NpmRegistryApi;
-use crate::semver::Version;
-use crate::semver::VersionReq;
 
 use super::snapshot::NpmResolutionSnapshot;
 use super::snapshot::SnapshotPackageCopyIndexResolver;
-use super::NpmPackageId;
-use super::NpmPackageReq;
 use super::NpmResolutionPackage;
 
 pub static LATEST_VERSION_REQ: Lazy<VersionReq> =
@@ -1113,10 +1113,10 @@ fn tag_to_version_info<'a>(
 
 #[cfg(test)]
 mod test {
+  use deno_graph::npm::NpmPackageReference;
   use pretty_assertions::assert_eq;
 
   use crate::npm::registry::TestNpmRegistryApi;
-  use crate::npm::NpmPackageReference;
 
   use super::*;
 
