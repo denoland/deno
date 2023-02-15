@@ -35,7 +35,8 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
     ModuleGraphError::ResolutionError(err) => get_resolution_error_class(err),
     ModuleGraphError::UnsupportedMediaType { .. }
     | ModuleGraphError::UnsupportedImportAssertionType { .. } => "TypeError",
-    ModuleGraphError::Missing(_, _) => "NotFound",
+    ModuleGraphError::Missing(_, _)
+    | ModuleGraphError::MissingDynamic(_, _) => "NotFound",
   }
 }
 

@@ -25,6 +25,13 @@ use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMapError;
 use std::sync::Arc;
 
+#[derive(Clone, Copy)]
+pub struct GraphValidOptions {
+  pub check_js: bool,
+  pub follow_type_only: bool,
+  pub is_vendoring: bool,
+}
+
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
 /// so. Returns `Err(_)` if there is a known module graph or resolution
 /// error statically reachable from `roots` and not a dynamic import.
@@ -36,8 +43,8 @@ pub fn graph_valid_with_cli_options(
   graph_valid(
     graph,
     roots,
-    deno_graph::WalkOptions {
-      follow_dynamic: false,
+    GraphValidOptions {
+      is_vendoring: false,
       follow_type_only: options.type_check_mode() != TypeCheckMode::None,
       check_js: options.check_js(),
     },
@@ -54,27 +61,61 @@ pub fn graph_valid_with_cli_options(
 pub fn graph_valid(
   graph: &ModuleGraph,
   roots: &[ModuleSpecifier],
-  walk_options: deno_graph::WalkOptions,
+  options: GraphValidOptions,
 ) -> Result<(), AnyError> {
-  graph.walk(roots, walk_options).validate().map_err(|error| {
-    let is_root = match &error {
-      ModuleGraphError::ResolutionError(_) => false,
-      _ => roots.contains(error.specifier()),
-    };
-    let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
-      enhanced_resolution_error_message(err)
-    } else {
-      format!("{error}")
-    };
+  let mut errors = graph
+    .walk(
+      roots,
+      deno_graph::WalkOptions {
+        check_js: options.check_js,
+        follow_type_only: options.follow_type_only,
+        follow_dynamic: options.is_vendoring,
+      },
+    )
+    .errors()
+    .flat_map(|error| {
+      let is_root = match &error {
+        ModuleGraphError::ResolutionError(_) => false,
+        _ => roots.contains(error.specifier()),
+      };
+      let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
+        enhanced_resolution_error_message(err)
+      } else {
+        format!("{error}")
+      };
 
-    if let Some(range) = error.maybe_range() {
-      if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
-        message.push_str(&format!("\n    at {range}"));
+      if let Some(range) = error.maybe_range() {
+        if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
+          message.push_str(&format!("\n    at {range}"));
+        }
       }
-    }
 
-    custom_error(get_error_class_name(&error.into()), message)
-  })
+      if options.is_vendoring {
+        // warn about failing dynamic imports when vendoring, but don't fail completely
+        if matches!(error, ModuleGraphError::MissingDynamic(_, _)) {
+          log::warn!("Ignoring: {:#}", message);
+          return None;
+        }
+
+        // ignore invalid downgrades and invalid local imports when vendoring
+        if let ModuleGraphError::ResolutionError(err) = &error {
+          if matches!(
+            err,
+            ResolutionError::InvalidDowngrade { .. }
+              | ResolutionError::InvalidLocalImport { .. }
+          ) {
+            return None;
+          }
+        }
+      }
+
+      Some(custom_error(get_error_class_name(&error.into()), message))
+    });
+  if let Some(error) = errors.next() {
+    Err(error)
+  } else {
+    Ok(())
+  }
 }
 
 /// Checks the lockfile against the graph and and exits on errors.
