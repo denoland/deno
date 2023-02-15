@@ -4,7 +4,6 @@ use crate::args::TsConfig;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
-use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 use crate::util::checksum;
 
@@ -29,6 +28,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
+use deno_graph::npm::NpmPackageReference;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleKind;
 use deno_graph::ResolutionResolved;

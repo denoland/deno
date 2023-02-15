@@ -18,7 +18,6 @@ mod npm;
 mod ops;
 mod proc_state;
 mod resolver;
-mod semver;
 mod standalone;
 mod tools;
 mod tsc;

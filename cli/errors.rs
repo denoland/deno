@@ -65,11 +65,13 @@ pub fn get_error_class_name(e: &AnyError) -> &'static str {
         .map(get_resolution_error_class)
     })
     .unwrap_or_else(|| {
-      eprintln!(
-        "Error '{}' contains boxed error of unknown type:{}",
-        e,
-        e.chain().map(|e| format!("\n  {e:?}")).collect::<String>()
-      );
+      if cfg!(debug) {
+        log::warn!(
+          "Error '{}' contains boxed error of unknown type:{}",
+          e,
+          e.chain().map(|e| format!("\n  {e:?}")).collect::<String>()
+        );
+      }
       "Error"
     })
 }
