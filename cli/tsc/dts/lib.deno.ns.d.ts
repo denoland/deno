@@ -3690,7 +3690,6 @@ declare namespace Deno {
 
   /** 
    * @deprecated Use {@linkcode Deno.Command} instead.
-   * This API will be removed in Deno 2.0.
    * 
    * Options which can be used with {@linkcode Deno.run}.
    *
@@ -3752,7 +3751,6 @@ declare namespace Deno {
 
   /** 
    * @deprecated Use {@linkcode Deno.Command} instead.
-   * This API will be removed in Deno 2.0.
    * 
    * The status resolved from the `.status()` method of a
    * {@linkcode Deno.Process} instance.
@@ -3775,7 +3773,6 @@ declare namespace Deno {
 
   /**
    * * @deprecated Use {@linkcode Deno.Command} instead.
-   * This API will be removed in Deno 2.0.
    * 
    * Represents an instance of a sub process that is returned from
    * {@linkcode Deno.run} which can be used to manage the sub-process.
@@ -3935,7 +3932,6 @@ declare namespace Deno {
 
   /** 
    * @deprecated Use {@linkcode Deno.Command} instead.
-   * This API will be removed in Deno 2.0.
    * 
    * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
