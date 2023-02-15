@@ -1,7 +1,7 @@
 [Function: createRequire]
 v[WILDCARD].[WILDCARD].[WILDCARD]
 [
-  "[WILDCARD]deno",
+  "[WILDCARD]",
   "[WILDCARD]mod.ts",
   "hello",
   "there"
