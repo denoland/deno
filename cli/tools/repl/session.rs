@@ -463,7 +463,8 @@ impl ReplSession {
         deno_node::initialize_runtime(
           &mut self.worker.js_runtime,
           self.proc_state.options.node_modules_dir(),
-        )?;
+        )
+        .await?;
         self.has_initialized_node_runtime = true;
       }
 
