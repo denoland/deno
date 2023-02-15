@@ -432,13 +432,14 @@ impl JsRuntime {
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
+    let mut snapshot_extensions = vec![];
     let mut module_map_data = None;
     let mut module_handles = vec![];
 
     fn get_context_data(
       scope: &mut v8::HandleScope<()>,
       context: v8::Local<v8::Context>,
-    ) -> (Vec<v8::Global<v8::Module>>, v8::Global<v8::Object>) {
+    ) -> (Vec<String>, Vec<v8::Global<v8::Module>>, v8::Global<v8::Object>) {
       fn data_error_to_panic(err: v8::DataError) -> ! {
         match err {
           v8::DataError::BadType { actual, expected } => {
@@ -454,10 +455,16 @@ impl JsRuntime {
 
       let mut module_handles = vec![];
       let mut scope = v8::ContextScope::new(scope, context);
-      // The 0th element is the module map itself, followed by X number of module
+
+      let extensions: Vec<String> = match scope.get_context_data_from_snapshot_once::<v8::Value>(0) {
+        Ok(val) => serde_v8::from_v8(&mut scope, val).unwrap(),
+        Err(err) => data_error_to_panic(err),
+      };
+
+      // The 1st element is the module map itself, followed by X number of module
       // handles. We need to deserialize the "next_module_id" field from the
       // map to see how many module handles we expect.
-      match scope.get_context_data_from_snapshot_once::<v8::Object>(0) {
+      match scope.get_context_data_from_snapshot_once::<v8::Object>(1) {
         Ok(val) => {
           let next_module_id = {
             let info_str = v8::String::new(&mut scope, "info").unwrap();
@@ -469,7 +476,7 @@ impl JsRuntime {
             info_data.length()
           };
 
-          for i in 1..=next_module_id {
+          for i in 2..=next_module_id {
             match scope
               .get_context_data_from_snapshot_once::<v8::Module>(i as usize)
             {
@@ -481,7 +488,7 @@ impl JsRuntime {
             }
           }
 
-          (module_handles, v8::Global::new(&mut scope, val))
+          (extensions, module_handles, v8::Global::new(&mut scope, val))
         }
         Err(err) => data_error_to_panic(err),
       }
@@ -535,8 +542,9 @@ impl JsRuntime {
         // Get module map data from the snapshot
         if has_startup_snapshot {
           let context_data = get_context_data(scope, context);
-          module_handles = context_data.0;
-          module_map_data = Some(context_data.1);
+          snapshot_extensions = context_data.0;
+          module_handles = context_data.1;
+          module_map_data = Some(context_data.2);
         }
 
         global_context = v8::Global::new(scope, context);
@@ -584,8 +592,9 @@ impl JsRuntime {
         // Get module map data from the snapshot
         if has_startup_snapshot {
           let context_data = get_context_data(scope, context);
-          module_handles = context_data.0;
-          module_map_data = Some(context_data.1);
+          snapshot_extensions = context_data.0;
+          module_handles = context_data.1;
+          module_map_data = Some(context_data.2);
         }
 
         global_context = v8::Global::new(scope, context);
@@ -649,6 +658,24 @@ impl JsRuntime {
       op_state,
       snapshot_options == SnapshotOptions::Load,
     )));
+
+    // check dependencies
+    {
+      let exts = &options.extensions_with_js;
+
+      dbg!(&snapshot_extensions);
+
+      for (ext, previous_exts) in
+      exts.iter().enumerate().map(|(i, ext)| {
+        let mut previous_exts = snapshot_extensions.clone();
+        previous_exts.extend(exts[..i].iter().map(|prev_ext| prev_ext.get_name().to_string()));
+        (ext, previous_exts)
+      })
+      {
+        ext.check_dependencies(&previous_exts);
+      }
+    }
+
     if let Some(module_map_data) = module_map_data {
       let scope =
         &mut v8::HandleScope::with_context(&mut isolate, global_context);
@@ -899,12 +926,6 @@ impl JsRuntime {
     exts.extend(extensions);
     exts.extend(extensions_with_js);
 
-    for (ext, previous_exts) in
-      exts.iter().enumerate().map(|(i, ext)| (ext, &exts[..i]))
-    {
-      ext.check_dependencies(previous_exts);
-    }
-
     // Middleware
     let middleware: Vec<Box<OpMiddlewareFn>> = exts
       .iter_mut()
@@ -1066,8 +1087,10 @@ impl JsRuntime {
 
     self.state.borrow_mut().inspector.take();
 
-    // Serialize the module map and store its data in the snapshot.
+    // Serialize the extensions & module map list and store its data in the snapshot.
     {
+      let ext_name_list = self.extensions_with_js.iter().map(|ext| ext.get_name().to_string()).collect::<Vec<_>>();
+
       let module_map_rc = self.module_map.take().unwrap();
       let module_map = module_map_rc.borrow();
       let (module_map_data, module_handles) =
@@ -1076,14 +1099,19 @@ impl JsRuntime {
       let context = self.global_context();
       let mut scope = self.handle_scope();
       let local_context = v8::Local::new(&mut scope, context);
+
+      let ext_name_list = serde_v8::to_v8(&mut scope, ext_name_list).unwrap();
+      let offset = scope.add_context_data(local_context, ext_name_list);
+      assert_eq!(offset, 0);
+
       let local_data = v8::Local::new(&mut scope, module_map_data);
       let offset = scope.add_context_data(local_context, local_data);
-      assert_eq!(offset, 0);
+      assert_eq!(offset, 1);
 
       for (index, handle) in module_handles.into_iter().enumerate() {
         let module_handle = v8::Local::new(&mut scope, handle);
         let offset = scope.add_context_data(local_context, module_handle);
-        assert_eq!(offset, index + 1);
+        assert_eq!(offset, index + 2);
       }
     }
 

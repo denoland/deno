@@ -366,7 +366,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     // FIXME(bartlomieju): information about which extensions were
     // already snapshotted is not preserved in the snapshot. This should be
     // fixed, so we can reliably depend on that information.
-    // .dependencies(vec!["runtime"])
+    .dependencies(vec!["deno_websocket"])
     .esm(esm_files)
     .build()];
 

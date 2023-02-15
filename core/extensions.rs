@@ -67,15 +67,19 @@ impl Extension {
   /// Check if dependencies have been loaded, and errors if either:
   /// - The extension is depending on itself or an extension with the same name.
   /// - A dependency hasn't been loaded yet.
-  pub fn check_dependencies(&self, previous_exts: &[&mut Extension]) {
+  pub fn check_dependencies(&self, previous_exts: &[String]) {
     if let Some(deps) = &self.deps {
+      dbg!("check_dependencies", self.name);
+
+      dbg!(deps);
+      dbg!(previous_exts);
       'dep_loop: for dep in deps {
         if dep == &self.name {
           panic!("Extension '{}' is either depending on itself or there is another extension with the same name", self.name);
         }
 
         for ext in previous_exts {
-          if dep == &ext.name {
+          if dep == ext {
             continue 'dep_loop;
           }
         }
@@ -83,6 +87,10 @@ impl Extension {
         panic!("Extension '{}' is missing dependency '{dep}'", self.name);
       }
     }
+  }
+
+  pub fn get_name(&self) -> &'static str {
+    self.name
   }
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
