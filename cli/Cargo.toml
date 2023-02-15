@@ -46,7 +46,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_gra
 deno_core.workspace = true
 deno_doc = "0.55.0"
 deno_emit = "0.15.0"
-deno_graph = "0.43.1"
+deno_graph = "0.43.2"
 deno_lint = { version = "0.38.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_runtime.workspace = true
