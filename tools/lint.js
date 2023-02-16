@@ -89,6 +89,8 @@ async function dlintPreferPrimordials() {
   const sourceFiles = await getSources(ROOT_PATH, [
     "runtime/**/*.js",
     "ext/**/*.js",
+    // TODO(petamoriken): enable for node polyfills
+    ":!:ext/node/polyfills/**",
     "core/*.js",
     ":!:core/*_test.js",
     ":!:core/examples/**",
