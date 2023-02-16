@@ -515,6 +515,11 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
 
   util.log("args", runtimeOptions.args);
+
+  // FIXME(bartlomieju): this should be a helper function that is placed in
+  // "internals" namespace
+  // Initialize Node polyfills
+  // internals.__bootstrapNodeProcess();
 }
 
 function bootstrapWorkerRuntime(

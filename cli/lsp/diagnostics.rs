@@ -16,7 +16,6 @@ use crate::args::LintOptions;
 use crate::graph_util;
 use crate::graph_util::enhanced_resolution_error_message;
 use crate::node;
-use crate::npm::NpmPackageReference;
 use crate::tools::lint::get_configured_rules;
 
 use deno_ast::MediaType;
@@ -27,6 +26,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_graph::npm::NpmPackageReference;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;

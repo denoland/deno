@@ -16,6 +16,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
+use deno_graph::semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
@@ -133,8 +134,8 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
       return None;
     }
 
-    if let Ok(current) = semver::Version::parse(&self.env.current_version()) {
-      if let Ok(latest) = semver::Version::parse(&file.latest_version) {
+    if let Ok(current) = Version::parse_standard(&self.env.current_version()) {
+      if let Ok(latest) = Version::parse_standard(&file.latest_version) {
         if current >= latest {
           return None;
         }
@@ -292,9 +293,9 @@ pub async fn upgrade(
       {
         bail!("Invalid commit hash passed");
       } else if !upgrade_flags.canary
-        && semver::Version::parse(&passed_version).is_err()
+        && Version::parse_standard(&passed_version).is_err()
       {
-        bail!("Invalid semver passed");
+        bail!("Invalid version passed");
       }
 
       let current_is_passed = if upgrade_flags.canary {
@@ -328,8 +329,8 @@ pub async fn upgrade(
         let latest_hash = latest_version.clone();
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
-        let current = semver::Version::parse(&crate::version::deno()).unwrap();
-        let latest = semver::Version::parse(&latest_version).unwrap();
+        let current = Version::parse_standard(&crate::version::deno()).unwrap();
+        let latest = Version::parse_standard(&latest_version).unwrap();
         current >= latest
       } else {
         false

@@ -841,7 +841,14 @@ impl JsRuntime {
           )
           .await?;
         let receiver = runtime.mod_evaluate(id);
-        runtime.run_event_loop(false).await?;
+        poll_fn(|cx| {
+          let r = runtime.poll_event_loop(cx, false);
+          // TODO(bartlomieju): some code in readable-stream polyfill in `ext/node`
+          // is calling `nextTick()` during snapshotting, which causes infinite loop
+          runtime.state.borrow_mut().has_tick_scheduled = false;
+          r
+        })
+        .await?;
         receiver.await?
       })
       .with_context(|| format!("Couldn't execute '{}'", file_source.specifier))
@@ -2532,7 +2539,6 @@ impl JsRuntime {
       let tc_scope = &mut v8::TryCatch::new(scope);
       let this = v8::undefined(tc_scope).into();
       js_nexttick_cb.call(tc_scope, this, &[]);
-
       if let Some(exception) = tc_scope.exception() {
         return exception_to_err_result(tc_scope, exception, false);
       }

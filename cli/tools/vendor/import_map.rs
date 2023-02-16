@@ -290,7 +290,12 @@ fn handle_dep_specifier(
   referrer: &ModuleSpecifier,
   mappings: &Mappings,
 ) {
-  let specifier = graph.resolve(unresolved_specifier);
+  let specifier = match graph.get(unresolved_specifier) {
+    Some(module) => module.specifier.clone(),
+    // Ignore when None. The graph was previous validated so this is a
+    // dynamic import that was missing and is ignored for vendoring
+    None => return,
+  };
   // check if it's referencing a remote module
   if is_remote_specifier(&specifier) {
     handle_remote_dep_specifier(

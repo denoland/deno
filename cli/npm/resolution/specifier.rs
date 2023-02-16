@@ -6,12 +6,10 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use deno_ast::ModuleSpecifier;
+use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReq;
+use deno_graph::semver::VersionReq;
 use deno_graph::ModuleGraph;
-
-use crate::semver::VersionReq;
-
-use super::NpmPackageReference;
-use super::NpmPackageReq;
 
 pub struct GraphNpmInfo {
   /// The order of these package requirements is the order they

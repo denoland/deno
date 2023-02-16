@@ -8,7 +8,7 @@ use crate::ops;
 use crate::proc_state::ProcState;
 use crate::util::v8::construct_v8_flags;
 use crate::version;
-use crate::CliResolver;
+use crate::CliGraphResolver;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -127,7 +127,7 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
 
 struct EmbeddedModuleLoader {
   eszip: eszip::EszipV2,
-  maybe_import_map_resolver: Option<CliResolver>,
+  maybe_import_map_resolver: Option<CliGraphResolver>,
 }
 
 impl ModuleLoader for EmbeddedModuleLoader {
@@ -235,9 +235,12 @@ pub async fn run(
     eszip,
     maybe_import_map_resolver: metadata.maybe_import_map.map(
       |(base, source)| {
-        CliResolver::with_import_map(Arc::new(
-          parse_from_json(&base, &source).unwrap().import_map,
-        ))
+        CliGraphResolver::new(
+          None,
+          Some(Arc::new(
+            parse_from_json(&base, &source).unwrap().import_map,
+          )),
+        )
       },
     ),
   });

@@ -82,10 +82,9 @@ pub fn build(
   graph_util::graph_valid(
     &graph,
     &graph.roots,
-    deno_graph::WalkOptions {
-      // surface all errors
+    graph_util::GraphValidOptions {
+      is_vendoring: true,
       check_js: true,
-      follow_dynamic: true,
       follow_type_only: true,
     },
   )?;

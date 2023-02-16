@@ -29,6 +29,7 @@ pub struct Stream {
   pub parse_done: ParseStatus,
   pub buffer: UnsafeCell<Vec<u8>>,
   pub read_lock: Arc<Mutex<()>>,
+  pub addr: std::net::SocketAddr,
 }
 
 impl Stream {
