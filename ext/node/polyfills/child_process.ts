@@ -40,7 +40,7 @@ import {
   promisify,
 } from "internal:deno_node/polyfills/util.ts";
 import { createDeferredPromise } from "internal:deno_node/polyfills/internal/util.mjs";
-import { process } from "internal:deno_node/polyfills/process.ts";
+import process from "internal:deno_node/polyfills/process.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import {
   convertToValidSignal,

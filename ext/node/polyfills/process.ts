@@ -760,7 +760,7 @@ internals.__bootstrapNodeProcess = function (
   );
 
   /** https://nodejs.org/api/process.html#process_process_stdout */
-  stdout = stdio.stdout = process.stderr = createWritableStdioStream(
+  stdout = stdio.stdout = process.stdout = createWritableStdioStream(
     files.stdout,
     "stdout",
   );
@@ -769,8 +769,3 @@ internals.__bootstrapNodeProcess = function (
 };
 
 export default process;
-
-//TODO(Soremwar)
-//Remove on 1.0
-//Kept for backwards compatibility with std
-export { process };

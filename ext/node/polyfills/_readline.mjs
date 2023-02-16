@@ -33,7 +33,7 @@ import promises from "internal:deno_node/polyfills/readline/promises.ts";
 import { validateAbortSignal } from "internal:deno_node/polyfills/internal/validators.mjs";
 import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
 import { AbortError } from "internal:deno_node/polyfills/internal/errors.ts";
-import { process } from "internal:deno_node/polyfills/process.ts";
+import process from "internal:deno_node/polyfills/process.ts";
 
 import {
   Interface as _Interface,
