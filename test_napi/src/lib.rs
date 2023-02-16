@@ -27,7 +27,7 @@ pub mod typedarray;
 #[macro_export]
 macro_rules! cstr {
   ($s: literal) => {{
-    std::ffi::CString::new($s).unwrap().as_ptr()
+    std::ffi::CString::new($s).unwrap().into_raw()
   }};
 }
 

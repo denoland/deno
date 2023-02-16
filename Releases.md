@@ -6,6 +6,11 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.30.3 / 2023.02.07
+
+- fix(ext/console): log class for class constructor (#17615)
+- fix(lsp): prevent crash analyzing module (#17642)
+
 ### 1.30.2 / 2023.02.03
 
 - Revert "chore(core): remove have_unpolled_ops on rt state (#17601)" (#17631)

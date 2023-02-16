@@ -69,7 +69,7 @@ use crate::args::TsConfig;
 use crate::cache::DenoDir;
 use crate::cache::HttpCache;
 use crate::file_fetcher::FileFetcher;
-use crate::graph_util::graph_valid;
+use crate::graph_util;
 use crate::http_util::HttpClient;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
@@ -173,8 +173,18 @@ impl LanguageServer {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
       };
-      let graph = ps.create_graph_with_loader(roots, &mut loader).await?;
-      graph_valid(&graph, true, false)?;
+      let graph = ps
+        .create_graph_with_loader(roots.clone(), &mut loader)
+        .await?;
+      graph_util::graph_valid(
+        &graph,
+        &roots,
+        graph_util::GraphValidOptions {
+          is_vendoring: false,
+          follow_type_only: true,
+          check_js: false,
+        },
+      )?;
       Ok(())
     }
 
@@ -1050,7 +1060,7 @@ impl Inner {
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark("did_close", Some(&params));
-    if params.text_document.uri.scheme() == "internal" {
+    if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents closing, as they don't need to
       // be tracked in memory, as they are static assets that won't change
       // already managed by the language service
@@ -2609,7 +2619,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
-    if params.text_document.uri.scheme() == "internal" {
+    if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents opening, as they don't need to
       // be tracked in memory, as they are static assets that won't change
       // already managed by the language service
@@ -3121,7 +3131,7 @@ impl Inner {
       .performance
       .mark("virtual_text_document", Some(&params));
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    let contents = if specifier.as_str() == "internal:/status.md" {
+    let contents = if specifier.as_str() == "deno:/status.md" {
       let mut contents = String::new();
       let mut documents_specifiers = self
         .documents
