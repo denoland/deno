@@ -149,9 +149,11 @@ mod test {
       concat!(
         "Parsing version constraints in the application-level ",
         "package.json is more strict at the moment: Invalid npm specifier ",
-        "version requirement '1.x - 1.3': Unexpected character.\n",
+        "version requirement. Unexpected character.\n",
         "   - 1.3\n",
-        "  ~" // the unexpected character is the space
+        "  ~: Unexpected character.\n",
+        "   - 1.3\n",
+        "  ~"
       )
     );
   }
