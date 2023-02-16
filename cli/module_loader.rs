@@ -78,11 +78,12 @@ impl CliModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleCodeSource, AnyError> {
     if specifier.scheme() == "node" {
-      unreachable!("Node built-in modules should be handled internally.");
+      unreachable!(); // Node built-in modules should be handled internally.
     }
 
     let graph = self.ps.graph();
     match graph.get(specifier) {
+      // todo: remember to handle json
       Some(deno_graph::Module {
         maybe_source: Some(code),
         media_type,
@@ -295,10 +296,8 @@ impl SourceMapGetter for CliModuleLoader {
   ) -> Option<String> {
     let graph = self.ps.graph();
     let code = match graph.get(&resolve_url(file_name).ok()?) {
-      Some(deno_graph::Module {
-        maybe_source: Some(code),
-        ..
-      }) => code,
+      Some(deno_graph::Module::Esm(module)) => Some(module.source),
+      Some(deno_graph::Module::Json(module)) => Some(module.source),
       _ => return None,
     };
     // Do NOT use .lines(): it skips the terminating empty line.

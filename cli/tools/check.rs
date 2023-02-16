@@ -6,7 +6,6 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
-use deno_graph::ModuleKind;
 use deno_runtime::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -237,11 +236,8 @@ fn get_tsc_roots(
       MediaType::Dts,
     ));
   }
-  result.extend(graph.modules().filter_map(|module| {
-    if module.kind == ModuleKind::External || module.maybe_source.is_none() {
-      return None;
-    }
-    match module.media_type {
+  result.extend(graph.modules().filter_map(|module| match module {
+    ModuleKind::Esm(module) => match module.media_type {
       MediaType::TypeScript
       | MediaType::Tsx
       | MediaType::Mts
@@ -256,8 +252,9 @@ fn get_tsc_roots(
       {
         Some((module.specifier.clone(), module.media_type))
       }
-      _ => None,
-    }
+      MediaType::Json => None,
+    },
+    ModuleKind::External(_) | ModuleKind::Npm(_) | ModuleKind::Json(_) => None,
   }));
   result
 }

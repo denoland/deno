@@ -28,7 +28,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
-use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleKind;
 use deno_graph::ResolutionResolved;
@@ -622,56 +622,36 @@ fn op_resolve(
     }
 
     let graph = &state.graph;
-    let resolved_dep = match graph.get(&referrer).map(|m| &m.dependencies) {
-      Some(dependencies) => dependencies.get(&specifier).and_then(|d| {
-        if let Some(type_resolution) = d.maybe_type.ok() {
-          Some(type_resolution)
-        } else if let Some(code_resolution) = d.maybe_code.ok() {
-          Some(code_resolution)
-        } else {
-          None
-        }
-      }),
-      None => None,
-    };
+    let resolved_dep = graph
+      .get(&referrer)
+      .and_then(|m| m.esm())
+      .and_then(|m| m.dependencies.get(&specifier))
+      .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
 
     let maybe_result = match resolved_dep {
       Some(ResolutionResolved { specifier, .. }) => {
-        let module = match graph.get(specifier) {
-          Some(module) => {
+        match graph.get(specifier) {
+          Some(Module::Esm(module)) => {
             let maybe_types_dep = module
               .maybe_types_dependency
               .as_ref()
               .map(|d| &d.dependency);
-            match maybe_types_dep.and_then(|d| d.maybe_specifier()) {
-              Some(specifier) => graph.get(specifier),
-              _ => Some(module),
-            }
+            let maybe_module =
+              match maybe_types_dep.and_then(|d| d.maybe_specifier()) {
+                Some(specifier) => graph.get(specifier),
+                _ => Some(module),
+              };
+            maybe_module
+              .map(|module| (module.specifier.clone(), module.media_type))
           }
-          _ => None,
-        };
-        if let Some(module) = module {
-          if module.kind == ModuleKind::External {
-            // handle npm:<package> urls
-            if let Ok(npm_ref) =
-              NpmPackageReference::from_specifier(&module.specifier)
-            {
-              if let Some(npm_resolver) = &state.maybe_npm_resolver {
-                Some(resolve_npm_package_reference_types(
-                  &npm_ref,
-                  npm_resolver,
-                )?)
-              } else {
-                None
-              }
+          Some(Module::Npm(module)) => {
+            if let Some(npm_resolver) = &state.maybe_npm_resolver {
+              Some(resolve_npm_package_reference_types(&npm_ref, npm_resolver)?)
             } else {
               None
             }
-          } else {
-            Some((module.specifier.clone(), module.media_type))
           }
-        } else {
-          None
+          Some(Module::Json(_) | Module::External(_)) | None => None,
         }
       }
       _ => {
@@ -689,8 +669,11 @@ fn op_resolve(
               .ok()
               .flatten(),
             ))
-          } else if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier)
+          } else if let Ok(npm_ref) =
+            NpmPackageReqReference::from_str(&specifier)
           {
+            // todo: add support for injecting this in the graph
+
             // this could occur when resolving npm:@types/node when it is
             // injected and not part of the graph
             Some(resolve_npm_package_reference_types(&npm_ref, npm_resolver)?)
@@ -740,7 +723,7 @@ fn op_resolve(
 }
 
 pub fn resolve_npm_package_reference_types(
-  npm_ref: &NpmPackageReference,
+  npm_ref: &NpmPackageReqReference,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<(ModuleSpecifier, MediaType), AnyError> {
   let maybe_resolution = node_resolve_npm_reference(

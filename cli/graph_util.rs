@@ -224,20 +224,18 @@ pub async fn create_graph_and_maybe_check(
 pub fn error_for_any_npm_specifier(
   graph: &deno_graph::ModuleGraph,
 ) -> Result<(), AnyError> {
-  let first_npm_specifier = graph
-    .specifiers()
-    .filter_map(|(_, r)| match r {
-      Ok(module) if module.kind == deno_graph::ModuleKind::External => {
-        Some(&module.specifier)
+  for module in graph.modules() {
+    match module {
+      Module::Npm(module) => {
+        bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
       }
-      _ => None,
-    })
-    .next();
-  if let Some(npm_specifier) = first_npm_specifier {
-    bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", npm_specifier)
-  } else {
-    Ok(())
+      Module::External(module) if module.specifier.scheme() == "node" => {
+        bail!("node specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
+      }
+      Module::Esm(_) | Module::Json(_) | Module::External(_) => {}
+    }
   }
+  Ok(())
 }
 
 /// Adds more explanatory information to a resolution error.

@@ -48,7 +48,6 @@ use deno_graph::npm::NpmPackageReq;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
 use deno_graph::ModuleGraph;
-use deno_graph::ModuleKind;
 use deno_graph::Resolution;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -583,8 +582,8 @@ impl ProcState {
   pub fn cache_module_emits(&self) -> Result<(), AnyError> {
     let graph = self.graph();
     for module in graph.modules() {
-      let is_emittable = module.kind != ModuleKind::External
-        && matches!(
+      if let Module::Esm(module) = module {
+        let is_emittable = matches!(
           module.media_type,
           MediaType::TypeScript
             | MediaType::Mts
@@ -592,14 +591,13 @@ impl ProcState {
             | MediaType::Jsx
             | MediaType::Tsx
         );
-      if is_emittable {
-        if let Some(code) = &module.maybe_source {
+        if is_emittable {
           emit_parsed_source(
             &self.emit_cache,
             &self.parsed_source_cache,
             &module.specifier,
             module.media_type,
-            code,
+            module.source,
             &self.emit_options,
             self.emit_options_hash,
           )?;
@@ -712,44 +710,12 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
 #[derive(Debug, Default)]
 struct GraphData {
   graph: Arc<ModuleGraph>,
-  /// The npm package requirements from all the encountered graphs
-  /// in the order that they should be resolved.
-  npm_packages: Vec<NpmPackageReq>,
-  /// If the graph had a "node:" specifier.
-  has_node_builtin_specifier: bool,
   checked_libs: HashMap<TsTypeLib, HashSet<ModuleSpecifier>>,
 }
 
 impl GraphData {
   /// Store data from `graph` into `self`.
   pub fn update_graph(&mut self, graph: Arc<ModuleGraph>) {
-    let mut has_npm_specifier_in_graph = false;
-
-    for (specifier, _) in graph.specifiers() {
-      match specifier.scheme() {
-        "node" => {
-          // We don't ever set this back to false because once it's
-          // on then it's on globally.
-          self.has_node_builtin_specifier = true;
-        }
-        "npm" => {
-          if !has_npm_specifier_in_graph
-            && NpmPackageReference::from_specifier(specifier).is_ok()
-          {
-            has_npm_specifier_in_graph = true;
-          }
-        }
-        _ => {}
-      }
-
-      if has_npm_specifier_in_graph && self.has_node_builtin_specifier {
-        break; // exit early
-      }
-    }
-
-    if has_npm_specifier_in_graph {
-      self.npm_packages = resolve_graph_npm_info(&graph).package_reqs;
-    }
     self.graph = graph;
   }
 

@@ -1424,7 +1424,6 @@ fn analyze_module(
   match parsed_source_result {
     Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
       specifier,
-      deno_graph::ModuleKind::Esm,
       maybe_headers,
       parsed_source,
       Some(resolver),

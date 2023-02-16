@@ -76,10 +76,6 @@ impl Loader for FetchCacher {
       return None;
     }
 
-    if matches!(specifier.scheme(), "npm" | "node") {
-      return None;
-    }
-
     let local = self.file_fetcher.get_local_path(specifier)?;
     if local.is_file() {
       let emit = self
@@ -101,33 +97,6 @@ impl Loader for FetchCacher {
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
   ) -> LoadFuture {
-    if specifier.scheme() == "npm" {
-      return Box::pin(futures::future::ready(
-        match deno_graph::npm::NpmPackageReference::from_specifier(specifier) {
-          Ok(_) => Ok(Some(deno_graph::source::LoadResponse::External {
-            specifier: specifier.clone(),
-          })),
-          Err(err) => Err(err.into()),
-        },
-      ));
-    }
-
-    let specifier =
-      if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
-        // Built-in Node modules are embedded in the Deno binary (in V8 snapshot)
-        // so we don't want them to be loaded by the "deno graph".
-        match crate::node::resolve_builtin_node_module(module_name) {
-          Ok(specifier) => {
-            return Box::pin(futures::future::ready(Ok(Some(
-              deno_graph::source::LoadResponse::External { specifier },
-            ))))
-          }
-          Err(err) => return Box::pin(futures::future::ready(Err(err))),
-        }
-      } else {
-        specifier.clone()
-      };
-
     let permissions = if is_dynamic {
       self.dynamic_permissions.clone()
     } else {
