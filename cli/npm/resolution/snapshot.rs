@@ -10,6 +10,9 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
+use deno_graph::npm::NpmPackageId;
+use deno_graph::npm::NpmPackageReq;
+use deno_graph::semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -20,10 +23,7 @@ use crate::npm::registry::NpmPackageVersionDistInfo;
 use crate::npm::registry::NpmRegistryApi;
 use crate::npm::registry::RealNpmRegistryApi;
 
-use super::NpmPackageId;
-use super::NpmPackageReq;
 use super::NpmResolutionPackage;
-use super::NpmVersionMatcher;
 
 /// Packages partitioned by if they are "copy" packages or not.
 pub struct NpmPackagesPartitioned {
@@ -159,12 +159,8 @@ impl NpmResolutionSnapshot {
 
     // TODO(bartlomieju): this should use a reverse lookup table in the
     // snapshot instead of resolving best version again.
-    let req = NpmPackageReq {
-      name: name.to_string(),
-      version_req: None,
-    };
-
-    if let Some(id) = self.resolve_best_package_id(name, &req) {
+    let any_version_req = VersionReq::parse_from_npm("*").unwrap();
+    if let Some(id) = self.resolve_best_package_id(name, &any_version_req) {
       if let Some(pkg) = self.packages.get(&id) {
         return Ok(pkg);
       }
@@ -201,14 +197,14 @@ impl NpmResolutionSnapshot {
   pub fn resolve_best_package_id(
     &self,
     name: &str,
-    version_matcher: &impl NpmVersionMatcher,
+    version_req: &VersionReq,
   ) -> Option<NpmPackageId> {
     // todo(dsherret): this is not exactly correct because some ids
     // will be better than others due to peer dependencies
     let mut maybe_best_id: Option<&NpmPackageId> = None;
     if let Some(ids) = self.packages_by_name.get(name) {
       for id in ids {
-        if version_matcher.matches(&id.version) {
+        if version_req.matches(&id.version) {
           let is_best_version = maybe_best_id
             .as_ref()
             .map(|best_id| best_id.version.cmp(&id.version).is_lt())

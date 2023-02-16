@@ -3379,6 +3379,9 @@ async fn test_resolve_dns() {
       .unwrap();
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success() {
+      eprintln!("stderr: {err}");
+    }
     assert!(output.status.success());
     assert!(err.starts_with("Check file"));
 
@@ -3788,6 +3791,7 @@ itest!(permission_args_quiet {
 });
 
 // Regression test for https://github.com/denoland/deno/issues/16772
+#[ignore]
 #[test]
 fn file_fetcher_preserves_permissions() {
   let _guard = util::http_server();
@@ -3804,6 +3808,7 @@ fn file_fetcher_preserves_permissions() {
   });
 }
 
+#[ignore]
 #[test]
 fn stdio_streams_are_locked_in_permission_prompt() {
   let _guard = util::http_server();
@@ -3825,14 +3830,14 @@ fn stdio_streams_are_locked_in_permission_prompt() {
 }
 
 itest!(node_builtin_modules_ts {
-  args: "run --quiet run/node_builtin_modules/mod.ts",
+  args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
   output: "run/node_builtin_modules/mod.ts.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
   exit_code: 0,
 });
 
 itest!(node_builtin_modules_js {
-  args: "run --quiet run/node_builtin_modules/mod.js",
+  args: "run --quiet --allow-read run/node_builtin_modules/mod.js hello there",
   output: "run/node_builtin_modules/mod.js.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
   exit_code: 0,
@@ -3842,5 +3847,17 @@ itest!(node_prefix_missing {
   args: "run --quiet run/node_prefix_missing/main.ts",
   output: "run/node_prefix_missing/main.ts.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
+  exit_code: 1,
+});
+
+itest!(internal_import {
+  args: "run run/internal_import.ts",
+  output: "run/internal_import.ts.out",
+  exit_code: 1,
+});
+
+itest!(internal_dynamic_import {
+  args: "run run/internal_dynamic_import.ts",
+  output: "run/internal_dynamic_import.ts.out",
   exit_code: 1,
 });

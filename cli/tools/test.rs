@@ -7,7 +7,7 @@ use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display;
 use crate::file_fetcher::File;
-use crate::graph_util::graph_valid;
+use crate::graph_util::graph_valid_with_cli_options;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::util::checksum;
@@ -655,7 +655,8 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
   // check if there are any stack frames coming from user code
   let should_filter = frames.iter().any(|f| {
     if let Some(file_name) = &f.file_name {
-      !(file_name.starts_with("[deno:") || file_name.starts_with("deno:"))
+      !(file_name.starts_with("[internal:")
+        || file_name.starts_with("internal:"))
     } else {
       true
     }
@@ -667,7 +668,8 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
       .rev()
       .skip_while(|f| {
         if let Some(file_name) = &f.file_name {
-          file_name.starts_with("[deno:") || file_name.starts_with("deno:")
+          file_name.starts_with("[internal:")
+            || file_name.starts_with("internal:")
         } else {
           false
         }
@@ -1375,7 +1377,7 @@ pub async fn run_tests_with_watch(
         test_modules.clone()
       };
       let graph = ps.create_graph(test_modules.clone()).await?;
-      graph_valid(&graph, !no_check, ps.options.check_js())?;
+      graph_valid_with_cli_options(&graph, &test_modules, &ps.options)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {

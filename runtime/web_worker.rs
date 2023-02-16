@@ -98,7 +98,7 @@ impl Serialize for WorkerControlEvent {
         let value = match error.downcast_ref::<JsError>() {
           Some(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
-              Some(s) => !s.trim_start_matches('[').starts_with("deno:"),
+              Some(s) => !s.trim_start_matches('[').starts_with("internal:"),
               None => false,
             });
             json!({
@@ -434,7 +434,8 @@ impl WebWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init::<PermissionsContainer>(unstable),
+      deno_napi::init::<PermissionsContainer>(),
+      deno_node::init_polyfill(),
       deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),

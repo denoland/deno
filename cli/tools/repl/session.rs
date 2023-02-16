@@ -2,8 +2,8 @@
 
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
-use crate::npm::NpmPackageReference;
 use crate::ProcState;
+
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::visit::noop_visit_type;
 use deno_ast::swc::visit::Visit;
@@ -18,7 +18,9 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
+use deno_graph::npm::NpmPackageReference;
 use deno_graph::source::Resolver;
+use deno_runtime::deno_node;
 use deno_runtime::worker::MainWorker;
 
 use super::cdp;
@@ -398,7 +400,9 @@ impl ReplSession {
       scope_analysis: false,
     })?;
 
-    self.check_for_npm_imports(&parsed_module.program()).await?;
+    self
+      .check_for_npm_or_node_imports(&parsed_module.program())
+      .await?;
 
     let transpiled_src = parsed_module
       .transpile(&deno_ast::EmitOptions {
@@ -428,31 +432,36 @@ impl ReplSession {
     })
   }
 
-  async fn check_for_npm_imports(
+  async fn check_for_npm_or_node_imports(
     &mut self,
     program: &swc_ast::Program,
   ) -> Result<(), AnyError> {
     let mut collector = ImportCollector::new();
     program.visit_with(&mut collector);
 
-    let npm_imports = collector
+    let resolved_imports = collector
       .imports
       .iter()
       .flat_map(|i| {
         self
           .proc_state
-          .maybe_resolver
-          .as_ref()
-          .and_then(|resolver| resolver.resolve(i, &self.referrer).ok())
+          .resolver
+          .resolve(i, &self.referrer)
+          .ok()
           .or_else(|| ModuleSpecifier::parse(i).ok())
-          .and_then(|url| NpmPackageReference::from_specifier(&url).ok())
       })
+      .collect::<Vec<_>>();
+
+    let npm_imports = resolved_imports
+      .iter()
+      .flat_map(|url| NpmPackageReference::from_specifier(url).ok())
       .map(|r| r.req)
       .collect::<Vec<_>>();
-    if !npm_imports.is_empty() {
+    let has_node_specifier =
+      resolved_imports.iter().any(|url| url.scheme() == "node");
+    if !npm_imports.is_empty() || has_node_specifier {
       if !self.has_initialized_node_runtime {
-        self.proc_state.prepare_node_std_graph().await?;
-        crate::node::initialize_runtime(
+        deno_node::initialize_runtime(
           &mut self.worker.js_runtime,
           self.proc_state.options.node_modules_dir(),
         )
@@ -465,6 +474,15 @@ impl ReplSession {
         .npm_resolver
         .add_package_reqs(npm_imports)
         .await?;
+
+      // prevent messages in the repl about @types/node not being cached
+      if has_node_specifier {
+        self
+          .proc_state
+          .npm_resolver
+          .inject_synthetic_types_node_package()
+          .await?;
+      }
     }
     Ok(())
   }
