@@ -178,6 +178,8 @@ pub struct Graph {
   // This will be set when creating from a snapshot, then
   // inform the final snapshot creation.
   packages_to_copy_index: HashMap<NpmPackageId, usize>,
+  /// Packages that the resolver should resolve first.
+  pending_unresolved_packages: Vec<NpmPackageId>,
 }
 
 impl Graph {
@@ -185,18 +187,22 @@ impl Graph {
     fn fill_for_id(
       graph: &mut Graph,
       id: &NpmPackageId,
+      resolution: &NpmResolutionPackage,
       packages: &HashMap<NpmPackageId, NpmResolutionPackage>,
     ) -> Arc<Mutex<Node>> {
-      let resolution = packages.get(id).unwrap();
       let (created, node) = graph.get_or_create_for_id(id);
       if created {
         for (name, child_id) in &resolution.dependencies {
-          let child_node = fill_for_id(graph, child_id, packages);
+          let child_node = fill_for_id(graph, child_id, packages.get(child_id).unwrap(), packages);
           graph.set_child_parent_node(name, &child_node, id);
         }
       }
       node
     }
+
+    // it is assumed that the caller will ensure the pending unresolved packages
+    // will not be in the collection of resolved packages
+    debug_assert!(snapshot.pending_unresolved_packages.iter().all(|id| !snapshot.packages.contains_key(&id)));
 
     let mut graph = Self {
       // Note: It might be more correct to store the copy index
@@ -206,17 +212,28 @@ impl Graph {
         .iter()
         .map(|(id, p)| (id.clone(), p.copy_index))
         .collect(),
+      pending_unresolved_packages: snapshot.pending_unresolved_packages,
       ..Default::default()
     };
-    for (package_req, id) in &snapshot.package_reqs {
-      let node = fill_for_id(&mut graph, id, &snapshot.packages);
-      let package_req_text = package_req.to_string();
-      (*node)
-        .lock()
-        .add_parent(package_req_text.clone(), NodeParent::Req);
-      graph.package_reqs.insert(package_req_text, id.clone());
+    for (package_req, id) in snapshot.package_reqs {
+      if let Some(resolution) = snapshot.packages.get(&id) {
+        let node = fill_for_id(&mut graph, &id, resolution, &snapshot.packages);
+        let package_req_text = package_req.to_string();
+        (*node)
+          .lock()
+          .add_parent(package_req_text.clone(), NodeParent::Req);
+        graph.package_reqs.insert(package_req_text, id);
+      } else {
+        // if the id not in the list of packages, then that means
+        // this is a pending unresolved package so ensure that's the case
+        debug_assert!(graph.pending_unresolved_packages.contains(&id));
+      }
     }
     graph
+  }
+
+  pub fn take_pending_unresolved(&mut self) -> Vec<NpmPackageId> {
+    std::mem::take(&mut self.pending_unresolved_packages)
   }
 
   pub fn has_package_req(&self, req: &NpmPackageReq) -> bool {
@@ -391,6 +408,8 @@ impl Graph {
       );
     }
 
+    debug_assert!(self.pending_unresolved_packages.is_empty());
+
     Ok(NpmResolutionSnapshot {
       package_reqs: self
         .package_reqs
@@ -401,6 +420,7 @@ impl Graph {
         .collect(),
       packages_by_name: self.packages_by_name,
       packages,
+      pending_unresolved_packages: self.pending_unresolved_packages,
     })
   }
 }

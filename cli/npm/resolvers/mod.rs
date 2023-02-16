@@ -354,6 +354,12 @@ impl NpmPackageResolver {
 
     Ok(())
   }
+
+  pub async fn resolve_pending(&self) -> Result<(), AnyError> {
+    self.resolution.resolve_pending().await?;
+    self.fs_resolver.cache_packages().await?;
+    Ok(())
+  }
 }
 
 impl RequireNpmResolver for NpmPackageResolver {

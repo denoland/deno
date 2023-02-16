@@ -50,7 +50,8 @@ pub struct NpmResolutionSnapshot {
   pub(super) packages_by_name: HashMap<String, Vec<NpmPackageId>>,
   #[serde(with = "map_to_vec")]
   pub(super) packages: HashMap<NpmPackageId, NpmResolutionPackage>,
-  /// Ordered list of packages whose dependencies have not yet been resolved
+  /// Ordered list based on resolution of packages whose dependencies
+  /// have not yet been resolved
   pub(super) pending_unresolved_packages: Vec<NpmPackageId>,
 }
 

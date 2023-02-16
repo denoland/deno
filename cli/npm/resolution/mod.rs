@@ -96,9 +96,8 @@ impl NpmResolution {
     let _permit = inner.update_semaphore.acquire().await?;
     let snapshot = inner.snapshot.read().clone();
 
-    let snapshot = inner
-      .add_package_reqs_to_snapshot(package_reqs, snapshot)
-      .await?;
+    let snapshot =
+      add_package_reqs_to_snapshot(&inner.api, package_reqs, snapshot).await?;
 
     *inner.snapshot.write() = snapshot;
     Ok(())
@@ -214,14 +213,16 @@ impl NpmResolution {
       id.as_serialized(),
     );
     snapshot.package_reqs.insert(pkg_req.clone(), id.clone());
-    let packages = snapshot
-      .packages_by_name
-      .entry(package_info.name.clone())
-      .or_default();
-    if !packages.contains(&id) {
-      packages.push(id);
+    if !snapshot.packages.contains_key(&id) {
+      let packages = snapshot
+        .packages_by_name
+        .entry(package_info.name.clone())
+        .or_default();
+      if !packages.contains(&id) {
+        packages.push(id);
+      }
+      snapshot.pending_unresolved_packages.push(id.clone());
     }
-    snapshot.pending_unresolved_packages.push(id.clone());
     Ok(id)
   }
 
@@ -250,6 +251,10 @@ impl NpmResolution {
     }
     Ok(())
   }
+
+  pub async fn resolve_pending(&self) -> Result<(), AnyError> {
+    todo!()
+  }
 }
 
 async fn add_package_reqs_to_snapshot(
@@ -259,43 +264,22 @@ async fn add_package_reqs_to_snapshot(
 ) -> Result<NpmResolutionSnapshot, AnyError> {
   // convert the snapshot to a traversable graph
   let mut graph = Graph::from_snapshot(snapshot);
+  let pending_unresolved = graph.take_pending_unresolved();
 
-  // go over the top level package names first, then down the
-  // tree one level at a time through all the branches
-  let mut unresolved_tasks = Vec::with_capacity(package_reqs.len());
-  let mut resolving_package_names = HashSet::with_capacity(package_reqs.len());
-  for package_req in &package_reqs {
-    if graph.has_package_req(package_req) {
-      // skip analyzing this package, as there's already a matching top level package
-      continue;
-    }
-    if !resolving_package_names.insert(package_req.name.clone()) {
-      continue; // already resolving
-    }
-
-    // cache the package info up front in parallel
-    if should_sync_download() {
-      // for deterministic test output
-      api.package_info(&package_req.name).await?;
-    } else {
-      let api = api.clone();
-      let package_name = package_req.name.clone();
-      unresolved_tasks.push(tokio::task::spawn(async move {
-        // This is ok to call because api will internally cache
-        // the package information in memory.
-        api.package_info(&package_name).await
-      }));
-    };
-  }
-
-  for result in futures::future::join_all(unresolved_tasks).await {
-    result??; // surface the first error
-  }
+  // go over the top level package names first (pending unresolved and npm package reqs),
+  // then down the tree one level at a time through all the branches
+  cache_package_infos_in_api(api, &graph, &pending_unresolved, &package_reqs)
+    .await?;
 
   let mut resolver = GraphDependencyResolver::new(&mut graph, &api);
 
-  // These package_reqs should already be sorted in the order they should
-  // be resolved in.
+  // These package ids and package reqs should already be sorted
+  // in the order they should be resolved in.
+  for pkg_id in pending_unresolved {
+    let info = api.package_info(&pkg_id.name).await?;
+    // todo...
+  }
+
   for package_req in package_reqs {
     // avoid loading the info if this is already in the graph
     if !resolver.has_package_req(&package_req) {
@@ -309,4 +293,54 @@ async fn add_package_reqs_to_snapshot(
   let result = graph.into_snapshot(&api).await;
   api.clear_memory_cache();
   result
+}
+
+async fn cache_package_infos_in_api(
+  api: &NpmRegistryApi,
+  graph: &Graph,
+  pending_unresolved: &Vec<NpmPackageId>,
+  package_reqs: &Vec<NpmPackageReq>,
+) -> Result<(), AnyError> {
+  // go over the top level package names first (pending unresolved and npm package reqs),
+  // then down the tree one level at a time through all the branches
+  let mut package_names_to_cache =
+    HashSet::with_capacity(package_reqs.len() + pending_unresolved.len());
+
+  package_names_to_cache
+    .extend(pending_unresolved.iter().map(|id| id.name.clone()));
+  package_names_to_cache.extend(
+    package_reqs
+      .iter()
+      // skip analyzing this package if there's already a matching top level package
+      .filter(|req| !graph.has_package_req(req))
+      .map(|req| req.name.clone()),
+  );
+
+  let mut unresolved_tasks = Vec::with_capacity(package_names_to_cache.len());
+
+  // cache the package info up front in parallel
+  if should_sync_download() {
+    // for deterministic test output
+    let mut ordered_names =
+      package_names_to_cache.into_iter().collect::<Vec<_>>();
+    ordered_names.sort();
+    for name in ordered_names {
+      api.package_info(&name).await?;
+    }
+  } else {
+    for name in package_names_to_cache {
+      let api = api.clone();
+      unresolved_tasks.push(tokio::task::spawn(async move {
+        // This is ok to call because api will internally cache
+        // the package information in memory.
+        api.package_info(&name).await
+      }));
+    }
+  };
+
+  for result in futures::future::join_all(unresolved_tasks).await {
+    result??; // surface the first error
+  }
+
+  Ok(())
 }

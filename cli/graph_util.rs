@@ -8,7 +8,6 @@ use crate::cache;
 use crate::cache::TypeCheckCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
-use crate::npm::resolve_graph_npm_info;
 use crate::npm::NpmPackageResolver;
 use crate::proc_state::ProcState;
 use crate::resolver::CliGraphResolver;

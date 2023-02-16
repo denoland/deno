@@ -12,7 +12,6 @@ pub use registry::NpmPackageVersionDistInfo;
 pub use registry::NpmRegistryApi;
 #[cfg(test)]
 pub use registry::TestNpmRegistryApiInner;
-pub use resolution::resolve_graph_npm_info;
 pub use resolution::NpmResolution;
 pub use resolution::NpmResolutionPackage;
 pub use resolution::NpmResolutionSnapshot;

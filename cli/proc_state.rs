@@ -17,12 +17,12 @@ use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
 use crate::emit::emit_parsed_source;
 use crate::file_fetcher::FileFetcher;
+use crate::graph_util::build_graph_with_npm_resolution;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
 use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
-use crate::npm::resolve_graph_npm_info;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmRegistryApi;
@@ -335,20 +335,21 @@ impl ProcState {
     let reload_exclusions: HashSet<ModuleSpecifier> =
       graph.specifiers().map(|(s, _)| s.clone()).collect();
 
-    graph
-      .build(
-        roots.clone(),
-        &mut cache,
-        deno_graph::BuildOptions {
-          is_dynamic,
-          imports: maybe_imports,
-          resolver: Some(graph_resolver),
-          npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&*analyzer),
-          reporter: maybe_file_watcher_reporter,
-        },
-      )
-      .await;
+    build_graph_with_npm_resolution(
+      &mut graph,
+      &self.npm_resolver,
+      roots.clone(),
+      &mut cache,
+      deno_graph::BuildOptions {
+        is_dynamic,
+        imports: maybe_imports,
+        resolver: Some(graph_resolver),
+        npm_resolver: Some(graph_npm_resolver),
+        module_analyzer: Some(&*analyzer),
+        reporter: maybe_file_watcher_reporter,
+      },
+    )
+    .await;
 
     // If there is a lockfile, validate the integrity of all the modules.
     if let Some(lockfile) = &self.lockfile {
@@ -361,10 +362,6 @@ impl ProcState {
       graph_data.update_graph(Arc::new(graph));
       graph_data.graph.clone()
     };
-
-    if !npm_package_reqs.is_empty() {
-      self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
-    }
 
     if graph.has_node_specifier
       && self.options.type_check_mode() != TypeCheckMode::None
@@ -643,30 +640,23 @@ impl ProcState {
     let analyzer = self.parsed_source_cache.as_analyzer();
 
     let mut graph = ModuleGraph::default();
-    graph
-      .build(
-        roots,
-        loader,
-        deno_graph::BuildOptions {
-          is_dynamic: false,
-          imports: maybe_imports,
-          resolver: Some(graph_resolver),
-          npm_resolver: Some(graph_npm_resolver),
-          module_analyzer: Some(&*analyzer),
-          reporter: None,
-        },
-      )
-      .await;
+    build_graph_with_npm_resolution(
+      &mut graph,
+      &self.npm_resolver,
+      roots,
+      loader,
+      deno_graph::BuildOptions {
+        is_dynamic: false,
+        imports: maybe_imports,
+        resolver: Some(graph_resolver),
+        npm_resolver: Some(graph_npm_resolver),
+        module_analyzer: Some(&*analyzer),
+        reporter: None,
+      },
+    )
+    .await?;
 
-    // add the found npm package requirements to the npm resolver and cache them
-    let graph_npm_info = resolve_graph_npm_info(&graph);
-    if !graph_npm_info.package_reqs.is_empty() {
-      self
-        .npm_resolver
-        .add_package_reqs(graph_npm_info.package_reqs)
-        .await?;
-    }
-    if graph_npm_info.has_node_builtin_specifier
+    if graph.has_node_specifier
       && self.options.type_check_mode() != TypeCheckMode::None
     {
       self
