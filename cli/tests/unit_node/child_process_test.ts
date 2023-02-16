@@ -31,7 +31,7 @@ Deno.test("[node/child_process spawn] The 'error' event is emitted when no binar
   const promise = withTimeout(1000);
   const childProcess = spawn("no-such-cmd");
   childProcess.on("error", (_err: Error) => {
-    // TODO Assert an error message.
+    // TODO(@bartlomieju) Assert an error message.
     promise.resolve();
   });
   await promise;
@@ -471,6 +471,7 @@ Deno.test({
       if (child instanceof ChildProcess) {
         assert(err);
         assertEquals(
+          // deno-lint-ignore no-explicit-any
           (err as any).code,
           "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
         );
