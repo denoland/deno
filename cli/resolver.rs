@@ -85,7 +85,7 @@ impl NpmResolver for CliGraphResolver {
   }
 
   fn is_builtin_node_module(&self, module_name: &str) -> bool {
-    is_builtin_node_module(name)
+    is_builtin_node_module(module_name)
   }
 
   fn load_and_cache_npm_package_info(

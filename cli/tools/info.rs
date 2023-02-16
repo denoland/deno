@@ -11,8 +11,8 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_graph::npm::NpmPackageId;
-use deno_graph::npm::NpmPackageReference;
 use deno_graph::npm::NpmPackageReq;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Dependency;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -150,7 +150,7 @@ fn add_npm_packages_to_json(
       let maybe_package = module
         .get("specifier")
         .and_then(|k| k.as_str())
-        .and_then(|specifier| NpmPackageReference::from_str(specifier).ok())
+        .and_then(|specifier| NpmPackageReqReference::from_str(specifier).ok())
         .and_then(|package_ref| {
           snapshot
             .resolve_package_from_deno_module(&package_ref.req)
@@ -186,7 +186,7 @@ fn add_npm_packages_to_json(
           if let serde_json::Value::Object(dep) = dep {
             let specifier = dep.get("specifier").and_then(|s| s.as_str());
             if let Some(specifier) = specifier {
-              if let Ok(npm_ref) = NpmPackageReference::from_str(specifier) {
+              if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
                 if let Ok(pkg) =
                   snapshot.resolve_package_from_deno_module(&npm_ref.req)
                 {
@@ -315,7 +315,7 @@ impl NpmInfo {
     }
 
     for (specifier, _) in graph.specifiers() {
-      if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
+      if let Ok(reference) = NpmPackageReqReference::from_specifier(specifier) {
         info
           .specifiers
           .insert(specifier.clone(), reference.req.clone());

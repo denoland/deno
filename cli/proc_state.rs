@@ -43,8 +43,8 @@ use deno_core::resolve_url_or_path;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
-use deno_graph::npm::NpmPackageReference;
 use deno_graph::npm::NpmPackageReq;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
 use deno_graph::ModuleGraph;
@@ -507,7 +507,8 @@ impl ProcState {
             return node::resolve_builtin_node_module(specifier.path());
           }
 
-          if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
+          if let Ok(reference) =
+            NpmPackageReqReference::from_specifier(specifier)
           {
             if !self.options.unstable()
               && matches!(found_referrer.scheme(), "http" | "https")
@@ -566,7 +567,9 @@ impl ProcState {
         .map(Cow::Borrowed)
         .or_else(|| ModuleSpecifier::parse(specifier).ok().map(Cow::Owned));
       if let Some(specifier) = specifier {
-        if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+        if let Ok(reference) =
+          NpmPackageReqReference::from_specifier(&specifier)
+        {
           return self
             .handle_node_resolve_result(node::node_resolve_npm_reference(
               &reference,

@@ -28,8 +28,6 @@ use crate::npm::registry::NpmPackageVersionInfo;
 use crate::npm::resolution::common::resolve_best_package_version_and_info;
 use crate::npm::NpmRegistryApi;
 
-use super::common::get_resolved_package_version_and_info;
-use super::common::resolve_best_package_version;
 use super::common::version_req_satisfies;
 use super::common::VersionAndInfo;
 use super::snapshot::NpmResolutionSnapshot;
@@ -351,7 +349,7 @@ impl Graph {
 
   pub async fn into_snapshot(
     self,
-    api: &impl NpmRegistryApi,
+    api: &NpmRegistryApi,
   ) -> Result<NpmResolutionSnapshot, AnyError> {
     let mut copy_index_resolver =
       SnapshotPackageCopyIndexResolver::from_map_with_capacity(
@@ -414,7 +412,7 @@ pub struct GraphDependencyResolver<'a> {
     VecDeque<(Arc<VisitedVersionsPath>, Arc<Mutex<Node>>)>,
 }
 
-impl<'a> GraphDependencyResolver<'ac> {
+impl<'a> GraphDependencyResolver<'a> {
   pub fn new(graph: &'a mut Graph, api: &'a NpmRegistryApi) -> Self {
     Self {
       graph,
@@ -441,6 +439,34 @@ impl<'a> GraphDependencyResolver<'ac> {
       package_info,
       None,
     )?;
+    self.graph.set_child_parent(
+      &package_req.to_string(),
+      &node,
+      &NodeParent::Req,
+    );
+    self.try_add_pending_unresolved_node(None, &node);
+    Ok(())
+  }
+
+  pub fn add_resolved_package_req(
+    &mut self,
+    package_req: NpmPackageReq,
+    id: NpmPackageId,
+  ) -> Result<(), AnyError> {
+    let (created, node) = self.graph.get_or_create_for_id(&id);
+    if created {
+      self.api.get_cached_package_info(&id.name)
+      let mut node = (*node).lock();
+      let mut deps = version_and_info
+        .info
+        .dependencies_as_entries()
+        .with_context(|| format!("npm package: {}", id.display()))?;
+      // Ensure name alphabetical and then version descending
+      // so these are resolved in that order
+      deps.sort();
+      node.deps = Arc::new(deps);
+      node.no_peers = node.deps.is_empty();
+    }
     self.graph.set_child_parent(
       &package_req.to_string(),
       &node,
@@ -958,7 +984,7 @@ impl<'a> GraphDependencyResolver<'ac> {
 
 #[cfg(test)]
 mod test {
-  use deno_graph::npm::NpmPackageReference;
+  use deno_graph::npm::NpmPackageReqReference;
   use pretty_assertions::assert_eq;
 
   use crate::npm::registry::TestNpmRegistryApi;
@@ -2529,7 +2555,7 @@ mod test {
     let mut resolver = GraphDependencyResolver::new(&mut graph, &api);
 
     for req in reqs {
-      let req = NpmPackageReference::from_str(req).unwrap().req;
+      let req = NpmPackageReqReference::from_str(req).unwrap().req;
       resolver
         .add_package_req(&req, &api.package_info(&req.name).await.unwrap())
         .unwrap();

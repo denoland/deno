@@ -8,7 +8,6 @@ use std::collections::VecDeque;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use crate::util::fs::symlink_dir;
 use deno_ast::ModuleSpecifier;
@@ -26,14 +25,12 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use tokio::task::JoinHandle;
 
-use crate::args::Lockfile;
 use crate::npm::cache::mixed_case_package_name_encode;
 use crate::npm::cache::should_sync_download;
 use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
-use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolutionPackage;
 use crate::util::fs::copy_dir_recursive;
 use crate::util::fs::hard_link_dir_recursive;
@@ -58,7 +55,7 @@ impl LocalNpmPackageResolver {
     cache: NpmCache,
     registry_url: Url,
     node_modules_folder: PathBuf,
-    npm_resolution: NpmResolution,
+    resolution: NpmResolution,
   ) -> Self {
     Self {
       cache,

@@ -205,20 +205,16 @@ fn visit_modules(
   parsed_source_cache: &ParsedSourceCache,
 ) -> Result<(), AnyError> {
   for module in modules {
-    if module.media_type == MediaType::Json {
+    let module = match module {
+      Module::Esm(module) => module,
       // skip visiting Json modules as they are leaves
-      continue;
-    }
-
-    let text_info =
-      match parsed_source_cache.get_parsed_source_from_module(module)? {
-        Some(source) => source.text_info().clone(),
-        None => continue,
-      };
-    let source_text = match &module.maybe_source {
-      Some(source) => source,
-      None => continue,
+      Module::Json(_) | Module::Npm(_) | Module::External(_) => continue,
     };
+
+    let parsed_source =
+      parsed_source_cache.get_parsed_source_from_esm_module(module)?;
+    let text_info = parsed_source.text_info().clone();
+    let source_text = &module.source;
 
     for dep in module.dependencies.values() {
       visit_resolution(
@@ -291,7 +287,7 @@ fn handle_dep_specifier(
   mappings: &Mappings,
 ) {
   let specifier = match graph.get(unresolved_specifier) {
-    Some(module) => module.specifier.clone(),
+    Some(module) => module.specifier().clone(),
     // Ignore when None. The graph was previous validated so this is a
     // dynamic import that was missing and is ignored for vendoring
     None => return,

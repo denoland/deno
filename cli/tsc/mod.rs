@@ -29,6 +29,7 @@ use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::npm::NpmPackageReqReference;
+use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleKind;
 use deno_graph::ResolutionResolved;

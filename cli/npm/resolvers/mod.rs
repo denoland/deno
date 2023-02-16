@@ -153,7 +153,7 @@ impl NpmPackageResolver {
       .map(|s| s.snapshot)
       .or_else(initial_snapshot);
     let resolution = Arc::new(NpmResolution::new(api, maybe_snapshot));
-    let registry_url = api.base_url().to_owned();
+    let registry_url = api.base_url();
     let fs_resolver: Arc<dyn NpmPackageFsResolver> =
       match &local_node_modules_path {
         Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(

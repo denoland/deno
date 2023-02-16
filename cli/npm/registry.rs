@@ -191,6 +191,7 @@ impl NpmPackageVersionDistInfo {
   }
 }
 
+#[derive(Clone)]
 pub struct NpmRegistryApi(Arc<dyn NpmRegistryApiInner>);
 
 impl NpmRegistryApi {
@@ -265,50 +266,60 @@ impl NpmRegistryApi {
     name: &str,
     version: &Version,
   ) -> Result<Option<NpmPackageVersionInfo>, AnyError> {
-    let package_info = self.0.api.package_info(&name).await?;
-    Ok(package_info.versions.get(&version).cloned())
+    let package_info = self.package_info(&name).await?;
+    Ok(package_info.versions.get(&version.to_string()).cloned())
   }
 
   /// Clears the internal memory cache.
   pub fn clear_memory_cache(&self) {
     self.0.clear_memory_cache();
   }
+
+  pub fn get_cached_package_info(
+    &self,
+    name: &str,
+  ) -> Option<Arc<NpmPackageInfo>> {
+    self.0.get_cached_package_info(name)
+  }
+
+  pub fn base_url(&self) -> &Url {
+    self.0.base_url()
+  }
 }
 
-trait NpmRegistryApiInner: Clone + Sync + Send + 'static {
+trait NpmRegistryApiInner: Sync + Send + 'static {
   fn maybe_package_info(
     &self,
     name: &str,
   ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>>;
 
   fn clear_memory_cache(&self);
+
+  fn get_cached_package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>>;
+
+  fn base_url(&self) -> &Url;
 }
 
-impl RealNpmRegistryApiInner {
-  pub fn base_url(&self) -> &Url {
-    &self.0.base_url
+impl NpmRegistryApiInner for RealNpmRegistryApiInner {
+  fn base_url(&self) -> &Url {
+    &self.base_url
   }
 
-  pub fn get_cached_package_info(
-    &self,
-    name: &str,
-  ) -> Option<Arc<NpmPackageInfo>> {
-    self.0.mem_cache.lock().get(name).cloned()
-  }
-}
-
-impl NpmRegistryApiInner for RealNpmRegistryApi {
   fn maybe_package_info(
     &self,
     name: &str,
   ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
     let api = self.clone();
     let name = name.to_string();
-    async move { api.0.maybe_package_info(&name).await }.boxed()
+    async move { api.maybe_package_info(&name).await }.boxed()
   }
 
   fn clear_memory_cache(&self) {
-    self.0.mem_cache.lock().clear();
+    self.mem_cache.lock().clear();
+  }
+
+  fn get_cached_package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
+    self.mem_cache.lock().get(name).cloned().flatten()
   }
 }
 
@@ -577,5 +588,13 @@ impl NpmRegistryApiInner for TestNpmRegistryApi {
 
   fn clear_memory_cache(&self) {
     // do nothing for the test api
+  }
+
+  fn get_cached_package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
+    None
+  }
+
+  fn base_url(&self) -> &Url {
+    todo!()
   }
 }

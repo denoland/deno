@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_graph::npm::NpmPackageId;
 use deno_graph::semver::Version;
@@ -171,12 +172,15 @@ fn tag_to_version_info<'a>(
 
 #[cfg(test)]
 mod test {
+  use deno_graph::npm::NpmPackageReqReference;
+
+  use super::super::graph::LATEST_VERSION_REQ;
   use super::*;
 
   #[test]
   fn test_get_resolved_package_version_and_info() {
     // dist tag where version doesn't exist
-    let package_ref = NpmPackageReference::from_str("npm:test").unwrap();
+    let package_ref = NpmPackageReqReference::from_str("npm:test").unwrap();
     let package_info = NpmPackageInfo {
       name: "test".to_string(),
       versions: HashMap::new(),
@@ -200,7 +204,7 @@ mod test {
     );
 
     // dist tag where version is a pre-release
-    let package_ref = NpmPackageReference::from_str("npm:test").unwrap();
+    let package_ref = NpmPackageReqReference::from_str("npm:test").unwrap();
     let package_info = NpmPackageInfo {
       name: "test".to_string(),
       versions: HashMap::from([
