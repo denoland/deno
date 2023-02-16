@@ -1121,6 +1121,9 @@ async fn inspector_profile() {
   tester.child.wait().unwrap();
 }
 
+// TODO(bartlomieju): this test became flaky on CI after wiring up "ext/node"
+// compatibility layer. Can't reproduce this problem locally for either Mac M1
+// or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[tokio::test]
 async fn inspector_break_on_first_line_npm_esm() {
   let _server = http_server();
