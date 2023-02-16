@@ -70,6 +70,8 @@ mod js_unit_tests;
 mod lint;
 #[path = "lsp_tests.rs"]
 mod lsp;
+#[path = "node_unit_tests.rs"]
+mod node_unit_tests;
 #[path = "npm_tests.rs"]
 mod npm;
 #[path = "repl_tests.rs"]

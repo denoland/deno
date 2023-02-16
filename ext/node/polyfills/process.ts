@@ -29,15 +29,17 @@ import {
 import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
 export { _nextTick as nextTick, chdir, cwd, env, version, versions };
 import {
-  stderr as stderr_,
-  stdin as stdin_,
-  stdout as stdout_,
+  createWritableStdioStream,
+  initStdin,
 } from "internal:deno_node/polyfills/_process/streams.mjs";
+import { stdio } from "internal:deno_node/polyfills/_process/stdio.mjs";
 import {
+  enableNextTick,
   processTicksAndRejections,
   runNextTicks,
 } from "internal:deno_node/polyfills/_next_tick.ts";
 import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
+import * as files from "internal:runtime/js/40_files.js";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -50,11 +52,11 @@ export let pid = 0;
 
 // TODO(kt3k): Give better types to stdio objects
 // deno-lint-ignore no-explicit-any
-const stderr = stderr_ as any;
+let stderr = null as any;
 // deno-lint-ignore no-explicit-any
-const stdin = stdin_ as any;
+let stdin = null as any;
 // deno-lint-ignore no-explicit-any
-const stdout = stdout_ as any;
+let stdout = null as any;
 
 export { stderr, stdin, stdout };
 import { getBinding } from "internal:deno_node/polyfills/internal_binding/mod.ts";
@@ -663,13 +665,10 @@ class Process extends EventEmitter {
   noDeprecation = false;
 }
 
-// TODO(kt3k): Do the below at start up time.
-/*
-if (Deno.build.os === "windows") {
+if (isWindows) {
   delete Process.prototype.getgid;
   delete Process.prototype.getuid;
 }
-*/
 
 /** https://nodejs.org/api/process.html#process_process */
 const process = new Process();
@@ -689,13 +688,21 @@ export const removeAllListeners = process.removeAllListeners;
 
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
-internals.__bootstrapNodeProcess = function (args: string[]) {
+internals.__bootstrapNodeProcess = function (
+  args: string[],
+  denoVersions: Record<string, string>,
+) {
   for (let i = 0; i < args.length; i++) {
     argv[i + 2] = args[i];
   }
 
+  for (const [key, value] of Object.entries(denoVersions)) {
+    versions[key] = value;
+  }
+
   core.setNextTickCallback(processTicksAndRejections);
   core.setMacrotaskCallback(runNextTicks);
+  enableNextTick();
 
   // TODO(bartlomieju): this is buggy, see https://github.com/denoland/deno/issues/16928
   // We should use a specialized API in 99_main.js instead
@@ -740,12 +747,22 @@ internals.__bootstrapNodeProcess = function (args: string[]) {
     }
   });
 
+  // Initializes stdin
+  stdin = stdio.stdin = process.stdin = initStdin();
+
+  /** https://nodejs.org/api/process.html#process_process_stderr */
+  stderr = stdio.stderr = process.stderr = createWritableStdioStream(
+    files.stderr,
+    "stderr",
+  );
+
+  /** https://nodejs.org/api/process.html#process_process_stdout */
+  stdout = stdio.stdout = process.stdout = createWritableStdioStream(
+    files.stdout,
+    "stdout",
+  );
+
   delete internals.__bootstrapNodeProcess;
 };
 
 export default process;
-
-//TODO(Soremwar)
-//Remove on 1.0
-//Kept for backwards compatibility with std
-export { process };
