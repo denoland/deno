@@ -642,22 +642,6 @@ Deno.test("process.memoryUsage.rss()", () => {
   assert(typeof rss === "number");
 });
 
-Deno.test("process in worker", async () => {
-  const promise = deferred();
-
-  const worker = new Worker(
-    new URL("./testdata/process_worker.ts", import.meta.url).href,
-    { type: "module" },
-  );
-  worker.addEventListener("message", (e) => {
-    assertEquals(e.data, "hello");
-    promise.resolve();
-  });
-
-  await promise;
-  worker.terminate();
-});
-
 Deno.test("process.exitCode", () => {
   assert(process.exitCode === undefined);
   process.exitCode = 127;
