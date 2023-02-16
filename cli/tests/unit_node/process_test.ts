@@ -15,6 +15,8 @@ import { deferred } from "../../../test_util/std/async/deferred.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
 import { delay } from "../../../test_util/std/async/delay.ts";
 
+const testDir = new URL(".", import.meta.url);
+
 Deno.test({
   name: "process.cwd and process.chdir success",
   fn() {
@@ -361,8 +363,8 @@ Deno.test({
   name: "process.stdin readable with piping a file",
   async fn() {
     const expected = ["65536", "foo", "bar", "null", "end"];
-    const scriptPath = "./node/testdata/process_stdin.ts";
-    const filePath = "./node/testdata/process_stdin_dummy.txt";
+    const scriptPath = "./testdata/process_stdin.ts";
+    const filePath = "./testdata/process_stdin_dummy.txt";
 
     const shell = Deno.build.os === "windows" ? "cmd.exe" : "/bin/sh";
     const cmd = `"${Deno.execPath()}" run ${scriptPath} < ${filePath}`;
@@ -374,6 +376,7 @@ Deno.test({
       stdout: "piped",
       stderr: "null",
       windowsRawArguments: true,
+      cwd: testDir,
     });
 
     const { stdout } = await p.output();
@@ -386,13 +389,14 @@ Deno.test({
   name: "process.stdin readable with piping a stream",
   async fn() {
     const expected = ["16384", "foo", "bar", "null", "end"];
-    const scriptPath = "./node/testdata/process_stdin.ts";
+    const scriptPath = "./testdata/process_stdin.ts";
 
     const command = new Deno.Command(Deno.execPath(), {
       args: ["run", scriptPath],
       stdin: "piped",
       stdout: "piped",
       stderr: "null",
+      cwd: testDir,
     });
     const child = command.spawn();
 
@@ -413,7 +417,7 @@ Deno.test({
   ignore: Deno.build.os === "windows",
   async fn() {
     const expected = ["16384", "foo", "bar", "null", "end"];
-    const scriptPath = "./node/testdata/process_stdin.ts";
+    const scriptPath = "./testdata/process_stdin.ts";
 
     const listener = Deno.listen({ hostname: "127.0.0.1", port: 9000 });
     listener.accept().then(async (conn) => {
@@ -432,6 +436,7 @@ Deno.test({
       stdin: "null",
       stdout: "piped",
       stderr: "null",
+      cwd: testDir,
     });
 
     const { stdout } = await p.output();
@@ -444,13 +449,14 @@ Deno.test({
   name: "process.stdin readable with null",
   async fn() {
     const expected = ["65536", "null", "end"];
-    const scriptPath = "./node/testdata/process_stdin.ts";
+    const scriptPath = "./testdata/process_stdin.ts";
 
     const command = new Deno.Command(Deno.execPath(), {
       args: ["run", scriptPath],
       stdin: "null",
       stdout: "piped",
       stderr: "null",
+      cwd: testDir,
     });
 
     const { stdout } = await command.output();
@@ -465,8 +471,8 @@ Deno.test({
   ignore: Deno.build.os === "windows",
   async fn() {
     const expected = ["16384", "null", "end"];
-    const scriptPath = "./node/testdata/process_stdin.ts";
-    const directoryPath = "./node/testdata/";
+    const scriptPath = "./testdata/process_stdin.ts";
+    const directoryPath = "./testdata/";
 
     const shell = "/bin/bash";
     const cmd = `"${Deno.execPath()}" run ${scriptPath} < ${directoryPath}`;
@@ -478,6 +484,7 @@ Deno.test({
       stdout: "piped",
       stderr: "null",
       windowsRawArguments: true,
+      cwd: testDir,
     });
 
     const { stdout } = await p.output();
