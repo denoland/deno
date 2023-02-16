@@ -17,6 +17,7 @@ use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
 use crate::npm::NpmPackageResolver;
+use crate::npm::NpmRegistryApi;
 use crate::resolver::CliGraphResolver;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -1159,6 +1160,8 @@ impl Documents {
     &mut self,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
+    npm_registry_api: NpmRegistryApi,
+    npm_resolution: NpmResolution,
   ) {
     fn calculate_resolver_config_hash(
       maybe_import_map: Option<&import_map::ImportMap>,
@@ -1181,7 +1184,12 @@ impl Documents {
       maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
     );
-    self.resolver = CliGraphResolver::new(maybe_jsx_config, maybe_import_map);
+    self.resolver = CliGraphResolver::new(
+      maybe_jsx_config,
+      maybe_import_map,
+      npm_registry_api,
+      npm_resolution,
+    );
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1437,6 +1445,9 @@ fn analyze_module(
 
 #[cfg(test)]
 mod tests {
+  use crate::npm::NpmResolution;
+  use crate::npm::TestNpmRegistryApi;
+
   use super::*;
   use import_map::ImportMap;
   use test_util::TempDir;
@@ -1537,6 +1548,10 @@ console.log(b, "hello deno");
 
   #[test]
   fn test_documents_refresh_dependencies_config_change() {
+    let npm_registry_api =
+      NpmRegistryApi::new_for_test(TestNpmRegistryApi::default());
+    let npm_resolution = NpmResolution::new(npm_registry_api.clone(), None);
+
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
     let temp_dir = TempDir::new();
@@ -1566,7 +1581,12 @@ console.log(b, "hello deno");
         .append("test".to_string(), "./file2.ts".to_string())
         .unwrap();
 
-      documents.update_config(Some(Arc::new(import_map)), None);
+      documents.update_config(
+        Some(Arc::new(import_map)),
+        None,
+        npm_registry_api.clone(),
+        npm_resolution.clone(),
+      );
 
       // open the document
       let document = documents.open(
@@ -1599,7 +1619,12 @@ console.log(b, "hello deno");
         .append("test".to_string(), "./file3.ts".to_string())
         .unwrap();
 
-      documents.update_config(Some(Arc::new(import_map)), None);
+      documents.update_config(
+        Some(Arc::new(import_map)),
+        None,
+        npm_registry_api.clone(),
+        npm_resolution.clone(),
+      );
 
       // check the document's dependencies
       let document = documents.get(&file1_specifier).unwrap();

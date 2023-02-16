@@ -73,7 +73,7 @@ use crate::graph_util;
 use crate::http_util::HttpClient;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::RealNpmRegistryApi;
+use crate::npm::NpmRegistryApi;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -304,7 +304,7 @@ fn create_lsp_npm_resolver(
   dir: &DenoDir,
   http_client: HttpClient,
 ) -> NpmPackageResolver {
-  let registry_url = RealNpmRegistryApi::default_url();
+  let registry_url = NpmRegistryApi::default_url();
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
   let npm_cache = NpmCache::from_deno_dir(
     dir,
@@ -316,7 +316,7 @@ fn create_lsp_npm_resolver(
     http_client.clone(),
     progress_bar.clone(),
   );
-  let api = RealNpmRegistryApi::new(
+  let api = NpmRegistryApi::new(
     registry_url,
     npm_cache.clone(),
     http_client,
@@ -937,6 +937,8 @@ impl Inner {
     self.documents.update_config(
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
+      self.npm_resolver.api().clone(),
+      self.npm_resolver.resolution().clone(),
     );
 
     self.assets.intitialize(self.snapshot()).await;
@@ -1124,6 +1126,8 @@ impl Inner {
     self.documents.update_config(
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
+      self.npm_resolver.api().clone(),
+      self.npm_resolver.resolution().clone(),
     );
 
     self.send_diagnostics_update();
@@ -1170,6 +1174,8 @@ impl Inner {
       self.documents.update_config(
         self.maybe_import_map.clone(),
         self.maybe_config_file.as_ref(),
+        self.npm_resolver.api().clone(),
+        self.npm_resolver.resolution().clone(),
       );
       self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate_all();

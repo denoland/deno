@@ -33,8 +33,8 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
+use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolutionPackage;
-use crate::npm::RealNpmRegistryApi;
 use crate::util::fs::copy_dir_recursive;
 use crate::util::fs::hard_link_dir_recursive;
 
@@ -47,7 +47,7 @@ use super::common::NpmPackageFsResolver;
 #[derive(Debug, Clone)]
 pub struct LocalNpmPackageResolver {
   cache: NpmCache,
-  resolution: Arc<NpmResolution>,
+  resolution: NpmResolution,
   registry_url: Url,
   root_node_modules_path: PathBuf,
   root_node_modules_specifier: ModuleSpecifier,
@@ -58,7 +58,7 @@ impl LocalNpmPackageResolver {
     cache: NpmCache,
     registry_url: Url,
     node_modules_folder: PathBuf,
-    npm_resolution: Arc<NpmResolution>,
+    npm_resolution: NpmResolution,
   ) -> Self {
     Self {
       cache,

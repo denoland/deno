@@ -33,8 +33,8 @@ use self::common::NpmPackageFsResolver;
 use self::local::LocalNpmPackageResolver;
 use super::resolution::NpmResolution;
 use super::NpmCache;
+use super::NpmRegistryApi;
 use super::NpmResolutionSnapshot;
-use super::RealNpmRegistryApi;
 
 const RESOLUTION_STATE_ENV_VAR_NAME: &str =
   "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
@@ -74,8 +74,8 @@ pub struct NpmPackageResolver {
   no_npm: bool,
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
   local_node_modules_path: Option<PathBuf>,
-  api: RealNpmRegistryApi,
-  resolution: Arc<NpmResolution>,
+  api: NpmRegistryApi,
+  resolution: NpmResolution,
   cache: NpmCache,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
@@ -84,7 +84,7 @@ impl std::fmt::Debug for NpmPackageResolver {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("NpmPackageResolver")
       .field("no_npm", &self.no_npm)
-      .field("inner", &"<omitted>")
+      .field("fs_resolver", &"<omitted>")
       .field("local_node_modules_path", &self.local_node_modules_path)
       .finish()
   }
@@ -93,7 +93,7 @@ impl std::fmt::Debug for NpmPackageResolver {
 impl NpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: RealNpmRegistryApi,
+    api: NpmRegistryApi,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
   ) -> Self {
@@ -102,7 +102,7 @@ impl NpmPackageResolver {
 
   pub async fn new_with_maybe_lockfile(
     cache: NpmCache,
-    api: RealNpmRegistryApi,
+    api: NpmRegistryApi,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -137,7 +137,7 @@ impl NpmPackageResolver {
 
   fn new_inner(
     cache: NpmCache,
-    api: RealNpmRegistryApi,
+    api: NpmRegistryApi,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
     initial_snapshot: Option<NpmResolutionSnapshot>,
@@ -177,6 +177,14 @@ impl NpmPackageResolver {
       cache,
       maybe_lockfile,
     }
+  }
+
+  pub fn api(&self) -> &NpmRegistryApi {
+    &self.api
+  }
+
+  pub fn resolution(&self) -> &NpmResolution {
+    &self.resolution
   }
 
   /// Resolves an npm package folder path from a Deno module.

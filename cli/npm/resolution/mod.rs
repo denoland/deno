@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
@@ -13,15 +14,17 @@ use serde::Serialize;
 
 use crate::args::Lockfile;
 
+use self::common::resolve_best_package_version_and_info;
 use self::graph::GraphDependencyResolver;
 use self::snapshot::NpmPackagesPartitioned;
 
 use super::cache::should_sync_download;
 use super::cache::NpmPackageCacheFolderId;
 use super::registry::NpmPackageVersionDistInfo;
-use super::registry::RealNpmRegistryApi;
+use super::registry::NpmRegistryApi;
 use super::NpmRegistryApi;
 
+mod common;
 mod graph;
 mod snapshot;
 mod specifier;
@@ -54,8 +57,11 @@ impl NpmResolutionPackage {
   }
 }
 
-pub struct NpmResolution {
-  api: RealNpmRegistryApi,
+#[derive(Clone)]
+pub struct NpmResolution(Arc<NpmResolutionInner>);
+
+struct NpmResolutionInner {
+  api: NpmRegistryApi,
   snapshot: RwLock<NpmResolutionSnapshot>,
   update_semaphore: tokio::sync::Semaphore,
 }
@@ -71,14 +77,14 @@ impl std::fmt::Debug for NpmResolution {
 
 impl NpmResolution {
   pub fn new(
-    api: RealNpmRegistryApi,
+    api: NpmRegistryApi,
     initial_snapshot: Option<NpmResolutionSnapshot>,
   ) -> Self {
-    Self {
+    Self(Arc::new(NpmResolutionInner {
       api,
       snapshot: RwLock::new(initial_snapshot.unwrap_or_default()),
       update_semaphore: tokio::sync::Semaphore::new(1),
-    }
+    }))
   }
 
   pub async fn add_package_reqs(
@@ -227,6 +233,41 @@ impl NpmResolution {
       .read()
       .resolve_package_from_deno_module(package)
       .cloned()
+  }
+
+  pub fn resolve_deno_graph_package_req(
+    &self,
+    package: &NpmPackageReq,
+  ) -> Result<NpmPackageId, AnyError> {
+    let package_info = match self.api.get_cached_package_info(&package.name) {
+      Some(package_info) => package_info,
+      // should never happen because we should have cached before
+      None => bail!(
+        "Deno bug. Please report: Could not find '{}' in npm package info cache.",
+        package.name
+      ),
+    };
+
+    let snapshot = self.snapshot.write();
+    let package_info = resolve_best_package_version_and_info(
+      version_req,
+      &package_info,
+      &snapshot.packages_by_name,
+    )?;
+    let id = NpmPackageId {
+      name: package_info.name.to_string(),
+      version: version_and_info.version.clone(),
+      peer_dependencies: Vec::new(),
+    };
+    debug!(
+      "Resolved {}@{} to {}",
+      pkg_req_name,
+      version_req.version_text(),
+      id.as_serialized(),
+    );
+    snapshot.package_reqs.insert(package, id.clone());
+    snapshot.pending_unresolved_packages.push(id.clone());
+    Ok(id)
   }
 
   pub fn all_packages_partitioned(&self) -> NpmPackagesPartitioned {

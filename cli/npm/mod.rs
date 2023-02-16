@@ -10,8 +10,10 @@ pub use cache::NpmCache;
 #[cfg(test)]
 pub use registry::NpmPackageVersionDistInfo;
 pub use registry::NpmRegistryApi;
-pub use registry::RealNpmRegistryApi;
+#[cfg(test)]
+pub use registry::TestNpmRegistryApi;
 pub use resolution::resolve_graph_npm_info;
+pub use resolution::NpmResolution;
 pub use resolution::NpmResolutionPackage;
 pub use resolution::NpmResolutionSnapshot;
 pub use resolvers::NpmPackageResolver;

@@ -153,6 +153,8 @@ pub async fn create_graph_and_maybe_check(
   let cli_resolver = CliGraphResolver::new(
     ps.options.to_maybe_jsx_import_source_config(),
     ps.maybe_import_map.clone(),
+    ps.npm_resolver.api().clone(),
+    ps.npm_resolver.resolution().clone(),
   );
   let graph_resolver = cli_resolver.as_graph_resolver();
   let analyzer = ps.parsed_source_cache.as_analyzer();
@@ -165,6 +167,7 @@ pub async fn create_graph_and_maybe_check(
         is_dynamic: false,
         imports: maybe_imports,
         resolver: Some(graph_resolver),
+        npm_resolver: Some(graph_resolver),
         module_analyzer: Some(&*analyzer),
         reporter: None,
       },

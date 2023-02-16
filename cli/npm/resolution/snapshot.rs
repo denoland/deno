@@ -21,7 +21,6 @@ use crate::npm::cache::should_sync_download;
 use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::registry::NpmPackageVersionDistInfo;
 use crate::npm::registry::NpmRegistryApi;
-use crate::npm::registry::RealNpmRegistryApi;
 
 use super::NpmResolutionPackage;
 
@@ -51,6 +50,8 @@ pub struct NpmResolutionSnapshot {
   pub(super) packages_by_name: HashMap<String, Vec<NpmPackageId>>,
   #[serde(with = "map_to_vec")]
   pub(super) packages: HashMap<NpmPackageId, NpmResolutionPackage>,
+  /// Ordered list of packages whose dependencies have not yet been resolved
+  pub(super) pending_unresolved_packages: Vec<NpmPackageId>,
 }
 
 // This is done so the maps with non-string keys get serialized and deserialized as vectors.
@@ -220,7 +221,7 @@ impl NpmResolutionSnapshot {
 
   pub async fn from_lockfile(
     lockfile: Arc<Mutex<Lockfile>>,
-    api: &RealNpmRegistryApi,
+    api: &NpmRegistryApi,
   ) -> Result<Self, AnyError> {
     let mut package_reqs: HashMap<NpmPackageReq, NpmPackageId>;
     let mut packages_by_name: HashMap<String, Vec<NpmPackageId>>;
@@ -331,6 +332,7 @@ impl NpmResolutionSnapshot {
       package_reqs,
       packages_by_name,
       packages,
+      pending_unresolved_packages: Default::default(),
     })
   }
 }

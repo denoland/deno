@@ -23,8 +23,8 @@ use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
+use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolutionPackage;
-use crate::npm::RealNpmRegistryApi;
 
 use super::common::ensure_registry_read_permission;
 use super::common::types_package_name;
@@ -34,7 +34,7 @@ use super::common::NpmPackageFsResolver;
 #[derive(Debug, Clone)]
 pub struct GlobalNpmPackageResolver {
   cache: NpmCache,
-  resolution: Arc<NpmResolution>,
+  resolution: NpmResolution,
   registry_url: Url,
 }
 
@@ -42,7 +42,7 @@ impl GlobalNpmPackageResolver {
   pub fn new(
     cache: NpmCache,
     registry_url: Url,
-    resolution: Arc<NpmResolution>,
+    resolution: NpmResolution,
   ) -> Self {
     Self {
       cache,

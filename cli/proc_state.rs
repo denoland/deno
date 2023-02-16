@@ -25,7 +25,7 @@ use crate::node::NodeResolution;
 use crate::npm::resolve_graph_npm_info;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::RealNpmRegistryApi;
+use crate::npm::NpmRegistryApi;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::util::progress_bar::ProgressBar;
@@ -208,6 +208,29 @@ impl ProcState {
 
     let lockfile = cli_options.maybe_lock_file();
 
+    let registry_url = NpmRegistryApi::default_url();
+    let npm_cache = NpmCache::from_deno_dir(
+      &dir,
+      cli_options.cache_setting(),
+      http_client.clone(),
+      progress_bar.clone(),
+    );
+    let api = NpmRegistryApi::new(
+      registry_url,
+      npm_cache.clone(),
+      http_client.clone(),
+      progress_bar.clone(),
+    );
+    let npm_resolver = NpmPackageResolver::new_with_maybe_lockfile(
+      npm_cache.clone(),
+      api,
+      cli_options.no_npm(),
+      cli_options
+        .resolve_local_node_modules_folder()
+        .with_context(|| "Resolving local node_modules folder.")?,
+      lockfile.as_ref().cloned(),
+    )
+    .await?;
     let maybe_import_map = cli_options
       .resolve_import_map(&file_fetcher)
       .await?
@@ -218,6 +241,8 @@ impl ProcState {
     let resolver = Arc::new(CliGraphResolver::new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
+      npm_resolver.api().clone(),
+      npm_resolver.resolution().clone(),
     ));
 
     let maybe_file_watcher_reporter =
@@ -234,29 +259,6 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
-    let registry_url = RealNpmRegistryApi::default_url();
-    let npm_cache = NpmCache::from_deno_dir(
-      &dir,
-      cli_options.cache_setting(),
-      http_client.clone(),
-      progress_bar.clone(),
-    );
-    let api = RealNpmRegistryApi::new(
-      registry_url,
-      npm_cache.clone(),
-      http_client.clone(),
-      progress_bar.clone(),
-    );
-    let npm_resolver = NpmPackageResolver::new_with_maybe_lockfile(
-      npm_cache.clone(),
-      api,
-      cli_options.no_npm(),
-      cli_options
-        .resolve_local_node_modules_folder()
-        .with_context(|| "Resolving local node_modules folder.")?,
-      lockfile.as_ref().cloned(),
-    )
-    .await?;
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
@@ -340,6 +342,7 @@ impl ProcState {
           is_dynamic,
           imports: maybe_imports,
           resolver: Some(resolver),
+          npm_resolver: Some(resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
         },
@@ -635,6 +638,8 @@ impl ProcState {
     let cli_resolver = CliGraphResolver::new(
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
+      self.npm_resolver.api().clone(),
+      self.npm_resolver.resolution().clone(),
     );
     let graph_resolver = cli_resolver.as_graph_resolver();
     let analyzer = self.parsed_source_cache.as_analyzer();
@@ -648,6 +653,7 @@ impl ProcState {
           is_dynamic: false,
           imports: maybe_imports,
           resolver: Some(graph_resolver),
+          npm_resolver: Some(graph_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: None,
         },

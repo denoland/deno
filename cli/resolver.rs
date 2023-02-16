@@ -15,7 +15,7 @@ use std::sync::Arc;
 use crate::args::JsxImportSourceConfig;
 use crate::npm::NpmCache;
 use crate::npm::NpmRegistryApi;
-use crate::npm::RealNpmRegistryApi;
+use crate::npm::NpmResolution;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
@@ -24,14 +24,16 @@ pub struct CliGraphResolver {
   maybe_import_map: Option<Arc<ImportMap>>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
-  npm_registry_api: RealNpmRegistryApi,
+  npm_registry_api: NpmRegistryApi,
+  npm_resolution: NpmResolution,
 }
 
 impl CliGraphResolver {
   pub fn new(
     maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
     maybe_import_map: Option<Arc<ImportMap>>,
-    npm_registry_api: RealNpmRegistryApi,
+    npm_registry_api: NpmRegistryApi,
+    npm_resolution: NpmResolution,
   ) -> Self {
     Self {
       maybe_import_map,
@@ -41,6 +43,7 @@ impl CliGraphResolver {
       maybe_jsx_import_source_module: maybe_jsx_import_source_config
         .map(|c| c.module),
       npm_registry_api,
+      npm_resolution,
     }
   }
 
@@ -96,8 +99,10 @@ impl NpmResolver for CliGraphResolver {
 
   fn resolve_npm(
     &self,
-    _package_req: &NpmPackageReq,
+    package_req: &NpmPackageReq,
   ) -> Result<NpmPackageId, AnyError> {
-    todo!()
+    self
+      .npm_resolution
+      .resolve_deno_graph_package_req(package_req)
   }
 }
