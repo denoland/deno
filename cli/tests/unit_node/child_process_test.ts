@@ -144,7 +144,7 @@ async function spawnAndGetEnvValue(
   const env = spawn(
     `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
     {
-      env: { BAZ: inputValue, NO_COLOR: "true" },
+      env: { BAZ: String(inputValue), NO_COLOR: "true" },
       shell: true,
     },
   );

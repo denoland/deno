@@ -10,7 +10,6 @@ fn node_unit_tests() {
     .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
-    .arg("--no-check")
     .arg("-A")
     .arg(util::tests_path().join("unit_node"))
     .spawn()
