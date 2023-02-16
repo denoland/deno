@@ -665,7 +665,7 @@ class Process extends EventEmitter {
   noDeprecation = false;
 }
 
-if (Deno.build.os === "windows") {
+if (isWindows === "windows") {
   delete Process.prototype.getgid;
   delete Process.prototype.getuid;
 }
