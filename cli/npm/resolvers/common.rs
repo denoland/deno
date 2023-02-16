@@ -21,7 +21,8 @@ use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
 use crate::npm::NpmResolutionPackage;
 
-pub trait InnerNpmPackageResolver: Send + Sync {
+/// Part of the resolution that interacts with the file system.
+pub trait NpmPackageFsResolver: Send + Sync {
   fn resolve_package_folder_from_deno_module(
     &self,
     pkg_req: &NpmPackageReq,
@@ -41,18 +42,6 @@ pub trait InnerNpmPackageResolver: Send + Sync {
 
   fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError>;
 
-  fn has_packages(&self) -> bool;
-
-  fn add_package_reqs(
-    &self,
-    packages: Vec<NpmPackageReq>,
-  ) -> BoxFuture<'static, Result<(), AnyError>>;
-
-  fn set_package_reqs(
-    &self,
-    packages: HashSet<NpmPackageReq>,
-  ) -> BoxFuture<'static, Result<(), AnyError>>;
-
   fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>>;
 
   fn ensure_read_permission(
@@ -60,10 +49,6 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
-
-  fn snapshot(&self) -> NpmResolutionSnapshot;
-
-  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError>;
 }
 
 /// Caches all the packages in parallel.

@@ -40,7 +40,7 @@ use crate::util::fs::hard_link_dir_recursive;
 
 use super::common::ensure_registry_read_permission;
 use super::common::types_package_name;
-use super::common::InnerNpmPackageResolver;
+use super::common::NpmPackageFsResolver;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
@@ -56,13 +56,10 @@ pub struct LocalNpmPackageResolver {
 impl LocalNpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: RealNpmRegistryApi,
+    registry_url: Url,
     node_modules_folder: PathBuf,
-    initial_snapshot: Option<NpmResolutionSnapshot>,
+    npm_resolution: Arc<NpmResolution>,
   ) -> Self {
-    let registry_url = api.base_url().to_owned();
-    let resolution = Arc::new(NpmResolution::new(api, initial_snapshot));
-
     Self {
       cache,
       resolution,
@@ -140,7 +137,7 @@ impl LocalNpmPackageResolver {
   }
 }
 
-impl InnerNpmPackageResolver for LocalNpmPackageResolver {
+impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn resolve_package_folder_from_deno_module(
     &self,
     pkg_req: &NpmPackageReq,
@@ -209,34 +206,6 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     Ok(crate::util::fs::dir_size(&package_folder_path)?)
   }
 
-  fn has_packages(&self) -> bool {
-    self.resolution.has_packages()
-  }
-
-  fn add_package_reqs(
-    &self,
-    packages: Vec<NpmPackageReq>,
-  ) -> BoxFuture<'static, Result<(), AnyError>> {
-    let resolver = self.clone();
-    async move {
-      resolver.resolution.add_package_reqs(packages).await?;
-      Ok(())
-    }
-    .boxed()
-  }
-
-  fn set_package_reqs(
-    &self,
-    packages: HashSet<NpmPackageReq>,
-  ) -> BoxFuture<'static, Result<(), AnyError>> {
-    let resolver = self.clone();
-    async move {
-      resolver.resolution.set_package_reqs(packages).await?;
-      Ok(())
-    }
-    .boxed()
-  }
-
   fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>> {
     let resolver = self.clone();
     async move {
@@ -256,14 +225,6 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
       &self.root_node_modules_path,
       path,
     )
-  }
-
-  fn snapshot(&self) -> NpmResolutionSnapshot {
-    self.resolution.snapshot()
-  }
-
-  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
-    self.resolution.lock(lockfile)
   }
 }
 

@@ -28,7 +28,7 @@ use crate::npm::RealNpmRegistryApi;
 
 use super::common::ensure_registry_read_permission;
 use super::common::types_package_name;
-use super::common::InnerNpmPackageResolver;
+use super::common::NpmPackageFsResolver;
 
 /// Resolves packages from the global npm cache.
 #[derive(Debug, Clone)]
@@ -41,12 +41,9 @@ pub struct GlobalNpmPackageResolver {
 impl GlobalNpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: RealNpmRegistryApi,
-    initial_snapshot: Option<NpmResolutionSnapshot>,
+    registry_url: Url,
+    resolution: Arc<NpmResolution>,
   ) -> Self {
-    let registry_url = api.base_url().to_owned();
-    let resolution = Arc::new(NpmResolution::new(api, initial_snapshot));
-
     Self {
       cache,
       resolution,
@@ -76,7 +73,7 @@ impl GlobalNpmPackageResolver {
   }
 }
 
-impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
+impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn resolve_package_folder_from_deno_module(
     &self,
     pkg_req: &NpmPackageReq,
@@ -130,26 +127,6 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     Ok(crate::util::fs::dir_size(&package_folder)?)
   }
 
-  fn has_packages(&self) -> bool {
-    self.resolution.has_packages()
-  }
-
-  fn add_package_reqs(
-    &self,
-    packages: Vec<NpmPackageReq>,
-  ) -> BoxFuture<'static, Result<(), AnyError>> {
-    let resolver = self.clone();
-    async move { resolver.resolution.add_package_reqs(packages).await }.boxed()
-  }
-
-  fn set_package_reqs(
-    &self,
-    packages: HashSet<NpmPackageReq>,
-  ) -> BoxFuture<'static, Result<(), AnyError>> {
-    let resolver = self.clone();
-    async move { resolver.resolution.set_package_reqs(packages).await }.boxed()
-  }
-
   fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>> {
     let resolver = self.clone();
     async move { cache_packages_in_resolver(&resolver).await }.boxed()
@@ -162,14 +139,6 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
   ) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
     ensure_registry_read_permission(permissions, &registry_path, path)
-  }
-
-  fn snapshot(&self) -> NpmResolutionSnapshot {
-    self.resolution.snapshot()
-  }
-
-  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
-    self.resolution.lock(lockfile)
   }
 }
 
