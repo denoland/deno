@@ -29,16 +29,17 @@ import {
 import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
 export { _nextTick as nextTick, chdir, cwd, env, version, versions };
 import {
-  stderr as stderr_,
-  stdin as stdin_,
-  stdout as stdout_,
+  createWritableStdioStream,
+  initStdin,
 } from "internal:deno_node/polyfills/_process/streams.mjs";
+import { stdio } from "internal:deno_node/polyfills/_process/stdio.mjs";
 import {
   enableNextTick,
   processTicksAndRejections,
   runNextTicks,
 } from "internal:deno_node/polyfills/_next_tick.ts";
 import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
+import * as files from "internal:runtime/js/40_files.js";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -51,11 +52,11 @@ export let pid = 0;
 
 // TODO(kt3k): Give better types to stdio objects
 // deno-lint-ignore no-explicit-any
-const stderr = stderr_ as any;
+let stderr = null as any;
 // deno-lint-ignore no-explicit-any
-const stdin = stdin_ as any;
+let stdin = null as any;
 // deno-lint-ignore no-explicit-any
-const stdout = stdout_ as any;
+let stdout = null as any;
 
 export { stderr, stdin, stdout };
 import { getBinding } from "internal:deno_node/polyfills/internal_binding/mod.ts";
@@ -748,6 +749,21 @@ internals.__bootstrapNodeProcess = function (
       process.emit("exit", process.exitCode || 0);
     }
   });
+
+  // Initializes stdin
+  stdin = stdio.stdin = process.stdin = initStdin();
+
+  /** https://nodejs.org/api/process.html#process_process_stderr */
+  stderr = stdio.stderr = process.stderr = createWritableStdioStream(
+    files.stderr,
+    "stderr",
+  );
+
+  /** https://nodejs.org/api/process.html#process_process_stdout */
+  stdout = stdio.stdout = process.stderr = createWritableStdioStream(
+    files.stdout,
+    "stdout",
+  );
 
   delete internals.__bootstrapNodeProcess;
 };
