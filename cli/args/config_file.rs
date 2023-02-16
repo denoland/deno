@@ -1044,9 +1044,8 @@ mod tests {
       },
       "lint": {
         "files": {
-          "include": ["src/"],
-          "exclude": ["src/testdata/"]
-        },
+        "include": ["src/"],
+        "exclude": ["src/testdata/"],
         "rules": {
           "tags": ["recommended"],
           "include": ["ban-untagged-todo"]
@@ -1054,15 +1053,14 @@ mod tests {
       },
       "fmt": {
         "files": {
-          "include": ["src/"],
-          "exclude": ["src/testdata/"]
-        },
+        "include": ["src/"],
+        "exclude": ["src/testdata/"],
         "options": {
-          "useTabs": true,
-          "lineWidth": 80,
-          "indentWidth": 4,
-          "singleQuote": true,
-          "proseWrap": "preserve"
+        "useTabs": true,
+        "lineWidth": 80,
+        "indentWidth": 4,
+        "singleQuote": true,
+        "proseWrap": "preserve"
         }
       },
       "tasks": {
