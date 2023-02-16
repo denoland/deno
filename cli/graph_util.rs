@@ -159,7 +159,6 @@ pub async fn create_graph_and_maybe_check(
   let graph_resolver = cli_resolver.as_graph_resolver();
   let analyzer = ps.parsed_source_cache.as_analyzer();
   let mut graph = ModuleGraph::default();
-  eprintln!("create graph and maybe check");
   graph
     .build(
       vec![root],

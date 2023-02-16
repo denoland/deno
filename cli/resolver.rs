@@ -61,11 +61,6 @@ impl Resolver for CliGraphResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    eprintln!(
-      "maybe resolver, resolving {} {}",
-      specifier,
-      referrer.as_str()
-    );
     if let Some(import_map) = &self.maybe_import_map {
       return import_map
         .resolve(specifier, referrer)

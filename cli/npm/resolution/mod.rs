@@ -132,8 +132,6 @@ impl NpmResolution {
     package_reqs: Vec<NpmPackageReq>,
     snapshot: NpmResolutionSnapshot,
   ) -> Result<NpmResolutionSnapshot, AnyError> {
-    eprintln!("add package reqs {package_reqs:#?}");
-
     if package_reqs.iter().any(|req| req.name == ".") {
       eprintln!("got empty name");
       panic!();
