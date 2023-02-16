@@ -694,8 +694,6 @@ Deno.test("process.getuid", () => {
 Deno.test({
   name: "process.exit",
   async fn() {
-    const cwd = path.dirname(path.fromFileUrl(import.meta.url));
-
     const command = new Deno.Command(Deno.execPath(), {
       args: [
         "run",
@@ -703,7 +701,7 @@ Deno.test({
         "--unstable",
         "./testdata/process_exit2.ts",
       ],
-      cwd,
+      cwd: testDir,
     });
     const { stdout } = await command.output();
 
