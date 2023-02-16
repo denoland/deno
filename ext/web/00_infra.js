@@ -249,6 +249,60 @@ function forgivingBase64Decode(data) {
   return ops.op_base64_decode(data);
 }
 
+// Taken from std/encoding/base64url.ts
+/*
+ * Some variants allow or require omitting the padding '=' signs:
+ * https://en.wikipedia.org/wiki/Base64#The_URL_applications
+ * @param base64url
+ */
+/**
+ * @param {string} base64url
+ * @returns {string}
+ */
+function addPaddingToBase64url(base64url) {
+  if (base64url.length % 4 === 2) return base64url + "==";
+  if (base64url.length % 4 === 3) return base64url + "=";
+  if (base64url.length % 4 === 1) {
+    throw new TypeError("Illegal base64url string!");
+  }
+  return base64url;
+}
+
+/**
+ * @param {string} base64url
+ * @returns {string}
+ */
+function convertBase64urlToBase64(base64url) {
+  if (!/^[-_A-Z0-9]*?={0,2}$/i.test(base64url)) {
+    // Contains characters not part of base64url spec.
+    throw new TypeError("Failed to decode base64url: invalid character");
+  }
+  return addPaddingToBase64url(base64url).replace(/\-/g, "+").replace(
+    /_/g,
+    "/",
+  );
+}
+
+/**
+ * Encodes a given ArrayBuffer or string into a base64url representation
+ * @param {ArrayBuffer | string} data
+ * @returns {string}
+ */
+function forgivingBase64UrlEncode(data) {
+  return forgivingBase64Encode(
+    typeof data === "string" ? new TextEncoder().encode(data) : data,
+  ).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+/**
+ * Converts given base64url encoded data back to original
+ * @param {string} b64url
+ * @returns {Uint8Array}
+ */
+function forgivingBase64UrlDecode(b64url) {
+  return forgivingBase64Decode(convertBase64urlToBase64(b64url));
+}
+
 /**
  * @param {string} char
  * @returns {boolean}
@@ -320,6 +374,8 @@ export {
   collectSequenceOfCodepoints,
   forgivingBase64Decode,
   forgivingBase64Encode,
+  forgivingBase64UrlDecode,
+  forgivingBase64UrlEncode,
   HTTP_QUOTED_STRING_TOKEN_POINT,
   HTTP_QUOTED_STRING_TOKEN_POINT_RE,
   HTTP_TAB_OR_SPACE,

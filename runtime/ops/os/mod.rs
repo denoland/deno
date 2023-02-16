@@ -419,7 +419,6 @@ fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
 
 #[op]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
-  super::check_unstable(state, "Deno.osUptime");
   os_uptime(state)
 }
 

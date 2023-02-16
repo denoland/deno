@@ -471,7 +471,6 @@ function bootstrapMainRuntime(runtimeOptions) {
         ops.op_node_unstable_net_listen_udp,
         ops.op_node_unstable_net_listen_unixpacket,
       ),
-      osUptime: os.createOsUptime(ops.op_node_unstable_os_uptime),
     },
   });
 
@@ -508,7 +507,6 @@ function bootstrapMainRuntime(runtimeOptions) {
         ops.op_net_listen_udp,
         ops.op_net_listen_unixpacket,
       ),
-      osUptime: os.createOsUptime(ops.op_os_uptime),
     });
   }
 
@@ -602,7 +600,6 @@ function bootstrapWorkerRuntime(
         ops.op_node_unstable_net_listen_udp,
         ops.op_node_unstable_net_listen_unixpacket,
       ),
-      osUptime: os.createOsUptime(ops.op_node_unstable_os_uptime),
     },
   });
 
@@ -631,7 +628,6 @@ function bootstrapWorkerRuntime(
         ops.op_net_listen_udp,
         ops.op_net_listen_unixpacket,
       ),
-      osUptime: os.createOsUptime(ops.op_os_uptime),
     });
   }
   ObjectDefineProperties(finalDenoNs, {

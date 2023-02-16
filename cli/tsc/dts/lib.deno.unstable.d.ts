@@ -1126,7 +1126,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export type ServeHandler = (request: Request) => Response | Promise<Response>;
+  export type ServeHandler = (request: Request, getRemoteAddr: () => Deno.NetAddr) => Response | Promise<Response>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1406,21 +1406,6 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export function upgradeHttpRaw(request: Request): [Deno.Conn, Uint8Array];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Returns the Operating System uptime in number of seconds.
-   *
-   * ```ts
-   * console.log(Deno.osUptime());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * @tags allow-sys
-   * @category Runtime Environment
-   */
-  export function osUptime(): number;
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.

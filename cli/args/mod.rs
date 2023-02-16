@@ -10,7 +10,6 @@ pub mod package_json;
 pub use self::import_map::resolve_import_map_from_specifier;
 use ::import_map::ImportMap;
 
-use crate::npm::NpmPackageReq;
 use crate::util::fs::canonicalize_path;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
@@ -25,7 +24,6 @@ pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
 pub use config_file::TsTypeLib;
-use deno_runtime::deno_node::PackageJson;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
@@ -38,7 +36,9 @@ use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_graph::npm::NpmPackageReq;
 use deno_runtime::colors;
+use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
@@ -608,7 +608,7 @@ impl CliOptions {
       eprintln!("maybe_package_json None");
       maybe_package_json = discover_package_json(&flags, None)?;
     }
-    eprintln!("maybe_package_json: {:?}", maybe_package_json);
+    eprintln!("maybe_package_json: {maybe_package_json:?}");
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
     Ok(Self::new(

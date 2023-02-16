@@ -5,10 +5,9 @@ use std::collections::HashMap;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_graph::npm::NpmPackageReq;
+use deno_graph::semver::VersionReq;
 use deno_runtime::deno_node::PackageJson;
-
-use crate::npm::NpmPackageReq;
-use crate::semver::VersionReq;
 
 /// Gets the name and raw version constraint taking into account npm
 /// package aliases.

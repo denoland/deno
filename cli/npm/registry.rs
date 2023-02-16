@@ -19,6 +19,8 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_graph::semver::Version;
+use deno_graph::semver::VersionReq;
 use deno_runtime::colors;
 use serde::Serialize;
 
@@ -26,8 +28,6 @@ use crate::args::package_json::parse_dep_entry_name_and_raw_version;
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
-use crate::semver::Version;
-use crate::semver::VersionReq;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 

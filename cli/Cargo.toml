@@ -46,7 +46,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_gra
 deno_core.workspace = true
 deno_doc = "0.55.0"
 deno_emit = "0.15.0"
-deno_graph = "0.43.0"
+deno_graph = "0.43.2"
 deno_lint = { version = "0.38.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_runtime.workspace = true
@@ -93,7 +93,6 @@ ring.workspace = true
 rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 rustyline-derive = "=0.7.0"
 secure_tempfile = { version = "=3.3.0", package = "tempfile" } # different name to discourage use in tests
-semver.workspace = true
 serde.workspace = true
 serde_repr.workspace = true
 shell-escape = "=0.1.5"
