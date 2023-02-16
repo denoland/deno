@@ -29,11 +29,9 @@ use super::registry::NpmRegistryApi;
 mod common;
 mod graph;
 mod snapshot;
-mod specifier;
 
 use graph::Graph;
 pub use snapshot::NpmResolutionSnapshot;
-pub use specifier::resolve_graph_npm_info;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmResolutionPackage {

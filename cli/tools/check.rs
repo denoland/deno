@@ -39,11 +39,6 @@ pub struct CheckOptions {
   /// If true, valid `.tsbuildinfo` files will be ignored and type checking
   /// will always occur.
   pub reload: bool,
-  /// If the graph has a node built-in specifier.
-  ///
-  /// Although this could be derived from the graph, this helps
-  /// speed things up.
-  pub has_node_builtin_specifier: bool,
 }
 
 /// The result of a check of a module graph.
@@ -81,8 +76,7 @@ pub fn check(
     }
   }
 
-  let root_names =
-    get_tsc_roots(&graph, options.has_node_builtin_specifier, check_js);
+  let root_names = get_tsc_roots(&graph, check_js);
   // while there might be multiple roots, we can't "merge" the build info, so we
   // try to retrieve the build info for first root, which is the most common use
   // case.
@@ -231,11 +225,10 @@ fn get_check_hash(
 /// otherwise they would be ignored if only imported into JavaScript.
 fn get_tsc_roots(
   graph: &ModuleGraph,
-  has_node_builtin_specifier: bool,
   check_js: bool,
 ) -> Vec<(ModuleSpecifier, MediaType)> {
   let mut result = Vec::new();
-  if has_node_builtin_specifier {
+  if graph.has_node_specifier {
     // inject a specifier that will resolve node types
     result.push((
       ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),

@@ -9,6 +9,7 @@ use crate::cache::TypeCheckCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
 use crate::npm::resolve_graph_npm_info;
+use crate::npm::NpmPackageResolver;
 use crate::proc_state::ProcState;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
@@ -164,26 +165,24 @@ pub async fn create_graph_and_maybe_check(
   let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
   let analyzer = ps.parsed_source_cache.as_analyzer();
   let mut graph = ModuleGraph::default();
-  graph
-    .build(
-      vec![root],
-      &mut cache,
-      deno_graph::BuildOptions {
-        is_dynamic: false,
-        imports: maybe_imports,
-        resolver: Some(graph_resolver),
-        npm_resolver: Some(graph_npm_resolver),
-        module_analyzer: Some(&*analyzer),
-        reporter: None,
-      },
-    )
-    .await;
+  build_graph_with_npm_resolution(
+    &mut graph,
+    &ps.npm_resolver,
+    vec![root],
+    &mut cache,
+    deno_graph::BuildOptions {
+      is_dynamic: false,
+      imports: maybe_imports,
+      resolver: Some(graph_resolver),
+      npm_resolver: Some(graph_npm_resolver),
+      module_analyzer: Some(&*analyzer),
+      reporter: None,
+    },
+  )
+  .await?;
+
   graph_valid_with_cli_options(&graph, &graph.roots, &ps.options)?;
   let graph = Arc::new(graph);
-  let npm_graph_info = resolve_graph_npm_info(&graph);
-  ps.npm_resolver
-    .add_package_reqs(npm_graph_info.package_reqs)
-    .await?;
   if let Some(lockfile) = &ps.lockfile {
     graph_lock_or_exit(&graph, &mut lockfile.lock());
   }
@@ -191,7 +190,7 @@ pub async fn create_graph_and_maybe_check(
   if ps.options.type_check_mode() != TypeCheckMode::None {
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now after the lockfile has been written
-    if npm_graph_info.has_node_builtin_specifier {
+    if graph.has_node_specifier {
       ps.npm_resolver
         .inject_synthetic_types_node_package()
         .await?;
@@ -217,7 +216,6 @@ pub async fn create_graph_and_maybe_check(
         ts_config: ts_config_result.ts_config,
         log_checks: true,
         reload: ps.options.reload_flag(),
-        has_node_builtin_specifier: npm_graph_info.has_node_builtin_specifier,
       },
     )?;
     log::debug!("{}", check_result.stats);
@@ -229,8 +227,24 @@ pub async fn create_graph_and_maybe_check(
   Ok(graph)
 }
 
+pub async fn build_graph_with_npm_resolution<'a>(
+  graph: &mut ModuleGraph,
+  npm_resolver: &NpmPackageResolver,
+  roots: Vec<ModuleSpecifier>,
+  loader: &mut dyn deno_graph::source::Loader,
+  options: deno_graph::BuildOptions<'a>,
+) -> Result<(), AnyError> {
+  graph.build(roots, loader, options).await;
+
+  // resolve the dependencies of any pending dependencies
+  // that were inserted by building the graph
+  npm_resolver.resolve_pending().await?;
+
+  Ok(())
+}
+
 pub fn error_for_any_npm_specifier(
-  graph: &deno_graph::ModuleGraph,
+  graph: &ModuleGraph,
 ) -> Result<(), AnyError> {
   for module in graph.modules() {
     match module {
@@ -238,7 +252,7 @@ pub fn error_for_any_npm_specifier(
         bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
       }
       Module::External(module) if module.specifier.scheme() == "node" => {
-        bail!("node specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
+        bail!("Node specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
       }
       Module::Esm(_) | Module::Json(_) | Module::External(_) => {}
     }
