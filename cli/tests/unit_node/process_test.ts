@@ -343,7 +343,6 @@ Deno.test({
       data.push("end");
     });
 
-    console.log("process.stdin", process.stdin);
     process.stdin.push("foo");
     process.nextTick(() => {
       process.stdin.push("bar");
