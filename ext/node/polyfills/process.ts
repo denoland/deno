@@ -665,7 +665,7 @@ class Process extends EventEmitter {
   noDeprecation = false;
 }
 
-if (isWindows === "windows") {
+if (isWindows) {
   delete Process.prototype.getgid;
   delete Process.prototype.getuid;
 }
