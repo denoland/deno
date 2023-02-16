@@ -20,6 +20,7 @@ mod package_json;
 mod path;
 mod polyfill;
 mod resolution;
+mod winerror;
 
 pub use package_json::PackageJson;
 pub use path::PathClean;
@@ -412,6 +413,7 @@ pub fn init_polyfill() -> Extension {
       crypto::op_node_hash_update::decl(),
       crypto::op_node_hash_digest::decl(),
       crypto::op_node_hash_clone::decl(),
+      winerror::op_node_sys_to_uv_error::decl(),
       op_node_build_os::decl(),
     ])
     .build()
