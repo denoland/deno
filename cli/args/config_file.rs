@@ -350,6 +350,7 @@ impl FilesConfig {
 #[serde(default, deny_unknown_fields)]
 struct SerializedLintConfig {
   pub rules: LintRulesConfig,
+  #[serde(flatten)]
   pub files: SerializedFilesConfig,
   pub report: Option<String>,
 }
@@ -396,7 +397,9 @@ pub struct FmtOptionsConfig {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedFmtConfig {
+  #[serde(flatten)]
   pub options: FmtOptionsConfig,
+  #[serde(flatten)]
   pub files: SerializedFilesConfig,
 }
 
@@ -421,6 +424,7 @@ pub struct FmtConfig {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedTestConfig {
+  #[serde(flatten)]
   pub files: SerializedFilesConfig,
 }
 
@@ -443,6 +447,7 @@ pub struct TestConfig {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedBenchConfig {
+  #[serde(flatten)]
   pub files: SerializedFilesConfig,
 }
 
@@ -1043,7 +1048,6 @@ mod tests {
         "strict": true
       },
       "lint": {
-        "files": {
         "include": ["src/"],
         "exclude": ["src/testdata/"],
         "rules": {
@@ -1052,16 +1056,13 @@ mod tests {
         }
       },
       "fmt": {
-        "files": {
         "include": ["src/"],
         "exclude": ["src/testdata/"],
-        "options": {
         "useTabs": true,
         "lineWidth": 80,
         "indentWidth": 4,
         "singleQuote": true,
         "proseWrap": "preserve"
-        }
       },
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
