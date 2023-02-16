@@ -398,7 +398,12 @@ impl<'a> GraphDisplayContext<'a> {
     let root_specifier = self.graph.resolve(&self.graph.roots[0]);
     match self.graph.try_get(&root_specifier) {
       Ok(Some(root)) => {
-        if let Some(cache_info) = root.maybe_cache_info.as_ref() {
+        let maybe_cache_info = match root {
+          Module::Esm(module) => module.maybe_cache_info.as_ref(),
+          Module::Json(module) => module.maybe_cache_info.as_ref(),
+          Module::Npm(_) | Module::External(_) => None,
+        };
+        if let Some(cache_info) = maybe_cache_info {
           if let Some(local) = &cache_info.local {
             writeln!(
               writer,
@@ -424,9 +429,21 @@ impl<'a> GraphDisplayContext<'a> {
             )?;
           }
         }
-        writeln!(writer, "{} {}", colors::bold("type:"), root.media_type)?;
-        let total_modules_size =
-          self.graph.modules().map(|m| m.size() as f64).sum::<f64>();
+        if let Some(module) = root.esm() {
+          writeln!(writer, "{} {}", colors::bold("type:"), module.media_type)?;
+        }
+        let total_modules_size = self
+          .graph
+          .modules()
+          .map(|m| {
+            let size = match root {
+              Module::Esm(module) => module.size(),
+              Module::Json(module) => module.size(),
+              Module::Npm(_) | Module::External(_) => 0,
+            };
+            size as f64
+          })
+          .sum::<f64>();
         let total_npm_package_size = self
           .npm_info
           .package_sizes
@@ -499,9 +516,9 @@ impl<'a> GraphDisplayContext<'a> {
     use PackageOrSpecifier::*;
 
     let package_or_specifier =
-      match self.npm_info.package_from_specifier(&module.specifier) {
+      match self.npm_info.package_from_specifier(module.specifier()) {
         Some(package) => Package(package.clone()),
-        None => Specifier(module.specifier.clone()),
+        None => Specifier(module.specifier().clone()),
       };
     let was_seen = !self.seen.insert(match &package_or_specifier {
       Package(package) => package.id.as_serialized(),
@@ -509,16 +526,16 @@ impl<'a> GraphDisplayContext<'a> {
     });
     let header_text = if was_seen {
       let specifier_str = if type_dep {
-        colors::italic_gray(&module.specifier).to_string()
+        colors::italic_gray(module.specifier()).to_string()
       } else {
-        colors::gray(&module.specifier).to_string()
+        colors::gray(module.specifier()).to_string()
       };
       format!("{} {}", specifier_str, colors::gray("*"))
     } else {
       let specifier_str = if type_dep {
-        colors::italic(&module.specifier).to_string()
+        colors::italic(module.specifier()).to_string()
       } else {
-        module.specifier.to_string()
+        module.specifier().to_string()
       };
       let header_text = match &package_or_specifier {
         Package(package) => {
@@ -530,10 +547,11 @@ impl<'a> GraphDisplayContext<'a> {
         Package(package) => {
           self.npm_info.package_sizes.get(&package.id).copied()
         }
-        Specifier(_) => module
-          .maybe_source
-          .as_ref()
-          .map(|s| s.as_bytes().len() as u64),
+        Specifier(_) => match module {
+          Module::Esm(module) => Some(module.size() as u64),
+          Module::Json(module) => Some(module.size() as u64),
+          Module::Npm(_) | Module::External(_) => None,
+        },
       };
       format!("{} {}", header_text, maybe_size_to_text(maybe_size))
     };
@@ -541,20 +559,22 @@ impl<'a> GraphDisplayContext<'a> {
     let mut tree_node = TreeNode::from_text(header_text);
 
     if !was_seen {
-      if let Some(types_dep) = &module.maybe_types_dependency {
-        if let Some(child) =
-          self.build_resolved_info(&types_dep.dependency, true)
-        {
-          tree_node.children.push(child);
-        }
-      }
       match &package_or_specifier {
         Package(package) => {
           tree_node.children.extend(self.build_npm_deps(package));
         }
         Specifier(_) => {
-          for dep in module.dependencies.values() {
-            tree_node.children.extend(self.build_dep_info(dep));
+          if let Some(module) = module.esm() {
+            if let Some(types_dep) = &module.maybe_types_dependency {
+              if let Some(child) =
+                self.build_resolved_info(&types_dep.dependency, true)
+              {
+                tree_node.children.push(child);
+              }
+            }
+            for dep in module.dependencies.values() {
+              tree_node.children.extend(self.build_dep_info(dep));
+            }
           }
         }
       }

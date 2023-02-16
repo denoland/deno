@@ -43,10 +43,10 @@ use deno_core::resolve_url_or_path;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
-use deno_graph::npm::NpmPackageReq;
 use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
+use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -208,7 +208,7 @@ impl ProcState {
 
     let lockfile = cli_options.maybe_lock_file();
 
-    let registry_url = NpmRegistryApi::default_url();
+    let registry_url = NpmRegistryApi::default_url().to_owned();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
@@ -316,7 +316,8 @@ impl ProcState {
       dynamic_permissions,
     );
     let maybe_imports = self.options.to_maybe_imports()?;
-    let resolver = self.resolver.as_graph_resolver();
+    let graph_resolver = self.resolver.as_graph_resolver();
+    let graph_npm_resolver = self.resolver.as_graph_npm_resolver();
     let maybe_file_watcher_reporter: Option<&dyn deno_graph::source::Reporter> =
       if let Some(reporter) = &self.maybe_file_watcher_reporter {
         Some(reporter)
@@ -341,8 +342,8 @@ impl ProcState {
         deno_graph::BuildOptions {
           is_dynamic,
           imports: maybe_imports,
-          resolver: Some(resolver),
-          npm_resolver: Some(resolver),
+          resolver: Some(graph_resolver),
+          npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
         },
@@ -354,21 +355,18 @@ impl ProcState {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
 
-    let (npm_package_reqs, has_node_builtin_specifier) = {
+    let graph = {
       graph_valid_with_cli_options(&graph, &roots, &self.options)?;
       let mut graph_data = self.graph_data.write();
       graph_data.update_graph(Arc::new(graph));
-      (
-        graph_data.npm_packages.clone(),
-        graph_data.has_node_builtin_specifier,
-      )
+      graph_data.graph.clone()
     };
 
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
     }
 
-    if has_node_builtin_specifier
+    if graph.has_node_specifier
       && self.options.type_check_mode() != TypeCheckMode::None
     {
       self
@@ -385,12 +383,9 @@ impl ProcState {
     {
       log::debug!("Type checking.");
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
-      let (graph, has_node_builtin_specifier) = {
+      let graph = {
         let graph_data = self.graph_data.read();
-        (
-          Arc::new(graph_data.graph.segment(&roots)),
-          graph_data.has_node_builtin_specifier,
-        )
+        Arc::new(graph_data.graph.segment(&roots))
       };
       let options = check::CheckOptions {
         type_check_mode: self.options.type_check_mode(),
@@ -403,7 +398,7 @@ impl ProcState {
         log_checks: true,
         reload: self.options.reload_flag()
           && !roots.iter().all(|r| reload_exclusions.contains(r)),
-        has_node_builtin_specifier,
+        has_node_builtin_specifier: graph.has_node_specifier,
       };
       let check_cache =
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
@@ -492,7 +487,7 @@ impl ProcState {
       let graph_data = self.graph_data.read();
       let graph = &graph_data.graph;
       let maybe_resolved = match graph.get(&referrer) {
-        Some(module) => module
+        Some(Module::Esm(module)) => module
           .dependencies
           .get(specifier)
           .map(|d| (&module.specifier, &d.maybe_code)),
@@ -603,7 +598,7 @@ impl ProcState {
             &self.parsed_source_cache,
             &module.specifier,
             module.media_type,
-            module.source,
+            &module.source,
             &self.emit_options,
             self.emit_options_hash,
           )?;
@@ -645,6 +640,7 @@ impl ProcState {
       self.npm_resolver.resolution().clone(),
     );
     let graph_resolver = cli_resolver.as_graph_resolver();
+    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
     let analyzer = self.parsed_source_cache.as_analyzer();
 
     let mut graph = ModuleGraph::default();
@@ -656,7 +652,7 @@ impl ProcState {
           is_dynamic: false,
           imports: maybe_imports,
           resolver: Some(graph_resolver),
-          npm_resolver: Some(graph_resolver),
+          npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: None,
         },
@@ -688,7 +684,7 @@ impl ProcState {
   }
 
   pub fn has_node_builtin_specifier(&self) -> bool {
-    self.graph_data.read().has_node_builtin_specifier
+    self.graph_data.read().graph.has_node_specifier
   }
 }
 

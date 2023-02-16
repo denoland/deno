@@ -18,6 +18,7 @@ use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmRegistryApi;
+use crate::npm::NpmResolution;
 use crate::resolver::CliGraphResolver;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -256,7 +257,7 @@ impl DocumentDependencies {
     }
   }
 
-  pub fn from_module(module: &deno_graph::Module) -> Self {
+  pub fn from_module(module: &deno_graph::EsmModule) -> Self {
     Self {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
@@ -264,7 +265,7 @@ impl DocumentDependencies {
   }
 }
 
-type ModuleResult = Result<deno_graph::Module, deno_graph::ModuleGraphError>;
+type ModuleResult = Result<deno_graph::EsmModule, deno_graph::ModuleGraphError>;
 type ParsedSourceResult = Result<ParsedSource, deno_ast::Diagnostic>;
 
 #[derive(Debug)]
@@ -543,9 +544,7 @@ impl Document {
     self.0.maybe_lsp_version
   }
 
-  fn maybe_module(
-    &self,
-  ) -> Option<&Result<deno_graph::Module, deno_graph::ModuleGraphError>> {
+  fn maybe_esm_module(&self) -> Option<&ModuleResult> {
     self.0.maybe_module.as_ref()
   }
 
@@ -584,7 +583,7 @@ impl Document {
     &self,
     position: &lsp::Position,
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
-    let module = self.maybe_module()?.as_ref().ok()?;
+    let module = self.maybe_esm_module()?.as_ref().ok()?;
     let position = deno_graph::Position {
       line: position.line as usize,
       character: position.character as usize,
@@ -1342,7 +1341,7 @@ impl Documents {
       });
     }
     let doc = self.get(specifier)?;
-    let maybe_module = doc.maybe_module().and_then(|r| r.as_ref().ok());
+    let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
     let maybe_types_dependency = maybe_module
       .and_then(|m| m.maybe_types_dependency.as_ref().map(|d| &d.dependency));
     if let Some(specifier) =
@@ -1446,7 +1445,7 @@ fn analyze_module(
 #[cfg(test)]
 mod tests {
   use crate::npm::NpmResolution;
-  use crate::npm::TestNpmRegistryApi;
+  use crate::npm::TestNpmRegistryApiInner;
 
   use super::*;
   use import_map::ImportMap;
@@ -1548,8 +1547,7 @@ console.log(b, "hello deno");
 
   #[test]
   fn test_documents_refresh_dependencies_config_change() {
-    let npm_registry_api =
-      NpmRegistryApi::new_for_test(TestNpmRegistryApi::default());
+    let npm_registry_api = NpmRegistryApi::new_uninitialized();
     let npm_resolution = NpmResolution::new(npm_registry_api.clone(), None);
 
     // it should never happen that a user of this API causes this to happen,

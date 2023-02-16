@@ -78,7 +78,7 @@ impl ParsedSourceCache {
   pub fn get_parsed_source_from_esm_module(
     &self,
     module: &deno_graph::EsmModule,
-  ) -> Result<ParsedSource, AnyError> {
+  ) -> Result<ParsedSource, deno_ast::Diagnostic> {
     self.get_or_parse_module(
       &module.specifier,
       module.source.clone(),

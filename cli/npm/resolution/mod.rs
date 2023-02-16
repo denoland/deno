@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -9,10 +10,12 @@ use deno_core::futures;
 use deno_core::parking_lot::RwLock;
 use deno_graph::npm::NpmPackageId;
 use deno_graph::npm::NpmPackageReq;
+use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::args::Lockfile;
+use crate::npm::resolution::graph::LATEST_VERSION_REQ;
 
 use self::common::resolve_best_package_version_and_info;
 use self::graph::GraphDependencyResolver;
@@ -22,7 +25,6 @@ use super::cache::should_sync_download;
 use super::cache::NpmPackageCacheFolderId;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::NpmRegistryApi;
-use super::NpmRegistryApi;
 
 mod common;
 mod graph;
@@ -68,7 +70,7 @@ struct NpmResolutionInner {
 
 impl std::fmt::Debug for NpmResolution {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let snapshot = self.snapshot.read();
+    let snapshot = self.0.snapshot.read();
     f.debug_struct("NpmResolution")
       .field("snapshot", &snapshot)
       .finish()
@@ -182,19 +184,21 @@ impl NpmResolution {
 
   pub fn resolve_deno_graph_package_req(
     &self,
-    version_req: &NpmPackageReq,
+    pkg_req: &NpmPackageReq,
   ) -> Result<NpmPackageId, AnyError> {
     let inner = &self.0;
-    let package_info = match inner.api.get_cached_package_info(&version_req.name) {
+    let package_info = match inner.api.get_cached_package_info(&pkg_req.name) {
       Some(package_info) => package_info,
       // should never happen because we should have cached before
       None => bail!(
         "Deno bug. Please report: Could not find '{}' in npm package info cache.",
-        version_req.name
+        pkg_req.name
       ),
     };
 
     let snapshot = inner.snapshot.write();
+    let version_req =
+      pkg_req.version_req.as_ref().unwrap_or(&*LATEST_VERSION_REQ);
     let version_and_info = resolve_best_package_version_and_info(
       version_req,
       &package_info,
@@ -207,11 +211,18 @@ impl NpmResolution {
     };
     debug!(
       "Resolved {}@{} to {}",
-      pkg_req_name,
+      pkg_req.name,
       version_req.version_text(),
       id.as_serialized(),
     );
-    snapshot.package_reqs.insert(version_req, id.clone());
+    snapshot.package_reqs.insert(pkg_req.clone(), id.clone());
+    let packages = snapshot
+      .packages_by_name
+      .entry(package_info.name.clone())
+      .or_default();
+    if !packages.contains(&id) {
+      packages.push(id);
+    }
     snapshot.pending_unresolved_packages.push(id.clone());
     Ok(id)
   }

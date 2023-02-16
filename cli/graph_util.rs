@@ -17,6 +17,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
@@ -121,20 +122,23 @@ pub fn graph_valid(
 /// Checks the lockfile against the graph and and exits on errors.
 pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   for module in graph.modules() {
-    if let Some(source) = &module.maybe_source {
-      if !lockfile.check_or_insert_remote(module.specifier.as_str(), source) {
-        let err = format!(
-          concat!(
-            "The source code is invalid, as it does not match the expected hash in the lock file.\n",
-            "  Specifier: {}\n",
-            "  Lock file: {}",
-          ),
-          module.specifier,
-          lockfile.filename.display(),
-        );
-        log::error!("{} {}", colors::red("error:"), err);
-        std::process::exit(10);
-      }
+    let source = match module {
+      Module::Esm(module) => &module.source,
+      Module::Json(module) => &module.source,
+      Module::Npm(_) | Module::External(_) => continue,
+    };
+    if !lockfile.check_or_insert_remote(module.specifier().as_str(), source) {
+      let err = format!(
+        concat!(
+          "The source code is invalid, as it does not match the expected hash in the lock file.\n",
+          "  Specifier: {}\n",
+          "  Lock file: {}",
+        ),
+        module.specifier(),
+        lockfile.filename.display(),
+      );
+      log::error!("{} {}", colors::red("error:"), err);
+      std::process::exit(10);
     }
   }
 }
@@ -157,6 +161,7 @@ pub async fn create_graph_and_maybe_check(
     ps.npm_resolver.resolution().clone(),
   );
   let graph_resolver = cli_resolver.as_graph_resolver();
+  let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
   let analyzer = ps.parsed_source_cache.as_analyzer();
   let mut graph = ModuleGraph::default();
   graph
@@ -167,7 +172,7 @@ pub async fn create_graph_and_maybe_check(
         is_dynamic: false,
         imports: maybe_imports,
         resolver: Some(graph_resolver),
-        npm_resolver: Some(graph_resolver),
+        npm_resolver: Some(graph_npm_resolver),
         module_analyzer: Some(&*analyzer),
         reporter: None,
       },

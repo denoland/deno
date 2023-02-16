@@ -987,13 +987,13 @@ mod test {
   use deno_graph::npm::NpmPackageReqReference;
   use pretty_assertions::assert_eq;
 
-  use crate::npm::registry::TestNpmRegistryApi;
+  use crate::npm::registry::TestNpmRegistryApiInner;
 
   use super::*;
 
   #[tokio::test]
   async fn resolve_deps_no_peer() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "2.0.0");
     api.ensure_package_version("package-c", "0.1.0");
@@ -1055,7 +1055,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_deps_circular() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "2.0.0");
     api.add_dependency(("package-a", "1.0.0"), ("package-b", "*"));
@@ -1094,7 +1094,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_with_peer_deps_top_tree() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "2.0.0");
     api.ensure_package_version("package-c", "3.0.0");
@@ -1188,7 +1188,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_with_peer_deps_ancestor_sibling_not_top_tree() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-0", "1.1.1");
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "2.0.0");
@@ -1289,7 +1289,7 @@ mod test {
   async fn resolve_with_peer_deps_auto_resolved() {
     // in this case, the peer dependency is not found in the tree
     // so it's auto-resolved based on the registry
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "2.0.0");
     api.ensure_package_version("package-c", "3.0.0");
@@ -1356,7 +1356,7 @@ mod test {
   async fn resolve_with_optional_peer_dep_not_resolved() {
     // in this case, the peer dependency is not found in the tree
     // so it's auto-resolved based on the registry
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "2.0.0");
     api.ensure_package_version("package-c", "3.0.0");
@@ -1415,7 +1415,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_with_optional_peer_found() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "2.0.0");
     api.ensure_package_version("package-c", "3.0.0");
@@ -1499,7 +1499,7 @@ mod test {
     // When resolving a dependency a second time and it has an optional
     // peer dependency that wasn't previously resolved, it should resolve all the
     // previous versions to the new one
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "1.0.0");
     api.ensure_package_version("package-peer", "1.0.0");
@@ -1562,7 +1562,7 @@ mod test {
   #[tokio::test]
   async fn resolve_optional_peer_first_not_resolved_second_resolved_scenario2()
   {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "1.0.0");
     api.ensure_package_version("package-peer", "2.0.0");
@@ -1624,7 +1624,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_optional_dep_npm_req_top() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-peer", "1.0.0");
     api.add_optional_peer_dependency(
@@ -1671,7 +1671,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_optional_dep_different_resolution_second_time() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "1.0.0");
     api.ensure_package_version("package-peer", "1.0.0");
@@ -1769,7 +1769,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_nested_peer_deps_auto_resolved() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-0", "1.0.0");
     api.ensure_package_version("package-peer-a", "2.0.0");
     api.ensure_package_version("package-peer-b", "3.0.0");
@@ -1818,7 +1818,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_nested_peer_deps_ancestor_sibling_deps() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-0", "1.0.0");
     api.ensure_package_version("package-peer-a", "2.0.0");
     api.ensure_package_version("package-peer-b", "3.0.0");
@@ -1904,7 +1904,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_with_peer_deps_multiple() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-0", "1.1.1");
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "2.0.0");
@@ -2060,7 +2060,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_peer_deps_circular() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "2.0.0");
     api.add_dependency(("package-a", "1.0.0"), ("package-b", "*"));
@@ -2103,7 +2103,7 @@ mod test {
   async fn resolve_peer_deps_multiple_copies() {
     // repeat this a few times to have a higher probability of surfacing indeterminism
     for _ in 0..3 {
-      let api = TestNpmRegistryApi::default();
+      let api = TestNpmRegistryApiInner::default();
       api.ensure_package_version("package-a", "1.0.0");
       api.ensure_package_version("package-b", "2.0.0");
       api.ensure_package_version("package-dep", "3.0.0");
@@ -2221,7 +2221,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_dep_with_peer_deps_dep_then_peer() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "1.0.0");
     api.ensure_package_version("package-c", "1.0.0");
@@ -2297,7 +2297,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_dep_with_peer_deps_dep_then_different_peer() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "1.0.0");
     api.ensure_package_version("package-c", "1.0.0");
@@ -2399,7 +2399,7 @@ mod test {
 
   #[tokio::test]
   async fn resolve_dep_and_peer_dist_tag() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "2.0.0");
     api.ensure_package_version("package-b", "3.0.0");
@@ -2489,7 +2489,7 @@ mod test {
 
   #[tokio::test]
   async fn package_has_self_as_dependency() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.add_dependency(("package-a", "1.0.0"), ("package-a", "1"));
 
@@ -2513,7 +2513,7 @@ mod test {
 
   #[tokio::test]
   async fn package_has_self_but_different_version_as_dependency() {
-    let api = TestNpmRegistryApi::default();
+    let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-a", "0.5.0");
     api.add_dependency(("package-a", "1.0.0"), ("package-a", "^0.5"));
@@ -2547,7 +2547,7 @@ mod test {
   }
 
   async fn run_resolver_and_get_output(
-    api: TestNpmRegistryApi,
+    api: TestNpmRegistryApiInner,
     reqs: Vec<&str>,
   ) -> (Vec<NpmResolutionPackage>, Vec<(String, String)>) {
     let mut graph = Graph::default();

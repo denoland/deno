@@ -38,6 +38,7 @@ use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -721,6 +722,50 @@ fn op_resolve(
   }
 
   Ok(resolved)
+}
+
+fn resolve_specifier_types(
+  specifier: &ModuleSpecifier,
+  state: &mut State,
+) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
+  fn inner(
+    specifier: &ModuleSpecifier,
+    state: &mut State,
+    seen: &mut HashSet<ModuleSpecifier>,
+  ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
+    let graph = &state.graph;
+    Ok(match graph.get(specifier) {
+      Some(Module::Esm(module)) => {
+        if !seen.insert(module.specifier.clone()) {
+          // infinite loop, return itself
+          return Ok(Some((module.specifier.clone(), module.media_type)));
+        }
+        let maybe_types_dep = module
+          .maybe_types_dependency
+          .as_ref()
+          .map(|d| &d.dependency);
+        match maybe_types_dep.and_then(|d| d.maybe_specifier()) {
+          // follow this specifier, which might be an npm package
+          Some(specifier) => inner(specifier, state, seen)?,
+          _ => Some((module.specifier.clone(), module.media_type)),
+        }
+      }
+      Some(Module::Npm(module)) => {
+        if let Some(npm_resolver) = &state.maybe_npm_resolver {
+          Some(resolve_npm_package_reference_types(
+            &module.package_id_reference,
+            npm_resolver,
+          )?)
+        } else {
+          None
+        }
+      }
+      Some(Module::Json(_) | Module::External(_)) | None => None,
+    })
+  }
+
+  let mut seen = HashSet::new();
+  inner(specifier, state, &mut seen)
 }
 
 pub fn resolve_npm_package_reference_types(

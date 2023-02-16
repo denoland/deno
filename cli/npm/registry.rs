@@ -22,6 +22,7 @@ use deno_core::url::Url;
 use deno_graph::semver::Version;
 use deno_graph::semver::VersionReq;
 use deno_runtime::colors;
+use once_cell::sync::Lazy;
 use serde::Serialize;
 
 use crate::args::CacheSetting;
@@ -191,42 +192,30 @@ impl NpmPackageVersionDistInfo {
   }
 }
 
-#[derive(Clone)]
+static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
+  let env_var_name = "NPM_CONFIG_REGISTRY";
+  if let Ok(registry_url) = std::env::var(env_var_name) {
+    // ensure there is a trailing slash for the directory
+    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+    match Url::parse(&registry_url) {
+      Ok(url) => {
+        return url;
+      }
+      Err(err) => {
+        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
+      }
+    }
+  }
+
+  Url::parse("https://registry.npmjs.org").unwrap()
+});
+
+#[derive(Clone, Debug)]
 pub struct NpmRegistryApi(Arc<dyn NpmRegistryApiInner>);
 
 impl NpmRegistryApi {
-  pub fn default_url() -> Url {
-    // todo(dsherret): remove DENO_NPM_REGISTRY in the future (maybe May 2023)
-    let env_var_names = ["NPM_CONFIG_REGISTRY", "DENO_NPM_REGISTRY"];
-    for env_var_name in env_var_names {
-      if let Ok(registry_url) = std::env::var(env_var_name) {
-        // ensure there is a trailing slash for the directory
-        let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-        match Url::parse(&registry_url) {
-          Ok(url) => {
-            if env_var_name == "DENO_NPM_REGISTRY" {
-              log::warn!(
-                "{}",
-                colors::yellow(concat!(
-                  "DENO_NPM_REGISTRY was intended for internal testing purposes only. ",
-                  "Please update to NPM_CONFIG_REGISTRY instead.",
-                )),
-              );
-            }
-            return url;
-          }
-          Err(err) => {
-            log::debug!(
-              "Invalid {} environment variable: {:#}",
-              env_var_name,
-              err,
-            );
-          }
-        }
-      }
-    }
-
-    Url::parse("https://registry.npmjs.org").unwrap()
+  pub fn default_url() -> &'static Url {
+    &*NPM_REGISTRY_DEFAULT_URL
   }
 
   pub fn new(
@@ -245,8 +234,15 @@ impl NpmRegistryApi {
     }))
   }
 
+  /// Creates an npm registry API that will be uninitialized
+  /// and error for every request. This is useful for tests
+  /// or for initializing the LSP.
+  pub fn new_uninitialized() -> Self {
+    Self(Arc::new(NullNpmRegistryApiInner))
+  }
+
   #[cfg(test)]
-  pub fn new_for_test(api: TestNpmRegistryApi) -> NpmRegistryApi {
+  pub fn new_for_test(api: TestNpmRegistryApiInner) -> NpmRegistryApi {
     Self(Arc::new(api))
   }
 
@@ -287,7 +283,7 @@ impl NpmRegistryApi {
   }
 }
 
-trait NpmRegistryApiInner: Sync + Send + 'static {
+trait NpmRegistryApiInner: std::fmt::Debug + Sync + Send + 'static {
   fn maybe_package_info(
     &self,
     name: &str,
@@ -323,6 +319,7 @@ impl NpmRegistryApiInner for RealNpmRegistryApiInner {
   }
 }
 
+#[derive(Debug)]
 struct RealNpmRegistryApiInner {
   base_url: Url,
   cache: NpmCache,
@@ -484,16 +481,42 @@ impl RealNpmRegistryApiInner {
   }
 }
 
+#[derive(Debug)]
+struct NullNpmRegistryApiInner;
+
+impl NpmRegistryApiInner for NullNpmRegistryApiInner {
+  fn maybe_package_info(
+    &self,
+    name: &str,
+  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
+    Box::pin(deno_core::futures::future::ready(Err(
+      deno_core::anyhow::anyhow!(
+        "Deno bug. Please report. Registry API was not initialized."
+      ),
+    )))
+  }
+
+  fn clear_memory_cache(&self) {}
+
+  fn get_cached_package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
+    None
+  }
+
+  fn base_url(&self) -> &Url {
+    NpmRegistryApi::default_url()
+  }
+}
+
 /// Note: This test struct is not thread safe for setup
 /// purposes. Construct everything on the same thread.
 #[cfg(test)]
-#[derive(Clone, Default)]
-pub struct TestNpmRegistryApi {
+#[derive(Clone, Default, Debug)]
+pub struct TestNpmRegistryApiInner {
   package_infos: Arc<Mutex<HashMap<String, NpmPackageInfo>>>,
 }
 
 #[cfg(test)]
-impl TestNpmRegistryApi {
+impl TestNpmRegistryApiInner {
   pub fn add_package_info(&self, name: &str, info: NpmPackageInfo) {
     let previous = self.package_infos.lock().insert(name.to_string(), info);
     assert!(previous.is_none());
@@ -577,7 +600,7 @@ impl TestNpmRegistryApi {
 }
 
 #[cfg(test)]
-impl NpmRegistryApiInner for TestNpmRegistryApi {
+impl NpmRegistryApiInner for TestNpmRegistryApiInner {
   fn maybe_package_info(
     &self,
     name: &str,
@@ -595,6 +618,6 @@ impl NpmRegistryApiInner for TestNpmRegistryApi {
   }
 
   fn base_url(&self) -> &Url {
-    todo!()
+    NpmRegistryApi::default_url()
   }
 }

@@ -2,6 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
+use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::npm::NpmPackageId;
 use deno_graph::npm::NpmPackageReq;
@@ -13,19 +14,34 @@ use import_map::ImportMap;
 use std::sync::Arc;
 
 use crate::args::JsxImportSourceConfig;
-use crate::npm::NpmCache;
 use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct CliGraphResolver {
   maybe_import_map: Option<Arc<ImportMap>>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   npm_registry_api: NpmRegistryApi,
   npm_resolution: NpmResolution,
+}
+
+impl Default for CliGraphResolver {
+  fn default() -> Self {
+    // This is not ideal, but necessary for the LSP. In the future, we should
+    // refactor the LSP and force this to be initialized.
+    let npm_registry_api = NpmRegistryApi::new_uninitialized();
+    let npm_resolution = NpmResolution::new(npm_registry_api.clone(), None);
+    Self {
+      maybe_import_map: Default::default(),
+      maybe_default_jsx_import_source: Default::default(),
+      maybe_jsx_import_source_module: Default::default(),
+      npm_registry_api,
+      npm_resolution,
+    }
+  }
 }
 
 impl CliGraphResolver {
@@ -48,6 +64,10 @@ impl CliGraphResolver {
   }
 
   pub fn as_graph_resolver(&self) -> &dyn Resolver {
+    self
+  }
+
+  pub fn as_graph_npm_resolver(&self) -> &dyn NpmResolver {
     self
   }
 }
@@ -94,7 +114,8 @@ impl NpmResolver for CliGraphResolver {
   ) -> BoxFuture<'static, Result<(), String>> {
     // this will internally cache the package information
     let fut = self.npm_registry_api.package_info(&package_name);
-    async move { fut.await.map_err(|err| format!("{err:#}")) }.boxed()
+    async move { fut.await.map(|_| ()).map_err(|err| format!("{err:#}")) }
+      .boxed()
   }
 
   fn resolve_npm(
