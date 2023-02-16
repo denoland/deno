@@ -665,13 +665,10 @@ class Process extends EventEmitter {
   noDeprecation = false;
 }
 
-// TODO(kt3k): Do the below at start up time.
-/*
 if (Deno.build.os === "windows") {
   delete Process.prototype.getgid;
   delete Process.prototype.getuid;
 }
-*/
 
 /** https://nodejs.org/api/process.html#process_process */
 const process = new Process();
