@@ -279,7 +279,7 @@ impl Serialize for TsConfig {
   }
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct LintRulesConfig {
   pub tags: Option<Vec<String>>,
@@ -287,7 +287,7 @@ pub struct LintRulesConfig {
   pub exclude: Option<Vec<String>>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedFilesConfig {
   pub include: Vec<String>,
@@ -346,7 +346,7 @@ impl FilesConfig {
   }
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedLintConfig {
   pub rules: LintRulesConfig,
@@ -370,14 +370,14 @@ impl SerializedLintConfig {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct LintConfig {
   pub rules: LintRulesConfig,
   pub files: FilesConfig,
   pub report: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum ProseWrap {
   Always,
@@ -385,7 +385,7 @@ pub enum ProseWrap {
   Preserve,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
   pub use_tabs: Option<bool>,
@@ -396,7 +396,7 @@ pub struct FmtOptionsConfig {
   pub semi_colons: Option<bool>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedFmtConfig {
   #[serde(flatten)]
@@ -421,13 +421,13 @@ impl SerializedFmtConfig {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct FmtConfig {
   pub options: FmtOptionsConfig,
   pub files: FilesConfig,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedTestConfig {
   #[serde(flatten)]
@@ -447,12 +447,12 @@ impl SerializedTestConfig {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct TestConfig {
   pub files: FilesConfig,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedBenchConfig {
   #[serde(flatten)]
@@ -472,12 +472,12 @@ impl SerializedBenchConfig {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct BenchConfig {
   pub files: FilesConfig,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum LockConfig {
   Bool(bool),
