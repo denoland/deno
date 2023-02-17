@@ -570,7 +570,16 @@ function createServe(opFn) {
 
             let resp;
             try {
-              resp = handler(req);
+              resp = handler(req, () => {
+                const { 0: hostname, 1: port } = core.ops.op_flash_addr(
+                  serverId,
+                  i,
+                );
+                return {
+                  hostname,
+                  port,
+                };
+              });
               if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
                 PromisePrototypeCatch(
                   PromisePrototypeThen(

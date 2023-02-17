@@ -7,13 +7,13 @@ use std::path::PathBuf;
 
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_graph::semver::Version;
 use flate2::read::GzDecoder;
 use tar::Archive;
 use tar::EntryType;
 
 use super::cache::with_folder_sync_lock;
 use super::registry::NpmPackageVersionDistInfo;
-use crate::semver::Version;
 
 pub fn verify_and_extract_tarball(
   package: (&str, &Version),
