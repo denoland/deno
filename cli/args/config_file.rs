@@ -1014,6 +1014,12 @@ mod tests {
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
 
+  fn unpack_object<T>(result: Result<Option<T>, AnyError>, name: &str) -> T {
+    result
+      .unwrap_or_else(|err| panic!("error parsing {name} object but got {err}"))
+      .unwrap_or_else(|| panic!("{name} object should be defined"))
+  }
+
   #[test]
   fn read_config_file_absolute() {
     let path = test_util::testdata_path().join("module_graph/tsconfig.json");
@@ -1096,38 +1102,37 @@ mod tests {
       }),
     );
 
-    let lint_config = config_file
-      .to_lint_config()
-      .expect("error parsing lint object")
-      .expect("lint object should be defined");
-    assert_eq!(lint_config.files.include, vec![PathBuf::from("/deno/src/")]);
     assert_eq!(
-      lint_config.files.exclude,
-      vec![PathBuf::from("/deno/src/testdata/")]
+      unpack_object(config_file.to_lint_config(), "lint"),
+      LintConfig {
+        files: FilesConfig {
+          include: vec![PathBuf::from("/deno/src/")],
+          exclude: vec![PathBuf::from("/deno/src/testdata/")],
+        },
+        rules: LintRulesConfig {
+          include: Some(vec!["ban-untagged-todo".to_string()]),
+          exclude: None,
+          tags: Some(vec!["recommended".to_string()]),
+        },
+        ..Default::default()
+      }
     );
     assert_eq!(
-      lint_config.rules.include,
-      Some(vec!["ban-untagged-todo".to_string()])
-    );
-    assert_eq!(
-      lint_config.rules.tags,
-      Some(vec!["recommended".to_string()])
-    );
-    assert!(lint_config.rules.exclude.is_none());
-
-    let fmt_config = config_file
-      .to_fmt_config()
-      .expect("error parsing fmt object")
-      .expect("fmt object should be defined");
-    assert_eq!(fmt_config.files.include, vec![PathBuf::from("/deno/src/")]);
-    assert_eq!(
-      fmt_config.files.exclude,
-      vec![PathBuf::from("/deno/src/testdata/")],
-    );
-    assert_eq!(fmt_config.options.use_tabs, Some(true));
-    assert_eq!(fmt_config.options.line_width, Some(80));
-    assert_eq!(fmt_config.options.indent_width, Some(4));
-    assert_eq!(fmt_config.options.single_quote, Some(true));
+      unpack_object(config_file.to_fmt_config(), "fmt"),
+      FmtConfig {
+        files: FilesConfig {
+          include: vec![PathBuf::from("/deno/src/")],
+          exclude: vec![PathBuf::from("/deno/src/testdata/")],
+        },
+        options: FmtOptionsConfig {
+          use_tabs: Some(true),
+          line_width: Some(80),
+          indent_width: Some(4),
+          single_quote: Some(true),
+          prose_wrap: Some(ProseWrap::Preserve),
+          ..Default::default()
+        },
+    });
 
     let tasks_config = config_file.to_tasks_config().unwrap().unwrap();
     assert_eq!(
