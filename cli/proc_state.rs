@@ -647,6 +647,7 @@ impl ProcState {
     let cli_resolver = CliGraphResolver::new(
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
+      // TODO(bartlomieju): this should use dependencies from `package.json`?
       None,
     );
     let graph_resolver = cli_resolver.as_graph_resolver();

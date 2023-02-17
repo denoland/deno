@@ -333,7 +333,7 @@ impl RealNpmRegistryApiInner {
           .await
           .with_context(|| {
           format!(
-            "Error getting response at {} for package {}",
+            "Error getting response at {} for package \"{}\"",
             self.get_package_url(name),
             name
           )

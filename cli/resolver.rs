@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::args::JsxImportSourceConfig;
-use crate::node::resolve_builtin_node_module;
 use deno_graph::npm::NpmPackageReq;
 
 /// A resolver that takes care of resolution, taking into account loaded
@@ -17,6 +16,9 @@ use deno_graph::npm::NpmPackageReq;
 #[derive(Debug, Clone, Default)]
 pub struct CliGraphResolver {
   maybe_import_map: Option<Arc<ImportMap>>,
+  // TODO(bartlomieju): actually use in `resolver`, once
+  // deno_graph refactors and upgrades land.
+  #[allow(dead_code)]
   maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
@@ -61,27 +63,14 @@ impl Resolver for CliGraphResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
+    // TODO(bartlomieju): actually use `maybe_package_json_deps` here, once
+    // deno_graph refactors and upgrades land.
     if let Some(import_map) = &self.maybe_import_map {
-      return import_map
+      import_map
         .resolve(specifier, referrer)
-        .map_err(|err| err.into());
+        .map_err(|err| err.into())
+    } else {
+      deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
     }
-
-    if let Some(deps) = self.maybe_package_json_deps.as_ref() {
-      if let Some(req) = deps.get(specifier) {
-        return Ok(ModuleSpecifier::parse(&format!("npm:{req}")).unwrap());
-      }
-    }
-
-    if let Ok(node_builtin_module) = resolve_builtin_node_module(specifier) {
-      return Ok(node_builtin_module);
-    }
-
-    // FIXME(bartlomieju): check using `npm_resolver.in_npm_package()`
-    // if referrer.as_str().contains("node_modules") {
-    //   return Ok(ModuleSpecifier::parse(&format!("npm:{specifier}")).unwrap());
-    // }
-
-    deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
   }
 }
