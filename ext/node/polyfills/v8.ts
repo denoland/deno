@@ -3,8 +3,10 @@
 
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 
+const { ops } = globalThis.__bootstrap.core;
+
 export function cachedDataVersionTag() {
-  notImplemented("v8.cachedDataVersionTag");
+  return ops.op_v8_cached_data_version_tag();
 }
 export function getHeapCodeStatistics() {
   notImplemented("v8.getHeapCodeStatistics");
@@ -15,9 +17,30 @@ export function getHeapSnapshot() {
 export function getHeapSpaceStatistics() {
   notImplemented("v8.getHeapSpaceStatistics");
 }
+
+const buffer = new Float64Array(14);
+
 export function getHeapStatistics() {
-  notImplemented("v8.getHeapStatistics");
+  ops.op_v8_get_heap_statistics(buffer);
+
+  return {
+    total_heap_size: buffer[0],
+    total_heap_size_executable: buffer[1],
+    total_physical_size: buffer[2],
+    total_available_size: buffer[3],
+    used_heap_size: buffer[4],
+    heap_size_limit: buffer[5],
+    malloced_memory: buffer[6],
+    peak_malloced_memory: buffer[7],
+    does_zap_garbage: buffer[8],
+    number_of_native_contexts: buffer[9],
+    number_of_detached_contexts: buffer[10],
+    total_global_handles_size: buffer[11],
+    used_global_handles_size: buffer[12],
+    external_memory: buffer[13],
+  };
 }
+
 export function setFlagsFromString() {
   notImplemented("v8.setFlagsFromString");
 }

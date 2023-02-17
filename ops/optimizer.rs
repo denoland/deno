@@ -43,6 +43,7 @@ enum TransformKind {
   V8Value,
   SliceU32(bool),
   SliceU8(bool),
+  SliceF64(bool),
   PtrU8,
   WasmMemory,
 }
@@ -65,6 +66,13 @@ impl Transform {
   fn slice_u8(index: usize, is_mut: bool) -> Self {
     Transform {
       kind: TransformKind::SliceU8(is_mut),
+      index,
+    }
+  }
+
+  fn slice_f64(index: usize, is_mut: bool) -> Self {
+    Transform {
+      kind: TransformKind::SliceF64(is_mut),
       index,
     }
   }
@@ -150,6 +158,20 @@ impl Transform {
             unsafe { (&*var).get_storage_if_aligned().unwrap_unchecked() };
         })
       }
+      TransformKind::SliceF64(_) => {
+        *ty =
+          parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<f64> };
+
+        q!(Vars { var: &ident }, {
+          let var = match unsafe { &*var }.get_storage_if_aligned() {
+            Some(v) => v,
+            None => {
+              unsafe { &mut *fast_api_callback_options }.fallback = true;
+              return Default::default();
+            }
+          };
+        })
+      }
       TransformKind::WasmMemory => {
         // Note: `ty` is correctly set to __opts by the fast call tier.
         // U8 slice is always byte-aligned.
@@ -214,6 +236,7 @@ pub(crate) enum FastValue {
   V8Value,
   Uint8Array,
   Uint32Array,
+  Float64Array,
 }
 
 impl Default for FastValue {
@@ -618,6 +641,15 @@ impl Optimizer {
                   assert!(self
                     .transforms
                     .insert(index, Transform::slice_u32(index, is_mut_ref))
+                    .is_none());
+                }
+                // Is `T` a f64?
+                PathSegment { ident, .. } if ident == "f64" => {
+                  self.needs_fast_callback_option = true;
+                  self.fast_parameters.push(FastValue::Float64Array);
+                  assert!(self
+                    .transforms
+                    .insert(index, Transform::slice_f64(index, is_mut_ref))
                     .is_none());
                 }
                 _ => return Err(BailoutReason::FastUnsupportedParamType),
