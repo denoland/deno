@@ -9,6 +9,7 @@ use std::sync::Arc;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
+use deno_core::parking_lot::Mutex;
 use deno_graph::npm::NpmPackageId;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::semver::VersionReq;
@@ -34,19 +35,27 @@ pub static LATEST_VERSION_REQ: Lazy<VersionReq> =
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 struct NodeId(usize);
 
-/// todo: revert comment here
+/// Path of visited node identifiers.
 #[derive(Clone)]
 struct VisitedNodeIds {
   previous_node: Option<Arc<VisitedNodeIds>>,
-  node_id: NodeId,
+  node_id: Arc<Mutex<NodeId>>,
 }
 
 impl VisitedNodeIds {
   pub fn new(node_id: NodeId) -> Arc<Self> {
     Arc::new(Self {
       previous_node: None,
-      node_id,
+      node_id: Arc::new(Mutex::new(node_id)),
     })
+  }
+
+  pub fn node_id(&self) -> NodeId {
+    *self.node_id.lock()
+  }
+
+  pub fn change_id(&self, node_id: NodeId) {
+    *self.node_id.lock() = node_id;
   }
 
   pub fn with_parent(
@@ -68,7 +77,7 @@ impl VisitedNodeIds {
     } else {
       Some(Arc::new(Self {
         previous_node: Some(self.clone()),
-        node_id,
+        node_id: Arc::new(Mutex::new(node_id)),
       }))
     }
   }
@@ -77,7 +86,7 @@ impl VisitedNodeIds {
     let mut maybe_next_node = Some(self);
     while let Some(next_node) = maybe_next_node {
       // stop once we encounter the same id
-      if next_node.node_id == node_id {
+      if next_node.node_id() == node_id {
         return true;
       }
       maybe_next_node = next_node.previous_node.as_ref();
@@ -125,7 +134,6 @@ enum NodeParent {
 /// A resolved package in the resolution graph.
 #[derive(Debug)]
 struct Node {
-  pub node_id: NodeId,
   // Use BTreeMap in order to create determinism
   // when going up and down the tree
   pub parents: BTreeMap<String, BTreeSet<NodeParent>>,
@@ -283,7 +291,6 @@ impl Graph {
       let node_id = NodeId(self.next_package_id);
       self.next_package_id += 1;
       let node = Node {
-        node_id,
         parents: Default::default(),
         children: Default::default(),
         deps: Default::default(),
@@ -318,7 +325,7 @@ impl Graph {
         .unwrap();
       packages_with_name.remove(remove_index);
 
-      let parent = NodeParent::Node(node.node_id.clone());
+      let parent = NodeParent::Node(node_id.clone());
       for (specifier, child_id) in &node.children {
         let child = self.borrow_node(*child_id);
         child.remove_parent(specifier, &parent);
@@ -484,7 +491,7 @@ impl Graph {
 pub struct GraphDependencyResolver<'a> {
   graph: &'a mut Graph,
   api: &'a NpmRegistryApi,
-  pending_unresolved_nodes: VecDeque<(Arc<VisitedNodeIds>, NodeId)>,
+  pending_unresolved_nodes: VecDeque<Arc<VisitedNodeIds>>,
 }
 
 impl<'a> GraphDependencyResolver<'a> {
@@ -604,9 +611,7 @@ impl<'a> GraphDependencyResolver<'a> {
       }
       None => VisitedNodeIds::new(node_id),
     };
-    self
-      .pending_unresolved_nodes
-      .push_back((visited_versions, node_id));
+    self.pending_unresolved_nodes.push_back(visited_versions);
   }
 
   fn resolve_node_from_info(
@@ -677,26 +682,24 @@ impl<'a> GraphDependencyResolver<'a> {
   pub async fn resolve_pending(&mut self) -> Result<(), AnyError> {
     while !self.pending_unresolved_nodes.is_empty() {
       // now go down through the dependencies by tree depth
-      while let Some((visited_versions, parent_node_id)) =
+      while let Some(visited_versions) =
         self.pending_unresolved_nodes.pop_front()
       {
-        let (mut parent_id, deps, existing_children) = {
-          let parent_node = match self.graph.packages.get(&parent_node_id) {
+        let mut parent_id = visited_versions.node_id();
+        let (deps, existing_children) = {
+          let parent_node = match self.graph.packages.get(&parent_id) {
             Some(node) if node.no_peers => {
               continue; // skip, no need to analyze
             }
             Some(node) => node,
             None => {
-              // todo(dsherret): we should try to reproduce this forgotten scenario and write a test
+              // todo(dsherret): I don't believe this should occur anymore
+              // todo(THIS PR): add a debug assert
               continue;
             }
           };
 
-          (
-            parent_node_id.clone(),
-            parent_node.deps.clone(),
-            parent_node.children.clone(),
-          )
+          (parent_node.deps.clone(), parent_node.children.clone())
         };
 
         // cache all the dependencies' registry infos in parallel if should
@@ -748,6 +751,7 @@ impl<'a> GraphDependencyResolver<'a> {
                 existing_children.get(&dep.bare_specifier).copied(),
               )?;
               if let Some(new_parent_id) = maybe_new_parent_id {
+                visited_versions.change_id(new_parent_id);
                 parent_id = new_parent_id;
               }
             }
