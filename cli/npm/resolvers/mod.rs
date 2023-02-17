@@ -11,6 +11,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_graph::npm::NpmPackageId;
 use deno_graph::npm::NpmPackageNodeId;
 use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_node::NodePermissions;
@@ -186,18 +187,37 @@ impl NpmPackageResolver {
     &self.resolution
   }
 
-  /// Resolves an npm package folder path from a Deno module.
-  pub fn resolve_package_folder_from_deno_module(
+  /// Resolves an npm package folder path from a npm package requirement.
+  pub fn resolve_package_folder_from_pkg_req(
     &self,
     pkg_req: &NpmPackageReq,
   ) -> Result<PathBuf, AnyError> {
+    let node_id = self.resolution.resolve_pkg_node_id_from_pkg_req(pkg_req)?;
+    self.resolve_pkg_folder_from_deno_module_at_node_id(&node_id)
+  }
+
+  /// Resolves an npm package folder path from a Deno module.
+  pub fn resolve_package_folder_from_deno_module(
+    &self,
+    package_id: &NpmPackageId,
+  ) -> Result<PathBuf, AnyError> {
+    let node_id = self
+      .resolution
+      .resolve_pkg_node_id_from_deno_module(package_id)?;
+    self.resolve_pkg_folder_from_deno_module_at_node_id(&node_id)
+  }
+
+  fn resolve_pkg_folder_from_deno_module_at_node_id(
+    &self,
+    package_id: &NpmPackageNodeId,
+  ) -> Result<PathBuf, AnyError> {
     let path = self
       .fs_resolver
-      .resolve_package_folder_from_deno_module(pkg_req)?;
+      .resolve_package_folder_from_deno_module(package_id)?;
     let path = canonicalize_path_maybe_not_exists(&path)?;
     log::debug!(
       "Resolved package folder of {} to {}",
-      pkg_req,
+      package_id.as_serialized(),
       path.display()
     );
     Ok(path)

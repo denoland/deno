@@ -214,24 +214,20 @@ impl Graph {
         .iter()
         .map(|(id, p)| (id.clone(), p.copy_index))
         .collect(),
+      package_reqs: snapshot.package_reqs,
       pending_unresolved_packages: snapshot.pending_unresolved_packages,
+      root_packages: HashMap::with_capacity(snapshot.root_packages.len()),
       ..Default::default()
     };
-    for (package_req, node_id) in snapshot.package_reqs {
-      graph.package_reqs.insert(package_req, node_id.id.clone());
-      if let Some(resolution) = snapshot.packages.get(&node_id) {
-        let node =
-          fill_for_id(&mut graph, &node_id, resolution, &snapshot.packages);
-        (*node)
-          .lock()
-          // insert at an empty magic specifier
-          .add_parent("".to_string(), NodeParent::Root(node_id.id.clone()));
-        graph.root_packages.insert(node_id.id.clone(), node_id);
-      } else {
-        // if the id not in the list of packages, then that means
-        // this is a pending unresolved package so ensure that's the case
-        debug_assert!(graph.pending_unresolved_packages.contains(&node_id.id));
-      }
+    for (id, node_id) in snapshot.root_packages {
+      let resolution = snapshot.packages.get(&node_id).unwrap();
+      let node =
+        fill_for_id(&mut graph, &node_id, resolution, &snapshot.packages);
+      (*node)
+        .lock()
+        // insert at an empty magic specifier
+        .add_parent("".to_string(), NodeParent::Root(node_id.id.clone()));
+      graph.root_packages.insert(id, node_id);
     }
     graph
   }
@@ -419,13 +415,8 @@ impl Graph {
     debug_assert!(self.pending_unresolved_packages.is_empty());
 
     Ok(NpmResolutionSnapshot {
-      package_reqs: self
-        .package_reqs
-        .into_iter()
-        .map(|(pkg_req, id)| {
-          (pkg_req, self.root_packages.get(&id).unwrap().clone())
-        })
-        .collect(),
+      package_reqs: self.package_reqs,
+      root_packages: self.root_packages,
       packages_by_name: self.packages_by_name,
       packages,
       pending_unresolved_packages: self.pending_unresolved_packages,
@@ -2686,7 +2677,12 @@ mod test {
     let mut package_reqs = snapshot
       .package_reqs
       .into_iter()
-      .map(|(a, b)| (a.to_string(), b.as_serialized()))
+      .map(|(a, b)| {
+        (
+          a.to_string(),
+          snapshot.root_packages.get(&b).unwrap().as_serialized(),
+        )
+      })
       .collect::<Vec<_>>();
     package_reqs.sort_by(|a, b| a.0.to_string().cmp(&b.0.to_string()));
     (packages, package_reqs)

@@ -46,8 +46,12 @@ impl NpmPackagesPartitioned {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NpmResolutionSnapshot {
+  /// The unique package requirements map to a single npm package name and version.
   #[serde(with = "map_to_vec")]
-  pub(super) package_reqs: HashMap<NpmPackageReq, NpmPackageNodeId>,
+  pub(super) package_reqs: HashMap<NpmPackageReq, NpmPackageId>,
+  // Each root level npm package name and version maps to an exact npm package node id.
+  #[serde(with = "map_to_vec")]
+  pub(super) root_packages: HashMap<NpmPackageId, NpmPackageNodeId>,
   pub(super) packages_by_name: HashMap<String, Vec<NpmPackageNodeId>>,
   #[serde(with = "map_to_vec")]
   pub(super) packages: HashMap<NpmPackageNodeId, NpmResolutionPackage>,
@@ -96,25 +100,30 @@ mod map_to_vec {
 }
 
 impl NpmResolutionSnapshot {
-  /// Resolve a node package from a deno module.
-  pub fn resolve_package_from_deno_module(
+  /// Resolve a node package from a package requirement.
+  pub fn resolve_pkg_node_id_from_pkg_req(
     &self,
     req: &NpmPackageReq,
   ) -> Result<&NpmResolutionPackage, AnyError> {
     match self.package_reqs.get(req) {
-      Some(id) => Ok(self.packages.get(id).unwrap()),
+      Some(id) => self.resolve_package_from_deno_module(id),
       None => bail!("could not find npm package directory for '{}'", req),
     }
   }
 
+  /// Resolve a node package from a deno module.
+  pub fn resolve_package_from_deno_module(
+    &self,
+    id: &NpmPackageId,
+  ) -> Result<&NpmResolutionPackage, AnyError> {
+    match self.root_packages.get(id) {
+      Some(id) => Ok(self.packages.get(id).unwrap()),
+      None => bail!("could not find npm package directory for '{}'", id),
+    }
+  }
+
   pub fn top_level_packages(&self) -> Vec<NpmPackageNodeId> {
-    self
-      .package_reqs
-      .values()
-      .cloned()
-      .collect::<HashSet<_>>()
-      .into_iter()
-      .collect::<Vec<_>>()
+    self.root_packages.values().cloned().collect::<Vec<_>>()
   }
 
   pub fn package_from_id(
@@ -225,7 +234,8 @@ impl NpmResolutionSnapshot {
     lockfile: Arc<Mutex<Lockfile>>,
     api: &NpmRegistryApi,
   ) -> Result<Self, AnyError> {
-    let mut package_reqs: HashMap<NpmPackageReq, NpmPackageNodeId>;
+    let mut package_reqs: HashMap<NpmPackageReq, NpmPackageId>;
+    let mut root_packages: HashMap<NpmPackageId, NpmPackageNodeId>;
     let mut packages_by_name: HashMap<String, Vec<NpmPackageNodeId>>;
     let mut packages: HashMap<NpmPackageNodeId, NpmResolutionPackage>;
     let mut copy_index_resolver: SnapshotPackageCopyIndexResolver;
@@ -235,6 +245,8 @@ impl NpmResolutionSnapshot {
 
       // pre-allocate collections
       package_reqs =
+        HashMap::with_capacity(lockfile.content.npm.specifiers.len());
+      root_packages =
         HashMap::with_capacity(lockfile.content.npm.specifiers.len());
       let packages_len = lockfile.content.npm.packages.len();
       packages = HashMap::with_capacity(packages_len);
@@ -248,7 +260,8 @@ impl NpmResolutionSnapshot {
         let package_req = NpmPackageReq::from_str(key)
           .with_context(|| format!("Unable to parse npm specifier: {key}"))?;
         let package_id = NpmPackageNodeId::from_serialized(value)?;
-        package_reqs.insert(package_req, package_id.clone());
+        package_reqs.insert(package_req, package_id.id.clone());
+        root_packages.insert(package_id.id.clone(), package_id.clone());
         verify_ids.insert(package_id.clone());
       }
 
@@ -332,6 +345,7 @@ impl NpmResolutionSnapshot {
 
     Ok(Self {
       package_reqs,
+      root_packages,
       packages_by_name,
       packages,
       pending_unresolved_packages: Default::default(),

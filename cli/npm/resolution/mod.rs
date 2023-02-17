@@ -167,16 +167,28 @@ impl NpmResolution {
   }
 
   /// Resolve a node package from a deno module.
-  pub fn resolve_package_from_deno_module(
+  pub fn resolve_pkg_node_id_from_pkg_req(
     &self,
-    package: &NpmPackageReq,
-  ) -> Result<NpmResolutionPackage, AnyError> {
+    req: &NpmPackageReq,
+  ) -> Result<NpmPackageNodeId, AnyError> {
     self
       .0
       .snapshot
       .read()
-      .resolve_package_from_deno_module(package)
-      .cloned()
+      .resolve_pkg_node_id_from_pkg_req(req)
+      .map(|pkg| pkg.node_id.clone())
+  }
+
+  pub fn resolve_pkg_node_id_from_deno_module(
+    &self,
+    id: &NpmPackageId,
+  ) -> Result<NpmPackageNodeId, AnyError> {
+    self
+      .0
+      .snapshot
+      .read()
+      .resolve_package_from_deno_module(id)
+      .map(|pkg| pkg.node_id.clone())
   }
 
   pub fn resolve_deno_graph_package_req(
@@ -211,13 +223,7 @@ impl NpmResolution {
       version_req.version_text(),
       id.to_string(),
     );
-    snapshot.package_reqs.insert(
-      pkg_req.clone(),
-      NpmPackageNodeId {
-        id: id.clone(),
-        peer_dependencies: Vec::new(),
-      },
-    );
+    snapshot.package_reqs.insert(pkg_req.clone(), id.clone());
     let packages_with_name = snapshot
       .packages_by_name
       .entry(package_info.name.clone())
@@ -249,7 +255,11 @@ impl NpmResolution {
     for (package_req, package_id) in snapshot.package_reqs.iter() {
       lockfile.insert_npm_specifier(
         package_req.to_string(),
-        package_id.as_serialized(),
+        snapshot
+          .root_packages
+          .get(package_id)
+          .unwrap()
+          .as_serialized(),
       );
     }
     for package in snapshot.all_packages() {

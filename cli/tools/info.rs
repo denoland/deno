@@ -153,7 +153,7 @@ fn add_npm_packages_to_json(
         .and_then(|specifier| NpmPackageReqReference::from_str(specifier).ok())
         .and_then(|package_ref| {
           snapshot
-            .resolve_package_from_deno_module(&package_ref.req)
+            .resolve_pkg_node_id_from_pkg_req(&package_ref.req)
             .ok()
         });
       if let Some(pkg) = maybe_package {
@@ -190,7 +190,7 @@ fn add_npm_packages_to_json(
             if let Some(specifier) = specifier {
               if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
                 if let Ok(pkg) =
-                  snapshot.resolve_package_from_deno_module(&npm_ref.req)
+                  snapshot.resolve_pkg_node_id_from_pkg_req(&npm_ref.req)
                 {
                   dep.insert(
                     "npmPackage".to_string(),
@@ -325,7 +325,7 @@ impl NpmInfo {
           .specifiers
           .insert(specifier.clone(), reference.req.clone());
         if let Ok(package) =
-          npm_snapshot.resolve_package_from_deno_module(&reference.req)
+          npm_snapshot.resolve_pkg_node_id_from_pkg_req(&reference.req)
         {
           info
             .resolved_reqs

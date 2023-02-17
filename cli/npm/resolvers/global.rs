@@ -51,10 +51,10 @@ impl GlobalNpmPackageResolver {
     }
   }
 
-  fn package_folder(&self, id: &NpmPackageNodeId) -> PathBuf {
+  fn package_folder(&self, package_id: &NpmPackageNodeId) -> PathBuf {
     let folder_id = self
       .resolution
-      .resolve_package_cache_folder_id_from_id(id)
+      .resolve_package_cache_folder_id_from_id(package_id)
       .unwrap();
     self
       .cache
@@ -76,10 +76,9 @@ impl GlobalNpmPackageResolver {
 impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn resolve_package_folder_from_deno_module(
     &self,
-    pkg_req: &NpmPackageReq,
+    package_id: &NpmPackageNodeId,
   ) -> Result<PathBuf, AnyError> {
-    let pkg = self.resolution.resolve_package_from_deno_module(pkg_req)?;
-    Ok(self.package_folder(&pkg.node_id))
+    Ok(self.package_folder(package_id))
   }
 
   fn resolve_package_folder_from_package(

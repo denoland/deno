@@ -22,7 +22,7 @@ use crate::npm::NpmResolutionPackage;
 pub trait NpmPackageFsResolver: Send + Sync {
   fn resolve_package_folder_from_deno_module(
     &self,
-    pkg_req: &NpmPackageReq,
+    id: &NpmPackageNodeId,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_package(

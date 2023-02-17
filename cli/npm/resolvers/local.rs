@@ -108,39 +108,34 @@ impl LocalNpmPackageResolver {
     &self,
     package_id: &NpmPackageNodeId,
   ) -> Result<PathBuf, AnyError> {
-    match self.resolution.resolve_package_from_id(package_id) {
-      Some(package) => Ok(self.get_package_id_folder_from_package(&package)),
+    match self
+      .resolution
+      .resolve_package_cache_folder_id_from_id(package_id)
+    {
+      // package is stored at:
+      // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
+      Some(cache_folder_id) => Ok(
+        self
+          .root_node_modules_path
+          .join(".deno")
+          .join(get_package_folder_id_folder_name(&cache_folder_id))
+          .join("node_modules")
+          .join(&cache_folder_id.id.name),
+      ),
       None => bail!(
         "Could not find package information for '{}'",
         package_id.as_serialized()
       ),
     }
   }
-
-  fn get_package_id_folder_from_package(
-    &self,
-    package: &NpmResolutionPackage,
-  ) -> PathBuf {
-    // package is stored at:
-    // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
-    self
-      .root_node_modules_path
-      .join(".deno")
-      .join(get_package_folder_id_folder_name(
-        &package.get_package_cache_folder_id(),
-      ))
-      .join("node_modules")
-      .join(&package.node_id.id.name)
-  }
 }
 
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn resolve_package_folder_from_deno_module(
     &self,
-    pkg_req: &NpmPackageReq,
+    node_id: &NpmPackageNodeId,
   ) -> Result<PathBuf, AnyError> {
-    let package = self.resolution.resolve_package_from_deno_module(pkg_req)?;
-    Ok(self.get_package_id_folder_from_package(&package))
+    self.get_package_id_folder(node_id)
   }
 
   fn resolve_package_folder_from_package(

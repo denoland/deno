@@ -247,7 +247,7 @@ pub fn node_resolve_npm_reference(
   permissions: &mut dyn NodePermissions,
 ) -> Result<Option<NodeResolution>, AnyError> {
   let package_folder =
-    npm_resolver.resolve_package_folder_from_deno_module(&reference.req)?;
+    npm_resolver.resolve_package_folder_from_pkg_req(&reference.req)?;
   let node_module_kind = NodeModuleKind::Esm;
   let maybe_resolved_path = package_config_resolve(
     &reference
@@ -292,7 +292,7 @@ pub fn node_resolve_binary_export(
   permissions: &mut dyn NodePermissions,
 ) -> Result<NodeResolution, AnyError> {
   let package_folder =
-    npm_resolver.resolve_package_folder_from_deno_module(pkg_req)?;
+    npm_resolver.resolve_package_folder_from_pkg_req(pkg_req)?;
   let package_json_path = package_folder.join("package.json");
   let package_json =
     PackageJson::load(npm_resolver, permissions, package_json_path)?;
