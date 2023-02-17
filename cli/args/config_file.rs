@@ -319,6 +319,10 @@ impl SerializedFilesConfig {
         .collect::<Result<Vec<_>, _>>()?,
     })
   }
+
+  pub fn is_empty(&self) -> bool {
+    self.include.is_empty() && self.exclude.is_empty()
+  }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -346,6 +350,45 @@ impl FilesConfig {
   }
 }
 
+/// Choose between flat and nested files configuration.
+///
+/// `files` has precedence over `deprecated_files`.
+/// when `deprecated_files` is present, a warning is logged.
+///
+/// caveat: due to default values, it's not possible to distinguish between
+/// an empty configuration and a configuration with default values.
+/// `{ "files": {} }` is equivalent to `{ "files": { "include": [], "exclude": [] } }`
+/// and it wouldn't be able to emit warning for `{ "files": {}, "exclude": [] }`.
+///
+/// # Arguments
+///
+/// * `files` - Flat configuration.
+/// * `deprecated_files` - Nested configuration. ("Files")
+fn choose_files(
+  files: SerializedFilesConfig,
+  deprecated_files: SerializedFilesConfig,
+) -> SerializedFilesConfig {
+  const DEPRECATED_FILES: &str =
+    "Warning: \"files\" configuration is deprecated";
+  const FLAT_CONFIG: &str = "\"include\" and \"exclude\"";
+
+  let (files_nonempty, deprecated_files_nonempty) =
+    (!files.is_empty(), !deprecated_files.is_empty());
+
+  match (files_nonempty, deprecated_files_nonempty) {
+    (true, true) => {
+      log::warn!("{DEPRECATED_FILES} and ignored by {FLAT_CONFIG}.");
+      files
+    }
+    (true, false) => files,
+    (false, true) => {
+      log::warn!("{DEPRECATED_FILES}. Please use {FLAT_CONFIG} instead.");
+      deprecated_files
+    }
+    (false, false) => SerializedFilesConfig::default(),
+  }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedLintConfig {
@@ -364,7 +407,8 @@ impl SerializedLintConfig {
   ) -> Result<LintConfig, AnyError> {
     Ok(LintConfig {
       rules: self.rules,
-      files: self.files.into_resolved(config_file_specifier)?,
+      files: choose_files(self.files, self.deprecated_files)
+        .into_resolved(config_file_specifier)?,
       report: self.report,
     })
   }
@@ -396,6 +440,56 @@ pub struct FmtOptionsConfig {
   pub semi_colons: Option<bool>,
 }
 
+impl FmtOptionsConfig {
+  pub fn is_empty(&self) -> bool {
+    self.use_tabs.is_none()
+      && self.line_width.is_none()
+      && self.indent_width.is_none()
+      && self.single_quote.is_none()
+      && self.prose_wrap.is_none()
+      && self.semi_colons.is_none()
+  }
+}
+
+/// Choose between flat and nested fmt options.
+///
+/// `options` has precedence over `deprecated_options`.
+/// when `deprecated_options` is present, a warning is logged.
+///
+/// caveat: due to default values, it's not possible to distinguish between
+/// an empty configuration and a configuration with default values.
+/// `{ "fmt": {} } is equivalent to `{ "fmt": { "options": {} } }`
+/// and it wouldn't be able to emit warning for `{ "fmt": { "options": {}, "semiColons": "false" } }`.
+///
+/// # Arguments
+///
+/// * `options` - Flat options.
+/// * `deprecated_options` - Nested files configuration ("option").
+fn choose_fmt_options(
+  options: FmtOptionsConfig,
+  deprecated_options: FmtOptionsConfig,
+) -> FmtOptionsConfig {
+  const DEPRECATED_OPTIONS: &str =
+    "Warning: \"options\" configuration is deprecated";
+  const FLAT_OPTION: &str = "\"flat\" options";
+
+  let (options_nonempty, deprecated_options_nonempty) =
+    (!options.is_empty(), !deprecated_options.is_empty());
+
+  match (options_nonempty, deprecated_options_nonempty) {
+    (true, true) => {
+      log::warn!("{DEPRECATED_OPTIONS} and ignored by {FLAT_OPTION}.");
+      options
+    }
+    (true, false) => options,
+    (false, true) => {
+      log::warn!("{DEPRECATED_OPTIONS}. Please use {FLAT_OPTION} instead.");
+      deprecated_options
+    }
+    (false, false) => FmtOptionsConfig::default(),
+  }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedFmtConfig {
@@ -415,8 +509,9 @@ impl SerializedFmtConfig {
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<FmtConfig, AnyError> {
     Ok(FmtConfig {
-      options: self.options,
-      files: self.files.into_resolved(config_file_specifier)?,
+      options: choose_fmt_options(self.options, self.deprecated_options),
+      files: choose_files(self.files, self.deprecated_files)
+        .into_resolved(config_file_specifier)?,
     })
   }
 }
@@ -442,7 +537,8 @@ impl SerializedTestConfig {
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<TestConfig, AnyError> {
     Ok(TestConfig {
-      files: self.files.into_resolved(config_file_specifier)?,
+      files: choose_files(self.files, self.deprecated_files)
+        .into_resolved(config_file_specifier)?,
     })
   }
 }
@@ -467,7 +563,8 @@ impl SerializedBenchConfig {
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<BenchConfig, AnyError> {
     Ok(BenchConfig {
-      files: self.files.into_resolved(config_file_specifier)?,
+      files: choose_files(self.files, self.deprecated_files)
+        .into_resolved(config_file_specifier)?,
     })
   }
 }
@@ -1132,7 +1229,8 @@ mod tests {
           prose_wrap: Some(ProseWrap::Preserve),
           ..Default::default()
         },
-    });
+      }
+    );
 
     let tasks_config = config_file.to_tasks_config().unwrap().unwrap();
     assert_eq!(
