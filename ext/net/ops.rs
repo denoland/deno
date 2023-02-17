@@ -29,8 +29,12 @@ use socket2::Socket;
 use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::net::IpAddr as StdIpAddr;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use std::str::FromStr;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
@@ -65,6 +69,12 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
     #[cfg(unix)]
     crate::ops_unix::op_net_recv_unixpacket::decl(),
     op_net_send_udp::decl::<P>(),
+    op_net_join_multi_v4_udp::decl::<P>(),
+    op_net_join_multi_v6_udp::decl::<P>(),
+    op_net_leave_multi_v4_udp::decl::<P>(),
+    op_net_leave_multi_v6_udp::decl::<P>(),
+    op_net_set_multi_loopback_udp::decl::<P>(),
+    op_net_set_multi_ttl_udp::decl::<P>(),
     #[cfg(unix)]
     crate::ops_unix::op_net_send_unixpacket::decl::<P>(),
     op_dns_resolve::decl::<P>(),
@@ -83,6 +93,18 @@ pub struct TlsHandshakeInfo {
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct MulticastMembershipV4 {
+  pub address: String,
+  pub interface: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct MulticastMembershipV6 {
+  pub address: String,
+  pub interface: u32,
 }
 
 impl From<SocketAddr> for IpAddr {
@@ -183,6 +205,152 @@ where
   let nwritten = socket.send_to(&zero_copy, &addr).await?;
 
   Ok(nwritten)
+}
+
+#[op]
+async fn op_net_join_multi_v4_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  membership: MulticastMembershipV4,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = Ipv4Addr::from_str(membership.address.as_str())?;
+  let interface_addr = Ipv4Addr::from_str(membership.interface.as_str())?;
+
+  socket.join_multicast_v4(addr, interface_addr)?;
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_join_multi_v6_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  membership: MulticastMembershipV6,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = Ipv6Addr::from_str(membership.address.as_str())?;
+
+  socket.join_multicast_v6(&addr, membership.interface)?;
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_leave_multi_v4_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  membership: MulticastMembershipV4,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = Ipv4Addr::from_str(membership.address.as_str())?;
+  let interface_addr = Ipv4Addr::from_str(membership.interface.as_str())?;
+
+  socket.leave_multicast_v4(addr, interface_addr)?;
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_leave_multi_v6_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  membership: MulticastMembershipV6,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = Ipv6Addr::from_str(membership.address.as_str())?;
+
+  socket.leave_multicast_v6(&addr, membership.interface)?;
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_set_multi_loopback_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  group_address: String,
+  loopback: bool,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = StdIpAddr::from_str(group_address.as_str())?;
+
+  match addr {
+    StdIpAddr::V4(_) => {
+      socket.set_multicast_loop_v4(loopback)?;
+    }
+    StdIpAddr::V6(_) => {
+      socket.set_multicast_loop_v6(loopback)?;
+    }
+  }
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_set_multi_ttl_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  ttl: u32,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  socket.set_multicast_ttl_v4(ttl)?;
+
+  Ok(())
 }
 
 #[op]

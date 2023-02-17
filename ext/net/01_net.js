@@ -277,6 +277,65 @@ class Datagram {
     return this.#addr;
   }
 
+  async joinMulticastV4(addr, multiInterface) {
+    await core.opAsync(
+      "op_net_join_multi_v4_udp",
+      this.rid,
+      { address: addr, interface: multiInterface },
+    );
+
+    return {
+      leave: () => {
+        return core.opAsync(
+          "op_net_leave_multi_v4_udp",
+          this.rid,
+          { address: addr, interface: multiInterface },
+        );
+      },
+      setLoopback: (loopback) => {
+        return core.opAsync(
+          "op_net_set_multi_loopback_udp",
+          this.rid,
+          addr,
+          loopback,
+        );
+      },
+      setTTL: (ttl) => {
+        return core.opAsync(
+          "op_net_set_multi_ttl_udp",
+          this.rid,
+          ttl,
+        );
+      },
+    };
+  }
+
+  async joinMulticastV6(addr, multiInterface) {
+    await core.opAsync(
+      "op_net_join_multi_v6_udp",
+      this.rid,
+      { address: addr, interface: multiInterface },
+    );
+
+    return {
+      leave: () => {
+        return core.opAsync(
+          "op_net_leave_multi_v6_udp",
+          this.rid,
+          { address: addr, interface: multiInterface },
+        );
+      },
+      setLoopback: (loopback) => {
+        return core.opAsync(
+          "op_net_set_multi_loopback_udp",
+          this.rid,
+          addr,
+          loopback,
+        );
+      },
+    };
+  }
+
   async receive(p) {
     const buf = p || new Uint8Array(this.bufSize);
     let nread;

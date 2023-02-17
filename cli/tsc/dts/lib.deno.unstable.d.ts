@@ -163,7 +163,7 @@ declare namespace Deno {
    */
   type ToNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? BufferSource
-    : ToNativeResultTypeMap[Exclude<T, NativeStructType>];
+      : ToNativeResultTypeMap[Exclude<T, NativeStructType>];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -225,7 +225,7 @@ declare namespace Deno {
    */
   type FromNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? Uint8Array
-    : FromNativeResultTypeMap[Exclude<T, NativeStructType>];
+      : FromNativeResultTypeMap[Exclude<T, NativeStructType>];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -857,6 +857,30 @@ declare namespace Deno {
    * @category Network
    */
   export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
+    /** Joins an IPv4 multicast group. */
+    joinMulticastV4(
+      address: string,
+      networkInterface: string,
+    ): Promise<{
+      /** Leaves the multicast group. */
+      leave: () => Promise<void>;
+      /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
+      setLoopback: (loopback: boolean) => Promise<void>;
+      /** Sets the time-to-live of outgoing multicast packets for this socket. */
+      setTTL: (ttl: number) => Promise<void>;
+    }>;
+
+    /** Joins an IPv6 multicast group. */
+    joinMulticastV6(
+      address: string,
+      networkInterface: number,
+    ): Promise<{
+      /** Leaves the multicast group. */
+      leave: () => Promise<void>;
+      /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
+      setLoopback: (loopback: boolean) => Promise<void>;
+    }>;
+
     /** Waits for and resolves to the next message to the instance.
      *
      * Messages are received in the format of a tuple containing the data array
