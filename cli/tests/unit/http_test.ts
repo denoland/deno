@@ -14,6 +14,11 @@ import {
 } from "./test_util.ts";
 import { join } from "../../../test_util/std/path/mod.ts";
 
+const {
+  buildCaseInsensitiveCommaValueFinder,
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
+} = Deno[Deno.internal];
+
 async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -2610,6 +2615,30 @@ Deno.test({
     httpConn!.close();
     httpConn2!.close();
   },
+});
+
+Deno.test("case insensitive comma value finder", async (t) => {
+  const cases = /** @type {[string, boolean][]} */ ([
+    ["websocket", true],
+    ["wEbSOcKET", true],
+    [",wEbSOcKET", true],
+    [",wEbSOcKET,", true],
+    [", wEbSOcKET  ,", true],
+    ["test, wEbSOcKET  ,", true],
+    ["test  ,\twEbSOcKET\t\t ,", true],
+    ["test  , wEbSOcKET", true],
+    ["test, asdf,web,wEbSOcKET", true],
+    ["test, asdf,web,wEbSOcKETs", false],
+    ["test, asdf,awebsocket,wEbSOcKETs", false],
+  ]);
+
+  const findValue = buildCaseInsensitiveCommaValueFinder("websocket");
+  for (const [input, expected] of cases) {
+    await t.step(input.toString(), () => {
+      const actual = findValue(input);
+      assertEquals(actual, expected);
+    });
+  }
 });
 
 async function httpServerWithErrorBody(

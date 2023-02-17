@@ -16,10 +16,8 @@ use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
-use crate::npm::NpmPackageReference;
-use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
-use crate::resolver::CliResolver;
+use crate::resolver::CliGraphResolver;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
 
@@ -32,6 +30,8 @@ use deno_core::futures::future;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
+use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReq;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -293,7 +293,7 @@ impl Document {
     fs_version: String,
     maybe_headers: Option<HashMap<String, String>>,
     text_info: SourceTextInfo,
-    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+    resolver: &dyn deno_graph::source::Resolver,
   ) -> Self {
     // we only ever do `Document::new` on on disk resources that are supposed to
     // be diagnosable, unlike `Document::open`, so it is safe to unconditionally
@@ -302,7 +302,7 @@ impl Document {
       &specifier,
       text_info.clone(),
       maybe_headers.as_ref(),
-      maybe_resolver,
+      resolver,
     );
     let dependencies =
       Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
@@ -324,7 +324,7 @@ impl Document {
 
   fn maybe_with_new_resolver(
     &self,
-    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+    resolver: &dyn deno_graph::source::Resolver,
   ) -> Option<Self> {
     let parsed_source_result = match &self.0.maybe_parsed_source {
       Some(parsed_source_result) => parsed_source_result.clone(),
@@ -334,7 +334,7 @@ impl Document {
       &self.0.specifier,
       &parsed_source_result,
       self.0.maybe_headers.as_ref(),
-      maybe_resolver,
+      resolver,
     ));
     let dependencies =
       Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
@@ -360,7 +360,7 @@ impl Document {
     version: i32,
     language_id: LanguageId,
     content: Arc<str>,
-    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+    resolver: &dyn deno_graph::source::Resolver,
   ) -> Self {
     let maybe_headers = language_id.as_headers();
     let text_info = SourceTextInfo::new(content);
@@ -369,7 +369,7 @@ impl Document {
         &specifier,
         text_info.clone(),
         maybe_headers,
-        maybe_resolver,
+        resolver,
       )
     } else {
       (None, None)
@@ -396,7 +396,7 @@ impl Document {
     &self,
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
-    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+    resolver: &dyn deno_graph::source::Resolver,
   ) -> Result<Document, AnyError> {
     let mut content = self.0.text_info.text_str().to_string();
     let mut line_index = self.0.line_index.clone();
@@ -431,7 +431,7 @@ impl Document {
         &self.0.specifier,
         text_info.clone(),
         maybe_headers,
-        maybe_resolver,
+        resolver,
       )
     } else {
       (None, None)
@@ -715,7 +715,7 @@ impl FileSystemDocuments {
   pub fn get(
     &mut self,
     cache: &HttpCache,
-    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+    resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
     let fs_version = get_document_path(cache, specifier)
@@ -723,7 +723,7 @@ impl FileSystemDocuments {
     let file_system_doc = self.docs.get(specifier);
     if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
       // attempt to update the file on the file system
-      self.refresh_document(cache, maybe_resolver, specifier)
+      self.refresh_document(cache, resolver, specifier)
     } else {
       file_system_doc.cloned()
     }
@@ -734,7 +734,7 @@ impl FileSystemDocuments {
   fn refresh_document(
     &mut self,
     cache: &HttpCache,
-    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+    resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
     let path = get_document_path(cache, specifier)?;
@@ -749,7 +749,7 @@ impl FileSystemDocuments {
         fs_version,
         None,
         SourceTextInfo::from_string(content),
-        maybe_resolver,
+        resolver,
       )
     } else {
       let cache_filename = cache.get_cache_filename(specifier)?;
@@ -763,7 +763,7 @@ impl FileSystemDocuments {
         fs_version,
         maybe_headers,
         SourceTextInfo::from_string(content),
-        maybe_resolver,
+        resolver,
       )
     };
     self.dirty = true;
@@ -773,10 +773,10 @@ impl FileSystemDocuments {
 
   pub fn refresh_dependencies(
     &mut self,
-    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+    resolver: &dyn deno_graph::source::Resolver,
   ) {
     for doc in self.docs.values_mut() {
-      if let Some(new_doc) = doc.maybe_with_new_resolver(maybe_resolver) {
+      if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
         *doc = new_doc;
       }
     }
@@ -817,7 +817,7 @@ pub struct Documents {
   imports: Arc<HashMap<ModuleSpecifier, GraphImport>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
-  maybe_resolver: Option<CliResolver>,
+  resolver: CliGraphResolver,
   /// The npm package requirements.
   npm_reqs: Arc<HashSet<NpmPackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -837,7 +837,7 @@ impl Documents {
       file_system_docs: Default::default(),
       resolver_config_hash: 0,
       imports: Default::default(),
-      maybe_resolver: None,
+      resolver: CliGraphResolver::default(),
       npm_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
@@ -855,13 +855,13 @@ impl Documents {
     language_id: LanguageId,
     content: Arc<str>,
   ) -> Document {
-    let maybe_resolver = self.get_maybe_resolver();
+    let resolver = self.get_resolver();
     let document = Document::open(
       specifier.clone(),
       version,
       language_id,
       content,
-      maybe_resolver,
+      resolver,
     );
     let mut file_system_docs = self.file_system_docs.lock();
     file_system_docs.docs.remove(&specifier);
@@ -896,7 +896,7 @@ impl Documents {
         Ok,
       )?;
     self.dirty = true;
-    let doc = doc.with_change(version, changes, self.get_maybe_resolver())?;
+    let doc = doc.with_change(version, changes, self.get_resolver())?;
     self.open_docs.insert(doc.specifier().clone(), doc.clone());
     Ok(doc)
   }
@@ -929,12 +929,7 @@ impl Documents {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> bool {
-    let maybe_resolver = self.get_maybe_resolver();
-    let maybe_specifier = if let Some(resolver) = maybe_resolver {
-      resolver.resolve(specifier, referrer).ok()
-    } else {
-      deno_core::resolve_import(specifier, referrer.as_str()).ok()
-    };
+    let maybe_specifier = self.get_resolver().resolve(specifier, referrer).ok();
     if let Some(import_specifier) = maybe_specifier {
       self.exists(&import_specifier)
     } else {
@@ -993,7 +988,7 @@ impl Documents {
       Some(document.clone())
     } else {
       let mut file_system_docs = self.file_system_docs.lock();
-      file_system_docs.get(&self.cache, self.get_maybe_resolver(), &specifier)
+      file_system_docs.get(&self.cache, self.get_resolver(), &specifier)
     }
   }
 
@@ -1186,8 +1181,7 @@ impl Documents {
       maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
     );
-    self.maybe_resolver =
-      CliResolver::maybe_new(maybe_jsx_config, maybe_import_map);
+    self.resolver = CliGraphResolver::new(maybe_jsx_config, maybe_import_map);
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1198,7 +1192,7 @@ impl Documents {
             let graph_import = GraphImport::new(
               &import.referrer,
               import.imports,
-              self.get_maybe_resolver(),
+              Some(self.get_resolver()),
             );
             (import.referrer, graph_import)
           })
@@ -1218,17 +1212,13 @@ impl Documents {
   }
 
   fn refresh_dependencies(&mut self) {
-    let maybe_resolver =
-      self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
+    let resolver = self.resolver.as_graph_resolver();
     for doc in self.open_docs.values_mut() {
-      if let Some(new_doc) = doc.maybe_with_new_resolver(maybe_resolver) {
+      if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
         *doc = new_doc;
       }
     }
-    self
-      .file_system_docs
-      .lock()
-      .refresh_dependencies(maybe_resolver);
+    self.file_system_docs.lock().refresh_dependencies(resolver);
   }
 
   /// Iterate through the documents, building a map where the key is a unique
@@ -1295,10 +1285,9 @@ impl Documents {
       doc_analyzer.analyze_doc(specifier, doc);
     }
 
-    let maybe_resolver = self.get_maybe_resolver();
+    let resolver = self.get_resolver();
     while let Some(specifier) = doc_analyzer.pending_specifiers.pop_front() {
-      if let Some(doc) =
-        file_system_docs.get(&self.cache, maybe_resolver, &specifier)
+      if let Some(doc) = file_system_docs.get(&self.cache, resolver, &specifier)
       {
         doc_analyzer.analyze_doc(&specifier, &doc);
       }
@@ -1321,8 +1310,8 @@ impl Documents {
     file_system_docs.dirty = false;
   }
 
-  fn get_maybe_resolver(&self) -> Option<&dyn deno_graph::source::Resolver> {
-    self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver())
+  fn get_resolver(&self) -> &dyn deno_graph::source::Resolver {
+    self.resolver.as_graph_resolver()
   }
 
   fn resolve_dependency(
@@ -1403,15 +1392,11 @@ fn parse_and_analyze_module(
   specifier: &ModuleSpecifier,
   text_info: SourceTextInfo,
   maybe_headers: Option<&HashMap<String, String>>,
-  maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+  resolver: &dyn deno_graph::source::Resolver,
 ) -> (Option<ParsedSourceResult>, Option<ModuleResult>) {
   let parsed_source_result = parse_source(specifier, text_info, maybe_headers);
-  let module_result = analyze_module(
-    specifier,
-    &parsed_source_result,
-    maybe_headers,
-    maybe_resolver,
-  );
+  let module_result =
+    analyze_module(specifier, &parsed_source_result, maybe_headers, resolver);
   (Some(parsed_source_result), Some(module_result))
 }
 
@@ -1434,7 +1419,7 @@ fn analyze_module(
   specifier: &ModuleSpecifier,
   parsed_source_result: &ParsedSourceResult,
   maybe_headers: Option<&HashMap<String, String>>,
-  maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+  resolver: &dyn deno_graph::source::Resolver,
 ) -> ModuleResult {
   match parsed_source_result {
     Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
@@ -1442,7 +1427,7 @@ fn analyze_module(
       deno_graph::ModuleKind::Esm,
       maybe_headers,
       parsed_source,
-      maybe_resolver,
+      Some(resolver),
     )),
     Err(err) => Err(deno_graph::ModuleGraphError::ParseErr(
       specifier.clone(),

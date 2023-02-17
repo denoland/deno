@@ -10,6 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
+use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
@@ -17,8 +18,7 @@ use crate::args::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageId;
-use crate::npm::NpmPackageReq;
+use crate::npm::NpmPackageNodeId;
 use crate::npm::NpmResolutionPackage;
 
 pub trait InnerNpmPackageResolver: Send + Sync {
@@ -39,7 +39,10 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
 
-  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError>;
+  fn package_size(
+    &self,
+    package_id: &NpmPackageNodeId,
+  ) -> Result<u64, AnyError>;
 
   fn has_packages(&self) -> bool;
 

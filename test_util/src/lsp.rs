@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::npm_registry_url;
-use crate::std_file_url;
 
 use super::new_deno_dir;
 use super::TempDir;
@@ -234,7 +233,6 @@ impl LspClient {
     let mut command = Command::new(deno_exe);
     command
       .env("DENO_DIR", deno_dir.path())
-      .env("DENO_NODE_COMPAT_URL", std_file_url())
       .env("NPM_CONFIG_REGISTRY", npm_registry_url())
       .arg("lsp")
       .stdin(Stdio::piped())

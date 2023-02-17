@@ -15,6 +15,8 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
+use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::errors;
 use deno_runtime::deno_node::find_builtin_node_module;
@@ -25,7 +27,6 @@ use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::path_to_declaration_path;
 use deno_runtime::deno_node::NodeModuleKind;
-use deno_runtime::deno_node::NodeModulePolyfillSpecifier;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
@@ -37,10 +38,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::cache::NodeAnalysisCache;
-use crate::deno_std::CURRENT_STD_URL;
 use crate::file_fetcher::FileFetcher;
-use crate::npm::NpmPackageReference;
-use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 
 mod analyze;
@@ -106,33 +104,10 @@ impl NodeResolution {
   }
 }
 
-static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
-  if let Ok(url_str) = std::env::var("DENO_NODE_COMPAT_URL") {
-    let url = Url::parse(&url_str).expect(
-      "Malformed DENO_NODE_COMPAT_URL value, make sure it's a file URL ending with a slash"
-    );
-    return url;
-  }
-
-  CURRENT_STD_URL.clone()
-});
-
-pub static MODULE_ALL_URL: Lazy<Url> =
-  Lazy::new(|| NODE_COMPAT_URL.join("node/module_all.ts").unwrap());
-
+// TODO(bartlomieju): seems super wasteful to parse specified each time
 pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
   if let Some(module) = find_builtin_node_module(specifier) {
-    match module.specifier {
-      // We will load the source code from the `std/node` polyfill.
-      NodeModulePolyfillSpecifier::StdNode(specifier) => {
-        let module_url = NODE_COMPAT_URL.join(specifier).unwrap();
-        return Ok(module_url);
-      }
-      // The module has already been snapshotted and is present in the binary.
-      NodeModulePolyfillSpecifier::Embedded(specifier) => {
-        return Ok(ModuleSpecifier::parse(specifier).unwrap());
-      }
-    }
+    return Ok(ModuleSpecifier::parse(module.specifier).unwrap());
   }
 
   Err(generic_error(format!(

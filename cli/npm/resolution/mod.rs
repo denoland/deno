@@ -3,15 +3,16 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
+use deno_graph::npm::NpmPackageReq;
+use deno_graph::semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
+use thiserror::Error;
 
 use crate::args::Lockfile;
-use crate::semver::Version;
 
 use self::graph::GraphDependencyResolver;
 use self::snapshot::NpmPackagesPartitioned;
@@ -23,26 +24,32 @@ use super::registry::RealNpmRegistryApi;
 use super::NpmRegistryApi;
 
 mod graph;
-mod reference;
 mod snapshot;
 mod specifier;
 
 use graph::Graph;
-pub use reference::NpmPackageReference;
-pub use reference::NpmPackageReq;
 pub use snapshot::NpmResolutionSnapshot;
 pub use specifier::resolve_graph_npm_info;
 
+#[derive(Debug, Error)]
+#[error("Invalid npm package id '{text}'. {message}")]
+pub struct NpmPackageNodeIdDeserializationError {
+  message: String,
+  text: String,
+}
+
+/// A resolved unique identifier for an npm package. This contains
+/// the resolved name, version, and peer dependency resolution identifiers.
 #[derive(
   Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize,
 )]
-pub struct NpmPackageId {
+pub struct NpmPackageNodeId {
   pub name: String,
   pub version: Version,
-  pub peer_dependencies: Vec<NpmPackageId>,
+  pub peer_dependencies: Vec<NpmPackageNodeId>,
 }
 
-impl NpmPackageId {
+impl NpmPackageNodeId {
   #[allow(unused)]
   pub fn scope(&self) -> Option<&str> {
     if self.name.starts_with('@') && self.name.contains('/') {
@@ -77,7 +84,9 @@ impl NpmPackageId {
     result
   }
 
-  pub fn from_serialized(id: &str) -> Result<Self, AnyError> {
+  pub fn from_serialized(
+    id: &str,
+  ) -> Result<Self, NpmPackageNodeIdDeserializationError> {
     use monch::*;
 
     fn parse_name(input: &str) -> ParseResult<&str> {
@@ -127,7 +136,7 @@ impl NpmPackageId {
 
     fn parse_peers_at_level<'a>(
       level: usize,
-    ) -> impl Fn(&'a str) -> ParseResult<'a, Vec<NpmPackageId>> {
+    ) -> impl Fn(&'a str) -> ParseResult<'a, Vec<NpmPackageNodeId>> {
       move |mut input| {
         let mut peers = Vec::new();
         while let Ok((level_input, _)) = parse_level_at_level(level)(input) {
@@ -142,7 +151,7 @@ impl NpmPackageId {
 
     fn parse_id_at_level<'a>(
       level: usize,
-    ) -> impl Fn(&'a str) -> ParseResult<'a, NpmPackageId> {
+    ) -> impl Fn(&'a str) -> ParseResult<'a, NpmPackageNodeId> {
       move |input| {
         let (input, (name, version)) = parse_name_and_version(input)?;
         let name = if level > 0 {
@@ -154,7 +163,7 @@ impl NpmPackageId {
           parse_peers_at_level(level + 1)(input)?;
         Ok((
           input,
-          NpmPackageId {
+          NpmPackageNodeId {
             name,
             version,
             peer_dependencies,
@@ -163,8 +172,12 @@ impl NpmPackageId {
       }
     }
 
-    with_failure_handling(parse_id_at_level(0))(id)
-      .with_context(|| format!("Invalid npm package id '{id}'."))
+    with_failure_handling(parse_id_at_level(0))(id).map_err(|err| {
+      NpmPackageNodeIdDeserializationError {
+        message: format!("{err:#}"),
+        text: id.to_string(),
+      }
+    })
   }
 
   pub fn display(&self) -> String {
@@ -176,7 +189,7 @@ impl NpmPackageId {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmResolutionPackage {
-  pub id: NpmPackageId,
+  pub id: NpmPackageNodeId,
   /// The peer dependency resolution can differ for the same
   /// package (name and version) depending on where it is in
   /// the resolution tree. This copy index indicates which
@@ -185,7 +198,7 @@ pub struct NpmResolutionPackage {
   pub dist: NpmPackageVersionDistInfo,
   /// Key is what the package refers to the other package as,
   /// which could be different from the package name.
-  pub dependencies: HashMap<String, NpmPackageId>,
+  pub dependencies: HashMap<String, NpmPackageNodeId>,
 }
 
 impl NpmResolutionPackage {
@@ -333,14 +346,14 @@ impl NpmResolution {
 
   pub fn resolve_package_from_id(
     &self,
-    id: &NpmPackageId,
+    id: &NpmPackageNodeId,
   ) -> Option<NpmResolutionPackage> {
     self.snapshot.read().package_from_id(id).cloned()
   }
 
   pub fn resolve_package_cache_folder_id_from_id(
     &self,
-    id: &NpmPackageId,
+    id: &NpmPackageNodeId,
   ) -> Option<NpmPackageCacheFolderId> {
     self
       .snapshot
@@ -401,35 +414,37 @@ impl NpmResolution {
 }
 
 #[cfg(test)]
-mod tests {
-  use super::*;
+mod test {
+  use deno_graph::semver::Version;
+
+  use super::NpmPackageNodeId;
 
   #[test]
   fn serialize_npm_package_id() {
-    let id = NpmPackageId {
+    let id = NpmPackageNodeId {
       name: "pkg-a".to_string(),
       version: Version::parse_from_npm("1.2.3").unwrap(),
       peer_dependencies: vec![
-        NpmPackageId {
+        NpmPackageNodeId {
           name: "pkg-b".to_string(),
           version: Version::parse_from_npm("3.2.1").unwrap(),
           peer_dependencies: vec![
-            NpmPackageId {
+            NpmPackageNodeId {
               name: "pkg-c".to_string(),
               version: Version::parse_from_npm("1.3.2").unwrap(),
               peer_dependencies: vec![],
             },
-            NpmPackageId {
+            NpmPackageNodeId {
               name: "pkg-d".to_string(),
               version: Version::parse_from_npm("2.3.4").unwrap(),
               peer_dependencies: vec![],
             },
           ],
         },
-        NpmPackageId {
+        NpmPackageNodeId {
           name: "pkg-e".to_string(),
           version: Version::parse_from_npm("2.3.1").unwrap(),
-          peer_dependencies: vec![NpmPackageId {
+          peer_dependencies: vec![NpmPackageNodeId {
             name: "pkg-f".to_string(),
             version: Version::parse_from_npm("2.3.1").unwrap(),
             peer_dependencies: vec![],
@@ -437,8 +452,10 @@ mod tests {
         },
       ],
     };
+
+    // this shouldn't change because it's used in the lockfile
     let serialized = id.as_serialized();
     assert_eq!(serialized, "pkg-a@1.2.3_pkg-b@3.2.1__pkg-c@1.3.2__pkg-d@2.3.4_pkg-e@2.3.1__pkg-f@2.3.1");
-    assert_eq!(NpmPackageId::from_serialized(&serialized).unwrap(), id);
+    assert_eq!(NpmPackageNodeId::from_serialized(&serialized).unwrap(), id);
   }
 }

@@ -2,6 +2,7 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crate::Extension;
 use crate::InternalModuleLoaderCb;
@@ -22,6 +23,8 @@ pub struct CreateSnapshotOptions {
 }
 
 pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
+  let mut mark = Instant::now();
+
   let js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
     startup_snapshot: create_snapshot_options.startup_snapshot,
@@ -33,7 +36,13 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
 
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &snapshot;
-  println!("Snapshot size: {}", snapshot_slice.len());
+  println!(
+    "Snapshot size: {}, took {:#?} ({})",
+    snapshot_slice.len(),
+    Instant::now().saturating_duration_since(mark),
+    create_snapshot_options.snapshot_path.display()
+  );
+  mark = Instant::now();
 
   let maybe_compressed_snapshot: Box<dyn AsRef<[u8]>> =
     if let Some(compression_cb) = create_snapshot_options.compression_cb {
@@ -47,7 +56,13 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
 
       (compression_cb)(&mut vec, snapshot_slice);
 
-      println!("Snapshot compressed size: {}", vec.len());
+      println!(
+        "Snapshot compressed size: {}, took {:#?} ({})",
+        vec.len(),
+        Instant::now().saturating_duration_since(mark),
+        create_snapshot_options.snapshot_path.display()
+      );
+      mark = std::time::Instant::now();
 
       Box::new(vec)
     } else {
@@ -60,8 +75,9 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   )
   .unwrap();
   println!(
-    "Snapshot written to: {} ",
-    create_snapshot_options.snapshot_path.display()
+    "Snapshot written, took: {:#?} ({})",
+    Instant::now().saturating_duration_since(mark),
+    create_snapshot_options.snapshot_path.display(),
   );
 }
 
