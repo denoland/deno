@@ -548,8 +548,17 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
       &specifier
     };
     let maybe_source = if let Some(module) = graph.get(specifier) {
-      media_type = module.media_type;
-      module.maybe_source.as_ref().map(|s| Cow::Borrowed(&**s))
+      match module {
+        Module::Esm(module) => {
+          media_type = module.media_type;
+          Some(Cow::Borrowed(&*module.source))
+        }
+        Module::Json(module) => {
+          media_type = MediaType::Json;
+          Some(Cow::Borrowed(&*module.source))
+        }
+        Module::External(_) | Module::Npm(_) => None,
+      }
     } else if state
       .maybe_npm_resolver
       .as_ref()
@@ -632,29 +641,7 @@ fn op_resolve(
 
     let maybe_result = match resolved_dep {
       Some(ResolutionResolved { specifier, .. }) => {
-        match graph.get(specifier) {
-          Some(Module::Esm(module)) => {
-            let maybe_types_dep = module
-              .maybe_types_dependency
-              .as_ref()
-              .map(|d| &d.dependency);
-            let maybe_module =
-              match maybe_types_dep.and_then(|d| d.maybe_specifier()) {
-                Some(specifier) => graph.get(specifier),
-                _ => Some(module),
-              };
-            maybe_module
-              .map(|module| (module.specifier.clone(), module.media_type))
-          }
-          Some(Module::Npm(module)) => {
-            if let Some(npm_resolver) = &state.maybe_npm_resolver {
-              Some(resolve_npm_package_reference_types(&npm_ref, npm_resolver)?)
-            } else {
-              None
-            }
-          }
-          Some(Module::Json(_) | Module::External(_)) | None => None,
-        }
+        resolve_specifier_types(specifier, state)?
       }
       _ => {
         if let Some(npm_resolver) = state.maybe_npm_resolver.as_ref() {
@@ -768,8 +755,23 @@ fn resolve_specifier_types(
   inner(specifier, state, &mut seen)
 }
 
-pub fn resolve_npm_package_reference_types(
+pub fn resolve_npm_package_req_reference_types(
   npm_ref: &NpmPackageReqReference,
+  npm_resolver: &NpmPackageResolver,
+) -> Result<(ModuleSpecifier, MediaType), AnyError> {
+  let maybe_resolution = node_resolve_npm_reference(
+    npm_ref,
+    NodeResolutionMode::Types,
+    npm_resolver,
+    &mut PermissionsContainer::allow_all(),
+  )?;
+  Ok(NodeResolution::into_specifier_and_media_type(
+    maybe_resolution,
+  ))
+}
+
+pub fn resolve_npm_package_reference_types(
+  package_id: &NpmPackageReqReference,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<(ModuleSpecifier, MediaType), AnyError> {
   let maybe_resolution = node_resolve_npm_reference(
