@@ -217,6 +217,14 @@ Deno.test({
   Deno.close(Number(resources[resources.length - 1]));
 });
 
+Deno.test({
+  ignore: isWsl || isLinuxOrMacCI,
+}, async function webgpuAdapterHasFeatures() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  assert(adapter.features);
+});
+
 async function checkIsWsl() {
   return Deno.build.os === "linux" && await hasMicrosoftProcVersion();
 
