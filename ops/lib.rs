@@ -452,6 +452,13 @@ fn codegen_arg(
         let #ident = #blck;
       };
     }
+    Some(SliceType::F64Mut) => {
+      assert!(!asyncness, "Memory slices are not allowed in async ops");
+      let blck = codegen_f64_mut_slice(core, idx);
+      return quote! {
+        let #ident = #blck;
+      };
+    }
     Some(_) => {
       assert!(!asyncness, "Memory slices are not allowed in async ops");
       let blck = codegen_u8_slice(core, idx);
@@ -576,6 +583,28 @@ fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
   }
 }
 
+fn codegen_f64_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
+  quote! {
+    if let Ok(view) = #core::v8::Local::<#core::v8::Float64Array>::try_from(args.get(#idx as i32)) {
+      let (offset, len) = (view.byte_offset(), view.byte_length());
+      let buffer = match view.buffer(scope) {
+          Some(v) => v,
+          None => {
+            return #core::_ops::throw_type_error(scope, format!("Expected Float64Array at position {}", #idx));
+          }
+      };
+      if let Some(data) = buffer.data() {
+        let store = data.cast::<u8>().as_ptr();
+        unsafe { ::std::slice::from_raw_parts_mut(store.add(offset) as *mut f64, len / 8) }
+      } else {
+        &mut []
+      }
+    } else {
+      return #core::_ops::throw_type_error(scope, format!("Expected Float64Array at position {}", #idx));
+    }
+  }
+}
+
 fn codegen_sync_ret(
   core: &TokenStream2,
   output: &syn::ReturnType,
@@ -655,6 +684,7 @@ enum SliceType {
   U8,
   U8Mut,
   U32Mut,
+  F64Mut,
 }
 
 fn is_ref_slice(ty: impl ToTokens) -> Option<SliceType> {
@@ -666,6 +696,9 @@ fn is_ref_slice(ty: impl ToTokens) -> Option<SliceType> {
   }
   if is_u32_slice_mut(&ty) {
     return Some(SliceType::U32Mut);
+  }
+  if is_f64_slice_mut(&ty) {
+    return Some(SliceType::F64Mut);
   }
   None
 }
@@ -680,6 +713,10 @@ fn is_u8_slice_mut(ty: impl ToTokens) -> bool {
 
 fn is_u32_slice_mut(ty: impl ToTokens) -> bool {
   tokens(ty) == "& mut [u32]"
+}
+
+fn is_f64_slice_mut(ty: impl ToTokens) -> bool {
+  tokens(ty) == "& mut [f64]"
 }
 
 fn is_ptr_u8(ty: impl ToTokens) -> bool {
