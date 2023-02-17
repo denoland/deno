@@ -8,6 +8,7 @@ import {
   assertThrows,
 } from "../../../test_util/std/testing/asserts.ts";
 
+// https://github.com/nodejs/node/blob/a2bbe5ff216bc28f8dac1c36a8750025a93c3827/test/parallel/test-v8-version-tag.js#L6
 Deno.test({
   name: "cachedDataVersionTag success",
   fn() {
@@ -17,6 +18,7 @@ Deno.test({
   },
 });
 
+// https://github.com/nodejs/node/blob/a2bbe5ff216bc28f8dac1c36a8750025a93c3827/test/parallel/test-v8-stats.js#L6
 Deno.test({
   name: "getHeapStatistics success",
   fn() {
