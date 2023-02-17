@@ -5,6 +5,8 @@ import {
   CountQueuingStrategy,
   ReadableByteStreamController,
   ReadableStream,
+  ReadableStreamBYOBReader,
+  ReadableStreamBYOBRequest,
   ReadableStreamDefaultController,
   ReadableStreamDefaultReader,
   TransformStream,
@@ -23,6 +25,8 @@ export {
   CountQueuingStrategy,
   ReadableByteStreamController,
   ReadableStream,
+  ReadableStreamBYOBReader,
+  ReadableStreamBYOBRequest,
   ReadableStreamDefaultController,
   ReadableStreamDefaultReader,
   TextDecoderStream,
@@ -36,6 +40,8 @@ export {
 
 export default {
   ReadableStream,
+  ReadableStreamBYOBReader,
+  ReadableStreamBYOBRequest,
   ReadableStreamDefaultReader,
   ReadableByteStreamController,
   ReadableStreamDefaultController,
