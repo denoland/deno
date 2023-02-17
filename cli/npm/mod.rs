@@ -13,6 +13,7 @@ pub use registry::NpmRegistryApi;
 #[cfg(test)]
 pub use registry::TestNpmRegistryApiInner;
 pub use resolution::NpmResolution;
+pub use resolution::NpmPackageNodeId;
 pub use resolution::NpmResolutionPackage;
 pub use resolution::NpmResolutionSnapshot;
 pub use resolvers::NpmPackageResolver;

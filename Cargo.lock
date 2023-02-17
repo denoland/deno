@@ -861,6 +861,7 @@ dependencies = [
  "test_util",
  "text-size",
  "text_lines",
+ "thiserror",
  "tokio",
  "tokio-util",
  "tower-lsp",

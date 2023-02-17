@@ -8,14 +8,15 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
-use deno_graph::npm::NpmPackageId;
 use deno_graph::npm::NpmPackageIdReference;
 use deno_graph::npm::NpmPackageNodeId;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::npm::NpmPackageReqReference;
 use log::debug;
+use deno_graph::semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
+use thiserror::Error;
 
 use crate::args::Lockfile;
 use crate::npm::resolution::graph::LATEST_VERSION_REQ;
@@ -35,6 +36,162 @@ mod snapshot;
 
 use graph::Graph;
 pub use snapshot::NpmResolutionSnapshot;
+
+#[derive(Debug, Error)]
+#[error("Invalid npm package id '{text}'. {message}")]
+pub struct NpmPackageNodeIdDeserializationError {
+  message: String,
+  text: String,
+}
+
+/// A resolved unique identifier for an npm package. This contains
+/// the resolved name, version, and peer dependency resolution identifiers.
+#[derive(
+  Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize,
+)]
+pub struct NpmPackageNodeId {
+  pub name: String,
+  pub version: Version,
+  pub peer_dependencies: Vec<NpmPackageNodeId>,
+}
+
+impl NpmPackageNodeId {
+  #[allow(unused)]
+  pub fn scope(&self) -> Option<&str> {
+    if self.name.starts_with('@') && self.name.contains('/') {
+      self.name.split('/').next()
+    } else {
+      None
+    }
+  }
+
+  pub fn as_serialized(&self) -> String {
+    self.as_serialized_with_level(0)
+  }
+
+  fn as_serialized_with_level(&self, level: usize) -> String {
+    // WARNING: This should not change because it's used in the lockfile
+    let mut result = format!(
+      "{}@{}",
+      if level == 0 {
+        self.name.to_string()
+      } else {
+        self.name.replace('/', "+")
+      },
+      self.version
+    );
+    for peer in &self.peer_dependencies {
+      // unfortunately we can't do something like `_3` when
+      // this gets deep because npm package names can start
+      // with a number
+      result.push_str(&"_".repeat(level + 1));
+      result.push_str(&peer.as_serialized_with_level(level + 1));
+    }
+    result
+  }
+
+  pub fn from_serialized(
+    id: &str,
+  ) -> Result<Self, NpmPackageNodeIdDeserializationError> {
+    use monch::*;
+
+    fn parse_name(input: &str) -> ParseResult<&str> {
+      if_not_empty(substring(move |input| {
+        for (pos, c) in input.char_indices() {
+          // first character might be a scope, so skip it
+          if pos > 0 && c == '@' {
+            return Ok((&input[pos..], ()));
+          }
+        }
+        ParseError::backtrace()
+      }))(input)
+    }
+
+    fn parse_version(input: &str) -> ParseResult<&str> {
+      if_not_empty(substring(skip_while(|c| c != '_')))(input)
+    }
+
+    fn parse_name_and_version(input: &str) -> ParseResult<(String, Version)> {
+      let (input, name) = parse_name(input)?;
+      let (input, _) = ch('@')(input)?;
+      let at_version_input = input;
+      let (input, version) = parse_version(input)?;
+      match Version::parse_from_npm(version) {
+        Ok(version) => Ok((input, (name.to_string(), version))),
+        Err(err) => ParseError::fail(at_version_input, format!("{err:#}")),
+      }
+    }
+
+    fn parse_level_at_level<'a>(
+      level: usize,
+    ) -> impl Fn(&'a str) -> ParseResult<'a, ()> {
+      fn parse_level(input: &str) -> ParseResult<usize> {
+        let level = input.chars().take_while(|c| *c == '_').count();
+        Ok((&input[level..], level))
+      }
+
+      move |input| {
+        let (input, parsed_level) = parse_level(input)?;
+        if parsed_level == level {
+          Ok((input, ()))
+        } else {
+          ParseError::backtrace()
+        }
+      }
+    }
+
+    fn parse_peers_at_level<'a>(
+      level: usize,
+    ) -> impl Fn(&'a str) -> ParseResult<'a, Vec<NpmPackageNodeId>> {
+      move |mut input| {
+        let mut peers = Vec::new();
+        while let Ok((level_input, _)) = parse_level_at_level(level)(input) {
+          input = level_input;
+          let peer_result = parse_id_at_level(level)(input)?;
+          input = peer_result.0;
+          peers.push(peer_result.1);
+        }
+        Ok((input, peers))
+      }
+    }
+
+    fn parse_id_at_level<'a>(
+      level: usize,
+    ) -> impl Fn(&'a str) -> ParseResult<'a, NpmPackageNodeId> {
+      move |input| {
+        let (input, (name, version)) = parse_name_and_version(input)?;
+        let name = if level > 0 {
+          name.replace('+', "/")
+        } else {
+          name
+        };
+        let (input, peer_dependencies) =
+          parse_peers_at_level(level + 1)(input)?;
+        Ok((
+          input,
+          NpmPackageNodeId {
+            name,
+            version,
+            peer_dependencies,
+          },
+        ))
+      }
+    }
+
+    with_failure_handling(parse_id_at_level(0))(id).map_err(|err| {
+      NpmPackageNodeIdDeserializationError {
+        message: format!("{err:#}"),
+        text: id.to_string(),
+      }
+    })
+  }
+
+  pub fn display(&self) -> String {
+    // Don't implement std::fmt::Display because we don't
+    // want this to be used by accident in certain scenarios.
+    format!("{}@{}", self.name, self.version)
+  }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmResolutionPackage {
@@ -369,4 +526,51 @@ async fn cache_package_infos_in_api(
   }
 
   Ok(())
+}
+
+#[cfg(test)]
+mod test {
+  use deno_graph::semver::Version;
+
+  use super::NpmPackageNodeId;
+
+  #[test]
+  fn serialize_npm_package_id() {
+    let id = NpmPackageNodeId {
+      name: "pkg-a".to_string(),
+      version: Version::parse_from_npm("1.2.3").unwrap(),
+      peer_dependencies: vec![
+        NpmPackageNodeId {
+          name: "pkg-b".to_string(),
+          version: Version::parse_from_npm("3.2.1").unwrap(),
+          peer_dependencies: vec![
+            NpmPackageNodeId {
+              name: "pkg-c".to_string(),
+              version: Version::parse_from_npm("1.3.2").unwrap(),
+              peer_dependencies: vec![],
+            },
+            NpmPackageNodeId {
+              name: "pkg-d".to_string(),
+              version: Version::parse_from_npm("2.3.4").unwrap(),
+              peer_dependencies: vec![],
+            },
+          ],
+        },
+        NpmPackageNodeId {
+          name: "pkg-e".to_string(),
+          version: Version::parse_from_npm("2.3.1").unwrap(),
+          peer_dependencies: vec![NpmPackageNodeId {
+            name: "pkg-f".to_string(),
+            version: Version::parse_from_npm("2.3.1").unwrap(),
+            peer_dependencies: vec![],
+          }],
+        },
+      ],
+    };
+
+    // this shouldn't change because it's used in the lockfile
+    let serialized = id.as_serialized();
+    assert_eq!(serialized, "pkg-a@1.2.3_pkg-b@3.2.1__pkg-c@1.3.2__pkg-d@2.3.4_pkg-e@2.3.1__pkg-f@2.3.1");
+    assert_eq!(NpmPackageNodeId::from_serialized(&serialized).unwrap(), id);
+  }
 }
