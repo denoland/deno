@@ -514,12 +514,10 @@ impl Flags {
     if let Run(RunFlags { script }) = &self.subcommand {
       if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
         if module_specifier.scheme() == "file" {
-          // TODO(bartlomieju): probably not safe with all these unwraps here
           let p = module_specifier
             .to_file_path()
             .unwrap()
-            .parent()
-            .unwrap()
+            .parent()?
             .to_owned();
           return Some(p);
         } else if module_specifier.scheme() == "npm" {

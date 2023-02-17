@@ -591,17 +591,13 @@ impl CliOptions {
     if let Some(config_file) = &maybe_config_file {
       let specifier = config_file.specifier.clone();
       if specifier.scheme() == "file" {
-        maybe_package_json = discover_package_json(
-          &flags,
-          Some(
-            specifier
-              .to_file_path()
-              .unwrap()
-              .parent()
-              .unwrap()
-              .to_path_buf(),
-          ),
-        )?;
+        let maybe_stop_at = specifier
+          .to_file_path()
+          .unwrap()
+          .parent()
+          .map(|p| p.to_path_buf());
+
+        maybe_package_json = discover_package_json(&flags, maybe_stop_at)?;
       }
     } else {
       maybe_package_json = discover_package_json(&flags, None)?;
