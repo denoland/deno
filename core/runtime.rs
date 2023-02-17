@@ -1234,8 +1234,15 @@ impl JsRuntime {
       match promise.state() {
         v8::PromiseState::Pending => match state {
           Poll::Ready(Ok(_)) => {
-            let msg = "Promise resolution is still pending but the event loop has already resolved.";
-            Poll::Ready(Err(generic_error(msg)))
+            let messages = find_stalled_top_level_await(&mut scope);
+            // We are gonna print only a single message to provide a nice formatting
+            // with source line of offending promise shown. Once user fixed it, then
+            // they will get another error message for the next promise (but this
+            // situation is gonna be very rare, if ever happening).
+            assert!(!messages.is_empty());
+            let msg = v8::Local::new(&mut scope, messages[0].clone());
+            let js_error = JsError::from_v8_message(&mut scope, msg);
+            return Poll::Ready(Err(js_error.into()));
           }
           Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
           Poll::Pending => Poll::Pending,
