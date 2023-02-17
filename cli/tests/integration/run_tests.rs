@@ -2693,6 +2693,11 @@ itest!(config_not_auto_discovered_for_remote_script {
   http_server: true,
 });
 
+itest!(package_json_auto_discovered_for_local_script_log {
+  args: "run -L debug run/with_package_json/main.ts",
+  output: "run/with_package_json/main.out",
+});
+
 itest!(wasm_streaming_panic_test {
   args: "run run/wasm_streaming_panic_test.js",
   output: "run/wasm_streaming_panic_test.js.out",
