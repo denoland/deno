@@ -1200,6 +1200,41 @@ mod tests {
   }
 
   #[test]
+  fn test_parse_config_with_deprecated_fmt_options() {
+    let config_text_both = r#"{
+      "fmt": {
+        "options": {
+          "semiColons": true,
+        },
+        "semiColons": false,
+      }
+    }"#;
+    let config_text_deprecated = r#"{
+      "fmt": {
+        "options": {
+          "semiColons": true,
+        }
+      }
+    }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
+    let config_file_both =
+      ConfigFile::new(config_text_both, &config_specifier).unwrap();
+    let config_file_deprecated =
+      ConfigFile::new(config_text_deprecated, &config_specifier).unwrap();
+
+    fn unpack_options(config_file: ConfigFile) -> FmtOptionsConfig {
+      unpack_object(config_file.to_fmt_config(), "fmt").options
+    }
+
+    let fmt_options_both = unpack_options(config_file_both);
+    assert_eq!(fmt_options_both.semi_colons, Some(false));
+
+    let fmt_options_deprecated = unpack_options(config_file_deprecated);
+    assert_eq!(fmt_options_deprecated.semi_colons, Some(true));
+  }
+
+  #[test]
   fn test_parse_config_with_deprecated_files_field_only() {
     let config_text = r#"{
       "lint": { "files": { "include": ["src/"] } },
