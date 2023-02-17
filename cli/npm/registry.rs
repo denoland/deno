@@ -613,7 +613,10 @@ impl NpmRegistryApiInner for TestNpmRegistryApiInner {
     // do nothing for the test api
   }
 
-  fn get_cached_package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
+  fn get_cached_package_info(
+    &self,
+    _name: &str,
+  ) -> Option<Arc<NpmPackageInfo>> {
     None
   }
 

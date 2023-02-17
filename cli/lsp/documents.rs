@@ -1449,7 +1449,6 @@ fn analyze_module(
 #[cfg(test)]
 mod tests {
   use crate::npm::NpmResolution;
-  use crate::npm::TestNpmRegistryApiInner;
 
   use super::*;
   use import_map::ImportMap;

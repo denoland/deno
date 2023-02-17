@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -46,9 +47,7 @@ pub struct NpmPackageNodeIdDeserializationError {
 
 /// A resolved unique identifier for an npm package. This contains
 /// the resolved name, version, and peer dependency resolution identifiers.
-#[derive(
-  Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NpmPackageNodeId {
   pub id: NpmPackageId,
   pub peer_dependencies: Vec<NpmPackageNodeId>,
@@ -176,6 +175,21 @@ impl NpmPackageNodeId {
   }
 }
 
+impl Ord for NpmPackageNodeId {
+  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    match self.id.cmp(&other.id) {
+      Ordering::Equal => self.peer_dependencies.cmp(&other.peer_dependencies),
+      ordering => ordering,
+    }
+  }
+}
+
+impl PartialOrd for NpmPackageNodeId {
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmResolutionPackage {
   pub node_id: NpmPackageNodeId,
@@ -270,6 +284,20 @@ impl NpmResolution {
       snapshot,
     )
     .await?;
+
+    *inner.snapshot.write() = snapshot;
+
+    Ok(())
+  }
+
+  pub async fn resolve_pending(&self) -> Result<(), AnyError> {
+    let inner = &self.0;
+    // only allow one thread in here at a time
+    let _permit = inner.update_semaphore.acquire().await?;
+    let snapshot = inner.snapshot.read().clone();
+
+    let snapshot =
+      add_package_reqs_to_snapshot(&inner.api, Vec::new(), snapshot).await?;
 
     *inner.snapshot.write() = snapshot;
 
@@ -413,10 +441,6 @@ impl NpmResolution {
     }
     Ok(())
   }
-
-  pub async fn resolve_pending(&self) -> Result<(), AnyError> {
-    todo!()
-  }
 }
 
 async fn add_package_reqs_to_snapshot(
@@ -428,26 +452,32 @@ async fn add_package_reqs_to_snapshot(
   let mut graph = Graph::from_snapshot(snapshot);
   let pending_unresolved = graph.take_pending_unresolved();
 
+  // avoid loading the info if this is already in the graph
+  let package_reqs = package_reqs
+    .into_iter()
+    .filter(|r| !graph.has_package_req(r))
+    .collect::<Vec<_>>();
+  let pending_unresolved = pending_unresolved
+    .into_iter()
+    .filter(|p| !graph.has_root_package(p))
+    .collect::<Vec<_>>();
+
   // go over the top level package names first (pending unresolved and npm package reqs),
   // then down the tree one level at a time through all the branches
-  cache_package_infos_in_api(api, &graph, &pending_unresolved, &package_reqs)
-    .await?;
+  cache_package_infos_in_api(api, &pending_unresolved, &package_reqs).await?;
 
   let mut resolver = GraphDependencyResolver::new(&mut graph, &api);
 
-  // These package ids and package reqs should already be sorted
+  // The package reqs and ids should already be sorted
   // in the order they should be resolved in.
+  for package_req in package_reqs {
+    let info = api.package_info(&package_req.name).await?;
+    resolver.add_package_req(&package_req, &info)?;
+  }
+
   for pkg_id in pending_unresolved {
     let info = api.package_info(&pkg_id.name).await?;
     resolver.add_root_package(&pkg_id, &info)?;
-  }
-
-  for package_req in package_reqs {
-    // avoid loading the info if this is already in the graph
-    if !resolver.has_package_req(&package_req) {
-      let info = api.package_info(&package_req.name).await?;
-      resolver.add_package_req(&package_req, &info)?;
-    }
   }
 
   resolver.resolve_pending().await?;
@@ -459,7 +489,6 @@ async fn add_package_reqs_to_snapshot(
 
 async fn cache_package_infos_in_api(
   api: &NpmRegistryApi,
-  graph: &Graph,
   pending_unresolved: &Vec<NpmPackageId>,
   package_reqs: &Vec<NpmPackageReq>,
 ) -> Result<(), AnyError> {
@@ -468,19 +497,10 @@ async fn cache_package_infos_in_api(
   let mut package_names_to_cache =
     HashSet::with_capacity(package_reqs.len() + pending_unresolved.len());
 
-  package_names_to_cache.extend(
-    pending_unresolved
-      .iter()
-      .filter(|id| !graph.has_root_package(id))
-      .map(|id| id.name.clone()),
-  );
-  package_names_to_cache.extend(
-    package_reqs
-      .iter()
-      // skip analyzing this package if there's already a matching top level package
-      .filter(|req| !graph.has_package_req(req))
-      .map(|req| req.name.clone()),
-  );
+  package_names_to_cache
+    .extend(pending_unresolved.iter().map(|id| id.name.clone()));
+  package_names_to_cache
+    .extend(package_reqs.iter().map(|req| req.name.clone()));
 
   let mut unresolved_tasks = Vec::with_capacity(package_names_to_cache.len());
 
