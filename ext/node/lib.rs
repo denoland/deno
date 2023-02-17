@@ -387,7 +387,6 @@ pub fn init_polyfill() -> Extension {
     "stream/consumers.mjs",
     "stream/promises.mjs",
     "stream/web.ts",
-    "string_decoder_bench.js",
     "string_decoder.ts",
     "sys.ts",
     "timers.ts",
