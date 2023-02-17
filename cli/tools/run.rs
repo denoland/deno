@@ -142,8 +142,6 @@ pub async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
-  // deno_graph works off of extensions for local files to determine the media
-  // type, and so our "fake" specifier needs to have the proper extension.
   let main_module = resolve_url_or_path("./$deno$eval")?;
   let ps = ProcState::build_with_main(flags, main_module.clone()).await?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
