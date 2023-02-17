@@ -9,13 +9,12 @@ import {
   moveCursor,
 } from "internal:deno_node/polyfills/internal/readline/callbacks.mjs";
 import { Duplex, Readable, Writable } from "internal:deno_node/polyfills/stream.ts";
-import { stdio } from "internal:deno_node/polyfills/_process/stdio.mjs";
 import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
 import { fs as fsConstants } from "internal:deno_node/polyfills/internal_binding/constants.ts";
 import * as files from "internal:runtime/js/40_files.js";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
-function createWritableStdioStream(writer, name) {
+export function createWritableStdioStream(writer, name) {
   const stream = new Writable({
     write(buf, enc, cb) {
       if (!writer) {
@@ -92,18 +91,6 @@ function createWritableStdioStream(writer, name) {
   return stream;
 }
 
-/** https://nodejs.org/api/process.html#process_process_stderr */
-export const stderr = stdio.stderr = createWritableStdioStream(
-  files.stderr,
-  "stderr",
-);
-
-/** https://nodejs.org/api/process.html#process_process_stdout */
-export const stdout = stdio.stdout = createWritableStdioStream(
-  files.stdout,
-  "stdout",
-);
-
 // TODO(PolarETech): This function should be replaced by
 // `guessHandleType()` in "../internal_binding/util.ts".
 // https://github.com/nodejs/node/blob/v18.12.1/src/node_util.cc#L257
@@ -162,9 +149,10 @@ const _read = function (size) {
 
 /** https://nodejs.org/api/process.html#process_process_stdin */
 // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L189
-export const stdin = stdio.stdin = (() => {
+/** Create process.stdin */
+export const initStdin = () => {
   const fd = files.stdin?.rid;
-  let _stdin;
+  let stdin;
   const stdinType = _guessStdinType(fd);
 
   switch (stdinType) {
@@ -173,7 +161,7 @@ export const stdin = stdio.stdin = (() => {
       // use `Readable` instead.
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L200
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/fs/streams.js#L148
-      _stdin = new Readable({
+      stdin = new Readable({
         highWaterMark: 64 * 1024,
         autoDestroy: false,
         read: _read,
@@ -197,7 +185,7 @@ export const stdin = stdio.stdin = (() => {
       // 2. Creating a net.Socket() from a fd is not currently supported.
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L206
       // https://github.com/nodejs/node/blob/v18.12.1/lib/net.js#L329
-      _stdin = new Duplex({
+      stdin = new Duplex({
         readable: stdinType === "TTY" ? undefined : true,
         writable: stdinType === "TTY" ? undefined : false,
         readableHighWaterMark: stdinType === "TTY" ? 0 : undefined,
@@ -210,39 +198,41 @@ export const stdin = stdio.stdin = (() => {
 
       if (stdinType !== "TTY") {
         // Make sure the stdin can't be `.end()`-ed
-        _stdin._writableState.ended = true;
+        stdin._writableState.ended = true;
       }
       break;
     }
     default: {
       // Provide a dummy contentless input for e.g. non-console
       // Windows applications.
-      _stdin = new Readable({ read() {} });
-      _stdin.push(null);
+      stdin = new Readable({ read() {} });
+      stdin.push(null);
     }
   }
 
-  return _stdin;
-})();
-stdin.on("close", () => files.stdin?.close());
-stdin.fd = files.stdin?.rid ?? -1;
-Object.defineProperty(stdin, "isTTY", {
-  enumerable: true,
-  configurable: true,
-  get() {
-    return Deno.isatty?.(Deno.stdin.rid);
-  },
-});
-stdin._isRawMode = false;
-stdin.setRawMode = (enable) => {
-  files.stdin?.setRaw?.(enable);
-  stdin._isRawMode = enable;
+  stdin.on("close", () => files.stdin?.close());
+  stdin.fd = files.stdin?.rid ?? -1;
+  Object.defineProperty(stdin, "isTTY", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      return Deno.isatty?.(Deno.stdin.rid);
+    },
+  });
+  stdin._isRawMode = false;
+  stdin.setRawMode = (enable) => {
+    files.stdin?.setRaw?.(enable);
+    stdin._isRawMode = enable;
+    return stdin;
+  };
+  Object.defineProperty(stdin, "isRaw", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      return stdin._isRawMode;
+    },
+  });
+
   return stdin;
 };
-Object.defineProperty(stdin, "isRaw", {
-  enumerable: true,
-  configurable: true,
-  get() {
-    return stdin._isRawMode;
-  },
-});
+
