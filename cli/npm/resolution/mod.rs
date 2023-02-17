@@ -382,11 +382,19 @@ impl NpmResolution {
     let mut snapshot = inner.snapshot.write();
     let version_req =
       pkg_req.version_req.as_ref().unwrap_or(&*LATEST_VERSION_REQ);
-    let version_and_info = resolve_best_package_version_and_info(
-      version_req,
-      &package_info,
-      &snapshot.packages_by_name,
-    )?;
+    let version_and_info =
+      match snapshot.packages_by_name.get(&package_info.name) {
+        Some(existing_versions) => resolve_best_package_version_and_info(
+          version_req,
+          &package_info,
+          existing_versions.iter().map(|p| &p.id.version),
+        )?,
+        None => resolve_best_package_version_and_info(
+          version_req,
+          &package_info,
+          Vec::new().iter(),
+        )?,
+      };
     let id = NpmPackageId {
       name: package_info.name.to_string(),
       version: version_and_info.version.clone(),

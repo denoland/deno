@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_graph::semver::Version;
@@ -9,14 +7,16 @@ use super::NpmPackageResolvedId;
 use crate::npm::registry::NpmPackageInfo;
 use crate::npm::registry::NpmPackageVersionInfo;
 
-pub fn resolve_best_package_version_and_info<'info>(
+pub fn resolve_best_package_version_and_info<'info, 'version>(
   version_req: &VersionReq,
   package_info: &'info NpmPackageInfo,
-  packages_by_name: &HashMap<String, Vec<NpmPackageResolvedId>>,
+  existing_versions: impl Iterator<Item = &'version Version>,
 ) -> Result<VersionAndInfo<'info>, AnyError> {
-  if let Some(version) =
-    resolve_best_package_version(version_req, package_info, packages_by_name)?
-  {
+  if let Some(version) = resolve_best_from_existing_versions(
+    version_req,
+    package_info,
+    existing_versions,
+  )? {
     match package_info.versions.get(&version.to_string()) {
       Some(version_info) => Ok(VersionAndInfo {
         version,
@@ -109,22 +109,20 @@ pub fn version_req_satisfies(
   }
 }
 
-fn resolve_best_package_version(
+fn resolve_best_from_existing_versions<'a>(
   version_req: &VersionReq,
   package_info: &NpmPackageInfo,
-  packages_by_name: &HashMap<String, Vec<NpmPackageResolvedId>>,
+  existing_versions: impl Iterator<Item = &'a Version>,
 ) -> Result<Option<Version>, AnyError> {
   let mut maybe_best_version: Option<&Version> = None;
-  if let Some(ids) = packages_by_name.get(&package_info.name) {
-    for version in ids.iter().map(|id| &id.id.version) {
-      if version_req_satisfies(version_req, version, package_info, None)? {
-        let is_best_version = maybe_best_version
-          .as_ref()
-          .map(|best_version| (*best_version).cmp(version).is_lt())
-          .unwrap_or(true);
-        if is_best_version {
-          maybe_best_version = Some(version);
-        }
+  for version in existing_versions {
+    if version_req_satisfies(version_req, version, package_info, None)? {
+      let is_best_version = maybe_best_version
+        .as_ref()
+        .map(|best_version| (*best_version).cmp(version).is_lt())
+        .unwrap_or(true);
+      if is_best_version {
+        maybe_best_version = Some(version);
       }
     }
   }
@@ -172,6 +170,8 @@ fn tag_to_version_info<'a>(
 
 #[cfg(test)]
 mod test {
+  use std::collections::HashMap;
+
   use deno_graph::npm::NpmPackageReqReference;
 
   use super::super::graph::LATEST_VERSION_REQ;

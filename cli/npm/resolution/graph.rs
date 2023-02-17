@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -10,8 +9,6 @@ use std::sync::Arc;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
-use deno_core::parking_lot::Mutex;
-use deno_core::parking_lot::MutexGuard;
 use deno_graph::npm::NpmPackageId;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::semver::VersionReq;
@@ -34,43 +31,36 @@ use super::NpmResolutionPackage;
 pub static LATEST_VERSION_REQ: Lazy<VersionReq> =
   Lazy::new(|| VersionReq::parse_from_specifier("latest").unwrap());
 
-// todo(THIS PR): Rename as `GraphPath`
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 struct NodeId(usize);
 
-/// A memory efficient path in the graph. This is used to travel up and
-/// down the graph.
+/// todo: revert comment here
 #[derive(Clone)]
-struct VisitedVersionsPath {
-  previous_node: Option<Arc<VisitedVersionsPath>>,
+struct VisitedNodeIds {
+  previous_node: Option<Arc<VisitedNodeIds>>,
   node_id: NodeId,
-  specifier: String,
 }
 
-impl VisitedVersionsPath {
-  pub fn new(specifier: String, node_id: NodeId) -> Arc<Self> {
+impl VisitedNodeIds {
+  pub fn new(node_id: NodeId) -> Arc<Self> {
     Arc::new(Self {
       previous_node: None,
       node_id,
-      specifier,
     })
   }
 
   pub fn with_parent(
-    self: &Arc<VisitedVersionsPath>,
-    specifier: &str,
+    self: &Arc<VisitedNodeIds>,
     parent: &NodeParent,
   ) -> Option<Arc<Self>> {
     match parent {
-      NodeParent::Node(id) => self.with_id(specifier, *id),
+      NodeParent::Node(id) => self.with_id(*id),
       NodeParent::Root(_) => Some(self.clone()),
     }
   }
 
   pub fn with_id(
-    self: &Arc<VisitedVersionsPath>,
-    specifier: &str,
+    self: &Arc<VisitedNodeIds>,
     node_id: NodeId,
   ) -> Option<Arc<Self>> {
     if self.has_visited(node_id) {
@@ -79,7 +69,6 @@ impl VisitedVersionsPath {
       Some(Arc::new(Self {
         previous_node: Some(self.clone()),
         node_id,
-        specifier: specifier.to_string(),
       }))
     }
   }
@@ -94,6 +83,29 @@ impl VisitedVersionsPath {
       maybe_next_node = next_node.previous_node.as_ref();
     }
     false
+  }
+}
+
+/// A memory efficient path of the visited specifiers in the tree.
+#[derive(Default, Clone)]
+struct GraphSpecifierPath {
+  previous_node: Option<Arc<GraphSpecifierPath>>,
+  specifier: String,
+}
+
+impl GraphSpecifierPath {
+  pub fn new(specifier: String) -> Arc<Self> {
+    Arc::new(Self {
+      previous_node: None,
+      specifier,
+    })
+  }
+
+  pub fn with_specifier(self: &Arc<Self>, specifier: String) -> Arc<Self> {
+    Arc::new(Self {
+      previous_node: Some(self.clone()),
+      specifier,
+    })
   }
 
   pub fn pop(&self) -> Option<&Arc<Self>> {
@@ -308,7 +320,7 @@ impl Graph {
 
       let parent = NodeParent::Node(node.node_id.clone());
       for (specifier, child_id) in &node.children {
-        let mut child = self.borrow_node(*child_id);
+        let child = self.borrow_node(*child_id);
         child.remove_parent(specifier, &parent);
         if child.parents.is_empty() {
           drop(child); // stop borrowing from self
@@ -330,7 +342,7 @@ impl Graph {
       }
       NodeParent::Root(id) => {
         debug_assert_eq!(specifier, ""); // this should be a magic empty string
-        let mut node = self.packages.get_mut(&child_id).unwrap();
+        let node = self.packages.get_mut(&child_id).unwrap();
         node.add_parent(specifier.to_string(), NodeParent::Root(id.clone()));
         self.root_packages.insert(id.clone(), child_id);
       }
@@ -344,9 +356,9 @@ impl Graph {
     parent_id: NodeId,
   ) {
     assert_ne!(child_id, parent_id);
-    let mut parent = self.packages.get_mut(&parent_id).unwrap();
+    let parent = self.packages.get_mut(&parent_id).unwrap();
     parent.children.insert(specifier.to_string(), child_id);
-    let mut child = self.packages.get_mut(&child_id).unwrap();
+    let child = self.packages.get_mut(&child_id).unwrap();
     child.add_parent(specifier.to_string(), NodeParent::Node(parent_id));
   }
 
@@ -358,7 +370,7 @@ impl Graph {
   ) {
     match parent {
       NodeParent::Node(parent_id) => {
-        let mut node = self.borrow_node(*parent_id);
+        let node = self.borrow_node(*parent_id);
         if let Some(removed_child_id) = node.children.remove(specifier) {
           assert_eq!(removed_child_id, child_id);
         }
@@ -403,7 +415,7 @@ impl Graph {
     // Iterate through the packages vector in each packages_by_name in order
     // to set the copy index as this will be deterministic rather than
     // iterating over the hashmap below.
-    for (name, packages) in &resolved_packages_by_name {
+    for packages in resolved_packages_by_name.values() {
       if packages.len() > 1 {
         for resolved_id in packages {
           copy_index_resolver.resolve(resolved_id);
@@ -472,7 +484,7 @@ impl Graph {
 pub struct GraphDependencyResolver<'a> {
   graph: &'a mut Graph,
   api: &'a NpmRegistryApi,
-  pending_unresolved_nodes: VecDeque<(Arc<VisitedVersionsPath>, NodeId)>,
+  pending_unresolved_nodes: VecDeque<(Arc<VisitedNodeIds>, NodeId)>,
 }
 
 impl<'a> GraphDependencyResolver<'a> {
@@ -509,7 +521,7 @@ impl<'a> GraphDependencyResolver<'a> {
     self
       .graph
       .set_child_parent("", node_id, &NodeParent::Root(pkg_id.id));
-    self.try_add_pending_unresolved_node(None, "", node_id);
+    self.try_add_pending_unresolved_node(None, node_id);
     Ok(())
   }
 
@@ -534,7 +546,7 @@ impl<'a> GraphDependencyResolver<'a> {
     self
       .graph
       .set_child_parent("", node_id, &NodeParent::Root(pkg_id.id));
-    self.try_add_pending_unresolved_node(None, "", node_id);
+    self.try_add_pending_unresolved_node(None, node_id);
     Ok(())
   }
 
@@ -543,9 +555,9 @@ impl<'a> GraphDependencyResolver<'a> {
     entry: &NpmDependencyEntry,
     package_info: &NpmPackageInfo,
     parent_id: NodeId,
-    visited_versions: &Arc<VisitedVersionsPath>,
+    visited_versions: &Arc<VisitedNodeIds>,
   ) -> Result<NodeId, AnyError> {
-    let (resolved_id, node_id) = self.resolve_node_from_info(
+    let (_, node_id) = self.resolve_node_from_info(
       &entry.name,
       match entry.kind {
         NpmDependencyEntryKind::Dep => &entry.version_req,
@@ -570,37 +582,27 @@ impl<'a> GraphDependencyResolver<'a> {
         node_id,
         &NodeParent::Node(parent_id),
       );
-      self.try_add_pending_unresolved_node(
-        Some(visited_versions),
-        &entry.bare_specifier,
-        node_id,
-      );
+      self.try_add_pending_unresolved_node(Some(visited_versions), node_id);
     }
     Ok(node_id)
   }
 
   fn try_add_pending_unresolved_node(
     &mut self,
-    maybe_previous_visited_versions: Option<&Arc<VisitedVersionsPath>>,
-    specifier: &str,
+    maybe_previous_visited_versions: Option<&Arc<VisitedNodeIds>>,
     node_id: NodeId,
   ) {
     if self.graph.packages.get(&node_id).unwrap().no_peers {
       return; // skip, no need to analyze this again
     }
-    let resolved_id = self
-      .graph
-      .resolved_node_ids
-      .get_resolved_id(&node_id)
-      .unwrap();
     let visited_versions = match maybe_previous_visited_versions {
       Some(previous_visited_versions) => {
-        match previous_visited_versions.with_id(specifier, node_id) {
+        match previous_visited_versions.with_id(node_id) {
           Some(visited_versions) => visited_versions,
           None => return, // circular, don't visit this node
         }
       }
-      None => VisitedVersionsPath::new(specifier.to_string(), node_id),
+      None => VisitedNodeIds::new(node_id),
     };
     self
       .pending_unresolved_nodes
@@ -617,7 +619,21 @@ impl<'a> GraphDependencyResolver<'a> {
     let version_and_info = resolve_best_package_version_and_info(
       version_req,
       package_info,
-      &self.graph.packages_by_name,
+      self
+        .graph
+        .packages_by_name
+        .entry(package_info.name.clone())
+        .or_default()
+        .iter()
+        .map(|node_id| {
+          &self
+            .graph
+            .resolved_node_ids
+            .get_resolved_id(node_id)
+            .unwrap()
+            .id
+            .version
+        }),
     )?;
     let resolved_id = NpmPackageResolvedId {
       id: NpmPackageId {
@@ -732,8 +748,6 @@ impl<'a> GraphDependencyResolver<'a> {
                 existing_children.get(&dep.bare_specifier).copied(),
               )?;
               if let Some(new_parent_id) = maybe_new_parent_id {
-                // only compare the name and version
-                assert_eq!(new_parent_id.id, parent_id.id);
                 parent_id = new_parent_id;
               }
             }
@@ -754,24 +768,24 @@ impl<'a> GraphDependencyResolver<'a> {
     parent_id: NodeId,
     peer_dep: &NpmDependencyEntry,
     peer_package_info: &NpmPackageInfo,
-    ancestor_path: &Arc<VisitedVersionsPath>,
+    visited_ancestor_versions: &Arc<VisitedNodeIds>,
     existing_dep_id: Option<NodeId>,
-  ) -> Result<Option<NpmPackageResolvedId>, AnyError> {
+  ) -> Result<Option<NodeId>, AnyError> {
     fn find_matching_child<'a>(
       peer_dep: &NpmDependencyEntry,
       peer_package_info: &NpmPackageInfo,
-      children: impl Iterator<Item = &'a NpmPackageResolvedId>,
-    ) -> Result<Option<NpmPackageResolvedId>, AnyError> {
-      for child_id in children {
-        if child_id.id.name == peer_dep.name
+      children: impl Iterator<Item = (NodeId, &'a NpmPackageId)>,
+    ) -> Result<Option<NodeId>, AnyError> {
+      for (child_id, pkg_id) in children {
+        if pkg_id.name == peer_dep.name
           && version_req_satisfies(
             &peer_dep.version_req,
-            &child_id.id.version,
+            &pkg_id.version,
             peer_package_info,
             None,
           )?
         {
-          return Ok(Some(child_id.clone()));
+          return Ok(Some(child_id));
         }
       }
       Ok(None)
@@ -781,148 +795,147 @@ impl<'a> GraphDependencyResolver<'a> {
     // If not found, then it resolves based on the version requirement if non-optional.
     let mut pending_ancestors = VecDeque::new(); // go up the tree by depth
     let path = GraphSpecifierPath::new(specifier.to_string());
-    let up_path =
-      VisitedVersionsPath::new(specifier.to_string(), parent_id.id.clone());
+    let visited_versions = VisitedNodeIds::new(parent_id);
 
     // skip over the current node
-    // todo(THIS PR): rename
-    let (mut last_path_node, mut last_node_id) = (ancestor_path, parent_id);
-    // let grand_parent_node =
-    // for (specifier, grand_parents) in
-    //   self.graph.borrow_node(parent_id).parents.clone()
-    // {
-    //   // todo(THIS PR): this is wrong
-    //   let path = path.with_specifier(specifier);
-    //   for grand_parent in grand_parents {
-    //     if let Some(visited_versions) =
-    //       up_path.with_parent(&grand_parent)
-    //     {
-    //       eprintln!("ANCESTOR: {:?}", grand_parent);
-    //       pending_ancestors.push_back((
-    //         grand_parent,
-    //         path.clone(),
-    //         visited_versions,
-    //       ));
-    //     }
-    //   }
-    // }
-
-    while let Some(current_path_node) = last_path_node.pop() {
-      let current_node_parent = self
-        .graph
-        .borrow_node(last_node_id)
-        .parents
-        .get(&last_path_node.specifier)
-        .unwrap_or_else(|| {
-          panic!(
-            "Not found {} in {}",
-            last_path_node.specifier,
-            last_node_id.as_serialized()
-          )
-        });
-      let current_node_id = match current_node_parent {
-        NodeParent::Root(id) => self.graph.root_packages.get(id).unwrap(),
-        NodeParent::Node(node_id) => node_id,
-      };
-      last_path_node = current_path_node;
-      last_node_id = current_node_id;
-
-      eprintln!("ANCESTOR: {:?}", node_id);
-      let maybe_peer_dep_id = if current_node_id.id.name == peer_dep.name
-        && version_req_satisfies(
-          &peer_dep.version_req,
-          &current_node_id.id.version,
-          peer_package_info,
-          None,
-        )? {
-        Some(current_node_id.clone())
-      } else {
-        // todo(dsherret): this is also wrong
-        let ancestor = self.graph.borrow_node(current_node_id);
-        for (specifier, parents) in &ancestor.parents {
-          let new_path = path.with_specifier(specifier.clone());
-          for parent in parents {
-            if let Some(visited_versions) =
-              visited_versions.with_parent(specifier, parent)
-            {
-              pending_ancestors.push_back((
-                parent.clone(),
-                new_path.clone(),
-                visited_versions,
-              ));
-            }
-          }
+    for (specifier, grand_parents) in
+      self.graph.borrow_node(parent_id).parents.clone()
+    {
+      let path = path.with_specifier(specifier);
+      for grand_parent in grand_parents {
+        if let Some(visited_versions) =
+          visited_versions.with_parent(&grand_parent)
+        {
+          pending_ancestors.push_back((
+            grand_parent,
+            path.clone(),
+            visited_versions,
+          ));
         }
-        find_matching_child(
-          peer_dep,
-          peer_package_info,
-          ancestor.children.values(),
-        )?
-      };
-      if let Some(peer_dep_id) = maybe_peer_dep_id {
-        if existing_dep_id == Some(&peer_dep_id) {
-          return Ok(None); // do nothing, there's already an existing child dep id for this
-        }
-
-        // handle optional dependency that's never been set
-        if existing_dep_id.is_none() && peer_dep.kind.is_optional() {
-          self.set_previously_unresolved_optional_dependency(
-            specifier,
-            &peer_dep_id,
-            parent_id,
-            peer_dep,
-            ancestor_path,
-          );
-          return Ok(None);
-        }
-
-        let parents = self.graph.borrow_node(current_node_id).parents.clone();
-        return Ok(Some(self.set_new_peer_dep(
-          parents,
-          current_node_id,
-          &peer_dep_id,
-          &path,
-          ancestor_path,
-        )));
       }
     }
 
-    // in this case, the parent is the root so the children are all the package requirements
-    let root_pkg_id = &last_path_node.id;
-    if let Some(child_id) = find_matching_child(
-      peer_dep,
-      peer_package_info,
-      self.graph.root_packages.values(),
-    )? {
-      if existing_dep_id == Some(&child_id) {
-        return Ok(None); // do nothing, there's already an existing child dep id for this
-      }
+    while let Some((ancestor, path, visited_versions)) =
+      pending_ancestors.pop_front()
+    {
+      match &ancestor {
+        NodeParent::Node(ancestor_node_id) => {
+          let resolved_ancestor_id = self
+            .graph
+            .resolved_node_ids
+            .get_resolved_id(ancestor_node_id)
+            .unwrap();
+          let maybe_peer_dep_id = if resolved_ancestor_id.id.name
+            == peer_dep.name
+            && version_req_satisfies(
+              &peer_dep.version_req,
+              &resolved_ancestor_id.id.version,
+              peer_package_info,
+              None,
+            )? {
+            Some(ancestor_node_id.clone())
+          } else {
+            let ancestor = self.graph.packages.get(ancestor_node_id).unwrap();
+            for (specifier, parents) in &ancestor.parents {
+              let new_path = path.with_specifier(specifier.clone());
+              for parent in parents {
+                if let Some(visited_versions) =
+                  visited_versions.with_parent(parent)
+                {
+                  pending_ancestors.push_back((
+                    parent.clone(),
+                    new_path.clone(),
+                    visited_versions,
+                  ));
+                }
+              }
+            }
+            find_matching_child(
+              peer_dep,
+              peer_package_info,
+              ancestor.children.values().map(|node_id| {
+                (
+                  *node_id,
+                  &self
+                    .graph
+                    .resolved_node_ids
+                    .get_resolved_id(node_id)
+                    .unwrap()
+                    .id,
+                )
+              }),
+            )?
+          };
+          if let Some(peer_dep_id) = maybe_peer_dep_id {
+            if existing_dep_id == Some(peer_dep_id) {
+              return Ok(None); // do nothing, there's already an existing child dep id for this
+            }
 
-      // handle optional dependency that's never been set
-      if existing_dep_id.is_none() && peer_dep.kind.is_optional() {
-        self.set_previously_unresolved_optional_dependency(
-          "", // magic root specifier
-          &child_id,
-          parent_id,
-          peer_dep,
-          ancestor_path,
-        );
-        return Ok(None);
-      }
+            // handle optional dependency that's never been set
+            if existing_dep_id.is_none() && peer_dep.kind.is_optional() {
+              self.set_previously_unresolved_optional_dependency(
+                peer_dep_id,
+                parent_id,
+                peer_dep,
+                visited_ancestor_versions,
+              );
+              return Ok(None);
+            }
 
-      let specifier = path.specifier.to_string();
-      let path = path.pop().unwrap(); // go back down one level from the package requirement
-      let old_id = self.graph.root_packages.get(root_pkg_id).unwrap().clone();
-      return Ok(Some(self.set_new_peer_dep(
-        BTreeMap::from([(
-          specifier,
-          BTreeSet::from([NodeParent::Root(root_pkg_id.clone())]),
-        )]),
-        &old_id,
-        &child_id,
-        path,
-        ancestor_path,
-      )));
+            let parents =
+              self.graph.borrow_node(*ancestor_node_id).parents.clone();
+            return Ok(Some(self.set_new_peer_dep(
+              parents,
+              *ancestor_node_id,
+              peer_dep_id,
+              &path,
+              visited_ancestor_versions,
+            )));
+          }
+        }
+        NodeParent::Root(root_pkg_id) => {
+          // in this case, the parent is the root so the children are all the package requirements
+          if let Some(child_id) = find_matching_child(
+            peer_dep,
+            peer_package_info,
+            self
+              .graph
+              .root_packages
+              .iter()
+              .map(|(pkg_id, id)| (*id, pkg_id)),
+          )? {
+            if existing_dep_id == Some(child_id) {
+              return Ok(None); // do nothing, there's already an existing child dep id for this
+            }
+
+            // handle optional dependency that's never been set
+            if existing_dep_id.is_none() && peer_dep.kind.is_optional() {
+              self.set_previously_unresolved_optional_dependency(
+                child_id,
+                parent_id,
+                peer_dep,
+                visited_ancestor_versions,
+              );
+              return Ok(None);
+            }
+
+            let specifier = path.specifier.to_string();
+            let path = path.pop().unwrap(); // go back down one level from the package requirement
+            let old_id =
+              self.graph.root_packages.get(&root_pkg_id).unwrap().clone();
+            return Ok(Some(self.set_new_peer_dep(
+              BTreeMap::from([(
+                specifier,
+                BTreeSet::from([NodeParent::Root(root_pkg_id.clone())]),
+              )]),
+              old_id,
+              child_id,
+              path,
+              visited_ancestor_versions,
+            )));
+          }
+        }
+      }
     }
 
     // We didn't find anything by searching the ancestor siblings, so we need
@@ -936,7 +949,7 @@ impl<'a> GraphDependencyResolver<'a> {
         peer_dep,
         peer_package_info,
         parent_id,
-        ancestor_path,
+        visited_ancestor_versions,
       )?;
     }
 
@@ -948,81 +961,90 @@ impl<'a> GraphDependencyResolver<'a> {
   /// the entire sub tree.
   fn set_previously_unresolved_optional_dependency(
     &mut self,
-    specifier: &str,
-    peer_dep_id: &NpmPackageResolvedId,
+    peer_dep_id: NodeId,
     parent_id: NodeId,
     peer_dep: &NpmDependencyEntry,
-    visited_ancestor_versions: &Arc<VisitedVersionsPath>,
+    visited_ancestor_versions: &Arc<VisitedNodeIds>,
   ) {
-    let (_, node_id) = self.graph.get_or_create_for_id(peer_dep_id);
     self.graph.set_child_parent(
       &peer_dep.bare_specifier,
-      node_id,
+      peer_dep_id,
       &NodeParent::Node(parent_id),
     );
     self.try_add_pending_unresolved_node(
       Some(visited_ancestor_versions),
-      specifier,
-      node_id,
+      peer_dep_id,
     );
   }
 
   fn set_new_peer_dep(
     &mut self,
     previous_parents: BTreeMap<String, BTreeSet<NodeParent>>,
-    node_id: &NpmPackageResolvedId,
-    peer_dep_id: &NpmPackageResolvedId,
+    node_id: NodeId,
+    peer_dep_id: NodeId,
     path: &Arc<GraphSpecifierPath>,
-    visited_ancestor_versions: &Arc<VisitedVersionsPath>,
-  ) -> NpmPackageResolvedId {
-    let peer_dep_id = Cow::Borrowed(peer_dep_id);
+    visited_ancestor_versions: &Arc<VisitedNodeIds>,
+  ) -> NodeId {
+    let peer_dep_id = peer_dep_id;
+    let peer_dep_resolved_id = self
+      .graph
+      .resolved_node_ids
+      .get_resolved_id(&peer_dep_id)
+      .unwrap();
     let old_id = node_id;
-    let (new_id, mut old_node_children) =
-      if old_id.peer_dependencies.contains(&peer_dep_id)
-        || *old_id == *peer_dep_id
-      {
-        // the parent has already resolved to using this peer dependency
-        // via some other path or the parent is the peer dependency,
-        // so we don't need to update its ids, but instead only make a link to it
-        (
-          old_id.clone(),
-          self.graph.borrow_node(old_id).children.clone(),
-        )
-      } else {
-        let mut new_id = old_id.clone();
-        new_id.peer_dependencies.push(peer_dep_id.as_ref().clone());
+    let old_resolved_id = self
+      .graph
+      .resolved_node_ids
+      .get_resolved_id(&old_id)
+      .unwrap();
+    let (new_id, mut old_node_children) = if old_resolved_id
+      .peer_dependencies
+      .contains(&peer_dep_resolved_id)
+      || old_id == peer_dep_id
+    {
+      // the parent has already resolved to using this peer dependency
+      // via some other path or the parent is the peer dependency,
+      // so we don't need to update its ids, but instead only make a link to it
+      (
+        old_id.clone(),
+        self.graph.borrow_node(old_id).children.clone(),
+      )
+    } else {
+      let mut new_id = old_resolved_id.clone();
+      new_id.peer_dependencies.push(peer_dep_resolved_id.clone());
 
-        // remove the previous parents from the old node
-        let old_node_children = {
-          for (specifier, parents) in &previous_parents {
-            for parent in parents {
-              self.graph.remove_child_parent(specifier, old_id, parent);
-            }
-          }
-          let old_node = self.graph.borrow_node(old_id);
-          old_node.children.clone()
-        };
-
-        let (_, new_node) = self.graph.get_or_create_for_id(&new_id);
-
-        // update the previous parent to point to the new node
-        // and this node to point at those parents
-        for (specifier, parents) in previous_parents {
+      // remove the previous parents from the old node
+      let old_node_children = {
+        for (specifier, parents) in &previous_parents {
           for parent in parents {
-            self.graph.set_child_parent(&specifier, &new_node, &parent);
+            self.graph.remove_child_parent(specifier, old_id, parent);
           }
         }
+        let old_node = self.graph.borrow_node(old_id);
+        old_node.children.clone()
+      };
 
-        // now add the previous children to this node
-        let new_id_as_parent = NodeParent::Node(new_id.clone());
-        for (specifier, child_id) in &old_node_children {
-          let child = self.graph.packages.get(child_id).unwrap().clone();
+      let (_, new_node_id) = self.graph.get_or_create_for_id(&new_id);
+
+      // update the previous parent to point to the new node
+      // and this node to point at those parents
+      for (specifier, parents) in previous_parents {
+        for parent in parents {
           self
             .graph
-            .set_child_parent(specifier, &child, &new_id_as_parent);
+            .set_child_parent(&specifier, new_node_id, &parent);
         }
-        (new_id, old_node_children)
-      };
+      }
+
+      // now add the previous children to this node
+      let new_id_as_parent = NodeParent::Node(new_node_id.clone());
+      for (specifier, child_id) in &old_node_children {
+        self
+          .graph
+          .set_child_parent(specifier, *child_id, &new_id_as_parent);
+      }
+      (new_node_id, old_node_children)
+    };
 
     // this is the parent id found at the bottom of the path
     let mut bottom_parent_id = new_id.clone();
@@ -1036,54 +1058,55 @@ impl<'a> GraphDependencyResolver<'a> {
           next_specifier.to_string(),
           BTreeSet::from([NodeParent::Node(new_id.clone())]),
         )]),
-        next_node_id,
-        &peer_dep_id,
+        *next_node_id,
+        peer_dep_id,
         path,
         visited_ancestor_versions,
       );
     } else {
       // this means we're at the peer dependency now
-      eprintln!(
-        "Resolved peer dependency for {} in {} to {}",
-        next_specifier,
-        &new_id.as_serialized(),
-        &peer_dep_id.as_serialized(),
-      );
       debug!(
         "Resolved peer dependency for {} in {} to {}",
         next_specifier,
-        &new_id.as_serialized(),
-        &peer_dep_id.as_serialized(),
+        &self
+          .graph
+          .resolved_node_ids
+          .get_resolved_id(&node_id)
+          .unwrap()
+          .as_serialized(),
+        &self
+          .graph
+          .resolved_node_ids
+          .get_resolved_id(&peer_dep_id)
+          .unwrap()
+          .as_serialized(),
       );
 
       // handle this node having a previous child due to another peer dependency
       if let Some(child_id) = old_node_children.remove(next_specifier) {
-        if let Some(node) = self.graph.packages.get(&child_id) {
+        if let Some(node) = self.graph.packages.get_mut(&child_id) {
           let is_orphan = {
-            let mut node = node.lock();
             node
               .remove_parent(next_specifier, &NodeParent::Node(new_id.clone()));
             node.parents.is_empty()
           };
           if is_orphan {
-            self.graph.forget_orphan(&child_id);
+            self.graph.forget_orphan(child_id);
           }
         }
       }
 
-      let node = self.graph.get_or_create_for_id(&peer_dep_id).1;
       self.try_add_pending_unresolved_node(
         Some(visited_ancestor_versions),
-        next_specifier,
-        &node,
+        peer_dep_id,
       );
       self
         .graph
-        .set_child_parent_node(next_specifier, &node, &new_id);
+        .set_child_parent_node(next_specifier, peer_dep_id, new_id);
     }
 
     // forget the old node at this point if it has no parents
-    if new_id != *old_id {
+    if new_id != old_id {
       let old_node = self.graph.borrow_node(old_id);
       if old_node.parents.is_empty() {
         drop(old_node); // stop borrowing
