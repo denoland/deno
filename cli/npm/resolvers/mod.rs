@@ -11,7 +11,6 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_graph::npm::NpmPackageId;
 use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -32,6 +31,7 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 use super::NpmCache;
+use super::NpmPackageNodeId;
 use super::NpmResolutionSnapshot;
 use super::RealNpmRegistryApi;
 
@@ -225,7 +225,7 @@ impl NpmPackageResolver {
   /// Attempts to get the package size in bytes.
   pub fn package_size(
     &self,
-    package_id: &NpmPackageId,
+    package_id: &NpmPackageNodeId,
   ) -> Result<u64, AnyError> {
     self.inner.package_size(package_id)
   }
