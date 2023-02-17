@@ -41,7 +41,10 @@ Deno.test({
     ];
     assertEquals(Object.keys(s).sort(), keys);
     for (const k of keys) {
-      assertEquals(typeof (s as any)[k], "number");
+      assertEquals(
+        typeof (s as unknown as Record<string, unknown>)[k],
+        "number",
+      );
     }
   },
 });
