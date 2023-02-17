@@ -93,6 +93,10 @@ impl VisitedNodeIds {
     }
     false
   }
+
+  pub fn pop(&self) -> Option<&Arc<Self>> {
+    self.previous_node.as_ref()
+  }
 }
 
 /// A memory efficient path of the visited specifiers in the tree.
@@ -247,7 +251,6 @@ impl Graph {
         .collect(),
       package_reqs: snapshot.package_reqs,
       pending_unresolved_packages: snapshot.pending_unresolved_packages,
-      root_packages: HashMap::with_capacity(snapshot.root_packages.len()),
       ..Default::default()
     };
     for (id, resolved_id) in snapshot.root_packages {
@@ -561,9 +564,9 @@ impl<'a> GraphDependencyResolver<'a> {
     &mut self,
     entry: &NpmDependencyEntry,
     package_info: &NpmPackageInfo,
-    parent_id: NodeId,
     visited_versions: &Arc<VisitedNodeIds>,
   ) -> Result<NodeId, AnyError> {
+    let parent_id = visited_versions.node_id();
     let (_, node_id) = self.resolve_node_from_info(
       &entry.name,
       match entry.kind {
@@ -685,19 +688,19 @@ impl<'a> GraphDependencyResolver<'a> {
       while let Some(visited_versions) =
         self.pending_unresolved_nodes.pop_front()
       {
-        let mut parent_id = visited_versions.node_id();
         let (deps, existing_children) = {
-          let parent_node = match self.graph.packages.get(&parent_id) {
-            Some(node) if node.no_peers => {
-              continue; // skip, no need to analyze
-            }
-            Some(node) => node,
-            None => {
-              // todo(dsherret): I don't believe this should occur anymore
-              // todo(THIS PR): add a debug assert
-              continue;
-            }
-          };
+          let parent_node =
+            match self.graph.packages.get(&visited_versions.node_id()) {
+              Some(node) if node.no_peers => {
+                continue; // skip, no need to analyze
+              }
+              Some(node) => node,
+              None => {
+                // todo(dsherret): I don't believe this should occur anymore
+                // todo(THIS PR): add a debug assert
+                continue;
+              }
+            };
 
           (parent_node.deps.clone(), parent_node.children.clone())
         };
@@ -732,7 +735,6 @@ impl<'a> GraphDependencyResolver<'a> {
               let node_id = self.analyze_dependency(
                 dep,
                 &package_info,
-                parent_id,
                 &visited_versions,
               )?;
               if !found_peer {
@@ -744,7 +746,6 @@ impl<'a> GraphDependencyResolver<'a> {
               found_peer = true;
               let maybe_new_parent_id = self.resolve_peer_dep(
                 &dep.bare_specifier,
-                parent_id,
                 dep,
                 &package_info,
                 &visited_versions,
@@ -752,14 +753,13 @@ impl<'a> GraphDependencyResolver<'a> {
               )?;
               if let Some(new_parent_id) = maybe_new_parent_id {
                 visited_versions.change_id(new_parent_id);
-                parent_id = new_parent_id;
               }
             }
           }
         }
 
         if !found_peer {
-          self.graph.borrow_node(parent_id).no_peers = true;
+          self.graph.borrow_node(visited_versions.node_id()).no_peers = true;
         }
       }
     }
@@ -769,7 +769,6 @@ impl<'a> GraphDependencyResolver<'a> {
   fn resolve_peer_dep(
     &mut self,
     specifier: &str,
-    parent_id: NodeId,
     peer_dep: &NpmDependencyEntry,
     peer_package_info: &NpmPackageInfo,
     visited_ancestor_versions: &Arc<VisitedNodeIds>,
@@ -799,6 +798,8 @@ impl<'a> GraphDependencyResolver<'a> {
     // If not found, then it resolves based on the version requirement if non-optional.
     let mut pending_ancestors = VecDeque::new(); // go up the tree by depth
     let path = GraphSpecifierPath::new(specifier.to_string());
+    let parent_id = visited_ancestor_versions.node_id();
+    // start a new path going up from the current parent id
     let visited_versions = VisitedNodeIds::new(parent_id);
 
     // skip over the current node
@@ -879,7 +880,6 @@ impl<'a> GraphDependencyResolver<'a> {
             if existing_dep_id.is_none() && peer_dep.kind.is_optional() {
               self.set_previously_unresolved_optional_dependency(
                 peer_dep_id,
-                parent_id,
                 peer_dep,
                 visited_ancestor_versions,
               );
@@ -916,7 +916,6 @@ impl<'a> GraphDependencyResolver<'a> {
             if existing_dep_id.is_none() && peer_dep.kind.is_optional() {
               self.set_previously_unresolved_optional_dependency(
                 child_id,
-                parent_id,
                 peer_dep,
                 visited_ancestor_versions,
               );
@@ -949,10 +948,10 @@ impl<'a> GraphDependencyResolver<'a> {
       // prefer the existing dep id if it exists
       && existing_dep_id.is_none()
     {
+      assert_eq!(parent_id, visited_ancestor_versions.node_id());
       self.analyze_dependency(
         peer_dep,
         peer_package_info,
-        parent_id,
         visited_ancestor_versions,
       )?;
     }
@@ -966,14 +965,13 @@ impl<'a> GraphDependencyResolver<'a> {
   fn set_previously_unresolved_optional_dependency(
     &mut self,
     peer_dep_id: NodeId,
-    parent_id: NodeId,
     peer_dep: &NpmDependencyEntry,
     visited_ancestor_versions: &Arc<VisitedNodeIds>,
   ) {
     self.graph.set_child_parent(
       &peer_dep.bare_specifier,
       peer_dep_id,
-      &NodeParent::Node(parent_id),
+      &NodeParent::Node(visited_ancestor_versions.node_id()),
     );
     self.try_add_pending_unresolved_node(
       Some(visited_ancestor_versions),
