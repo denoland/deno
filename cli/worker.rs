@@ -451,7 +451,7 @@ async fn create_main_worker_internal(
     let pkg_id = ps
       .npm_resolver
       .resolution()
-      .resolve_pkg_node_id_from_pkg_req(&package_ref.req)?
+      .resolve_pkg_resolved_id_from_pkg_req(&package_ref.req)?
       .id;
     let node_resolution = node::node_resolve_binary_export(
       &pkg_id,

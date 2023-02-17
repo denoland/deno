@@ -667,7 +667,7 @@ fn op_resolve(
             // injected and not part of the graph
             let node_id = npm_resolver
               .resolution()
-              .resolve_pkg_node_id_from_pkg_req(&npm_ref.req)?;
+              .resolve_pkg_resolved_id_from_pkg_req(&npm_ref.req)?;
             let npm_id_ref = NpmPackageIdReference {
               id: node_id.id,
               sub_path: npm_ref.sub_path,

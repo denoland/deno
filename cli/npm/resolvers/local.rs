@@ -29,7 +29,7 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageNodeId;
+use crate::npm::NpmPackageResolvedId;
 use crate::util::fs::copy_dir_recursive;
 use crate::util::fs::hard_link_dir_recursive;
 
@@ -104,7 +104,7 @@ impl LocalNpmPackageResolver {
 
   fn get_package_id_folder(
     &self,
-    package_id: &NpmPackageNodeId,
+    package_id: &NpmPackageResolvedId,
   ) -> Result<PathBuf, AnyError> {
     match self
       .resolution
@@ -131,7 +131,7 @@ impl LocalNpmPackageResolver {
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn resolve_package_folder_from_deno_module(
     &self,
-    node_id: &NpmPackageNodeId,
+    node_id: &NpmPackageResolvedId,
   ) -> Result<PathBuf, AnyError> {
     self.get_package_id_folder(node_id)
   }
@@ -192,7 +192,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
 
   fn package_size(
     &self,
-    package_id: &NpmPackageNodeId,
+    package_id: &NpmPackageResolvedId,
   ) -> Result<u64, AnyError> {
     let package_folder_path = self.get_package_id_folder(package_id)?;
 
@@ -256,7 +256,7 @@ async fn sync_resolution_with_fs(
     // and we want the output to be deterministic
     package_partitions
       .packages
-      .sort_by(|a, b| a.node_id.cmp(&b.node_id));
+      .sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
   }
   let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
     Vec::with_capacity(package_partitions.packages.len());
@@ -267,7 +267,7 @@ async fn sync_resolution_with_fs(
     let initialized_file = folder_path.join(".initialized");
     if !cache
       .cache_setting()
-      .should_use_for_npm_package(&package.node_id.id.name)
+      .should_use_for_npm_package(&package.pkg_id.id.name)
       || !initialized_file.exists()
     {
       let cache = cache.clone();
@@ -275,15 +275,15 @@ async fn sync_resolution_with_fs(
       let package = package.clone();
       let handle = tokio::task::spawn(async move {
         cache
-          .ensure_package(&package.node_id.id, &package.dist, &registry_url)
+          .ensure_package(&package.pkg_id.id, &package.dist, &registry_url)
           .await?;
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
-          join_package_name(&sub_node_modules, &package.node_id.id.name);
+          join_package_name(&sub_node_modules, &package.pkg_id.id.name);
         fs::create_dir_all(&package_path)
           .with_context(|| format!("Creating '{}'", folder_path.display()))?;
         let cache_folder = cache.package_folder_for_name_and_version(
-          &package.node_id.id,
+          &package.pkg_id.id,
           &registry_url,
         );
         // for now copy, but in the future consider hard linking
@@ -314,7 +314,7 @@ async fn sync_resolution_with_fs(
     if !initialized_file.exists() {
       let sub_node_modules = destination_path.join("node_modules");
       let package_path =
-        join_package_name(&sub_node_modules, &package.node_id.id.name);
+        join_package_name(&sub_node_modules, &package.pkg_id.id.name);
       fs::create_dir_all(&package_path).with_context(|| {
         format!("Creating '{}'", destination_path.display())
       })?;
@@ -324,7 +324,7 @@ async fn sync_resolution_with_fs(
             &package_cache_folder_id.with_no_count(),
           ))
           .join("node_modules"),
-        &package.node_id.id.name,
+        &package.pkg_id.id.name,
       );
       hard_link_dir_recursive(&source_path, &package_path)?;
       // write out a file that indicates this folder has been initialized

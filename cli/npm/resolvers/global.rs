@@ -17,7 +17,7 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageNodeId;
+use crate::npm::NpmPackageResolvedId;
 use crate::npm::NpmResolutionPackage;
 
 use super::common::ensure_registry_read_permission;
@@ -45,7 +45,7 @@ impl GlobalNpmPackageResolver {
     }
   }
 
-  fn package_folder(&self, package_id: &NpmPackageNodeId) -> PathBuf {
+  fn package_folder(&self, package_id: &NpmPackageResolvedId) -> PathBuf {
     let folder_id = self
       .resolution
       .resolve_package_cache_folder_id_from_id(package_id)
@@ -70,7 +70,7 @@ impl GlobalNpmPackageResolver {
 impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn resolve_package_folder_from_deno_module(
     &self,
-    package_id: &NpmPackageNodeId,
+    package_id: &NpmPackageResolvedId,
   ) -> Result<PathBuf, AnyError> {
     Ok(self.package_folder(package_id))
   }
@@ -97,7 +97,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         .resolution
         .resolve_package_from_package(name, &referrer_pkg_id)?
     };
-    Ok(self.package_folder(&pkg.node_id))
+    Ok(self.package_folder(&pkg.pkg_id))
   }
 
   fn resolve_package_folder_from_specifier(
@@ -117,7 +117,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
 
   fn package_size(
     &self,
-    package_id: &NpmPackageNodeId,
+    package_id: &NpmPackageResolvedId,
   ) -> Result<u64, AnyError> {
     let package_folder = self.package_folder(package_id);
     Ok(crate::util::fs::dir_size(&package_folder)?)

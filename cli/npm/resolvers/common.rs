@@ -14,14 +14,14 @@ use deno_runtime::deno_node::NodeResolutionMode;
 
 use crate::npm::cache::should_sync_download;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageNodeId;
+use crate::npm::NpmPackageResolvedId;
 use crate::npm::NpmResolutionPackage;
 
 /// Part of the resolution that interacts with the file system.
 pub trait NpmPackageFsResolver: Send + Sync {
   fn resolve_package_folder_from_deno_module(
     &self,
-    id: &NpmPackageNodeId,
+    id: &NpmPackageResolvedId,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_package(
@@ -38,7 +38,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
 
   fn package_size(
     &self,
-    package_id: &NpmPackageNodeId,
+    package_id: &NpmPackageResolvedId,
   ) -> Result<u64, AnyError>;
 
   fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>>;
@@ -60,7 +60,7 @@ pub async fn cache_packages(
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
-    packages.sort_by(|a, b| a.node_id.cmp(&b.node_id));
+    packages.sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
   }
 
   let mut handles = Vec::with_capacity(packages.len());
@@ -70,7 +70,7 @@ pub async fn cache_packages(
     let registry_url = registry_url.clone();
     let handle = tokio::task::spawn(async move {
       cache
-        .ensure_package(&package.node_id.id, &package.dist, &registry_url)
+        .ensure_package(&package.pkg_id.id, &package.dist, &registry_url)
         .await
     });
     if sync_download {
