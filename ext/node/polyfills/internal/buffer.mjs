@@ -20,6 +20,10 @@ import { normalizeEncoding } from "internal:deno_node/polyfills/internal/util.mj
 import { validateBuffer } from "internal:deno_node/polyfills/internal/validators.mjs";
 import { isUint8Array } from "internal:deno_node/polyfills/internal/util/types.ts";
 import { forgivingBase64Encode, forgivingBase64UrlEncode } from "internal:deno_web/00_infra.js";
+import { atob, btoa } from "internal:deno_web/05_base64.js";
+import { Blob } from "internal:deno_web/09_file.js";
+
+export { atob, btoa, Blob };
 
 const utf8Encoder = new TextEncoder();
 
@@ -1801,10 +1805,6 @@ function defineBigIntMethod(fn) {
 function BufferBigIntNotDefined() {
   throw new Error("BigInt not supported");
 }
-
-export const atob = globalThis.atob;
-export const Blob = globalThis.Blob;
-export const btoa = globalThis.btoa;
 
 export function readUInt48LE(buf, offset = 0) {
   validateNumber(offset, "offset");
