@@ -352,6 +352,8 @@ struct SerializedLintConfig {
   pub rules: LintRulesConfig,
   #[serde(flatten)]
   pub files: SerializedFilesConfig,
+  #[serde(rename = "files")]
+  pub deprecated_files: SerializedFilesConfig,
   pub report: Option<String>,
 }
 
@@ -399,8 +401,12 @@ pub struct FmtOptionsConfig {
 struct SerializedFmtConfig {
   #[serde(flatten)]
   pub options: FmtOptionsConfig,
+  #[serde(rename = "options")]
+  pub deprecated_options: FmtOptionsConfig,
   #[serde(flatten)]
   pub files: SerializedFilesConfig,
+  #[serde(rename = "files")]
+  pub deprecated_files: SerializedFilesConfig,
 }
 
 impl SerializedFmtConfig {
@@ -426,6 +432,8 @@ pub struct FmtConfig {
 struct SerializedTestConfig {
   #[serde(flatten)]
   pub files: SerializedFilesConfig,
+  #[serde(rename = "files")]
+  pub deprecated_files: SerializedFilesConfig,
 }
 
 impl SerializedTestConfig {
@@ -449,6 +457,8 @@ pub struct TestConfig {
 struct SerializedBenchConfig {
   #[serde(flatten)]
   pub files: SerializedFilesConfig,
+  #[serde(rename = "files")]
+  pub deprecated_files: SerializedFilesConfig,
 }
 
 impl SerializedBenchConfig {
