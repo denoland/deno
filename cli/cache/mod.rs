@@ -3,7 +3,6 @@
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 
-use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
@@ -103,6 +102,7 @@ impl Loader for FetchCacher {
       self.root_permissions.clone()
     };
     let file_fetcher = self.file_fetcher.clone();
+    let specifier = specifier.clone();
 
     async move {
       file_fetcher

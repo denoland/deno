@@ -56,7 +56,7 @@ impl Mappings {
         let module = graph.get(&specifier).unwrap();
         let media_type = match module {
           Module::Esm(module) => module.media_type,
-          Module::Json(module) => MediaType::Json,
+          Module::Json(_) => MediaType::Json,
           Module::Npm(_) | Module::External(_) => continue,
         };
         let sub_path = sanitize_filepath(&make_url_relative(&root, &{

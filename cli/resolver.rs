@@ -113,9 +113,15 @@ impl NpmResolver for CliGraphResolver {
     package_name: String,
   ) -> BoxFuture<'static, Result<(), String>> {
     // this will internally cache the package information
-    let fut = self.npm_registry_api.package_info(&package_name);
-    async move { fut.await.map(|_| ()).map_err(|err| format!("{err:#}")) }
-      .boxed()
+    let api = self.npm_registry_api.clone();
+    async move {
+      api
+        .package_info(&package_name)
+        .await
+        .map(|_| ())
+        .map_err(|err| format!("{err:#}"))
+    }
+    .boxed()
   }
 
   fn resolve_npm(

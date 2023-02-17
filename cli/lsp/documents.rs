@@ -1103,19 +1103,10 @@ impl Documents {
         .and_then(|r| r.maybe_specifier())
       {
         results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
-      } else if let Ok(npm_ref) = NpmPackageReqReference::from_str(&specifier) {
-        results.push(maybe_npm_resolver.map(|npm_resolver| {
-          NodeResolution::into_specifier_and_media_type(
-            node_resolve_npm_reference(
-              &npm_ref,
-              NodeResolutionMode::Types,
-              npm_resolver,
-              &mut PermissionsContainer::allow_all(),
-            )
-            .ok()
-            .flatten(),
-          )
-        }));
+      } else if let Ok(npm_req_ref) =
+        NpmPackageReqReference::from_str(&specifier)
+      {
+        results.push(node_resolve_npm_req_ref(npm_req_ref, maybe_npm_resolver));
       } else {
         results.push(None);
       }
@@ -1327,18 +1318,7 @@ impl Documents {
     maybe_npm_resolver: Option<&NpmPackageResolver>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return maybe_npm_resolver.map(|npm_resolver| {
-        NodeResolution::into_specifier_and_media_type(
-          node_resolve_npm_reference(
-            &npm_ref,
-            NodeResolutionMode::Types,
-            npm_resolver,
-            &mut PermissionsContainer::allow_all(),
-          )
-          .ok()
-          .flatten(),
-        )
-      });
+      return node_resolve_npm_req_ref(npm_ref, maybe_npm_resolver);
     }
     let doc = self.get(specifier)?;
     let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
@@ -1366,6 +1346,30 @@ impl Documents {
     }
     None
   }
+}
+
+fn node_resolve_npm_req_ref(
+  npm_req_ref: NpmPackageReqReference,
+  maybe_npm_resolver: Option<&NpmPackageResolver>,
+) -> Option<(ModuleSpecifier, MediaType)> {
+  maybe_npm_resolver.map(|npm_resolver| {
+    NodeResolution::into_specifier_and_media_type(
+      npm_resolver
+        .resolution()
+        .pkg_req_ref_to_pkg_id_ref(npm_req_ref)
+        .ok()
+        .and_then(|pkg_id_ref| {
+          node_resolve_npm_reference(
+            &pkg_id_ref,
+            NodeResolutionMode::Types,
+            npm_resolver,
+            &mut PermissionsContainer::allow_all(),
+          )
+          .ok()
+          .flatten()
+        }),
+    )
+  })
 }
 
 /// Loader that will look at the open documents.

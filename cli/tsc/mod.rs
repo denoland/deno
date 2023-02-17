@@ -28,10 +28,10 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
+use deno_graph::npm::NpmPackageIdReference;
 use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_graph::ModuleKind;
 use deno_graph::ResolutionResolved;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
@@ -661,11 +661,21 @@ fn op_resolve(
           } else if let Ok(npm_ref) =
             NpmPackageReqReference::from_str(&specifier)
           {
-            // todo: add support for injecting this in the graph
-
-            // this could occur when resolving npm:@types/node when it is
+            // todo(dsherret): add support for injecting this in the graph so
+            // we don't need this special code here.
+            // This could occur when resolving npm:@types/node when it is
             // injected and not part of the graph
-            Some(resolve_npm_package_reference_types(&npm_ref, npm_resolver)?)
+            let node_id = npm_resolver
+              .resolution()
+              .resolve_pkg_node_id_from_pkg_req(&npm_ref.req)?;
+            let npm_id_ref = NpmPackageIdReference {
+              id: node_id.id,
+              sub_path: npm_ref.sub_path,
+            };
+            Some(resolve_npm_package_reference_types(
+              &npm_id_ref,
+              npm_resolver,
+            )?)
           } else {
             None
           }
@@ -713,11 +723,11 @@ fn op_resolve(
 
 fn resolve_specifier_types(
   specifier: &ModuleSpecifier,
-  state: &mut State,
+  state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
   fn inner(
     specifier: &ModuleSpecifier,
-    state: &mut State,
+    state: &State,
     seen: &mut HashSet<ModuleSpecifier>,
   ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
     let graph = &state.graph;
@@ -755,23 +765,8 @@ fn resolve_specifier_types(
   inner(specifier, state, &mut seen)
 }
 
-pub fn resolve_npm_package_req_reference_types(
-  npm_ref: &NpmPackageReqReference,
-  npm_resolver: &NpmPackageResolver,
-) -> Result<(ModuleSpecifier, MediaType), AnyError> {
-  let maybe_resolution = node_resolve_npm_reference(
-    npm_ref,
-    NodeResolutionMode::Types,
-    npm_resolver,
-    &mut PermissionsContainer::allow_all(),
-  )?;
-  Ok(NodeResolution::into_specifier_and_media_type(
-    maybe_resolution,
-  ))
-}
-
 pub fn resolve_npm_package_reference_types(
-  package_id: &NpmPackageReqReference,
+  npm_ref: &NpmPackageIdReference,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<(ModuleSpecifier, MediaType), AnyError> {
   let maybe_resolution = node_resolve_npm_reference(

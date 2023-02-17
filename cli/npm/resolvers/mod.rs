@@ -152,8 +152,8 @@ impl NpmPackageResolver {
     });
     let maybe_snapshot =
       process_npm_state.map(|s| s.snapshot).or(initial_snapshot);
-    let resolution = NpmResolution::new(api, maybe_snapshot);
     let registry_url = api.base_url().to_owned();
+    let resolution = NpmResolution::new(api.clone(), maybe_snapshot);
     let fs_resolver: Arc<dyn NpmPackageFsResolver> =
       match &local_node_modules_path {
         Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
@@ -185,15 +185,6 @@ impl NpmPackageResolver {
 
   pub fn resolution(&self) -> &NpmResolution {
     &self.resolution
-  }
-
-  /// Resolves an npm package folder path from a npm package requirement.
-  pub fn resolve_package_folder_from_pkg_req(
-    &self,
-    pkg_req: &NpmPackageReq,
-  ) -> Result<PathBuf, AnyError> {
-    let node_id = self.resolution.resolve_pkg_node_id_from_pkg_req(pkg_req)?;
-    self.resolve_pkg_folder_from_deno_module_at_node_id(&node_id)
   }
 
   /// Resolves an npm package folder path from a Deno module.

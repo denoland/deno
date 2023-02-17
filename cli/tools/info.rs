@@ -445,7 +445,7 @@ impl<'a> GraphDisplayContext<'a> {
           .graph
           .modules()
           .map(|m| {
-            let size = match root {
+            let size = match m {
               Module::Esm(module) => module.size(),
               Module::Json(module) => module.size(),
               Module::Npm(_) | Module::External(_) => 0,

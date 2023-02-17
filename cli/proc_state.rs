@@ -349,7 +349,7 @@ impl ProcState {
         reporter: maybe_file_watcher_reporter,
       },
     )
-    .await;
+    .await?;
 
     // If there is a lockfile, validate the integrity of all the modules.
     if let Some(lockfile) = &self.lockfile {
@@ -494,33 +494,38 @@ impl ProcState {
         Some((found_referrer, Resolution::Ok(resolved))) => {
           let specifier = &resolved.specifier;
 
-          if specifier.scheme() == "node" {
-            return node::resolve_builtin_node_module(specifier.path());
-          }
-
-          if let Ok(reference) =
-            NpmPackageReqReference::from_specifier(specifier)
-          {
-            if !self.options.unstable()
-              && matches!(found_referrer.scheme(), "http" | "https")
-            {
-              return Err(custom_error(
+          return match graph.get(specifier) {
+            Some(Module::Npm(module)) => {
+              if !self.options.unstable()
+                && matches!(found_referrer.scheme(), "http" | "https")
+              {
+                return Err(custom_error(
                 "NotSupported",
                 format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {found_referrer})"),
               ));
-            }
+              }
 
-            return self
-              .handle_node_resolve_result(node::node_resolve_npm_reference(
-                &reference,
-                NodeResolutionMode::Execution,
-                &self.npm_resolver,
-                permissions,
-              ))
-              .with_context(|| format!("Could not resolve '{reference}'."));
-          } else {
-            return Ok(specifier.clone());
-          }
+              self
+                .handle_node_resolve_result(node::node_resolve_npm_reference(
+                  &module.package_id_reference,
+                  NodeResolutionMode::Execution,
+                  &self.npm_resolver,
+                  permissions,
+                ))
+                .with_context(|| {
+                  format!(
+                    "Could not resolve '{}'.",
+                    module.package_id_reference
+                  )
+                })
+            }
+            Some(Module::External(module)) => {
+              assert_eq!(module.specifier.scheme(), "node");
+              node::resolve_builtin_node_module(module.specifier.path())
+            }
+            Some(module) => Ok(module.specifier().clone()),
+            None => Ok(specifier.clone()),
+          };
         }
         Some((_, Resolution::Err(err))) => {
           return Err(custom_error(
@@ -561,6 +566,10 @@ impl ProcState {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
+          let reference = self
+            .npm_resolver
+            .resolution()
+            .pkg_req_ref_to_pkg_id_ref(reference)?;
           return self
             .handle_node_resolve_result(node::node_resolve_npm_reference(
               &reference,

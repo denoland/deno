@@ -364,7 +364,7 @@ impl Graph {
           assert_eq!(removed_child_id, *child_id);
         }
       }
-      NodeParent::Root(id) => {
+      NodeParent::Root(_) => {
         // ignore removing from the top level information because,
         // if this ever happens it means it's being replaced
       }

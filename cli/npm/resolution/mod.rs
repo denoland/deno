@@ -9,8 +9,10 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
 use deno_graph::npm::NpmPackageId;
+use deno_graph::npm::NpmPackageIdReference;
 use deno_graph::npm::NpmPackageNodeId;
 use deno_graph::npm::NpmPackageReq;
+use deno_graph::npm::NpmPackageReqReference;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
@@ -134,11 +136,15 @@ impl NpmResolution {
     Ok(())
   }
 
-  pub fn resolve_package_from_id(
+  pub fn pkg_req_ref_to_pkg_id_ref(
     &self,
-    id: &NpmPackageNodeId,
-  ) -> Option<NpmResolutionPackage> {
-    self.0.snapshot.read().package_from_id(id).cloned()
+    req_ref: NpmPackageReqReference,
+  ) -> Result<NpmPackageIdReference, AnyError> {
+    let node_id = self.resolve_pkg_node_id_from_pkg_req(&req_ref.req)?;
+    Ok(NpmPackageIdReference {
+      id: node_id.id,
+      sub_path: req_ref.sub_path,
+    })
   }
 
   pub fn resolve_package_cache_folder_id_from_id(
@@ -205,7 +211,7 @@ impl NpmResolution {
       ),
     };
 
-    let snapshot = inner.snapshot.write();
+    let mut snapshot = inner.snapshot.write();
     let version_req =
       pkg_req.version_req.as_ref().unwrap_or(&*LATEST_VERSION_REQ);
     let version_and_info = resolve_best_package_version_and_info(
@@ -230,7 +236,7 @@ impl NpmResolution {
       .or_default();
     if !packages_with_name.iter().any(|p| p.id == id) {
       packages_with_name.push(NpmPackageNodeId {
-        id,
+        id: id.clone(),
         peer_dependencies: Vec::new(),
       });
     }

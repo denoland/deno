@@ -448,8 +448,13 @@ async fn create_main_worker_internal(
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
+    let pkg_id = ps
+      .npm_resolver
+      .resolution()
+      .resolve_pkg_node_id_from_pkg_req(&package_ref.req)?
+      .id;
     let node_resolution = node::node_resolve_binary_export(
-      &package_ref.req,
+      &pkg_id,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
       &mut PermissionsContainer::allow_all(),

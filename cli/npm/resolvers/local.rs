@@ -18,7 +18,6 @@ use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_graph::npm::NpmPackageNodeId;
-use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_core::futures;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -31,7 +30,6 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
-use crate::npm::NpmResolutionPackage;
 use crate::util::fs::copy_dir_recursive;
 use crate::util::fs::hard_link_dir_recursive;
 

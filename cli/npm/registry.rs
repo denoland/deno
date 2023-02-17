@@ -9,20 +9,17 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::futures::future::BoxFuture;
-use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::npm::NpmPackageId;
-use deno_graph::semver::Version;
 use deno_graph::semver::VersionReq;
-use deno_runtime::colors;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 
@@ -283,11 +280,12 @@ impl NpmRegistryApi {
   }
 }
 
+#[async_trait]
 trait NpmRegistryApiInner: std::fmt::Debug + Sync + Send + 'static {
-  fn maybe_package_info(
+  async fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>>;
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError>;
 
   fn clear_memory_cache(&self);
 
@@ -296,18 +294,17 @@ trait NpmRegistryApiInner: std::fmt::Debug + Sync + Send + 'static {
   fn base_url(&self) -> &Url;
 }
 
+#[async_trait]
 impl NpmRegistryApiInner for RealNpmRegistryApiInner {
   fn base_url(&self) -> &Url {
     &self.base_url
   }
 
-  fn maybe_package_info(
+  async fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
-    let api = self.clone();
-    let name = name.to_string();
-    async move { api.maybe_package_info(&name).await }.boxed()
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
+    self.maybe_package_info(&name).await
   }
 
   fn clear_memory_cache(&self) {
@@ -484,21 +481,23 @@ impl RealNpmRegistryApiInner {
 #[derive(Debug)]
 struct NullNpmRegistryApiInner;
 
+#[async_trait]
 impl NpmRegistryApiInner for NullNpmRegistryApiInner {
-  fn maybe_package_info(
+  async fn maybe_package_info(
     &self,
-    name: &str,
-  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
-    Box::pin(deno_core::futures::future::ready(Err(
-      deno_core::anyhow::anyhow!(
-        "Deno bug. Please report. Registry API was not initialized."
-      ),
-    )))
+    _name: &str,
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
+    Err(deno_core::anyhow::anyhow!(
+      "Deno bug. Please report. Registry API was not initialized."
+    ))
   }
 
   fn clear_memory_cache(&self) {}
 
-  fn get_cached_package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
+  fn get_cached_package_info(
+    &self,
+    _name: &str,
+  ) -> Option<Arc<NpmPackageInfo>> {
     None
   }
 
@@ -600,13 +599,14 @@ impl TestNpmRegistryApiInner {
 }
 
 #[cfg(test)]
+#[async_trait]
 impl NpmRegistryApiInner for TestNpmRegistryApiInner {
-  fn maybe_package_info(
+  async fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
     let result = self.package_infos.lock().get(name).cloned();
-    Box::pin(deno_core::futures::future::ready(Ok(result.map(Arc::new))))
+    Ok(result.map(Arc::new))
   }
 
   fn clear_memory_cache(&self) {
