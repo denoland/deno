@@ -1248,21 +1248,21 @@ mod tests {
   fn test_parse_config_with_deprecated_files_field() {
     let config_text = r#"{
       "lint": {
-        "files": { "include": ["foo/"], "exclude": ["bar/"] }
-        "include": ["src/"],
+        "files": { "include": ["foo/"], "exclude": ["bar/"] },
+        "include": ["src/"]
       },
       "fmt": {
-        "files": { "include": ["foo/"], "exclude": ["bar/"] }
-        "exclude": ["dist/"],
+        "files": { "include": ["foo/"], "exclude": ["bar/"] },
+        "exclude": ["dist/"]
       },
       "bench": {
-        "files": { "include": ["foo/"] }
-        "include": ["src/"],
+        "files": { "include": ["foo/"] },
+        "include": ["src/"]
       },
       "test": {
-        "files": { "include": ["foo/"] }
-        "include": ["src/"],
-      },
+        "files": { "include": ["foo/"] },
+        "include": ["src/"]
+      }
     }"#;
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
     let config_specifier = config_dir.join("tsconfig.json").unwrap();
@@ -1335,15 +1335,15 @@ mod tests {
     let config_text_both = r#"{
       "fmt": {
         "options": {
-          "semiColons": true,
+          "semiColons": true
         },
-        "semiColons": false,
+        "semiColons": false
       }
     }"#;
     let config_text_deprecated = r#"{
       "fmt": {
         "options": {
-          "semiColons": true,
+          "semiColons": true
         }
       }
     }"#;
