@@ -21,7 +21,7 @@ export function getHeapSpaceStatistics() {
 const buffer = new Float64Array(14);
 
 export function getHeapStatistics() {
-  ops.op_v8_get_heap_statistics(heapStatisticsBuffer);
+  ops.op_v8_get_heap_statistics(buffer);
 
   return {
     total_heap_size: buffer[0],
