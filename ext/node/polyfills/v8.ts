@@ -3,8 +3,10 @@
 
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 
+const { ops } = globalThis.__bootstrap.core;
+
 export function cachedDataVersionTag() {
-  notImplemented("v8.cachedDataVersionTag");
+  return ops.op_v8_cached_data_version_tag();
 }
 export function getHeapCodeStatistics() {
   notImplemented("v8.getHeapCodeStatistics");
