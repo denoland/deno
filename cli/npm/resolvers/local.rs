@@ -18,7 +18,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageId;
 use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_core::futures;
 use deno_runtime::deno_node::NodePermissions;
@@ -33,6 +32,7 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
+use crate::npm::NpmPackageNodeId;
 use crate::npm::NpmResolutionPackage;
 use crate::npm::RealNpmRegistryApi;
 use crate::util::fs::copy_dir_recursive;
@@ -112,7 +112,7 @@ impl LocalNpmPackageResolver {
 
   fn get_package_id_folder(
     &self,
-    package_id: &NpmPackageId,
+    package_id: &NpmPackageNodeId,
   ) -> Result<PathBuf, AnyError> {
     match self.resolution.resolve_package_from_id(package_id) {
       Some(package) => Ok(self.get_package_id_folder_from_package(&package)),
@@ -203,7 +203,10 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     Ok(package_root_path)
   }
 
-  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
+  fn package_size(
+    &self,
+    package_id: &NpmPackageNodeId,
+  ) -> Result<u64, AnyError> {
     let package_folder_path = self.get_package_id_folder(package_id)?;
 
     Ok(crate::util::fs::dir_size(&package_folder_path)?)
