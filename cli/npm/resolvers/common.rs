@@ -9,12 +9,12 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageNodeId;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
 use crate::npm::cache::should_sync_download;
 use crate::npm::NpmCache;
+use crate::npm::NpmPackageNodeId;
 use crate::npm::NpmResolutionPackage;
 
 /// Part of the resolution that interacts with the file system.

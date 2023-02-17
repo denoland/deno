@@ -12,7 +12,6 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_graph::npm::NpmPackageId;
-use deno_graph::npm::NpmPackageNodeId;
 use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -34,6 +33,7 @@ use self::common::NpmPackageFsResolver;
 use self::local::LocalNpmPackageResolver;
 use super::resolution::NpmResolution;
 use super::NpmCache;
+use super::NpmPackageNodeId;
 use super::NpmRegistryApi;
 use super::NpmResolutionSnapshot;
 

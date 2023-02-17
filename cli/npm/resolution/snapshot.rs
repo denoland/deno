@@ -11,7 +11,6 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_graph::npm::NpmPackageId;
-use deno_graph::npm::NpmPackageNodeId;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::semver::VersionReq;
 use serde::Deserialize;
@@ -23,6 +22,7 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::registry::NpmPackageVersionDistInfo;
 use crate::npm::registry::NpmRegistryApi;
 
+use super::NpmPackageNodeId;
 use super::NpmResolutionPackage;
 
 /// Packages partitioned by if they are "copy" packages or not.
@@ -337,7 +337,7 @@ impl NpmResolutionSnapshot {
       {
         Some(version_info) => version_info,
         None => {
-          bail!("could not find '{}' specified in the lockfile. Maybe try again with --reload", package.node_id.display());
+          bail!("could not find '{}' specified in the lockfile. Maybe try again with --reload", package.node_id.id);
         }
       };
       package.dist = version_info.dist;

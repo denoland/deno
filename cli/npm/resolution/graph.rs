@@ -13,7 +13,6 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
 use deno_graph::npm::NpmPackageId;
-use deno_graph::npm::NpmPackageNodeId;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::semver::VersionReq;
 use log::debug;
@@ -29,6 +28,7 @@ use crate::npm::NpmRegistryApi;
 use super::common::version_req_satisfies;
 use super::snapshot::NpmResolutionSnapshot;
 use super::snapshot::SnapshotPackageCopyIndexResolver;
+use super::NpmPackageNodeId;
 use super::NpmResolutionPackage;
 
 pub static LATEST_VERSION_REQ: Lazy<VersionReq> =
@@ -596,7 +596,7 @@ impl<'a> GraphDependencyResolver<'a> {
       let mut deps = version_and_info
         .info
         .dependencies_as_entries()
-        .with_context(|| format!("npm package: {}", node_id.display()))?;
+        .with_context(|| format!("npm package: {}", node_id.id.display()))?;
       // Ensure name alphabetical and then version descending
       // so these are resolved in that order
       deps.sort();

@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_graph::npm::NpmPackageNodeId;
 use deno_graph::semver::Version;
 use deno_graph::semver::VersionReq;
 
+use super::NpmPackageNodeId;
 use crate::npm::registry::NpmPackageInfo;
 use crate::npm::registry::NpmPackageVersionInfo;
 
@@ -86,7 +86,7 @@ fn get_resolved_package_version_and_info<'a>(
         info.name,
         version_req.version_text(),
         match parent {
-          Some(id) => format!(" as specified in {}", id.display()),
+          Some(node_id) => format!(" as specified in {}", node_id.id),
           None => String::new(),
         }
       ),

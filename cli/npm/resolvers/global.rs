@@ -10,7 +10,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageNodeId;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
@@ -18,6 +17,7 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
+use crate::npm::NpmPackageNodeId;
 use crate::npm::NpmResolutionPackage;
 
 use super::common::ensure_registry_read_permission;

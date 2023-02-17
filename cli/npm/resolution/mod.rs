@@ -8,12 +8,12 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
+use deno_graph::npm::NpmPackageId;
 use deno_graph::npm::NpmPackageIdReference;
-use deno_graph::npm::NpmPackageNodeId;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::npm::NpmPackageReqReference;
-use log::debug;
 use deno_graph::semver::Version;
+use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
@@ -50,21 +50,11 @@ pub struct NpmPackageNodeIdDeserializationError {
   Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize,
 )]
 pub struct NpmPackageNodeId {
-  pub name: String,
-  pub version: Version,
+  pub id: NpmPackageId,
   pub peer_dependencies: Vec<NpmPackageNodeId>,
 }
 
 impl NpmPackageNodeId {
-  #[allow(unused)]
-  pub fn scope(&self) -> Option<&str> {
-    if self.name.starts_with('@') && self.name.contains('/') {
-      self.name.split('/').next()
-    } else {
-      None
-    }
-  }
-
   pub fn as_serialized(&self) -> String {
     self.as_serialized_with_level(0)
   }
@@ -74,11 +64,11 @@ impl NpmPackageNodeId {
     let mut result = format!(
       "{}@{}",
       if level == 0 {
-        self.name.to_string()
+        self.id.name.to_string()
       } else {
-        self.name.replace('/', "+")
+        self.id.name.replace('/', "+")
       },
-      self.version
+      self.id.version
     );
     for peer in &self.peer_dependencies {
       // unfortunately we can't do something like `_3` when
@@ -170,8 +160,7 @@ impl NpmPackageNodeId {
         Ok((
           input,
           NpmPackageNodeId {
-            name,
-            version,
+            id: NpmPackageId { name, version },
             peer_dependencies,
           },
         ))
@@ -184,12 +173,6 @@ impl NpmPackageNodeId {
         text: id.to_string(),
       }
     })
-  }
-
-  pub fn display(&self) -> String {
-    // Don't implement std::fmt::Display because we don't
-    // want this to be used by accident in certain scenarios.
-    format!("{}@{}", self.name, self.version)
   }
 }
 
@@ -530,6 +513,7 @@ async fn cache_package_infos_in_api(
 
 #[cfg(test)]
 mod test {
+  use deno_graph::npm::NpmPackageId;
   use deno_graph::semver::Version;
 
   use super::NpmPackageNodeId;
@@ -537,38 +521,50 @@ mod test {
   #[test]
   fn serialize_npm_package_id() {
     let id = NpmPackageNodeId {
-      name: "pkg-a".to_string(),
-      version: Version::parse_from_npm("1.2.3").unwrap(),
+      id: NpmPackageId {
+        name: "pkg-a".to_string(),
+        version: Version::parse_from_npm("1.2.3").unwrap(),
+      },
       peer_dependencies: vec![
         NpmPackageNodeId {
-          name: "pkg-b".to_string(),
-          version: Version::parse_from_npm("3.2.1").unwrap(),
+          id: NpmPackageId {
+            name: "pkg-b".to_string(),
+            version: Version::parse_from_npm("3.2.1").unwrap(),
+          },
           peer_dependencies: vec![
             NpmPackageNodeId {
-              name: "pkg-c".to_string(),
-              version: Version::parse_from_npm("1.3.2").unwrap(),
+              id: NpmPackageId {
+                name: "pkg-c".to_string(),
+                version: Version::parse_from_npm("1.3.2").unwrap(),
+              },
               peer_dependencies: vec![],
             },
             NpmPackageNodeId {
-              name: "pkg-d".to_string(),
-              version: Version::parse_from_npm("2.3.4").unwrap(),
+              id: NpmPackageId {
+                name: "pkg-d".to_string(),
+                version: Version::parse_from_npm("2.3.4").unwrap(),
+              },
               peer_dependencies: vec![],
             },
           ],
         },
         NpmPackageNodeId {
-          name: "pkg-e".to_string(),
-          version: Version::parse_from_npm("2.3.1").unwrap(),
-          peer_dependencies: vec![NpmPackageNodeId {
-            name: "pkg-f".to_string(),
+          id: NpmPackageId {
+            name: "pkg-e".to_string(),
             version: Version::parse_from_npm("2.3.1").unwrap(),
+          },
+          peer_dependencies: vec![NpmPackageNodeId {
+            id: NpmPackageId {
+              name: "pkg-f".to_string(),
+              version: Version::parse_from_npm("2.3.1").unwrap(),
+            },
             peer_dependencies: vec![],
           }],
         },
       ],
     };
 
-    // this shouldn't change because it's used in the lockfile
+    // this shouldn't change because it's used in the CLI's lockfile
     let serialized = id.as_serialized();
     assert_eq!(serialized, "pkg-a@1.2.3_pkg-b@3.2.1__pkg-c@1.3.2__pkg-d@2.3.4_pkg-e@2.3.1__pkg-f@2.3.1");
     assert_eq!(NpmPackageNodeId::from_serialized(&serialized).unwrap(), id);
