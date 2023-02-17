@@ -10,7 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageId;
+use deno_graph::npm::NpmPackageNodeId;
 use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -40,7 +40,10 @@ pub trait NpmPackageFsResolver: Send + Sync {
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
 
-  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError>;
+  fn package_size(
+    &self,
+    package_id: &NpmPackageNodeId,
+  ) -> Result<u64, AnyError>;
 
   fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>>;
 
@@ -61,7 +64,7 @@ pub async fn cache_packages(
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
-    packages.sort_by(|a, b| a.id.cmp(&b.id));
+    packages.sort_by(|a, b| a.node_id.cmp(&b.node_id));
   }
 
   let mut handles = Vec::with_capacity(packages.len());
@@ -72,7 +75,7 @@ pub async fn cache_packages(
     let handle = tokio::task::spawn(async move {
       cache
         .ensure_package(
-          (package.id.name.as_str(), &package.id.version),
+          (package.node_id.name.as_str(), &package.node_id.version),
           &package.dist,
           &registry_url,
         )

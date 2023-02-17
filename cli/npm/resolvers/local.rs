@@ -17,7 +17,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageId;
+use deno_graph::npm::NpmPackageNodeId;
 use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_core::futures;
 use deno_runtime::deno_node::NodePermissions;
@@ -106,7 +106,7 @@ impl LocalNpmPackageResolver {
 
   fn get_package_id_folder(
     &self,
-    package_id: &NpmPackageId,
+    package_id: &NpmPackageNodeId,
   ) -> Result<PathBuf, AnyError> {
     match self.resolution.resolve_package_from_id(package_id) {
       Some(package) => Ok(self.get_package_id_folder_from_package(&package)),
@@ -130,7 +130,7 @@ impl LocalNpmPackageResolver {
         &package.get_package_cache_folder_id(),
       ))
       .join("node_modules")
-      .join(&package.id.name)
+      .join(&package.node_id.name)
   }
 }
 
@@ -197,7 +197,10 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     Ok(package_root_path)
   }
 
-  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
+  fn package_size(
+    &self,
+    package_id: &NpmPackageNodeId,
+  ) -> Result<u64, AnyError> {
     let package_folder_path = self.get_package_id_folder(package_id)?;
 
     Ok(crate::util::fs::dir_size(&package_folder_path)?)
@@ -258,7 +261,9 @@ async fn sync_resolution_with_fs(
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
-    package_partitions.packages.sort_by(|a, b| a.id.cmp(&b.id));
+    package_partitions
+      .packages
+      .sort_by(|a, b| a.node_id.cmp(&b.node_id));
   }
   let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
     Vec::with_capacity(package_partitions.packages.len());
@@ -269,7 +274,7 @@ async fn sync_resolution_with_fs(
     let initialized_file = folder_path.join(".initialized");
     if !cache
       .cache_setting()
-      .should_use_for_npm_package(&package.id.name)
+      .should_use_for_npm_package(&package.node_id.name)
       || !initialized_file.exists()
     {
       let cache = cache.clone();
@@ -278,19 +283,19 @@ async fn sync_resolution_with_fs(
       let handle = tokio::task::spawn(async move {
         cache
           .ensure_package(
-            (&package.id.name, &package.id.version),
+            (&package.node_id.name, &package.node_id.version),
             &package.dist,
             &registry_url,
           )
           .await?;
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
-          join_package_name(&sub_node_modules, &package.id.name);
+          join_package_name(&sub_node_modules, &package.node_id.name);
         fs::create_dir_all(&package_path)
           .with_context(|| format!("Creating '{}'", folder_path.display()))?;
         let cache_folder = cache.package_folder_for_name_and_version(
-          &package.id.name,
-          &package.id.version,
+          &package.node_id.name,
+          &package.node_id.version,
           &registry_url,
         );
         // for now copy, but in the future consider hard linking
@@ -320,7 +325,8 @@ async fn sync_resolution_with_fs(
     let initialized_file = destination_path.join(".initialized");
     if !initialized_file.exists() {
       let sub_node_modules = destination_path.join("node_modules");
-      let package_path = join_package_name(&sub_node_modules, &package.id.name);
+      let package_path =
+        join_package_name(&sub_node_modules, &package.node_id.name);
       fs::create_dir_all(&package_path).with_context(|| {
         format!("Creating '{}'", destination_path.display())
       })?;
@@ -330,7 +336,7 @@ async fn sync_resolution_with_fs(
             &package_cache_folder_id.with_no_count(),
           ))
           .join("node_modules"),
-        &package.id.name,
+        &package.node_id.name,
       );
       hard_link_dir_recursive(&source_path, &package_path)?;
       // write out a file that indicates this folder has been initialized

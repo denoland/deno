@@ -9,6 +9,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
 use deno_graph::npm::NpmPackageId;
+use deno_graph::npm::NpmPackageNodeId;
 use deno_graph::npm::NpmPackageReq;
 use log::debug;
 use serde::Deserialize;
@@ -35,7 +36,7 @@ pub use snapshot::NpmResolutionSnapshot;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmResolutionPackage {
-  pub id: NpmPackageId,
+  pub node_id: NpmPackageNodeId,
   /// The peer dependency resolution can differ for the same
   /// package (name and version) depending on where it is in
   /// the resolution tree. This copy index indicates which
@@ -44,14 +45,13 @@ pub struct NpmResolutionPackage {
   pub dist: NpmPackageVersionDistInfo,
   /// Key is what the package refers to the other package as,
   /// which could be different from the package name.
-  pub dependencies: HashMap<String, NpmPackageId>,
+  pub dependencies: HashMap<String, NpmPackageNodeId>,
 }
 
 impl NpmResolutionPackage {
   pub fn get_package_cache_folder_id(&self) -> NpmPackageCacheFolderId {
     NpmPackageCacheFolderId {
-      name: self.id.name.clone(),
-      version: self.id.version.clone(),
+      id: self.node_id.id.clone(),
       copy_index: self.copy_index,
     }
   }
@@ -136,14 +136,14 @@ impl NpmResolution {
 
   pub fn resolve_package_from_id(
     &self,
-    id: &NpmPackageId,
+    id: &NpmPackageNodeId,
   ) -> Option<NpmResolutionPackage> {
     self.0.snapshot.read().package_from_id(id).cloned()
   }
 
   pub fn resolve_package_cache_folder_id_from_id(
     &self,
-    id: &NpmPackageId,
+    id: &NpmPackageNodeId,
   ) -> Option<NpmPackageCacheFolderId> {
     self
       .0
@@ -204,25 +204,31 @@ impl NpmResolution {
     let id = NpmPackageId {
       name: package_info.name.to_string(),
       version: version_and_info.version.clone(),
-      peer_dependencies: Vec::new(),
     };
     debug!(
       "Resolved {}@{} to {}",
       pkg_req.name,
       version_req.version_text(),
-      id.as_serialized(),
+      id.to_string(),
     );
-    snapshot.package_reqs.insert(pkg_req.clone(), id.clone());
-    if !snapshot.packages.contains_key(&id) {
-      let packages = snapshot
-        .packages_by_name
-        .entry(package_info.name.clone())
-        .or_default();
-      if !packages.contains(&id) {
-        packages.push(id);
-      }
-      snapshot.pending_unresolved_packages.push(id.clone());
+    snapshot.package_reqs.insert(
+      pkg_req.clone(),
+      NpmPackageNodeId {
+        id: id.clone(),
+        peer_dependencies: Vec::new(),
+      },
+    );
+    let packages_with_name = snapshot
+      .packages_by_name
+      .entry(package_info.name.clone())
+      .or_default();
+    if !packages_with_name.iter().any(|p| p.id == id) {
+      packages_with_name.push(NpmPackageNodeId {
+        id,
+        peer_dependencies: Vec::new(),
+      });
     }
+    snapshot.pending_unresolved_packages.push(id.clone());
     Ok(id)
   }
 
@@ -277,6 +283,7 @@ async fn add_package_reqs_to_snapshot(
   // in the order they should be resolved in.
   for pkg_id in pending_unresolved {
     let info = api.package_info(&pkg_id.name).await?;
+    resolver.add_pending(pkg_id)
     // todo...
   }
 

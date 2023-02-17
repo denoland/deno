@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_graph::npm::NpmPackageId;
+use deno_graph::npm::NpmPackageNodeId;
 use deno_graph::semver::Version;
 use deno_graph::semver::VersionReq;
 
@@ -12,7 +12,7 @@ use crate::npm::registry::NpmPackageVersionInfo;
 pub fn resolve_best_package_version_and_info<'info>(
   version_req: &VersionReq,
   package_info: &'info NpmPackageInfo,
-  packages_by_name: &HashMap<String, Vec<NpmPackageId>>,
+  packages_by_name: &HashMap<String, Vec<NpmPackageNodeId>>,
 ) -> Result<VersionAndInfo<'info>, AnyError> {
   if let Some(version) =
     resolve_best_package_version(version_req, package_info, packages_by_name)?
@@ -45,7 +45,7 @@ pub struct VersionAndInfo<'a> {
 fn get_resolved_package_version_and_info<'a>(
   version_req: &VersionReq,
   info: &'a NpmPackageInfo,
-  parent: Option<&NpmPackageId>,
+  parent: Option<&NpmPackageNodeId>,
 ) -> Result<VersionAndInfo<'a>, AnyError> {
   if let Some(tag) = version_req.tag() {
     tag_to_version_info(info, tag, parent)
@@ -98,7 +98,7 @@ pub fn version_req_satisfies(
   version_req: &VersionReq,
   version: &Version,
   package_info: &NpmPackageInfo,
-  parent: Option<&NpmPackageId>,
+  parent: Option<&NpmPackageNodeId>,
 ) -> Result<bool, AnyError> {
   match version_req.tag() {
     Some(tag) => {
@@ -112,11 +112,11 @@ pub fn version_req_satisfies(
 fn resolve_best_package_version(
   version_req: &VersionReq,
   package_info: &NpmPackageInfo,
-  packages_by_name: &HashMap<String, Vec<NpmPackageId>>,
+  packages_by_name: &HashMap<String, Vec<NpmPackageNodeId>>,
 ) -> Result<Option<Version>, AnyError> {
   let mut maybe_best_version: Option<&Version> = None;
   if let Some(ids) = packages_by_name.get(&package_info.name) {
-    for version in ids.iter().map(|id| &id.version) {
+    for version in ids.iter().map(|id| &id.id.version) {
       if version_req_satisfies(version_req, version, package_info, None)? {
         let is_best_version = maybe_best_version
           .as_ref()
@@ -134,7 +134,7 @@ fn resolve_best_package_version(
 fn tag_to_version_info<'a>(
   info: &'a NpmPackageInfo,
   tag: &str,
-  parent: Option<&NpmPackageId>,
+  parent: Option<&NpmPackageNodeId>,
 ) -> Result<VersionAndInfo<'a>, AnyError> {
   // For when someone just specifies @types/node, we want to pull in a
   // "known good" version of @types/node that works well with Deno and
