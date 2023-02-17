@@ -511,7 +511,17 @@ pub fn unpack_into_dir(
         .arg(format!("'{}'", &archive_path.to_str().unwrap()))
         .arg("-DestinationPath")
         .arg(format!("'{}'", &temp_dir_path.to_str().unwrap()))
-        .spawn()?
+        .spawn()
+        .map_err(|err| {
+          if err.kind() == std::io::ErrorKind::NotFound {
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              "`powershell.exe` was not found in your PATH",
+            )
+          } else {
+            err
+          }
+        })?
         .wait()?
     }
     "zip" => {
@@ -524,7 +534,7 @@ pub fn unpack_into_dir(
           if err.kind() == std::io::ErrorKind::NotFound {
             std::io::Error::new(
               std::io::ErrorKind::NotFound,
-              "`unzip` was not found on your PATH, please install `unzip`",
+              "`unzip` was not found in your PATH, please install `unzip`",
             )
           } else {
             err

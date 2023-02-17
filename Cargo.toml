@@ -112,7 +112,7 @@ sha2 = { version = "0.10.6", features = ["oid"] }
 smallvec = "1.8"
 socket2 = "0.4.7"
 tar = "=0.4.38"
-tokio = { version = "=1.24.2", features = ["full"] }
+tokio = { version = "=1.25.0", features = ["full"] }
 tokio-rustls = "0.23.3"
 tokio-tungstenite = "0.16.1"
 tokio-util = "=0.7.4"
