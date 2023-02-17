@@ -1423,27 +1423,70 @@ fn napi_define_properties(
   properties: *const napi_property_descriptor,
 ) -> Result {
   let env: &mut Env = env_ptr.as_mut().ok_or(Error::InvalidArg)?;
+  if property_count > 0 {
+    check_arg!(env, properties);
+  }
+
   let scope = &mut env.scope();
-  let object = transmute::<napi_value, v8::Local<v8::Object>>(obj);
+
+  let object: v8::Local<v8::Object> = napi_value_unchecked(obj)
+    .try_into()
+    .map_err(|_| Error::ObjectExpected)?;
+
   let properties = std::slice::from_raw_parts(properties, property_count);
   for property in properties {
     let name = if !property.utf8name.is_null() {
-      let name_str = CStr::from_ptr(property.utf8name);
-      let name_str = name_str.to_str().unwrap();
-      v8::String::new(scope, name_str).unwrap()
+      let name_str = CStr::from_ptr(property.utf8name).to_str().unwrap();
+      v8::String::new(scope, name_str)
+        .ok_or(Error::GenericFailure)?
+        .into()
     } else {
-      transmute::<napi_value, v8::Local<v8::String>>(property.name)
+      let property_value = napi_value_unchecked(property.name);
+      v8::Local::<v8::Name>::try_from(property_value)
+        .map_err(|_| Error::NameExpected)?
     };
 
-    let method_ptr = property.method;
+    if property.getter.is_some() || property.setter.is_some() {
+      let local_getter: v8::Local<v8::Value> = if property.getter.is_some() {
+        create_function(env_ptr, None, property.getter, property.data).into()
+      } else {
+        v8::undefined(scope).into()
+      };
+      let local_setter: v8::Local<v8::Value> = if property.setter.is_some() {
+        create_function(env_ptr, None, property.setter, property.data).into()
+      } else {
+        v8::undefined(scope).into()
+      };
 
-    if method_ptr.is_some() {
-      let function: v8::Local<v8::Value> = {
+      let mut desc =
+        v8::PropertyDescriptor::new_from_get_set(local_getter, local_setter);
+      desc.set_enumerable(property.attributes & napi_enumerable != 0);
+      desc.set_configurable(property.attributes & napi_configurable != 0);
+
+      let define_maybe = object.define_property(scope, name, &desc);
+      return_status_if_false!(
+        env_ptr,
+        !define_maybe.unwrap_or(false),
+        napi_invalid_arg
+      );
+    } else if property.method.is_some() {
+      let value: v8::Local<v8::Value> = {
         let function =
           create_function(env_ptr, None, property.method, property.data);
         function.into()
       };
-      object.set(scope, name.into(), function).unwrap();
+      return_status_if_false!(
+        env_ptr,
+        object.set(scope, name.into(), value).is_some(),
+        napi_invalid_arg
+      );
+    } else {
+      let value = napi_value_unchecked(property.value);
+      return_status_if_false!(
+        env_ptr,
+        object.set(scope, name.into(), value).is_some(),
+        napi_invalid_arg
+      );
     }
   }
 

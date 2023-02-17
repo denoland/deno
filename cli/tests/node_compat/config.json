@@ -1,0 +1,13 @@
+{
+  "nodeVersion": "18.12.1",
+  "ignore": {},
+  "tests": {
+    "parallel": [
+      "test-assert-fail.js",
+      "test-assert-strict-exists.js",
+      "test-btoa-atob.js"
+    ]
+  },
+  "windowsIgnore": {},
+  "darwinIgnore": {}
+}

@@ -514,7 +514,7 @@ impl Env {
   }
 }
 
-pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
+pub fn init<P: NapiPermissions + 'static>() -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .ops(vec![op_napi_open::decl::<P>()])
     .event_loop_middleware(|op_state_rc, cx| {
@@ -578,7 +578,6 @@ pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
         env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
         tsfn_ref_counters: Arc::new(Mutex::new(vec![])),
       });
-      state.put(Unstable(unstable));
       Ok(())
     })
     .build()
@@ -587,17 +586,6 @@ pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
 pub trait NapiPermissions {
   fn check(&mut self, path: Option<&Path>)
     -> std::result::Result<(), AnyError>;
-}
-
-pub struct Unstable(pub bool);
-
-fn check_unstable(state: &OpState) {
-  let unstable = state.borrow::<Unstable>();
-
-  if !unstable.0 {
-    eprintln!("Unstable API 'node-api'. The --unstable flag must be provided.");
-    std::process::exit(70);
-  }
 }
 
 #[op(v8)]
@@ -610,7 +598,6 @@ fn op_napi_open<NP, 'scope>(
 where
   NP: NapiPermissions + 'static,
 {
-  check_unstable(op_state);
   let permissions = op_state.borrow_mut::<NP>();
   permissions.check(Some(&PathBuf::from(&path)))?;
 

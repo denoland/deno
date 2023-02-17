@@ -280,7 +280,17 @@ mod ts {
       startup_snapshot: None,
       extensions: vec![],
       extensions_with_js: vec![tsc_extension],
+
+      // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
+      // ~45s on M1 MacBook Pro; without compression it took ~1s.
+      // Thus we're not not using compressed snapshot, trading off
+      // a lot of build time for some startup time in debug build.
+      #[cfg(debug_assertions)]
+      compression_cb: None,
+
+      #[cfg(not(debug_assertions))]
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
+        eprintln!("Compressing TSC snapshot...");
         vec.extend_from_slice(
           &zstd::bulk::compress(snapshot_slice, 22)
             .expect("snapshot compression failed"),
@@ -333,12 +343,13 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       false, // No --unstable.
     ),
     deno_node::init::<PermissionsContainer>(None), // No --unstable.
+    deno_node::init_polyfill(),
     deno_ffi::init::<PermissionsContainer>(false),
     deno_net::init::<PermissionsContainer>(
       None, false, // No --unstable.
       None,
     ),
-    deno_napi::init::<PermissionsContainer>(false),
+    deno_napi::init::<PermissionsContainer>(),
     deno_http::init(),
     deno_flash::init::<PermissionsContainer>(false), // No --unstable
   ];
@@ -351,8 +362,13 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     specifier: "runtime/js/99_main.js".to_string(),
     code: deno_runtime::js::SOURCE_CODE_FOR_99_MAIN_JS,
   });
-  let extensions_with_js =
-    vec![Extension::builder("cli").esm(esm_files).build()];
+  let extensions_with_js = vec![Extension::builder("cli")
+    // FIXME(bartlomieju): information about which extensions were
+    // already snapshotted is not preserved in the snapshot. This should be
+    // fixed, so we can reliably depend on that information.
+    // .dependencies(vec!["runtime"])
+    .esm(esm_files)
+    .build()];
 
   create_snapshot(CreateSnapshotOptions {
     cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),

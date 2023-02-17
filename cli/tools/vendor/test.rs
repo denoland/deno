@@ -20,7 +20,7 @@ use deno_graph::ModuleGraph;
 use import_map::ImportMap;
 
 use crate::cache::ParsedSourceCache;
-use crate::resolver::CliResolver;
+use crate::resolver::CliGraphResolver;
 
 use super::build::VendorEnvironment;
 
@@ -261,19 +261,20 @@ async fn build_test_graph(
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
   let resolver =
-    original_import_map.map(|m| CliResolver::with_import_map(Arc::new(m)));
-  deno_graph::create_graph(
-    roots,
-    &mut loader,
-    deno_graph::GraphOptions {
-      is_dynamic: false,
-      imports: None,
-      resolver: resolver.as_ref().map(|r| r.as_graph_resolver()),
-      module_analyzer: Some(analyzer),
-      reporter: None,
-    },
-  )
-  .await
+    original_import_map.map(|m| CliGraphResolver::new(None, Some(Arc::new(m))));
+  let mut graph = ModuleGraph::default();
+  graph
+    .build(
+      roots,
+      &mut loader,
+      deno_graph::BuildOptions {
+        resolver: resolver.as_ref().map(|r| r.as_graph_resolver()),
+        module_analyzer: Some(analyzer),
+        ..Default::default()
+      },
+    )
+    .await;
+  graph
 }
 
 fn make_path(text: &str) -> PathBuf {

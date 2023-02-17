@@ -10,19 +10,19 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReq;
 use deno_graph::Dependency;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
-use deno_graph::Resolved;
+use deno_graph::Resolution;
 use deno_runtime::colors;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
-use crate::npm::NpmPackageId;
-use crate::npm::NpmPackageReference;
-use crate::npm::NpmPackageReq;
+use crate::npm::NpmPackageNodeId;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolutionPackage;
 use crate::npm::NpmResolutionSnapshot;
@@ -297,9 +297,9 @@ fn print_tree_node<TWrite: Write>(
 /// Precached information about npm packages that are used in deno info.
 #[derive(Default)]
 struct NpmInfo {
-  package_sizes: HashMap<NpmPackageId, u64>,
-  resolved_reqs: HashMap<NpmPackageReq, NpmPackageId>,
-  packages: HashMap<NpmPackageId, NpmResolutionPackage>,
+  package_sizes: HashMap<NpmPackageNodeId, u64>,
+  resolved_reqs: HashMap<NpmPackageReq, NpmPackageNodeId>,
+  packages: HashMap<NpmPackageNodeId, NpmResolutionPackage>,
   specifiers: HashMap<ModuleSpecifier, NpmPackageReq>,
 }
 
@@ -454,15 +454,16 @@ impl<'a> GraphDisplayContext<'a> {
         print_tree_node(&root_node, writer)?;
         Ok(())
       }
-      Err(ModuleGraphError::Missing(_)) => {
-        writeln!(
-          writer,
-          "{} module could not be found",
-          colors::red("error:")
-        )
-      }
       Err(err) => {
-        writeln!(writer, "{} {}", colors::red("error:"), err)
+        if let ModuleGraphError::Missing(_, _) = *err {
+          writeln!(
+            writer,
+            "{} module could not be found",
+            colors::red("error:")
+          )
+        } else {
+          writeln!(writer, "{} {}", colors::red("error:"), err)
+        }
       }
       Ok(None) => {
         writeln!(
@@ -540,8 +541,10 @@ impl<'a> GraphDisplayContext<'a> {
     let mut tree_node = TreeNode::from_text(header_text);
 
     if !was_seen {
-      if let Some((_, type_dep)) = &module.maybe_types_dependency {
-        if let Some(child) = self.build_resolved_info(type_dep, true) {
+      if let Some(types_dep) = &module.maybe_types_dependency {
+        if let Some(child) =
+          self.build_resolved_info(&types_dep.dependency, true)
+        {
           tree_node.children.push(child);
         }
       }
@@ -600,7 +603,7 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleGraphError::InvalidTypeAssertion { .. } => {
         self.build_error_msg(specifier, "(invalid import assertion)")
       }
-      ModuleGraphError::LoadingErr(_, _) => {
+      ModuleGraphError::LoadingErr(_, _, _) => {
         self.build_error_msg(specifier, "(loading error)")
       }
       ModuleGraphError::ParseErr(_, _) => {
@@ -609,13 +612,14 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleGraphError::ResolutionError(_) => {
         self.build_error_msg(specifier, "(resolution error)")
       }
-      ModuleGraphError::UnsupportedImportAssertionType(_, _) => {
+      ModuleGraphError::UnsupportedImportAssertionType { .. } => {
         self.build_error_msg(specifier, "(unsupported import assertion)")
       }
-      ModuleGraphError::UnsupportedMediaType(_, _) => {
+      ModuleGraphError::UnsupportedMediaType { .. } => {
         self.build_error_msg(specifier, "(unsupported)")
       }
-      ModuleGraphError::Missing(_) => {
+      ModuleGraphError::Missing(_, _)
+      | ModuleGraphError::MissingDynamic(_, _) => {
         self.build_error_msg(specifier, "(missing)")
       }
     }
@@ -635,15 +639,16 @@ impl<'a> GraphDisplayContext<'a> {
 
   fn build_resolved_info(
     &mut self,
-    resolved: &Resolved,
+    resolution: &Resolution,
     type_dep: bool,
   ) -> Option<TreeNode> {
-    match resolved {
-      Resolved::Ok { specifier, .. } => {
+    match resolution {
+      Resolution::Ok(resolved) => {
+        let specifier = &resolved.specifier;
         let resolved_specifier = self.graph.resolve(specifier);
         Some(match self.graph.try_get(&resolved_specifier) {
           Ok(Some(module)) => self.build_module_info(module, type_dep),
-          Err(err) => self.build_error_info(&err, &resolved_specifier),
+          Err(err) => self.build_error_info(err, &resolved_specifier),
           Ok(None) => TreeNode::from_text(format!(
             "{} {}",
             colors::red(specifier),
@@ -651,7 +656,7 @@ impl<'a> GraphDisplayContext<'a> {
           )),
         })
       }
-      Resolved::Err(err) => Some(TreeNode::from_text(format!(
+      Resolution::Err(err) => Some(TreeNode::from_text(format!(
         "{} {}",
         colors::italic(err.to_string()),
         colors::red_bold("(resolve error)")
