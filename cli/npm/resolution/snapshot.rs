@@ -132,13 +132,13 @@ impl NpmResolutionSnapshot {
     // todo(dsherret): do we need an additional hashmap to get this quickly?
     let referrer_package = self
       .packages_by_name
-      .get(&referrer.name)
+      .get(&referrer.id.name)
       .and_then(|packages| {
         packages
           .iter()
-          .filter(|p| p.version == referrer.version)
-          .filter_map(|id| {
-            let package = self.packages.get(id)?;
+          .filter(|p| p.id.version == referrer.id.version)
+          .filter_map(|node_id| {
+            let package = self.packages.get(node_id)?;
             if package.copy_index == referrer.copy_index {
               Some(package)
             } else {
@@ -156,7 +156,7 @@ impl NpmResolutionSnapshot {
       return Ok(self.packages.get(id).unwrap());
     }
 
-    if referrer_package.node_id.name == name {
+    if referrer_package.node_id.id.name == name {
       return Ok(referrer_package);
     }
 
@@ -205,15 +205,15 @@ impl NpmResolutionSnapshot {
     // todo(dsherret): this is not exactly correct because some ids
     // will be better than others due to peer dependencies
     let mut maybe_best_id: Option<&NpmPackageNodeId> = None;
-    if let Some(ids) = self.packages_by_name.get(name) {
-      for id in ids {
-        if version_req.matches(&id.version) {
+    if let Some(node_ids) = self.packages_by_name.get(name) {
+      for node_id in node_ids.iter() {
+        if version_req.matches(&node_id.id.version) {
           let is_best_version = maybe_best_id
             .as_ref()
-            .map(|best_id| best_id.version.cmp(&id.version).is_lt())
+            .map(|best_id| best_id.id.version.cmp(&node_id.id.version).is_lt())
             .unwrap_or(true);
           if is_best_version {
-            maybe_best_id = Some(id);
+            maybe_best_id = Some(node_id);
           }
         }
       }
@@ -341,7 +341,7 @@ impl NpmResolutionSnapshot {
 
 pub struct SnapshotPackageCopyIndexResolver {
   packages_to_copy_index: HashMap<NpmPackageNodeId, usize>,
-  package_name_version_to_copy_count: HashMap<(String, String), usize>,
+  package_name_version_to_copy_count: HashMap<NpmPackageId, usize>,
 }
 
 impl SnapshotPackageCopyIndexResolver {
@@ -362,9 +362,9 @@ impl SnapshotPackageCopyIndexResolver {
       packages_to_copy_index.reserve(capacity - packages_to_copy_index.len());
     }
 
-    for (id, index) in &packages_to_copy_index {
+    for (node_id, index) in &packages_to_copy_index {
       let entry = package_name_version_to_copy_count
-        .entry((id.name.to_string(), id.version.to_string()))
+        .entry(node_id.id.clone())
         .or_insert(0);
       if *entry < *index {
         *entry = *index;
@@ -376,18 +376,18 @@ impl SnapshotPackageCopyIndexResolver {
     }
   }
 
-  pub fn resolve(&mut self, id: &NpmPackageNodeId) -> usize {
-    if let Some(index) = self.packages_to_copy_index.get(id) {
+  pub fn resolve(&mut self, node_id: &NpmPackageNodeId) -> usize {
+    if let Some(index) = self.packages_to_copy_index.get(node_id) {
       *index
     } else {
       let index = *self
         .package_name_version_to_copy_count
-        .entry((id.name.to_string(), id.version.to_string()))
+        .entry(node_id.id.clone())
         .and_modify(|count| {
           *count += 1;
         })
         .or_insert(0);
-      self.packages_to_copy_index.insert(id.clone(), index);
+      self.packages_to_copy_index.insert(node_id.clone(), index);
       index
     }
   }

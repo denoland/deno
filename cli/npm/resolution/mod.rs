@@ -283,8 +283,7 @@ async fn add_package_reqs_to_snapshot(
   // in the order they should be resolved in.
   for pkg_id in pending_unresolved {
     let info = api.package_info(&pkg_id.name).await?;
-    resolver.add_pending(pkg_id)
-    // todo...
+    resolver.add_root_package(&pkg_id, &info)?;
   }
 
   for package_req in package_reqs {
@@ -313,8 +312,12 @@ async fn cache_package_infos_in_api(
   let mut package_names_to_cache =
     HashSet::with_capacity(package_reqs.len() + pending_unresolved.len());
 
-  package_names_to_cache
-    .extend(pending_unresolved.iter().map(|id| id.name.clone()));
+  package_names_to_cache.extend(
+    pending_unresolved
+      .iter()
+      .filter(|id| !graph.has_root_package(id))
+      .map(|id| id.name.clone()),
+  );
   package_names_to_cache.extend(
     package_reqs
       .iter()

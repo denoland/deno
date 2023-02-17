@@ -200,7 +200,7 @@ impl ReadonlyNpmCache {
   ) -> PathBuf {
     self
       .package_name_folder(&package.name, registry_url)
-      .join(&package.name.version)
+      .join(&package.version.to_string())
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
@@ -440,11 +440,9 @@ impl NpmCache {
     let original_package_folder = self
       .readonly
       .package_folder_for_name_and_version(&folder_id.id, registry_url);
-    with_folder_sync_lock(
-      (folder_id.id.name.as_str(), &folder_id.id.version),
-      &package_folder,
-      || hard_link_dir_recursive(&original_package_folder, &package_folder),
-    )?;
+    with_folder_sync_lock(&folder_id.id, &package_folder, || {
+      hard_link_dir_recursive(&original_package_folder, &package_folder)
+    })?;
     Ok(())
   }
 

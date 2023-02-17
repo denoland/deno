@@ -130,7 +130,7 @@ impl LocalNpmPackageResolver {
         &package.get_package_cache_folder_id(),
       ))
       .join("node_modules")
-      .join(&package.node_id.name)
+      .join(&package.node_id.id.name)
   }
 }
 
