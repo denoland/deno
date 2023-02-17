@@ -1298,6 +1298,39 @@ mod tests {
   }
 
   #[test]
+  fn test_parse_config_with_deprecated_files_field_only() {
+    let config_text = r#"{
+      "lint": { "files": { "include": ["src/"] } },
+      "fmt": { "files": { "include": ["src/"] } },
+      "test": { "files": { "exclude": ["dist/"] } },
+      "bench": { "files": { "exclude": ["dist/"] } }
+    }"#;
+    let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
+    let config_specifier = config_dir.join("tsconfig.json").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+
+    let lint_include = unpack_object(config_file.to_lint_config(), "lint")
+      .files
+      .include;
+    assert_eq!(lint_include, vec![PathBuf::from("/deno/src/")]);
+
+    let fmt_include = unpack_object(config_file.to_fmt_config(), "fmt")
+      .files
+      .include;
+    assert_eq!(fmt_include, vec![PathBuf::from("/deno/src/")]);
+
+    let test_exclude = unpack_object(config_file.to_test_config(), "test")
+      .files
+      .exclude;
+    assert_eq!(test_exclude, vec![PathBuf::from("/deno/dist/")]);
+
+    let bench_exclude = unpack_object(config_file.to_bench_config(), "bench")
+      .files
+      .exclude;
+    assert_eq!(bench_exclude, vec![PathBuf::from("/deno/dist/")]);
+  }
+
+  #[test]
   fn test_parse_config_with_deprecated_fmt_options() {
     let config_text_both = r#"{
       "fmt": {
@@ -1330,39 +1363,6 @@ mod tests {
 
     let fmt_options_deprecated = unpack_options(config_file_deprecated);
     assert_eq!(fmt_options_deprecated.semi_colons, Some(true));
-  }
-
-  #[test]
-  fn test_parse_config_with_deprecated_files_field_only() {
-    let config_text = r#"{
-      "lint": { "files": { "include": ["src/"] } },
-      "fmt": { "files": { "include": ["src/"] } },
-      "test": { "files": { "exclude": ["dist/"] } },
-      "bench": { "files": { "exclude": ["dist/"] } }
-    }"#;
-    let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
-    let config_specifier = config_dir.join("tsconfig.json").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-
-    let lint_include = unpack_object(config_file.to_lint_config(), "lint")
-      .files
-      .include;
-    assert_eq!(lint_include, vec![PathBuf::from("/deno/src/")]);
-
-    let fmt_include = unpack_object(config_file.to_fmt_config(), "fmt")
-      .files
-      .include;
-    assert_eq!(fmt_include, vec![PathBuf::from("/deno/src/")]);
-
-    let test_exclude = unpack_object(config_file.to_test_config(), "test")
-      .files
-      .exclude;
-    assert_eq!(test_exclude, vec![PathBuf::from("/deno/dist/")]);
-
-    let bench_exclude = unpack_object(config_file.to_bench_config(), "bench")
-      .files
-      .exclude;
-    assert_eq!(bench_exclude, vec![PathBuf::from("/deno/dist/")]);
   }
 
   #[test]
