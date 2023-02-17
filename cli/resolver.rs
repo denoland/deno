@@ -74,14 +74,13 @@ impl Resolver for CliGraphResolver {
     }
 
     if let Ok(node_builtin_module) = resolve_builtin_node_module(specifier) {
-      eprintln!("resolve built-in: {node_builtin_module}");
       return Ok(node_builtin_module);
     }
 
     // FIXME(bartlomieju): check using `npm_resolver.in_npm_package()`
-    if referrer.as_str().contains("node_modules") {
-      return Ok(ModuleSpecifier::parse(&format!("npm:{specifier}")).unwrap());
-    }
+    // if referrer.as_str().contains("node_modules") {
+    //   return Ok(ModuleSpecifier::parse(&format!("npm:{specifier}")).unwrap());
+    // }
 
     deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
   }

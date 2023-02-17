@@ -76,7 +76,7 @@ impl Loader for FetchCacher {
       return None;
     }
 
-    if matches!(specifier.scheme(), "npm" | "node" | "internal") {
+    if matches!(specifier.scheme(), "npm" | "node") {
       return None;
     }
 
@@ -110,14 +110,6 @@ impl Loader for FetchCacher {
           Err(err) => Err(err.into()),
         },
       ));
-    }
-
-    if specifier.as_str().starts_with("internal:") {
-      return Box::pin(futures::future::ready(Ok(Some(
-        deno_graph::source::LoadResponse::External {
-          specifier: specifier.clone(),
-        },
-      ))));
     }
 
     let specifier =
