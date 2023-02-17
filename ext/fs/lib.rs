@@ -1858,7 +1858,8 @@ fn make_temp(
   }
   .join("_");
   let mut rng = thread_rng();
-  loop {
+  const MAX_TRIES: u32 = 10;
+  for _ in 0..MAX_TRIES {
     let unique = rng.gen::<u32>();
     buf.set_file_name(format!("{prefix_}{unique:08x}{suffix_}"));
     let r = if is_dir {
@@ -1886,6 +1887,10 @@ fn make_temp(
       Err(e) => return Err(e),
     }
   }
+  Err(io::Error::new(
+    io::ErrorKind::AlreadyExists,
+    "too many temp files exist",
+  ))
 }
 
 #[derive(Deserialize)]
