@@ -116,6 +116,8 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
 
 #[cfg(test)]
 mod test {
+  use deno_graph::semver::Version;
+
   use super::*;
 
   #[test]

@@ -36,7 +36,7 @@ pub fn should_sync_download() -> bool {
 const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
 pub fn with_folder_sync_lock(
-  package: (&str, &Version),
+  package: &NpmPackageId,
   output_folder: &Path,
   action: impl FnOnce() -> Result<(), AnyError>,
 ) -> Result<(), AnyError> {
@@ -88,14 +88,13 @@ pub fn with_folder_sync_lock(
         if remove_err.kind() != std::io::ErrorKind::NotFound {
           bail!(
             concat!(
-              "Failed setting up package cache directory for {}@{}, then ",
+              "Failed setting up package cache directory for {}, then ",
               "failed cleaning it up.\n\nOriginal error:\n\n{}\n\n",
               "Remove error:\n\n{}\n\nPlease manually ",
               "delete this folder or you will run into issues using this ",
               "package in the future:\n\n{}"
             ),
-            package.0,
-            package.1,
+            package,
             err,
             remove_err,
             output_folder.display(),
@@ -182,15 +181,15 @@ impl ReadonlyNpmCache {
 
   pub fn package_folder_for_id(
     &self,
-    id: &NpmPackageCacheFolderId,
+    folder_id: &NpmPackageCacheFolderId,
     registry_url: &Url,
   ) -> PathBuf {
-    if id.copy_index == 0 {
-      self.package_folder_for_name_and_version(&id, registry_url)
+    if folder_id.copy_index == 0 {
+      self.package_folder_for_name_and_version(&folder_id.id, registry_url)
     } else {
       self
-        .package_name_folder(&id.name, registry_url)
-        .join(format!("{}_{}", id.version, id.copy_index))
+        .package_name_folder(&folder_id.id.name, registry_url)
+        .join(format!("{}_{}", folder_id.id.version, folder_id.copy_index))
     }
   }
 

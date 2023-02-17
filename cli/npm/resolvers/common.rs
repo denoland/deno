@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
@@ -15,9 +14,7 @@ use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::args::Lockfile;
 use crate::npm::cache::should_sync_download;
-use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
 use crate::npm::NpmResolutionPackage;
 
@@ -74,11 +71,7 @@ pub async fn cache_packages(
     let registry_url = registry_url.clone();
     let handle = tokio::task::spawn(async move {
       cache
-        .ensure_package(
-          (package.node_id.name.as_str(), &package.node_id.version),
-          &package.dist,
-          &registry_url,
-        )
+        .ensure_package(&package.node_id.id, &package.dist, &registry_url)
         .await
     });
     if sync_download {
