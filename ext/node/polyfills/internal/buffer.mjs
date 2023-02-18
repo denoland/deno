@@ -7,6 +7,7 @@
 
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
+import { Encodings } from "ext:deno_node/internal_binding/_node.ts";
 import { encodings } from "ext:deno_node/internal_binding/string_decoder.ts";
 import {
   indexOfBuffer,
@@ -37,24 +38,12 @@ import { Blob } from "ext:deno_web/09_file.js";
 
 const { core } = globalThis.__bootstrap;
 
-export { atob, Blob, btoa };
+const VIEW_SYMBOL = Symbol("[[view]]");
 
 const utf8Encoder = new TextEncoder();
 
-// Temporary buffers to convert numbers.
-const float32Array = new Float32Array(1);
-const uInt8Float32Array = new Uint8Array(float32Array.buffer);
-const float64Array = new Float64Array(1);
-const uInt8Float64Array = new Uint8Array(float64Array.buffer);
-
-// Check endianness.
-float32Array[0] = -1; // 0xBF800000
-// Either it is [0, 0, 128, 191] or [191, 128, 0, 0]. It is not possible to
-// check this with `os.endianness()` because that is determined at compile time.
-export const bigEndian = uInt8Float32Array[3] === 0;
-
-export const kMaxLength = 2147483647;
-export const kStringMaxLength = 536870888;
+const kMaxLength = 2147483647;
+const kStringMaxLength = 536870888;
 const MAX_UINT32 = 2 ** 32;
 
 const customInspectSymbol =
@@ -64,7 +53,7 @@ const customInspectSymbol =
 
 const INSPECT_MAX_BYTES = 50;
 
-export const constants = {
+const constants = {
   MAX_LENGTH: kMaxLength,
   MAX_STRING_LENGTH: kStringMaxLength,
 };
@@ -97,10 +86,15 @@ function createBuffer(length) {
   }
   const buf = new Uint8Array(length);
   Object.setPrototypeOf(buf, Buffer.prototype);
+  buf[VIEW_SYMBOL] = new DataView(
+    buf.buffer,
+    buf.byteOffset,
+    buf.byteLength,
+  );
   return buf;
 }
 
-export function Buffer(arg, encodingOrOffset, length) {
+function Buffer(arg, encodingOrOffset, length) {
   if (typeof arg === "number") {
     if (typeof encodingOrOffset === "string") {
       throw new codes.ERR_INVALID_ARG_TYPE(
@@ -252,7 +246,7 @@ function checked(length) {
   return length | 0;
 }
 
-export function SlowBuffer(length) {
+function SlowBuffer(length) {
   assertSize(length);
   return Buffer.alloc(+length);
 }
@@ -616,7 +610,9 @@ function bidirectionalIndexOf(buffer, val, byteOffset, encoding, dir) {
   }
 
   if (isUint8Array(val)) {
-    const encodingVal = ops === undefined ? encodingsMap.utf8 : ops.encodingVal;
+    const encodingVal = ops === undefined
+      ? encodings[Encodings.UTF8]
+      : ops.encodingVal;
     return indexOfBuffer(buffer, val, byteOffset, encodingVal, dir);
   }
 
@@ -833,17 +829,14 @@ function fromArrayBuffer(obj, byteOffset, length) {
     }
   }
 
-  const buffer = new Uint8Array(obj, byteOffset, length);
-  Object.setPrototypeOf(buffer, Buffer.prototype);
-  return buffer;
-}
-
-function _base64Slice(buf, start, end) {
-  if (start === 0 && end === buf.length) {
-    return forgivingBase64Encode(buf);
-  } else {
-    return forgivingBase64Encode(buf.slice(start, end));
-  }
+  const buf = new Uint8Array(obj, byteOffset, length);
+  Object.setPrototypeOf(buf, Buffer.prototype);
+  buf[VIEW_SYMBOL] = new DataView(
+    buf.buffer,
+    buf.byteOffset,
+    buf.byteLength,
+  );
+  return buf;
 }
 
 const decoder = new TextDecoder();
@@ -944,7 +937,7 @@ Buffer.prototype.readUint8 = Buffer.prototype.readUInt8 = function readUInt8(
   validateNumber(offset, "offset");
   const val = this[offset];
   if (val === undefined) {
-    boundsError(offset, this.length - 1);
+    boundsError(offset, this.length - 1, "offset");
   }
 
   return val;
@@ -955,30 +948,25 @@ Buffer.prototype.readUint16BE = Buffer.prototype.readUInt16BE = readUInt16BE;
 Buffer.prototype.readUint16LE =
   Buffer.prototype.readUInt16LE =
     function readUInt16LE(offset = 0) {
-      validateNumber(offset, "offset");
-      const first = this[offset];
-      const last = this[offset + 1];
-      if (first === undefined || last === undefined) {
-        boundsError(offset, this.length - 2);
-      }
+      checkBounds(this, offset, 2);
 
-      return first + last * 2 ** 8;
+      /**
+       * @type {DataView}
+       */
+      const view = this[VIEW_SYMBOL];
+      return view.getUint16(offset, true);
     };
 
 Buffer.prototype.readUint32LE =
   Buffer.prototype.readUInt32LE =
     function readUInt32LE(offset = 0) {
-      validateNumber(offset, "offset");
-      const first = this[offset];
-      const last = this[offset + 3];
-      if (first === undefined || last === undefined) {
-        boundsError(offset, this.length - 4);
-      }
+      checkBounds(this, offset, 4);
 
-      return first +
-        this[++offset] * 2 ** 8 +
-        this[++offset] * 2 ** 16 +
-        last * 2 ** 24;
+      /**
+       * @type {DataView}
+       */
+      const view = this[VIEW_SYMBOL];
+      return view.getUint32(offset, true);
     };
 
 Buffer.prototype.readUint32BE = Buffer.prototype.readUInt32BE = readUInt32BE;
@@ -986,39 +974,28 @@ Buffer.prototype.readUint32BE = Buffer.prototype.readUInt32BE = readUInt32BE;
 Buffer.prototype.readBigUint64LE =
   Buffer.prototype.readBigUInt64LE =
     defineBigIntMethod(
-      function readBigUInt64LE(offset) {
-        offset = offset >>> 0;
-        validateNumber(offset, "offset");
-        const first = this[offset];
-        const last = this[offset + 7];
-        if (first === void 0 || last === void 0) {
-          boundsError(offset, this.length - 8);
-        }
-        const lo = first + this[++offset] * 2 ** 8 +
-          this[++offset] * 2 ** 16 +
-          this[++offset] * 2 ** 24;
-        const hi = this[++offset] + this[++offset] * 2 ** 8 +
-          this[++offset] * 2 ** 16 + last * 2 ** 24;
-        return BigInt(lo) + (BigInt(hi) << BigInt(32));
+      function readBigUInt64LE(offset = 0) {
+        checkBounds(this, offset, 8);
+
+        /**
+         * @type {DataView}
+         */
+        const view = this[VIEW_SYMBOL];
+        return view.getBigUint64(offset, true);
       },
     );
 
 Buffer.prototype.readBigUint64BE =
   Buffer.prototype.readBigUInt64BE =
     defineBigIntMethod(
-      function readBigUInt64BE(offset) {
-        offset = offset >>> 0;
-        validateNumber(offset, "offset");
-        const first = this[offset];
-        const last = this[offset + 7];
-        if (first === void 0 || last === void 0) {
-          boundsError(offset, this.length - 8);
-        }
-        const hi = first * 2 ** 24 + this[++offset] * 2 ** 16 +
-          this[++offset] * 2 ** 8 + this[++offset];
-        const lo = this[++offset] * 2 ** 24 + this[++offset] * 2 ** 16 +
-          this[++offset] * 2 ** 8 + last;
-        return (BigInt(hi) << BigInt(32)) + BigInt(lo);
+      function readBigUInt64BE(offset = 0) {
+        checkBounds(this, offset, 8);
+
+        /**
+         * @type {DataView}
+         */
+        const view = this[VIEW_SYMBOL];
+        return view.getBigUint64(offset, false);
       },
     );
 
@@ -1078,127 +1055,106 @@ Buffer.prototype.readIntBE = function readIntBE(offset, byteLength) {
 };
 
 Buffer.prototype.readInt8 = function readInt8(offset = 0) {
-  validateNumber(offset, "offset");
-  const val = this[offset];
-  if (val === undefined) {
-    boundsError(offset, this.length - 1);
-  }
-
-  return val | (val & 2 ** 7) * 0x1fffffe;
+  checkBounds(this, offset, 1);
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  return view.getInt8(offset);
 };
 
 Buffer.prototype.readInt16LE = function readInt16LE(offset = 0) {
-  validateNumber(offset, "offset");
-  const first = this[offset];
-  const last = this[offset + 1];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, this.length - 2);
-  }
-
-  const val = first + last * 2 ** 8;
-  return val | (val & 2 ** 15) * 0x1fffe;
+  checkBounds(this, offset, 2);
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  return view.getInt16(offset, true);
 };
 
 Buffer.prototype.readInt16BE = function readInt16BE(offset = 0) {
-  validateNumber(offset, "offset");
-  const first = this[offset];
-  const last = this[offset + 1];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, this.length - 2);
-  }
-
-  const val = first * 2 ** 8 + last;
-  return val | (val & 2 ** 15) * 0x1fffe;
+  checkBounds(this, offset, 2);
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  return view.getInt16(offset, false);
 };
 
 Buffer.prototype.readInt32LE = function readInt32LE(offset = 0) {
-  validateNumber(offset, "offset");
-  const first = this[offset];
-  const last = this[offset + 3];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, this.length - 4);
-  }
-
-  return first +
-    this[++offset] * 2 ** 8 +
-    this[++offset] * 2 ** 16 +
-    (last << 24); // Overflow
+  checkBounds(this, offset, 4);
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  return view.getInt32(offset, true);
 };
 
 Buffer.prototype.readInt32BE = function readInt32BE(offset = 0) {
-  validateNumber(offset, "offset");
-  const first = this[offset];
-  const last = this[offset + 3];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, this.length - 4);
-  }
-
-  return (first << 24) + // Overflow
-    this[++offset] * 2 ** 16 +
-    this[++offset] * 2 ** 8 +
-    last;
+  checkBounds(this, offset, 4);
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  return view.getInt32(offset, false);
 };
 
 Buffer.prototype.readBigInt64LE = defineBigIntMethod(
-  function readBigInt64LE(offset) {
-    offset = offset >>> 0;
-    validateNumber(offset, "offset");
-    const first = this[offset];
-    const last = this[offset + 7];
-    if (first === void 0 || last === void 0) {
-      boundsError(offset, this.length - 8);
-    }
-    const val = this[offset + 4] + this[offset + 5] * 2 ** 8 +
-      this[offset + 6] * 2 ** 16 + (last << 24);
-    return (BigInt(val) << BigInt(32)) +
-      BigInt(
-        first + this[++offset] * 2 ** 8 + this[++offset] * 2 ** 16 +
-          this[++offset] * 2 ** 24,
-      );
+  function readBigInt64LE(offset = 0) {
+    checkBounds(this, offset, 8);
+    /**
+     * @type {DataView}
+     */
+    const view = this[VIEW_SYMBOL];
+    return view.getBigInt64(offset, true);
   },
 );
 
 Buffer.prototype.readBigInt64BE = defineBigIntMethod(
-  function readBigInt64BE(offset) {
-    offset = offset >>> 0;
-    validateNumber(offset, "offset");
-    const first = this[offset];
-    const last = this[offset + 7];
-    if (first === void 0 || last === void 0) {
-      boundsError(offset, this.length - 8);
-    }
-    const val = (first << 24) + this[++offset] * 2 ** 16 +
-      this[++offset] * 2 ** 8 + this[++offset];
-    return (BigInt(val) << BigInt(32)) +
-      BigInt(
-        this[++offset] * 2 ** 24 + this[++offset] * 2 ** 16 +
-          this[++offset] * 2 ** 8 + last,
-      );
+  function readBigInt64BE(offset = 0) {
+    checkBounds(this, offset, 8);
+    /**
+     * @type {DataView}
+     */
+    const view = this[VIEW_SYMBOL];
+    return view.getBigInt64(offset, false);
   },
 );
 
-Buffer.prototype.readFloatLE = function readFloatLE(offset) {
-  return bigEndian
-    ? readFloatBackwards(this, offset)
-    : readFloatForwards(this, offset);
+Buffer.prototype.readFloatLE = function readFloatLE(offset = 0) {
+  checkBounds(this, offset, 4);
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  return view.getFloat32(offset, true);
 };
 
-Buffer.prototype.readFloatBE = function readFloatBE(offset) {
-  return bigEndian
-    ? readFloatForwards(this, offset)
-    : readFloatBackwards(this, offset);
+Buffer.prototype.readFloatBE = function readFloatBE(offset = 0) {
+  checkBounds(this, offset, 4);
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  return view.getFloat32(offset, false);
 };
 
-Buffer.prototype.readDoubleLE = function readDoubleLE(offset) {
-  return bigEndian
-    ? readDoubleBackwards(this, offset)
-    : readDoubleForwards(this, offset);
+Buffer.prototype.readDoubleLE = function readDoubleLE(offset = 0) {
+  checkBounds(this, offset, 8);
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  return view.getFloat64(offset, true);
 };
 
-Buffer.prototype.readDoubleBE = function readDoubleBE(offset) {
-  return bigEndian
-    ? readDoubleForwards(this, offset)
-    : readDoubleBackwards(this, offset);
+Buffer.prototype.readDoubleBE = function readDoubleBE(offset = 0) {
+  checkBounds(this, offset, 8);
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  return view.getFloat64(offset, false);
 };
 
 Buffer.prototype.writeUintLE =
@@ -1273,54 +1229,32 @@ Buffer.prototype.writeUint16BE =
 Buffer.prototype.writeUint32LE =
   Buffer.prototype.writeUInt32LE =
     function writeUInt32LE(value, offset = 0) {
-      return _writeUInt32LE(this, value, offset, 0, 0xffffffff);
+      return _writeUInt32LE(this, value, offset);
     };
 
 Buffer.prototype.writeUint32BE =
   Buffer.prototype.writeUInt32BE =
     function writeUInt32BE(value, offset = 0) {
-      return _writeUInt32BE(this, value, offset, 0, 0xffffffff);
+      return _writeUInt32BE(this, value, offset);
     };
 
 function wrtBigUInt64LE(buf, value, offset, min, max) {
-  checkIntBI(value, min, max, buf, offset, 7);
-  let lo = Number(value & BigInt(4294967295));
-  buf[offset++] = lo;
-  lo = lo >> 8;
-  buf[offset++] = lo;
-  lo = lo >> 8;
-  buf[offset++] = lo;
-  lo = lo >> 8;
-  buf[offset++] = lo;
-  let hi = Number(value >> BigInt(32) & BigInt(4294967295));
-  buf[offset++] = hi;
-  hi = hi >> 8;
-  buf[offset++] = hi;
-  hi = hi >> 8;
-  buf[offset++] = hi;
-  hi = hi >> 8;
-  buf[offset++] = hi;
-  return offset;
+  checkIntBI(value, min, max, buf, offset, 8);
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  view.setBigUint64(offset, value, true);
+  return offset + 8;
 }
 
 function wrtBigUInt64BE(buf, value, offset, min, max) {
-  checkIntBI(value, min, max, buf, offset, 7);
-  let lo = Number(value & BigInt(4294967295));
-  buf[offset + 7] = lo;
-  lo = lo >> 8;
-  buf[offset + 6] = lo;
-  lo = lo >> 8;
-  buf[offset + 5] = lo;
-  lo = lo >> 8;
-  buf[offset + 4] = lo;
-  let hi = Number(value >> BigInt(32) & BigInt(4294967295));
-  buf[offset + 3] = hi;
-  hi = hi >> 8;
-  buf[offset + 2] = hi;
-  hi = hi >> 8;
-  buf[offset + 1] = hi;
-  hi = hi >> 8;
-  buf[offset] = hi;
+  checkIntBI(value, min, max, buf, offset, 8);
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  view.setBigUint64(offset, value, false);
   return offset + 8;
 }
 
@@ -1467,38 +1401,58 @@ Buffer.prototype.writeBigInt64BE = defineBigIntMethod(
 
 Buffer.prototype.writeFloatLE = function writeFloatLE(
   value,
-  offset,
+  offset = 0,
 ) {
-  return bigEndian
-    ? writeFloatBackwards(this, value, offset)
-    : writeFloatForwards(this, value, offset);
+  checkBounds(this, offset, 4);
+
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  view.setFloat32(offset, value, true);
+  return offset + 4;
 };
 
 Buffer.prototype.writeFloatBE = function writeFloatBE(
   value,
-  offset,
+  offset = 0,
 ) {
-  return bigEndian
-    ? writeFloatForwards(this, value, offset)
-    : writeFloatBackwards(this, value, offset);
+  checkBounds(this, offset, 4);
+
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  view.setFloat32(offset, value, false);
+  return offset + 4;
 };
 
 Buffer.prototype.writeDoubleLE = function writeDoubleLE(
   value,
-  offset,
+  offset = 0,
 ) {
-  return bigEndian
-    ? writeDoubleBackwards(this, value, offset)
-    : writeDoubleForwards(this, value, offset);
+  checkBounds(this, offset, 8);
+
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  view.setFloat64(offset, value, true);
+  return offset + 8;
 };
 
 Buffer.prototype.writeDoubleBE = function writeDoubleBE(
   value,
-  offset,
+  offset = 0,
 ) {
-  return bigEndian
-    ? writeDoubleForwards(this, value, offset)
-    : writeDoubleBackwards(this, value, offset);
+  checkBounds(this, offset, 8);
+
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  view.setFloat64(offset, value, false);
+  return offset + 8;
 };
 
 Buffer.prototype.copy = function copy(
@@ -1662,21 +1616,29 @@ Buffer.prototype.fill = function fill(val, start, end, encoding) {
 
 function checkBounds(buf, offset, byteLength2) {
   validateNumber(offset, "offset");
-  if (buf[offset] === void 0 || buf[offset + byteLength2] === void 0) {
-    boundsError(offset, buf.length - (byteLength2 + 1));
+  if (
+    !Number.isSafeInteger(offset) || offset < 0 ||
+    buf.length < offset + byteLength2
+  ) {
+    boundsError(offset, buf.length - byteLength2, "offset");
   }
 }
 
 function checkIntBI(value, min, max, buf, offset, byteLength2) {
+  if (typeof value !== "bigint") {
+    // Make V8 throw its "Cannot mix BigInt and other types" error.
+    value & 0n;
+    return;
+  }
   if (value > max || value < min) {
     const n = typeof min === "bigint" ? "n" : "";
     let range;
-    if (byteLength2 > 3) {
+    if (byteLength2 > 4) {
       if (min === 0 || min === BigInt(0)) {
-        range = `>= 0${n} and < 2${n} ** ${(byteLength2 + 1) * 8}${n}`;
+        range = `>= 0${n} and < 2${n} ** ${byteLength2 * 8}${n}`;
       } else {
-        range = `>= -(2${n} ** ${(byteLength2 + 1) * 8 - 1}${n}) and < 2 ** ${
-          (byteLength2 + 1) * 8 - 1
+        range = `>= -(2${n} ** ${byteLength2 * 8 - 1}${n}) and < 2 ** ${
+          byteLength2 * 8 - 1
         }${n}`;
       }
     } else {
@@ -1743,324 +1705,176 @@ function BufferBigIntNotDefined() {
   throw new Error("BigInt not supported");
 }
 
-export function readUInt48LE(buf, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buf[offset];
-  const last = buf[offset + 5];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buf.length - 6);
-  }
+function readUInt48LE(buf, offset = 0) {
+  checkBounds(buf, offset, 6);
 
-  return first +
-    buf[++offset] * 2 ** 8 +
-    buf[++offset] * 2 ** 16 +
-    buf[++offset] * 2 ** 24 +
-    (buf[++offset] + last * 2 ** 8) * 2 ** 32;
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 LE unsigned bits + 16 LE unsigned bits shifted 32 bits up
+  return view.getUint32(offset, true) +
+    view.getUint16(offset + 4, true) * 2 ** 32;
 }
 
-export function readUInt40LE(buf, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buf[offset];
-  const last = buf[offset + 4];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buf.length - 5);
-  }
+function readUInt40LE(buf, offset = 0) {
+  checkBounds(buf, offset, 5);
 
-  return first +
-    buf[++offset] * 2 ** 8 +
-    buf[++offset] * 2 ** 16 +
-    buf[++offset] * 2 ** 24 +
-    last * 2 ** 32;
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 LE unsigned bits + 8 unsigned bits shifted 32 bits up
+  return view.getUint32(offset, true) +
+    buf[offset + 4] * 2 ** 32;
 }
 
-export function readUInt24LE(buf, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buf[offset];
-  const last = buf[offset + 2];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buf.length - 3);
-  }
+function readUInt24LE(buf, offset = 0) {
+  checkBounds(buf, offset, 3);
 
-  return first + buf[++offset] * 2 ** 8 + last * 2 ** 16;
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 16 LE unsigned bits + 8 unsigned bits shifted 16 bits up
+  return view.getUint16(offset, true) + buf[offset + 2] * 2 ** 16;
 }
 
-export function readUInt48BE(buf, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buf[offset];
-  const last = buf[offset + 5];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buf.length - 6);
-  }
+function readUInt48BE(buf, offset = 0) {
+  checkBounds(buf, offset, 6);
 
-  return (first * 2 ** 8 + buf[++offset]) * 2 ** 32 +
-    buf[++offset] * 2 ** 24 +
-    buf[++offset] * 2 ** 16 +
-    buf[++offset] * 2 ** 8 +
-    last;
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 BE unsigned bits shifted 16 bits up + 16 BE unsigned bits
+  return view.getUint32(offset, false) * 2 ** 16 +
+    view.getUint16(offset + 4, false);
 }
 
-export function readUInt40BE(buf, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buf[offset];
-  const last = buf[offset + 4];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buf.length - 5);
-  }
+function readUInt40BE(buf, offset = 0) {
+  checkBounds(buf, offset, 5);
 
-  return first * 2 ** 32 +
-    buf[++offset] * 2 ** 24 +
-    buf[++offset] * 2 ** 16 +
-    buf[++offset] * 2 ** 8 +
-    last;
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 BE unsigned bits shifted 8 bits up + 8 unsigned bits
+  return view.getUint32(offset, false) * 2 ** 8 + buf[offset + 4];
 }
 
-export function readUInt24BE(buf, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buf[offset];
-  const last = buf[offset + 2];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buf.length - 3);
-  }
+function readUInt24BE(buf, offset = 0) {
+  checkBounds(buf, offset, 3);
 
-  return first * 2 ** 16 + buf[++offset] * 2 ** 8 + last;
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 16 BE unsigned bits shifted 8 bits up + 8 unsigned bits
+  return view.getUint16(offset, false) * 2 ** 8 + buf[offset + 2];
 }
 
-export function readUInt16BE(offset = 0) {
-  validateNumber(offset, "offset");
-  const first = this[offset];
-  const last = this[offset + 1];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, this.length - 2);
-  }
+function readUInt16BE(offset = 0) {
+  checkBounds(this, offset, 2);
 
-  return first * 2 ** 8 + last;
+  // 16 BE unsigned bits
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  return view.getUint16(offset, false);
 }
 
-export function readUInt32BE(offset = 0) {
-  validateNumber(offset, "offset");
-  const first = this[offset];
-  const last = this[offset + 3];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, this.length - 4);
-  }
+function readUInt32BE(offset = 0) {
+  checkBounds(this, offset, 4);
 
-  return first * 2 ** 24 +
-    this[++offset] * 2 ** 16 +
-    this[++offset] * 2 ** 8 +
-    last;
+  // 32 BE unsigned bits
+  /**
+   * @type {DataView}
+   */
+  const view = this[VIEW_SYMBOL];
+  return view.getUint32(offset, false);
 }
 
-export function readDoubleBackwards(buffer, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buffer[offset];
-  const last = buffer[offset + 7];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buffer.length - 8);
-  }
+function readInt24LE(buf, offset = 0) {
+  checkBounds(buf, offset, 3);
 
-  uInt8Float64Array[7] = first;
-  uInt8Float64Array[6] = buffer[++offset];
-  uInt8Float64Array[5] = buffer[++offset];
-  uInt8Float64Array[4] = buffer[++offset];
-  uInt8Float64Array[3] = buffer[++offset];
-  uInt8Float64Array[2] = buffer[++offset];
-  uInt8Float64Array[1] = buffer[++offset];
-  uInt8Float64Array[0] = last;
-  return float64Array[0];
+  // 16 LE unsigned bits + 8 signed bits shifted 16 bits up
+  // Because of two's complement format the bottom bits can
+  // always be viewed as unsigned bits. If the top is positive
+  // then the bottom adds to the positivity. If the top is negative
+  // then the bottom reduces from the negativity. In either case
+  // the binary representation is the same.
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  return view.getUint16(offset, true) + view.getInt8(offset + 2) * 2 ** 16;
 }
 
-export function readDoubleForwards(buffer, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buffer[offset];
-  const last = buffer[offset + 7];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buffer.length - 8);
-  }
+function readInt40LE(buf, offset = 0) {
+  checkBounds(buf, offset, 5);
 
-  uInt8Float64Array[0] = first;
-  uInt8Float64Array[1] = buffer[++offset];
-  uInt8Float64Array[2] = buffer[++offset];
-  uInt8Float64Array[3] = buffer[++offset];
-  uInt8Float64Array[4] = buffer[++offset];
-  uInt8Float64Array[5] = buffer[++offset];
-  uInt8Float64Array[6] = buffer[++offset];
-  uInt8Float64Array[7] = last;
-  return float64Array[0];
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 LE unsigned bits + 8 signed bits shifted 32 bits up
+  // Because of two's complement the bottom can be read unsigned.
+  return view.getUint32(offset, true) + view.getInt8(offset + 4) * 2 ** 32;
 }
 
-export function writeDoubleForwards(buffer, val, offset = 0) {
-  val = +val;
-  checkBounds(buffer, offset, 7);
+function readInt48LE(buf, offset = 0) {
+  checkBounds(buf, offset, 6);
 
-  float64Array[0] = val;
-  buffer[offset++] = uInt8Float64Array[0];
-  buffer[offset++] = uInt8Float64Array[1];
-  buffer[offset++] = uInt8Float64Array[2];
-  buffer[offset++] = uInt8Float64Array[3];
-  buffer[offset++] = uInt8Float64Array[4];
-  buffer[offset++] = uInt8Float64Array[5];
-  buffer[offset++] = uInt8Float64Array[6];
-  buffer[offset++] = uInt8Float64Array[7];
-  return offset;
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 LE unsigned bits + 16 signed bits shifted 32 bits up
+  // Because of two's complement the bottom can be read unsigned.
+  return view.getUint32(offset, true) +
+    view.getInt16(offset + 4, true) * 2 ** 32;
 }
 
-export function writeDoubleBackwards(buffer, val, offset = 0) {
-  val = +val;
-  checkBounds(buffer, offset, 7);
+function readInt24BE(buf, offset = 0) {
+  checkBounds(buf, offset, 3);
 
-  float64Array[0] = val;
-  buffer[offset++] = uInt8Float64Array[7];
-  buffer[offset++] = uInt8Float64Array[6];
-  buffer[offset++] = uInt8Float64Array[5];
-  buffer[offset++] = uInt8Float64Array[4];
-  buffer[offset++] = uInt8Float64Array[3];
-  buffer[offset++] = uInt8Float64Array[2];
-  buffer[offset++] = uInt8Float64Array[1];
-  buffer[offset++] = uInt8Float64Array[0];
-  return offset;
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 16 BE signed bits shifted 8 bits up + 8 unsigned bits
+  // Because of two's complement the top can be read unsigned.
+  return view.getInt16(offset, false) * 2 ** 8 + buf[offset + 2];
 }
 
-export function readFloatBackwards(buffer, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buffer[offset];
-  const last = buffer[offset + 3];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buffer.length - 4);
-  }
+function readInt48BE(buf, offset = 0) {
+  checkBounds(buf, offset, 6);
 
-  uInt8Float32Array[3] = first;
-  uInt8Float32Array[2] = buffer[++offset];
-  uInt8Float32Array[1] = buffer[++offset];
-  uInt8Float32Array[0] = last;
-  return float32Array[0];
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 BE signed bits shifted 16 bits up + 16 unsigned bits
+  // Because of two's complement the top can be read unsigned.
+  return view.getInt32(offset, false) * 2 ** 16 +
+    view.getUint16(offset + 4, false);
 }
 
-export function readFloatForwards(buffer, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buffer[offset];
-  const last = buffer[offset + 3];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buffer.length - 4);
-  }
+function readInt40BE(buf, offset = 0) {
+  checkBounds(buf, offset, 5);
 
-  uInt8Float32Array[0] = first;
-  uInt8Float32Array[1] = buffer[++offset];
-  uInt8Float32Array[2] = buffer[++offset];
-  uInt8Float32Array[3] = last;
-  return float32Array[0];
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 BE signed bits shifted 8 bits up + 8 unsigned bits
+  // Because of two's complement the top can be read unsigned.
+  return view.getInt32(offset, false) * 2 ** 8 + buf[offset + 4];
 }
 
-export function writeFloatForwards(buffer, val, offset = 0) {
-  val = +val;
-  checkBounds(buffer, offset, 3);
-
-  float32Array[0] = val;
-  buffer[offset++] = uInt8Float32Array[0];
-  buffer[offset++] = uInt8Float32Array[1];
-  buffer[offset++] = uInt8Float32Array[2];
-  buffer[offset++] = uInt8Float32Array[3];
-  return offset;
-}
-
-export function writeFloatBackwards(buffer, val, offset = 0) {
-  val = +val;
-  checkBounds(buffer, offset, 3);
-
-  float32Array[0] = val;
-  buffer[offset++] = uInt8Float32Array[3];
-  buffer[offset++] = uInt8Float32Array[2];
-  buffer[offset++] = uInt8Float32Array[1];
-  buffer[offset++] = uInt8Float32Array[0];
-  return offset;
-}
-
-export function readInt24LE(buf, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buf[offset];
-  const last = buf[offset + 2];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buf.length - 3);
-  }
-
-  const val = first + buf[++offset] * 2 ** 8 + last * 2 ** 16;
-  return val | (val & 2 ** 23) * 0x1fe;
-}
-
-export function readInt40LE(buf, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buf[offset];
-  const last = buf[offset + 4];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buf.length - 5);
-  }
-
-  return (last | (last & 2 ** 7) * 0x1fffffe) * 2 ** 32 +
-    first +
-    buf[++offset] * 2 ** 8 +
-    buf[++offset] * 2 ** 16 +
-    buf[++offset] * 2 ** 24;
-}
-
-export function readInt48LE(buf, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buf[offset];
-  const last = buf[offset + 5];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buf.length - 6);
-  }
-
-  const val = buf[offset + 4] + last * 2 ** 8;
-  return (val | (val & 2 ** 15) * 0x1fffe) * 2 ** 32 +
-    first +
-    buf[++offset] * 2 ** 8 +
-    buf[++offset] * 2 ** 16 +
-    buf[++offset] * 2 ** 24;
-}
-
-export function readInt24BE(buf, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buf[offset];
-  const last = buf[offset + 2];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buf.length - 3);
-  }
-
-  const val = first * 2 ** 16 + buf[++offset] * 2 ** 8 + last;
-  return val | (val & 2 ** 23) * 0x1fe;
-}
-
-export function readInt48BE(buf, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buf[offset];
-  const last = buf[offset + 5];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buf.length - 6);
-  }
-
-  const val = buf[++offset] + first * 2 ** 8;
-  return (val | (val & 2 ** 15) * 0x1fffe) * 2 ** 32 +
-    buf[++offset] * 2 ** 24 +
-    buf[++offset] * 2 ** 16 +
-    buf[++offset] * 2 ** 8 +
-    last;
-}
-
-export function readInt40BE(buf, offset = 0) {
-  validateNumber(offset, "offset");
-  const first = buf[offset];
-  const last = buf[offset + 4];
-  if (first === undefined || last === undefined) {
-    boundsError(offset, buf.length - 5);
-  }
-
-  return (first | (first & 2 ** 7) * 0x1fffffe) * 2 ** 32 +
-    buf[++offset] * 2 ** 24 +
-    buf[++offset] * 2 ** 16 +
-    buf[++offset] * 2 ** 8 +
-    last;
-}
-
-export function byteLengthUtf8(str) {
+function byteLengthUtf8(str) {
   return core.byteLength(str);
 }
 
@@ -2077,22 +1891,17 @@ function base64ByteLength(str, bytes) {
   return (bytes * 3) >>> 2;
 }
 
-export const encodingsMap = Object.create(null);
-for (let i = 0; i < encodings.length; ++i) {
-  encodingsMap[encodings[i]] = i;
-}
-
-export const encodingOps = {
+const encodingOps = {
   ascii: {
     byteLength: (string) => string.length,
     encoding: "ascii",
-    encodingVal: encodingsMap.ascii,
+    encodingVal: encodings[Encodings.ASCII],
     indexOf: (buf, val, byteOffset, dir) =>
       indexOfBuffer(
         buf,
         asciiToBytes(val),
         byteOffset,
-        encodingsMap.ascii,
+        encodings[Encodings.ASCII],
         dir,
       ),
     slice: (buf, start, end) => buf.asciiSlice(start, end),
@@ -2101,13 +1910,13 @@ export const encodingOps = {
   base64: {
     byteLength: (string) => base64ByteLength(string, string.length),
     encoding: "base64",
-    encodingVal: encodingsMap.base64,
+    encodingVal: encodings[Encodings.BASE64],
     indexOf: (buf, val, byteOffset, dir) =>
       indexOfBuffer(
         buf,
         base64ToBytes(val),
         byteOffset,
-        encodingsMap.base64,
+        encodings[Encodings.BASE64],
         dir,
       ),
     slice: (buf, start, end) => buf.base64Slice(start, end),
@@ -2116,13 +1925,13 @@ export const encodingOps = {
   base64url: {
     byteLength: (string) => base64ByteLength(string, string.length),
     encoding: "base64url",
-    encodingVal: encodingsMap.base64url,
+    encodingVal: encodings[Encodings.BASE64URL],
     indexOf: (buf, val, byteOffset, dir) =>
       indexOfBuffer(
         buf,
         base64UrlToBytes(val),
         byteOffset,
-        encodingsMap.base64url,
+        encodings[Encodings.BASE64URL],
         dir,
       ),
     slice: (buf, start, end) => buf.base64urlSlice(start, end),
@@ -2132,13 +1941,13 @@ export const encodingOps = {
   hex: {
     byteLength: (string) => string.length >>> 1,
     encoding: "hex",
-    encodingVal: encodingsMap.hex,
+    encodingVal: encodings[Encodings.HEX],
     indexOf: (buf, val, byteOffset, dir) =>
       indexOfBuffer(
         buf,
         hexToBytes(val),
         byteOffset,
-        encodingsMap.hex,
+        encodings[Encodings.HEX],
         dir,
       ),
     slice: (buf, start, end) => buf.hexSlice(start, end),
@@ -2147,13 +1956,13 @@ export const encodingOps = {
   latin1: {
     byteLength: (string) => string.length,
     encoding: "latin1",
-    encodingVal: encodingsMap.latin1,
+    encodingVal: encodings[Encodings.LATIN1],
     indexOf: (buf, val, byteOffset, dir) =>
       indexOfBuffer(
         buf,
         asciiToBytes(val),
         byteOffset,
-        encodingsMap.latin1,
+        encodings[Encodings.LATIN1],
         dir,
       ),
     slice: (buf, start, end) => buf.latin1Slice(start, end),
@@ -2162,13 +1971,13 @@ export const encodingOps = {
   ucs2: {
     byteLength: (string) => string.length * 2,
     encoding: "ucs2",
-    encodingVal: encodingsMap.utf16le,
+    encodingVal: encodings[Encodings.UCS2],
     indexOf: (buf, val, byteOffset, dir) =>
       indexOfBuffer(
         buf,
         utf16leToBytes(val),
         byteOffset,
-        encodingsMap.utf16le,
+        encodings[Encodings.UCS2],
         dir,
       ),
     slice: (buf, start, end) => buf.ucs2Slice(start, end),
@@ -2177,13 +1986,13 @@ export const encodingOps = {
   utf8: {
     byteLength: byteLengthUtf8,
     encoding: "utf8",
-    encodingVal: encodingsMap.utf8,
+    encodingVal: encodings[Encodings.UTF8],
     indexOf: (buf, val, byteOffset, dir) =>
       indexOfBuffer(
         buf,
         utf8Encoder.encode(val),
         byteOffset,
-        encodingsMap.utf8,
+        encodings[Encodings.UTF8],
         dir,
       ),
     slice: (buf, start, end) => buf.utf8Slice(start, end),
@@ -2192,13 +2001,13 @@ export const encodingOps = {
   utf16le: {
     byteLength: (string) => string.length * 2,
     encoding: "utf16le",
-    encodingVal: encodingsMap.utf16le,
+    encodingVal: encodings[Encodings.UCS2],
     indexOf: (buf, val, byteOffset, dir) =>
       indexOfBuffer(
         buf,
         utf16leToBytes(val),
         byteOffset,
-        encodingsMap.utf16le,
+        encodings[Encodings.UCS2],
         dir,
       ),
     slice: (buf, start, end) => buf.ucs2Slice(start, end),
@@ -2206,7 +2015,7 @@ export const encodingOps = {
   },
 };
 
-export function getEncodingOps(encoding) {
+function getEncodingOps(encoding) {
   encoding = String(encoding).toLowerCase();
   switch (encoding.length) {
     case 4:
@@ -2247,7 +2056,7 @@ export function getEncodingOps(encoding) {
   }
 }
 
-export function _copyActual(
+function _copyActual(
   source,
   target,
   targetStart,
@@ -2273,10 +2082,18 @@ export function _copyActual(
   return nb;
 }
 
-export function boundsError(value, length, type) {
+/**
+ * @param {number} value
+ * @param {number} length
+ * @param {"offset" | "byteLength"} type
+ */
+function boundsError(value, length, type) {
+  // Note: This fairly bad way to check integerness of value is
+  // used to preserve Node compatibility. Node believes Infinity
+  // to be a valid integer while not allowing NaN.
   if (Math.floor(value) !== value) {
     validateNumber(value, type);
-    throw new codes.ERR_OUT_OF_RANGE(type || "offset", "an integer", value);
+    throw new codes.ERR_OUT_OF_RANGE(type, "an integer", value);
   }
 
   if (length < 0) {
@@ -2284,13 +2101,13 @@ export function boundsError(value, length, type) {
   }
 
   throw new codes.ERR_OUT_OF_RANGE(
-    type || "offset",
-    `>= ${type ? 1 : 0} and <= ${length}`,
+    type,
+    `>= ${type === "offset" ? 0 : 1} and <= ${length}`,
     value,
   );
 }
 
-export function validateNumber(value, name) {
+function validateNumber(value, name) {
   if (typeof value !== "number") {
     throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);
   }
@@ -2300,12 +2117,12 @@ function checkInt(value, min, max, buf, offset, byteLength) {
   if (value > max || value < min) {
     const n = typeof min === "bigint" ? "n" : "";
     let range;
-    if (byteLength > 3) {
+    if (byteLength > 4) {
       if (min === 0 || min === 0n) {
-        range = `>= 0${n} and < 2${n} ** ${(byteLength + 1) * 8}${n}`;
+        range = `>= 0${n} and < 2${n} ** ${byteLength * 8}${n}`;
       } else {
-        range = `>= -(2${n} ** ${(byteLength + 1) * 8 - 1}${n}) and ` +
-          `< 2${n} ** ${(byteLength + 1) * 8 - 1}${n}`;
+        range = `>= -(2${n} ** ${byteLength * 8 - 1}${n}) and ` +
+          `< 2${n} ** ${byteLength * 8 - 1}${n}`;
       }
     } else {
       range = `>= ${min}${n} and <= ${max}${n}`;
@@ -2315,7 +2132,7 @@ function checkInt(value, min, max, buf, offset, byteLength) {
   checkBounds(buf, offset, byteLength);
 }
 
-export function toInteger(n, defaultVal) {
+function toInteger(n, defaultVal) {
   n = +n;
   if (
     !Number.isNaN(n) &&
@@ -2328,131 +2145,146 @@ export function toInteger(n, defaultVal) {
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int8(buf, value, offset, min, max) {
+function writeU_Int8(buf, value, offset, min, max) {
   value = +value;
   validateNumber(offset, "offset");
   if (value > max || value < min) {
     throw new codes.ERR_OUT_OF_RANGE("value", `>= ${min} and <= ${max}`, value);
   }
-  if (buf[offset] === undefined) {
-    boundsError(offset, buf.length - 1);
+  if (!Number.isSafeInteger(offset) || offset < 0 || buf.length <= offset) {
+    boundsError(offset, buf.length - 1, "offset");
   }
 
+  // Negative numbers properly become two's complement values.
   buf[offset] = value;
   return offset + 1;
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int16BE(buf, value, offset, min, max) {
-  value = +value;
-  checkInt(value, min, max, buf, offset, 1);
-
-  buf[offset++] = value >>> 8;
-  buf[offset++] = value;
-  return offset;
-}
-
-export function _writeUInt32LE(buf, value, offset, min, max) {
-  value = +value;
-  checkInt(value, min, max, buf, offset, 3);
-
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  return offset;
-}
-
-// deno-lint-ignore camelcase
-export function writeU_Int16LE(buf, value, offset, min, max) {
-  value = +value;
-  checkInt(value, min, max, buf, offset, 1);
-
-  buf[offset++] = value;
-  buf[offset++] = value >>> 8;
-  return offset;
-}
-
-export function _writeUInt32BE(buf, value, offset, min, max) {
-  value = +value;
-  checkInt(value, min, max, buf, offset, 3);
-
-  buf[offset + 3] = value;
-  value = value >>> 8;
-  buf[offset + 2] = value;
-  value = value >>> 8;
-  buf[offset + 1] = value;
-  value = value >>> 8;
-  buf[offset] = value;
-  return offset + 4;
-}
-
-// deno-lint-ignore camelcase
-export function writeU_Int48BE(buf, value, offset, min, max) {
-  value = +value;
-  checkInt(value, min, max, buf, offset, 5);
-
-  const newVal = Math.floor(value * 2 ** -32);
-  buf[offset++] = newVal >>> 8;
-  buf[offset++] = newVal;
-  buf[offset + 3] = value;
-  value = value >>> 8;
-  buf[offset + 2] = value;
-  value = value >>> 8;
-  buf[offset + 1] = value;
-  value = value >>> 8;
-  buf[offset] = value;
-  return offset + 4;
-}
-
-// deno-lint-ignore camelcase
-export function writeU_Int40BE(buf, value, offset, min, max) {
-  value = +value;
-  checkInt(value, min, max, buf, offset, 4);
-
-  buf[offset++] = Math.floor(value * 2 ** -32);
-  buf[offset + 3] = value;
-  value = value >>> 8;
-  buf[offset + 2] = value;
-  value = value >>> 8;
-  buf[offset + 1] = value;
-  value = value >>> 8;
-  buf[offset] = value;
-  return offset + 4;
-}
-
-// deno-lint-ignore camelcase
-export function writeU_Int32BE(buf, value, offset, min, max) {
-  value = +value;
-  checkInt(value, min, max, buf, offset, 3);
-
-  buf[offset + 3] = value;
-  value = value >>> 8;
-  buf[offset + 2] = value;
-  value = value >>> 8;
-  buf[offset + 1] = value;
-  value = value >>> 8;
-  buf[offset] = value;
-  return offset + 4;
-}
-
-// deno-lint-ignore camelcase
-export function writeU_Int24BE(buf, value, offset, min, max) {
+function writeU_Int16BE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 2);
 
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 16 BE signed bits
+  // Negative numbers properly become two's complement values.
+  view.setUint16(offset, value, false);
+
+  return offset + 2;
+}
+
+function _writeUInt32LE(buf, value, offset) {
+  value = +value;
+  checkInt(value, 0, 0xffffffff, buf, offset, 4);
+
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 LE unsigned bits
+  view.setUint32(offset, value, true);
+
+  return offset + 4;
+}
+
+// deno-lint-ignore camelcase
+function writeU_Int16LE(buf, value, offset, min, max) {
+  value = +value;
+  checkInt(value, min, max, buf, offset, 2);
+
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 16 LE signed bits
+  // Negative numbers properly become two's complement values.
+  view.setUint16(offset, value, true);
+
+  return offset + 2;
+}
+
+function _writeUInt32BE(buf, value, offset) {
+  value = +value;
+  checkInt(value, 0, 0xffffffff, buf, offset, 4);
+
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 BE unsigned bits
+  view.setUint32(offset, value, false);
+
+  return offset + 4;
+}
+
+// deno-lint-ignore camelcase
+function writeU_Int48BE(buf, value, offset, min, max) {
+  value = +value;
+  checkInt(value, min, max, buf, offset, 6);
+
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 BE signed bits shifted 16 bits up + 16 BE unsigned bits
+  // Negative numbers properly become two's complement values.
+  view.setUint32(offset, Math.floor(value * 2 ** -16), false);
+  view.setUint16(offset + 4, value, false);
+  return offset + 6;
+}
+
+// deno-lint-ignore camelcase
+function writeU_Int40BE(buf, value, offset, min, max) {
+  value = +value;
+  checkInt(value, min, max, buf, offset, 5);
+
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 BE signed bits shifted 8 bits up + 8 unsigned bits
+  // Negative numbers properly become two's complement values.
+  view.setUint32(offset, Math.floor(value * 2 ** -8), false);
+  buf[offset + 4] = value;
+  return offset + 5;
+}
+
+// deno-lint-ignore camelcase
+function writeU_Int32BE(buf, value, offset, min, max) {
+  value = +value;
+  checkInt(value, min, max, buf, offset, 4);
+
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 BE signed bits
+  // Negative numbers properly become two's complement values.
+  view.setUint32(offset, value, false);
+
+  return offset + 4;
+}
+
+// deno-lint-ignore camelcase
+function writeU_Int24BE(buf, value, offset, min, max) {
+  value = +value;
+  checkInt(value, min, max, buf, offset, 3);
+
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 16 BE signed bits shifted 8 bits up + 8 unsigned bits
+  // Negative numbers properly become two's complement values.
+  view.setUint16(offset, Math.floor(value * 2 ** -8), false);
   buf[offset + 2] = value;
-  value = value >>> 8;
-  buf[offset + 1] = value;
-  value = value >>> 8;
-  buf[offset] = value;
   return offset + 3;
 }
 
-export function validateOffset(
+function validateOffset(
   value,
   name,
   min = 0,
@@ -2470,72 +2302,83 @@ export function validateOffset(
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int48LE(buf, value, offset, min, max) {
+function writeU_Int48LE(buf, value, offset, min, max) {
+  value = +value;
+  checkInt(value, min, max, buf, offset, 6);
+
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 LE unsigned bits + 16 LE signed bits shifted 32 bits up
+  // Negative numbers properly become two's complement values.
+  view.setUint32(offset, value, true);
+  view.setUint16(offset + 4, Math.floor(value * 2 ** -32), true);
+  return offset + 6;
+}
+
+// deno-lint-ignore camelcase
+function writeU_Int40LE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 5);
 
-  const newVal = Math.floor(value * 2 ** -32);
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  buf[offset++] = newVal;
-  buf[offset++] = newVal >>> 8;
-  return offset;
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 LE unsigned bits + 8 signed bits shifted 32 bits up
+  // Negative numbers properly become two's complement values.
+  view.setUint32(offset, value, true);
+  buf[offset + 4] = Math.floor(value * 2 ** -32);
+  return offset + 5;
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int40LE(buf, value, offset, min, max) {
+function writeU_Int32LE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 4);
 
-  const newVal = value;
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  buf[offset++] = Math.floor(newVal * 2 ** -32);
-  return offset;
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 32 LE signed bits
+  // Negative numbers properly become two's complement values.
+  view.setUint32(offset, value, true);
+  return offset + 4;
 }
 
 // deno-lint-ignore camelcase
-export function writeU_Int32LE(buf, value, offset, min, max) {
+function writeU_Int24LE(buf, value, offset, min, max) {
   value = +value;
   checkInt(value, min, max, buf, offset, 3);
 
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  return offset;
+  /**
+   * @type {DataView}
+   */
+  const view = buf[VIEW_SYMBOL];
+  // 16 LE unsigned bits + 8 signed bits shifted 16 bits up
+  // Negative numbers properly become two's complement values.
+  view.setUint16(offset, value, true);
+  buf[offset + 2] = Math.floor(value * 2 ** -16);
+  return offset + 3;
 }
 
-// deno-lint-ignore camelcase
-export function writeU_Int24LE(buf, value, offset, min, max) {
-  value = +value;
-  checkInt(value, min, max, buf, offset, 2);
-
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  value = value >>> 8;
-  buf[offset++] = value;
-  return offset;
-}
+export {
+  atob,
+  Blob,
+  btoa,
+  Buffer,
+  constants,
+  kMaxLength,
+  kStringMaxLength,
+  SlowBuffer,
+};
 
 export default {
   atob,
-  btoa,
   Blob,
+  btoa,
   Buffer,
   constants,
   kMaxLength,
