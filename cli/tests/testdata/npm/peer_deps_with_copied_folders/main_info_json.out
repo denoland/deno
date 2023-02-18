@@ -42,11 +42,9 @@
       ],
       "kind": "esm",
       "local": "[WILDCARD]main.ts",
-      "emit": null,
-      "map": null,
-      "size": 171,
+      "specifier": "file://[WILDCARD]/main.ts",
       "mediaType": "TypeScript",
-      "specifier": "file://[WILDCARD]/main.ts"
+      "size": 171
     }
   ],
   "redirects": {},

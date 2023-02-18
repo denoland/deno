@@ -42,11 +42,9 @@
       ],
       "kind": "esm",
       "local": "[WILDCARD]main.js",
-      "emit": null,
-      "map": null,
-      "size": 325,
+      "specifier": "[WILDCARD]/main.js",
       "mediaType": "JavaScript",
-      "specifier": "[WILDCARD]/main.js"
+      "size": 325
     }
   ],
   "redirects": {},

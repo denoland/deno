@@ -178,6 +178,12 @@ fn add_npm_packages_to_json(
     }
 
     for module in modules.iter_mut() {
+      // Remove redundant, unused keys.
+      if let Some(module) = module.as_object_mut() {
+        module.remove("emit");
+        module.remove("map");
+      }
+
       let dependencies = module
         .get_mut("dependencies")
         .and_then(|d| d.as_array_mut());

@@ -24,9 +24,9 @@
       ],
       "kind": "esm",
       "local": "[WILDCARD]076_info_json_deps_order.ts",
-      [WILDCARD]
+      "specifier": "file://[WILDCARD]/076_info_json_deps_order.ts",
       "mediaType": "TypeScript",
-      "specifier": "file://[WILDCARD]/076_info_json_deps_order.ts"
+      "size": 81
     },
     {
       "dependencies": [
@@ -65,9 +65,9 @@
       ],
       "kind": "esm",
       "local": "[WILDCARD]A.ts",
-      [WILDCARD]
+      "specifier": "file://[WILDCARD]/recursive_imports/A.ts",
       "mediaType": "TypeScript",
-      "specifier": "file://[WILDCARD]/recursive_imports/A.ts"
+      "size": 108
     },
     {
       "dependencies": [
@@ -106,9 +106,9 @@
       ],
       "kind": "esm",
       "local": "[WILDCARD]B.ts",
-      [WILDCARD]
+      "specifier": "file://[WILDCARD]/recursive_imports/B.ts",
       "mediaType": "TypeScript",
-      "specifier": "file://[WILDCARD]/recursive_imports/B.ts"
+      "size": 108
     },
     {
       "dependencies": [
@@ -147,16 +147,16 @@
       ],
       "kind": "esm",
       "local": "[WILDCARD]C.ts",
-      [WILDCARD]
+      "specifier": "file://[WILDCARD]/recursive_imports/C.ts",
       "mediaType": "TypeScript",
-      "specifier": "file://[WILDCARD]/recursive_imports/C.ts"
+      "size": 126
     },
     {
       "kind": "esm",
       "local": "[WILDCARD]common.ts",
-      [WILDCARD]
+      "specifier": "file://[WILDCARD]/recursive_imports/common.ts",
       "mediaType": "TypeScript",
-      "specifier": "file://[WILDCARD]/recursive_imports/common.ts"
+      "size": 28
     }
   ],
   "redirects": {},
