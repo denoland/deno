@@ -15,6 +15,7 @@ use std::rc::Rc;
 
 mod crypto;
 pub mod errors;
+mod idna;
 mod ops;
 mod package_json;
 mod path;
