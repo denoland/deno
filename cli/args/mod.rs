@@ -423,6 +423,7 @@ fn discover_package_json(
       }
     }
     // No config file found.
+    log::debug!("No package.json file found");
     Ok(None)
   }
 
@@ -445,6 +446,8 @@ fn discover_package_json(
     let task_cwd = canonicalize_path(&PathBuf::from(path))?;
     return discover_from(&task_cwd, &mut HashSet::new(), None);
   }
+
+  log::debug!("No package.json file found");
   Ok(None)
 }
 
