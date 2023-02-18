@@ -903,6 +903,16 @@ impl<'a> GraphDependencyResolver<'a> {
     )?;
 
     if let Some(peer_dep_id) = maybe_peer_dep_id {
+      // handle optional dependency that's never been set
+      if peer_dep.kind.is_optional() {
+        self.set_previously_unresolved_optional_dependency(
+          peer_dep_id,
+          peer_dep,
+          ancestor_path,
+        );
+        return Ok(());
+      }
+
       //self.try_add_pending_unresolved_node(ancestor_path, peer_dep_id);
       // this will always have an ancestor because we're not at the root
       let parent = match ancestor_path.ancestors().next().unwrap() {
@@ -927,6 +937,16 @@ impl<'a> GraphDependencyResolver<'a> {
             peer_package_info,
           )?;
           if let Some(peer_dep_id) = maybe_peer_dep_id {
+            // handle optional dependency that's never been set
+            if peer_dep.kind.is_optional() {
+              self.set_previously_unresolved_optional_dependency(
+                peer_dep_id,
+                peer_dep,
+                ancestor_path,
+              );
+              return Ok(());
+            }
+
             //self.try_add_pending_unresolved_node(ancestor_path, peer_dep_id);
             // this will always have an ancestor because we're not at the root
             let parent = match ancestor_iterator.peek().unwrap() {
@@ -961,6 +981,16 @@ impl<'a> GraphDependencyResolver<'a> {
               .iter()
               .map(|(pkg_id, id)| (*id, pkg_id)),
           )? {
+            // handle optional dependency that's never been set
+            if peer_dep.kind.is_optional() {
+              self.set_previously_unresolved_optional_dependency(
+                child_id,
+                peer_dep,
+                ancestor_path,
+              );
+              return Ok(());
+            }
+
             //self.try_add_pending_unresolved_node(ancestor_path, child_id);
             self.set_new_peer_dep(
               NodeParent::Root(root_pkg_id.clone()),
@@ -1045,6 +1075,24 @@ impl<'a> GraphDependencyResolver<'a> {
           }),
       )
     }
+  }
+
+  /// Optional peer dependencies that have never been set before are
+  /// simply added to the existing peer dependency instead of affecting
+  /// the entire sub tree.
+  fn set_previously_unresolved_optional_dependency(
+    &mut self,
+    peer_dep_id: NodeId,
+    peer_dep: &NpmDependencyEntry,
+    visited_ancestor_versions: &Arc<GraphPath>,
+  ) {
+    self.graph.set_child_parent(
+      &peer_dep.bare_specifier,
+      peer_dep_id,
+      &NodeParent::Node(visited_ancestor_versions.node_id()),
+    );
+    self
+      .try_add_pending_unresolved_node(visited_ancestor_versions, peer_dep_id);
   }
 
   fn set_new_peer_dep(
@@ -1149,7 +1197,7 @@ impl<'a> GraphDependencyResolver<'a> {
           eprintln!("SPECIFIER: {}", peer_dep_specifier);
           eprintln!("NODE ID: {:?}", node_id);
 
-          self.graph.output_path(&path.last().unwrap());
+          self.graph.output_path(&path[0]);
 
           eprintln!(
             "{} {} {}",
@@ -2242,7 +2290,7 @@ mod test {
     api.add_peer_dependency(("package-b", "2.0.0"), ("package-peer-a", "4"));
     api.add_peer_dependency(
       ("package-b", "2.0.0"),
-      ("package-peer-c", "=6.2.0"),
+      ("package-peer-c", "=6.2.0"), // will be auto-resolved
     );
     api.add_peer_dependency(("package-c", "3.0.0"), ("package-peer-a", "*"));
     api.add_peer_dependency(
@@ -2281,7 +2329,7 @@ mod test {
             (
               "package-b".to_string(),
               NpmPackageResolvedId::from_serialized(
-                "package-b@2.0.0_package-peer-a@4.0.0"
+                "package-b@2.0.0_package-peer-a@4.0.0_package-peer-c@6.2.0"
               )
               .unwrap(),
             ),
@@ -2298,15 +2346,17 @@ mod test {
             ),
             (
               "package-peer-a".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer-a@4.0.0")
-                .unwrap(),
+              NpmPackageResolvedId::from_serialized(
+                "package-peer-a@4.0.0_package-peer-b@5.4.1"
+              )
+              .unwrap(),
             ),
           ]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
           pkg_id: NpmPackageResolvedId::from_serialized(
-            "package-b@2.0.0_package-peer-a@4.0.0"
+            "package-b@2.0.0_package-peer-a@4.0.0_package-peer-c@6.2.0"
           )
           .unwrap(),
           copy_index: 0,

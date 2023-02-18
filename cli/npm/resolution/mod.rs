@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -47,10 +48,17 @@ pub struct NpmPackageNodeIdDeserializationError {
 
 /// A resolved unique identifier for an npm package. This contains
 /// the resolved name, version, and peer dependency resolution identifiers.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NpmPackageResolvedId {
   pub id: NpmPackageId,
   pub peer_dependencies: Vec<NpmPackageResolvedId>,
+}
+
+// Custom debug implementation for more concise test output
+impl std::fmt::Debug for NpmPackageResolvedId {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.as_serialized())
+  }
 }
 
 impl NpmPackageResolvedId {
@@ -190,7 +198,7 @@ impl PartialOrd for NpmPackageResolvedId {
   }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmResolutionPackage {
   pub pkg_id: NpmPackageResolvedId,
   /// The peer dependency resolution can differ for the same
@@ -202,6 +210,22 @@ pub struct NpmResolutionPackage {
   /// Key is what the package refers to the other package as,
   /// which could be different from the package name.
   pub dependencies: HashMap<String, NpmPackageResolvedId>,
+}
+
+impl std::fmt::Debug for NpmResolutionPackage {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    // custom implementation in order to have the dependencies
+    // output in the same order when debugging tests
+    f.debug_struct("NpmResolutionPackage")
+      .field("pkg_id", &self.pkg_id)
+      .field("copy_index", &self.copy_index)
+      .field("dist", &self.dist)
+      .field(
+        "dependencies",
+        &self.dependencies.iter().collect::<BTreeMap<_, _>>(),
+      )
+      .finish()
+  }
 }
 
 impl NpmResolutionPackage {
