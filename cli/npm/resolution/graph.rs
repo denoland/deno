@@ -105,26 +105,21 @@ impl GraphPath {
   }
 }
 
-enum AncestorNode<'a> {
-  Package(NodeId),
-  Root(&'a NpmPackageId),
-}
-
 struct GraphPathAncestorIterator<'a> {
   next: Option<&'a PreviousGraphPathNode>,
 }
 
 impl<'a> Iterator for GraphPathAncestorIterator<'a> {
-  type Item = AncestorNode<'a>;
+  type Item = NodeParent;
   fn next(&mut self) -> Option<Self::Item> {
     self.next.take().map(|next| match next {
       PreviousGraphPathNode::Package(node) => {
         let node_id = node.node_id();
         self.next = node.previous_node.as_ref();
-        AncestorNode::Package(node_id)
+        NodeParent::Package(node_id)
       }
       PreviousGraphPathNode::Root(npm_package_id) => {
-        AncestorNode::Root(npm_package_id)
+        AncestorNode::Root(npm_package_id.clone())
       }
     })
   }
@@ -142,9 +137,10 @@ enum NodeParent {
 /// A resolved package in the resolution graph.
 #[derive(Debug)]
 struct Node {
-  // Use BTreeMap in order to create determinism
-  // when going up and down the tree
-  pub parents: BTreeMap<String, BTreeSet<NodeParent>>,
+  // Use BTreeMap in order to create determinism when going up and down
+  // the tree. Note that the same parent may appear multiple times in the
+  // list of parents at a specifier.
+  pub parents: BTreeMap<String, Vec<NodeParent>>,
   pub children: BTreeMap<String, NodeId>,
   pub deps: Arc<Vec<NpmDependencyEntry>>,
   /// Whether the node has demonstrated to have no peer dependencies in its
@@ -156,14 +152,25 @@ struct Node {
 
 impl Node {
   pub fn add_parent(&mut self, specifier: String, parent: NodeParent) {
-    self.parents.entry(specifier).or_default().insert(parent);
+    self.parents.entry(specifier).or_default().push(parent);
   }
 
   pub fn remove_parent(&mut self, specifier: &str, parent: &NodeParent) {
     if let Some(parents) = self.parents.get_mut(specifier) {
-      parents.remove(parent);
+      if let Some(index) = parents.index(parent) {
+        parents.remove(index);
+      }
       if parents.is_empty() {
         self.parents.remove(specifier);
+      }
+    }
+  }
+
+  pub fn remove_parent_new(&mut self, parent: &NodeParent) {
+    // todo(dsherret): store parents in a way that can be binary searched
+    for parents in self.parents.values_mut() {
+      if let Some(index) = parents.iter().position(|p| p == parent) {
+        parents.remove(index);
       }
     }
   }
@@ -177,7 +184,7 @@ struct ResolvedNodeIds {
 }
 
 impl ResolvedNodeIds {
-  pub fn insert(&mut self, resolved_id: NpmPackageResolvedId, node_id: NodeId) {
+  pub fn insert(&mut self, node_id: NodeId, resolved_id: NpmPackageResolvedId) {
     self.from.insert(resolved_id.clone(), node_id.clone());
     self.to.insert(node_id.clone(), resolved_id.clone());
   }
@@ -309,7 +316,7 @@ impl Graph {
         .or_default()
         .push(node_id);
       self.packages.insert(node_id, node);
-      self.resolved_node_ids.insert(resolved_id.clone(), node_id);
+      self.resolved_node_ids.insert(node_id, resolved_id.clone());
       (true, node_id)
     }
   }
@@ -757,16 +764,13 @@ impl<'a> GraphDependencyResolver<'a> {
             NpmDependencyEntryKind::Peer
             | NpmDependencyEntryKind::OptionalPeer => {
               found_peer = true;
-              let maybe_new_parent_id = self.resolve_peer_dep(
+              self.resolve_peer_dep(
                 &dep.bare_specifier,
                 dep,
                 &package_info,
                 &visited_versions,
                 existing_children.get(&dep.bare_specifier).copied(),
               )?;
-              if let Some(new_parent_id) = maybe_new_parent_id {
-                visited_versions.change_id(new_parent_id);
-              }
             }
           }
         }
@@ -789,7 +793,7 @@ impl<'a> GraphDependencyResolver<'a> {
     peer_package_info: &NpmPackageInfo,
     visited_ancestor_versions: &Arc<GraphPath>,
     existing_dep_id: Option<NodeId>,
-  ) -> Result<Option<NodeId>, AnyError> {
+  ) -> Result<(), AnyError> {
     fn find_matching_child<'a>(
       peer_dep: &NpmDependencyEntry,
       peer_package_info: &NpmPackageInfo,
@@ -810,24 +814,11 @@ impl<'a> GraphDependencyResolver<'a> {
       Ok(None)
     }
 
-    // start a new path going up from the current parent id
-    let mut visited_up_path =
-      GraphPath::new(visited_ancestor_versions.node_id());
-
     // Peer dependencies are resolved based on its ancestors' siblings.
     // If not found, then it resolves based on the version requirement if non-optional.
     for ancestor_node in visited_ancestor_versions.ancestors() {
       match ancestor_node {
-        AncestorNode::Package(ancestor_node_id) => {
-          let previous_visited_up_path = visited_up_path;
-          match visited_up_path.with_id(ancestor_node_id) {
-            Some(node) => {
-              visited_up_path = node;
-            }
-            None => {
-              break; // circular loop, stop searching
-            }
-          }
+        NodeParent::Node(ancestor_node_id) => {
           let resolved_ancestor_id = self
             .graph
             .resolved_node_ids
@@ -868,7 +859,7 @@ impl<'a> GraphDependencyResolver<'a> {
           };
           if let Some(peer_dep_id) = maybe_peer_dep_id {
             if existing_dep_id == Some(peer_dep_id) {
-              return Ok(None); // do nothing, there's already an existing child dep id for this
+              return Ok(()); // do nothing, there's already an existing child dep id for this
             }
 
             // handle optional dependency that's never been set
@@ -878,22 +869,22 @@ impl<'a> GraphDependencyResolver<'a> {
                 peer_dep,
                 visited_ancestor_versions,
               );
-              return Ok(None);
+              return Ok(());
             }
 
             self.try_add_pending_unresolved_node(
               visited_ancestor_versions,
               peer_dep_id,
             );
-            return Ok(Some(self.set_new_peer_dep(
+            self.set_new_peer_dep(
               NodeParent::Node(ancestor_node_id),
-              previous_visited_up_path,
-              ancestor_node_id,
+              visited_ancestor_versions,
               peer_dep_id,
-            )));
+            );
+            return Ok(());
           }
         }
-        AncestorNode::Root(root_pkg_id) => {
+        NodeParent::Root(root_pkg_id) => {
           // in this case, the parent is the root so the children are all the package requirements
           if let Some(child_id) = find_matching_child(
             peer_dep,
@@ -905,7 +896,7 @@ impl<'a> GraphDependencyResolver<'a> {
               .map(|(pkg_id, id)| (*id, pkg_id)),
           )? {
             if existing_dep_id == Some(child_id) {
-              return Ok(None); // do nothing, there's already an existing child dep id for this
+              return Ok(()); // do nothing, there's already an existing child dep id for this
             }
 
             // handle optional dependency that's never been set
@@ -915,21 +906,19 @@ impl<'a> GraphDependencyResolver<'a> {
                 peer_dep,
                 visited_ancestor_versions,
               );
-              return Ok(None);
+              return Ok(());
             }
 
-            let old_id =
-              self.graph.root_packages.get(&root_pkg_id).unwrap().clone();
             self.try_add_pending_unresolved_node(
               visited_ancestor_versions,
               child_id,
             );
-            return Ok(Some(self.set_new_peer_dep(
-              NodeParent::Root(root_pkg_id.to_owned()),
-              visited_up_path,
-              old_id,
+            self.set_new_peer_dep(
+              NodeParent::Root(root_pkg_id),
+              visited_ancestor_versions,
               child_id,
-            )));
+            );
+            return Ok(());
           }
         }
       }
@@ -949,7 +938,7 @@ impl<'a> GraphDependencyResolver<'a> {
       )?;
     }
 
-    Ok(None)
+    Ok(())
   }
 
   /// Optional peer dependencies that have never been set before are
@@ -972,9 +961,9 @@ impl<'a> GraphDependencyResolver<'a> {
 
   fn set_new_peer_dep(
     &mut self,
-    parent: NodeParent,
-    path: Arc<GraphPath>,
-    node_id: NodeId,
+    top_node: NodeParent,
+    // path from the peer dependency up the graph, which includes the top node
+    path: &Arc<GraphPath>,
     peer_dep_id: NodeId,
   ) -> NodeId {
     let peer_dep_id = peer_dep_id;
@@ -983,6 +972,63 @@ impl<'a> GraphDependencyResolver<'a> {
       .resolved_node_ids
       .get_resolved_id(&peer_dep_id)
       .unwrap();
+
+    let mut current_node = path.clone();
+    let mut next_node = path.previous_node.as_ref();
+    while let Some(ancestor) = next_node.take() {
+      match ancestor {
+        PreviousGraphPathNode::Package(ancestor) => {
+          let node_id = current_node.node_id();
+          if matches!(top_node, NodeParent::Node(node_id)) {
+            break; // we're done
+          }
+          let parent_id = ancestor.node_id();
+          next_node = ancestor.previous_node.as_ref();
+          let old_resolved_id = self
+            .graph
+            .resolved_node_ids
+            .get_resolved_id(&node_id)
+            .unwrap();
+
+          if old_resolved_id.peer_dependencies.contains(&peer_dep_resolved_id) {
+            // some other path already resolved the same peer dependency for this node
+            break;
+          }
+
+          let node = self.graph.packages.get(&node_id).unwrap();
+          let mut new_resolved_id = old_resolved_id.clone();
+          new_resolved_id.peer_dependencies.push(peer_dep_resolved_id.clone());
+          if node.parents.len() == 1 && node.parents.iter().next().unwrap().1.len() == 1 {
+            // in this case, we don't need to create a new node and we can
+            // just update the resolved id
+            self.graph.resolved_node_ids.remove(&node_id);
+            self.graph.resolved_node_ids.insert(node_id, new_resolved_id);
+            debug_assert_eq!(self.graph.resolved_node_ids.get_node_id(old_resolved_id), None); // ensure this was removed
+          } else {
+            // note: this seems wrong... let's look at it another day...
+            let (created, new_node_id) = self.graph.get_or_create_for_id(&new_resolved_id);
+
+            // update the current node to not have the parent
+            {
+              let node = self.graph.borrow_node_mut(&node_id);
+              node.remove_parent_new(&NodeParent::Node(parent_id));
+            }
+            // update the new node to have the parent
+
+            if !created {
+              break; // we can stop because the ancestors should be set correctly
+            }
+          }
+
+          node_id = parent_id;
+        }
+        PreviousGraphPathNode::Root(root) => {
+          debug_assert_eq!(NodeParent::Root(root.clone()), top_node);
+        }
+      }
+
+    }
+
     let old_id = node_id;
     let old_resolved_id = self
       .graph
