@@ -75,7 +75,7 @@ impl Into<NpmPackageLockfileInfo> for NpmResolutionPackage {
       .collect();
 
     NpmPackageLockfileInfo {
-      display_id: self.pkg_id.id.to_string(),
+      display_id: self.pkg_id.nv.to_string(),
       serialized_id: self.pkg_id.as_serialized(),
       integrity: self.dist.integrity().to_string(),
       dependencies,

@@ -4,7 +4,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
-use deno_graph::npm::NpmPackageId;
+use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
@@ -127,7 +127,7 @@ impl NpmResolver for CliGraphResolver {
   fn resolve_npm(
     &self,
     package_req: &NpmPackageReq,
-  ) -> Result<NpmPackageId, AnyError> {
+  ) -> Result<NpmPackageNv, AnyError> {
     self
       .npm_resolution
       .resolve_deno_graph_package_req(package_req)

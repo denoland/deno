@@ -28,7 +28,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
-use deno_graph::npm::NpmPackageIdReference;
+use deno_graph::npm::NpmPackageNvReference;
 use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -668,8 +668,8 @@ fn op_resolve(
             let node_id = npm_resolver
               .resolution()
               .resolve_pkg_resolved_id_from_pkg_req(&npm_ref.req)?;
-            let npm_id_ref = NpmPackageIdReference {
-              id: node_id.id,
+            let npm_id_ref = NpmPackageNvReference {
+              nv: node_id.nv,
               sub_path: npm_ref.sub_path,
             };
             Some(resolve_npm_package_reference_types(
@@ -766,7 +766,7 @@ fn resolve_specifier_types(
 }
 
 pub fn resolve_npm_package_reference_types(
-  npm_ref: &NpmPackageIdReference,
+  npm_ref: &NpmPackageNvReference,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<(ModuleSpecifier, MediaType), AnyError> {
   let maybe_resolution = node_resolve_npm_reference(

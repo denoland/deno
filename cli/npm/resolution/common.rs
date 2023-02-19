@@ -86,7 +86,7 @@ fn get_resolved_package_version_and_info<'a>(
         info.name,
         version_req.version_text(),
         match parent {
-          Some(resolved_id) => format!(" as specified in {}", resolved_id.id),
+          Some(resolved_id) => format!(" as specified in {}", resolved_id.nv),
           None => String::new(),
         }
       ),

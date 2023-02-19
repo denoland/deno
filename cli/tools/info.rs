@@ -210,10 +210,10 @@ fn add_npm_packages_to_json(
   let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
   for pkg in sorted_packages {
     let mut kv = serde_json::Map::new();
-    kv.insert("name".to_string(), pkg.pkg_id.id.name.to_string().into());
+    kv.insert("name".to_string(), pkg.pkg_id.nv.name.to_string().into());
     kv.insert(
       "version".to_string(),
-      pkg.pkg_id.id.version.to_string().into(),
+      pkg.pkg_id.nv.version.to_string().into(),
     );
     let mut deps = pkg.dependencies.values().collect::<Vec<_>>();
     deps.sort();
@@ -548,7 +548,7 @@ impl<'a> GraphDisplayContext<'a> {
       };
       let header_text = match &package_or_specifier {
         Package(package) => {
-          format!("{} - {}", specifier_str, package.pkg_id.id.version)
+          format!("{} - {}", specifier_str, package.pkg_id.nv.version)
         }
         Specifier(_) => specifier_str,
       };

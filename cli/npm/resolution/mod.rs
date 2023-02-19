@@ -10,8 +10,8 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
-use deno_graph::npm::NpmPackageId;
-use deno_graph::npm::NpmPackageIdReference;
+use deno_graph::npm::NpmPackageNv;
+use deno_graph::npm::NpmPackageNvReference;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::semver::Version;
@@ -50,7 +50,7 @@ pub struct NpmPackageNodeIdDeserializationError {
 /// the resolved name, version, and peer dependency resolution identifiers.
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NpmPackageResolvedId {
-  pub id: NpmPackageId,
+  pub nv: NpmPackageNv,
   pub peer_dependencies: Vec<NpmPackageResolvedId>,
 }
 
@@ -71,11 +71,11 @@ impl NpmPackageResolvedId {
     let mut result = format!(
       "{}@{}",
       if level == 0 {
-        self.id.name.to_string()
+        self.nv.name.to_string()
       } else {
-        self.id.name.replace('/', "+")
+        self.nv.name.replace('/', "+")
       },
-      self.id.version
+      self.nv.version
     );
     for peer in &self.peer_dependencies {
       // unfortunately we can't do something like `_3` when
@@ -167,7 +167,7 @@ impl NpmPackageResolvedId {
         Ok((
           input,
           NpmPackageResolvedId {
-            id: NpmPackageId { name, version },
+            nv: NpmPackageNv { name, version },
             peer_dependencies,
           },
         ))
@@ -185,7 +185,7 @@ impl NpmPackageResolvedId {
 
 impl Ord for NpmPackageResolvedId {
   fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-    match self.id.cmp(&other.id) {
+    match self.nv.cmp(&other.nv) {
       Ordering::Equal => self.peer_dependencies.cmp(&other.peer_dependencies),
       ordering => ordering,
     }
@@ -231,7 +231,7 @@ impl std::fmt::Debug for NpmResolutionPackage {
 impl NpmResolutionPackage {
   pub fn get_package_cache_folder_id(&self) -> NpmPackageCacheFolderId {
     NpmPackageCacheFolderId {
-      id: self.pkg_id.id.clone(),
+      nv: self.pkg_id.nv.clone(),
       copy_index: self.copy_index,
     }
   }
@@ -331,10 +331,10 @@ impl NpmResolution {
   pub fn pkg_req_ref_to_pkg_id_ref(
     &self,
     req_ref: NpmPackageReqReference,
-  ) -> Result<NpmPackageIdReference, AnyError> {
+  ) -> Result<NpmPackageNvReference, AnyError> {
     let node_id = self.resolve_pkg_resolved_id_from_pkg_req(&req_ref.req)?;
-    Ok(NpmPackageIdReference {
-      id: node_id.id,
+    Ok(NpmPackageNvReference {
+      nv: node_id.nv,
       sub_path: req_ref.sub_path,
     })
   }
@@ -379,7 +379,7 @@ impl NpmResolution {
 
   pub fn resolve_pkg_node_id_from_deno_module(
     &self,
-    id: &NpmPackageId,
+    id: &NpmPackageNv,
   ) -> Result<NpmPackageResolvedId, AnyError> {
     self
       .0
@@ -392,7 +392,7 @@ impl NpmResolution {
   pub fn resolve_deno_graph_package_req(
     &self,
     pkg_req: &NpmPackageReq,
-  ) -> Result<NpmPackageId, AnyError> {
+  ) -> Result<NpmPackageNv, AnyError> {
     let inner = &self.0;
     let package_info = match inner.api.get_cached_package_info(&pkg_req.name) {
       Some(package_info) => package_info,
@@ -411,7 +411,7 @@ impl NpmResolution {
         Some(existing_versions) => resolve_best_package_version_and_info(
           version_req,
           &package_info,
-          existing_versions.iter().map(|p| &p.id.version),
+          existing_versions.iter().map(|p| &p.nv.version),
         )?,
         None => resolve_best_package_version_and_info(
           version_req,
@@ -419,7 +419,7 @@ impl NpmResolution {
           Vec::new().iter(),
         )?,
       };
-    let id = NpmPackageId {
+    let id = NpmPackageNv {
       name: package_info.name.to_string(),
       version: version_and_info.version.clone(),
     };
@@ -434,9 +434,9 @@ impl NpmResolution {
       .packages_by_name
       .entry(package_info.name.clone())
       .or_default();
-    if !packages_with_name.iter().any(|p| p.id == id) {
+    if !packages_with_name.iter().any(|p| p.nv == id) {
       packages_with_name.push(NpmPackageResolvedId {
-        id: id.clone(),
+        nv: id.clone(),
         peer_dependencies: Vec::new(),
       });
     }
@@ -521,7 +521,7 @@ async fn add_package_reqs_to_snapshot(
 
 async fn cache_package_infos_in_api(
   api: &NpmRegistryApi,
-  pending_unresolved: &Vec<NpmPackageId>,
+  pending_unresolved: &Vec<NpmPackageNv>,
   package_reqs: &Vec<NpmPackageReq>,
 ) -> Result<(), AnyError> {
   // go over the top level package names first (pending unresolved and npm package reqs),
@@ -565,7 +565,7 @@ async fn cache_package_infos_in_api(
 
 #[cfg(test)]
 mod test {
-  use deno_graph::npm::NpmPackageId;
+  use deno_graph::npm::NpmPackageNv;
   use deno_graph::semver::Version;
 
   use super::NpmPackageResolvedId;
@@ -573,26 +573,26 @@ mod test {
   #[test]
   fn serialize_npm_package_id() {
     let id = NpmPackageResolvedId {
-      id: NpmPackageId {
+      nv: NpmPackageNv {
         name: "pkg-a".to_string(),
         version: Version::parse_from_npm("1.2.3").unwrap(),
       },
       peer_dependencies: vec![
         NpmPackageResolvedId {
-          id: NpmPackageId {
+          nv: NpmPackageNv {
             name: "pkg-b".to_string(),
             version: Version::parse_from_npm("3.2.1").unwrap(),
           },
           peer_dependencies: vec![
             NpmPackageResolvedId {
-              id: NpmPackageId {
+              nv: NpmPackageNv {
                 name: "pkg-c".to_string(),
                 version: Version::parse_from_npm("1.3.2").unwrap(),
               },
               peer_dependencies: vec![],
             },
             NpmPackageResolvedId {
-              id: NpmPackageId {
+              nv: NpmPackageNv {
                 name: "pkg-d".to_string(),
                 version: Version::parse_from_npm("2.3.4").unwrap(),
               },
@@ -601,12 +601,12 @@ mod test {
           ],
         },
         NpmPackageResolvedId {
-          id: NpmPackageId {
+          nv: NpmPackageNv {
             name: "pkg-e".to_string(),
             version: Version::parse_from_npm("2.3.1").unwrap(),
           },
           peer_dependencies: vec![NpmPackageResolvedId {
-            id: NpmPackageId {
+            nv: NpmPackageNv {
               name: "pkg-f".to_string(),
               version: Version::parse_from_npm("2.3.1").unwrap(),
             },

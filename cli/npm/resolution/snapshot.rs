@@ -10,7 +10,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
-use deno_graph::npm::NpmPackageId;
+use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::semver::VersionReq;
 use serde::Deserialize;
@@ -48,16 +48,16 @@ impl NpmPackagesPartitioned {
 pub struct NpmResolutionSnapshot {
   /// The unique package requirements map to a single npm package name and version.
   #[serde(with = "map_to_vec")]
-  pub(super) package_reqs: HashMap<NpmPackageReq, NpmPackageId>,
+  pub(super) package_reqs: HashMap<NpmPackageReq, NpmPackageNv>,
   // Each root level npm package name and version maps to an exact npm package node id.
   #[serde(with = "map_to_vec")]
-  pub(super) root_packages: HashMap<NpmPackageId, NpmPackageResolvedId>,
+  pub(super) root_packages: HashMap<NpmPackageNv, NpmPackageResolvedId>,
   pub(super) packages_by_name: HashMap<String, Vec<NpmPackageResolvedId>>,
   #[serde(with = "map_to_vec")]
   pub(super) packages: HashMap<NpmPackageResolvedId, NpmResolutionPackage>,
   /// Ordered list based on resolution of packages whose dependencies
   /// have not yet been resolved
-  pub(super) pending_unresolved_packages: Vec<NpmPackageId>,
+  pub(super) pending_unresolved_packages: Vec<NpmPackageNv>,
 }
 
 // This is done so the maps with non-string keys get serialized and deserialized as vectors.
@@ -114,7 +114,7 @@ impl NpmResolutionSnapshot {
   /// Resolve a node package from a deno module.
   pub fn resolve_package_from_deno_module(
     &self,
-    id: &NpmPackageId,
+    id: &NpmPackageNv,
   ) -> Result<&NpmResolutionPackage, AnyError> {
     match self.root_packages.get(id) {
       Some(id) => Ok(self.packages.get(id).unwrap()),
@@ -141,11 +141,11 @@ impl NpmResolutionSnapshot {
     // todo(dsherret): do we need an additional hashmap to get this quickly?
     let referrer_package = self
       .packages_by_name
-      .get(&referrer.id.name)
+      .get(&referrer.nv.name)
       .and_then(|packages| {
         packages
           .iter()
-          .filter(|p| p.id.version == referrer.id.version)
+          .filter(|p| p.nv.version == referrer.nv.version)
           .filter_map(|node_id| {
             let package = self.packages.get(node_id)?;
             if package.copy_index == referrer.copy_index {
@@ -165,7 +165,7 @@ impl NpmResolutionSnapshot {
       return Ok(self.packages.get(id).unwrap());
     }
 
-    if referrer_package.pkg_id.id.name == name {
+    if referrer_package.pkg_id.nv.name == name {
       return Ok(referrer_package);
     }
 
@@ -216,10 +216,10 @@ impl NpmResolutionSnapshot {
     let mut maybe_best_id: Option<&NpmPackageResolvedId> = None;
     if let Some(node_ids) = self.packages_by_name.get(name) {
       for node_id in node_ids.iter() {
-        if version_req.matches(&node_id.id.version) {
+        if version_req.matches(&node_id.nv.version) {
           let is_best_version = maybe_best_id
             .as_ref()
-            .map(|best_id| best_id.id.version.cmp(&node_id.id.version).is_lt())
+            .map(|best_id| best_id.nv.version.cmp(&node_id.nv.version).is_lt())
             .unwrap_or(true);
           if is_best_version {
             maybe_best_id = Some(node_id);
@@ -234,8 +234,8 @@ impl NpmResolutionSnapshot {
     lockfile: Arc<Mutex<Lockfile>>,
     api: &NpmRegistryApi,
   ) -> Result<Self, AnyError> {
-    let mut package_reqs: HashMap<NpmPackageReq, NpmPackageId>;
-    let mut root_packages: HashMap<NpmPackageId, NpmPackageResolvedId>;
+    let mut package_reqs: HashMap<NpmPackageReq, NpmPackageNv>;
+    let mut root_packages: HashMap<NpmPackageNv, NpmPackageResolvedId>;
     let mut packages_by_name: HashMap<String, Vec<NpmPackageResolvedId>>;
     let mut packages: HashMap<NpmPackageResolvedId, NpmResolutionPackage>;
     let mut copy_index_resolver: SnapshotPackageCopyIndexResolver;
@@ -260,8 +260,8 @@ impl NpmResolutionSnapshot {
         let package_req = NpmPackageReq::from_str(key)
           .with_context(|| format!("Unable to parse npm specifier: {key}"))?;
         let package_id = NpmPackageResolvedId::from_serialized(value)?;
-        package_reqs.insert(package_req, package_id.id.clone());
-        root_packages.insert(package_id.id.clone(), package_id.clone());
+        package_reqs.insert(package_req, package_id.nv.clone());
+        root_packages.insert(package_id.nv.clone(), package_id.clone());
         verify_ids.insert(package_id.clone());
       }
 
@@ -273,7 +273,7 @@ impl NpmResolutionSnapshot {
         let mut dependencies = HashMap::default();
 
         packages_by_name
-          .entry(package_id.id.name.to_string())
+          .entry(package_id.nv.name.to_string())
           .or_default()
           .push(package_id.clone());
 
@@ -332,12 +332,12 @@ impl NpmResolutionSnapshot {
     for package in packages.values_mut() {
       // this will read from the memory cache now
       let version_info = match api
-        .package_version_info(&package.pkg_id.id)
+        .package_version_info(&package.pkg_id.nv)
         .await?
       {
         Some(version_info) => version_info,
         None => {
-          bail!("could not find '{}' specified in the lockfile. Maybe try again with --reload", package.pkg_id.id);
+          bail!("could not find '{}' specified in the lockfile. Maybe try again with --reload", package.pkg_id.nv);
         }
       };
       package.dist = version_info.dist;
@@ -355,7 +355,7 @@ impl NpmResolutionSnapshot {
 
 pub struct SnapshotPackageCopyIndexResolver {
   packages_to_copy_index: HashMap<NpmPackageResolvedId, usize>,
-  package_name_version_to_copy_count: HashMap<NpmPackageId, usize>,
+  package_name_version_to_copy_count: HashMap<NpmPackageNv, usize>,
 }
 
 impl SnapshotPackageCopyIndexResolver {
@@ -378,7 +378,7 @@ impl SnapshotPackageCopyIndexResolver {
 
     for (node_id, index) in &packages_to_copy_index {
       let entry = package_name_version_to_copy_count
-        .entry(node_id.id.clone())
+        .entry(node_id.nv.clone())
         .or_insert(0);
       if *entry < *index {
         *entry = *index;
@@ -396,7 +396,7 @@ impl SnapshotPackageCopyIndexResolver {
     } else {
       let index = *self
         .package_name_version_to_copy_count
-        .entry(node_id.id.clone())
+        .entry(node_id.nv.clone())
         .and_modify(|count| {
           *count += 1;
         })

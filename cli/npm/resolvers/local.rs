@@ -118,7 +118,7 @@ impl LocalNpmPackageResolver {
           .join(".deno")
           .join(get_package_folder_id_folder_name(&cache_folder_id))
           .join("node_modules")
-          .join(&cache_folder_id.id.name),
+          .join(&cache_folder_id.nv.name),
       ),
       None => bail!(
         "Could not find package information for '{}'",
@@ -267,7 +267,7 @@ async fn sync_resolution_with_fs(
     let initialized_file = folder_path.join(".initialized");
     if !cache
       .cache_setting()
-      .should_use_for_npm_package(&package.pkg_id.id.name)
+      .should_use_for_npm_package(&package.pkg_id.nv.name)
       || !initialized_file.exists()
     {
       let cache = cache.clone();
@@ -275,15 +275,15 @@ async fn sync_resolution_with_fs(
       let package = package.clone();
       let handle = tokio::task::spawn(async move {
         cache
-          .ensure_package(&package.pkg_id.id, &package.dist, &registry_url)
+          .ensure_package(&package.pkg_id.nv, &package.dist, &registry_url)
           .await?;
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
-          join_package_name(&sub_node_modules, &package.pkg_id.id.name);
+          join_package_name(&sub_node_modules, &package.pkg_id.nv.name);
         fs::create_dir_all(&package_path)
           .with_context(|| format!("Creating '{}'", folder_path.display()))?;
         let cache_folder = cache.package_folder_for_name_and_version(
-          &package.pkg_id.id,
+          &package.pkg_id.nv,
           &registry_url,
         );
         // for now copy, but in the future consider hard linking
@@ -314,7 +314,7 @@ async fn sync_resolution_with_fs(
     if !initialized_file.exists() {
       let sub_node_modules = destination_path.join("node_modules");
       let package_path =
-        join_package_name(&sub_node_modules, &package.pkg_id.id.name);
+        join_package_name(&sub_node_modules, &package.pkg_id.nv.name);
       fs::create_dir_all(&package_path).with_context(|| {
         format!("Creating '{}'", destination_path.display())
       })?;
@@ -324,7 +324,7 @@ async fn sync_resolution_with_fs(
             &package_cache_folder_id.with_no_count(),
           ))
           .join("node_modules"),
-        &package.pkg_id.id.name,
+        &package.pkg_id.nv.name,
       );
       hard_link_dir_recursive(&source_path, &package_path)?;
       // write out a file that indicates this folder has been initialized
@@ -355,7 +355,7 @@ async fn sync_resolution_with_fs(
         &deno_local_registry_dir
           .join(dep_folder_name)
           .join("node_modules"),
-        &dep_id.id.name,
+        &dep_id.nv.name,
       );
       symlink_package_dir(
         &dep_folder_path,
@@ -377,10 +377,10 @@ async fn sync_resolution_with_fs(
       .map(|id| (id, true)),
   );
   while let Some((package_id, is_top_level)) = pending_packages.pop_front() {
-    let root_folder_name = if found_names.insert(package_id.id.name.clone()) {
-      package_id.id.name.clone()
+    let root_folder_name = if found_names.insert(package_id.nv.name.clone()) {
+      package_id.nv.name.clone()
     } else if is_top_level {
-      format!("{}@{}", package_id.id.name, package_id.id.version)
+      format!("{}@{}", package_id.nv.name, package_id.nv.version)
     } else {
       continue; // skip, already handled
     };
@@ -391,7 +391,7 @@ async fn sync_resolution_with_fs(
           &package.get_package_cache_folder_id(),
         ))
         .join("node_modules"),
-      &package_id.id.name,
+      &package_id.nv.name,
     );
 
     symlink_package_dir(
@@ -414,7 +414,7 @@ fn get_package_folder_id_folder_name(
   } else {
     format!("_{}", folder_id.copy_index)
   };
-  let id = &folder_id.id;
+  let id = &folder_id.nv;
   let name = if id.name.to_lowercase() == id.name {
     Cow::Borrowed(&id.name)
   } else {

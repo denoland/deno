@@ -11,7 +11,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_graph::npm::NpmPackageId;
+use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -190,7 +190,7 @@ impl NpmPackageResolver {
   /// Resolves an npm package folder path from a Deno module.
   pub fn resolve_package_folder_from_deno_module(
     &self,
-    package_id: &NpmPackageId,
+    package_id: &NpmPackageNv,
   ) -> Result<PathBuf, AnyError> {
     let node_id = self
       .resolution

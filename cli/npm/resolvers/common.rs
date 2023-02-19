@@ -70,7 +70,7 @@ pub async fn cache_packages(
     let registry_url = registry_url.clone();
     let handle = tokio::task::spawn(async move {
       cache
-        .ensure_package(&package.pkg_id.id, &package.dist, &registry_url)
+        .ensure_package(&package.pkg_id.nv, &package.dist, &registry_url)
         .await
     });
     if sync_download {

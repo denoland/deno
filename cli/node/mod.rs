@@ -15,8 +15,8 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageId;
-use deno_graph::npm::NpmPackageIdReference;
+use deno_graph::npm::NpmPackageNv;
+use deno_graph::npm::NpmPackageNvReference;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::errors;
 use deno_runtime::deno_node::find_builtin_node_module;
@@ -241,13 +241,13 @@ pub fn node_resolve(
 }
 
 pub fn node_resolve_npm_reference(
-  reference: &NpmPackageIdReference,
+  reference: &NpmPackageNvReference,
   mode: NodeResolutionMode,
   npm_resolver: &NpmPackageResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<Option<NodeResolution>, AnyError> {
   let package_folder =
-    npm_resolver.resolve_package_folder_from_deno_module(&reference.id)?;
+    npm_resolver.resolve_package_folder_from_deno_module(&reference.nv)?;
   let node_module_kind = NodeModuleKind::Esm;
   let maybe_resolved_path = package_config_resolve(
     &reference
@@ -286,13 +286,13 @@ pub fn node_resolve_npm_reference(
 }
 
 pub fn node_resolve_binary_export(
-  pkg_id: &NpmPackageId,
+  pkg_nv: &NpmPackageNv,
   bin_name: Option<&str>,
   npm_resolver: &NpmPackageResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<NodeResolution, AnyError> {
   let package_folder =
-    npm_resolver.resolve_package_folder_from_deno_module(pkg_id)?;
+    npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
   let package_json_path = package_folder.join("package.json");
   let package_json =
     PackageJson::load(npm_resolver, permissions, package_json_path)?;
@@ -300,10 +300,10 @@ pub fn node_resolve_binary_export(
     Some(bin) => bin,
     None => bail!(
       "package '{}' did not have a bin property in its package.json",
-      &pkg_id.name,
+      &pkg_nv.name,
     ),
   };
-  let bin_entry = resolve_bin_entry_value(pkg_id, bin_name, bin)?;
+  let bin_entry = resolve_bin_entry_value(pkg_nv, bin_name, bin)?;
   let url =
     ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
 
@@ -314,13 +314,13 @@ pub fn node_resolve_binary_export(
 }
 
 fn resolve_bin_entry_value<'a>(
-  pkg_id: &NpmPackageId,
+  pkg_nv: &NpmPackageNv,
   bin_name: Option<&str>,
   bin: &'a Value,
 ) -> Result<&'a str, AnyError> {
   let bin_entry = match bin {
     Value::String(_) => {
-      if bin_name.is_some() && bin_name.unwrap() != pkg_id.name {
+      if bin_name.is_some() && bin_name.unwrap() != pkg_nv.name {
         None
       } else {
         Some(bin)
@@ -332,10 +332,10 @@ fn resolve_bin_entry_value<'a>(
       } else if o.len() == 1 || o.len() > 1 && o.values().all(|v| v == o.values().next().unwrap()) {
         o.values().next()
       } else {
-        o.get(&pkg_id.name)
+        o.get(&pkg_nv.name)
       }
     },
-    _ => bail!("package '{}' did not have a bin property with a string or object value in its package.json", pkg_id),
+    _ => bail!("package '{}' did not have a bin property with a string or object value in its package.json", pkg_nv),
   };
   let bin_entry = match bin_entry {
     Some(e) => e,
@@ -351,8 +351,8 @@ fn resolve_bin_entry_value<'a>(
         .unwrap_or_default();
       bail!(
         "package '{}' did not have a bin entry for '{}' in its package.json{}",
-        pkg_id,
-        bin_name.unwrap_or(&pkg_id.name),
+        pkg_nv,
+        bin_name.unwrap_or(&pkg_nv.name),
         if keys.is_empty() {
           "".to_string()
         } else {
@@ -365,7 +365,7 @@ fn resolve_bin_entry_value<'a>(
     Value::String(s) => Ok(s),
     _ => bail!(
       "package '{}' had a non-string sub property of bin in its package.json",
-      pkg_id,
+      pkg_nv,
     ),
   }
 }
@@ -982,7 +982,7 @@ mod tests {
     });
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageId::from_str("test@1.1.1").unwrap(),
+        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
         Some("bin1"),
         &value
       )
@@ -993,7 +993,7 @@ mod tests {
     // should resolve the value with the same name when not specified
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageId::from_str("test").unwrap(),
+        &NpmPackageNv::from_str("test").unwrap(),
         None,
         &value
       )
@@ -1004,7 +1004,7 @@ mod tests {
     // should not resolve when specified value does not exist
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageId::from_str("test@1.1.1").unwrap(),
+        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
         Some("other"),
         &value
       )
@@ -1024,7 +1024,7 @@ mod tests {
     // should not resolve when default value can't be determined
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageId::from_str("asdf@1.2.3").unwrap(),
+        &NpmPackageNv::from_str("asdf@1.2.3").unwrap(),
         None,
         &value
       )
@@ -1048,7 +1048,7 @@ mod tests {
     });
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageId::from_str("test@1.2.3").unwrap(),
+        &NpmPackageNv::from_str("test@1.2.3").unwrap(),
         None,
         &value
       )
@@ -1060,7 +1060,7 @@ mod tests {
     let value = json!("./value");
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageId::from_str("test@1.2.3").unwrap(),
+        &NpmPackageNv::from_str("test@1.2.3").unwrap(),
         Some("path"),
         &value
       )

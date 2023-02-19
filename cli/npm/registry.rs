@@ -18,7 +18,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageId;
+use deno_graph::npm::NpmPackageNv;
 use deno_graph::semver::VersionReq;
 use once_cell::sync::Lazy;
 use serde::Serialize;
@@ -257,10 +257,10 @@ impl NpmRegistryApi {
 
   pub async fn package_version_info(
     &self,
-    id: &NpmPackageId,
+    nv: &NpmPackageNv,
   ) -> Result<Option<NpmPackageVersionInfo>, AnyError> {
-    let package_info = self.package_info(&id.name).await?;
-    Ok(package_info.versions.get(&id.version.to_string()).cloned())
+    let package_info = self.package_info(&nv.name).await?;
+    Ok(package_info.versions.get(&nv.version.to_string()).cloned())
   }
 
   /// Clears the internal memory cache.
