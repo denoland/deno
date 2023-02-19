@@ -4,7 +4,7 @@ use deno_bench_util::bench_js_async;
 use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
-use deno_core::Extension;
+use deno_core::{Extension, ExtensionSourceFileSource};
 use deno_core::ExtensionFileSource;
 use deno_web::BlobStore;
 
@@ -31,12 +31,12 @@ fn setup() -> Vec<Extension> {
     Extension::builder("bench_setup")
     .esm(vec![
       ExtensionFileSource {
-        specifier: "internal:setup".to_string(), 
-        code: r#"
+        specifier: "internal:setup".to_string(),
+        code: ExtensionSourceFileSource::Embedded(r#"
       import { setTimeout, handleTimerMacrotask } from "internal:deno_web/02_timers.js";
       globalThis.setTimeout = setTimeout;
       Deno.core.setMacrotaskCallback(handleTimerMacrotask);
-      "#
+      "#)
       },
     ])
     .state(|state| {

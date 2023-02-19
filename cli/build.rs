@@ -4,7 +4,7 @@ use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::include_js_files_dir;
+use deno_core::{ExtensionSourceFileSource, include_js_files_dir};
 use deno_core::snapshot_util::*;
 use deno_core::Extension;
 use deno_core::ExtensionFileSource;
@@ -360,7 +360,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
   );
   esm_files.push(ExtensionFileSource {
     specifier: "runtime/js/99_main.js".to_string(),
-    code: deno_runtime::js::SOURCE_CODE_FOR_99_MAIN_JS,
+    code: ExtensionSourceFileSource::Embedded(deno_runtime::js::SOURCE_CODE_FOR_99_MAIN_JS),
   });
   let extensions_with_js = vec![Extension::builder("cli")
     // FIXME(bartlomieju): information about which extensions were

@@ -5,7 +5,7 @@ use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 
-use deno_core::Extension;
+use deno_core::{Extension, ExtensionSourceFileSource};
 use deno_core::ExtensionFileSource;
 
 fn setup() -> Vec<Extension> {
@@ -15,9 +15,9 @@ fn setup() -> Vec<Extension> {
     Extension::builder("bench_setup")
       .esm(vec![ExtensionFileSource {
         specifier: "internal:setup".to_string(),
-        code: r#"import { URL } from "internal:deno_url/00_url.js";
+        code: ExtensionSourceFileSource::Embedded(r#"import { URL } from "internal:deno_url/00_url.js";
         globalThis.URL = URL;
-        "#,
+        "#),
       }])
       .build(),
   ]

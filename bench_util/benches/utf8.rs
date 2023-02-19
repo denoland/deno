@@ -5,21 +5,21 @@ use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 use deno_bench_util::BenchOptions;
-use deno_core::Extension;
+use deno_core::{Extension, ExtensionSourceFileSource};
 use deno_core::ExtensionFileSource;
 
 fn setup() -> Vec<Extension> {
   vec![Extension::builder("bench_setup")
     .js(vec![ExtensionFileSource {
       specifier: "setup.js".to_string(),
-      code: r#"
+      code: ExtensionSourceFileSource::Embedded(r#"
       const hello = "hello world\n";
       const hello1k = hello.repeat(1e3);
       const hello1m = hello.repeat(1e6);
       const helloEncoded = Deno.core.encode(hello);
       const hello1kEncoded = Deno.core.encode(hello1k);
       const hello1mEncoded = Deno.core.encode(hello1m);
-      "#,
+      "#),
     }])
     .build()]
 }

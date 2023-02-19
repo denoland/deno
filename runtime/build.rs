@@ -11,7 +11,7 @@ mod not_docs {
   use super::*;
   use deno_cache::SqliteBackedCache;
   use deno_core::snapshot_util::*;
-  use deno_core::Extension;
+  use deno_core::{Extension, ExtensionSourceFileSource};
 
   use deno_ast::MediaType;
   use deno_ast::ParseParams;
@@ -34,13 +34,22 @@ mod not_docs {
       ),
     };
 
+    let code = match &file_source.code {
+      ExtensionSourceFileSource::File(path) => {
+        std::fs::read_to_string(path).unwrap()
+      }
+      ExtensionSourceFileSource::Embedded(str) => str.to_string(),
+      ExtensionSourceFileSource::None => panic!(),
+    };
+
+
     if !should_transpile {
-      return Ok(file_source.code.to_string());
+      return Ok(code);
     }
 
     let parsed = deno_ast::parse_module(ParseParams {
       specifier: file_source.specifier.to_string(),
-      text_info: SourceTextInfo::from_string(file_source.code.to_string()),
+      text_info: SourceTextInfo::from_string(code),
       media_type,
       capture_tokens: false,
       scope_analysis: false,
@@ -283,7 +292,7 @@ mod not_docs {
           .dependencies(vec!["runtime"])
           .esm(vec![ExtensionFileSource {
             specifier: "js/99_main.js".to_string(),
-            code: include_str!("js/99_main.js"),
+            code: ExtensionSourceFileSource::Embedded(include_str!("js/99_main.js")),
           }])
           .build(),
       );

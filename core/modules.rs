@@ -3,6 +3,7 @@
 use crate::bindings;
 use crate::error::generic_error;
 use crate::extensions::ExtensionFileSource;
+use crate::extensions::ExtensionSourceFileSource;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
@@ -402,7 +403,13 @@ impl ModuleLoader for InternalModuleLoader {
       let result = if let Some(load_callback) = &self.maybe_load_callback {
         load_callback(file_source)
       } else {
-        Ok(file_source.code.to_string())
+        match &file_source.code {
+          ExtensionSourceFileSource::File(path) => {
+            Ok(std::fs::read_to_string(path).unwrap())
+          }
+          ExtensionSourceFileSource::Embedded(str) => Ok(str.to_string()),
+          ExtensionSourceFileSource::None => panic!(),
+        }
       };
 
       return async move {

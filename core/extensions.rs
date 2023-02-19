@@ -7,9 +7,20 @@ use std::task::Context;
 use v8::fast_api::FastFunction;
 
 #[derive(Clone, Debug)]
+pub enum ExtensionSourceFileSource {
+  /// Use this option when snapshotting so that the source code is not embedded
+  /// in the produced binary.
+  File(std::path::PathBuf),
+  /// Use this option when not snapshotting.
+  Embedded(&'static str),
+
+  None,
+}
+
+#[derive(Clone, Debug)]
 pub struct ExtensionFileSource {
   pub specifier: String,
-  pub code: &'static str,
+  pub code: ExtensionSourceFileSource,
 }
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
@@ -274,7 +285,7 @@ macro_rules! include_js_files {
     vec![
       $($crate::ExtensionFileSource {
         specifier: $file.to_string(),
-        code: include_str!($file),
+        code: $crate::ExtensionSourceFileSource::Embedded(include_str!($file)),
       },)+
     ]
   };
@@ -300,7 +311,7 @@ macro_rules! include_js_files_dir {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!($dir, "/", $file).to_string(),
-        code: include_str!(concat!($dir, "/", $file)),
+        code: $crate::ExtensionSourceFileSource::Embedded(include_str!(concat!($dir, "/", $file))),
       },)+
     ]
   };
