@@ -37,7 +37,6 @@ mod not_docs {
 
     let ExtensionFileSourceCode::IncludedInBinary(code) = file_source.code;
 
-    eprintln!("Transpiling {}...{}", file_source.specifier, code);
     if !should_transpile {
       return Ok(code.to_string());
     }
