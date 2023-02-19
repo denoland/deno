@@ -14,14 +14,14 @@ use deno_runtime::deno_node::NodeResolutionMode;
 
 use crate::npm::cache::should_sync_download;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageResolvedId;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmResolutionPackage;
 
 /// Part of the resolution that interacts with the file system.
 pub trait NpmPackageFsResolver: Send + Sync {
   fn resolve_package_folder_from_deno_module(
     &self,
-    id: &NpmPackageResolvedId,
+    id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_package(
@@ -36,10 +36,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
 
-  fn package_size(
-    &self,
-    package_id: &NpmPackageResolvedId,
-  ) -> Result<u64, AnyError>;
+  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError>;
 
   fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>>;
 

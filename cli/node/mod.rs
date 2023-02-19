@@ -345,7 +345,7 @@ fn resolve_bin_entry_value<'a>(
         .map(|o| {
           o.keys()
             .into_iter()
-            .map(|k| format!(" * npm:{pkg_id}/{k}"))
+            .map(|k| format!(" * npm:{pkg_nv}/{k}"))
             .collect::<Vec<_>>()
         })
         .unwrap_or_default();

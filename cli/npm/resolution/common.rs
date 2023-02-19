@@ -3,7 +3,7 @@ use deno_core::error::AnyError;
 use deno_graph::semver::Version;
 use deno_graph::semver::VersionReq;
 
-use super::NpmPackageResolvedId;
+use super::NpmPackageId;
 use crate::npm::registry::NpmPackageInfo;
 use crate::npm::registry::NpmPackageVersionInfo;
 
@@ -45,7 +45,7 @@ pub struct VersionAndInfo<'a> {
 fn get_resolved_package_version_and_info<'a>(
   version_req: &VersionReq,
   info: &'a NpmPackageInfo,
-  parent: Option<&NpmPackageResolvedId>,
+  parent: Option<&NpmPackageId>,
 ) -> Result<VersionAndInfo<'a>, AnyError> {
   if let Some(tag) = version_req.tag() {
     tag_to_version_info(info, tag, parent)
@@ -98,7 +98,7 @@ pub fn version_req_satisfies(
   version_req: &VersionReq,
   version: &Version,
   package_info: &NpmPackageInfo,
-  parent: Option<&NpmPackageResolvedId>,
+  parent: Option<&NpmPackageId>,
 ) -> Result<bool, AnyError> {
   match version_req.tag() {
     Some(tag) => {
@@ -132,7 +132,7 @@ fn resolve_best_from_existing_versions<'a>(
 fn tag_to_version_info<'a>(
   info: &'a NpmPackageInfo,
   tag: &str,
-  parent: Option<&NpmPackageResolvedId>,
+  parent: Option<&NpmPackageId>,
 ) -> Result<VersionAndInfo<'a>, AnyError> {
   // For when someone just specifies @types/node, we want to pull in a
   // "known good" version of @types/node that works well with Deno and

@@ -33,7 +33,7 @@ use self::common::NpmPackageFsResolver;
 use self::local::LocalNpmPackageResolver;
 use super::resolution::NpmResolution;
 use super::NpmCache;
-use super::NpmPackageResolvedId;
+use super::NpmPackageId;
 use super::NpmRegistryApi;
 use super::NpmResolutionSnapshot;
 
@@ -200,7 +200,7 @@ impl NpmPackageResolver {
 
   fn resolve_pkg_folder_from_deno_module_at_node_id(
     &self,
-    package_id: &NpmPackageResolvedId,
+    package_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
     let path = self
       .fs_resolver
@@ -249,7 +249,7 @@ impl NpmPackageResolver {
   /// Attempts to get the package size in bytes.
   pub fn package_size(
     &self,
-    package_id: &NpmPackageResolvedId,
+    package_id: &NpmPackageId,
   ) -> Result<u64, AnyError> {
     self.fs_resolver.package_size(package_id)
   }

@@ -29,7 +29,7 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageResolvedId;
+use crate::npm::NpmPackageId;
 use crate::util::fs::copy_dir_recursive;
 use crate::util::fs::hard_link_dir_recursive;
 
@@ -104,7 +104,7 @@ impl LocalNpmPackageResolver {
 
   fn get_package_id_folder(
     &self,
-    package_id: &NpmPackageResolvedId,
+    package_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
     match self
       .resolution
@@ -131,7 +131,7 @@ impl LocalNpmPackageResolver {
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn resolve_package_folder_from_deno_module(
     &self,
-    node_id: &NpmPackageResolvedId,
+    node_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
     self.get_package_id_folder(node_id)
   }
@@ -190,10 +190,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     Ok(package_root_path)
   }
 
-  fn package_size(
-    &self,
-    package_id: &NpmPackageResolvedId,
-  ) -> Result<u64, AnyError> {
+  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
     let package_folder_path = self.get_package_id_folder(package_id)?;
 
     Ok(crate::util::fs::dir_size(&package_folder_path)?)

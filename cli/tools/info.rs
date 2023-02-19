@@ -22,7 +22,7 @@ use deno_runtime::colors;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
-use crate::npm::NpmPackageResolvedId;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolutionPackage;
 use crate::npm::NpmResolutionSnapshot;
@@ -302,9 +302,9 @@ fn print_tree_node<TWrite: Write>(
 /// Precached information about npm packages that are used in deno info.
 #[derive(Default)]
 struct NpmInfo {
-  package_sizes: HashMap<NpmPackageResolvedId, u64>,
-  resolved_reqs: HashMap<NpmPackageReq, NpmPackageResolvedId>,
-  packages: HashMap<NpmPackageResolvedId, NpmResolutionPackage>,
+  package_sizes: HashMap<NpmPackageId, u64>,
+  resolved_reqs: HashMap<NpmPackageReq, NpmPackageId>,
+  packages: HashMap<NpmPackageId, NpmResolutionPackage>,
   specifiers: HashMap<ModuleSpecifier, NpmPackageReq>,
 }
 

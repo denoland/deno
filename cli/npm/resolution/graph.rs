@@ -28,7 +28,7 @@ use crate::npm::NpmRegistryApi;
 
 use super::common::version_req_satisfies;
 use super::snapshot::NpmResolutionSnapshot;
-use super::NpmPackageResolvedId;
+use super::NpmPackageId;
 use super::NpmResolutionPackage;
 
 pub static LATEST_VERSION_REQ: Lazy<VersionReq> =
@@ -275,7 +275,7 @@ pub struct Graph {
   resolved_node_ids: ResolvedNodeIds,
   // This will be set when creating from a snapshot, then
   // inform the final snapshot creation.
-  packages_to_copy_index: HashMap<NpmPackageResolvedId, usize>,
+  packages_to_copy_index: HashMap<NpmPackageId, usize>,
   /// Packages that the resolver should resolve first.
   pending_unresolved_packages: Vec<NpmPackageNv>,
 }
@@ -284,9 +284,9 @@ impl Graph {
   pub fn from_snapshot(snapshot: NpmResolutionSnapshot) -> Self {
     fn get_or_create_graph_node(
       graph: &mut Graph,
-      resolved_id: &NpmPackageResolvedId,
-      packages: &HashMap<NpmPackageResolvedId, NpmResolutionPackage>,
-      created_package_ids: &mut HashMap<NpmPackageResolvedId, NodeId>,
+      resolved_id: &NpmPackageId,
+      packages: &HashMap<NpmPackageId, NpmResolutionPackage>,
+      created_package_ids: &mut HashMap<NpmPackageId, NodeId>,
     ) -> NodeId {
       if let Some(id) = created_package_ids.get(resolved_id) {
         return *id; // already created
@@ -369,10 +369,7 @@ impl Graph {
   }
 
   // todo (THIS PR): move this out so it can't be used in log messages
-  pub fn get_npm_pkg_resolved_id(
-    &self,
-    node_id: NodeId,
-  ) -> NpmPackageResolvedId {
+  pub fn get_npm_pkg_resolved_id(&self, node_id: NodeId) -> NpmPackageId {
     let resolved_id = self.resolved_node_ids.get_resolved_id(&node_id).unwrap();
     self.get_finalized_npm_pkg_resolved_id_from_resolved_id(
       resolved_id,
@@ -384,8 +381,8 @@ impl Graph {
     &self,
     resolved_id: &ResolvedId,
     seen: HashSet<NodeId>,
-  ) -> NpmPackageResolvedId {
-    let no_peer_deps_id = NpmPackageResolvedId {
+  ) -> NpmPackageId {
+    let no_peer_deps_id = NpmPackageId {
       nv: resolved_id.nv.clone(),
       peer_dependencies: Vec::new(),
     };
@@ -398,7 +395,7 @@ impl Graph {
       // prevent a name showing up in the peer_dependencies list that matches the current name
       seen_children_resolved_ids.insert(no_peer_deps_id);
 
-      NpmPackageResolvedId {
+      NpmPackageId {
         nv: resolved_id.nv.clone(),
         peer_dependencies: resolved_id
           .peer_dependencies
@@ -1445,41 +1442,37 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-a@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([
             (
               "package-b".to_string(),
-              NpmPackageResolvedId::from_serialized("package-b@2.0.0").unwrap(),
+              NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
             ),
             (
               "package-c".to_string(),
-              NpmPackageResolvedId::from_serialized("package-c@0.1.0").unwrap(),
+              NpmPackageId::from_serialized("package-c@0.1.0").unwrap(),
             ),
           ]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-b@2.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-c@0.1.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-c@0.1.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-d".to_string(),
-            NpmPackageResolvedId::from_serialized("package-d@3.2.1").unwrap(),
+            NpmPackageId::from_serialized("package-d@3.2.1").unwrap(),
           )])
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-d@3.2.1")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-d@3.2.1").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: Default::default(),
@@ -1506,22 +1499,20 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-a@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-b".to_string(),
-            NpmPackageResolvedId::from_serialized("package-b@2.0.0").unwrap(),
+            NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-b@2.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-a".to_string(),
-            NpmPackageResolvedId::from_serialized("package-a@1.0.0").unwrap(),
+            NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
           )]),
           dist: Default::default(),
         },
@@ -1557,7 +1548,7 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-peer@4.0.0"
           )
           .unwrap(),
@@ -1565,14 +1556,14 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-b".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-b@2.0.0_package-peer@4.0.0"
               )
               .unwrap(),
             ),
             (
               "package-c".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-c@3.0.0_package-peer@4.0.0"
               )
               .unwrap(),
@@ -1581,7 +1572,7 @@ mod test {
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-b@2.0.0_package-peer@4.0.0"
           )
           .unwrap(),
@@ -1589,12 +1580,11 @@ mod test {
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
           )])
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-c@3.0.0_package-peer@4.0.0"
           )
           .unwrap(),
@@ -1602,13 +1592,11 @@ mod test {
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
           )])
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: Default::default(),
@@ -1654,20 +1642,17 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-0@1.1.1")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-0@1.1.1").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-a".to_string(),
-            NpmPackageResolvedId::from_serialized(
-              "package-a@1.0.0_package-peer@4.0.0"
-            )
-            .unwrap(),
+            NpmPackageId::from_serialized("package-a@1.0.0_package-peer@4.0.0")
+              .unwrap(),
           ),]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-peer@4.0.0"
           )
           .unwrap(),
@@ -1675,28 +1660,27 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-b".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-b@2.0.0_package-peer@4.0.0"
               )
               .unwrap(),
             ),
             (
               "package-c".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-c@3.0.0_package-peer@4.0.0"
               )
               .unwrap(),
             ),
             (
               "package-peer".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
-                .unwrap(),
+              NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
             ),
           ]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-b@2.0.0_package-peer@4.0.0"
           )
           .unwrap(),
@@ -1704,12 +1688,11 @@ mod test {
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
           )])
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-c@3.0.0_package-peer@4.0.0"
           )
           .unwrap(),
@@ -1717,13 +1700,11 @@ mod test {
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
           )])
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: Default::default(),
@@ -1757,20 +1738,19 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-a@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([
             (
               "package-b".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-b@2.0.0_package-peer@4.1.0"
               )
               .unwrap(),
             ),
             (
               "package-c".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-c@3.0.0_package-peer@4.1.0"
               )
               .unwrap(),
@@ -1779,7 +1759,7 @@ mod test {
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-b@2.0.0_package-peer@4.1.0"
           )
           .unwrap(),
@@ -1787,12 +1767,11 @@ mod test {
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@4.1.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@4.1.0").unwrap(),
           )])
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-c@3.0.0_package-peer@4.1.0"
           )
           .unwrap(),
@@ -1800,13 +1779,11 @@ mod test {
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@4.1.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@4.1.0").unwrap(),
           )])
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer@4.1.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-peer@4.1.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: Default::default(),
@@ -1846,31 +1823,28 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-a@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([
             (
               "package-b".to_string(),
-              NpmPackageResolvedId::from_serialized("package-b@2.0.0").unwrap(),
+              NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
             ),
             (
               "package-c".to_string(),
-              NpmPackageResolvedId::from_serialized("package-c@3.0.0").unwrap(),
+              NpmPackageId::from_serialized("package-c@3.0.0").unwrap(),
             ),
           ]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-b@2.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: HashMap::new(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-c@3.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-c@3.0.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: HashMap::new(),
@@ -1911,7 +1885,7 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-peer@4.0.0"
           )
           .unwrap(),
@@ -1919,14 +1893,14 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-b".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-b@2.0.0_package-peer@4.0.0"
               )
               .unwrap(),
             ),
             (
               "package-c".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-c@3.0.0_package-peer@4.0.0"
               )
               .unwrap(),
@@ -1935,7 +1909,7 @@ mod test {
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-b@2.0.0_package-peer@4.0.0"
           )
           .unwrap(),
@@ -1943,12 +1917,11 @@ mod test {
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
           )])
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-c@3.0.0_package-peer@4.0.0"
           )
           .unwrap(),
@@ -1956,13 +1929,11 @@ mod test {
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
           )])
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: Default::default(),
@@ -2010,7 +1981,7 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-peer@1.0.0"
           )
           .unwrap(),
@@ -2018,21 +1989,20 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-b".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-b@1.0.0_package-peer@1.0.0"
               )
               .unwrap(),
             ),
             (
               "package-peer".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer@1.0.0")
-                .unwrap(),
+              NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
             ),
           ]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-b@1.0.0_package-peer@1.0.0"
           )
           .unwrap(),
@@ -2040,13 +2010,11 @@ mod test {
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@1.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
           )]),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: HashMap::new(),
@@ -2091,20 +2059,19 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-peer@2.0.0"
           )
           .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@2.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@2.0.0").unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-b@1.0.0_package-peer@2.0.0"
           )
           .unwrap(),
@@ -2113,21 +2080,19 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-a".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-a@1.0.0_package-peer@2.0.0"
               )
               .unwrap(),
             ),
             (
               "package-peer".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer@2.0.0")
-                .unwrap(),
+              NpmPackageId::from_serialized("package-peer@2.0.0").unwrap(),
             )
           ]),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer@2.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-peer@2.0.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: HashMap::new(),
@@ -2168,21 +2133,19 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-peer@1.0.0"
           )
           .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@1.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: HashMap::new(),
@@ -2231,33 +2194,31 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-peer@1.0.0"
           )
           .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@1.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-peer@2.0.0"
           )
           .unwrap(),
           copy_index: 1,
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@2.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@2.0.0").unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-b@1.0.0_package-peer@2.0.0"
           )
           .unwrap(),
@@ -2266,12 +2227,11 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-peer".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer@2.0.0")
-                .unwrap(),
+              NpmPackageId::from_serialized("package-peer@2.0.0").unwrap(),
             ),
             (
               "package-a".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-a@1.0.0_package-peer@2.0.0"
               )
               .unwrap(),
@@ -2279,15 +2239,13 @@ mod test {
           ]),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: HashMap::new(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer@2.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-peer@2.0.0").unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: HashMap::new(),
@@ -2331,14 +2289,14 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0"
           )
           .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-peer-a".to_string(),
-            NpmPackageResolvedId::from_serialized(
+            NpmPackageId::from_serialized(
               "package-peer-a@2.0.0_package-peer-b@3.0.0"
             )
             .unwrap(),
@@ -2346,20 +2304,19 @@ mod test {
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-peer-a@2.0.0_package-peer-b@3.0.0"
           )
           .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-peer-b".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer-b@3.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer-b@3.0.0").unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer-b@3.0.0")
+          pkg_id: NpmPackageId::from_serialized("package-peer-b@3.0.0")
             .unwrap(),
           copy_index: 0,
           dependencies: HashMap::new(),
@@ -2403,7 +2360,7 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0_package-peer-b@3.0.0"
           )
           .unwrap(),
@@ -2411,34 +2368,34 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-peer-a".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-peer-a@2.0.0_package-peer-b@3.0.0"
               )
               .unwrap(),
             ),
             (
               "package-peer-b".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer-b@3.0.0")
+              NpmPackageId::from_serialized("package-peer-b@3.0.0")
                 .unwrap(),
             )
           ]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-peer-a@2.0.0_package-peer-b@3.0.0"
           )
           .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-peer-b".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer-b@3.0.0")
+            NpmPackageId::from_serialized("package-peer-b@3.0.0")
               .unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer-b@3.0.0")
+          pkg_id: NpmPackageId::from_serialized("package-peer-b@3.0.0")
             .unwrap(),
           copy_index: 0,
           dependencies: HashMap::new(),
@@ -2505,12 +2462,12 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-0@1.1.1")
+          pkg_id: NpmPackageId::from_serialized("package-0@1.1.1")
             .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-a".to_string(),
-            NpmPackageResolvedId::from_serialized(
+            NpmPackageId::from_serialized(
               "package-a@1.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1"
             )
             .unwrap(),
@@ -2518,7 +2475,7 @@ mod test {
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1"
           )
           .unwrap(),
@@ -2526,25 +2483,25 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-b".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-b@2.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-c@6.2.0"
               )
               .unwrap(),
             ),
             (
               "package-c".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-c@3.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1"
               )
               .unwrap(),
             ),
             (
               "package-d".to_string(),
-              NpmPackageResolvedId::from_serialized("package-d@3.5.0").unwrap(),
+              NpmPackageId::from_serialized("package-d@3.5.0").unwrap(),
             ),
             (
               "package-peer-a".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-peer-a@4.0.0_package-peer-b@5.4.1"
               )
               .unwrap(),
@@ -2553,7 +2510,7 @@ mod test {
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-b@2.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-c@6.2.0"
           )
           .unwrap(),
@@ -2562,18 +2519,18 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-peer-a".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer-a@4.0.0_package-peer-b@5.4.1")
+              NpmPackageId::from_serialized("package-peer-a@4.0.0_package-peer-b@5.4.1")
                 .unwrap(),
             ),
             (
               "package-peer-c".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer-c@6.2.0")
+              NpmPackageId::from_serialized("package-peer-c@6.2.0")
                 .unwrap(),
             )
           ])
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-c@3.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1"
           )
           .unwrap(),
@@ -2581,44 +2538,44 @@ mod test {
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-peer-a".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer-a@4.0.0_package-peer-b@5.4.1")
+            NpmPackageId::from_serialized("package-peer-a@4.0.0_package-peer-b@5.4.1")
               .unwrap(),
           )])
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-d@3.5.0")
+          pkg_id: NpmPackageId::from_serialized("package-d@3.5.0")
             .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-e@3.6.0")
+          pkg_id: NpmPackageId::from_serialized("package-e@3.6.0")
             .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer-a@4.0.0_package-peer-b@5.4.1")
+          pkg_id: NpmPackageId::from_serialized("package-peer-a@4.0.0_package-peer-b@5.4.1")
             .unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-peer-b".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer-b@5.4.1")
+            NpmPackageId::from_serialized("package-peer-b@5.4.1")
               .unwrap(),
           )])
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer-b@5.4.1")
+          pkg_id: NpmPackageId::from_serialized("package-peer-b@5.4.1")
             .unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer-c@6.2.0")
+          pkg_id: NpmPackageId::from_serialized("package-peer-c@6.2.0")
             .unwrap(),
           copy_index: 0,
           dist: Default::default(),
@@ -2649,27 +2606,24 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-a@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-b".to_string(),
-            NpmPackageResolvedId::from_serialized(
-              "package-b@2.0.0_package-a@1.0.0"
-            )
-            .unwrap(),
+            NpmPackageId::from_serialized("package-b@2.0.0_package-a@1.0.0")
+              .unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-b@2.0.0_package-a@1.0.0"
           )
           .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-a".to_string(),
-            NpmPackageResolvedId::from_serialized("package-a@1.0.0").unwrap(),
+            NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
           )]),
           dist: Default::default(),
         },
@@ -2706,7 +2660,7 @@ mod test {
         packages,
         vec![
           NpmResolutionPackage {
-            pkg_id: NpmPackageResolvedId::from_serialized(
+            pkg_id: NpmPackageId::from_serialized(
               "package-a@1.0.0_package-peer@4.0.0"
             )
             .unwrap(),
@@ -2714,21 +2668,20 @@ mod test {
             dependencies: HashMap::from([
               (
                 "package-dep".to_string(),
-                NpmPackageResolvedId::from_serialized(
+                NpmPackageId::from_serialized(
                   "package-dep@3.0.0_package-peer@4.0.0"
                 )
                 .unwrap(),
               ),
               (
                 "package-peer".to_string(),
-                NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
-                  .unwrap(),
+                NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
               ),
             ]),
             dist: Default::default(),
           },
           NpmResolutionPackage {
-            pkg_id: NpmPackageResolvedId::from_serialized(
+            pkg_id: NpmPackageId::from_serialized(
               "package-b@2.0.0_package-peer@5.0.0"
             )
             .unwrap(),
@@ -2736,54 +2689,51 @@ mod test {
             dependencies: HashMap::from([
               (
                 "package-dep".to_string(),
-                NpmPackageResolvedId::from_serialized(
+                NpmPackageId::from_serialized(
                   "package-dep@3.0.0_package-peer@5.0.0"
                 )
                 .unwrap(),
               ),
               (
                 "package-peer".to_string(),
-                NpmPackageResolvedId::from_serialized("package-peer@5.0.0")
-                  .unwrap(),
+                NpmPackageId::from_serialized("package-peer@5.0.0").unwrap(),
               ),
             ]),
             dist: Default::default(),
           },
           NpmResolutionPackage {
-            pkg_id: NpmPackageResolvedId::from_serialized(
+            pkg_id: NpmPackageId::from_serialized(
               "package-dep@3.0.0_package-peer@4.0.0"
             )
             .unwrap(),
             copy_index: 0,
             dependencies: HashMap::from([(
               "package-peer".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
-                .unwrap(),
+              NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
             )]),
             dist: Default::default(),
           },
           NpmResolutionPackage {
-            pkg_id: NpmPackageResolvedId::from_serialized(
+            pkg_id: NpmPackageId::from_serialized(
               "package-dep@3.0.0_package-peer@5.0.0"
             )
             .unwrap(),
             copy_index: 1,
             dependencies: HashMap::from([(
               "package-peer".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer@5.0.0")
-                .unwrap(),
+              NpmPackageId::from_serialized("package-peer@5.0.0").unwrap(),
             )]),
             dist: Default::default(),
           },
           NpmResolutionPackage {
-            pkg_id: NpmPackageResolvedId::from_serialized("package-peer@4.0.0")
+            pkg_id: NpmPackageId::from_serialized("package-peer@4.0.0")
               .unwrap(),
             copy_index: 0,
             dependencies: HashMap::new(),
             dist: Default::default(),
           },
           NpmResolutionPackage {
-            pkg_id: NpmPackageResolvedId::from_serialized("package-peer@5.0.0")
+            pkg_id: NpmPackageId::from_serialized("package-peer@5.0.0")
               .unwrap(),
             copy_index: 0,
             dependencies: HashMap::new(),
@@ -2828,7 +2778,7 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-b@1.0.0__package-peer@1.0.0"
           )
           .unwrap(),
@@ -2836,50 +2786,45 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-c".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.0"
               )
               .unwrap(),
             ),
             (
               "package-peer".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer@1.0.0")
-                .unwrap(),
+              NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
             )
           ]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-b@1.0.0_package-peer@1.0.0"
           )
           .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@1.0.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.0"
           )
           .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-b".to_string(),
-            NpmPackageResolvedId::from_serialized(
-              "package-b@1.0.0_package-peer@1.0.0"
-            )
-            .unwrap(),
+            NpmPackageId::from_serialized("package-b@1.0.0_package-peer@1.0.0")
+              .unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-peer@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([]),
           dist: Default::default(),
@@ -2923,33 +2868,31 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-peer@1.1.0"
           )
           .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@1.1.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@1.1.0").unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-peer@1.2.0"
           )
           .unwrap(),
           copy_index: 1,
           dependencies: HashMap::from([(
             "package-peer".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer@1.2.0")
-              .unwrap(),
+            NpmPackageId::from_serialized("package-peer@1.2.0").unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-b@1.0.0_package-peer@1.1.0"
           )
           .unwrap(),
@@ -2957,44 +2900,39 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-c".to_string(),
-              NpmPackageResolvedId::from_serialized(
+              NpmPackageId::from_serialized(
                 "package-c@1.0.0_package-peer@1.1.0"
               )
               .unwrap(),
             ),
             (
               "package-peer".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer@1.1.0")
-                .unwrap(),
+              NpmPackageId::from_serialized("package-peer@1.1.0").unwrap(),
             )
           ]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-c@1.0.0_package-peer@1.1.0"
           )
           .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-a".to_string(),
-            NpmPackageResolvedId::from_serialized(
-              "package-a@1.0.0_package-peer@1.1.0"
-            )
-            .unwrap(),
+            NpmPackageId::from_serialized("package-a@1.0.0_package-peer@1.1.0")
+              .unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer@1.1.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-peer@1.1.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer@1.2.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-peer@1.2.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([]),
           dist: Default::default(),
@@ -3040,7 +2978,7 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-a@1.0.0_package-d@1.0.0"
           )
           .unwrap(),
@@ -3048,59 +2986,54 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-b".to_string(),
-              NpmPackageResolvedId::from_serialized("package-b@2.0.0").unwrap(),
+              NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
             ),
             (
               "package-c".to_string(),
-              NpmPackageResolvedId::from_serialized(
-                "package-c@1.0.0_package-d@1.0.0"
-              )
-              .unwrap(),
+              NpmPackageId::from_serialized("package-c@1.0.0_package-d@1.0.0")
+                .unwrap(),
             ),
             (
               "package-d".to_string(),
-              NpmPackageResolvedId::from_serialized("package-d@1.0.0").unwrap(),
+              NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
             ),
             (
               "package-e".to_string(),
-              NpmPackageResolvedId::from_serialized("package-e@1.0.0").unwrap(),
+              NpmPackageId::from_serialized("package-e@1.0.0").unwrap(),
             ),
           ]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-b@2.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::new(),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized(
+          pkg_id: NpmPackageId::from_serialized(
             "package-c@1.0.0_package-d@1.0.0"
           )
           .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-d".to_string(),
-            NpmPackageResolvedId::from_serialized("package-d@1.0.0").unwrap(),
+            NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
           ),]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-d@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::new(),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-e@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-e@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-b".to_string(),
-            NpmPackageResolvedId::from_serialized("package-b@2.0.0").unwrap(),
+            NpmPackageId::from_serialized("package-b@2.0.0").unwrap(),
           )]),
           dist: Default::default(),
         },
@@ -3126,8 +3059,7 @@ mod test {
     assert_eq!(
       packages,
       vec![NpmResolutionPackage {
-        pkg_id: NpmPackageResolvedId::from_serialized("package-a@1.0.0")
-          .unwrap(),
+        pkg_id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
         copy_index: 0,
         // in this case, we just ignore that the package did this
         dependencies: Default::default(),
@@ -3153,19 +3085,17 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-a@0.5.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-a@0.5.0").unwrap(),
           copy_index: 0,
           dependencies: Default::default(),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-a@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-a".to_string(),
-            NpmPackageResolvedId::from_serialized("package-a@0.5.0").unwrap(),
+            NpmPackageId::from_serialized("package-a@0.5.0").unwrap(),
           )]),
           dist: Default::default(),
         },

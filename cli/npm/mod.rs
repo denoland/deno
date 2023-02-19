@@ -12,7 +12,7 @@ pub use registry::NpmPackageVersionDistInfo;
 pub use registry::NpmRegistryApi;
 #[cfg(test)]
 pub use registry::TestNpmRegistryApiInner;
-pub use resolution::NpmPackageResolvedId;
+pub use resolution::NpmPackageId;
 pub use resolution::NpmResolution;
 pub use resolution::NpmResolutionPackage;
 pub use resolution::NpmResolutionSnapshot;
