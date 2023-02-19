@@ -490,62 +490,78 @@ impl Graph {
   }
 
   pub async fn into_snapshot(
-    self,
+    mut self,
     api: &NpmRegistryApi,
   ) -> Result<NpmResolutionSnapshot, AnyError> {
-    let mut copy_index_resolver =
-      SnapshotPackageCopyIndexResolver::from_map_with_capacity(
-        self.packages_to_copy_index.clone(),
-        self.packages.len(),
-      );
+    let packages_to_resolved_id = self
+      .packages
+      .keys()
+      .map(|node_id| (*node_id, self.get_npm_pkg_resolved_id(*node_id)))
+      .collect::<HashMap<_, _>>();
     let resolved_packages_by_name = self
       .packages_by_name
-      .iter()
+      .into_iter()
       .map(|(name, packages)| {
-        (
-          name.clone(),
+        (name, {
+          let mut packages = packages
+            .into_iter()
+            .map(|node_id| {
+              (
+                node_id,
+                packages_to_resolved_id.get(&node_id).unwrap().clone(),
+              )
+            })
+            .collect::<Vec<_>>();
+          // sort in order to get a deterministic copy index
+          packages.sort_by(|a, b| a.1.cmp(&b.1));
+          // now that we're sorted, filter out duplicate graph segment resolutions
+          packages.dedup_by(|a, b| a.1 == b.1);
           packages
-            .iter()
-            .map(|node_id| self.get_npm_pkg_resolved_id(*node_id))
-            .collect::<Vec<_>>(),
-        )
+        })
       })
       .collect::<HashMap<_, _>>();
 
-    // Iterate through the packages vector in each packages_by_name in order
-    // to set the copy index as this will be deterministic rather than
-    // iterating over the hashmap below.
-    for packages in resolved_packages_by_name.values() {
-      if packages.len() > 1 {
-        for resolved_id in packages {
-          copy_index_resolver.resolve(resolved_id);
-        }
-      }
-    }
-
     let mut packages = HashMap::with_capacity(self.packages.len());
-    for (node_id, node) in &self.packages {
-      let resolved_id = self.get_npm_pkg_resolved_id(*node_id);
-      let dist = api
-        .package_version_info(&resolved_id.id)
-        .await?
-        .unwrap()
-        .dist;
-      packages.insert(
-        resolved_id.clone(),
-        NpmResolutionPackage {
-          copy_index: copy_index_resolver.resolve(&resolved_id),
-          pkg_id: resolved_id.clone(),
-          dist,
-          dependencies: node
-            .children
-            .iter()
-            .map(|(key, value)| {
-              (key.clone(), self.get_npm_pkg_resolved_id(*value))
-            })
-            .collect(),
-        },
-      );
+    for (_, ids) in &resolved_packages_by_name {
+      let mut copy_index = 0;
+      let mut last_pkg_id: Option<&NpmPackageId> = None;
+      for (node_id, resolved_id) in ids {
+        match last_pkg_id {
+          Some(pkg_id) => {
+            if resolved_id.id == *pkg_id {
+              copy_index += 1
+            } else {
+              last_pkg_id = Some(&resolved_id.id);
+              copy_index = 0;
+            }
+          }
+          None => {
+            copy_index = 0;
+            last_pkg_id = Some(&resolved_id.id);
+          }
+        };
+        let node = self.packages.remove(node_id).unwrap();
+        let dist = api
+          .package_version_info(&resolved_id.id)
+          .await?
+          .unwrap()
+          .dist;
+        packages.insert(
+          (*resolved_id).clone(),
+          NpmResolutionPackage {
+            copy_index,
+            pkg_id: (*resolved_id).clone(),
+            dist,
+            dependencies: node
+              .children
+              .into_iter()
+              .map(|(key, value)| {
+                (key, packages_to_resolved_id.get(&value).unwrap().clone())
+              })
+              .collect(),
+          },
+        );
+      }
     }
 
     debug_assert!(self.pending_unresolved_packages.is_empty());
@@ -553,12 +569,18 @@ impl Graph {
     Ok(NpmResolutionSnapshot {
       root_packages: self
         .root_packages
-        .iter()
+        .into_iter()
         .map(|(id, node_id)| {
-          (id.clone(), self.get_npm_pkg_resolved_id(*node_id))
+          (
+            id.clone(),
+            packages_to_resolved_id.get(&node_id).unwrap().clone(),
+          )
         })
         .collect(),
-      packages_by_name: resolved_packages_by_name,
+      packages_by_name: resolved_packages_by_name
+        .into_iter()
+        .map(|(name, ids)| (name, ids.into_iter().map(|(_, id)| id).collect()))
+        .collect(),
       packages,
       package_reqs: self.package_reqs,
       pending_unresolved_packages: self.pending_unresolved_packages,
@@ -1009,22 +1031,18 @@ impl<'a> GraphDependencyResolver<'a> {
         GraphPathNodeOrRoot::Node(ancestor_graph_path_node) => {
           path.push(ancestor_graph_path_node);
           let ancestor_node_id_ref = ancestor_graph_path_node.node_id_ref();
+          let ancestor_node_id = ancestor_node_id_ref.get();
           let maybe_peer_dep_id = self.find_peer_dep_in_node(
-            ancestor_node_id_ref.get(),
+            ancestor_node_id,
             peer_dep,
             peer_package_info,
           )?;
           if let Some(peer_dep_id) = maybe_peer_dep_id {
             //self.try_add_pending_unresolved_node(ancestor_path, peer_dep_id);
             // this will always have an ancestor because we're not at the root
-            let parent = match ancestor_iterator.peek().unwrap() {
-              GraphPathNodeOrRoot::Node(node) => {
-                NodeParent::Node(node.node_id())
-              }
-              GraphPathNodeOrRoot::Root(pkg_id) => {
-                NodeParent::Root(pkg_id.clone())
-              }
-            };
+            // todo(THIS PR): investigate this parent thing... doesn't seem quite right
+            // and yes, it should be just NodeParent::Node here
+            let parent = NodeParent::Node(ancestor_node_id);
             self.set_new_peer_dep(parent, path, specifier, peer_dep_id);
             return Ok(());
           }
@@ -1162,10 +1180,13 @@ impl<'a> GraphDependencyResolver<'a> {
       .pkg_id;
 
     let mut peer_dep = match &node_parent {
-      NodeParent::Root(_) => Some(ResolvedIdPeerDep {
-        parent: node_parent.clone(),
-        child_pkg_id: peer_dep_pkg_id.clone(),
-      }),
+      NodeParent::Root(id) => {
+        eprintln!("HERE: {id} {}", peer_dep_pkg_id);
+        Some(ResolvedIdPeerDep {
+          parent: node_parent.clone(),
+          child_pkg_id: peer_dep_pkg_id.clone(),
+        })
+      }
       // we need to create it later once we have a new node id
       NodeParent::Node(_) => None,
     };
@@ -2024,8 +2045,10 @@ mod test {
       packages,
       vec![
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-a@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageResolvedId::from_serialized(
+            "package-a@1.0.0_package-peer@2.0.0"
+          )
+          .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-peer".to_string(),
@@ -2035,14 +2058,19 @@ mod test {
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-b@1.0.0")
-            .unwrap(),
+          pkg_id: NpmPackageResolvedId::from_serialized(
+            "package-b@1.0.0_package-peer@2.0.0"
+          )
+          .unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: HashMap::from([
             (
               "package-a".to_string(),
-              NpmPackageResolvedId::from_serialized("package-a@1.0.0").unwrap(),
+              NpmPackageResolvedId::from_serialized(
+                "package-a@1.0.0_package-peer@2.0.0"
+              )
+              .unwrap(),
             ),
             (
               "package-peer".to_string(),
@@ -2063,8 +2091,14 @@ mod test {
     assert_eq!(
       package_reqs,
       vec![
-        ("package-a@1".to_string(), "package-a@1.0.0".to_string()),
-        ("package-b@1".to_string(), "package-b@1.0.0".to_string())
+        (
+          "package-a@1".to_string(),
+          "package-a@1.0.0_package-peer@2.0.0".to_string()
+        ),
+        (
+          "package-b@1".to_string(),
+          "package-b@1.0.0_package-peer@2.0.0".to_string()
+        )
       ]
     );
   }
