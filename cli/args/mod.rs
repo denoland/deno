@@ -10,6 +10,7 @@ pub mod package_json;
 pub use self::import_map::resolve_import_map_from_specifier;
 use ::import_map::ImportMap;
 
+use crate::npm::NpmResolutionSnapshot;
 use crate::util::fs::canonicalize_path;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
@@ -699,13 +700,8 @@ impl CliOptions {
     .map(Some)
   }
 
-  // TODO(bartlomieju): remove in favor of `is_npm_main()`
-  pub fn was_npm_process_state_set(&self) -> bool {
-    *IS_NPM_MAIN
-  }
-
   pub fn get_npm_process_state(&self) -> Option<NpmProcessState> {
-    if !self.was_npm_process_state_set() {
+    if !self.is_npm_main() {
       return None;
     }
 
@@ -725,12 +721,20 @@ impl CliOptions {
     Some(state)
   }
 
+  pub fn get_npm_resolution_snapshot(&self) -> Option<NpmResolutionSnapshot> {
+    if let Some(state) = self.get_npm_process_state() {
+      return Some(state.snapshot);
+    }
+
+    None
+  }
+
   // If the main module should be treated as being in an npm package.
   // This is triggered via a secret environment variable which is used
   // for functionality like child_process.fork. Users should NOT depend
   // on this functionality.
   pub fn is_npm_main(&self) -> bool {
-    self.was_npm_process_state_set()
+    *IS_NPM_MAIN
   }
 
   /// Overrides the import map specifier to use.
@@ -756,6 +760,8 @@ impl CliOptions {
   ) -> Result<Option<PathBuf>, AnyError> {
     let path = if !self.node_modules_dir() {
       return Ok(None);
+    } else if let Some(state) = self.get_npm_process_state() {
+      return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
     } else if let Some(config_path) = self
       .maybe_config_file
       .as_ref()

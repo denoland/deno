@@ -62,57 +62,43 @@ impl std::fmt::Debug for NpmPackageResolver {
 }
 
 impl NpmPackageResolver {
-  pub fn new(
-    cache: NpmCache,
-    api: RealNpmRegistryApi,
-    no_npm: bool,
-    process_npm_state: Option<NpmProcessState>,
-    local_node_modules_path: Option<PathBuf>,
-  ) -> Self {
-    Self::new_inner(
-      cache,
-      api,
-      no_npm,
-      process_npm_state,
-      local_node_modules_path,
-      None,
-      None,
-    )
+  pub fn new(cache: NpmCache, api: RealNpmRegistryApi) -> Self {
+    Self::new_inner(cache, api, false, None, None, None)
   }
 
   pub async fn new_with_maybe_lockfile(
     cache: NpmCache,
     api: RealNpmRegistryApi,
     no_npm: bool,
-    process_npm_state: Option<NpmProcessState>,
     local_node_modules_path: Option<PathBuf>,
+    initial_snapshot: Option<NpmResolutionSnapshot>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Result<Self, AnyError> {
-    let maybe_snapshot = if let Some(lockfile) = &maybe_lockfile {
-      if lockfile.lock().overwrite {
-        None
-      } else {
-        Some(
-          NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &api)
-            .await
-            .with_context(|| {
-              format!(
-                "failed reading lockfile '{}'",
-                lockfile.lock().filename.display()
-              )
-            })?,
-        )
+    let mut initial_snapshot = initial_snapshot;
+
+    if initial_snapshot.is_none() {
+      if let Some(lockfile) = &maybe_lockfile {
+        if !lockfile.lock().overwrite {
+          initial_snapshot = Some(
+            NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &api)
+              .await
+              .with_context(|| {
+                format!(
+                  "failed reading lockfile '{}'",
+                  lockfile.lock().filename.display()
+                )
+              })?,
+          )
+        }
       }
-    } else {
-      None
-    };
+    }
+
     Ok(Self::new_inner(
       cache,
       api,
       no_npm,
-      process_npm_state,
       local_node_modules_path,
-      maybe_snapshot,
+      initial_snapshot,
       maybe_lockfile,
     ))
   }
@@ -121,22 +107,10 @@ impl NpmPackageResolver {
     cache: NpmCache,
     api: RealNpmRegistryApi,
     no_npm: bool,
-    process_npm_state: Option<NpmProcessState>,
     local_node_modules_path: Option<PathBuf>,
-    initial_snapshot: Option<NpmResolutionSnapshot>,
+    maybe_snapshot: Option<NpmResolutionSnapshot>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
-    // TODO(bartlomieju): `local_node_modules_path` processing should be done
-    // in cli/args/mod.rs
-    let local_node_modules_path =
-      if let Some(state) = process_npm_state.as_ref() {
-        state.local_node_modules_path.as_ref().map(PathBuf::from)
-      } else {
-        local_node_modules_path
-      };
-
-    let maybe_snapshot =
-      initial_snapshot.or_else(|| process_npm_state.map(|s| s.snapshot));
     let inner: Arc<dyn InnerNpmPackageResolver> = match &local_node_modules_path
     {
       Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
@@ -295,7 +269,6 @@ impl NpmPackageResolver {
       self.cache.clone(),
       self.api.clone(),
       self.no_npm,
-      None,
       self.local_node_modules_path.clone(),
       Some(self.snapshot()),
       None,
