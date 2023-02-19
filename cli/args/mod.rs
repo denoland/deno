@@ -35,6 +35,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::npm::NpmPackageReq;
 use deno_runtime::colors;
@@ -46,6 +47,7 @@ use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
+use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -60,6 +62,9 @@ use std::sync::Arc;
 
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
+// TODO(bartlomieju): refactor this bit; we have a circular dependency
+// between this file and `cli/npm/resolver/mod.rs`.
+use crate::npm::NpmProcessState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
@@ -535,6 +540,12 @@ pub fn get_root_cert_store(
   Ok(root_cert_store)
 }
 
+const RESOLUTION_STATE_ENV_VAR_NAME: &str =
+  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
+
+static IS_NPM_MAIN: Lazy<bool> =
+  Lazy::new(|| std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).is_ok());
+
 /// Overrides for the options below that when set will
 /// use these values over the values derived from the
 /// CLI flags or config file.
@@ -553,6 +564,7 @@ pub struct CliOptions {
   maybe_package_json: Option<PackageJson>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
+  npm_process_state: Arc<Mutex<Option<NpmProcessState>>>,
 }
 
 impl CliOptions {
@@ -584,6 +596,7 @@ impl CliOptions {
       maybe_package_json,
       flags,
       overrides: Default::default(),
+      npm_process_state: Arc::new(Mutex::new(None)),
     }
   }
 
@@ -686,16 +699,55 @@ impl CliOptions {
     .map(Some)
   }
 
+  // TODO(bartlomieju): remove in favor of `is_npm_main()`
+  pub fn was_npm_process_state_set(&self) -> bool {
+    *IS_NPM_MAIN
+  }
+
+  pub fn get_npm_process_state(&self) -> Option<NpmProcessState> {
+    if !self.was_npm_process_state_set() {
+      return None;
+    }
+
+    let mut maybe_state = self.npm_process_state.lock();
+
+    // TODO(bartlomieju): remove this clone, return a reference maybe?
+    if maybe_state.is_some() {
+      return maybe_state.clone();
+    }
+
+    let state = std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
+    let state: NpmProcessState = serde_json::from_str(&state).ok()?;
+    // remove the environment variable so that sub processes
+    // that are spawned do not also use this.
+    std::env::remove_var(RESOLUTION_STATE_ENV_VAR_NAME);
+    *maybe_state = Some(state.clone());
+    Some(state)
+  }
+
+  // If the main module should be treated as being in an npm package.
+  // This is triggered via a secret environment variable which is used
+  // for functionality like child_process.fork. Users should NOT depend
+  // on this functionality.
+  pub fn is_npm_main(&self) -> bool {
+    self.was_npm_process_state_set()
+  }
+
   /// Overrides the import map specifier to use.
   pub fn set_import_map_specifier(&mut self, path: Option<ModuleSpecifier>) {
     self.overrides.import_map_specifier = Some(path);
   }
 
   pub fn node_modules_dir(&self) -> bool {
-    match self.flags.node_modules_dir {
-      Some(value) => value,
-      None => self.maybe_package_json.is_some(),
+    if let Some(node_modules_dir) = self.flags.node_modules_dir {
+      return node_modules_dir;
     }
+
+    if let Some(npm_process_state) = self.get_npm_process_state() {
+      return npm_process_state.local_node_modules_path.is_some();
+    }
+
+    self.maybe_package_json.is_some()
   }
 
   /// Resolves the path to use for a local node_modules folder.

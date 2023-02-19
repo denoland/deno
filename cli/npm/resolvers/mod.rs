@@ -17,7 +17,6 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use global::GlobalNpmPackageResolver;
-use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -35,37 +34,11 @@ use super::NpmPackageNodeId;
 use super::NpmResolutionSnapshot;
 use super::RealNpmRegistryApi;
 
-const RESOLUTION_STATE_ENV_VAR_NAME: &str =
-  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
-
-static IS_NPM_MAIN: Lazy<bool> =
-  Lazy::new(|| std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).is_ok());
-
 /// State provided to the process via an environment variable.
-#[derive(Debug, Serialize, Deserialize)]
-struct NpmProcessState {
-  snapshot: NpmResolutionSnapshot,
-  local_node_modules_path: Option<String>,
-}
-
-impl NpmProcessState {
-  pub fn was_set() -> bool {
-    *IS_NPM_MAIN
-  }
-
-  pub fn take() -> Option<NpmProcessState> {
-    // initialize the lazy before we remove the env var below
-    if !Self::was_set() {
-      return None;
-    }
-
-    let state = std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
-    let state = serde_json::from_str(&state).ok()?;
-    // remove the environment variable so that sub processes
-    // that are spawned do not also use this.
-    std::env::remove_var(RESOLUTION_STATE_ENV_VAR_NAME);
-    Some(state)
-  }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NpmProcessState {
+  pub snapshot: NpmResolutionSnapshot,
+  pub local_node_modules_path: Option<String>,
 }
 
 #[derive(Clone)]
@@ -93,15 +66,25 @@ impl NpmPackageResolver {
     cache: NpmCache,
     api: RealNpmRegistryApi,
     no_npm: bool,
+    process_npm_state: Option<NpmProcessState>,
     local_node_modules_path: Option<PathBuf>,
   ) -> Self {
-    Self::new_inner(cache, api, no_npm, local_node_modules_path, None, None)
+    Self::new_inner(
+      cache,
+      api,
+      no_npm,
+      process_npm_state,
+      local_node_modules_path,
+      None,
+      None,
+    )
   }
 
   pub async fn new_with_maybe_lockfile(
     cache: NpmCache,
     api: RealNpmRegistryApi,
     no_npm: bool,
+    process_npm_state: Option<NpmProcessState>,
     local_node_modules_path: Option<PathBuf>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Result<Self, AnyError> {
@@ -127,6 +110,7 @@ impl NpmPackageResolver {
       cache,
       api,
       no_npm,
+      process_npm_state,
       local_node_modules_path,
       maybe_snapshot,
       maybe_lockfile,
@@ -137,16 +121,20 @@ impl NpmPackageResolver {
     cache: NpmCache,
     api: RealNpmRegistryApi,
     no_npm: bool,
+    process_npm_state: Option<NpmProcessState>,
     local_node_modules_path: Option<PathBuf>,
     initial_snapshot: Option<NpmResolutionSnapshot>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
-    let process_npm_state = NpmProcessState::take();
-    let local_node_modules_path = local_node_modules_path.or_else(|| {
-      process_npm_state
-        .as_ref()
-        .and_then(|s| s.local_node_modules_path.as_ref().map(PathBuf::from))
-    });
+    // TODO(bartlomieju): `local_node_modules_path` processing should be done
+    // in cli/args/mod.rs
+    let local_node_modules_path =
+      if let Some(state) = process_npm_state.as_ref() {
+        state.local_node_modules_path.as_ref().map(PathBuf::from)
+      } else {
+        local_node_modules_path
+      };
+
     let maybe_snapshot =
       initial_snapshot.or_else(|| process_npm_state.map(|s| s.snapshot));
     let inner: Arc<dyn InnerNpmPackageResolver> = match &local_node_modules_path
@@ -289,14 +277,6 @@ impl NpmPackageResolver {
     self.inner.set_package_reqs(packages).await
   }
 
-  // If the main module should be treated as being in an npm package.
-  // This is triggered via a secret environment variable which is used
-  // for functionality like child_process.fork. Users should NOT depend
-  // on this functionality.
-  pub fn is_npm_main(&self) -> bool {
-    NpmProcessState::was_set()
-  }
-
   /// Gets the state of npm for the process.
   pub fn get_npm_process_state(&self) -> String {
     serde_json::to_string(&NpmProcessState {
@@ -315,6 +295,7 @@ impl NpmPackageResolver {
       self.cache.clone(),
       self.api.clone(),
       self.no_npm,
+      None,
       self.local_node_modules_path.clone(),
       Some(self.snapshot()),
       None,

@@ -322,7 +322,7 @@ fn create_lsp_npm_resolver(
     http_client,
     progress_bar,
   );
-  NpmPackageResolver::new(npm_cache, api, false, None)
+  NpmPackageResolver::new(npm_cache, api, false, None, None)
 }
 
 impl Inner {

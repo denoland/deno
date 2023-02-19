@@ -261,6 +261,7 @@ impl ProcState {
       npm_cache.clone(),
       api,
       cli_options.no_npm(),
+      cli_options.get_npm_process_state(),
       cli_options
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
