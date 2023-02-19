@@ -5,6 +5,7 @@ use std::env;
 use std::path::PathBuf;
 
 // This is a shim that allows to generate documentation on docs.rs
+#[cfg(all(not(feature = "docsrs"), feature = "will_load_snapshot"))]
 mod not_docs {
   use std::path::Path;
 
@@ -334,6 +335,6 @@ fn main() {
     std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
   }
 
-  #[cfg(not(feature = "docsrs"))]
+  #[cfg(all(not(feature = "docsrs"), feature = "will_load_snapshot"))]
   not_docs::build_snapshot(runtime_snapshot_path)
 }

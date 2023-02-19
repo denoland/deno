@@ -282,13 +282,17 @@ impl MainWorker {
     ];
     extensions.extend(std::mem::take(&mut options.extensions));
 
+    #[cfg(feature = "will_take_snapshot")]
+    let startup_snapshot = options
+      .startup_snapshot
+      .unwrap_or_else(|| js::deno_isolate_init());
+
+    #[cfg(not(feature = "will_take_snapshot"))]
+    let startup_snapshot = options.startup_snapshot.unwrap();
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(
-        options
-          .startup_snapshot
-          .unwrap_or_else(js::deno_isolate_init),
-      ),
+      startup_snapshot: Some(startup_snapshot),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
