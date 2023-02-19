@@ -281,6 +281,14 @@ export function getCipherInfo(
   notImplemented("crypto.getCipherInfo");
 }
 
+function privateEncrypt(
+  privateKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView | string | KeyObject,
+): Buffer {
+  let padding = privateKey.padding || 1;
+  return ops.op_node_private_encrypt(privateKey, buffer, padding);
+}
+
 export default {
   privateDecrypt,
   privateEncrypt,
