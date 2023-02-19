@@ -1221,7 +1221,7 @@ impl<'a> GraphDependencyResolver<'a> {
 
   fn set_new_peer_dep(
     &mut self,
-    mut node_parent: NodeParent,
+    peer_dep_parent: NodeParent,
     // path from the node above the resolved dep to just above the peer dep
     path: Vec<&Arc<GraphPath>>,
     peer_dep_specifier: &str,
@@ -1236,7 +1236,7 @@ impl<'a> GraphDependencyResolver<'a> {
       .pkg_id
       .clone();
 
-    let mut peer_dep = match &node_parent {
+    let mut peer_dep = match &peer_dep_parent {
       NodeParent::Root(id) => {
         eprintln!("HERE6: {id} {}", peer_dep_pkg_id);
         Some(ResolvedIdPeerDep {
@@ -1248,6 +1248,11 @@ impl<'a> GraphDependencyResolver<'a> {
       _ => None,
     };
     let mut added_to_pending_nodes = false;
+    let mut node_parent =
+      match path.last().unwrap().previous_node.as_ref().unwrap() {
+        GraphPathNodeOrRoot::Node(path) => NodeParent::Node(path.node_id()),
+        GraphPathNodeOrRoot::Root(pkg_id) => NodeParent::Root(pkg_id.clone()),
+      };
 
     eprintln!("Going down...");
     for graph_path_node in path.iter().rev() {
@@ -1343,12 +1348,36 @@ impl<'a> GraphDependencyResolver<'a> {
             self.graph.root_packages.insert(pkg_id.clone(), new_node_id);
           }
           NodeParent::Node(parent_node_id) => {
+            eprintln!(
+              "OLD NODE ID: {}",
+              self
+                .graph
+                .get_npm_pkg_resolved_id(old_node_id)
+                .as_serialized()
+            );
+            eprintln!(
+              "NEW ID: {}",
+              self
+                .graph
+                .get_npm_pkg_resolved_id(old_node_id)
+                .as_serialized()
+            );
+            eprintln!(
+              "PARENT ID: {}",
+              self
+                .graph
+                .get_npm_pkg_resolved_id(*parent_node_id)
+                .as_serialized()
+            );
             let parent_node = self.graph.borrow_node_mut(parent_node_id);
+            let mut found_match = false;
             for child_id in parent_node.children.values_mut() {
               if *child_id == old_node_id {
                 *child_id = new_node_id;
+                found_match = true;
               }
             }
+            debug_assert!(found_match);
           }
         }
 
