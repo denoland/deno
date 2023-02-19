@@ -14,6 +14,8 @@ description = "Provides the deno runtime library"
 docsrs = []
 # feature that modifies the snapshot to allow extending it
 snapshot_from_snapshot = []
+will_take_snapshot = []
+will_load_snapshot = []
 
 [lib]
 name = "deno_runtime"
@@ -25,25 +27,25 @@ path = "examples/hello_runtime.rs"
 
 [build-dependencies]
 deno_ast.workspace = true
-deno_broadcast_channel.workspace = true
-deno_cache.workspace = true
-deno_console.workspace = true
-deno_core.workspace = true
-deno_crypto.workspace = true
-deno_fetch.workspace = true
-deno_ffi.workspace = true
-deno_flash.workspace = true
-deno_http.workspace = true
-deno_net.workspace = true
-deno_node.workspace = true
-deno_tls.workspace = true
-deno_url.workspace = true
-deno_web.workspace = true
-deno_webgpu.workspace = true
-deno_webidl.workspace = true
-deno_websocket.workspace = true
-deno_webstorage.workspace = true
-deno_napi.workspace = true
+deno_broadcast_channel = { workspace = true, features = ["will_take_snapshot"] }
+deno_cache = { workspace = true, features = ["will_take_snapshot"] }
+deno_console = { workspace = true, features = ["will_take_snapshot"] }
+deno_core = { workspace = true, features = ["will_take_snapshot"] }
+deno_crypto = { workspace = true, features = ["will_take_snapshot"] }
+deno_fetch = { workspace = true, features = ["will_take_snapshot"] }
+deno_ffi = { workspace = true, features = ["will_take_snapshot"] }
+deno_flash = { workspace = true, features = ["will_take_snapshot"] }
+deno_http = { workspace = true, features = ["will_take_snapshot"] }
+deno_net = { workspace = true, features = ["will_take_snapshot"] }
+deno_node = { workspace = true, features = ["will_take_snapshot"] }
+deno_tls = { workspace = true, features = ["will_take_snapshot"] }
+deno_url = { workspace = true, features = ["will_take_snapshot"] }
+deno_web = { workspace = true, features = ["will_take_snapshot"] }
+deno_webgpu = { workspace = true, features = ["will_take_snapshot"] }
+deno_webidl = { workspace = true, features = ["will_take_snapshot"] }
+deno_websocket = { workspace = true, features = ["will_take_snapshot"] }
+deno_webstorage = { workspace = true, features = ["will_take_snapshot"] }
+deno_napi = { workspace = true, features = ["will_take_snapshot"] }
 
 lzzzz.workspace = true
 
@@ -52,25 +54,25 @@ winres.workspace = true
 winapi.workspace = true
 
 [dependencies]
-deno_broadcast_channel.workspace = true
-deno_cache.workspace = true
-deno_console.workspace = true
-deno_core.workspace = true
-deno_crypto.workspace = true
-deno_fetch.workspace = true
-deno_ffi.workspace = true
-deno_flash.workspace = true
-deno_http.workspace = true
-deno_napi.workspace = true
-deno_net.workspace = true
-deno_node.workspace = true
-deno_tls.workspace = true
-deno_url.workspace = true
-deno_web.workspace = true
-deno_webgpu.workspace = true
-deno_webidl.workspace = true
-deno_websocket.workspace = true
-deno_webstorage.workspace = true
+deno_broadcast_channel = { workspace = true, features = ["will_load_snapshot"] }
+deno_cache = { workspace = true, features = ["will_load_snapshot"] }
+deno_console = { workspace = true, features = ["will_load_snapshot"] }
+deno_core = { workspace = true, features = ["will_load_snapshot"] }
+deno_crypto = { workspace = true, features = ["will_load_snapshot"] }
+deno_fetch = { workspace = true, features = ["will_load_snapshot"] }
+deno_ffi = { workspace = true, features = ["will_load_snapshot"] }
+deno_flash = { workspace = true, features = ["will_load_snapshot"] }
+deno_http = { workspace = true, features = ["will_load_snapshot"] }
+deno_napi = { workspace = true, features = ["will_load_snapshot"] }
+deno_net = { workspace = true, features = ["will_load_snapshot"] }
+deno_node = { workspace = true, features = ["will_load_snapshot"] }
+deno_tls = { workspace = true, features = ["will_load_snapshot"] }
+deno_url = { workspace = true, features = ["will_load_snapshot"] }
+deno_web = { workspace = true, features = ["will_load_snapshot"] }
+deno_webgpu = { workspace = true, features = ["will_load_snapshot"] }
+deno_webidl = { workspace = true, features = ["will_load_snapshot"] }
+deno_websocket = { workspace = true, features = ["will_load_snapshot"] }
+deno_webstorage = { workspace = true, features = ["will_load_snapshot"] }
 
 atty.workspace = true
 dlopen.workspace = true

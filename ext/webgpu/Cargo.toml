@@ -12,6 +12,8 @@ description = "WebGPU implementation for Deno"
 
 [features]
 surface = ["wgpu-core/raw-window-handle", "dep:raw-window-handle"]
+will_take_snapshot = ["deno_core/will_take_snapshot"]
+will_load_snapshot = ["deno_core/will_load_snapshot"]
 
 [dependencies]
 deno_core.workspace = true

@@ -35,4 +35,4 @@ pub fn deno_isolate_init() -> Snapshot {
 }
 
 #[cfg(feature = "snapshot_from_snapshot")]
-pub static SOURCE_CODE_FOR_99_MAIN_JS: &str = include_str!("js/99_main.js");
+pub static PATH_FOR_99_MAIN_JS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/js/99_main.js");

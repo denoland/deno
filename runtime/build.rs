@@ -40,7 +40,10 @@ mod not_docs {
         std::fs::read_to_string(path).unwrap()
       }
       ExtensionSourceFileSource::Embedded(str) => str.to_string(),
-      ExtensionSourceFileSource::None => panic!(),
+      ExtensionSourceFileSource::None => {
+        dbg!(&file_source.specifier);
+        panic!()
+      }
     };
 
     if !should_transpile {
@@ -292,9 +295,17 @@ mod not_docs {
           .dependencies(vec!["runtime"])
           .esm(vec![ExtensionFileSource {
             specifier: "js/99_main.js".to_string(),
-            code: ExtensionSourceFileSource::Embedded(include_str!(
-              "js/99_main.js"
-            )),
+
+            #[cfg(not(any(feature = "will_take_snapshot", feature = "will_load_snapshot")))]
+            code: ExtensionSourceFileSource::Embedded(include_str!("js/99_main.js")),
+            #[cfg(feature = "will_take_snapshot")]
+            code: ExtensionSourceFileSource::File(
+              std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("js")
+                .join("99_main.js"),
+            ),
+            #[cfg(all(feature = "will_load_snapshot", not(feature = "will_take_snapshot")))]
+            code: ExtensionSourceFileSource::None,
           }])
           .build(),
       );

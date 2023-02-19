@@ -10,6 +10,10 @@ readme = "README.md"
 repository.workspace = true
 description = "Dynamic library ffi for deno"
 
+[features]
+will_take_snapshot = ["deno_core/will_take_snapshot"]
+will_load_snapshot = ["deno_core/will_load_snapshot"]
+
 [lib]
 path = "lib.rs"
 
