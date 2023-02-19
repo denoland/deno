@@ -180,6 +180,9 @@ impl ExtensionBuilder {
 
   pub fn js(&mut self, js_files: Vec<ExtensionFileSource>) -> &mut Self {
     let js_files =
+      // TODO(bartlomieju): if we're automatically remapping here, then we should
+      // use a different result struct that `ExtensionFileSource` as it's confusing
+      // when (and why) the remapping happens.
       js_files.into_iter().map(|file_source| ExtensionFileSource {
         specifier: format!("internal:{}/{}", self.name, file_source.specifier),
         code: file_source.code,
@@ -189,16 +192,15 @@ impl ExtensionBuilder {
   }
 
   pub fn esm(&mut self, esm_files: Vec<ExtensionFileSource>) -> &mut Self {
-    let esm_files =
-      esm_files
-        .into_iter()
-        .map(|file_source| ExtensionFileSource {
-          specifier: format!(
-            "internal:{}/{}",
-            self.name, file_source.specifier
-          ),
-          code: file_source.code,
-        });
+    let esm_files = esm_files
+      .into_iter()
+      // TODO(bartlomieju): if we're automatically remapping here, then we should
+      // use a different result struct that `ExtensionFileSource` as it's confusing
+      // when (and why) the remapping happens.
+      .map(|file_source| ExtensionFileSource {
+        specifier: format!("internal:{}/{}", self.name, file_source.specifier),
+        code: file_source.code,
+      });
     self.esm.extend(esm_files);
     self
   }
