@@ -41,7 +41,7 @@ pub struct NpmPackageInfo {
   pub dist_tags: HashMap<String, String>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum NpmDependencyEntryKind {
   Dep,
   Peer,
@@ -54,7 +54,7 @@ impl NpmDependencyEntryKind {
   }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct NpmDependencyEntry {
   pub kind: NpmDependencyEntryKind,
   pub bare_specifier: String,
