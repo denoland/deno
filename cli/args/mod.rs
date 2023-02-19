@@ -700,7 +700,7 @@ impl CliOptions {
     .map(Some)
   }
 
-  pub fn get_npm_process_state(&self) -> Option<NpmProcessState> {
+  fn get_npm_process_state(&self) -> Option<NpmProcessState> {
     if !self.is_npm_main() {
       return None;
     }
