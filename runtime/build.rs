@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::include_js_files_dir;
+use deno_core::include_js_files;
 use std::env;
 use std::path::PathBuf;
 
@@ -197,7 +197,7 @@ mod not_docs {
         "deno_http",
         "deno_flash",
       ])
-      .esm(include_js_files_dir!(
+      .esm(include_js_files!(
         dir "js",
         "01_build.js",
         "01_errors.js",

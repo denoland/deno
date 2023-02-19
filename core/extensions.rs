@@ -272,46 +272,40 @@ impl ExtensionBuilder {
 /// Helps embed JS files in an extension. Returns a vector of
 /// `ExtensionFileSource`, that represent the filename and source code.
 ///
+/// Additional "dir" option can be specified, that specifies which directory in
+/// the crate root contains the listed files. "dir" option will be prepended to
+/// each file name.
+///
 /// Example:
 /// ```ignore
 /// include_js_files!(
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
-/// ```
-#[macro_export]
-macro_rules! include_js_files {
-  ($($file:literal,)+) => {
-    vec![
-      $($crate::ExtensionFileSource {
-        specifier: $file.to_string(),
-        code: $crate::ExtensionSourceFileSource::Embedded(include_str!($file)),
-      },)+
-    ]
-  };
-}
-
-/// Helps embed JS files in an extension. Returns a vector of
-/// `ExtensionFileSource`, that represent the filename and source code.
-/// Additional "dir" option is required, that specifies which directory in the
-/// crate root contains the listed files. "dir" option will be prepended to
-/// each file name.
 ///
 /// Example:
 /// ```ignore
-/// include_js_files_dir!(
-///   dir "example",
+/// include_js_files!(
+///   dir "js",
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
 /// ```
 #[macro_export]
-macro_rules! include_js_files_dir {
+macro_rules! include_js_files {
   (dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!($dir, "/", $file).to_string(),
         code: $crate::ExtensionSourceFileSource::Embedded(include_str!(concat!($dir, "/", $file))),
+      },)+
+    ]
+  };
+  ($($file:literal,)+) => {
+    vec![
+      $($crate::ExtensionFileSource {
+        specifier: $file.to_string(),
+        code: $crate::ExtensionSourceFileSource::Embedded(include_str!($file)),
       },)+
     ]
   };
