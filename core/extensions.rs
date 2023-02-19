@@ -297,6 +297,13 @@ macro_rules! include_js_files {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!($dir, "/", $file).to_string(),
+        #[cfg(feature = "will_take_snapshot")]
+        code: $crate::ExtensionSourceFileSource::File(
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
+        ),
+        #[cfg(feature = "will_load_snapshot")]
+        code: $crate::ExtensionSourceFileSource::None,
+        #[cfg(not(all(feature = "will_take_snapshot", feature = "will_load_snapshot")))]
         code: $crate::ExtensionSourceFileSource::Embedded(include_str!(concat!($dir, "/", $file))),
       },)+
     ]
@@ -305,6 +312,13 @@ macro_rules! include_js_files {
     vec![
       $($crate::ExtensionFileSource {
         specifier: $file.to_string(),
+        #[cfg(feature = "will_take_snapshot")]
+        code: $crate::ExtensionSourceFileSource::File(
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
+        ),
+        #[cfg(feature = "will_load_snapshot")]
+        code: $crate::ExtensionSourceFileSource::None,
+        #[cfg(not(all(feature = "will_take_snapshot", feature = "will_load_snapshot")))]
         code: $crate::ExtensionSourceFileSource::Embedded(include_str!($file)),
       },)+
     ]
