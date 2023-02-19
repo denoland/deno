@@ -259,48 +259,49 @@ impl ExtensionBuilder {
 }
 
 /// Helps embed JS files in an extension. Returns a vector of
-/// `ExtensionFileSource`, that represent the filename and source code.
+/// `ExtensionFileSource`, that represent the filename and source code. All
+/// specified files are rewritten into "internal:<extension_name>/<file_name>".
 ///
-/// Example:
+/// An optional "dir" option can be specified to prefix all files with a
+/// directory name.
+///
+/// Example (for "my_extension"):
 /// ```ignore
 /// include_js_files!(
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
-/// ```
-#[macro_export]
-macro_rules! include_js_files {
-  ($($file:literal,)+) => {
-    vec![
-      $($crate::ExtensionFileSource {
-        specifier: $file.to_string(),
-        code: include_str!($file),
-      },)+
-    ]
-  };
-}
-
-/// Helps embed JS files in an extension. Returns a vector of
-/// `ExtensionFileSource`, that represent the filename and source code.
-/// Additional "dir" option is required, that specifies which directory in the
-/// crate root contains the listed files. "dir" option will be prepended to
-/// each file name.
+/// // Produces following specifiers:
+/// - "internal:my_extension/01_hello.js"
+/// - "internal:my_extension/02_goodbye.js"
 ///
-/// Example:
+/// /// Example with "dir" option (for "my_extension"):
 /// ```ignore
-/// include_js_files_dir!(
-///   dir "example",
+/// include_js_files!(
+///   dir "js",
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
+/// // Produces following specifiers:
+/// - "internal:my_extension/js/01_hello.js"
+/// - "internal:my_extension/js/02_goodbye.js"
 /// ```
 #[macro_export]
-macro_rules! include_js_files_dir {
+macro_rules! include_js_files {
   (dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!($dir, "/", $file).to_string(),
         code: include_str!(concat!($dir, "/", $file)),
+      },)+
+    ]
+  };
+
+  ($($file:literal,)+) => {
+    vec![
+      $($crate::ExtensionFileSource {
+        specifier: $file.to_string(),
+        code: include_str!($file),
       },)+
     ]
   };
