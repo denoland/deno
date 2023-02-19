@@ -44,7 +44,7 @@ impl NpmPackagesPartitioned {
   }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmResolutionSnapshot {
   /// The unique package requirements map to a single npm package name and version.
   #[serde(with = "map_to_vec")]

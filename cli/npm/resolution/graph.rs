@@ -23,6 +23,7 @@ use crate::npm::registry::NpmDependencyEntryKind;
 use crate::npm::registry::NpmPackageInfo;
 use crate::npm::registry::NpmPackageVersionInfo;
 use crate::npm::resolution::common::resolve_best_package_version_and_info;
+use crate::npm::resolution::snapshot::SnapshotPackageCopyIndexResolver;
 use crate::npm::NpmRegistryApi;
 
 use super::common::version_req_satisfies;
@@ -291,6 +292,9 @@ impl Graph {
         return *id; // already created
       }
 
+      let node_id = graph.create_node(&resolved_id.id);
+      created_package_ids.insert(resolved_id.clone(), node_id);
+
       let peer_dep_ids = resolved_id
         .peer_dependencies
         .iter()
@@ -303,7 +307,6 @@ impl Graph {
           ))
         })
         .collect::<Vec<_>>();
-      let node_id = graph.create_node(&resolved_id.id);
       let graph_resolved_id = ResolvedId {
         pkg_id: resolved_id.id.clone(),
         peer_dependencies: peer_dep_ids,
@@ -567,25 +570,14 @@ impl Graph {
       })
       .collect::<HashMap<_, _>>();
 
+    let mut copy_index_resolver =
+      SnapshotPackageCopyIndexResolver::from_map_with_capacity(
+        self.packages_to_copy_index,
+        self.packages.len(),
+      );
     let mut packages = HashMap::with_capacity(self.packages.len());
     for (_, ids) in &resolved_packages_by_name {
-      let mut copy_index = 0;
-      let mut last_pkg_id: Option<&NpmPackageId> = None;
       for (node_id, resolved_id) in ids {
-        match last_pkg_id {
-          Some(pkg_id) => {
-            if resolved_id.id == *pkg_id {
-              copy_index += 1
-            } else {
-              last_pkg_id = Some(&resolved_id.id);
-              copy_index = 0;
-            }
-          }
-          None => {
-            copy_index = 0;
-            last_pkg_id = Some(&resolved_id.id);
-          }
-        };
         let node = self.packages.remove(node_id).unwrap();
         let dist = api
           .package_version_info(&resolved_id.id)
@@ -595,7 +587,7 @@ impl Graph {
         packages.insert(
           (*resolved_id).clone(),
           NpmResolutionPackage {
-            copy_index,
+            copy_index: copy_index_resolver.resolve(resolved_id),
             pkg_id: (*resolved_id).clone(),
             dist,
             dependencies: node
@@ -3204,6 +3196,18 @@ mod test {
 
     resolver.resolve_pending().await.unwrap();
     let snapshot = graph.into_snapshot(&api).await.unwrap();
+
+    {
+      let new_snapshot = Graph::from_snapshot(snapshot.clone())
+        .into_snapshot(&api)
+        .await
+        .unwrap();
+      assert_eq!(
+        snapshot, new_snapshot,
+        "recreated snapshot should be the same"
+      );
+    }
+
     let mut packages = snapshot.all_packages();
     packages.sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
     let mut package_reqs = snapshot
@@ -3217,6 +3221,7 @@ mod test {
       })
       .collect::<Vec<_>>();
     package_reqs.sort_by(|a, b| a.0.to_string().cmp(&b.0.to_string()));
+
     (packages, package_reqs)
   }
 }
