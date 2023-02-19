@@ -3,7 +3,6 @@ use deno_core::Snapshot;
 use log::debug;
 use once_cell::sync::Lazy;
 
-#[cfg(feature = "will_load_snapshot")]
 pub static RUNTIME_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   #[allow(clippy::uninit_vec)]
   #[cold]
@@ -30,11 +29,7 @@ pub static RUNTIME_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   },
 );
 
-#[cfg(feature = "will_load_snapshot")]
 pub fn deno_isolate_init() -> Snapshot {
   debug!("Deno isolate init with snapshots.");
   Snapshot::Static(&RUNTIME_SNAPSHOT)
 }
-
-#[cfg(feature = "snapshot_from_snapshot")]
-pub static PATH_FOR_99_MAIN_JS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/js/99_main.js");

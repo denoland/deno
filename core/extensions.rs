@@ -297,12 +297,18 @@ macro_rules! include_js_files {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!($dir, "/", $file).to_string(),
+
+        // When running without a snapshot.
         #[cfg(not(any(feature = "will_take_snapshot", feature = "will_load_snapshot")))]
         code: $crate::ExtensionSourceFileSource::Embedded(include_str!(concat!($dir, "/", $file))),
+
+        // When creating a new snapshot, or creating a snapshot from an existing snapshot.
         #[cfg(feature = "will_take_snapshot")]
         code: $crate::ExtensionSourceFileSource::File(
           std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
         ),
+
+        // When running with a snapshot, but not taking a snapshot.
         #[cfg(all(feature = "will_load_snapshot", not(feature = "will_take_snapshot")))]
         code: $crate::ExtensionSourceFileSource::None,
       },)+
@@ -312,12 +318,15 @@ macro_rules! include_js_files {
     vec![
       $($crate::ExtensionFileSource {
         specifier: $file.to_string(),
+
         #[cfg(not(any(feature = "will_take_snapshot", feature = "will_load_snapshot")))]
         code: $crate::ExtensionSourceFileSource::Embedded(include_str!($file)),
+
         #[cfg(feature = "will_take_snapshot")]
         code: $crate::ExtensionSourceFileSource::File(
           std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
         ),
+
         #[cfg(all(feature = "will_load_snapshot", not(feature = "will_take_snapshot")))]
         code: $crate::ExtensionSourceFileSource::None,
       },)+

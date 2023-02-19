@@ -34,3 +34,7 @@ pub mod worker;
 
 mod worker_bootstrap;
 pub use worker_bootstrap::BootstrapOptions;
+
+#[cfg(feature = "snapshot_from_snapshot")]
+pub static PATH_FOR_99_MAIN_JS: &str =
+  concat!(env!("CARGO_MANIFEST_DIR"), "/js/99_main.js");

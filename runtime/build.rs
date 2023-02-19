@@ -5,7 +5,7 @@ use std::env;
 use std::path::PathBuf;
 
 // This is a shim that allows to generate documentation on docs.rs
-#[cfg(all(not(feature = "docsrs"), feature = "will_load_snapshot"))]
+#[cfg(not(feature = "docsrs"))]
 mod not_docs {
   use std::path::Path;
 
@@ -297,15 +297,23 @@ mod not_docs {
           .esm(vec![ExtensionFileSource {
             specifier: "js/99_main.js".to_string(),
 
-            #[cfg(not(any(feature = "will_take_snapshot", feature = "will_load_snapshot")))]
-            code: ExtensionSourceFileSource::Embedded(include_str!("js/99_main.js")),
+            #[cfg(not(any(
+              feature = "will_take_snapshot",
+              feature = "will_load_snapshot"
+            )))]
+            code: ExtensionSourceFileSource::Embedded(include_str!(
+              "js/99_main.js"
+            )),
             #[cfg(feature = "will_take_snapshot")]
             code: ExtensionSourceFileSource::File(
               std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("js")
                 .join("99_main.js"),
             ),
-            #[cfg(all(feature = "will_load_snapshot", not(feature = "will_take_snapshot")))]
+            #[cfg(all(
+              feature = "will_load_snapshot",
+              not(feature = "will_take_snapshot")
+            ))]
             code: ExtensionSourceFileSource::None,
           }])
           .build(),
@@ -335,6 +343,6 @@ fn main() {
     std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
   }
 
-  #[cfg(all(not(feature = "docsrs"), feature = "will_load_snapshot"))]
+  #[cfg(not(feature = "docsrs"))]
   not_docs::build_snapshot(runtime_snapshot_path)
 }
