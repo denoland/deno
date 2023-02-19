@@ -354,13 +354,14 @@ impl Graph {
     resolved_id: &ResolvedId,
     seen: HashSet<NodeId>,
   ) -> NpmPackageResolvedId {
-    // todo(THIS PR): infinite loop possible?
+    let mut seen_children_resolved_ids =
+      HashSet::with_capacity(resolved_id.peer_dependencies.len());
     NpmPackageResolvedId {
       id: resolved_id.pkg_id.clone(),
       peer_dependencies: resolved_id
         .peer_dependencies
         .iter()
-        .map(|parent_ref| {
+        .filter_map(|parent_ref| {
           let (child_id, child_resolved_id) = match &parent_ref.parent {
             NodeParent::Root(_) => {
               let node_id =
@@ -394,10 +395,16 @@ impl Graph {
             panic!("Infinite loop.")
           }
 
-          self.get_npm_pkg_resolved_id_from_resolved_id(
+          let id = self.get_npm_pkg_resolved_id_from_resolved_id(
             child_resolved_id,
             new_seen.clone(),
-          )
+          );
+          // todo(THIS PR): avoid cloning here
+          if seen_children_resolved_ids.insert(id.clone()) {
+            Some(id)
+          } else {
+            None
+          }
         })
         .collect(),
     }
@@ -887,51 +894,65 @@ impl<'a> GraphDependencyResolver<'a> {
         // resolve the dependencies
         let mut found_peer = false;
 
+        eprintln!("------------------------------");
+        eprintln!(
+          "LOOKING AT: {}",
+          self
+            .graph
+            .get_npm_pkg_resolved_id(graph_path.node_id())
+            .as_serialized()
+        );
+        self.graph.output_path(&graph_path);
         eprintln!("DEPS");
-        eprintln!("----");
         for dep in deps.iter() {
           eprintln!("{}", dep.bare_specifier);
         }
-        eprintln!("----");
+        eprintln!("------------------------------");
 
         for dep in deps.iter() {
           let package_info = self.api.package_info(&dep.name).await?;
 
+          let maybe_child_id = self
+            .graph
+            .packages
+            .get(&graph_path.node_id())
+            .unwrap()
+            .children
+            .get(&dep.bare_specifier)
+            .copied();
+          if let Some(child_id) = &maybe_child_id {
+            // we already resolved this dependency before, and we can skip it
+            self.try_add_pending_unresolved_node(
+              &graph_path,
+              NodeIdRef::new(child_id.clone()),
+            );
+          }
+
           match dep.kind {
             NpmDependencyEntryKind::Dep => {
-              let node_id = if let Some(child_id) = self
-                .graph
-                .packages
-                .get(&graph_path.node_id())
-                .unwrap()
-                .children
-                .get(&dep.bare_specifier)
-                .copied()
-              {
-                // we already resolved this dependency before, and we can skip it
-                self.try_add_pending_unresolved_node(
-                  &graph_path,
-                  NodeIdRef::new(child_id),
-                );
+              let child_id = if let Some(child_id) = maybe_child_id {
                 child_id
               } else {
                 self.analyze_dependency(dep, &package_info, &graph_path)?
               };
 
               if !found_peer {
-                found_peer = !self.graph.borrow_node_mut(&node_id).no_peers;
+                found_peer = !self.graph.borrow_node_mut(&child_id).no_peers;
               }
             }
             NpmDependencyEntryKind::Peer
             | NpmDependencyEntryKind::OptionalPeer => {
               found_peer = true;
-              eprintln!("Parent id: {:?}", graph_path.node_id());
-              self.resolve_peer_dep(
-                &dep.bare_specifier,
-                dep,
-                &package_info,
-                &graph_path,
-              )?;
+              if maybe_child_id.is_none() {
+                self.resolve_peer_dep(
+                  &dep.bare_specifier,
+                  dep,
+                  &package_info,
+                  &graph_path,
+                )?;
+              } else {
+                eprintln!("SKIPPING")
+              }
             }
           }
         }
@@ -955,9 +976,6 @@ impl<'a> GraphDependencyResolver<'a> {
       peer_dep.kind,
       NpmDependencyEntryKind::Peer | NpmDependencyEntryKind::OptionalPeer
     ));
-
-    eprintln!("HERE");
-    self.graph.output_path(ancestor_path);
 
     // use this to detect cycles... this is just in case and probably won't happen
     let mut up_path = GraphPath::new(ancestor_path.node_id_ref().clone());
@@ -1151,7 +1169,7 @@ impl<'a> GraphDependencyResolver<'a> {
       // we need to create it later once we have a new node id
       NodeParent::Node(_) => None,
     };
-    let mut had_created_node = false;
+    let mut added_to_pending_nodes = false;
 
     for graph_path_node in path.iter().rev() {
       let node_id = graph_path_node.node_id();
@@ -1212,12 +1230,13 @@ impl<'a> GraphDependencyResolver<'a> {
         debug_assert_eq!(graph_path_node.node_id(), old_node_id);
         graph_path_node.change_id(new_node_id);
 
-        if !had_created_node {
+        if !added_to_pending_nodes {
+          eprintln!("PUSHED");
           // add the top node to the list of pending unresolved nodes
           self
             .pending_unresolved_nodes
             .push_back((**graph_path_node).clone());
-          had_created_node = true;
+          added_to_pending_nodes = true;
         }
 
         // update the current node to not have the parent
@@ -1256,28 +1275,29 @@ impl<'a> GraphDependencyResolver<'a> {
         // handle this node having a previous child due to another peer dependency
         let node = self.graph.borrow_node(&node_id);
         if let Some(child_id) = node.children.remove(peer_dep_specifier) {
-          eprintln!("SPECIFIER: {}", peer_dep_specifier);
-          eprintln!("NODE ID: {:?}", node_id);
-          eprintln!("CHILD ID: {:?}", child_id);
+          // todo(THIS PR): Investigate this
+          // eprintln!("SPECIFIER: {}", peer_dep_specifier);
+          // eprintln!("NODE ID: {:?}", node_id);
+          // eprintln!("CHILD ID: {:?}", child_id);
 
-          self.graph.set_child_parent_node(
-            peer_dep_specifier,
-            peer_dep_id,
-            node_id,
-          );
+          // self.graph.set_child_parent_node(
+          //   peer_dep_specifier,
+          //   peer_dep_id,
+          //   node_id,
+          // );
 
-          self.graph.output_path(&path[0]);
+          // self.graph.output_path(&path[0]);
 
-          eprintln!(
-            "{} {} {}",
-            self.graph.get_npm_pkg_resolved_id(node_id).as_serialized(),
-            self.graph.get_npm_pkg_resolved_id(child_id).as_serialized(),
-            self
-              .graph
-              .get_npm_pkg_resolved_id(peer_dep_id)
-              .as_serialized()
-          );
-          debug_assert!(false, "what, why would this happen?"); // todo: update
+          // eprintln!(
+          //   "{} {} {}",
+          //   self.graph.get_npm_pkg_resolved_id(node_id).as_serialized(),
+          //   self.graph.get_npm_pkg_resolved_id(child_id).as_serialized(),
+          //   self
+          //     .graph
+          //     .get_npm_pkg_resolved_id(peer_dep_id)
+          //     .as_serialized()
+          // );
+          // debug_assert!(false, "what, why would this happen?"); // todo: update
         }
 
         self.graph.set_child_parent_node(
@@ -1285,6 +1305,16 @@ impl<'a> GraphDependencyResolver<'a> {
           peer_dep_id,
           node_id,
         );
+
+        // add the peer dependency to be analyzed when none of its ancestors will be
+        if !added_to_pending_nodes {
+          let bottom_node = path.first().unwrap();
+          debug_assert_eq!(bottom_node.node_id(), node_id);
+          self.try_add_pending_unresolved_node(
+            bottom_node,
+            NodeIdRef::new(peer_dep_id),
+          );
+        }
 
         eprintln!(
           "RESOLVED: {} {}",
@@ -2356,7 +2386,7 @@ mod test {
           dependencies: HashMap::from([(
             "package-a".to_string(),
             NpmPackageResolvedId::from_serialized(
-              "package-a@1.0.0_package-peer-a@4.0.0"
+              "package-a@1.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1"
             )
             .unwrap(),
           ),]),
@@ -2364,7 +2394,7 @@ mod test {
         },
         NpmResolutionPackage {
           pkg_id: NpmPackageResolvedId::from_serialized(
-            "package-a@1.0.0_package-peer-a@4.0.0"
+            "package-a@1.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1"
           )
           .unwrap(),
           copy_index: 0,
@@ -2372,14 +2402,14 @@ mod test {
             (
               "package-b".to_string(),
               NpmPackageResolvedId::from_serialized(
-                "package-b@2.0.0_package-peer-a@4.0.0_package-peer-c@6.2.0"
+                "package-b@2.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-c@6.2.0"
               )
               .unwrap(),
             ),
             (
               "package-c".to_string(),
               NpmPackageResolvedId::from_serialized(
-                "package-c@3.0.0_package-peer-a@4.0.0"
+                "package-c@3.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1"
               )
               .unwrap(),
             ),
@@ -2399,7 +2429,7 @@ mod test {
         },
         NpmResolutionPackage {
           pkg_id: NpmPackageResolvedId::from_serialized(
-            "package-b@2.0.0_package-peer-a@4.0.0_package-peer-c@6.2.0"
+            "package-b@2.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-c@6.2.0"
           )
           .unwrap(),
           copy_index: 0,
@@ -2407,7 +2437,7 @@ mod test {
           dependencies: HashMap::from([
             (
               "package-peer-a".to_string(),
-              NpmPackageResolvedId::from_serialized("package-peer-a@4.0.0")
+              NpmPackageResolvedId::from_serialized("package-peer-a@4.0.0_package-peer-b@5.4.1")
                 .unwrap(),
             ),
             (
@@ -2419,14 +2449,14 @@ mod test {
         },
         NpmResolutionPackage {
           pkg_id: NpmPackageResolvedId::from_serialized(
-            "package-c@3.0.0_package-peer-a@4.0.0"
+            "package-c@3.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1"
           )
           .unwrap(),
           copy_index: 0,
           dist: Default::default(),
           dependencies: HashMap::from([(
             "package-peer-a".to_string(),
-            NpmPackageResolvedId::from_serialized("package-peer-a@4.0.0")
+            NpmPackageResolvedId::from_serialized("package-peer-a@4.0.0_package-peer-b@5.4.1")
               .unwrap(),
           )])
         },
@@ -2445,7 +2475,7 @@ mod test {
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageResolvedId::from_serialized("package-peer-a@4.0.0")
+          pkg_id: NpmPackageResolvedId::from_serialized("package-peer-a@4.0.0_package-peer-b@5.4.1")
             .unwrap(),
           copy_index: 0,
           dist: Default::default(),
