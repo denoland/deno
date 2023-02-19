@@ -7,9 +7,20 @@ use std::task::Context;
 use v8::fast_api::FastFunction;
 
 #[derive(Clone, Debug)]
+pub enum ExtensionFileSourceCode {
+  /// Source code is included in the binary produced. Either by being defined
+  /// inline, or included using `include_str!()`. If you are snapshotting, this
+  /// will result in two copies of the source code being included - one in the
+  /// snapshot, the other the static string in the `Extension`.
+  IncludedInBinary(&'static str),
+  // TODO(bartlomieju): add more variants that allow to read file from the disk,
+  // and not include it in the binary.
+}
+
+#[derive(Clone, Debug)]
 pub struct ExtensionFileSource {
   pub specifier: String,
-  pub code: &'static str,
+  pub code: ExtensionFileSourceCode,
 }
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
@@ -294,7 +305,9 @@ macro_rules! include_js_files {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!($dir, "/", $file).to_string(),
-        code: include_str!(concat!($dir, "/", $file)),
+        code: $crate::ExtensionFileSourceCode::IncludedInBinary(
+          include_str!(concat!($dir, "/", $file)
+        )),
       },)+
     ]
   };
@@ -303,7 +316,9 @@ macro_rules! include_js_files {
     vec![
       $($crate::ExtensionFileSource {
         specifier: $file.to_string(),
-        code: include_str!($file),
+        code: $crate::ExtensionFileSourceCode::IncludedInBinary(
+          include_str!($file)
+        ),
       },)+
     ]
   };

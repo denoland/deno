@@ -18,6 +18,7 @@ mod not_docs {
   use deno_ast::SourceTextInfo;
   use deno_core::error::AnyError;
   use deno_core::ExtensionFileSource;
+  use deno_core::ExtensionFileSourceCode;
 
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
@@ -34,13 +35,16 @@ mod not_docs {
       ),
     };
 
+    let ExtensionFileSourceCode::IncludedInBinary(code) = file_source.code;
+
+    eprintln!("Transpiling {}...{}", file_source.specifier, code);
     if !should_transpile {
-      return Ok(file_source.code.to_string());
+      return Ok(code.to_string());
     }
 
     let parsed = deno_ast::parse_module(ParseParams {
       specifier: file_source.specifier.to_string(),
-      text_info: SourceTextInfo::from_string(file_source.code.to_string()),
+      text_info: SourceTextInfo::from_string(code.to_string()),
       media_type,
       capture_tokens: false,
       scope_analysis: false,
@@ -283,7 +287,9 @@ mod not_docs {
           .dependencies(vec!["runtime"])
           .esm(vec![ExtensionFileSource {
             specifier: "js/99_main.js".to_string(),
-            code: include_str!("js/99_main.js"),
+            code: ExtensionFileSourceCode::IncludedInBinary(include_str!(
+              "js/99_main.js"
+            )),
           }])
           .build(),
       );
