@@ -86,6 +86,8 @@ impl Node {
       } else {
         *value -= 1;
       }
+    } else {
+      debug_assert!(false);
     }
   }
 }
@@ -1153,8 +1155,20 @@ impl<'a> GraphDependencyResolver<'a> {
       } else {
         let mut new_resolved_id = old_resolved_id.clone();
         new_resolved_id.peer_dependencies.push(peer_dep.clone());
-        let (_, new_node_id) =
+        let (created, new_node_id) =
           self.graph.get_or_create_for_id(&new_resolved_id);
+        if created {
+          // copy over the old children to this new one
+          let old_children =
+            self.graph.nodes.get(&old_node_id).unwrap().children.clone();
+          for (specifier, child_id) in old_children {
+            self.graph.set_child_parent(
+              &specifier,
+              child_id,
+              &NodeParent::Node(new_node_id),
+            );
+          }
+        }
 
         debug_assert_eq!(graph_path_node.node_id(), old_node_id);
         graph_path_node.change_id(new_node_id);
