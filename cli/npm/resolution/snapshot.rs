@@ -22,7 +22,7 @@ use crate::npm::registry::NpmPackageVersionDistInfo;
 use crate::npm::registry::NpmRegistryApi;
 use crate::npm::registry::RealNpmRegistryApi;
 
-use super::NpmPackageNodeId;
+use super::NpmPackageId;
 use super::NpmResolutionPackage;
 
 /// Packages partitioned by if they are "copy" packages or not.
@@ -47,10 +47,10 @@ impl NpmPackagesPartitioned {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NpmResolutionSnapshot {
   #[serde(with = "map_to_vec")]
-  pub(super) package_reqs: HashMap<NpmPackageReq, NpmPackageNodeId>,
-  pub(super) packages_by_name: HashMap<String, Vec<NpmPackageNodeId>>,
+  pub(super) package_reqs: HashMap<NpmPackageReq, NpmPackageId>,
+  pub(super) packages_by_name: HashMap<String, Vec<NpmPackageId>>,
   #[serde(with = "map_to_vec")]
-  pub(super) packages: HashMap<NpmPackageNodeId, NpmResolutionPackage>,
+  pub(super) packages: HashMap<NpmPackageId, NpmResolutionPackage>,
 }
 
 // This is done so the maps with non-string keys get serialized and deserialized as vectors.
@@ -104,7 +104,7 @@ impl NpmResolutionSnapshot {
     }
   }
 
-  pub fn top_level_packages(&self) -> Vec<NpmPackageNodeId> {
+  pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
     self
       .package_reqs
       .values()
@@ -116,7 +116,7 @@ impl NpmResolutionSnapshot {
 
   pub fn package_from_id(
     &self,
-    id: &NpmPackageNodeId,
+    id: &NpmPackageId,
   ) -> Option<&NpmResolutionPackage> {
     self.packages.get(id)
   }
@@ -198,10 +198,10 @@ impl NpmResolutionSnapshot {
     &self,
     name: &str,
     version_req: &VersionReq,
-  ) -> Option<NpmPackageNodeId> {
+  ) -> Option<NpmPackageId> {
     // todo(dsherret): this is not exactly correct because some ids
     // will be better than others due to peer dependencies
-    let mut maybe_best_id: Option<&NpmPackageNodeId> = None;
+    let mut maybe_best_id: Option<&NpmPackageId> = None;
     if let Some(ids) = self.packages_by_name.get(name) {
       for id in ids {
         if version_req.matches(&id.version) {
@@ -222,9 +222,9 @@ impl NpmResolutionSnapshot {
     lockfile: Arc<Mutex<Lockfile>>,
     api: &RealNpmRegistryApi,
   ) -> Result<Self, AnyError> {
-    let mut package_reqs: HashMap<NpmPackageReq, NpmPackageNodeId>;
-    let mut packages_by_name: HashMap<String, Vec<NpmPackageNodeId>>;
-    let mut packages: HashMap<NpmPackageNodeId, NpmResolutionPackage>;
+    let mut package_reqs: HashMap<NpmPackageReq, NpmPackageId>;
+    let mut packages_by_name: HashMap<String, Vec<NpmPackageId>>;
+    let mut packages: HashMap<NpmPackageId, NpmResolutionPackage>;
     let mut copy_index_resolver: SnapshotPackageCopyIndexResolver;
 
     {
@@ -244,14 +244,14 @@ impl NpmResolutionSnapshot {
       for (key, value) in &lockfile.content.npm.specifiers {
         let package_req = NpmPackageReq::from_str(key)
           .with_context(|| format!("Unable to parse npm specifier: {key}"))?;
-        let package_id = NpmPackageNodeId::from_serialized(value)?;
+        let package_id = NpmPackageId::from_serialized(value)?;
         package_reqs.insert(package_req, package_id.clone());
         verify_ids.insert(package_id.clone());
       }
 
       // then the packages
       for (key, value) in &lockfile.content.npm.packages {
-        let package_id = NpmPackageNodeId::from_serialized(key)?;
+        let package_id = NpmPackageId::from_serialized(key)?;
 
         // collect the dependencies
         let mut dependencies = HashMap::default();
@@ -262,7 +262,7 @@ impl NpmResolutionSnapshot {
           .push(package_id.clone());
 
         for (name, specifier) in &value.dependencies {
-          let dep_id = NpmPackageNodeId::from_serialized(specifier)?;
+          let dep_id = NpmPackageId::from_serialized(specifier)?;
           dependencies.insert(name.to_string(), dep_id.clone());
           verify_ids.insert(dep_id);
         }
@@ -316,7 +316,7 @@ impl NpmResolutionSnapshot {
     for package in packages.values_mut() {
       // this will read from the memory cache now
       let version_info = match api
-        .package_version_info(&package.id.name, &package.id.version)
+        .package_version_info(&package.id.nv.name, &package.id.nv.version)
         .await?
       {
         Some(version_info) => version_info,
@@ -336,7 +336,7 @@ impl NpmResolutionSnapshot {
 }
 
 pub struct SnapshotPackageCopyIndexResolver {
-  packages_to_copy_index: HashMap<NpmPackageNodeId, usize>,
+  packages_to_copy_index: HashMap<NpmPackageId, usize>,
   package_name_version_to_copy_count: HashMap<(String, String), usize>,
 }
 
@@ -349,7 +349,7 @@ impl SnapshotPackageCopyIndexResolver {
   }
 
   pub fn from_map_with_capacity(
-    mut packages_to_copy_index: HashMap<NpmPackageNodeId, usize>,
+    mut packages_to_copy_index: HashMap<NpmPackageId, usize>,
     capacity: usize,
   ) -> Self {
     let mut package_name_version_to_copy_count =
@@ -372,7 +372,7 @@ impl SnapshotPackageCopyIndexResolver {
     }
   }
 
-  pub fn resolve(&mut self, id: &NpmPackageNodeId) -> usize {
+  pub fn resolve(&mut self, id: &NpmPackageId) -> usize {
     if let Some(index) = self.packages_to_copy_index.get(id) {
       *index
     } else {
@@ -422,24 +422,24 @@ mod tests {
       SnapshotPackageCopyIndexResolver::with_capacity(10);
     assert_eq!(
       copy_index_resolver
-        .resolve(&NpmPackageNodeId::from_serialized("package@1.0.0").unwrap()),
+        .resolve(&NpmPackageId::from_serialized("package@1.0.0").unwrap()),
       0
     );
     assert_eq!(
       copy_index_resolver
-        .resolve(&NpmPackageNodeId::from_serialized("package@1.0.0").unwrap()),
+        .resolve(&NpmPackageId::from_serialized("package@1.0.0").unwrap()),
       0
     );
     assert_eq!(
       copy_index_resolver.resolve(
-        &NpmPackageNodeId::from_serialized("package@1.0.0_package-b@1.0.0")
+        &NpmPackageId::from_serialized("package@1.0.0_package-b@1.0.0")
           .unwrap()
       ),
       1
     );
     assert_eq!(
       copy_index_resolver.resolve(
-        &NpmPackageNodeId::from_serialized(
+        &NpmPackageId::from_serialized(
           "package@1.0.0_package-b@1.0.0__package-c@2.0.0"
         )
         .unwrap()
@@ -448,15 +448,14 @@ mod tests {
     );
     assert_eq!(
       copy_index_resolver.resolve(
-        &NpmPackageNodeId::from_serialized("package@1.0.0_package-b@1.0.0")
+        &NpmPackageId::from_serialized("package@1.0.0_package-b@1.0.0")
           .unwrap()
       ),
       1
     );
     assert_eq!(
-      copy_index_resolver.resolve(
-        &NpmPackageNodeId::from_serialized("package-b@1.0.0").unwrap()
-      ),
+      copy_index_resolver
+        .resolve(&NpmPackageId::from_serialized("package-b@1.0.0").unwrap()),
       0
     );
   }

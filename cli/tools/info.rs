@@ -22,7 +22,7 @@ use deno_runtime::colors;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
-use crate::npm::NpmPackageNodeId;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolutionPackage;
 use crate::npm::NpmResolutionSnapshot;
@@ -208,8 +208,8 @@ fn add_npm_packages_to_json(
   let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
   for pkg in sorted_packages {
     let mut kv = serde_json::Map::new();
-    kv.insert("name".to_string(), pkg.id.name.to_string().into());
-    kv.insert("version".to_string(), pkg.id.version.to_string().into());
+    kv.insert("name".to_string(), pkg.id.nv.name.to_string().into());
+    kv.insert("version".to_string(), pkg.id.nv.version.to_string().into());
     let mut deps = pkg.dependencies.values().collect::<Vec<_>>();
     deps.sort();
     let deps = deps
@@ -297,9 +297,9 @@ fn print_tree_node<TWrite: Write>(
 /// Precached information about npm packages that are used in deno info.
 #[derive(Default)]
 struct NpmInfo {
-  package_sizes: HashMap<NpmPackageNodeId, u64>,
-  resolved_reqs: HashMap<NpmPackageReq, NpmPackageNodeId>,
-  packages: HashMap<NpmPackageNodeId, NpmResolutionPackage>,
+  package_sizes: HashMap<NpmPackageId, u64>,
+  resolved_reqs: HashMap<NpmPackageReq, NpmPackageId>,
+  packages: HashMap<NpmPackageId, NpmResolutionPackage>,
   specifiers: HashMap<ModuleSpecifier, NpmPackageReq>,
 }
 
@@ -522,13 +522,13 @@ impl<'a> GraphDisplayContext<'a> {
       };
       let header_text = match &package_or_specifier {
         Package(package) => {
-          format!("{} - {}", specifier_str, package.id.version)
+          format!("{} - {}", specifier_str, package.id.nv.version)
         }
         Specifier(_) => specifier_str,
       };
       let maybe_size = match &package_or_specifier {
         Package(package) => {
-          self.npm_info.package_sizes.get(&package.id).copied()
+          self.npm_info.package_sizes.get(&package.id.nv).copied()
         }
         Specifier(_) => module
           .maybe_source

@@ -22,7 +22,7 @@ use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageNodeId;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmResolutionPackage;
 use crate::npm::RealNpmRegistryApi;
 
@@ -54,7 +54,7 @@ impl GlobalNpmPackageResolver {
     }
   }
 
-  fn package_folder(&self, id: &NpmPackageNodeId) -> PathBuf {
+  fn package_folder(&self, id: &NpmPackageId) -> PathBuf {
     let folder_id = self
       .resolution
       .resolve_package_cache_folder_id_from_id(id)
@@ -125,10 +125,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     )
   }
 
-  fn package_size(
-    &self,
-    package_id: &NpmPackageNodeId,
-  ) -> Result<u64, AnyError> {
+  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
     let package_folder = self.package_folder(package_id);
     Ok(crate::util::fs::dir_size(&package_folder)?)
   }

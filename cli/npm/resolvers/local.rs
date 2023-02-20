@@ -32,7 +32,7 @@ use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageNodeId;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmResolutionPackage;
 use crate::npm::RealNpmRegistryApi;
 use crate::util::fs::copy_dir_recursive;
@@ -112,7 +112,7 @@ impl LocalNpmPackageResolver {
 
   fn get_package_id_folder(
     &self,
-    package_id: &NpmPackageNodeId,
+    package_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
     match self.resolution.resolve_package_from_id(package_id) {
       Some(package) => Ok(self.get_package_id_folder_from_package(&package)),
@@ -136,7 +136,7 @@ impl LocalNpmPackageResolver {
         &package.get_package_cache_folder_id(),
       ))
       .join("node_modules")
-      .join(&package.id.name)
+      .join(&package.id.nv.name)
   }
 }
 
@@ -203,10 +203,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     Ok(package_root_path)
   }
 
-  fn package_size(
-    &self,
-    package_id: &NpmPackageNodeId,
-  ) -> Result<u64, AnyError> {
+  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
     let package_folder_path = self.get_package_id_folder(package_id)?;
 
     Ok(crate::util::fs::dir_size(&package_folder_path)?)
@@ -457,18 +454,21 @@ async fn sync_resolution_with_fs(
   Ok(())
 }
 
-fn get_package_folder_id_folder_name(id: &NpmPackageCacheFolderId) -> String {
-  let copy_str = if id.copy_index == 0 {
+fn get_package_folder_id_folder_name(
+  folder_id: &NpmPackageCacheFolderId,
+) -> String {
+  let copy_str = if folder_id.copy_index == 0 {
     "".to_string()
   } else {
-    format!("_{}", id.copy_index)
+    format!("_{}", folder_id.copy_index)
   };
-  let name = if id.name.to_lowercase() == id.name {
-    Cow::Borrowed(&id.name)
+  let nv = &folder_id.nv;
+  let name = if nv.name.to_lowercase() == nv.name {
+    Cow::Borrowed(&nv.name)
   } else {
-    Cow::Owned(format!("_{}", mixed_case_package_name_encode(&id.name)))
+    Cow::Owned(format!("_{}", mixed_case_package_name_encode(&nv.name)))
   };
-  format!("{}@{}{}", name, id.version, copy_str).replace('/', "+")
+  format!("{}@{}{}", name, nv.version, copy_str).replace('/', "+")
 }
 
 fn symlink_package_dir(

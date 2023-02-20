@@ -30,7 +30,7 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 use super::NpmCache;
-use super::NpmPackageNodeId;
+use super::NpmPackageId;
 use super::NpmResolutionSnapshot;
 use super::RealNpmRegistryApi;
 
@@ -187,7 +187,7 @@ impl NpmPackageResolver {
   /// Attempts to get the package size in bytes.
   pub fn package_size(
     &self,
-    package_id: &NpmPackageNodeId,
+    package_id: &NpmPackageId,
   ) -> Result<u64, AnyError> {
     self.inner.package_size(package_id)
   }
