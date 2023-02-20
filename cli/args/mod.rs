@@ -63,8 +63,6 @@ use std::sync::Arc;
 
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
-// TODO(bartlomieju): refactor this bit; we have a circular dependency
-// between this file and `cli/npm/resolver/mod.rs`.
 use crate::npm::NpmProcessState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
