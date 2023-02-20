@@ -335,6 +335,9 @@ Module._findPath = function (request, paths, isMain, parentPath) {
 
   const cacheKey = request + "\x00" + ArrayPrototypeJoin(paths, "\x00");
   const entry = Module._pathCache[cacheKey];
+  if (request == "espree") {
+    console.log("cached?", entry, paths, absoluteRequest);
+  }
   if (entry) {
     return entry;
   }
@@ -360,6 +363,9 @@ Module._findPath = function (request, paths, isMain, parentPath) {
         parentPath,
         usesLocalNodeModulesDir,
       );
+      if (request == "espree") {
+        console.log("exports resolved", curPath, exportsResolved);
+      }
       if (exportsResolved) {
         return exportsResolved;
       }
@@ -381,6 +387,9 @@ Module._findPath = function (request, paths, isMain, parentPath) {
     if (!trailingSlash) {
       if (rc === 0) { // File.
         filename = toRealPath(basePath);
+        if (request == "espree") {
+          console.log("filename3", filename);
+        }
       }
 
       if (!filename) {
@@ -389,6 +398,9 @@ Module._findPath = function (request, paths, isMain, parentPath) {
           exts = ObjectKeys(Module._extensions);
         }
         filename = tryExtensions(basePath, exts, isMain);
+        if (request == "espree") {
+          console.log("filename2", filename);
+        }
       }
     }
 
@@ -398,8 +410,14 @@ Module._findPath = function (request, paths, isMain, parentPath) {
         exts = ObjectKeys(Module._extensions);
       }
       filename = tryPackage(basePath, exts, isMain, request);
+      if (request == "espree") {
+        console.log("filename", filename);
+      }
     }
 
+    if (request == "espree") {
+      console.log("filename5", filename);
+    }
     if (filename) {
       Module._pathCache[cacheKey] = filename;
       return filename;
@@ -465,7 +483,9 @@ Module._load = function (request, parent, isMain) {
     }
   }
 
+  // console.log("resolveFilename", request);
   const filename = Module._resolveFilename(request, parent, isMain);
+  // console.log("resolveFilename 2", filename);
   if (StringPrototypeStartsWith(filename, "node:")) {
     // Slice 'node:' prefix
     const id = StringPrototypeSlice(filename, 5);
@@ -608,6 +628,9 @@ Module._resolveFilename = function (
     parent?.id,
   );
   const selfResolved = ops.op_require_try_self(parentPath, request);
+  if (request == "espree") {
+    console.log("selfResolved", selfResolved);
+  }
   if (selfResolved) {
     const cacheKey = request + "\x00" +
       (paths.length === 1 ? paths[0] : ArrayPrototypeJoin(paths, "\x00"));

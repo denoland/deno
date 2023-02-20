@@ -364,6 +364,9 @@ fn op_require_try_self<P>(
 where
   P: NodePermissions + 'static,
 {
+  if request == "espree" {
+    eprintln!("op require try self {parent_path:?} {request}");
+  }
   if parent_path.is_none() {
     return Ok(None);
   }
@@ -377,20 +380,32 @@ where
   )
   .ok();
   if pkg.is_none() {
+    if request == "espree" {
+      eprintln!("pkg is none");
+    }
     return Ok(None);
   }
 
   let pkg = pkg.unwrap();
   if pkg.exports.is_none() {
+    if request == "espree" {
+      eprintln!("pkg exports is none");
+    }
     return Ok(None);
   }
   if pkg.name.is_none() {
+    if request == "espree" {
+      eprintln!("pkg name is none");
+    }
     return Ok(None);
   }
 
   let pkg_name = pkg.name.as_ref().unwrap().to_string();
   let mut expansion = ".".to_string();
 
+  if request == "espree" {
+    eprintln!("pkg name {pkg_name}");
+  }
   if request == pkg_name {
     // pass
   } else if request.starts_with(&format!("{pkg_name}/")) {
@@ -401,6 +416,9 @@ where
 
   let referrer = deno_core::url::Url::from_file_path(&pkg.path).unwrap();
   if let Some(exports) = &pkg.exports {
+    if request == "espree" {
+      eprintln!("exports {exports:#?}");
+    }
     resolution::package_exports_resolve(
       &pkg.path,
       expansion,
@@ -412,7 +430,12 @@ where
       &*resolver,
       permissions,
     )
-    .map(|r| Some(r.to_string_lossy().to_string()))
+    .map(|r| {
+      if request == "espree" {
+        eprintln!("result {}", r.to_string_lossy().to_string());
+      }
+      Some(r.to_string_lossy().to_string())
+    })
   } else {
     Ok(None)
   }
@@ -458,19 +481,24 @@ where
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let permissions = state.borrow_mut::<P>();
 
+  // TODO(bartlomieju): this part appears to be broken
+  eprintln!("pkg path1 {modules_path:?}");
   let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path))
     && !uses_local_node_modules_dir
   {
     modules_path
   } else {
-    path_resolve(vec![modules_path, name])
+    // path_resolve(vec![modules_path, name])
+    modules_path
   };
+  eprintln!("pkg path {pkg_path:?}");
   let pkg = PackageJson::load(
     &*resolver,
     permissions,
     PathBuf::from(&pkg_path).join("package.json"),
   )?;
 
+  println!("exports {:#?}", pkg.exports);
   if let Some(exports) = &pkg.exports {
     let referrer = Url::from_file_path(parent_path).unwrap();
     resolution::package_exports_resolve(
