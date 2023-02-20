@@ -2,7 +2,6 @@
 
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::include_js_files_dir;
 use deno_core::located_script_name;
 use deno_core::op;
 use deno_core::Extension;
@@ -96,7 +95,7 @@ fn op_node_build_os() -> String {
 }
 
 pub fn init_polyfill() -> Extension {
-  let esm_files = include_js_files_dir!(
+  let esm_files = include_js_files!(
     dir "polyfills",
     "_core.ts",
     "_crypto/crypto_browserify/asn1.js/base/buffer.js",

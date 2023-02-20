@@ -7,6 +7,7 @@ use deno_bench_util::bencher::Bencher;
 
 use deno_core::Extension;
 use deno_core::ExtensionFileSource;
+use deno_core::ExtensionFileSourceCode;
 
 fn setup() -> Vec<Extension> {
   vec![
@@ -14,7 +15,9 @@ fn setup() -> Vec<Extension> {
     Extension::builder("deno_webidl_bench")
       .esm(vec![ExtensionFileSource {
         specifier: "internal:setup".to_string(),
-        code: include_str!("dict.js"),
+        code: ExtensionFileSourceCode::IncludedInBinary(include_str!(
+          "dict.js"
+        )),
       }])
       .build(),
   ]
