@@ -3007,6 +3007,103 @@ mod test {
     );
   }
 
+  #[tokio::test]
+  async fn grand_child_package_has_self_as_peer_dependency_root() {
+    let api = TestNpmRegistryApiInner::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "2.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "2"));
+    api.add_peer_dependency(("package-b", "2.0.0"), ("package-a", "*"));
+
+    let (packages, package_reqs) =
+      run_resolver_and_get_output(api, vec!["npm:package-a@1.0"]).await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-b".to_string(),
+            NpmPackageId::from_serialized("package-b@2.0.0_package-a@1.0.0")
+              .unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized(
+            "package-b@2.0.0_package-a@1.0.0"
+          )
+          .unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-a".to_string(),
+            NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        }
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1.0".to_string(), "package-a@1.0.0".to_string())]
+    );
+  }
+
+  #[tokio::test]
+  async fn grand_child_package_has_self_as_peer_dependency_under_root() {
+    let api = TestNpmRegistryApiInner::default();
+    api.ensure_package_version("package-0", "1.0.0");
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "2.0.0");
+    api.add_dependency(("package-0", "1.0.0"), ("package-a", "*"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "2"));
+    api.add_peer_dependency(("package-b", "2.0.0"), ("package-a", "*"));
+
+    let (packages, package_reqs) =
+      run_resolver_and_get_output(api, vec!["npm:package-0@1.0"]).await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized("package-0@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-a".to_string(),
+            NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-b".to_string(),
+            NpmPackageId::from_serialized("package-b@2.0.0_package-a@1.0.0")
+              .unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized(
+            "package-b@2.0.0_package-a@1.0.0"
+          )
+          .unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-a".to_string(),
+            NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        }
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![("package-0@1.0".to_string(), "package-0@1.0.0".to_string())]
+    );
+  }
+
   async fn run_resolver_and_get_output(
     api: TestNpmRegistryApiInner,
     reqs: Vec<&str>,
