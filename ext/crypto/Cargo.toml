@@ -33,7 +33,7 @@ p256 = { version = "0.11.1", features = ["ecdh"] }
 p384 = "0.11.1"
 rand.workspace = true
 ring = { workspace = true, features = ["std"] }
-rsa = { version = "0.7.0", default-features = false, features = ["std"] }
+rsa.workspace = true
 sec1 = "0.3.0"
 serde.workspace = true
 serde_bytes.workspace = true

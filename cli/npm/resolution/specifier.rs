@@ -8,7 +8,6 @@ use std::collections::VecDeque;
 use deno_ast::ModuleSpecifier;
 use deno_graph::npm::NpmPackageReference;
 use deno_graph::npm::NpmPackageReq;
-use deno_graph::semver::VersionReq;
 use deno_graph::ModuleGraph;
 
 pub struct GraphNpmInfo {
@@ -182,7 +181,7 @@ pub fn resolve_graph_npm_info(graph: &ModuleGraph) -> GraphNpmInfo {
 
     let reqs = std::mem::take(&mut leaf.reqs);
     let mut reqs = reqs.into_iter().collect::<Vec<_>>();
-    reqs.sort_by(cmp_package_req);
+    reqs.sort();
     result.extend(reqs);
 
     let mut deps = std::mem::take(&mut leaf.dependencies)
@@ -380,46 +379,6 @@ fn cmp_folder_specifiers(a: &ModuleSpecifier, b: &ModuleSpecifier) -> Ordering {
   }
 }
 
-// Sort the package requirements alphabetically then the version
-// requirement in a way that will lead to the least number of
-// duplicate packages (so sort None last since it's `*`), but
-// mostly to create some determinism around how these are resolved.
-fn cmp_package_req(a: &NpmPackageReq, b: &NpmPackageReq) -> Ordering {
-  fn cmp_specifier_version_req(a: &VersionReq, b: &VersionReq) -> Ordering {
-    match a.tag() {
-      Some(a_tag) => match b.tag() {
-        Some(b_tag) => b_tag.cmp(a_tag), // sort descending
-        None => Ordering::Less,          // prefer a since tag
-      },
-      None => {
-        match b.tag() {
-          Some(_) => Ordering::Greater, // prefer b since tag
-          None => {
-            // At this point, just sort by text descending.
-            // We could maybe be a bit smarter here in the future.
-            b.to_string().cmp(&a.to_string())
-          }
-        }
-      }
-    }
-  }
-
-  match a.name.cmp(&b.name) {
-    Ordering::Equal => {
-      match &b.version_req {
-        Some(b_req) => {
-          match &a.version_req {
-            Some(a_req) => cmp_specifier_version_req(a_req, b_req),
-            None => Ordering::Greater, // prefer b, since a is *
-          }
-        }
-        None => Ordering::Less, // prefer a, since b is *
-      }
-    }
-    ordering => ordering,
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use pretty_assertions::assert_eq;
@@ -482,31 +441,6 @@ mod tests {
       ),
       Ordering::Less
     );
-  }
-
-  #[test]
-  fn sorting_package_reqs() {
-    fn cmp_req(a: &str, b: &str) -> Ordering {
-      let a = NpmPackageReq::from_str(a).unwrap();
-      let b = NpmPackageReq::from_str(b).unwrap();
-      cmp_package_req(&a, &b)
-    }
-
-    // sort by name
-    assert_eq!(cmp_req("a", "b@1"), Ordering::Less);
-    assert_eq!(cmp_req("b@1", "a"), Ordering::Greater);
-    // prefer non-wildcard
-    assert_eq!(cmp_req("a", "a@1"), Ordering::Greater);
-    assert_eq!(cmp_req("a@1", "a"), Ordering::Less);
-    // prefer tag
-    assert_eq!(cmp_req("a@tag", "a"), Ordering::Less);
-    assert_eq!(cmp_req("a", "a@tag"), Ordering::Greater);
-    // sort tag descending
-    assert_eq!(cmp_req("a@latest-v1", "a@latest-v2"), Ordering::Greater);
-    assert_eq!(cmp_req("a@latest-v2", "a@latest-v1"), Ordering::Less);
-    // sort version req descending
-    assert_eq!(cmp_req("a@1", "a@2"), Ordering::Greater);
-    assert_eq!(cmp_req("a@2", "a@1"), Ordering::Less);
   }
 
   #[test]
