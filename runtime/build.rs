@@ -316,6 +316,6 @@ fn main() {
     std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
   }
 
-  #[cfg(not(feature = "docsrs"))]
+  #[cfg(all(not(feature = "docsrs"), feature = "create_runtime_snapshot"))]
   not_docs::build_snapshot(runtime_snapshot_path)
 }

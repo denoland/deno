@@ -10,8 +10,10 @@ repository.workspace = true
 description = "Provides the deno runtime library"
 
 [features]
+default = ["create_runtime_snapshot"]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
+create_runtime_snapshot = []
 # feature that modifies the snapshot to allow extending it
 snapshot_from_snapshot = []
 include_js_files_for_snapshotting = [

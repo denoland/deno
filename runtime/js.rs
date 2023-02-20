@@ -3,6 +3,7 @@ use deno_core::Snapshot;
 use log::debug;
 use once_cell::sync::Lazy;
 
+#[cfg(feature = "create_runtime_snapshot")]
 pub static RUNTIME_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   #[allow(clippy::uninit_vec)]
   #[cold]
@@ -29,6 +30,7 @@ pub static RUNTIME_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   },
 );
 
+#[cfg(feature = "create_runtime_snapshot")]
 pub fn deno_isolate_init() -> Snapshot {
   debug!("Deno isolate init with snapshots.");
   Snapshot::Static(&RUNTIME_SNAPSHOT)
