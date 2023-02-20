@@ -303,15 +303,17 @@ pub struct Graph {
 }
 
 impl Graph {
-  pub fn from_snapshot(snapshot: NpmResolutionSnapshot) -> Self {
+  pub fn from_snapshot(
+    snapshot: NpmResolutionSnapshot,
+  ) -> Result<Self, AnyError> {
     fn get_or_create_graph_node(
       graph: &mut Graph,
       resolved_id: &NpmPackageId,
       packages: &HashMap<NpmPackageId, NpmResolutionPackage>,
       created_package_ids: &mut HashMap<NpmPackageId, NodeId>,
-    ) -> NodeId {
+    ) -> Result<NodeId, AnyError> {
       if let Some(id) = created_package_ids.get(resolved_id) {
-        return *id;
+        return Ok(*id);
       }
 
       let node_id = graph.create_node(&resolved_id.nv);
@@ -321,30 +323,34 @@ impl Graph {
         .peer_dependencies
         .iter()
         .map(|peer_dep| {
-          ResolvedIdPeerDep::SnapshotNodeId(get_or_create_graph_node(
+          Ok(ResolvedIdPeerDep::SnapshotNodeId(get_or_create_graph_node(
             graph,
             peer_dep,
             packages,
             created_package_ids,
-          ))
+          )?))
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, AnyError>>()?;
       let graph_resolved_id = ResolvedId {
         nv: resolved_id.nv.clone(),
         peer_dependencies: peer_dep_ids,
       };
       graph.resolved_node_ids.set(node_id, graph_resolved_id);
-      let resolution = packages.get(resolved_id).unwrap();
+      let resolution = match packages.get(resolved_id) {
+        Some(resolved_id) => resolved_id,
+        // maybe the user messed around with the lockfile
+        None => bail!("not found package: {}", resolved_id.as_serialized()),
+      };
       for (name, child_id) in &resolution.dependencies {
         let child_node_id = get_or_create_graph_node(
           graph,
           child_id,
           packages,
           created_package_ids,
-        );
+        )?;
         graph.set_child_parent_node(name, child_node_id, node_id);
       }
-      node_id
+      Ok(node_id)
     }
 
     let mut graph = Self {
@@ -366,13 +372,13 @@ impl Graph {
         &resolved_id,
         &snapshot.packages,
         &mut created_package_ids,
-      );
+      )?;
       graph
         .borrow_node_mut(node_id)
         .add_parent(NodeParent::Root(id.clone()));
       graph.root_packages.insert(id, node_id);
     }
-    graph
+    Ok(graph)
   }
 
   pub fn has_package_req(&self, req: &NpmPackageReq) -> bool {
@@ -389,71 +395,70 @@ impl Graph {
     resolved_id: &ResolvedId,
     seen: HashSet<NodeId>,
   ) -> NpmPackageId {
-    let no_peer_deps_id = NpmPackageId {
-      nv: resolved_id.nv.clone(),
-      peer_dependencies: Vec::new(),
-    };
     if resolved_id.peer_dependencies.is_empty() {
-      no_peer_deps_id
-    } else {
-      let mut seen_children_resolved_ids =
-        HashSet::with_capacity(resolved_id.peer_dependencies.len() + 1);
-
-      // prevent a name showing up in the peer_dependencies list that matches the current name
-      seen_children_resolved_ids.insert(no_peer_deps_id);
-
       NpmPackageId {
         nv: resolved_id.nv.clone(),
-        peer_dependencies: resolved_id
-          .peer_dependencies
-          .iter()
-          .filter_map(|peer_dep| {
-            let (child_id, child_resolved_id) = match peer_dep {
-              ResolvedIdPeerDep::SnapshotNodeId(node_id) => {
-                (*node_id, self.resolved_node_ids.get(*node_id).unwrap())
-              }
-              ResolvedIdPeerDep::ParentReference {
-                parent,
-                child_pkg_nv: child_nv,
-              } => match &parent {
-                GraphPathNodeOrRoot::Root(_) => {
-                  let node_id = *self.root_packages.get(child_nv).unwrap();
-                  (node_id, self.resolved_node_ids.get(node_id).unwrap())
-                }
-                GraphPathNodeOrRoot::Node(parent_path) => {
-                  let parent = self.nodes.get(&parent_path.node_id()).unwrap();
-                  parent
-                    .children
-                    .values()
-                    .filter_map(|child_id| {
-                      let child_id = *child_id;
-                      self
-                        .resolved_node_ids
-                        .get(child_id)
-                        .map(|resolved_id| (child_id, resolved_id))
-                    })
-                    .find(|(_, resolved_id)| resolved_id.nv == *child_nv)
-                    .unwrap()
-                }
-              },
-            };
-            let mut new_seen = seen.clone();
-            if new_seen.insert(child_id) {
-              let id = self.get_finalized_npm_pkg_id_from_resolved_id(
-                child_resolved_id,
-                new_seen.clone(),
-              );
-              if seen_children_resolved_ids.insert(id.clone()) {
-                Some(id)
-              } else {
-                None
-              }
-            } else {
-              None
-            }
-          })
-          .collect(),
+        peer_dependencies: Vec::new(),
       }
+    } else {
+      let mut npm_pkg_id = NpmPackageId {
+        nv: resolved_id.nv.clone(),
+        peer_dependencies: Vec::with_capacity(
+          resolved_id.peer_dependencies.len(),
+        ),
+      };
+      let mut seen_children_resolved_ids =
+        HashSet::with_capacity(resolved_id.peer_dependencies.len());
+      for peer_dep in &resolved_id.peer_dependencies {
+        let (child_id, child_resolved_id) = match peer_dep {
+          ResolvedIdPeerDep::SnapshotNodeId(node_id) => {
+            (*node_id, self.resolved_node_ids.get(*node_id).unwrap())
+          }
+          ResolvedIdPeerDep::ParentReference {
+            parent,
+            child_pkg_nv: child_nv,
+          } => match &parent {
+            GraphPathNodeOrRoot::Root(_) => {
+              let node_id = *self.root_packages.get(child_nv).unwrap();
+              (node_id, self.resolved_node_ids.get(node_id).unwrap())
+            }
+            GraphPathNodeOrRoot::Node(parent_path) => {
+              let parent = self.nodes.get(&parent_path.node_id()).unwrap();
+              parent
+                .children
+                .values()
+                .filter_map(|child_id| {
+                  let child_id = *child_id;
+                  self
+                    .resolved_node_ids
+                    .get(child_id)
+                    .map(|resolved_id| (child_id, resolved_id))
+                })
+                .find(|(_, resolved_id)| resolved_id.nv == *child_nv)
+                .unwrap()
+            }
+          },
+        };
+        let mut new_seen = seen.clone();
+        if new_seen.insert(child_id) {
+          let child_peer = self.get_finalized_npm_pkg_id_from_resolved_id(
+            child_resolved_id,
+            new_seen.clone(),
+          );
+
+          // This condition prevents a name showing up in the peer_dependencies
+          // list that matches the current name. Checking just the name and
+          // version should be sufficient because the rest of the peer dependency
+          // resolutions should be the same
+          let is_pkg_same = child_peer.nv == npm_pkg_id.nv;
+          if !is_pkg_same
+            && seen_children_resolved_ids.insert(child_peer.clone())
+          {
+            npm_pkg_id.peer_dependencies.push(child_peer);
+          }
+        }
+      }
+      npm_pkg_id
     }
   }
 
@@ -3118,6 +3123,121 @@ mod test {
     );
   }
 
+  #[tokio::test]
+  async fn nested_deps_same_peer_dep_ancestor() {
+    let api = TestNpmRegistryApiInner::default();
+    api.ensure_package_version("package-0", "1.0.0");
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.ensure_package_version("package-c", "1.0.0");
+    api.ensure_package_version("package-d", "1.0.0");
+    api.add_dependency(("package-0", "1.0.0"), ("package-a", "1"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "1"));
+    api.add_dependency(("package-b", "1.0.0"), ("package-c", "1"));
+    api.add_dependency(("package-c", "1.0.0"), ("package-d", "1"));
+    api.add_peer_dependency(("package-b", "1.0.0"), ("package-a", "*"));
+    api.add_peer_dependency(("package-c", "1.0.0"), ("package-a", "*"));
+    api.add_peer_dependency(("package-d", "1.0.0"), ("package-a", "*"));
+    api.add_peer_dependency(("package-b", "1.0.0"), ("package-0", "*"));
+    api.add_peer_dependency(("package-c", "1.0.0"), ("package-0", "*"));
+    api.add_peer_dependency(("package-d", "1.0.0"), ("package-0", "*"));
+
+    let (packages, package_reqs) =
+      run_resolver_and_get_output(api, vec!["npm:package-0@1.0"]).await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized("package-0@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-a".to_string(),
+            NpmPackageId::from_serialized("package-a@1.0.0_package-0@1.0.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized("package-a@1.0.0_package-0@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-b".to_string(),
+            NpmPackageId::from_serialized("package-b@1.0.0_package-0@1.0.0_package-a@1.0.0__package-0@1.0.0")
+              .unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized(
+            "package-b@1.0.0_package-0@1.0.0_package-a@1.0.0__package-0@1.0.0"
+          )
+          .unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([
+            (
+              "package-0".to_string(),
+              NpmPackageId::from_serialized("package-0@1.0.0").unwrap(),
+            ),
+            (
+              "package-a".to_string(),
+              NpmPackageId::from_serialized("package-a@1.0.0_package-0@1.0.0").unwrap(),
+            ),
+            (
+              "package-c".to_string(),
+              NpmPackageId::from_serialized("package-c@1.0.0_package-0@1.0.0_package-a@1.0.0__package-0@1.0.0")
+                .unwrap(),
+            )
+          ]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized(
+            "package-c@1.0.0_package-0@1.0.0_package-a@1.0.0__package-0@1.0.0"
+          )
+          .unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([
+            (
+              "package-0".to_string(),
+              NpmPackageId::from_serialized("package-0@1.0.0").unwrap(),
+            ),
+            (
+              "package-a".to_string(),
+              NpmPackageId::from_serialized("package-a@1.0.0_package-0@1.0.0").unwrap(),
+            ),
+            (
+              "package-d".to_string(),
+              NpmPackageId::from_serialized("package-d@1.0.0_package-0@1.0.0_package-a@1.0.0__package-0@1.0.0")
+                .unwrap(),
+            )
+          ]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized(
+            "package-d@1.0.0_package-0@1.0.0_package-a@1.0.0__package-0@1.0.0"
+          )
+          .unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([
+            (
+              "package-0".to_string(),
+              NpmPackageId::from_serialized("package-0@1.0.0").unwrap(),
+            ),
+            (
+              "package-a".to_string(),
+              NpmPackageId::from_serialized("package-a@1.0.0_package-0@1.0.0").unwrap(),
+            )
+          ]),
+          dist: Default::default(),
+        }
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![("package-0@1.0".to_string(), "package-0@1.0.0".to_string())]
+    );
+  }
+
   async fn run_resolver_and_get_output(
     api: TestNpmRegistryApiInner,
     reqs: Vec<&str>,
@@ -3138,6 +3258,7 @@ mod test {
 
     {
       let new_snapshot = Graph::from_snapshot(snapshot.clone())
+        .unwrap()
         .into_snapshot(&api)
         .await
         .unwrap();
@@ -3147,6 +3268,7 @@ mod test {
       );
       // create one again from the new snapshot
       let new_snapshot2 = Graph::from_snapshot(new_snapshot.clone())
+        .unwrap()
         .into_snapshot(&api)
         .await
         .unwrap();

@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_graph::npm::NpmPackageNv;
@@ -368,7 +369,11 @@ async fn add_package_reqs_to_snapshot(
   }
 
   // convert the snapshot to a traversable graph
-  let mut graph = Graph::from_snapshot(snapshot);
+  let mut graph = Graph::from_snapshot(snapshot).with_context(|| {
+    deno_core::anyhow::anyhow!(
+      "Failed creating npm state. Try recreating your lockfile."
+    )
+  })?;
 
   // avoid loading the info if this is already in the graph
   let package_reqs = package_reqs
