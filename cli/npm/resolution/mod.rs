@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::futures;
 use deno_core::parking_lot::RwLock;
 use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageNvReference;
@@ -21,7 +20,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::args::Lockfile;
-use crate::npm::resolution::graph::LATEST_VERSION_REQ;
+use crate::npm::resolution::common::LATEST_VERSION_REQ;
 
 use self::common::resolve_best_package_version_and_info;
 use self::graph::GraphDependencyResolver;

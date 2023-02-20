@@ -9,13 +9,11 @@ use std::sync::Arc;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::semver::VersionReq;
 use log::debug;
-use once_cell::sync::Lazy;
 
 use crate::npm::registry::NpmDependencyEntry;
 use crate::npm::registry::NpmDependencyEntryKind;
@@ -26,12 +24,10 @@ use crate::npm::resolution::snapshot::SnapshotPackageCopyIndexResolver;
 use crate::npm::NpmRegistryApi;
 
 use super::common::version_req_satisfies;
+use super::common::LATEST_VERSION_REQ;
 use super::snapshot::NpmResolutionSnapshot;
 use super::NpmPackageId;
 use super::NpmResolutionPackage;
-
-pub static LATEST_VERSION_REQ: Lazy<VersionReq> =
-  Lazy::new(|| VersionReq::parse_from_specifier("latest").unwrap());
 
 // todo(THIS PR): find a better way to represent the difference between a node
 // that is unique for peer dependencies and other nodes

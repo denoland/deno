@@ -2,10 +2,14 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_graph::semver::Version;
 use deno_graph::semver::VersionReq;
+use once_cell::sync::Lazy;
 
 use super::NpmPackageId;
 use crate::npm::registry::NpmPackageInfo;
 use crate::npm::registry::NpmPackageVersionInfo;
+
+pub static LATEST_VERSION_REQ: Lazy<VersionReq> =
+  Lazy::new(|| VersionReq::parse_from_specifier("latest").unwrap());
 
 pub fn resolve_best_package_version_and_info<'info, 'version>(
   version_req: &VersionReq,
@@ -174,7 +178,6 @@ mod test {
 
   use deno_graph::npm::NpmPackageReqReference;
 
-  use super::super::graph::LATEST_VERSION_REQ;
   use super::*;
 
   #[test]
