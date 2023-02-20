@@ -263,12 +263,6 @@ impl<'a> Iterator for GraphPathAncestorIterator<'a> {
   }
 }
 
-// Basic principles:
-// 1. Graphs nodes with no peer dependencies in their resolved ID have exactly one
-//    representation in memory.
-// 2. Once a graph node has any peer dependency in its resolved ID, then it will
-//    have a unique representation.
-
 #[derive(Debug, Default)]
 pub struct Graph {
   /// Each requirement is mapped to a specific name and version.
@@ -456,6 +450,8 @@ impl Graph {
   ) -> (bool, NodeId) {
     // A node is reusable if it has no peer dependencies, but once
     // it has peer dependencies then we create a fresh node each time
+    // in order to make peer dependency resolution easier in order to
+    // be able to reference a node exactly in `ResolvedIdPeerDep`
     if resolved_id.peer_dependencies.is_empty() {
       if let Some(node_id) = self
         .resolved_node_ids
