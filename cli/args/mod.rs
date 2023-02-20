@@ -547,6 +547,15 @@ const RESOLUTION_STATE_ENV_VAR_NAME: &str =
 static IS_NPM_MAIN: Lazy<bool> =
   Lazy::new(|| std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).is_ok());
 
+static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
+  let state = std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
+  let state: NpmProcessState = serde_json::from_str(&state).ok()?;
+  // remove the environment variable so that sub processes
+  // that are spawned do not also use this.
+  std::env::remove_var(RESOLUTION_STATE_ENV_VAR_NAME);
+  Some(state)
+});
+
 /// Overrides for the options below that when set will
 /// use these values over the values derived from the
 /// CLI flags or config file.
@@ -565,7 +574,6 @@ pub struct CliOptions {
   maybe_package_json: Option<PackageJson>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
-  npm_process_state: Arc<Mutex<Option<NpmProcessState>>>,
 }
 
 impl CliOptions {
@@ -597,7 +605,6 @@ impl CliOptions {
       maybe_package_json,
       flags,
       overrides: Default::default(),
-      npm_process_state: Arc::new(Mutex::new(None)),
     }
   }
 
@@ -700,30 +707,18 @@ impl CliOptions {
     .map(Some)
   }
 
-  fn get_npm_process_state(&self) -> Option<NpmProcessState> {
+  fn get_npm_process_state(&self) -> Option<&NpmProcessState> {
     if !self.is_npm_main() {
       return None;
     }
 
-    let mut maybe_state = self.npm_process_state.lock();
-
-    // TODO(bartlomieju): remove this clone, return a reference maybe?
-    if maybe_state.is_some() {
-      return maybe_state.clone();
-    }
-
-    let state = std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
-    let state: NpmProcessState = serde_json::from_str(&state).ok()?;
-    // remove the environment variable so that sub processes
-    // that are spawned do not also use this.
-    std::env::remove_var(RESOLUTION_STATE_ENV_VAR_NAME);
-    *maybe_state = Some(state.clone());
-    Some(state)
+    (*NPM_PROCESS_STATE).as_ref()
   }
 
   pub fn get_npm_resolution_snapshot(&self) -> Option<NpmResolutionSnapshot> {
     if let Some(state) = self.get_npm_process_state() {
-      return Some(state.snapshot);
+      // TODO(bartlomieju): remove this clone
+      return Some(state.snapshot.clone());
     }
 
     None
