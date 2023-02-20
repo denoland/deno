@@ -8,7 +8,6 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageReq;
