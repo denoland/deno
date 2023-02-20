@@ -89,12 +89,10 @@ impl Node {
 
 #[derive(Clone)]
 enum ResolvedIdPeerDep {
-  /// This is a reference to the parent instead of the child because the parent
-  /// node id will not change since it's been resolved as having a peer dependency,
-  /// but the child node could.
+  /// This is a reference to the parent instead of the child because we only have a
+  /// node reference to the parent, since we've traversed it, but the child node may
+  /// change from under it.
   ParentReference {
-    /// This parent will be unique in the graph and never change, so we
-    /// can hold a direct reference to it.
     parent: GraphPathNodeOrRoot,
     child_pkg_nv: NpmPackageNv,
   },
@@ -288,7 +286,7 @@ impl Graph {
       created_package_ids: &mut HashMap<NpmPackageId, NodeId>,
     ) -> NodeId {
       if let Some(id) = created_package_ids.get(resolved_id) {
-        return *id; // already created
+        return *id;
       }
 
       let node_id = graph.create_node(&resolved_id.nv);
@@ -448,10 +446,9 @@ impl Graph {
     &mut self,
     resolved_id: &ResolvedId,
   ) -> (bool, NodeId) {
-    // A node is reusable if it has no peer dependencies, but once
-    // it has peer dependencies then we create a fresh node each time
-    // in order to make peer dependency resolution easier in order to
-    // be able to reference a node exactly in `ResolvedIdPeerDep`
+    // A node is reusable if it has no peer dependencies, but once it has peer dependencies
+    // then we create a fresh node each time in order to make peer dependency resolution
+    // easier so we don't have to get the fully resolved resolved_id each time.
     if resolved_id.peer_dependencies.is_empty() {
       if let Some(node_id) = self
         .resolved_node_ids
