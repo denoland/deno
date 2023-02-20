@@ -1,4 +1,0 @@
-{
-  "//": "Sets type module to make compat mode interpret .js as ESM",
-  "type": "module"
-}
