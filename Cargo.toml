@@ -120,6 +120,9 @@ url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 uuid = { version = "=1.1.2", features = ["v4"] }
 zstd = "=0.11.2"
 
+# crypto
+rsa = { version = "0.7.0", default-features = false, features = ["std", "pem"] }
+
 # webgpu
 raw-window-handle = "0.5.0"
 wgpu-core = "0.15"
