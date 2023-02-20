@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::include_js_files_dir;
+use deno_core::include_js_files;
 use std::env;
 use std::path::PathBuf;
 
@@ -18,6 +18,7 @@ mod not_docs {
   use deno_ast::SourceTextInfo;
   use deno_core::error::AnyError;
   use deno_core::ExtensionFileSource;
+  use deno_core::ExtensionFileSourceCode;
 
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
@@ -34,13 +35,15 @@ mod not_docs {
       ),
     };
 
+    let ExtensionFileSourceCode::IncludedInBinary(code) = file_source.code;
+
     if !should_transpile {
-      return Ok(file_source.code.to_string());
+      return Ok(code.to_string());
     }
 
     let parsed = deno_ast::parse_module(ParseParams {
       specifier: file_source.specifier.to_string(),
-      text_info: SourceTextInfo::from_string(file_source.code.to_string()),
+      text_info: SourceTextInfo::from_string(code.to_string()),
       media_type,
       capture_tokens: false,
       scope_analysis: false,
@@ -188,7 +191,7 @@ mod not_docs {
         "deno_http",
         "deno_flash",
       ])
-      .esm(include_js_files_dir!(
+      .esm(include_js_files!(
         dir "js",
         "01_build.js",
         "01_errors.js",
@@ -283,7 +286,9 @@ mod not_docs {
           .dependencies(vec!["runtime"])
           .esm(vec![ExtensionFileSource {
             specifier: "js/99_main.js".to_string(),
-            code: include_str!("js/99_main.js"),
+            code: ExtensionFileSourceCode::IncludedInBinary(include_str!(
+              "js/99_main.js"
+            )),
           }])
           .build(),
       );
