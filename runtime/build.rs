@@ -1,22 +1,24 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::include_js_files;
 use std::env;
 use std::path::PathBuf;
 
-// This is a shim that allows to generate documentation on docs.rs
-mod not_docs {
+#[cfg(all(
+  not(feature = "docsrs"),
+  not(feature = "dont_create_runtime_snapshot")
+))]
+mod startup_snapshot {
   use std::path::Path;
 
   use super::*;
-  use deno_cache::SqliteBackedCache;
-  use deno_core::snapshot_util::*;
-  use deno_core::Extension;
-
   use deno_ast::MediaType;
   use deno_ast::ParseParams;
   use deno_ast::SourceTextInfo;
+  use deno_cache::SqliteBackedCache;
   use deno_core::error::AnyError;
+  use deno_core::include_js_files;
+  use deno_core::snapshot_util::*;
+  use deno_core::Extension;
   use deno_core::ExtensionFileSource;
 
   fn transpile_ts_for_snapshotting(
@@ -313,9 +315,13 @@ fn main() {
   // doesn't actually compile on docs.rs
   if env::var_os("DOCS_RS").is_some() {
     let snapshot_slice = &[];
+    #[allow(clippy::needless_borrow)]
     std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
   }
 
-  #[cfg(all(not(feature = "docsrs"), feature = "create_runtime_snapshot"))]
-  not_docs::build_snapshot(runtime_snapshot_path)
+  #[cfg(all(
+    not(feature = "docsrs"),
+    not(feature = "dont_create_runtime_snapshot")
+  ))]
+  startup_snapshot::build_snapshot(runtime_snapshot_path)
 }

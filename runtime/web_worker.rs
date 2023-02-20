@@ -452,11 +452,11 @@ impl WebWorker {
     // Append exts
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(feature = "create_runtime_snapshot")]
+    #[cfg(not(feature = "dont_create_runtime_snapshot"))]
     let startup_snapshot = options
       .startup_snapshot
       .unwrap_or_else(crate::js::deno_isolate_init);
-    #[cfg(not(feature = "create_runtime_snapshot"))]
+    #[cfg(feature = "dont_create_runtime_snapshot")]
     let startup_snapshot = options.startup_snapshot
       .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
 
