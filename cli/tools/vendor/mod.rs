@@ -156,7 +156,7 @@ fn maybe_update_config_file(output_dir: &Path, ps: &ProcState) -> bool {
 
   let fmt_config = ps
     .options
-    .get_maybe_config_file()
+    .maybe_config_file()
     .as_ref()
     .and_then(|config| config.to_fmt_config().ok())
     .unwrap_or_default()

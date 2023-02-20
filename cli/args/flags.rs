@@ -327,7 +327,7 @@ pub struct Flags {
   pub cached_only: bool,
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
-  pub node_modules_dir: bool,
+  pub node_modules_dir: Option<bool>,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub ignore: Vec<PathBuf>,
@@ -501,6 +501,33 @@ impl Flags {
       }
       _ => Some(vec![]),
     }
+  }
+
+  /// Extract path argument for `package.json` search paths.
+  /// If it returns Some(path), the `package.json` should be discovered
+  /// from the `path` dir.
+  /// If it returns None, the `package.json` file shouldn't be discovered at
+  /// all.
+  pub fn package_json_arg(&self) -> Option<PathBuf> {
+    use DenoSubcommand::*;
+
+    if let Run(RunFlags { script }) = &self.subcommand {
+      if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
+        if module_specifier.scheme() == "file" {
+          let p = module_specifier
+            .to_file_path()
+            .unwrap()
+            .parent()?
+            .to_owned();
+          return Some(p);
+        } else if module_specifier.scheme() == "npm" {
+          let p = std::env::current_dir().unwrap();
+          return Some(p);
+        }
+      }
+    }
+
+    None
   }
 
   pub fn has_permission(&self) -> bool {
@@ -2309,7 +2336,12 @@ fn no_npm_arg<'a>() -> Arg<'a> {
 fn local_npm_arg<'a>() -> Arg<'a> {
   Arg::new("node-modules-dir")
     .long("node-modules-dir")
-    .help("Creates a local node_modules folder")
+    .min_values(0)
+    .max_values(1)
+    .takes_value(true)
+    .require_equals(true)
+    .possible_values(["true", "false"])
+    .help("Creates a local node_modules folder. This option is implicitly true when a package.json is auto-discovered.")
 }
 
 fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
@@ -3247,9 +3279,7 @@ fn no_npm_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn local_npm_args_parse(flags: &mut Flags, matches: &ArgMatches) {
-  if matches.is_present("node-modules-dir") {
-    flags.node_modules_dir = true;
-  }
+  flags.node_modules_dir = optional_bool_parse(matches, "node-modules-dir");
 }
 
 fn inspect_arg_validate(val: &str) -> Result<(), String> {
@@ -5448,7 +5478,24 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        node_modules_dir: true,
+        node_modules_dir: Some(true),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--node-modules-dir=false",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        node_modules_dir: Some(false),
         ..Flags::default()
       }
     );
