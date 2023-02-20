@@ -21,7 +21,6 @@ use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
 use crate::ExtensionFileSource;
-use crate::ExtensionFileSourceCode;
 use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -869,14 +868,11 @@ impl JsRuntime {
       {
         let js_files = ext.get_js_sources();
         for file_source in js_files {
-          let ExtensionFileSourceCode::IncludedInBinary(code) =
-            file_source.code;
-
           // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
           realm.execute_script(
             self.v8_isolate(),
             &file_source.specifier,
-            code,
+            &file_source.code.load()?,
           )?;
         }
       }
