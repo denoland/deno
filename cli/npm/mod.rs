@@ -16,3 +16,4 @@ pub use resolution::NpmPackageNodeId;
 pub use resolution::NpmResolutionPackage;
 pub use resolution::NpmResolutionSnapshot;
 pub use resolvers::NpmPackageResolver;
+pub use resolvers::NpmProcessState;
