@@ -24,6 +24,7 @@ use deno_graph::semver::VersionReq;
 use deno_runtime::colors;
 use serde::Serialize;
 
+use crate::args::package_json::parse_dep_entry_name_and_raw_version;
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
@@ -113,30 +114,19 @@ impl NpmPackageVersionInfo {
     &self,
   ) -> Result<Vec<NpmDependencyEntry>, AnyError> {
     fn parse_dep_entry(
-      entry: (&String, &String),
+      (key, value): (&String, &String),
       kind: NpmDependencyEntryKind,
     ) -> Result<NpmDependencyEntry, AnyError> {
-      let bare_specifier = entry.0.clone();
       let (name, version_req) =
-        if let Some(package_and_version) = entry.1.strip_prefix("npm:") {
-          if let Some((name, version)) = package_and_version.rsplit_once('@') {
-            (name.to_string(), version.to_string())
-          } else {
-            bail!("could not find @ symbol in npm url '{}'", entry.1);
-          }
-        } else {
-          (entry.0.clone(), entry.1.clone())
-        };
+        parse_dep_entry_name_and_raw_version(key, value)?;
       let version_req =
-        VersionReq::parse_from_npm(&version_req).with_context(|| {
-          format!(
-            "error parsing version requirement for dependency: {bare_specifier}@{version_req}"
-          )
+        VersionReq::parse_from_npm(version_req).with_context(|| {
+          format!("error parsing version requirement for dependency: {key}@{version_req}")
         })?;
       Ok(NpmDependencyEntry {
         kind,
-        bare_specifier,
-        name,
+        bare_specifier: key.to_string(),
+        name: name.to_string(),
         version_req,
         peer_dep_version_req: None,
       })
@@ -339,7 +329,11 @@ impl RealNpmRegistryApiInner {
           .load_package_info_from_registry(name)
           .await
           .with_context(|| {
-          format!("Error getting response at {}", self.get_package_url(name))
+          format!(
+            "Error getting response at {} for package \"{}\"",
+            self.get_package_url(name),
+            name
+          )
         })?;
       }
       let maybe_package_info = maybe_package_info.map(Arc::new);

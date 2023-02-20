@@ -1,7 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::OpState;
+use anyhow::Context as _;
 use anyhow::Error;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::task::Context;
 use v8::fast_api::FastFunction;
@@ -13,8 +15,24 @@ pub enum ExtensionFileSourceCode {
   /// will result in two copies of the source code being included - one in the
   /// snapshot, the other the static string in the `Extension`.
   IncludedInBinary(&'static str),
-  // TODO(bartlomieju): add more variants that allow to read file from the disk,
-  // and not include it in the binary.
+
+  // Source code is loaded from a file on disk. It's meant to be used if the
+  // embedder is creating snapshots. Files will be loaded from the filesystem
+  // during the build time and they will only be present in the V8 snapshot.
+  LoadedFromFsDuringSnapshot(PathBuf),
+}
+
+impl ExtensionFileSourceCode {
+  pub fn load(&self) -> Result<String, Error> {
+    match self {
+      ExtensionFileSourceCode::IncludedInBinary(code) => Ok(code.to_string()),
+      ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
+        let msg = format!("Failed to read \"{}\"", path.display());
+        let code = std::fs::read_to_string(path).context(msg)?;
+        Ok(code)
+      }
+    }
+  }
 }
 
 #[derive(Clone, Debug)]
@@ -299,6 +317,7 @@ impl ExtensionBuilder {
 /// - "internal:my_extension/js/01_hello.js"
 /// - "internal:my_extension/js/02_goodbye.js"
 /// ```
+#[cfg(not(feature = "include_js_files_for_snapshotting"))]
 #[macro_export]
 macro_rules! include_js_files {
   (dir $dir:literal, $($file:literal,)+) => {
@@ -318,6 +337,32 @@ macro_rules! include_js_files {
         specifier: $file.to_string(),
         code: $crate::ExtensionFileSourceCode::IncludedInBinary(
           include_str!($file)
+        ),
+      },)+
+    ]
+  };
+}
+
+#[cfg(feature = "include_js_files_for_snapshotting")]
+#[macro_export]
+macro_rules! include_js_files {
+  (dir $dir:literal, $($file:literal,)+) => {
+    vec![
+      $($crate::ExtensionFileSource {
+        specifier: concat!($dir, "/", $file).to_string(),
+        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
+        ),
+      },)+
+    ]
+  };
+
+  ($($file:literal,)+) => {
+    vec![
+      $($crate::ExtensionFileSource {
+        specifier: $file.to_string(),
+        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
         ),
       },)+
     ]
