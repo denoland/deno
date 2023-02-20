@@ -14,6 +14,7 @@ use std::rc::Rc;
 
 mod crypto;
 pub mod errors;
+mod idna;
 mod ops;
 mod package_json;
 mod path;
@@ -376,6 +377,10 @@ pub fn init_polyfill() -> Extension {
       winerror::op_node_sys_to_uv_error::decl(),
       v8::op_v8_cached_data_version_tag::decl(),
       v8::op_v8_get_heap_statistics::decl(),
+      idna::op_node_idna_domain_to_ascii::decl(),
+      idna::op_node_idna_domain_to_unicode::decl(),
+      idna::op_node_idna_punycode_decode::decl(),
+      idna::op_node_idna_punycode_encode::decl(),
       op_node_build_os::decl(),
     ])
     .build()
