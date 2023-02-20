@@ -99,13 +99,7 @@ enum ResolvedIdPeerDep {
     parent: GraphPathNodeOrRoot,
     child_pkg_nv: NpmPackageNv,
   },
-  /// A node that was created during snapshotting.
-  ///
-  /// Note: This might not be a reliable way to hold a reference to the peer dependency
-  /// unlike ParentReference and we might run into some trouble with this in the future.
-  /// When re-creating the graph from snapshoting, peer dependency nodes will be shared
-  /// unlike when initially creating the graph so perhaps this might cause some strange
-  /// behavior in the future. We shall see and adapt.
+  /// A node that was created during snapshotting and is not being used in any path.
   SnapshotNodeId(NodeId),
 }
 
@@ -150,7 +144,7 @@ impl ResolvedId {
 /// one resolved identifier.
 #[derive(Default)]
 struct ResolvedNodeIds {
-  node_to_resolved_ids: HashMap<NodeId, (ResolvedId, u64)>,
+  node_to_resolved_id: HashMap<NodeId, (ResolvedId, u64)>,
   resolved_to_node_id: HashMap<u64, NodeId>,
 }
 
@@ -158,16 +152,17 @@ impl ResolvedNodeIds {
   pub fn set(&mut self, node_id: NodeId, resolved_id: ResolvedId) {
     let resolved_id_hash = resolved_id.current_state_hash();
     if let Some((_, old_resolved_id_key)) = self
-      .node_to_resolved_ids
+      .node_to_resolved_id
       .insert(node_id, (resolved_id, resolved_id_hash))
     {
+      // ensure the old resolved id key is removed as it might be stale
       self.resolved_to_node_id.remove(&old_resolved_id_key);
     }
     self.resolved_to_node_id.insert(resolved_id_hash, node_id);
   }
 
   pub fn get(&self, node_id: NodeId) -> Option<&ResolvedId> {
-    self.node_to_resolved_ids.get(&node_id).map(|(id, _)| id)
+    self.node_to_resolved_id.get(&node_id).map(|(id, _)| id)
   }
 
   pub fn get_node_id(&self, resolved_id: &ResolvedId) -> Option<NodeId> {
@@ -953,7 +948,8 @@ impl<'a> GraphDependencyResolver<'a> {
             | NpmDependencyEntryKind::OptionalPeer => {
               found_peer = true;
               // we need to re-evaluate peer dependencies every time and can't
-              // skip over them because they might be evaluated differently
+              // skip over them because they might be evaluated differently based
+              // on the current treat
               let maybe_new_id = self.resolve_peer_dep(
                 &dep.bare_specifier,
                 dep,
@@ -962,7 +958,7 @@ impl<'a> GraphDependencyResolver<'a> {
               )?;
 
               // For optional dependencies, we want to resolve them if any future
-              // same version resolves them, so when not resolve, store them to be
+              // same version resolves them, so when not resolved, store them to be
               // potentially resolved later and if resolved, drain the previous ones.
               //
               // Note: This is not a good solution, but will probably work ok in most
@@ -1321,38 +1317,25 @@ mod test {
 
   #[test]
   fn resolved_id_tests() {
-    // re-enable
-    // let mut ids = ResolvedNodeIds::default();
-    // let node_id = NodeId(0);
-    // let resolved_id = ResolvedId {
-    //   nv: NpmPackageNv::from_str("package@1.1.1").unwrap(),
-    //   peer_dependencies: Vec::new(),
-    // };
-    // ids.set(node_id, resolved_id.clone());
-    // assert!(ids.get(node_id).is_some());
-    // assert!(ids.get(NodeId(1)).is_none());
-    // assert_eq!(ids.get_no_peer_deps_node_id(&resolved_id.nv), Some(node_id));
-    // assert_eq!(
-    //   ids.get_no_peer_deps_node_id(
-    //     &NpmPackageNv::from_str("package@1.1.2").unwrap()
-    //   ),
-    //   None
-    // );
-    // let peer_resolved_id = ResolvedId {
-    //   nv: NpmPackageNv::from_str("package@1.1.1").unwrap(),
-    //   peer_dependencies: vec![ResolvedIdPeerDep::SnapshotNodeId(NodeId(2))],
-    // };
-    // ids.set(node_id, peer_resolved_id.clone());
-    // // should now be empty
-    // assert_eq!(ids.get_no_peer_deps_node_id(&peer_resolved_id.nv), None);
+    let mut ids = ResolvedNodeIds::default();
+    let node_id = NodeId(0);
+    let resolved_id = ResolvedId {
+      nv: NpmPackageNv::from_str("package@1.1.1").unwrap(),
+      peer_dependencies: Vec::new(),
+    };
+    ids.set(node_id, resolved_id.clone());
+    assert!(ids.get(node_id).is_some());
+    assert!(ids.get(NodeId(1)).is_none());
+    assert_eq!(ids.get_node_id(&resolved_id), Some(node_id));
 
-    // // ensure setting this multiple times sets and keeps the peer dependencies node
-    // ids.set(node_id, resolved_id.clone());
-    // assert!(ids.get(node_id).is_some());
-    // assert_eq!(ids.get_no_peer_deps_node_id(&resolved_id.nv), Some(node_id));
-    // ids.set(node_id, resolved_id.clone());
-    // assert!(ids.get(node_id).is_some());
-    // assert_eq!(ids.get_no_peer_deps_node_id(&resolved_id.nv), Some(node_id));
+    let resolved_id_new = ResolvedId {
+      nv: NpmPackageNv::from_str("package@1.1.2").unwrap(),
+      peer_dependencies: Vec::new(),
+    };
+    ids.set(node_id, resolved_id_new.clone());
+    assert_eq!(ids.get_node_id(&resolved_id), None); // stale entry should have been removed
+    assert!(ids.get(node_id).is_some());
+    assert_eq!(ids.get_node_id(&resolved_id_new), Some(node_id));
   }
 
   #[tokio::test]
