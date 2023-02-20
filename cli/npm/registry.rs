@@ -14,6 +14,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
@@ -29,6 +30,7 @@ use crate::http_util::HttpClient;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 
+use super::cache::should_sync_download;
 use super::cache::NpmCache;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
@@ -261,6 +263,39 @@ impl NpmRegistryApi {
   ) -> Result<Option<NpmPackageVersionInfo>, AnyError> {
     let package_info = self.package_info(&nv.name).await?;
     Ok(package_info.versions.get(&nv.version.to_string()).cloned())
+  }
+
+  /// Caches all the package information in memory in parallel.
+  pub async fn cache_in_parallel(
+    &self,
+    package_names: Vec<String>,
+  ) -> Result<(), AnyError> {
+    let mut unresolved_tasks = Vec::with_capacity(package_names.len());
+
+    // cache the package info up front in parallel
+    if should_sync_download() {
+      // for deterministic test output
+      let mut ordered_names = package_names;
+      ordered_names.sort();
+      for name in ordered_names {
+        self.package_info(&name).await?;
+      }
+    } else {
+      for name in package_names {
+        let api = self.clone();
+        unresolved_tasks.push(tokio::task::spawn(async move {
+          // This is ok to call because api will internally cache
+          // the package information in memory.
+          api.package_info(&name).await
+        }));
+      }
+    };
+
+    for result in futures::future::join_all(unresolved_tasks).await {
+      result??; // surface the first error
+    }
+
+    Ok(())
   }
 
   /// Clears the internal memory cache.

@@ -27,7 +27,6 @@ use self::common::resolve_best_package_version_and_info;
 use self::graph::GraphDependencyResolver;
 use self::snapshot::NpmPackagesPartitioned;
 
-use super::cache::should_sync_download;
 use super::cache::NpmPackageCacheFolderId;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::NpmRegistryApi;
@@ -494,9 +493,9 @@ async fn add_package_reqs_to_snapshot(
     .filter(|p| !graph.has_root_package(p))
     .collect::<Vec<_>>();
 
-  // go over the top level package names first (pending unresolved and npm package reqs),
+  // go over the top level package names first (npm package reqs and pending unresolved),
   // then down the tree one level at a time through all the branches
-  cache_package_infos_in_api(api, &pending_unresolved, &package_reqs).await?;
+  cache_package_infos_in_api(api, &package_reqs, &pending_unresolved).await?;
 
   let mut resolver = GraphDependencyResolver::new(&mut graph, &api);
 
@@ -519,48 +518,23 @@ async fn add_package_reqs_to_snapshot(
   result
 }
 
+/// Cache the package information in parallel.
 async fn cache_package_infos_in_api(
   api: &NpmRegistryApi,
-  pending_unresolved: &Vec<NpmPackageNv>,
   package_reqs: &Vec<NpmPackageReq>,
+  pending_unresolved: &Vec<NpmPackageNv>,
 ) -> Result<(), AnyError> {
   // go over the top level package names first (pending unresolved and npm package reqs),
   // then down the tree one level at a time through all the branches
-  let mut package_names_to_cache =
+  let mut package_names =
     HashSet::with_capacity(package_reqs.len() + pending_unresolved.len());
 
-  package_names_to_cache
-    .extend(pending_unresolved.iter().map(|id| id.name.clone()));
-  package_names_to_cache
-    .extend(package_reqs.iter().map(|req| req.name.clone()));
+  package_names.extend(package_reqs.iter().map(|req| req.name.clone()));
+  package_names.extend(pending_unresolved.iter().map(|id| id.name.clone()));
 
-  let mut unresolved_tasks = Vec::with_capacity(package_names_to_cache.len());
-
-  // cache the package info up front in parallel
-  if should_sync_download() {
-    // for deterministic test output
-    let mut ordered_names =
-      package_names_to_cache.into_iter().collect::<Vec<_>>();
-    ordered_names.sort();
-    for name in ordered_names {
-      api.package_info(&name).await?;
-    }
-  } else {
-    for name in package_names_to_cache {
-      let api = api.clone();
-      unresolved_tasks.push(tokio::task::spawn(async move {
-        // This is ok to call because api will internally cache
-        // the package information in memory.
-        api.package_info(&name).await
-      }));
-    }
-  };
-
-  for result in futures::future::join_all(unresolved_tasks).await {
-    result??; // surface the first error
-  }
-
-  Ok(())
+  api
+    .cache_in_parallel(package_names.into_iter().collect::<Vec<_>>())
+    .await
 }
 
 #[cfg(test)]

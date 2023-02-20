@@ -17,7 +17,6 @@ use deno_graph::semver::VersionReq;
 use log::debug;
 use once_cell::sync::Lazy;
 
-use crate::npm::cache::should_sync_download;
 use crate::npm::registry::NpmDependencyEntry;
 use crate::npm::registry::NpmDependencyEntryKind;
 use crate::npm::registry::NpmPackageInfo;
@@ -931,24 +930,12 @@ impl<'a> GraphDependencyResolver<'a> {
         };
 
         // cache all the dependencies' registry infos in parallel if should
-        if !should_sync_download() {
-          let handles = deps
-            .iter()
-            .map(|dep| {
-              let name = dep.name.clone();
-              let api = self.api.clone();
-              tokio::task::spawn(async move {
-                // it's ok to call this without storing the result, because
-                // NpmRegistryApi will cache the package info in memory
-                api.package_info(&name).await
-              })
-            })
-            .collect::<Vec<_>>();
-          let results = futures::future::join_all(handles).await;
-          for result in results {
-            result??; // surface the first error
-          }
-        }
+        self
+          .api
+          .cache_in_parallel({
+            deps.iter().map(|dep| dep.name.clone()).collect()
+          })
+          .await?;
 
         // resolve the dependencies
         let mut found_peer = false;
