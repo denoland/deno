@@ -15,7 +15,15 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+digest = { version = "0.10.5", features = ["core-api", "std"] }
+md-5 = "0.10.5"
+md4 = "0.10.2"
 once_cell.workspace = true
 path-clean = "=0.1.0"
 regex.workspace = true
+ripemd = "0.1.3"
 serde = "1.0.149"
+sha-1 = "0.10.0"
+sha2 = "0.10.6"
+sha3 = "0.10.5"
+typenum = "1.15.0"

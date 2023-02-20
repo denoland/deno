@@ -6,6 +6,7 @@ use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 use deno_core::Extension;
 use deno_core::ExtensionFileSource;
+use deno_core::ExtensionFileSourceCode;
 use deno_web::BlobStore;
 
 struct Permissions;
@@ -32,11 +33,11 @@ fn setup() -> Vec<Extension> {
     .esm(vec![
       ExtensionFileSource {
         specifier: "internal:setup".to_string(), 
-        code: r#"
+        code: ExtensionFileSourceCode::IncludedInBinary(r#"
       import { setTimeout, handleTimerMacrotask } from "internal:deno_web/02_timers.js";
       globalThis.setTimeout = setTimeout;
       Deno.core.setMacrotaskCallback(handleTimerMacrotask);
-      "#
+      "#)
       },
     ])
     .state(|state| {

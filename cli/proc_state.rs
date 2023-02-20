@@ -24,11 +24,9 @@ use crate::node;
 use crate::node::NodeResolution;
 use crate::npm::resolve_graph_npm_info;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageReference;
-use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 use crate::npm::RealNpmRegistryApi;
-use crate::resolver::CliResolver;
+use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -45,6 +43,8 @@ use deno_core::resolve_url_or_path;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
+use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReq;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
 use deno_graph::ModuleGraph;
@@ -58,12 +58,11 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
 use log::warn;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
@@ -90,14 +89,13 @@ pub struct Inner {
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
   pub parsed_source_cache: ParsedSourceCache,
-  pub maybe_resolver: Option<Arc<CliResolver>>,
+  pub resolver: Arc<CliGraphResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
   progress_bar: ProgressBar,
-  node_std_graph_prepared: AtomicBool,
 }
 
 impl Deref for ProcState {
@@ -152,14 +150,13 @@ impl ProcState {
       shared_array_buffer_store: Default::default(),
       compiled_wasm_module_store: Default::default(),
       parsed_source_cache: self.parsed_source_cache.reset_for_file_watcher(),
-      maybe_resolver: self.maybe_resolver.clone(),
+      resolver: self.resolver.clone(),
       maybe_file_watcher_reporter: self.maybe_file_watcher_reporter.clone(),
       node_analysis_cache: self.node_analysis_cache.clone(),
       npm_cache: self.npm_cache.clone(),
       npm_resolver: self.npm_resolver.clone(),
       cjs_resolutions: Default::default(),
       progress_bar: self.progress_bar.clone(),
-      node_std_graph_prepared: AtomicBool::new(false),
     });
     self.init_watcher();
   }
@@ -219,11 +216,10 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    let maybe_cli_resolver = CliResolver::maybe_new(
+    let resolver = Arc::new(CliGraphResolver::new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
-    );
-    let maybe_resolver = maybe_cli_resolver.map(Arc::new);
+    ));
 
     let maybe_file_watcher_reporter =
       maybe_sender.map(|sender| FileWatcherReporter {
@@ -286,14 +282,13 @@ impl ProcState {
       shared_array_buffer_store,
       compiled_wasm_module_store,
       parsed_source_cache,
-      maybe_resolver,
+      resolver,
       maybe_file_watcher_reporter,
       node_analysis_cache,
       npm_cache,
       npm_resolver,
       cjs_resolutions: Default::default(),
       progress_bar,
-      node_std_graph_prepared: AtomicBool::new(false),
     })))
   }
 
@@ -320,8 +315,7 @@ impl ProcState {
       dynamic_permissions,
     );
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_resolver =
-      self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
+    let resolver = self.resolver.as_graph_resolver();
     let maybe_file_watcher_reporter: Option<&dyn deno_graph::source::Reporter> =
       if let Some(reporter) = &self.maybe_file_watcher_reporter {
         Some(reporter)
@@ -346,7 +340,7 @@ impl ProcState {
         deno_graph::BuildOptions {
           is_dynamic,
           imports: maybe_imports,
-          resolver: maybe_resolver,
+          resolver: Some(resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
         },
@@ -370,7 +364,6 @@ impl ProcState {
 
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
-      self.prepare_node_std_graph().await?;
     }
 
     if has_node_builtin_specifier
@@ -385,9 +378,7 @@ impl ProcState {
     drop(_pb_clear_guard);
 
     // type check if necessary
-    let is_std_node = roots.len() == 1 && roots[0] == *node::MODULE_ALL_URL;
     if self.options.type_check_mode() != TypeCheckMode::None
-      && !is_std_node
       && !self.graph_data.read().is_type_checked(&roots, lib)
     {
       log::debug!("Type checking.");
@@ -457,31 +448,6 @@ impl ProcState {
       .await
   }
 
-  /// Add the builtin node modules to the graph data.
-  pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
-    if self.node_std_graph_prepared.load(Ordering::Relaxed) {
-      return Ok(());
-    }
-
-    let mut graph = self.graph_data.read().graph_inner_clone();
-    let mut loader = self.create_graph_loader();
-    let analyzer = self.parsed_source_cache.as_analyzer();
-    graph
-      .build(
-        vec![node::MODULE_ALL_URL.clone()],
-        &mut loader,
-        deno_graph::BuildOptions {
-          module_analyzer: Some(&*analyzer),
-          ..Default::default()
-        },
-      )
-      .await;
-
-    self.graph_data.write().update_graph(Arc::new(graph));
-    self.node_std_graph_prepared.store(true, Ordering::Relaxed);
-    Ok(())
-  }
-
   fn handle_node_resolve_result(
     &self,
     result: Result<Option<node::NodeResolution>, AnyError>,
@@ -534,6 +500,11 @@ impl ProcState {
       match maybe_resolved {
         Some((found_referrer, Resolution::Ok(resolved))) => {
           let specifier = &resolved.specifier;
+
+          if specifier.scheme() == "node" {
+            return node::resolve_builtin_node_module(specifier.path());
+          }
+
           if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
           {
             if !self.options.unstable()
@@ -584,12 +555,14 @@ impl ProcState {
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier
     // support in REPL. This should be fixed.
+    let resolution = self.resolver.resolve(specifier, &referrer);
+
     if is_repl {
-      let specifier = self
-        .maybe_resolver
+      let specifier = resolution
         .as_ref()
-        .and_then(|resolver| resolver.resolve(specifier, &referrer).ok())
-        .or_else(|| ModuleSpecifier::parse(specifier).ok());
+        .ok()
+        .map(Cow::Borrowed)
+        .or_else(|| ModuleSpecifier::parse(specifier).ok().map(Cow::Owned));
       if let Some(specifier) = specifier {
         if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
           return self
@@ -604,12 +577,7 @@ impl ProcState {
       }
     }
 
-    if let Some(resolver) = &self.maybe_resolver {
-      resolver.resolve(specifier, &referrer)
-    } else {
-      deno_core::resolve_import(specifier, referrer.as_str())
-        .map_err(|err| err.into())
-    }
+    resolution
   }
 
   pub fn cache_module_emits(&self) -> Result<(), AnyError> {
@@ -666,12 +634,11 @@ impl ProcState {
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
 
-    let maybe_cli_resolver = CliResolver::maybe_new(
+    let cli_resolver = CliGraphResolver::new(
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
     );
-    let maybe_graph_resolver =
-      maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
+    let graph_resolver = cli_resolver.as_graph_resolver();
     let analyzer = self.parsed_source_cache.as_analyzer();
 
     let mut graph = ModuleGraph::default();
@@ -682,7 +649,7 @@ impl ProcState {
         deno_graph::BuildOptions {
           is_dynamic: false,
           imports: maybe_imports,
-          resolver: maybe_graph_resolver,
+          resolver: Some(graph_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: None,
         },
@@ -711,6 +678,10 @@ impl ProcState {
 
   pub fn graph(&self) -> Arc<ModuleGraph> {
     self.graph_data.read().graph.clone()
+  }
+
+  pub fn has_node_builtin_specifier(&self) -> bool {
+    self.graph_data.read().has_node_builtin_specifier
   }
 }
 

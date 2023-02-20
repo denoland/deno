@@ -4,7 +4,6 @@ use crate::args::TsConfig;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
-use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 use crate::util::checksum;
 
@@ -29,6 +28,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
+use deno_graph::npm::NpmPackageReference;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleKind;
 use deno_graph::ResolutionResolved;
@@ -56,6 +56,14 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
     static COMPRESSED_COMPILER_SNAPSHOT: &[u8] =
       include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
 
+    // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
+    // ~45s on M1 MacBook Pro; without compression it took ~1s.
+    // Thus we're not not using compressed snapshot, trading off
+    // a lot of build time for some startup time in debug build.
+    #[cfg(debug_assertions)]
+    return COMPRESSED_COMPILER_SNAPSHOT.to_vec().into_boxed_slice();
+
+    #[cfg(not(debug_assertions))]
     zstd::bulk::decompress(
       &COMPRESSED_COMPILER_SNAPSHOT[4..],
       u32::from_le_bytes(COMPRESSED_COMPILER_SNAPSHOT[0..4].try_into().unwrap())

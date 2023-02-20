@@ -2,7 +2,6 @@
 
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
-use crate::npm;
 
 use deno_core::futures;
 use deno_core::futures::FutureExt;
@@ -104,29 +103,25 @@ impl Loader for FetchCacher {
   ) -> LoadFuture {
     if specifier.scheme() == "npm" {
       return Box::pin(futures::future::ready(
-        match npm::NpmPackageReference::from_specifier(specifier) {
+        match deno_graph::npm::NpmPackageReference::from_specifier(specifier) {
           Ok(_) => Ok(Some(deno_graph::source::LoadResponse::External {
             specifier: specifier.clone(),
           })),
-          Err(err) => Err(err),
+          Err(err) => Err(err.into()),
         },
       ));
     }
 
     let specifier =
       if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
-        if module_name == "module" {
-          // the source code for "node:module" is built-in rather than
-          // being from deno_std like the other modules
-          return Box::pin(futures::future::ready(Ok(Some(
-            deno_graph::source::LoadResponse::External {
-              specifier: specifier.clone(),
-            },
-          ))));
-        }
-
+        // Built-in Node modules are embedded in the Deno binary (in V8 snapshot)
+        // so we don't want them to be loaded by the "deno graph".
         match crate::node::resolve_builtin_node_module(module_name) {
-          Ok(specifier) => specifier,
+          Ok(specifier) => {
+            return Box::pin(futures::future::ready(Ok(Some(
+              deno_graph::source::LoadResponse::External { specifier },
+            ))))
+          }
           Err(err) => return Box::pin(futures::future::ready(Err(err))),
         }
       } else {

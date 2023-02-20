@@ -25,6 +25,15 @@ pub async fn bundle(
   bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
   let cli_options = Arc::new(CliOptions::from_flags(flags)?);
+
+  log::info!(
+    "{} \"deno bundle\" is deprecated and will be removed in the future.",
+    colors::yellow("Warning"),
+  );
+  log::info!(
+    "Use alternative bundlers like \"deno_emit\", \"esbuild\" or \"rollup\" instead."
+  );
+
   let resolver = |_| {
     let cli_options = cli_options.clone();
     let source_file1 = &bundle_flags.source_file;

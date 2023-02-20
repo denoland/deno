@@ -10,6 +10,8 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReq;
 use deno_graph::Dependency;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -20,9 +22,7 @@ use deno_runtime::colors;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
-use crate::npm::NpmPackageId;
-use crate::npm::NpmPackageReference;
-use crate::npm::NpmPackageReq;
+use crate::npm::NpmPackageNodeId;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolutionPackage;
 use crate::npm::NpmResolutionSnapshot;
@@ -297,9 +297,9 @@ fn print_tree_node<TWrite: Write>(
 /// Precached information about npm packages that are used in deno info.
 #[derive(Default)]
 struct NpmInfo {
-  package_sizes: HashMap<NpmPackageId, u64>,
-  resolved_reqs: HashMap<NpmPackageReq, NpmPackageId>,
-  packages: HashMap<NpmPackageId, NpmResolutionPackage>,
+  package_sizes: HashMap<NpmPackageNodeId, u64>,
+  resolved_reqs: HashMap<NpmPackageReq, NpmPackageNodeId>,
+  packages: HashMap<NpmPackageNodeId, NpmResolutionPackage>,
   specifiers: HashMap<ModuleSpecifier, NpmPackageReq>,
 }
 
@@ -618,7 +618,8 @@ impl<'a> GraphDisplayContext<'a> {
       ModuleGraphError::UnsupportedMediaType { .. } => {
         self.build_error_msg(specifier, "(unsupported)")
       }
-      ModuleGraphError::Missing(_, _) => {
+      ModuleGraphError::Missing(_, _)
+      | ModuleGraphError::MissingDynamic(_, _) => {
         self.build_error_msg(specifier, "(missing)")
       }
     }

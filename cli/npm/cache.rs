@@ -13,11 +13,11 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_graph::semver::Version;
 
 use crate::args::CacheSetting;
 use crate::cache::DenoDir;
 use crate::http_util::HttpClient;
-use crate::semver::Version;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::hard_link_dir_recursive;
 use crate::util::path::root_url_to_safe_local_dirname;
@@ -514,10 +514,10 @@ pub fn mixed_case_package_name_decode(name: &str) -> Option<String> {
 #[cfg(test)]
 mod test {
   use deno_core::url::Url;
+  use deno_graph::semver::Version;
 
   use super::ReadonlyNpmCache;
   use crate::npm::cache::NpmPackageCacheFolderId;
-  use crate::semver::Version;
 
   #[test]
   fn should_get_package_folder() {
