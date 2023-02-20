@@ -187,14 +187,14 @@ impl ReadonlyNpmCache {
   ) -> PathBuf {
     if id.copy_index == 0 {
       self.package_folder_for_name_and_version(
-        &id.name,
-        &id.version,
+        &id.nv.name,
+        &id.nv.version,
         registry_url,
       )
     } else {
       self
-        .package_name_folder(&id.name, registry_url)
-        .join(format!("{}_{}", id.version, id.copy_index))
+        .package_name_folder(&id.nv.name, registry_url)
+        .join(format!("{}_{}", id.nv.version, id.copy_index))
     }
   }
 
@@ -441,16 +441,19 @@ impl NpmCache {
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
-      && self.cache_setting.should_use_for_npm_package(&id.name)
+      && self.cache_setting.should_use_for_npm_package(&id.nv.name)
     {
       return Ok(());
     }
 
-    let original_package_folder = self
-      .readonly
-      .package_folder_for_name_and_version(&id.name, &id.version, registry_url);
+    let original_package_folder =
+      self.readonly.package_folder_for_name_and_version(
+        &id.nv.name,
+        &id.nv.version,
+        registry_url,
+      );
     with_folder_sync_lock(
-      (id.name.as_str(), &id.version),
+      (id.nv.name.as_str(), &id.nv.version),
       &package_folder,
       || hard_link_dir_recursive(&original_package_folder, &package_folder),
     )?;

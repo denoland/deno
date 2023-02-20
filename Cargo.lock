@@ -794,6 +794,7 @@ checksum = "8d7439c3735f405729d52c3fbbe4de140eaf938a1fe47d227c27f8254d4302a5"
 name = "deno"
 version = "1.30.3"
 dependencies = [
+ "async-trait",
  "atty",
  "base32",
  "base64 0.13.1",

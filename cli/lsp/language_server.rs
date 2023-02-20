@@ -73,7 +73,7 @@ use crate::graph_util;
 use crate::http_util::HttpClient;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::RealNpmRegistryApi;
+use crate::npm::NpmRegistryApi;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -304,7 +304,7 @@ fn create_lsp_npm_resolver(
   dir: &DenoDir,
   http_client: HttpClient,
 ) -> NpmPackageResolver {
-  let registry_url = RealNpmRegistryApi::default_url();
+  let registry_url = NpmRegistryApi::default_url();
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
   let npm_cache = NpmCache::from_deno_dir(
     dir,
@@ -316,8 +316,8 @@ fn create_lsp_npm_resolver(
     http_client.clone(),
     progress_bar.clone(),
   );
-  let api = RealNpmRegistryApi::new(
-    registry_url,
+  let api = NpmRegistryApi::new(
+    registry_url.clone(),
     npm_cache.clone(),
     http_client,
     progress_bar,

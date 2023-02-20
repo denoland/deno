@@ -31,8 +31,8 @@ use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 use super::NpmCache;
 use super::NpmPackageId;
+use super::NpmRegistryApi;
 use super::NpmResolutionSnapshot;
-use super::RealNpmRegistryApi;
 
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -46,7 +46,7 @@ pub struct NpmPackageResolver {
   no_npm: bool,
   inner: Arc<dyn InnerNpmPackageResolver>,
   local_node_modules_path: Option<PathBuf>,
-  api: RealNpmRegistryApi,
+  api: NpmRegistryApi,
   cache: NpmCache,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
@@ -62,13 +62,13 @@ impl std::fmt::Debug for NpmPackageResolver {
 }
 
 impl NpmPackageResolver {
-  pub fn new(cache: NpmCache, api: RealNpmRegistryApi) -> Self {
+  pub fn new(cache: NpmCache, api: NpmRegistryApi) -> Self {
     Self::new_inner(cache, api, false, None, None, None)
   }
 
   pub async fn new_with_maybe_lockfile(
     cache: NpmCache,
-    api: RealNpmRegistryApi,
+    api: NpmRegistryApi,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
     initial_snapshot: Option<NpmResolutionSnapshot>,
@@ -105,7 +105,7 @@ impl NpmPackageResolver {
 
   fn new_inner(
     cache: NpmCache,
-    api: RealNpmRegistryApi,
+    api: NpmRegistryApi,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
     maybe_snapshot: Option<NpmResolutionSnapshot>,

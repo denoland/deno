@@ -53,6 +53,7 @@ deno_runtime.workspace = true
 deno_task_shell = "0.8.1"
 napi_sym.workspace = true
 
+async-trait.workspace = true
 atty.workspace = true
 base32 = "=0.4.0"
 base64.workspace = true

@@ -33,8 +33,8 @@ use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
+use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolutionPackage;
-use crate::npm::RealNpmRegistryApi;
 use crate::util::fs::copy_dir_recursive;
 use crate::util::fs::hard_link_dir_recursive;
 
@@ -56,7 +56,7 @@ pub struct LocalNpmPackageResolver {
 impl LocalNpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: RealNpmRegistryApi,
+    api: NpmRegistryApi,
     node_modules_folder: PathBuf,
     initial_snapshot: Option<NpmResolutionSnapshot>,
   ) -> Self {
@@ -136,7 +136,7 @@ impl LocalNpmPackageResolver {
         &package.get_package_cache_folder_id(),
       ))
       .join("node_modules")
-      .join(&package.id.nv.name)
+      .join(&package.pkg_id.nv.name)
   }
 }
 
@@ -300,7 +300,9 @@ async fn sync_resolution_with_fs(
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
-    package_partitions.packages.sort_by(|a, b| a.id.cmp(&b.id));
+    package_partitions
+      .packages
+      .sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
   }
   let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
     Vec::with_capacity(package_partitions.packages.len());
@@ -311,7 +313,7 @@ async fn sync_resolution_with_fs(
     let initialized_file = folder_path.join(".initialized");
     if !cache
       .cache_setting()
-      .should_use_for_npm_package(&package.id.name)
+      .should_use_for_npm_package(&package.pkg_id.nv.name)
       || !initialized_file.exists()
     {
       let cache = cache.clone();
@@ -320,19 +322,19 @@ async fn sync_resolution_with_fs(
       let handle = tokio::task::spawn(async move {
         cache
           .ensure_package(
-            (&package.id.name, &package.id.version),
+            (&package.pkg_id.nv.name, &package.pkg_id.nv.version),
             &package.dist,
             &registry_url,
           )
           .await?;
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
-          join_package_name(&sub_node_modules, &package.id.name);
+          join_package_name(&sub_node_modules, &package.pkg_id.nv.name);
         fs::create_dir_all(&package_path)
           .with_context(|| format!("Creating '{}'", folder_path.display()))?;
         let cache_folder = cache.package_folder_for_name_and_version(
-          &package.id.name,
-          &package.id.version,
+          &package.pkg_id.nv.name,
+          &package.pkg_id.nv.version,
           &registry_url,
         );
         // for now copy, but in the future consider hard linking
@@ -362,7 +364,8 @@ async fn sync_resolution_with_fs(
     let initialized_file = destination_path.join(".initialized");
     if !initialized_file.exists() {
       let sub_node_modules = destination_path.join("node_modules");
-      let package_path = join_package_name(&sub_node_modules, &package.id.name);
+      let package_path =
+        join_package_name(&sub_node_modules, &package.pkg_id.nv.name);
       fs::create_dir_all(&package_path).with_context(|| {
         format!("Creating '{}'", destination_path.display())
       })?;
@@ -372,7 +375,7 @@ async fn sync_resolution_with_fs(
             &package_cache_folder_id.with_no_count(),
           ))
           .join("node_modules"),
-        &package.id.name,
+        &package.pkg_id.nv.name,
       );
       hard_link_dir_recursive(&source_path, &package_path)?;
       // write out a file that indicates this folder has been initialized
@@ -403,7 +406,7 @@ async fn sync_resolution_with_fs(
         &deno_local_registry_dir
           .join(dep_folder_name)
           .join("node_modules"),
-        &dep_id.name,
+        &dep_id.nv.name,
       );
       symlink_package_dir(
         &dep_folder_path,
@@ -425,10 +428,10 @@ async fn sync_resolution_with_fs(
       .map(|id| (id, true)),
   );
   while let Some((package_id, is_top_level)) = pending_packages.pop_front() {
-    let root_folder_name = if found_names.insert(package_id.name.clone()) {
-      package_id.name.clone()
+    let root_folder_name = if found_names.insert(package_id.nv.name.clone()) {
+      package_id.nv.name.clone()
     } else if is_top_level {
-      package_id.display()
+      format!("{}@{}", package_id.nv.name, package_id.nv.version)
     } else {
       continue; // skip, already handled
     };
@@ -439,7 +442,7 @@ async fn sync_resolution_with_fs(
           &package.get_package_cache_folder_id(),
         ))
         .join("node_modules"),
-      &package_id.name,
+      &package_id.nv.name,
     );
 
     symlink_package_dir(

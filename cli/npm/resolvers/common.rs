@@ -76,7 +76,7 @@ pub async fn cache_packages(
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
-    packages.sort_by(|a, b| a.id.cmp(&b.id));
+    packages.sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
   }
 
   let mut handles = Vec::with_capacity(packages.len());
@@ -87,7 +87,7 @@ pub async fn cache_packages(
     let handle = tokio::task::spawn(async move {
       cache
         .ensure_package(
-          (package.id.name.as_str(), &package.id.version),
+          (package.pkg_id.nv.name.as_str(), &package.pkg_id.nv.version),
           &package.dist,
           &registry_url,
         )

@@ -30,8 +30,8 @@ use deno_core::futures::future;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
-use deno_graph::npm::NpmPackageReference;
 use deno_graph::npm::NpmPackageReq;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -1103,7 +1103,7 @@ impl Documents {
         .and_then(|r| r.maybe_specifier())
       {
         results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
-      } else if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
+      } else if let Ok(npm_ref) = NpmPackageReqReference::from_str(&specifier) {
         results.push(maybe_npm_resolver.map(|npm_resolver| {
           NodeResolution::into_specifier_and_media_type(
             node_resolve_npm_reference(
@@ -1243,7 +1243,7 @@ impl Documents {
           // perf: ensure this is not added to unless this specifier has never
           // been analyzed in order to not cause an extra file system lookup
           self.pending_specifiers.push_back(dep.clone());
-          if let Ok(reference) = NpmPackageReference::from_specifier(dep) {
+          if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
             self.npm_reqs.insert(reference.req);
           }
         }
@@ -1321,7 +1321,7 @@ impl Documents {
     specifier: &ModuleSpecifier,
     maybe_npm_resolver: Option<&NpmPackageResolver>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
-    if let Ok(npm_ref) = NpmPackageReference::from_specifier(specifier) {
+    if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
       return maybe_npm_resolver.map(|npm_resolver| {
         NodeResolution::into_specifier_and_media_type(
           node_resolve_npm_reference(
