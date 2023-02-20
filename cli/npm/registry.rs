@@ -205,7 +205,7 @@ pub struct NpmRegistryApi(Arc<dyn NpmRegistryApiInner>);
 
 impl NpmRegistryApi {
   pub fn default_url() -> &'static Url {
-    &*NPM_REGISTRY_DEFAULT_URL
+    &NPM_REGISTRY_DEFAULT_URL
   }
 
   pub fn new(
@@ -315,7 +315,7 @@ impl NpmRegistryApiInner for RealNpmRegistryApiInner {
     &self,
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
-    self.maybe_package_info(&name).await
+    self.maybe_package_info(name).await
   }
 
   fn clear_memory_cache(&self) {

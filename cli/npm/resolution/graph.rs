@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -330,7 +332,7 @@ impl Graph {
         peer_dependencies: peer_dep_ids,
       };
       graph.resolved_node_ids.set(node_id, graph_resolved_id);
-      let resolution = packages.get(&resolved_id).unwrap();
+      let resolution = packages.get(resolved_id).unwrap();
       for (name, child_id) in &resolution.dependencies {
         let child_node_id = get_or_create_graph_node(
           graph,
@@ -413,7 +415,7 @@ impl Graph {
                 child_pkg_nv: child_nv,
               } => match &parent {
                 GraphPathNodeOrRoot::Root(_) => {
-                  let node_id = *self.root_packages.get(&child_nv).unwrap();
+                  let node_id = *self.root_packages.get(child_nv).unwrap();
                   (node_id, self.resolved_node_ids.get(node_id).unwrap())
                 }
                 GraphPathNodeOrRoot::Node(parent_path) => {
@@ -428,8 +430,7 @@ impl Graph {
                         .get(child_id)
                         .map(|resolved_id| (child_id, resolved_id))
                     })
-                    .filter(|(_, resolved_id)| resolved_id.nv == *child_nv)
-                    .next()
+                    .find(|(_, resolved_id)| resolved_id.nv == *child_nv)
                     .unwrap()
                 }
               },
@@ -458,7 +459,7 @@ impl Graph {
     &mut self,
     resolved_id: &ResolvedId,
   ) -> (bool, NodeId) {
-    if let Some(node_id) = self.resolved_node_ids.get_node_id(&resolved_id) {
+    if let Some(node_id) = self.resolved_node_ids.get_node_id(resolved_id) {
       return (false, node_id);
     }
 
@@ -559,7 +560,7 @@ impl Graph {
         self.nodes.len(),
       );
     let mut packages = HashMap::with_capacity(self.nodes.len());
-    for (_, ids) in &resolved_packages_by_name {
+    for ids in resolved_packages_by_name.values() {
       for (node_id, resolved_id) in ids {
         let node = self.nodes.remove(node_id).unwrap();
         let dist = api
@@ -590,10 +591,7 @@ impl Graph {
         .root_packages
         .into_iter()
         .map(|(id, node_id)| {
-          (
-            id.clone(),
-            packages_to_resolved_id.get(&node_id).unwrap().clone(),
-          )
+          (id, packages_to_resolved_id.get(&node_id).unwrap().clone())
         })
         .collect(),
       packages_by_name: resolved_packages_by_name
@@ -652,7 +650,7 @@ impl DepEntryCache {
     debug_assert!(!self.0.contains_key(&nv)); // we should not be re-inserting
     let mut deps = version_info
       .dependencies_as_entries()
-      .with_context(|| format!("npm package: {}", nv))?;
+      .with_context(|| format!("npm package: {nv}"))?;
     // Ensure name alphabetical and then version descending
     // so these are resolved in that order
     deps.sort();
@@ -814,7 +812,7 @@ impl<'a> GraphDependencyResolver<'a> {
     } else {
       let deps = self
         .dep_entry_cache
-        .store(pkg_id.clone(), &version_and_info.info)?;
+        .store(pkg_id.clone(), version_and_info.info)?;
       !deps.is_empty()
     };
 
@@ -993,8 +991,7 @@ impl<'a> GraphDependencyResolver<'a> {
 
     // Peer dependencies are resolved based on its ancestors' siblings.
     // If not found, then it resolves based on the version requirement if non-optional.
-    let mut ancestor_iterator = ancestor_path.ancestors().peekable();
-    while let Some(ancestor_node) = ancestor_iterator.next() {
+    for ancestor_node in ancestor_path.ancestors() {
       match ancestor_node {
         GraphPathNodeOrRoot::Node(ancestor_graph_path_node) => {
           path.push(ancestor_graph_path_node);
@@ -1127,7 +1124,7 @@ impl<'a> GraphDependencyResolver<'a> {
     let peer_dep = match &peer_dep_parent {
       NodeParent::Root(id) => ResolvedIdPeerDep::ParentReference {
         parent: GraphPathNodeOrRoot::Root(id.clone()),
-        child_pkg_nv: peer_dep_pkg_id.clone(),
+        child_pkg_nv: peer_dep_pkg_id,
       },
       NodeParent::Node(node_id) => {
         let top_node = path.last().unwrap();
@@ -1139,7 +1136,7 @@ impl<'a> GraphDependencyResolver<'a> {
         }
         ResolvedIdPeerDep::ParentReference {
           parent: GraphPathNodeOrRoot::Node((*top_node).clone()),
-          child_pkg_nv: peer_dep_pkg_id.clone(),
+          child_pkg_nv: peer_dep_pkg_id,
         }
       }
     };

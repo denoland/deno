@@ -388,7 +388,7 @@ async fn add_package_reqs_to_snapshot(
     )
     .await?;
 
-  let mut resolver = GraphDependencyResolver::new(&mut graph, &api);
+  let mut resolver = GraphDependencyResolver::new(&mut graph, api);
 
   // The package reqs should already be sorted
   // in the order they should be resolved in.
@@ -399,7 +399,7 @@ async fn add_package_reqs_to_snapshot(
 
   resolver.resolve_pending().await?;
 
-  let result = graph.into_snapshot(&api).await;
+  let result = graph.into_snapshot(api).await;
   api.clear_memory_cache();
   result
 }
