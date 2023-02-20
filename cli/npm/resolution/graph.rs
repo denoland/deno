@@ -1164,7 +1164,6 @@ impl<'a> GraphDependencyResolver<'a> {
       // we need to create it later once we have a new node id
       _ => None,
     };
-    let mut added_to_pending_nodes = false;
     let mut node_parent =
       match path.last().unwrap().previous_node.as_ref().unwrap() {
         GraphPathNodeOrRoot::Node(path) => NodeParent::Node(path.node_id()),
@@ -1230,14 +1229,6 @@ impl<'a> GraphDependencyResolver<'a> {
         debug_assert_eq!(graph_path_node.node_id(), old_node_id);
         graph_path_node.change_id(new_node_id);
 
-        if !added_to_pending_nodes {
-          // add the top node changed to the list of pending unresolved nodes
-          self
-            .pending_unresolved_nodes
-            .push_back((**graph_path_node).clone());
-          added_to_pending_nodes = true;
-        }
-
         // update the current node to not have the parent
         {
           let node = self.graph.borrow_node_mut(old_node_id);
@@ -1280,12 +1271,10 @@ impl<'a> GraphDependencyResolver<'a> {
           parent_node_id,
         );
 
-        // add the peer dependency to be analyzed when none of its ancestors will be
-        if !added_to_pending_nodes {
-          let bottom_node = path.first().unwrap();
-          debug_assert_eq!(bottom_node.node_id(), parent_node_id);
-          self.try_add_pending_unresolved_node(bottom_node, peer_dep_id);
-        }
+        // add the peer dependency to be analyzed
+        let bottom_node = path.first().unwrap();
+        debug_assert_eq!(bottom_node.node_id(), parent_node_id);
+        self.try_add_pending_unresolved_node(bottom_node, peer_dep_id);
 
         debug!(
           "Resolved peer dependency for {} in {} to {}",
