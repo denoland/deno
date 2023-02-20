@@ -279,6 +279,7 @@ mod not_docs {
 
     #[cfg(not(feature = "snapshot_from_snapshot"))]
     {
+      use deno_core::ExtensionFileSourceCode;
       maybe_additional_extension = Some(
         Extension::builder("runtime_main")
           .dependencies(vec!["runtime"])

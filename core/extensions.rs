@@ -323,9 +323,16 @@ macro_rules! include_js_files {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!($dir, "/", $file).to_string(),
+
+        #[cfg(not(feature = "include_js_files_for_snapshotting"))]
         code: $crate::ExtensionFileSourceCode::IncludedInBinary(
           include_str!(concat!($dir, "/", $file)
         )),
+
+        #[cfg(feature = "include_js_files_for_snapshotting")]
+        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR").join($dir).join($file))
+        ),
       },)+
     ]
   };
@@ -334,8 +341,15 @@ macro_rules! include_js_files {
     vec![
       $($crate::ExtensionFileSource {
         specifier: $file.to_string(),
+
+        #[cfg(not(feature = "include_js_files_for_snapshotting"))]
         code: $crate::ExtensionFileSourceCode::IncludedInBinary(
           include_str!($file)
+        ),
+
+        #[cfg(feature = "include_js_files_for_snapshotting")]
+        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR").join($file))
         ),
       },)+
     ]
