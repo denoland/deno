@@ -11,22 +11,16 @@ pub fn op_node_idna_domain_to_ascii(
 }
 
 #[op]
-pub fn op_node_idna_domain_to_unicode(
-  domain: String,
-) -> Result<String, AnyError> {
-  Ok(idna::domain_to_unicode(&domain).0)
+pub fn op_node_idna_domain_to_unicode(domain: String) -> String {
+  idna::domain_to_unicode(&domain).0
 }
 
 #[op]
-pub fn op_node_idna_punycode_decode(
-  domain: String,
-) -> Result<String, AnyError> {
-  Ok(idna::punycode::decode_to_string(&domain).unwrap_or_default())
+pub fn op_node_idna_punycode_decode(domain: String) -> String {
+  idna::punycode::decode_to_string(&domain).unwrap_or_default()
 }
 
 #[op]
-pub fn op_node_idna_punycode_encode(
-  domain: String,
-) -> Result<String, AnyError> {
-  Ok(idna::punycode::encode_str(&domain).unwrap_or_default())
+pub fn op_node_idna_punycode_encode(domain: String) -> String {
+  idna::punycode::encode_str(&domain).unwrap_or_default()
 }
