@@ -4,14 +4,15 @@ use log::debug;
 use once_cell::sync::Lazy;
 
 #[cfg(feature = "create_runtime_snapshot")]
+static COMPRESSED_RUNTIME_SNAPSHOT: &[u8] =
+  include_bytes!(concat!(env!("OUT_DIR"), "/RUNTIME_SNAPSHOT.bin"));
+
+#[cfg(feature = "create_runtime_snapshot")]
 pub static RUNTIME_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   #[allow(clippy::uninit_vec)]
   #[cold]
   #[inline(never)]
   || {
-    static COMPRESSED_RUNTIME_SNAPSHOT: &[u8] =
-      include_bytes!(concat!(env!("OUT_DIR"), "/RUNTIME_SNAPSHOT.bin"));
-
     let size =
       u32::from_le_bytes(COMPRESSED_RUNTIME_SNAPSHOT[0..4].try_into().unwrap())
         as usize;
@@ -36,7 +37,7 @@ pub fn deno_isolate_init() -> Snapshot {
   Snapshot::Static(&RUNTIME_SNAPSHOT)
 }
 
-// #[cfg(not(feature = "include_js_files_for_snapshotting"))]
+#[cfg(not(feature = "include_js_files_for_snapshotting"))]
 pub static SOURCE_CODE_FOR_99_MAIN_JS: &str = include_str!("js/99_main.js");
 
 #[cfg(feature = "include_js_files_for_snapshotting")]
