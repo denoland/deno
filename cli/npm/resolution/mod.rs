@@ -478,6 +478,14 @@ async fn add_package_reqs_to_snapshot(
   package_reqs: Vec<NpmPackageReq>,
   snapshot: NpmResolutionSnapshot,
 ) -> Result<NpmResolutionSnapshot, AnyError> {
+  if snapshot.pending_unresolved_packages.is_empty()
+    && package_reqs
+      .iter()
+      .all(|req| snapshot.package_reqs.contains_key(req))
+  {
+    return Ok(snapshot); // already up to date
+  }
+
   // convert the snapshot to a traversable graph
   let mut graph = Graph::from_snapshot(snapshot);
   let pending_unresolved = graph.take_pending_unresolved();

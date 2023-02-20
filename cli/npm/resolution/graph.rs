@@ -684,8 +684,6 @@ pub struct GraphDependencyResolver<'a> {
   graph: &'a mut Graph,
   api: &'a NpmRegistryApi,
   pending_unresolved_nodes: VecDeque<Arc<GraphPath>>,
-  // todo(THIS PR): consider this, but probably not
-  optional_peer_versions: HashMap<NpmPackageNv, NpmPackageNv>,
   unresolved_optional_peers: HashMap<NpmPackageNv, Vec<UnresolvedOptionalPeer>>,
   dep_entry_cache: DepEntryCache,
 }
@@ -696,7 +694,6 @@ impl<'a> GraphDependencyResolver<'a> {
       graph,
       api,
       pending_unresolved_nodes: Default::default(),
-      optional_peer_versions: Default::default(),
       unresolved_optional_peers: Default::default(),
       dep_entry_cache: Default::default(),
     }
@@ -954,7 +951,9 @@ impl<'a> GraphDependencyResolver<'a> {
               // potentially resolved later and if resolved, drain the previous ones.
               //
               // Note: This is not a good solution, but will probably work ok in most
-              // scenarios. We can work on improving this in the future.
+              // scenarios. We can work on improving this in the future. We probably
+              // would want to resolve future optional peers to the same dependency
+              // for example.
               if dep.kind == NpmDependencyEntryKind::OptionalPeer {
                 match maybe_new_id {
                   Some(new_id) => {
@@ -1177,17 +1176,20 @@ impl<'a> GraphDependencyResolver<'a> {
       };
 
     for graph_path_node in path.iter().rev() {
-      let node_id = graph_path_node.node_id();
-      let old_resolved_id =
-        self.graph.resolved_node_ids.get(node_id).unwrap().clone();
+      let old_node_id = graph_path_node.node_id();
+      let old_resolved_id = self
+        .graph
+        .resolved_node_ids
+        .get(old_node_id)
+        .unwrap()
+        .clone();
 
-      let current_node = self.graph.nodes.get(&node_id).unwrap();
+      let current_node = self.graph.nodes.get(&old_node_id).unwrap();
       if current_node.has_one_parent() {
         // In this case, we can take control of this node identifier and
         // update the current node in place. We only need to update the
         // collection of resolved node identifiers.
-
-        // todo(THIS PR): extract out?
+        let node_id = old_node_id;
         let peer_dep = match peer_dep.as_ref() {
           Some(peer_dep) => peer_dep.clone(),
           None => {
@@ -1207,10 +1209,9 @@ impl<'a> GraphDependencyResolver<'a> {
 
         node_parent = NodeParent::Node(node_id);
       } else {
-        let old_node_id = node_id;
         let new_node_id = self.graph.create_node(&old_resolved_id.nv);
 
-        // update the resolved id
+        // update the resolved id with this new id
         let peer_dep = match peer_dep.as_ref() {
           Some(peer_dep) => peer_dep.clone(),
           None => {
