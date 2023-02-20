@@ -65,13 +65,8 @@ impl std::fmt::Debug for NpmPackageResolver {
 }
 
 impl NpmPackageResolver {
-  pub fn new(
-    cache: NpmCache,
-    api: NpmRegistryApi,
-    no_npm: bool,
-    local_node_modules_path: Option<PathBuf>,
-  ) -> Self {
-    Self::new_inner(cache, api, no_npm, local_node_modules_path, None, None)
+  pub fn new(cache: NpmCache, api: NpmRegistryApi) -> Self {
+    Self::new_inner(cache, api, false, None, None, None)
   }
 
   pub async fn new_with_maybe_lockfile(

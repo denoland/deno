@@ -17,7 +17,6 @@ use std::sync::Arc;
 use crate::args::JsxImportSourceConfig;
 use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
-use deno_graph::npm::NpmPackageReq;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
@@ -46,6 +45,7 @@ impl Default for CliGraphResolver {
       maybe_jsx_import_source_module: Default::default(),
       npm_registry_api,
       npm_resolution,
+      maybe_package_json_deps: Default::default(),
     }
   }
 }

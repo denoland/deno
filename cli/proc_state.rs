@@ -228,6 +228,7 @@ impl ProcState {
       cli_options
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
+      cli_options.get_npm_resolution_snapshot(),
       lockfile.as_ref().cloned(),
     )
     .await?;
@@ -268,15 +269,15 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
-    let registry_url = RealNpmRegistryApi::default_url();
+    let registry_url = NpmRegistryApi::default_url();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let api = RealNpmRegistryApi::new(
-      registry_url,
+    let api = NpmRegistryApi::new(
+      registry_url.clone(),
       npm_cache.clone(),
       http_client.clone(),
       progress_bar.clone(),
