@@ -274,7 +274,7 @@ export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
-  let padding = privateKey.padding || 1;
+  const padding = privateKey.padding || 1;
   return ops.op_node_private_encrypt(privateKey, buffer, padding);
 }
 
@@ -282,7 +282,7 @@ export function privateDecrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
-  let padding = privateKey.padding || 1;
+  const padding = privateKey.padding || 1;
   return ops.op_node_private_decrypt(privateKey, buffer, padding);
 }
 
@@ -290,7 +290,7 @@ export function publicEncrypt(
   publicKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
-  let padding = publicKey.padding || 1;
+  const padding = publicKey.padding || 1;
   return ops.op_node_public_encrypt(publicKey, buffer, padding);
 }
 

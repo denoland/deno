@@ -16,7 +16,7 @@ const input = new TextEncoder().encode("hello world");
 
 Deno.test({
   name: "rsa public encrypt and private decrypt",
-  async fn() {
+  fn() {
     const encrypted = crypto.publicEncrypt(Buffer.from(rsaPublicKey), input);
     const decrypted = crypto.privateDecrypt(
       Buffer.from(rsaPrivateKey),
@@ -28,7 +28,7 @@ Deno.test({
 
 Deno.test({
   name: "rsa private encrypt and private decrypt",
-  async fn() {
+  fn() {
     const encrypted = crypto.privateEncrypt(rsaPrivateKey, input);
     const decrypted = crypto.privateDecrypt(
       rsaPrivateKey,
