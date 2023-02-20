@@ -245,23 +245,17 @@ impl PermissionPrompter for TtyPrompter {
           eprintln!("❌ {}", colors::bold(&msg));
           break PromptResponse::Deny;
         }
-        'a' => {
-          // Passthrough if 'a' is used on the wrong permission
-          if is_unary {
-            clear_n_lines(if api_name.is_some() { 4 } else { 3 });
-            let msg = format!("Granted all {name} access.");
-            eprintln!("✅ {}", colors::bold(&msg));
-            break PromptResponse::AllowAll;
-          }
+        'a' if is_unary => {
+          clear_n_lines(if api_name.is_some() { 4 } else { 3 });
+          let msg = format!("Granted all {name} access.");
+          eprintln!("✅ {}", colors::bold(&msg));
+          break PromptResponse::AllowAll;
         }
-        'd' => {
-          // Passthrough if 'd' is used on the wrong permission
-          if is_unary {
-            clear_n_lines(if api_name.is_some() { 4 } else { 3 });
-            let msg = format!("Denied all {name} access.");
-            eprintln!("❌ {}", colors::bold(&msg));
-            break PromptResponse::DenyAll;
-          }
+        'd' if is_unary => {
+          clear_n_lines(if api_name.is_some() { 4 } else { 3 });
+          let msg = format!("Denied all {name} access.");
+          eprintln!("❌ {}", colors::bold(&msg));
+          break PromptResponse::DenyAll;
         }
         _ => {
           // If we don't get a recognized option try again.
