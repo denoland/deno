@@ -923,9 +923,12 @@ impl<'a> GraphDependencyResolver<'a> {
                       self.unresolved_optional_peers.remove(&pkg_id)
                     {
                       for optional_peer in unresolved_optional_peers {
+                        let peer_parent = GraphPathNodeOrRoot::Node(
+                          optional_peer.graph_path.clone(),
+                        );
                         self.set_new_peer_dep(
-                          NodeParent::Node(optional_peer.graph_path.node_id()),
                           vec![&optional_peer.graph_path],
+                          peer_parent,
                           &optional_peer.specifier,
                           new_id,
                         );
@@ -984,7 +987,7 @@ impl<'a> GraphDependencyResolver<'a> {
 
       if let Some((peer_parent, peer_dep_id)) = maybe_peer_dep {
         // this will always have an ancestor because we're not at the root
-        self.set_new_peer_dep(peer_parent, path, specifier, peer_dep_id);
+        self.set_new_peer_dep(path, peer_parent, specifier, peer_dep_id);
         return Ok(Some(peer_dep_id));
       }
     }
@@ -1002,7 +1005,7 @@ impl<'a> GraphDependencyResolver<'a> {
           )?;
           if let Some((parent, peer_dep_id)) = maybe_peer_dep {
             // this will always have an ancestor because we're not at the root
-            self.set_new_peer_dep(parent, path, specifier, peer_dep_id);
+            self.set_new_peer_dep(path, parent, specifier, peer_dep_id);
             return Ok(Some(peer_dep_id));
           }
 
@@ -1026,12 +1029,8 @@ impl<'a> GraphDependencyResolver<'a> {
               .iter()
               .map(|(pkg_id, id)| (*id, pkg_id)),
           )? {
-            self.set_new_peer_dep(
-              NodeParent::Root(root_pkg_id.clone()),
-              path,
-              specifier,
-              child_id,
-            );
+            let peer_parent = GraphPathNodeOrRoot::Root(root_pkg_id.clone());
+            self.set_new_peer_dep(path, peer_parent, specifier, child_id);
             return Ok(Some(child_id));
           }
         }
@@ -1051,10 +1050,10 @@ impl<'a> GraphDependencyResolver<'a> {
         peer_package_info,
         Some(parent_id),
       )?;
-      let peer_parent = NodeParent::Node(ancestor_path.node_id());
+      let peer_parent = GraphPathNodeOrRoot::Node(ancestor_path.clone());
       self.set_new_peer_dep(
-        peer_parent,
         vec![ancestor_path],
+        peer_parent,
         specifier,
         node_id,
       );
@@ -1069,7 +1068,7 @@ impl<'a> GraphDependencyResolver<'a> {
     path: &Arc<GraphPath>,
     peer_dep: &NpmDependencyEntry,
     peer_package_info: &NpmPackageInfo,
-  ) -> Result<Option<(NodeParent, NodeId)>, AnyError> {
+  ) -> Result<Option<(GraphPathNodeOrRoot, NodeId)>, AnyError> {
     let node_id = path.node_id();
     let resolved_node_id = self.graph.resolved_node_ids.get(node_id).unwrap();
     // check if this node itself is a match for
@@ -1082,10 +1081,7 @@ impl<'a> GraphDependencyResolver<'a> {
         None,
       )?
     {
-      let parent = match path.previous_node.as_ref().unwrap() {
-        GraphPathNodeOrRoot::Node(node) => NodeParent::Node(node.node_id()),
-        GraphPathNodeOrRoot::Root(pkg_id) => NodeParent::Root(pkg_id.clone()),
-      };
+      let parent = path.previous_node.as_ref().unwrap().clone();
       Ok(Some((parent, node_id)))
     } else {
       let node = self.graph.nodes.get(&node_id).unwrap();
@@ -1098,7 +1094,10 @@ impl<'a> GraphDependencyResolver<'a> {
       });
       find_matching_child(peer_dep, peer_package_info, children).map(
         |maybe_child_id| {
-          maybe_child_id.map(|child_id| (NodeParent::Node(node_id), child_id))
+          maybe_child_id.map(|child_id| {
+            let parent = GraphPathNodeOrRoot::Node(path.clone());
+            (parent, child_id)
+          })
         },
       )
     }
@@ -1106,9 +1105,9 @@ impl<'a> GraphDependencyResolver<'a> {
 
   fn set_new_peer_dep(
     &mut self,
-    peer_dep_parent: NodeParent,
     // path from the node above the resolved dep to just above the peer dep
     path: Vec<&Arc<GraphPath>>,
+    peer_dep_parent: GraphPathNodeOrRoot,
     peer_dep_specifier: &str,
     peer_dep_id: NodeId,
   ) {
@@ -1121,24 +1120,9 @@ impl<'a> GraphDependencyResolver<'a> {
       .nv
       .clone();
 
-    let peer_dep = match &peer_dep_parent {
-      NodeParent::Root(id) => ResolvedIdPeerDep::ParentReference {
-        parent: GraphPathNodeOrRoot::Root(id.clone()),
-        child_pkg_nv: peer_dep_pkg_id,
-      },
-      NodeParent::Node(node_id) => {
-        let top_node = path.last().unwrap();
-        debug_assert_eq!(top_node.node_id(), *node_id);
-        if cfg!(debug) {
-          let old_resolved_id =
-            self.graph.resolved_node_ids.get(*node_id).unwrap();
-          debug_assert_ne!(peer_dep_pkg_id, old_resolved_id.nv);
-        }
-        ResolvedIdPeerDep::ParentReference {
-          parent: GraphPathNodeOrRoot::Node((*top_node).clone()),
-          child_pkg_nv: peer_dep_pkg_id,
-        }
-      }
+    let peer_dep = ResolvedIdPeerDep::ParentReference {
+      parent: peer_dep_parent,
+      child_pkg_nv: peer_dep_pkg_id,
     };
     let mut node_parent =
       match path.last().unwrap().previous_node.as_ref().unwrap() {
