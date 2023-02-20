@@ -96,7 +96,7 @@ for await (const path of testPaths) {
 
 function checkConfigTestFilesOrder(testFileLists: Array<string[]>) {
   for (let testFileList of testFileLists) {
-    testFileList = testFileList.filter((name) => !name.startsWith("TODO:"))
+    testFileList = testFileList.filter((name) => !name.startsWith("TODO:"));
     const sortedTestList = JSON.parse(JSON.stringify(testFileList));
     sortedTestList.sort();
     if (JSON.stringify(testFileList) !== JSON.stringify(sortedTestList)) {
