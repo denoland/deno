@@ -34,7 +34,7 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     ..Default::default()
   });
   println!(
-    "JsRuntime fo  r snapshot prepared, took {:#?} ({})",
+    "JsRuntime for snapshot prepared, took {:#?} ({})",
     Instant::now().saturating_duration_since(mark),
     create_snapshot_options.snapshot_path.display()
   );

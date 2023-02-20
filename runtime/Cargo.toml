@@ -21,25 +21,7 @@ snapshot_from_snapshot = []
 # With this feature enabled, the sources must be consumed during build time,
 # by creating a startup snapshot.
 include_js_files_for_snapshotting = [
-  "deno_broadcast_channel/include_js_files_for_snapshotting",
-  "deno_cache/include_js_files_for_snapshotting",
-  "deno_console/include_js_files_for_snapshotting",
   "deno_core/include_js_files_for_snapshotting",
-  "deno_crypto/include_js_files_for_snapshotting",
-  "deno_fetch/include_js_files_for_snapshotting",
-  "deno_ffi/include_js_files_for_snapshotting",
-  "deno_flash/include_js_files_for_snapshotting",
-  "deno_http/include_js_files_for_snapshotting",
-  "deno_net/include_js_files_for_snapshotting",
-  "deno_node/include_js_files_for_snapshotting",
-  "deno_tls/include_js_files_for_snapshotting",
-  "deno_url/include_js_files_for_snapshotting",
-  "deno_web/include_js_files_for_snapshotting",
-  "deno_webgpu/include_js_files_for_snapshotting",
-  "deno_webidl/include_js_files_for_snapshotting",
-  "deno_websocket/include_js_files_for_snapshotting",
-  "deno_webstorage/include_js_files_for_snapshotting",
-  "deno_napi/include_js_files_for_snapshotting",
 ]
 
 [lib]
