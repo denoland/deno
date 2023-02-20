@@ -12,6 +12,7 @@ description = "WebGPU implementation for Deno"
 
 [features]
 surface = ["wgpu-core/raw-window-handle", "dep:raw-window-handle"]
+include_js_files_for_snapshotting = ["deno_core/include_js_files_for_snapshotting"]
 
 [dependencies]
 deno_core.workspace = true

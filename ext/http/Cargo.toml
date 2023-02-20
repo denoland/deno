@@ -10,6 +10,9 @@ readme = "README.md"
 repository.workspace = true
 description = "HTTP server implementation for Deno"
 
+[features]
+include_js_files_for_snapshotting = ["deno_core/include_js_files_for_snapshotting"]
+
 [lib]
 path = "lib.rs"
 

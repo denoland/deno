@@ -331,7 +331,7 @@ macro_rules! include_js_files {
 
         #[cfg(feature = "include_js_files_for_snapshotting")]
         code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR").join($dir).join($file))
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
         ),
       },)+
     ]
@@ -349,7 +349,7 @@ macro_rules! include_js_files {
 
         #[cfg(feature = "include_js_files_for_snapshotting")]
         code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR").join($file))
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
         ),
       },)+
     ]
