@@ -8,7 +8,7 @@ use deno_core::include_js_files;
 use deno_core::snapshot_util::*;
 use deno_core::Extension;
 use deno_core::ExtensionFileSource;
-use deno_core::ExtensionSourceFileSource;
+use deno_core::ExtensionFileSourceCode;
 use deno_runtime::deno_cache::SqliteBackedCache;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::*;
@@ -361,7 +361,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
   );
   esm_files.push(ExtensionFileSource {
     specifier: "runtime/js/99_main.js".to_string(),
-    code: ExtensionSourceFileSource::File(PathBuf::from(
+    code: ExtensionFileSourceCode::File(PathBuf::from(
       deno_runtime::PATH_FOR_99_MAIN_JS,
     )),
   });

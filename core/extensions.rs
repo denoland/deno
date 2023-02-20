@@ -7,20 +7,24 @@ use std::task::Context;
 use v8::fast_api::FastFunction;
 
 #[derive(Clone, Debug)]
-pub enum ExtensionSourceFileSource {
+pub enum ExtensionFileSourceCode {
+  /// Source code is included in the binary produced. Either by being defined
+  /// inline, or included using `include_str!()`. If you are snapshotting, this
+  /// will result in two copies of the source code being included - one in the
+  /// snapshot, the other the static string in the `Extension`.
+  IncludedInBinary(&'static str),
+  // TODO(bartlomieju): add more variants that allow to read file from the disk,
+  // and not include it in the binary.
   /// Use this option when snapshotting so that the source code is not embedded
   /// in the produced binary.
   File(std::path::PathBuf),
-  /// Use this option when not snapshotting.
-  Embedded(&'static str),
-
   None,
 }
 
 #[derive(Clone, Debug)]
 pub struct ExtensionFileSource {
   pub specifier: String,
-  pub code: ExtensionSourceFileSource,
+  pub code: ExtensionFileSourceCode,
 }
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
@@ -191,6 +195,9 @@ impl ExtensionBuilder {
 
   pub fn js(&mut self, js_files: Vec<ExtensionFileSource>) -> &mut Self {
     let js_files =
+      // TODO(bartlomieju): if we're automatically remapping here, then we should
+      // use a different result struct that `ExtensionFileSource` as it's confusing
+      // when (and why) the remapping happens.
       js_files.into_iter().map(|file_source| ExtensionFileSource {
         specifier: format!("internal:{}/{}", self.name, file_source.specifier),
         code: file_source.code,
@@ -200,16 +207,15 @@ impl ExtensionBuilder {
   }
 
   pub fn esm(&mut self, esm_files: Vec<ExtensionFileSource>) -> &mut Self {
-    let esm_files =
-      esm_files
-        .into_iter()
-        .map(|file_source| ExtensionFileSource {
-          specifier: format!(
-            "internal:{}/{}",
-            self.name, file_source.specifier
-          ),
-          code: file_source.code,
-        });
+    let esm_files = esm_files
+      .into_iter()
+      // TODO(bartlomieju): if we're automatically remapping here, then we should
+      // use a different result struct that `ExtensionFileSource` as it's confusing
+      // when (and why) the remapping happens.
+      .map(|file_source| ExtensionFileSource {
+        specifier: format!("internal:{}/{}", self.name, file_source.specifier),
+        code: file_source.code,
+      });
     self.esm.extend(esm_files);
     self
   }
@@ -270,26 +276,32 @@ impl ExtensionBuilder {
 }
 
 /// Helps embed JS files in an extension. Returns a vector of
-/// `ExtensionFileSource`, that represent the filename and source code.
+/// `ExtensionFileSource`, that represent the filename and source code. All
+/// specified files are rewritten into "internal:<extension_name>/<file_name>".
 ///
-/// Additional "dir" option can be specified, that specifies which directory in
-/// the crate root contains the listed files. "dir" option will be prepended to
-/// each file name.
+/// An optional "dir" option can be specified to prefix all files with a
+/// directory name.
 ///
-/// Example:
+/// Example (for "my_extension"):
 /// ```ignore
 /// include_js_files!(
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
+/// // Produces following specifiers:
+/// - "internal:my_extension/01_hello.js"
+/// - "internal:my_extension/02_goodbye.js"
 ///
-/// Example:
+/// /// Example with "dir" option (for "my_extension"):
 /// ```ignore
 /// include_js_files!(
 ///   dir "js",
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
+/// // Produces following specifiers:
+/// - "internal:my_extension/js/01_hello.js"
+/// - "internal:my_extension/js/02_goodbye.js"
 /// ```
 #[macro_export]
 macro_rules! include_js_files {
@@ -300,17 +312,17 @@ macro_rules! include_js_files {
 
         // When running without a snapshot.
         #[cfg(not(any(feature = "will_take_snapshot", feature = "will_load_snapshot")))]
-        code: $crate::ExtensionSourceFileSource::Embedded(include_str!(concat!($dir, "/", $file))),
+        code: $crate::ExtensionFileSourceCode::IncludedInBinary(include_str!(concat!($dir, "/", $file))),
 
         // When creating a new snapshot, or creating a snapshot from an existing snapshot.
         #[cfg(feature = "will_take_snapshot")]
-        code: $crate::ExtensionSourceFileSource::File(
+        code: $crate::ExtensionFileSourceCode::File(
           std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
         ),
 
         // When running with a snapshot, but not taking a snapshot.
         #[cfg(all(feature = "will_load_snapshot", not(feature = "will_take_snapshot")))]
-        code: $crate::ExtensionSourceFileSource::None,
+        code: $crate::ExtensionFileSourceCode::None,
       },)+
     ]
   };
@@ -320,15 +332,15 @@ macro_rules! include_js_files {
         specifier: $file.to_string(),
 
         #[cfg(not(any(feature = "will_take_snapshot", feature = "will_load_snapshot")))]
-        code: $crate::ExtensionSourceFileSource::Embedded(include_str!($file)),
+        code: $crate::ExtensionFileSourceCode::IncludedInBinary(include_str!($file)),
 
         #[cfg(feature = "will_take_snapshot")]
-        code: $crate::ExtensionSourceFileSource::File(
+        code: $crate::ExtensionFileSourceCode::File(
           std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
         ),
 
         #[cfg(all(feature = "will_load_snapshot", not(feature = "will_take_snapshot")))]
-        code: $crate::ExtensionSourceFileSource::None,
+        code: $crate::ExtensionFileSourceCode::None,
       },)+
     ]
   };

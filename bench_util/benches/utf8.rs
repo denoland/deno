@@ -7,13 +7,13 @@ use deno_bench_util::bencher::Bencher;
 use deno_bench_util::BenchOptions;
 use deno_core::Extension;
 use deno_core::ExtensionFileSource;
-use deno_core::ExtensionSourceFileSource;
+use deno_core::ExtensionFileSourceCode;
 
 fn setup() -> Vec<Extension> {
   vec![Extension::builder("bench_setup")
     .js(vec![ExtensionFileSource {
       specifier: "setup.js".to_string(),
-      code: ExtensionSourceFileSource::Embedded(
+      code: ExtensionFileSourceCode::IncludedInBinary(
         r#"
       const hello = "hello world\n";
       const hello1k = hello.repeat(1e3);

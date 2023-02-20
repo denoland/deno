@@ -4,7 +4,7 @@ use crate::bindings;
 use crate::error::generic_error;
 use crate::error::to_v8_type_error;
 use crate::error::JsError;
-use crate::extensions::ExtensionSourceFileSource;
+use crate::extensions::ExtensionFileSourceCode;
 use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
@@ -870,11 +870,11 @@ impl JsRuntime {
         let js_files = ext.get_js_sources();
         for file_source in js_files {
           let code = match &file_source.code {
-            ExtensionSourceFileSource::File(path) => {
+            ExtensionFileSourceCode::File(path) => {
               std::fs::read_to_string(path).unwrap()
             }
-            ExtensionSourceFileSource::Embedded(str) => str.to_string(),
-            ExtensionSourceFileSource::None => panic!(),
+            ExtensionFileSourceCode::IncludedInBinary(str) => str.to_string(),
+            ExtensionFileSourceCode::None => panic!(),
           };
           // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
           realm.execute_script(

@@ -3,7 +3,7 @@
 use crate::bindings;
 use crate::error::generic_error;
 use crate::extensions::ExtensionFileSource;
-use crate::extensions::ExtensionSourceFileSource;
+use crate::extensions::ExtensionFileSourceCode;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
@@ -404,11 +404,13 @@ impl ModuleLoader for InternalModuleLoader {
         load_callback(file_source)
       } else {
         match &file_source.code {
-          ExtensionSourceFileSource::File(path) => {
+          ExtensionFileSourceCode::IncludedInBinary(code) => {
+            Ok(code.to_string())
+          }
+          ExtensionFileSourceCode::File(path) => {
             Ok(std::fs::read_to_string(path).unwrap())
           }
-          ExtensionSourceFileSource::Embedded(str) => Ok(str.to_string()),
-          ExtensionSourceFileSource::None => panic!(),
+          ExtensionFileSourceCode::None => panic!(),
         }
       };
 

@@ -10,16 +10,15 @@ mod not_docs {
   use std::path::Path;
 
   use super::*;
-  use deno_cache::SqliteBackedCache;
-  use deno_core::snapshot_util::*;
-  use deno_core::Extension;
-  use deno_core::ExtensionSourceFileSource;
-
   use deno_ast::MediaType;
   use deno_ast::ParseParams;
   use deno_ast::SourceTextInfo;
+  use deno_cache::SqliteBackedCache;
   use deno_core::error::AnyError;
+  use deno_core::snapshot_util::*;
+  use deno_core::Extension;
   use deno_core::ExtensionFileSource;
+  use deno_core::ExtensionFileSourceCode;
 
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
@@ -37,11 +36,11 @@ mod not_docs {
     };
 
     let code = match &file_source.code {
-      ExtensionSourceFileSource::File(path) => {
+      ExtensionFileSourceCode::File(path) => {
         std::fs::read_to_string(path).unwrap()
       }
-      ExtensionSourceFileSource::Embedded(str) => str.to_string(),
-      ExtensionSourceFileSource::None => {
+      ExtensionFileSourceCode::IncludedInBinary(str) => str.to_string(),
+      ExtensionFileSourceCode::None => {
         dbg!(&file_source.specifier);
         panic!()
       }
@@ -301,11 +300,11 @@ mod not_docs {
               feature = "will_take_snapshot",
               feature = "will_load_snapshot"
             )))]
-            code: ExtensionSourceFileSource::Embedded(include_str!(
+            code: ExtensionFileSourceCode::IncludedInBinary(include_str!(
               "js/99_main.js"
             )),
             #[cfg(feature = "will_take_snapshot")]
-            code: ExtensionSourceFileSource::File(
+            code: ExtensionFileSourceCode::File(
               std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("js")
                 .join("99_main.js"),
@@ -314,7 +313,7 @@ mod not_docs {
               feature = "will_load_snapshot",
               not(feature = "will_take_snapshot")
             ))]
-            code: ExtensionSourceFileSource::None,
+            code: ExtensionFileSourceCode::None,
           }])
           .build(),
       );

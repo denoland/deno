@@ -35,7 +35,6 @@ use deno_web::BlobStore;
 use log::debug;
 
 use crate::inspector_server::InspectorServer;
-use crate::js;
 use crate::ops;
 use crate::ops::io::Stdio;
 use crate::permissions::PermissionsContainer;
@@ -285,7 +284,7 @@ impl MainWorker {
     #[cfg(feature = "will_take_snapshot")]
     let startup_snapshot = options
       .startup_snapshot
-      .unwrap_or_else(|| js::deno_isolate_init());
+      .unwrap_or_else(crate::js::deno_isolate_init);
 
     #[cfg(not(feature = "will_take_snapshot"))]
     let startup_snapshot = options.startup_snapshot.unwrap();

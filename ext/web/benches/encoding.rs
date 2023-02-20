@@ -6,7 +6,7 @@ use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 use deno_core::Extension;
 use deno_core::ExtensionFileSource;
-use deno_core::ExtensionSourceFileSource;
+use deno_core::ExtensionFileSourceCode;
 use deno_web::BlobStore;
 
 struct Permissions;
@@ -33,7 +33,7 @@ fn setup() -> Vec<Extension> {
     Extension::builder("bench_setup")
       .esm(vec![ExtensionFileSource {
         specifier: "internal:setup".to_string(),
-        code: ExtensionSourceFileSource::Embedded(
+        code: ExtensionFileSourceCode::IncludedInBinary(
           r#"
         import { TextDecoder } from "internal:deno_web/08_text_encoding.js";
         globalThis.TextDecoder = TextDecoder;
