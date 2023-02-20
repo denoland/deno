@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::semver::VersionReq;
@@ -43,11 +43,20 @@ pub fn get_local_package_json_version_reqs(
       for (key, value) in deps {
         let (name, version_req) =
           parse_dep_entry_name_and_raw_version(key, value)?;
-        let version_req = VersionReq::parse_from_specifier(version_req)
-          .context(concat!(
-            "Parsing version constraints in the application-level ",
-            "package.json is more strict at the moment"
-          ))?;
+
+        let version_req = {
+          let result = VersionReq::parse_from_specifier(version_req);
+          match result {
+            Ok(version_req) => version_req,
+            Err(e) => {
+              let err = anyhow!("{:#}", e).context(concat!(
+                "Parsing version constraints in the application-level ",
+                "package.json is more strict at the moment"
+              ));
+              return Err(err);
+            }
+          }
+        };
         result.insert(
           key.to_string(),
           NpmPackageReq {
@@ -150,8 +159,6 @@ mod test {
         "Parsing version constraints in the application-level ",
         "package.json is more strict at the moment: Invalid npm specifier ",
         "version requirement. Unexpected character.\n",
-        "   - 1.3\n",
-        "  ~: Unexpected character.\n",
         "   - 1.3\n",
         "  ~"
       )
