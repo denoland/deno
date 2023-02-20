@@ -1186,6 +1186,7 @@ version = "0.26.0"
 dependencies = [
  "deno_core",
  "digest 0.10.6",
+ "idna 0.3.0",
  "md-5",
  "md4",
  "once_cell",

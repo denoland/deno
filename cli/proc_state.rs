@@ -238,11 +238,20 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
+    let maybe_package_json_deps = cli_options.maybe_package_json_deps()?;
+    let package_json_reqs = if let Some(deps) = &maybe_package_json_deps {
+      let mut package_reqs = deps.values().cloned().collect::<Vec<_>>();
+      package_reqs.sort(); // deterministic resolution
+      package_reqs
+    } else {
+      Vec::new()
+    };
     let resolver = Arc::new(CliGraphResolver::new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
       npm_resolver.api().clone(),
       npm_resolver.resolution().clone(),
+      maybe_package_json_deps,
     ));
 
     let maybe_file_watcher_reporter =
@@ -259,6 +268,31 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
+    let registry_url = RealNpmRegistryApi::default_url();
+    let npm_cache = NpmCache::from_deno_dir(
+      &dir,
+      cli_options.cache_setting(),
+      http_client.clone(),
+      progress_bar.clone(),
+    );
+    let api = RealNpmRegistryApi::new(
+      registry_url,
+      npm_cache.clone(),
+      http_client.clone(),
+      progress_bar.clone(),
+    );
+    let npm_resolver = NpmPackageResolver::new_with_maybe_lockfile(
+      npm_cache.clone(),
+      api,
+      cli_options.no_npm(),
+      cli_options
+        .resolve_local_node_modules_folder()
+        .with_context(|| "Resolving local node_modules folder.")?,
+      cli_options.get_npm_resolution_snapshot(),
+      lockfile.as_ref().cloned(),
+    )
+    .await?;
+    npm_resolver.add_package_reqs(package_json_reqs).await?;
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
@@ -643,6 +677,8 @@ impl ProcState {
       self.maybe_import_map.clone(),
       self.npm_resolver.api().clone(),
       self.npm_resolver.resolution().clone(),
+      // TODO(bartlomieju): this should use dependencies from `package.json`?
+      None,
     );
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
