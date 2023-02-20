@@ -18,7 +18,6 @@ mod not_docs {
   use deno_ast::SourceTextInfo;
   use deno_core::error::AnyError;
   use deno_core::ExtensionFileSource;
-  use deno_core::ExtensionFileSourceCode;
 
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
@@ -34,16 +33,15 @@ mod not_docs {
         file_source.specifier
       ),
     };
-
-    let ExtensionFileSourceCode::IncludedInBinary(code) = file_source.code;
+    let code = file_source.code.load()?;
 
     if !should_transpile {
-      return Ok(code.to_string());
+      return Ok(code);
     }
 
     let parsed = deno_ast::parse_module(ParseParams {
       specifier: file_source.specifier.to_string(),
-      text_info: SourceTextInfo::from_string(code.to_string()),
+      text_info: SourceTextInfo::from_string(code),
       media_type,
       capture_tokens: false,
       scope_analysis: false,
