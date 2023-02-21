@@ -25,7 +25,7 @@ use crate::node::NodeResolution;
 use crate::npm::resolve_graph_npm_info;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::RealNpmRegistryApi;
+use crate::npm::NpmRegistryApi;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::util::progress_bar::ProgressBar;
@@ -43,8 +43,8 @@ use deno_core::resolve_url_or_path;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
-use deno_graph::npm::NpmPackageReference;
 use deno_graph::npm::NpmPackageReq;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
 use deno_graph::ModuleGraph;
@@ -244,15 +244,15 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
-    let registry_url = RealNpmRegistryApi::default_url();
+    let registry_url = NpmRegistryApi::default_url();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let api = RealNpmRegistryApi::new(
-      registry_url,
+    let api = NpmRegistryApi::new(
+      registry_url.clone(),
       npm_cache.clone(),
       http_client.clone(),
       progress_bar.clone(),
@@ -516,7 +516,8 @@ impl ProcState {
             return node::resolve_builtin_node_module(specifier.path());
           }
 
-          if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
+          if let Ok(reference) =
+            NpmPackageReqReference::from_specifier(specifier)
           {
             if !self.options.unstable()
               && matches!(found_referrer.scheme(), "http" | "https")
@@ -575,7 +576,9 @@ impl ProcState {
         .map(Cow::Borrowed)
         .or_else(|| ModuleSpecifier::parse(specifier).ok().map(Cow::Owned));
       if let Some(specifier) = specifier {
-        if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+        if let Ok(reference) =
+          NpmPackageReqReference::from_specifier(&specifier)
+        {
           return self
             .handle_node_resolve_result(node::node_resolve_npm_reference(
               &reference,
@@ -747,7 +750,7 @@ impl GraphData {
         }
         "npm" => {
           if !has_npm_specifier_in_graph
-            && NpmPackageReference::from_specifier(specifier).is_ok()
+            && NpmPackageReqReference::from_specifier(specifier).is_ok()
           {
             has_npm_specifier_in_graph = true;
           }
