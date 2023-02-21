@@ -824,7 +824,7 @@ impl<'a> GraphDependencyResolver<'a> {
     };
 
     if !has_deps {
-      // ensure this is set if not, as its an optimization
+      // ensure this is set if not, as it's an optimization
       let mut node = self.graph.borrow_node_mut(node_id);
       node.no_peers = true;
     }
@@ -882,16 +882,23 @@ impl<'a> GraphDependencyResolver<'a> {
 
           match dep.kind {
             NpmDependencyEntryKind::Dep => {
+              let node_id = graph_path.node_id();
               let maybe_child_id = self
                 .graph
                 .nodes
-                .get(&graph_path.node_id())
+                .get(&node_id)
                 .unwrap()
                 .children
                 .get(&dep.bare_specifier)
                 .copied();
               let child_id = if let Some(child_id) = maybe_child_id {
-                // we already resolved this dependency before, and we can skip over it
+                // we already resolved this dependency before, so just
+                // increment the parent count for this node and add its
+                // children to be analyzed next
+                self
+                  .graph
+                  .borrow_node_mut(child_id)
+                  .add_parent(NodeParent::Node(node_id));
                 self.try_add_pending_unresolved_node(&graph_path, child_id);
                 child_id
               } else {
@@ -1137,7 +1144,11 @@ impl<'a> GraphDependencyResolver<'a> {
         GraphPathNodeOrRoot::Root(pkg_id) => NodeParent::Root(pkg_id.clone()),
       };
 
+    let mut last_old_node_parent = node_parent.clone();
+    eprintln!("ENTERING");
     for graph_path_node in path.iter().rev() {
+      self.graph.output_path(graph_path_node);
+
       let old_node_id = graph_path_node.node_id();
       let old_resolved_id = self
         .graph
@@ -1162,26 +1173,48 @@ impl<'a> GraphDependencyResolver<'a> {
         new_resolved_id.peer_dependencies.push(peer_dep.clone());
         let (created, new_node_id) =
           self.graph.get_or_create_for_id(&new_resolved_id);
+
+        let old_children =
+          self.graph.nodes.get(&old_node_id).unwrap().children.clone();
         if created {
           // copy over the old children to this new one
-          let old_children =
-            self.graph.nodes.get(&old_node_id).unwrap().children.clone();
-          for (specifier, child_id) in old_children {
+          for (specifier, child_id) in &old_children {
             self.graph.set_child_parent(
               &specifier,
-              child_id,
+              *child_id,
               &NodeParent::Node(new_node_id),
             );
+          }
+        } else {
+          // update the new node's children to all have an additional parent
+          let children =
+            self.graph.nodes.get(&new_node_id).unwrap().children.clone();
+          for child_id in children.values() {
+            self
+              .graph
+              .borrow_node_mut(*child_id)
+              .add_parent(NodeParent::Node(new_node_id));
+          }
+        }
+
+        // update the old node's children to lose a parent
+        {
+          let old_node_parent = NodeParent::Node(old_node_id);
+          for child_id in old_children.values() {
+            self
+              .graph
+              .borrow_node_mut(*child_id)
+              .remove_parent(&old_node_parent);
           }
         }
 
         debug_assert_eq!(graph_path_node.node_id(), old_node_id);
         graph_path_node.change_id(new_node_id);
 
-        // update the current node to not have the parent
+        // update the current node to not have the old parent
         {
           let node = self.graph.borrow_node_mut(old_node_id);
-          node.remove_parent(&node_parent);
+          node.remove_parent(&last_old_node_parent);
         }
 
         // update the parent to point to this new node
@@ -1193,8 +1226,12 @@ impl<'a> GraphDependencyResolver<'a> {
             let parent_node = self.graph.borrow_node_mut(*parent_node_id);
             let mut found_match = false;
             for child_id in parent_node.children.values_mut() {
-              if *child_id == old_node_id {
+              let current_child_id = *child_id;
+              if current_child_id == old_node_id {
                 *child_id = new_node_id;
+                found_match = true;
+              } else if current_child_id == new_node_id {
+                // the parent node might already be updated from a previous resolution
                 found_match = true;
               }
             }
@@ -1210,6 +1247,8 @@ impl<'a> GraphDependencyResolver<'a> {
 
         node_parent = NodeParent::Node(new_node_id);
       }
+
+      last_old_node_parent = NodeParent::Node(old_node_id);
     }
 
     match node_parent {
@@ -3127,11 +3166,14 @@ mod test {
   async fn nested_deps_same_peer_dep_ancestor() {
     let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-0", "1.0.0");
+    api.ensure_package_version("package-1", "1.0.0");
     api.ensure_package_version("package-a", "1.0.0");
     api.ensure_package_version("package-b", "1.0.0");
     api.ensure_package_version("package-c", "1.0.0");
     api.ensure_package_version("package-d", "1.0.0");
     api.add_dependency(("package-0", "1.0.0"), ("package-a", "1"));
+    api.add_dependency(("package-0", "1.0.0"), ("package-1", "1"));
+    api.add_dependency(("package-1", "1.0.0"), ("package-a", "1"));
     api.add_dependency(("package-a", "1.0.0"), ("package-b", "1"));
     api.add_dependency(("package-b", "1.0.0"), ("package-c", "1"));
     api.add_dependency(("package-c", "1.0.0"), ("package-d", "1"));
@@ -3149,6 +3191,18 @@ mod test {
       vec![
         NpmResolutionPackage {
           pkg_id: NpmPackageId::from_serialized("package-0@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-a".to_string(),
+            NpmPackageId::from_serialized("package-a@1.0.0_package-0@1.0.0").unwrap(),
+          ), (
+            "package-1".to_string(),
+            NpmPackageId::from_serialized("package-1@1.0.0_package-0@1.0.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized("package-1@1.0.0_package-0@1.0.0").unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-a".to_string(),
