@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_graph::npm::NpmPackageNv;
@@ -182,7 +183,7 @@ impl NpmPackageId {
 }
 
 impl Ord for NpmPackageId {
-  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+  fn cmp(&self, other: &Self) -> Ordering {
     match self.nv.cmp(&other.nv) {
       Ordering::Equal => self.peer_dependencies.cmp(&other.peer_dependencies),
       ordering => ordering,
@@ -196,7 +197,7 @@ impl PartialOrd for NpmPackageId {
   }
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmResolutionPackage {
   pub pkg_id: NpmPackageId,
   /// The peer dependency resolution can differ for the same
@@ -456,7 +457,8 @@ impl NpmResolution {
 
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
     let snapshot = self.0.snapshot.read();
-    for (package_req, package_id) in snapshot.package_reqs.iter() {
+    for (package_req, nv) in snapshot.package_reqs.iter() {
+      let package_id = snapshot.root_packages.get(nv).unwrap();
       lockfile.insert_npm_specifier(
         package_req.to_string(),
         snapshot

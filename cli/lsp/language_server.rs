@@ -304,7 +304,7 @@ fn create_lsp_npm_resolver(
   dir: &DenoDir,
   http_client: HttpClient,
 ) -> NpmPackageResolver {
-  let registry_url = NpmRegistryApi::default_url().to_owned();
+  let registry_url = NpmRegistryApi::default_url();
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
   let npm_cache = NpmCache::from_deno_dir(
     dir,
@@ -317,7 +317,7 @@ fn create_lsp_npm_resolver(
     progress_bar.clone(),
   );
   let api = NpmRegistryApi::new(
-    registry_url,
+    registry_url.clone(),
     npm_cache.clone(),
     http_client,
     progress_bar,

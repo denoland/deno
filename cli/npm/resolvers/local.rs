@@ -411,13 +411,13 @@ fn get_package_folder_id_folder_name(
   } else {
     format!("_{}", folder_id.copy_index)
   };
-  let id = &folder_id.nv;
-  let name = if id.name.to_lowercase() == id.name {
-    Cow::Borrowed(&id.name)
+  let nv = &folder_id.nv;
+  let name = if nv.name.to_lowercase() == nv.name {
+    Cow::Borrowed(&nv.name)
   } else {
-    Cow::Owned(format!("_{}", mixed_case_package_name_encode(&id.name)))
+    Cow::Owned(format!("_{}", mixed_case_package_name_encode(&nv.name)))
   };
-  format!("{}@{}{}", name, id.version, copy_str).replace('/', "+")
+  format!("{}@{}{}", name, nv.version, copy_str).replace('/', "+")
 }
 
 fn symlink_package_dir(
