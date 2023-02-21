@@ -402,7 +402,10 @@ impl ModuleLoader for InternalModuleLoader {
       let result = if let Some(load_callback) = &self.maybe_load_callback {
         load_callback(file_source)
       } else {
-        Ok(file_source.code.to_string())
+        match file_source.code.load() {
+          Ok(code) => Ok(code),
+          Err(err) => return futures::future::err(err).boxed_local(),
+        }
       };
 
       return async move {

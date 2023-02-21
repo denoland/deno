@@ -647,7 +647,11 @@ class Process extends EventEmitter {
     execPath = path;
   }
 
-  #startTime = Date.now();
+  setStartTime(t: number) {
+    this.#startTime = t;
+  }
+
+  #startTime = 0;
   /** https://nodejs.org/api/process.html#processuptime */
   uptime() {
     return (Date.now() - this.#startTime) / 1000;
@@ -762,6 +766,9 @@ internals.__bootstrapNodeProcess = function (
     "stdout",
   );
 
+  process.setStartTime(Date.now());
+  // @ts-ignore Remove setStartTime and #startTime is not modifiable
+  delete process.setStartTime;
   delete internals.__bootstrapNodeProcess;
 };
 

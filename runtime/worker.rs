@@ -35,7 +35,6 @@ use deno_web::BlobStore;
 use log::debug;
 
 use crate::inspector_server::InspectorServer;
-use crate::js;
 use crate::ops;
 use crate::ops::io::Stdio;
 use crate::permissions::PermissionsContainer;
@@ -282,13 +281,17 @@ impl MainWorker {
     ];
     extensions.extend(std::mem::take(&mut options.extensions));
 
+    #[cfg(not(feature = "dont_create_runtime_snapshot"))]
+    let startup_snapshot = options
+      .startup_snapshot
+      .unwrap_or_else(crate::js::deno_isolate_init);
+    #[cfg(feature = "dont_create_runtime_snapshot")]
+    let startup_snapshot = options.startup_snapshot
+      .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(
-        options
-          .startup_snapshot
-          .unwrap_or_else(js::deno_isolate_init),
-      ),
+      startup_snapshot: Some(startup_snapshot),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),

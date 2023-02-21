@@ -22,9 +22,9 @@ use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageNodeId;
+use crate::npm::NpmPackageId;
+use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolutionPackage;
-use crate::npm::RealNpmRegistryApi;
 
 use super::common::ensure_registry_read_permission;
 use super::common::types_package_name;
@@ -41,7 +41,7 @@ pub struct GlobalNpmPackageResolver {
 impl GlobalNpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: RealNpmRegistryApi,
+    api: NpmRegistryApi,
     initial_snapshot: Option<NpmResolutionSnapshot>,
   ) -> Self {
     let registry_url = api.base_url().to_owned();
@@ -54,7 +54,7 @@ impl GlobalNpmPackageResolver {
     }
   }
 
-  fn package_folder(&self, id: &NpmPackageNodeId) -> PathBuf {
+  fn package_folder(&self, id: &NpmPackageId) -> PathBuf {
     let folder_id = self
       .resolution
       .resolve_package_cache_folder_id_from_id(id)
@@ -82,7 +82,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     pkg_req: &NpmPackageReq,
   ) -> Result<PathBuf, AnyError> {
     let pkg = self.resolution.resolve_package_from_deno_module(pkg_req)?;
-    Ok(self.package_folder(&pkg.id))
+    Ok(self.package_folder(&pkg.pkg_id))
   }
 
   fn resolve_package_folder_from_package(
@@ -107,7 +107,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
         .resolution
         .resolve_package_from_package(name, &referrer_pkg_id)?
     };
-    Ok(self.package_folder(&pkg.id))
+    Ok(self.package_folder(&pkg.pkg_id))
   }
 
   fn resolve_package_folder_from_specifier(
@@ -125,10 +125,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     )
   }
 
-  fn package_size(
-    &self,
-    package_id: &NpmPackageNodeId,
-  ) -> Result<u64, AnyError> {
+  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
     let package_folder = self.package_folder(package_id);
     Ok(crate::util::fs::dir_size(&package_folder)?)
   }

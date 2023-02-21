@@ -1923,6 +1923,8 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
   pub temp_cwd: bool,
+  // Relative to "testdata" directory
+  pub maybe_cwd: Option<&'a str>,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
@@ -1954,9 +1956,11 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     let deno_dir = new_deno_dir(); // keep this alive for the test
     let mut command = deno_cmd_with_deno_dir(&deno_dir);
     let cwd = if self.temp_cwd {
-      deno_dir.path()
+      deno_dir.path().to_owned()
+    } else if let Some(cwd_) = &self.maybe_cwd {
+      testdata_dir.join(cwd_)
     } else {
-      testdata_dir.as_path()
+      testdata_dir.clone()
     };
     println!("deno_exe args {}", args.join(" "));
     println!("deno_exe cwd {:?}", &cwd);

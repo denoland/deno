@@ -67,12 +67,7 @@ import {
   CHAR_ZERO_WIDTH_NOBREAK_SPACE,
 } from "internal:deno_node/polyfills/path/_constants.ts";
 import * as path from "internal:deno_node/polyfills/path.ts";
-import {
-  regexNonASCII,
-  regexPunycode,
-  toASCII,
-  toUnicode,
-} from "internal:deno_node/polyfills/internal/idna.ts";
+import { toASCII, toUnicode } from "internal:deno_node/polyfills/punycode.ts";
 import { isWindows, osType } from "internal:deno_node/polyfills/_util/os.ts";
 import {
   encodeStr,
@@ -1263,10 +1258,6 @@ export function resolveObject(source: string | Url, relative: string) {
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
 export function domainToASCII(domain: string) {
-  if (regexPunycode.test(domain) && regexNonASCII.test(domain)) {
-    return ""; // Failure case
-  }
-
   return toASCII(domain);
 }
 
@@ -1277,10 +1268,6 @@ export function domainToASCII(domain: string) {
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
 export function domainToUnicode(domain: string) {
-  if (regexPunycode.test(domain) && regexNonASCII.test(domain)) {
-    return ""; // Failure case
-  }
-
   return toUnicode(domain);
 }
 
