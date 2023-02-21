@@ -11,6 +11,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_graph::npm::NpmPackageNv;
+use deno_graph::npm::NpmPackageNvReference;
 use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Dependency;
 use deno_graph::Module;
@@ -141,7 +142,7 @@ fn add_npm_packages_to_json(
   let modules = json.get_mut("modules").and_then(|m| m.as_array_mut());
   if let Some(modules) = modules {
     if modules.len() == 1
-      && modules[0].get("kind").and_then(|k| k.as_str()) == Some("external")
+      && modules[0].get("kind").and_then(|k| k.as_str()) == Some("npm")
     {
       // If there is only one module and it's "external", then that means
       // someone provided an npm specifier as a cli argument. In this case,
@@ -150,9 +151,11 @@ fn add_npm_packages_to_json(
       let maybe_package = module
         .get("specifier")
         .and_then(|k| k.as_str())
-        .and_then(|specifier| NpmPackageReqReference::from_str(specifier).ok())
+        .and_then(|specifier| NpmPackageNvReference::from_str(specifier).ok())
         .and_then(|package_ref| {
-          snapshot.resolve_pkg_from_pkg_req(&package_ref.req).ok()
+          snapshot
+            .resolve_package_from_deno_module(&package_ref.nv)
+            .ok()
         });
       if let Some(pkg) = maybe_package {
         if let Some(module) = module.as_object_mut() {
@@ -160,8 +163,6 @@ fn add_npm_packages_to_json(
             "npmPackage".to_string(),
             pkg.pkg_id.as_serialized().into(),
           );
-          // change the "kind" to be "npm"
-          module.insert("kind".to_string(), "npm".into());
         }
       }
     } else {
@@ -171,7 +172,10 @@ fn add_npm_packages_to_json(
       // references. So there could be listed multiple npm specifiers
       // that would resolve to a single npm package.
       for i in (0..modules.len()).rev() {
-        if modules[i].get("kind").and_then(|k| k.as_str()) == Some("external") {
+        if matches!(
+          modules[i].get("kind").and_then(|k| k.as_str()),
+          Some("npm") | Some("external")
+        ) {
           modules.remove(i);
         }
       }
