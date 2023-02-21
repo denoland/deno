@@ -326,6 +326,7 @@ function resolveExports(
 }
 
 Module._findPath = function (request, paths, isMain, parentPath) {
+  console.log("Module._findPath", request, isMain);
   const absoluteRequest = ops.op_require_path_is_absolute(request);
   if (absoluteRequest) {
     paths = [""];
@@ -382,7 +383,13 @@ Module._findPath = function (request, paths, isMain, parentPath) {
         ? pathResolve(curPath, packageSpecifierSubPath(request))
         : pathResolve(curPath, request);
     let filename;
-
+    console.log(
+      "basePath",
+      request,
+      basePath,
+      curPath,
+      pathResolve(curPath, packageSpecifierSubPath(request)),
+    );
     const rc = stat(basePath);
     if (!trailingSlash) {
       if (rc === 0) { // File.
@@ -483,7 +490,7 @@ Module._load = function (request, parent, isMain) {
     }
   }
 
-  // console.log("resolveFilename", request);
+  console.log("resolveFilename", request);
   const filename = Module._resolveFilename(request, parent, isMain);
   // console.log("resolveFilename 2", filename);
   if (StringPrototypeStartsWith(filename, "node:")) {
@@ -581,6 +588,7 @@ Module._resolveFilename = function (
 
       if (isRelative) {
         paths = options.paths;
+        console.log("resolveLookupPaths4", request);
       } else {
         const fakeParent = new Module("", null);
 
@@ -597,8 +605,10 @@ Module._resolveFilename = function (
             }
           }
         }
+        console.log("resolveLookupPaths3", request);
       }
     } else if (options.paths === undefined) {
+      console.log("resolveLookupPaths2", request, parent);
       paths = Module._resolveLookupPaths(request, parent);
     } else {
       // TODO:
@@ -606,6 +616,7 @@ Module._resolveFilename = function (
       throw new Error("Invalid arg value options.paths", options.path);
     }
   } else {
+    console.log("resolveLookupPaths1", request, parent);
     paths = Module._resolveLookupPaths(request, parent);
   }
 

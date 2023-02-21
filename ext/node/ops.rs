@@ -488,8 +488,8 @@ where
   {
     modules_path
   } else {
-    // path_resolve(vec![modules_path, name])
-    modules_path
+    path_resolve(vec![modules_path, name])
+    // modules_path
   };
   eprintln!("pkg path {pkg_path:?}");
   let pkg = PackageJson::load(
