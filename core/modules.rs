@@ -999,8 +999,52 @@ impl ModuleMap {
     let next_load_id = v8::Integer::new(scope, self.next_load_id);
     array.set_index(scope, 0, next_load_id.into());
 
-    let info_val = serde_v8::to_v8(scope, self.info.clone()).unwrap();
-    array.set_index(scope, 1, info_val);
+    let info_arr = v8::Array::new(scope, self.info.len() as i32);
+    for (i, info) in self.info.iter().enumerate() {
+      let module_info_arr = v8::Array::new(scope, 5);
+
+      let id = v8::Integer::new(scope, info.id as i32);
+      module_info_arr.set_index(scope, 0, id.into());
+
+      let main = v8::Boolean::new(scope, info.main);
+      module_info_arr.set_index(scope, 1, main.into());
+
+      let name = v8::String::new(scope, &info.name).unwrap();
+      module_info_arr.set_index(scope, 2, name.into());
+
+      let array_len = 2 * info.requests.len() as i32;
+      let requests_arr = v8::Array::new(scope, array_len);
+      for (i, request) in info.requests.iter().enumerate() {
+        let specifier = v8::String::new(scope, &request.specifier).unwrap();
+        requests_arr.set_index(scope, 2 * i as u32, specifier.into());
+
+        let asserted_module_type = v8::Integer::new(
+          scope,
+          match request.asserted_module_type {
+            AssertedModuleType::JavaScriptOrWasm => 0,
+            AssertedModuleType::Json => 1,
+          },
+        );
+        requests_arr.set_index(
+          scope,
+          (2 * i) as u32 + 1,
+          asserted_module_type.into(),
+        );
+      }
+      module_info_arr.set_index(scope, 3, requests_arr.into());
+
+      let module_type = v8::Integer::new(
+        scope,
+        match info.module_type {
+          ModuleType::JavaScript => 0,
+          ModuleType::Json => 1,
+        },
+      );
+      module_info_arr.set_index(scope, 4, module_type.into());
+
+      info_arr.set_index(scope, i as u32, module_info_arr.into());
+    }
+    array.set_index(scope, 1, info_arr.into());
 
     let by_name_triples: Vec<(String, AssertedModuleType, SymbolicModule)> =
       self
@@ -1036,7 +1080,87 @@ impl ModuleMap {
 
     {
       let info_val = local_data.get_index(scope, 1).unwrap();
-      self.info = serde_v8::from_v8(scope, info_val).unwrap();
+
+      let info_arr: v8::Local<v8::Array> = info_val.try_into().unwrap();
+      let len = info_arr.length() as usize;
+      let mut info = Vec::with_capacity(len);
+
+      for i in 0..len {
+        let module_info_arr: v8::Local<v8::Array> = info_arr
+          .get_index(scope, i as u32)
+          .unwrap()
+          .try_into()
+          .unwrap();
+        let id = module_info_arr
+          .get_index(scope, 0)
+          .unwrap()
+          .to_integer(scope)
+          .unwrap()
+          .value() as ModuleId;
+
+        let main = module_info_arr
+          .get_index(scope, 1)
+          .unwrap()
+          .to_boolean(scope)
+          .is_true();
+
+        let name = module_info_arr
+          .get_index(scope, 2)
+          .unwrap()
+          .to_rust_string_lossy(scope);
+
+        let requests_arr: v8::Local<v8::Array> = module_info_arr
+          .get_index(scope, 3)
+          .unwrap()
+          .try_into()
+          .unwrap();
+        let len = (requests_arr.length() as usize) / 2;
+        let mut requests = Vec::with_capacity(len);
+        for i in 0..len {
+          let specifier = requests_arr
+            .get_index(scope, (2 * i) as u32)
+            .unwrap()
+            .to_rust_string_lossy(scope);
+          let asserted_module_type_no = requests_arr
+            .get_index(scope, (2 * i + 1) as u32)
+            .unwrap()
+            .to_integer(scope)
+            .unwrap()
+            .value();
+          let asserted_module_type = match asserted_module_type_no {
+            0 => AssertedModuleType::JavaScriptOrWasm,
+            1 => AssertedModuleType::Json,
+            _ => unreachable!(),
+          };
+          requests.push(ModuleRequest {
+            specifier,
+            asserted_module_type,
+          });
+        }
+
+        let module_type_no = module_info_arr
+          .get_index(scope, 4)
+          .unwrap()
+          .to_integer(scope)
+          .unwrap()
+          .value();
+        let module_type = match module_type_no {
+          0 => ModuleType::JavaScript,
+          1 => ModuleType::Json,
+          _ => unreachable!(),
+        };
+
+        let module_info = ModuleInfo {
+          id,
+          main,
+          name,
+          requests,
+          module_type,
+        };
+        info.push(module_info);
+      }
+
+      self.info = info;
     }
 
     {
