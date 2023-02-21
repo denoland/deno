@@ -98,8 +98,8 @@ mod map_to_vec {
 }
 
 impl NpmResolutionSnapshot {
-  /// Resolve a node package from a package requirement.
-  pub fn resolve_pkg_node_id_from_pkg_req(
+  /// Resolve a package from a package requirement.
+  pub fn resolve_pkg_from_pkg_req(
     &self,
     req: &NpmPackageReq,
   ) -> Result<&NpmResolutionPackage, AnyError> {
@@ -109,7 +109,7 @@ impl NpmResolutionSnapshot {
     }
   }
 
-  /// Resolve a node package from a deno module.
+  /// Resolve a package from a deno module.
   pub fn resolve_package_from_deno_module(
     &self,
     id: &NpmPackageNv,

@@ -270,6 +270,7 @@ async fn build_test_graph(
       Some(Arc::new(m)),
       npm_registry_api,
       npm_resolution,
+      None,
     )
   });
   let mut graph = ModuleGraph::default();

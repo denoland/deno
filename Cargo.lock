@@ -1090,8 +1090,6 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.43.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b654f093ae79ca93715d6df840f45890dc61fc93e7f63ab0a7442c2a494ecac"
 dependencies = [
  "anyhow",
  "data-url",
@@ -5717,7 +5715,7 @@ dependencies = [
  "fxhash",
  "log",
  "naga",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -5756,7 +5754,7 @@ dependencies = [
  "metal",
  "naga",
  "objc",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "range-alloc",
  "raw-window-handle",
@@ -6003,7 +6001,3 @@ dependencies = [
  "libc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "deno_graph"
-version = "0.43.2"

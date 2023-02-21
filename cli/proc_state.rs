@@ -44,7 +44,6 @@ use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
 use deno_graph::npm::NpmPackageReqReference;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
 use deno_graph::Module;

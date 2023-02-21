@@ -17,7 +17,6 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageNvReference;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::errors;
 use deno_runtime::deno_node::find_builtin_node_module;

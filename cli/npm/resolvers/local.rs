@@ -104,12 +104,9 @@ impl LocalNpmPackageResolver {
 
   fn get_package_id_folder(
     &self,
-    package_id: &NpmPackageId,
+    id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
-    match self
-      .resolution
-      .resolve_package_cache_folder_id_from_id(package_id)
-    {
+    match self.resolution.resolve_package_cache_folder_id_from_id(id) {
       // package is stored at:
       // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
       Some(cache_folder_id) => Ok(
@@ -122,7 +119,7 @@ impl LocalNpmPackageResolver {
       ),
       None => bail!(
         "Could not find package information for '{}'",
-        package_id.as_serialized()
+        id.as_serialized()
       ),
     }
   }
@@ -190,8 +187,8 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     Ok(package_root_path)
   }
 
-  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
-    let package_folder_path = self.get_package_id_folder(package_id)?;
+  fn package_size(&self, id: &NpmPackageId) -> Result<u64, AnyError> {
+    let package_folder_path = self.get_package_id_folder(id)?;
 
     Ok(crate::util::fs::dir_size(&package_folder_path)?)
   }
@@ -373,22 +370,22 @@ async fn sync_resolution_with_fs(
       .into_iter()
       .map(|id| (id, true)),
   );
-  while let Some((package_id, is_top_level)) = pending_packages.pop_front() {
-    let root_folder_name = if found_names.insert(package_id.nv.name.clone()) {
-      package_id.nv.name.clone()
+  while let Some((id, is_top_level)) = pending_packages.pop_front() {
+    let root_folder_name = if found_names.insert(id.nv.name.clone()) {
+      id.nv.name.clone()
     } else if is_top_level {
-      format!("{}@{}", package_id.nv.name, package_id.nv.version)
+      id.nv.to_string()
     } else {
       continue; // skip, already handled
     };
-    let package = snapshot.package_from_id(&package_id).unwrap();
+    let package = snapshot.package_from_id(&id).unwrap();
     let local_registry_package_path = join_package_name(
       &deno_local_registry_dir
         .join(get_package_folder_id_folder_name(
           &package.get_package_cache_folder_id(),
         ))
         .join("node_modules"),
-      &package_id.nv.name,
+      &id.nv.name,
     );
 
     symlink_package_dir(

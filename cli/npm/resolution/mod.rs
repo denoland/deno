@@ -197,7 +197,7 @@ impl PartialOrd for NpmPackageId {
   }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmResolutionPackage {
   pub pkg_id: NpmPackageId,
   /// The peer dependency resolution can differ for the same
@@ -372,7 +372,7 @@ impl NpmResolution {
       .0
       .snapshot
       .read()
-      .resolve_pkg_node_id_from_pkg_req(req)
+      .resolve_pkg_from_pkg_req(req)
       .map(|pkg| pkg.pkg_id.clone())
   }
 
@@ -458,14 +458,9 @@ impl NpmResolution {
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
     let snapshot = self.0.snapshot.read();
     for (package_req, nv) in snapshot.package_reqs.iter() {
-      let package_id = snapshot.root_packages.get(nv).unwrap();
       lockfile.insert_npm_specifier(
         package_req.to_string(),
-        snapshot
-          .root_packages
-          .get(package_id)
-          .unwrap()
-          .as_serialized(),
+        snapshot.root_packages.get(nv).unwrap().as_serialized(),
       );
     }
     for package in snapshot.all_packages() {
@@ -489,7 +484,11 @@ async fn add_package_reqs_to_snapshot(
   }
 
   // convert the snapshot to a traversable graph
-  let mut graph = Graph::from_snapshot(snapshot);
+  let mut graph = Graph::from_snapshot(snapshot).with_context(|| {
+    deno_core::anyhow::anyhow!(
+      "Failed creating npm state. Try recreating your lockfile."
+    )
+  })?;
   let pending_unresolved = graph.take_pending_unresolved();
 
   // avoid loading the info if this is already in the graph
