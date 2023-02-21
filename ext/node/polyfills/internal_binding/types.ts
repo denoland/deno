@@ -56,6 +56,9 @@ const _getArrayBufferByteLength = Object.getOwnPropertyDescriptor(
   "byteLength",
 )!.get!;
 
+// https://tc39.es/ecma262/#sec-get-sharedarraybuffer.prototype.bytelength
+let _getSharedArrayBufferByteLength;
+
 // https://tc39.es/ecma262/#sec-get-%typedarray%.prototype-@@tostringtag
 const _getTypedArrayToStringTag = Object.getOwnPropertyDescriptor(
   Object.getPrototypeOf(Uint8Array).prototype,
@@ -277,7 +280,18 @@ export function isSetIterator(
 export function isSharedArrayBuffer(
   value: unknown,
 ): value is SharedArrayBuffer {
-  return value instanceof SharedArrayBuffer;
+  // TODO(kt3k): add SharedArrayBuffer to primordials
+  _getSharedArrayBufferByteLength ??= Object.getOwnPropertyDescriptor(
+    SharedArrayBuffer.prototype,
+    "byteLength",
+  )!.get!;
+
+  try {
+    _getSharedArrayBufferByteLength.call(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // deno-lint-ignore ban-types
