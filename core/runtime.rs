@@ -974,18 +974,11 @@ impl JsRuntime {
   where
     v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
   {
-    let start = std::time::Instant::now();
     let scope = &mut v8::EscapableHandleScope::new(scope);
     let source = v8::String::new(scope, code).unwrap();
     let script = v8::Script::compile(scope, source, None).unwrap();
     let v = script.run(scope)?;
-    let r = scope.escape(v).try_into().ok();
-    eprintln!(
-      "eval called on \"{}\", took {}ns",
-      code,
-      start.elapsed().as_nanos()
-    );
-    r
+    scope.escape(v).try_into().ok()
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
