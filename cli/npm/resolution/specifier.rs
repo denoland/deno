@@ -6,8 +6,8 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use deno_ast::ModuleSpecifier;
-use deno_graph::npm::NpmPackageReference;
 use deno_graph::npm::NpmPackageReq;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::ModuleGraph;
 
 pub struct GraphNpmInfo {
@@ -113,7 +113,7 @@ pub fn resolve_graph_npm_info(graph: &ModuleGraph) -> GraphNpmInfo {
 
     // fill this leaf's information
     for specifier in &specifiers {
-      if let Ok(npm_ref) = NpmPackageReference::from_specifier(specifier) {
+      if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
         leaf.reqs.insert(npm_ref.req);
       } else if !specifier.as_str().starts_with(parent_specifier.as_str()) {
         leaf
@@ -165,7 +165,7 @@ pub fn resolve_graph_npm_info(graph: &ModuleGraph) -> GraphNpmInfo {
   let mut result = Vec::new();
 
   for specifier in &root_specifiers {
-    match NpmPackageReference::from_specifier(specifier) {
+    match NpmPackageReqReference::from_specifier(specifier) {
       Ok(npm_ref) => result.push(npm_ref.req),
       Err(_) => {
         pending_specifiers.push_back(get_folder_path_specifier(specifier))

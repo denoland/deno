@@ -15,8 +15,8 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageReference;
 use deno_graph::npm::NpmPackageReq;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::errors;
 use deno_runtime::deno_node::find_builtin_node_module;
@@ -241,7 +241,7 @@ pub fn node_resolve(
 }
 
 pub fn node_resolve_npm_reference(
-  reference: &NpmPackageReference,
+  reference: &NpmPackageReqReference,
   mode: NodeResolutionMode,
   npm_resolver: &NpmPackageResolver,
   permissions: &mut dyn NodePermissions,

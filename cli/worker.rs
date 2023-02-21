@@ -14,7 +14,7 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::ModuleId;
-use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::colors;
 use deno_runtime::deno_node;
 use deno_runtime::fmt_errors::format_js_error;
@@ -308,7 +308,7 @@ impl CliMainWorker {
     )
     .await?;
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
-      if let Ok(pkg_ref) = NpmPackageReference::from_str(&flags.script) {
+      if let Ok(pkg_ref) = NpmPackageReqReference::from_str(&flags.script) {
         // if the user ran a binary command, we'll need to set process.argv[0]
         // to be the name of the binary command instead of deno
         let binary_name = pkg_ref
@@ -443,7 +443,7 @@ async fn create_main_worker_internal(
   bench_or_test: bool,
 ) -> Result<CliMainWorker, AnyError> {
   let (main_module, is_main_cjs) = if let Ok(package_ref) =
-    NpmPackageReference::from_specifier(&main_module)
+    NpmPackageReqReference::from_specifier(&main_module)
   {
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])

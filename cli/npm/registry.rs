@@ -9,19 +9,19 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::futures::future::BoxFuture;
-use deno_core::futures::FutureExt;
+use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_graph::semver::Version;
+use deno_graph::npm::NpmPackageNv;
 use deno_graph::semver::VersionReq;
-use deno_runtime::colors;
+use once_cell::sync::Lazy;
 use serde::Serialize;
 
 use crate::args::package_json::parse_dep_entry_name_and_raw_version;
@@ -31,6 +31,7 @@ use crate::http_util::HttpClient;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 
+use super::cache::should_sync_download;
 use super::cache::NpmCache;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
@@ -43,7 +44,7 @@ pub struct NpmPackageInfo {
   pub dist_tags: HashMap<String, String>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum NpmDependencyEntryKind {
   Dep,
   Peer,
@@ -56,7 +57,7 @@ impl NpmDependencyEntryKind {
   }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct NpmDependencyEntry {
   pub kind: NpmDependencyEntryKind,
   pub bare_specifier: String,
@@ -181,83 +182,30 @@ impl NpmPackageVersionDistInfo {
   }
 }
 
-pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
-  fn maybe_package_info(
-    &self,
-    name: &str,
-  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>>;
-
-  fn package_info(
-    &self,
-    name: &str,
-  ) -> BoxFuture<'static, Result<Arc<NpmPackageInfo>, AnyError>> {
-    let api = self.clone();
-    let name = name.to_string();
-    async move {
-      let maybe_package_info = api.maybe_package_info(&name).await?;
-      match maybe_package_info {
-        Some(package_info) => Ok(package_info),
-        None => bail!("npm package '{}' does not exist", name),
+static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
+  let env_var_name = "NPM_CONFIG_REGISTRY";
+  if let Ok(registry_url) = std::env::var(env_var_name) {
+    // ensure there is a trailing slash for the directory
+    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+    match Url::parse(&registry_url) {
+      Ok(url) => {
+        return url;
+      }
+      Err(err) => {
+        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
       }
     }
-    .boxed()
   }
 
-  fn package_version_info(
-    &self,
-    name: &str,
-    version: &Version,
-  ) -> BoxFuture<'static, Result<Option<NpmPackageVersionInfo>, AnyError>> {
-    let api = self.clone();
-    let name = name.to_string();
-    let version = version.to_string();
-    async move {
-      let package_info = api.package_info(&name).await?;
-      Ok(package_info.versions.get(&version).cloned())
-    }
-    .boxed()
-  }
+  Url::parse("https://registry.npmjs.org").unwrap()
+});
 
-  /// Clears the internal memory cache.
-  fn clear_memory_cache(&self);
-}
+#[derive(Clone, Debug)]
+pub struct NpmRegistryApi(Arc<dyn NpmRegistryApiInner>);
 
-#[derive(Clone)]
-pub struct RealNpmRegistryApi(Arc<RealNpmRegistryApiInner>);
-
-impl RealNpmRegistryApi {
-  pub fn default_url() -> Url {
-    // todo(dsherret): remove DENO_NPM_REGISTRY in the future (maybe May 2023)
-    let env_var_names = ["NPM_CONFIG_REGISTRY", "DENO_NPM_REGISTRY"];
-    for env_var_name in env_var_names {
-      if let Ok(registry_url) = std::env::var(env_var_name) {
-        // ensure there is a trailing slash for the directory
-        let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-        match Url::parse(&registry_url) {
-          Ok(url) => {
-            if env_var_name == "DENO_NPM_REGISTRY" {
-              log::warn!(
-                "{}",
-                colors::yellow(concat!(
-                  "DENO_NPM_REGISTRY was intended for internal testing purposes only. ",
-                  "Please update to NPM_CONFIG_REGISTRY instead.",
-                )),
-              );
-            }
-            return url;
-          }
-          Err(err) => {
-            log::debug!(
-              "Invalid {} environment variable: {:#}",
-              env_var_name,
-              err,
-            );
-          }
-        }
-      }
-    }
-
-    Url::parse("https://registry.npmjs.org").unwrap()
+impl NpmRegistryApi {
+  pub fn default_url() -> &'static Url {
+    &NPM_REGISTRY_DEFAULT_URL
   }
 
   pub fn new(
@@ -276,26 +224,110 @@ impl RealNpmRegistryApi {
     }))
   }
 
+  #[cfg(test)]
+  pub fn new_for_test(api: TestNpmRegistryApiInner) -> NpmRegistryApi {
+    Self(Arc::new(api))
+  }
+
+  pub async fn package_info(
+    &self,
+    name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, AnyError> {
+    let maybe_package_info = self.0.maybe_package_info(name).await?;
+    match maybe_package_info {
+      Some(package_info) => Ok(package_info),
+      None => bail!("npm package '{}' does not exist", name),
+    }
+  }
+
+  pub async fn package_version_info(
+    &self,
+    nv: &NpmPackageNv,
+  ) -> Result<Option<NpmPackageVersionInfo>, AnyError> {
+    let package_info = self.package_info(&nv.name).await?;
+    Ok(package_info.versions.get(&nv.version.to_string()).cloned())
+  }
+
+  /// Caches all the package information in memory in parallel.
+  pub async fn cache_in_parallel(
+    &self,
+    package_names: Vec<String>,
+  ) -> Result<(), AnyError> {
+    let mut unresolved_tasks = Vec::with_capacity(package_names.len());
+
+    // cache the package info up front in parallel
+    if should_sync_download() {
+      // for deterministic test output
+      let mut ordered_names = package_names;
+      ordered_names.sort();
+      for name in ordered_names {
+        self.package_info(&name).await?;
+      }
+    } else {
+      for name in package_names {
+        let api = self.clone();
+        unresolved_tasks.push(tokio::task::spawn(async move {
+          // This is ok to call because api will internally cache
+          // the package information in memory.
+          api.package_info(&name).await
+        }));
+      }
+    };
+
+    for result in futures::future::join_all(unresolved_tasks).await {
+      result??; // surface the first error
+    }
+
+    Ok(())
+  }
+
+  /// Clears the internal memory cache.
+  pub fn clear_memory_cache(&self) {
+    self.0.clear_memory_cache();
+  }
+
   pub fn base_url(&self) -> &Url {
-    &self.0.base_url
+    self.0.base_url()
   }
 }
 
-impl NpmRegistryApi for RealNpmRegistryApi {
-  fn maybe_package_info(
+#[async_trait]
+trait NpmRegistryApiInner: std::fmt::Debug + Sync + Send + 'static {
+  async fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
-    let api = self.clone();
-    let name = name.to_string();
-    async move { api.0.maybe_package_info(&name).await }.boxed()
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError>;
+
+  fn clear_memory_cache(&self);
+
+  fn get_cached_package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>>;
+
+  fn base_url(&self) -> &Url;
+}
+
+#[async_trait]
+impl NpmRegistryApiInner for RealNpmRegistryApiInner {
+  fn base_url(&self) -> &Url {
+    &self.base_url
+  }
+
+  async fn maybe_package_info(
+    &self,
+    name: &str,
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
+    self.maybe_package_info(name).await
   }
 
   fn clear_memory_cache(&self) {
-    self.0.mem_cache.lock().clear();
+    self.mem_cache.lock().clear();
+  }
+
+  fn get_cached_package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
+    self.mem_cache.lock().get(name).cloned().flatten()
   }
 }
 
+#[derive(Debug)]
 struct RealNpmRegistryApiInner {
   base_url: Url,
   cache: NpmCache,
@@ -461,16 +493,44 @@ impl RealNpmRegistryApiInner {
   }
 }
 
+#[derive(Debug)]
+struct NullNpmRegistryApiInner;
+
+#[async_trait]
+impl NpmRegistryApiInner for NullNpmRegistryApiInner {
+  async fn maybe_package_info(
+    &self,
+    _name: &str,
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
+    Err(deno_core::anyhow::anyhow!(
+      "Deno bug. Please report. Registry API was not initialized."
+    ))
+  }
+
+  fn clear_memory_cache(&self) {}
+
+  fn get_cached_package_info(
+    &self,
+    _name: &str,
+  ) -> Option<Arc<NpmPackageInfo>> {
+    None
+  }
+
+  fn base_url(&self) -> &Url {
+    NpmRegistryApi::default_url()
+  }
+}
+
 /// Note: This test struct is not thread safe for setup
 /// purposes. Construct everything on the same thread.
 #[cfg(test)]
-#[derive(Clone, Default)]
-pub struct TestNpmRegistryApi {
+#[derive(Clone, Default, Debug)]
+pub struct TestNpmRegistryApiInner {
   package_infos: Arc<Mutex<HashMap<String, NpmPackageInfo>>>,
 }
 
 #[cfg(test)]
-impl TestNpmRegistryApi {
+impl TestNpmRegistryApiInner {
   pub fn add_package_info(&self, name: &str, info: NpmPackageInfo) {
     let previous = self.package_infos.lock().insert(name.to_string(), info);
     assert!(previous.is_none());
@@ -554,16 +614,28 @@ impl TestNpmRegistryApi {
 }
 
 #[cfg(test)]
-impl NpmRegistryApi for TestNpmRegistryApi {
-  fn maybe_package_info(
+#[async_trait]
+impl NpmRegistryApiInner for TestNpmRegistryApiInner {
+  async fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
     let result = self.package_infos.lock().get(name).cloned();
-    Box::pin(deno_core::futures::future::ready(Ok(result.map(Arc::new))))
+    Ok(result.map(Arc::new))
   }
 
   fn clear_memory_cache(&self) {
     // do nothing for the test api
+  }
+
+  fn get_cached_package_info(
+    &self,
+    _name: &str,
+  ) -> Option<Arc<NpmPackageInfo>> {
+    None
+  }
+
+  fn base_url(&self) -> &Url {
+    NpmRegistryApi::default_url()
   }
 }
