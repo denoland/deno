@@ -1046,15 +1046,39 @@ impl ModuleMap {
     }
     array.set_index(scope, 1, info_arr.into());
 
-    let by_name_triples: Vec<(String, AssertedModuleType, SymbolicModule)> =
-      self
-        .by_name
-        .clone()
-        .into_iter()
-        .map(|el| (el.0 .0, el.0 .1, el.1))
-        .collect();
-    let by_name_array = serde_v8::to_v8(scope, by_name_triples).unwrap();
-    array.set_index(scope, 2, by_name_array);
+    let by_name_array = v8::Array::new(scope, self.by_name.len() as i32);
+    {
+      for (i, elem) in self.by_name.iter().enumerate() {
+        let arr = v8::Array::new(scope, 3);
+
+        let specifier = v8::String::new(scope, &elem.0 .0).unwrap();
+        arr.set_index(scope, 0, specifier.into());
+
+        let asserted_module_type = v8::Integer::new(
+          scope,
+          match elem.0 .1 {
+            AssertedModuleType::JavaScriptOrWasm => 0,
+            AssertedModuleType::Json => 1,
+          },
+        );
+        arr.set_index(scope, 1, asserted_module_type.into());
+
+        let symbolic_module: v8::Local<v8::Value> = match &elem.1 {
+          SymbolicModule::Alias(alias) => {
+            let alias = v8::String::new(scope, alias).unwrap();
+            alias.into()
+          }
+          SymbolicModule::Mod(id) => {
+            let id = v8::Integer::new(scope, *id as i32);
+            id.into()
+          }
+        };
+        arr.set_index(scope, 2, symbolic_module);
+
+        by_name_array.set_index(scope, i as u32, arr.into());
+      }
+    }
+    array.set_index(scope, 2, by_name_array.into());
 
     let array_global = v8::Global::new(scope, array);
 
@@ -1164,15 +1188,51 @@ impl ModuleMap {
     }
 
     {
-      let by_name_data = local_data.get_index(scope, 2).unwrap();
-      let by_name_deser: Vec<(String, AssertedModuleType, SymbolicModule)> =
-        serde_v8::from_v8(scope, by_name_data).unwrap();
-      self.by_name = by_name_deser
-        .into_iter()
-        .map(|(name, module_type, symbolic_module)| {
-          ((name, module_type), symbolic_module)
-        })
-        .collect();
+      let by_name_arr: v8::Local<v8::Array> =
+        local_data.get_index(scope, 2).unwrap().try_into().unwrap();
+      let len = by_name_arr.length() as usize;
+      let mut by_name = HashMap::with_capacity(len);
+
+      for i in 0..len {
+        let arr: v8::Local<v8::Array> = by_name_arr
+          .get_index(scope, i as u32)
+          .unwrap()
+          .try_into()
+          .unwrap();
+
+        let specifier =
+          arr.get_index(scope, 0).unwrap().to_rust_string_lossy(scope);
+        let asserted_module_type = match arr
+          .get_index(scope, 1)
+          .unwrap()
+          .to_integer(scope)
+          .unwrap()
+          .value()
+        {
+          0 => AssertedModuleType::JavaScriptOrWasm,
+          1 => AssertedModuleType::Json,
+          _ => unreachable!(),
+        };
+        let key = (specifier, asserted_module_type);
+
+        let symbolic_module_val = arr.get_index(scope, 2).unwrap();
+        let val = if symbolic_module_val.is_number() {
+          SymbolicModule::Mod(
+            symbolic_module_val
+              .to_integer(scope)
+              .unwrap()
+              .value()
+              .try_into()
+              .unwrap(),
+          )
+        } else {
+          SymbolicModule::Alias(symbolic_module_val.to_rust_string_lossy(scope))
+        };
+
+        by_name.insert(key, val);
+      }
+
+      self.by_name = by_name;
     }
 
     self.handles = module_handles;
