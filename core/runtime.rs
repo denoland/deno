@@ -974,22 +974,54 @@ impl JsRuntime {
   where
     v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
   {
+    let start = std::time::Instant::now();
     let scope = &mut v8::EscapableHandleScope::new(scope);
     let source = v8::String::new(scope, code).unwrap();
     let script = v8::Script::compile(scope, source, None).unwrap();
     let v = script.run(scope)?;
-    scope.escape(v).try_into().ok()
+    let r = scope.escape(v).try_into().ok();
+    eprintln!(
+      "eval called on \"{}\", took {}ns",
+      code,
+      start.elapsed().as_nanos()
+    );
+    r
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self, realm: &JsRealm) {
     let (recv_cb, build_custom_error_cb) = {
       let scope = &mut realm.handle_scope(self.v8_isolate());
-      let recv_cb =
-        Self::eval::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
-      let build_custom_error_cb =
-        Self::eval::<v8::Function>(scope, "Deno.core.buildCustomError")
-          .expect("Deno.core.buildCustomError is undefined in the realm");
+      let context = realm.context();
+      let context_local = v8::Local::new(scope, context);
+      let global = context_local.global(scope);
+      let deno_str = v8::String::new(scope, "Deno").unwrap();
+      let core_str = v8::String::new(scope, "core").unwrap();
+      let opresolve_str = v8::String::new(scope, "opresolve").unwrap();
+      let build_custom_error_str =
+        v8::String::new(scope, "buildCustomError").unwrap();
+
+      let deno_obj: v8::Local<v8::Object> = global
+        .get(scope, deno_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+      let core_obj: v8::Local<v8::Object> = deno_obj
+        .get(scope, core_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+      let recv_cb: v8::Local<v8::Function> = core_obj
+        .get(scope, opresolve_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+      let build_custom_error_cb: v8::Local<v8::Function> = core_obj
+        .get(scope, build_custom_error_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
       (
         v8::Global::new(scope, recv_cb),
         v8::Global::new(scope, build_custom_error_cb),

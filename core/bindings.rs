@@ -111,12 +111,29 @@ pub fn initialize_context<'s>(
 
   let scope = &mut v8::ContextScope::new(scope, context);
 
+  let deno_str = v8::String::new(scope, "Deno").unwrap();
+  let core_str = v8::String::new(scope, "core").unwrap();
+  let ops_str = v8::String::new(scope, "ops").unwrap();
+
   // Snapshot already registered `Deno.core.ops` but
   // extensions may provide ops that aren't part of the snapshot.
   if snapshot_options.loaded() {
     // Grab the Deno.core.ops object & init it
-    let ops_obj = JsRuntime::eval::<v8::Object>(scope, "Deno.core.ops")
-      .expect("Deno.core.ops to exist");
+    let deno_obj: v8::Local<v8::Object> = global
+      .get(scope, deno_str.into())
+      .unwrap()
+      .try_into()
+      .unwrap();
+    let core_obj: v8::Local<v8::Object> = deno_obj
+      .get(scope, core_str.into())
+      .unwrap()
+      .try_into()
+      .unwrap();
+    let ops_obj: v8::Local<v8::Object> = core_obj
+      .get(scope, ops_str.into())
+      .expect("Deno.core.ops to exist")
+      .try_into()
+      .unwrap();
     initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
     if snapshot_options != SnapshotOptions::CreateFromExisting {
       initialize_async_ops_info(scope, ops_obj, op_ctxs);
@@ -126,11 +143,9 @@ pub fn initialize_context<'s>(
 
   // global.Deno = { core: { } };
   let deno_obj = v8::Object::new(scope);
-  let deno_str = v8::String::new(scope, "Deno").unwrap();
   global.set(scope, deno_str.into(), deno_obj.into());
 
   let core_obj = v8::Object::new(scope);
-  let core_str = v8::String::new(scope, "core").unwrap();
   deno_obj.set(scope, core_str.into(), core_obj.into());
 
   // Bind functions to Deno.core.*
@@ -144,7 +159,6 @@ pub fn initialize_context<'s>(
 
   // Bind functions to Deno.core.ops.*
   let ops_obj = v8::Object::new(scope);
-  let ops_str = v8::String::new(scope, "ops").unwrap();
   core_obj.set(scope, ops_str.into(), ops_obj.into());
 
   if !snapshot_options.will_snapshot() {
