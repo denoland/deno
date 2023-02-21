@@ -10,7 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_graph::npm::NpmPackageReq;
+use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Dependency;
 use deno_graph::Module;
@@ -300,9 +300,8 @@ fn print_tree_node<TWrite: Write>(
 #[derive(Default)]
 struct NpmInfo {
   package_sizes: HashMap<NpmPackageId, u64>,
-  resolved_reqs: HashMap<NpmPackageReq, NpmPackageId>,
+  resolved_ids: HashMap<NpmPackageNv, NpmPackageId>,
   packages: HashMap<NpmPackageId, NpmResolutionPackage>,
-  specifiers: HashMap<ModuleSpecifier, NpmPackageReq>,
 }
 
 impl NpmInfo {
@@ -312,21 +311,15 @@ impl NpmInfo {
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) -> Self {
     let mut info = NpmInfo::default();
-    if !npm_resolver.has_packages() {
-      return info; // skip going over the specifiers if there's no npm packages
+    if graph.npm_packages.is_empty() {
+      return info; // skip going over the modules if there's no npm packages
     }
 
-    for (specifier, _) in graph.specifiers() {
-      if let Ok(reference) = NpmPackageReqReference::from_specifier(specifier) {
-        info
-          .specifiers
-          .insert(specifier.clone(), reference.req.clone());
-        if let Ok(package) =
-          npm_snapshot.resolve_pkg_from_pkg_req(&reference.req)
-        {
-          info
-            .resolved_reqs
-            .insert(reference.req, package.pkg_id.clone());
+    for module in graph.modules() {
+      if let Module::Npm(module) = module {
+        let nv = &module.nv_reference.nv;
+        if let Ok(package) = npm_snapshot.resolve_package_from_deno_module(nv) {
+          info.resolved_ids.insert(nv.clone(), package.pkg_id.clone());
           if !info.packages.contains_key(&package.pkg_id) {
             info.fill_package_info(package, npm_resolver, npm_snapshot);
           }
@@ -358,15 +351,12 @@ impl NpmInfo {
     }
   }
 
-  pub fn package_from_specifier(
+  pub fn resolve_package(
     &self,
-    specifier: &ModuleSpecifier,
+    nv: &NpmPackageNv,
   ) -> Option<&NpmResolutionPackage> {
-    self
-      .specifiers
-      .get(specifier)
-      .and_then(|package_req| self.resolved_reqs.get(package_req))
-      .and_then(|id| self.packages.get(id))
+    let id = self.resolved_ids.get(nv)?;
+    self.packages.get(id)
   }
 }
 
@@ -457,9 +447,9 @@ impl<'a> GraphDisplayContext<'a> {
           .map(|s| *s as f64)
           .sum::<f64>();
         let total_size = total_modules_size + total_npm_package_size;
-        let dep_count = self.graph.modules().count() - 1
+        let dep_count = self.graph.modules().count() - 1 // -1 for the root module
           + self.npm_info.packages.len()
-          - self.npm_info.resolved_reqs.len();
+          - self.npm_info.resolved_ids.len();
         writeln!(
           writer,
           "{} {} unique",
@@ -521,11 +511,13 @@ impl<'a> GraphDisplayContext<'a> {
 
     use PackageOrSpecifier::*;
 
-    let package_or_specifier =
-      match self.npm_info.package_from_specifier(module.specifier()) {
+    let package_or_specifier = match module.npm() {
+      Some(npm) => match self.npm_info.resolve_package(&npm.nv_reference.nv) {
         Some(package) => Package(package.clone()),
-        None => Specifier(module.specifier().clone()),
-      };
+        None => Specifier(module.specifier().clone()), // should never happen
+      },
+      None => Specifier(module.specifier().clone()),
+    };
     let was_seen = !self.seen.insert(match &package_or_specifier {
       Package(package) => package.pkg_id.as_serialized(),
       Specifier(specifier) => specifier.to_string(),

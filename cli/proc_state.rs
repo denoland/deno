@@ -522,16 +522,13 @@ impl ProcState {
 
               self
                 .handle_node_resolve_result(node::node_resolve_npm_reference(
-                  &module.package_id_reference,
+                  &module.nv_reference,
                   NodeResolutionMode::Execution,
                   &self.npm_resolver,
                   permissions,
                 ))
                 .with_context(|| {
-                  format!(
-                    "Could not resolve '{}'.",
-                    module.package_id_reference
-                  )
+                  format!("Could not resolve '{}'.", module.nv_reference)
                 })
             }
             Some(Module::External(module)) => {

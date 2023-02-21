@@ -750,7 +750,7 @@ fn resolve_specifier_types(
       Some(Module::Npm(module)) => {
         if let Some(npm_resolver) = &state.maybe_npm_resolver {
           Some(resolve_npm_package_reference_types(
-            &module.package_id_reference,
+            &module.nv_reference,
             npm_resolver,
           )?)
         } else {
