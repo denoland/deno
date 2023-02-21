@@ -1051,12 +1051,13 @@ impl ModuleMap {
       for (i, elem) in self.by_name.iter().enumerate() {
         let arr = v8::Array::new(scope, 3);
 
-        let specifier = v8::String::new(scope, &elem.0 .0).unwrap();
+        let (specifier, asserted_module_type) = &elem.0;
+        let specifier = v8::String::new(scope, specifier).unwrap();
         arr.set_index(scope, 0, specifier.into());
 
         let asserted_module_type = v8::Integer::new(
           scope,
-          match elem.0 .1 {
+          match asserted_module_type {
             AssertedModuleType::JavaScriptOrWasm => 0,
             AssertedModuleType::Json => 1,
           },
