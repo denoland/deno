@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -191,7 +192,7 @@ impl PartialOrd for NpmPackageId {
   }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmResolutionPackage {
   pub pkg_id: NpmPackageId,
   /// The peer dependency resolution can differ for the same
@@ -203,6 +204,21 @@ pub struct NpmResolutionPackage {
   /// Key is what the package refers to the other package as,
   /// which could be different from the package name.
   pub dependencies: HashMap<String, NpmPackageId>,
+}
+
+impl std::fmt::Debug for NpmResolutionPackage {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    // custom debug implementation for deterministic output in the tests
+    f.debug_struct("NpmResolutionPackage")
+      .field("pkg_id", &self.pkg_id)
+      .field("copy_index", &self.copy_index)
+      .field("dist", &self.dist)
+      .field(
+        "dependencies",
+        &self.dependencies.iter().collect::<BTreeMap<_, _>>(),
+      )
+      .finish()
+  }
 }
 
 impl NpmResolutionPackage {
