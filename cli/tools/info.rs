@@ -530,16 +530,10 @@ impl<'a> GraphDisplayContext<'a> {
       };
       format!("{} {}", specifier_str, colors::gray("*"))
     } else {
-      let specifier_str = if type_dep {
+      let header_text = if type_dep {
         colors::italic(module.specifier()).to_string()
       } else {
         module.specifier().to_string()
-      };
-      let header_text = match &package_or_specifier {
-        Package(package) => {
-          format!("{} - {}", specifier_str, package.pkg_id.nv.version)
-        }
-        Specifier(_) => specifier_str,
       };
       let maybe_size = match &package_or_specifier {
         Package(package) => {
