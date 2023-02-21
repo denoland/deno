@@ -3,7 +3,7 @@
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
-use deno_core::futures::future::BoxFuture;
+use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::npm::NpmPackageNv;
@@ -140,7 +140,7 @@ impl NpmResolver for CliGraphResolver {
   fn load_and_cache_npm_package_info(
     &self,
     package_name: &str,
-  ) -> BoxFuture<'static, Result<(), String>> {
+  ) -> LocalBoxFuture<'static, Result<(), String>> {
     if self.no_npm {
       // return it succeeded and error at the import site below
       return Box::pin(future::ready(Ok(())));
