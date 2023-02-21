@@ -322,7 +322,7 @@ fn create_lsp_npm_resolver(
     http_client,
     progress_bar,
   );
-  NpmPackageResolver::new(npm_cache, api, false, None)
+  NpmPackageResolver::new(npm_cache, api)
 }
 
 impl Inner {
@@ -3017,6 +3017,8 @@ impl Inner {
       },
       self.maybe_config_file.clone(),
       // TODO(#16510): add support for lockfile
+      None,
+      // TODO(bartlomieju): handle package.json dependencies here
       None,
     );
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());

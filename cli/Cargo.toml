@@ -27,8 +27,8 @@ harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["snapshot_from_snapshot"] }
-deno_core.workspace = true
+deno_runtime = { workspace = true, features = ["snapshot_from_snapshot", "include_js_files_for_snapshotting"] }
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -43,13 +43,13 @@ winres.workspace = true
 
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
-deno_core.workspace = true
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = "0.55.0"
 deno_emit = "0.15.0"
 deno_graph = "0.43.2"
 deno_lint = { version = "0.38.0", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_runtime.workspace = true
+deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
 deno_task_shell = "0.8.1"
 napi_sym.workspace = true
 
