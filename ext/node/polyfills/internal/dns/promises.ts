@@ -56,7 +56,7 @@ import {
   GetAddrInfoReqWrap,
   QueryReqWrap,
 } from "internal:deno_node/polyfills/internal_binding/cares_wrap.ts";
-import { toASCII } from "internal:deno_node/polyfills/internal/idna.ts";
+import { toASCII } from "internal:deno_node/polyfills/punycode.ts";
 
 function onlookup(
   this: GetAddrInfoReqWrap,

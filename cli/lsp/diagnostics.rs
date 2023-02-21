@@ -26,7 +26,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
@@ -614,7 +614,7 @@ pub enum DenoDiagnostic {
   /// A data module was not found in the cache.
   NoCacheData(ModuleSpecifier),
   /// A remote npm package reference was not found in the cache.
-  NoCacheNpm(NpmPackageReference, ModuleSpecifier),
+  NoCacheNpm(NpmPackageReqReference, ModuleSpecifier),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
   /// The specifier resolved to a remote specifier that was redirected to
@@ -905,7 +905,8 @@ fn diagnose_resolution(
               .push(DenoDiagnostic::NoAssertType.to_lsp_diagnostic(&range)),
           }
         }
-      } else if let Ok(pkg_ref) = NpmPackageReference::from_specifier(specifier)
+      } else if let Ok(pkg_ref) =
+        NpmPackageReqReference::from_specifier(specifier)
       {
         if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // show diagnostics for npm package references that aren't cached
@@ -929,7 +930,7 @@ fn diagnose_resolution(
         } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // check that a @types/node package exists in the resolver
           let types_node_ref =
-            NpmPackageReference::from_str("npm:@types/node").unwrap();
+            NpmPackageReqReference::from_str("npm:@types/node").unwrap();
           if npm_resolver
             .resolve_package_folder_from_deno_module(&types_node_ref.req)
             .is_err()

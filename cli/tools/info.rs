@@ -10,8 +10,8 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_graph::npm::NpmPackageReference;
 use deno_graph::npm::NpmPackageReq;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Dependency;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -22,7 +22,7 @@ use deno_runtime::colors;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
-use crate::npm::NpmPackageNodeId;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolutionPackage;
 use crate::npm::NpmResolutionSnapshot;
@@ -150,7 +150,7 @@ fn add_npm_packages_to_json(
       let maybe_package = module
         .get("specifier")
         .and_then(|k| k.as_str())
-        .and_then(|specifier| NpmPackageReference::from_str(specifier).ok())
+        .and_then(|specifier| NpmPackageReqReference::from_str(specifier).ok())
         .and_then(|package_ref| {
           snapshot
             .resolve_package_from_deno_module(&package_ref.req)
@@ -158,8 +158,10 @@ fn add_npm_packages_to_json(
         });
       if let Some(pkg) = maybe_package {
         if let Some(module) = module.as_object_mut() {
-          module
-            .insert("npmPackage".to_string(), pkg.id.as_serialized().into());
+          module.insert(
+            "npmPackage".to_string(),
+            pkg.pkg_id.as_serialized().into(),
+          );
           // change the "kind" to be "npm"
           module.insert("kind".to_string(), "npm".into());
         }
@@ -186,13 +188,13 @@ fn add_npm_packages_to_json(
           if let serde_json::Value::Object(dep) = dep {
             let specifier = dep.get("specifier").and_then(|s| s.as_str());
             if let Some(specifier) = specifier {
-              if let Ok(npm_ref) = NpmPackageReference::from_str(specifier) {
+              if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
                 if let Ok(pkg) =
                   snapshot.resolve_package_from_deno_module(&npm_ref.req)
                 {
                   dep.insert(
                     "npmPackage".to_string(),
-                    pkg.id.as_serialized().into(),
+                    pkg.pkg_id.as_serialized().into(),
                   );
                 }
               }
@@ -204,12 +206,15 @@ fn add_npm_packages_to_json(
   }
 
   let mut sorted_packages = snapshot.all_packages();
-  sorted_packages.sort_by(|a, b| a.id.cmp(&b.id));
+  sorted_packages.sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
   let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
   for pkg in sorted_packages {
     let mut kv = serde_json::Map::new();
-    kv.insert("name".to_string(), pkg.id.name.to_string().into());
-    kv.insert("version".to_string(), pkg.id.version.to_string().into());
+    kv.insert("name".to_string(), pkg.pkg_id.nv.name.to_string().into());
+    kv.insert(
+      "version".to_string(),
+      pkg.pkg_id.nv.version.to_string().into(),
+    );
     let mut deps = pkg.dependencies.values().collect::<Vec<_>>();
     deps.sort();
     let deps = deps
@@ -218,7 +223,7 @@ fn add_npm_packages_to_json(
       .collect::<Vec<_>>();
     kv.insert("dependencies".to_string(), deps.into());
 
-    json_packages.insert(pkg.id.as_serialized(), kv.into());
+    json_packages.insert(pkg.pkg_id.as_serialized(), kv.into());
   }
 
   json.insert("npmPackages".to_string(), json_packages.into());
@@ -297,9 +302,9 @@ fn print_tree_node<TWrite: Write>(
 /// Precached information about npm packages that are used in deno info.
 #[derive(Default)]
 struct NpmInfo {
-  package_sizes: HashMap<NpmPackageNodeId, u64>,
-  resolved_reqs: HashMap<NpmPackageReq, NpmPackageNodeId>,
-  packages: HashMap<NpmPackageNodeId, NpmResolutionPackage>,
+  package_sizes: HashMap<NpmPackageId, u64>,
+  resolved_reqs: HashMap<NpmPackageReq, NpmPackageId>,
+  packages: HashMap<NpmPackageId, NpmResolutionPackage>,
   specifiers: HashMap<ModuleSpecifier, NpmPackageReq>,
 }
 
@@ -315,15 +320,17 @@ impl NpmInfo {
     }
 
     for (specifier, _) in graph.specifiers() {
-      if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
+      if let Ok(reference) = NpmPackageReqReference::from_specifier(specifier) {
         info
           .specifiers
           .insert(specifier.clone(), reference.req.clone());
         if let Ok(package) =
           npm_snapshot.resolve_package_from_deno_module(&reference.req)
         {
-          info.resolved_reqs.insert(reference.req, package.id.clone());
-          if !info.packages.contains_key(&package.id) {
+          info
+            .resolved_reqs
+            .insert(reference.req, package.pkg_id.clone());
+          if !info.packages.contains_key(&package.pkg_id) {
             info.fill_package_info(package, npm_resolver, npm_snapshot);
           }
         }
@@ -339,9 +346,11 @@ impl NpmInfo {
     npm_resolver: &'a NpmPackageResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) {
-    self.packages.insert(package.id.clone(), package.clone());
-    if let Ok(size) = npm_resolver.package_size(&package.id) {
-      self.package_sizes.insert(package.id.clone(), size);
+    self
+      .packages
+      .insert(package.pkg_id.clone(), package.clone());
+    if let Ok(size) = npm_resolver.package_size(&package.pkg_id) {
+      self.package_sizes.insert(package.pkg_id.clone(), size);
     }
     for id in package.dependencies.values() {
       if !self.packages.contains_key(id) {
@@ -504,7 +513,7 @@ impl<'a> GraphDisplayContext<'a> {
         None => Specifier(module.specifier.clone()),
       };
     let was_seen = !self.seen.insert(match &package_or_specifier {
-      Package(package) => package.id.as_serialized(),
+      Package(package) => package.pkg_id.as_serialized(),
       Specifier(specifier) => specifier.to_string(),
     });
     let header_text = if was_seen {
@@ -522,13 +531,13 @@ impl<'a> GraphDisplayContext<'a> {
       };
       let header_text = match &package_or_specifier {
         Package(package) => {
-          format!("{} - {}", specifier_str, package.id.version)
+          format!("{} - {}", specifier_str, package.pkg_id.nv.version)
         }
         Specifier(_) => specifier_str,
       };
       let maybe_size = match &package_or_specifier {
         Package(package) => {
-          self.npm_info.package_sizes.get(&package.id).copied()
+          self.npm_info.package_sizes.get(&package.pkg_id).copied()
         }
         Specifier(_) => module
           .maybe_source
@@ -579,7 +588,7 @@ impl<'a> GraphDisplayContext<'a> {
       ));
       if let Some(package) = self.npm_info.packages.get(dep_id) {
         if !package.dependencies.is_empty() {
-          let was_seen = !self.seen.insert(package.id.as_serialized());
+          let was_seen = !self.seen.insert(package.pkg_id.as_serialized());
           if was_seen {
             child.text = format!("{} {}", child.text, colors::gray("*"));
           } else {

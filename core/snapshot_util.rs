@@ -33,6 +33,12 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     snapshot_module_load_cb: create_snapshot_options.snapshot_module_load_cb,
     ..Default::default()
   });
+  println!(
+    "JsRuntime for snapshot prepared, took {:#?} ({})",
+    Instant::now().saturating_duration_since(mark),
+    create_snapshot_options.snapshot_path.display()
+  );
+  mark = Instant::now();
 
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &snapshot;
