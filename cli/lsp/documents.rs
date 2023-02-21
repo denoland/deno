@@ -38,8 +38,8 @@ use deno_graph::GraphImport;
 use deno_graph::Resolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
+use indexmap::IndexMap;
 use once_cell::sync::Lazy;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -244,7 +244,7 @@ impl AssetOrDocument {
 
 #[derive(Debug, Default)]
 struct DocumentDependencies {
-  deps: BTreeMap<String, deno_graph::Dependency>,
+  deps: IndexMap<String, deno_graph::Dependency>,
   maybe_types_dependency: Option<deno_graph::TypesDependency>,
 }
 
@@ -572,7 +572,7 @@ impl Document {
     }
   }
 
-  pub fn dependencies(&self) -> &BTreeMap<String, deno_graph::Dependency> {
+  pub fn dependencies(&self) -> &IndexMap<String, deno_graph::Dependency> {
     &self.0.dependencies.deps
   }
 

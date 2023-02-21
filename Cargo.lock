@@ -1095,6 +1095,7 @@ dependencies = [
  "data-url",
  "deno_ast",
  "futures",
+ "indexmap",
  "monch",
  "once_cell",
  "parking_lot 0.12.1",
