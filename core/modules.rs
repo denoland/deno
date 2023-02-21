@@ -995,16 +995,14 @@ impl ModuleMap {
   pub fn serialize_for_snapshotting(
     &self,
     scope: &mut v8::HandleScope,
-  ) -> (v8::Global<v8::Object>, Vec<v8::Global<v8::Module>>) {
-    let obj = v8::Object::new(scope);
+  ) -> (v8::Global<v8::Array>, Vec<v8::Global<v8::Module>>) {
+    let array = v8::Array::new(scope, 3);
 
-    let next_load_id_str = v8::String::new(scope, "next_load_id").unwrap();
     let next_load_id = v8::Integer::new(scope, self.next_load_id);
-    obj.set(scope, next_load_id_str.into(), next_load_id.into());
+    array.set_index(scope, 0, next_load_id.into());
 
     let info_val = serde_v8::to_v8(scope, self.info.clone()).unwrap();
-    let info_str = v8::String::new(scope, "info").unwrap();
-    obj.set(scope, info_str.into(), info_val);
+    array.set_index(scope, 1, info_val);
 
     let by_name_triples: Vec<(String, AssertedModuleType, SymbolicModule)> =
       self
@@ -1014,27 +1012,24 @@ impl ModuleMap {
         .map(|el| (el.0 .0, el.0 .1, el.1))
         .collect();
     let by_name_array = serde_v8::to_v8(scope, by_name_triples).unwrap();
-    let by_name_str = v8::String::new(scope, "by_name").unwrap();
-    obj.set(scope, by_name_str.into(), by_name_array);
+    array.set_index(scope, 2, by_name_array);
 
-    let obj_global = v8::Global::new(scope, obj);
+    let array_global = v8::Global::new(scope, array);
 
     let handles = self.handles.clone();
-    (obj_global, handles)
+    (array_global, handles)
   }
 
   pub fn update_with_snapshot_data(
     &mut self,
     scope: &mut v8::HandleScope,
-    data: v8::Global<v8::Object>,
+    data: v8::Global<v8::Array>,
     module_handles: Vec<v8::Global<v8::Module>>,
   ) {
-    let local_data: v8::Local<v8::Object> = v8::Local::new(scope, data);
+    let local_data: v8::Local<v8::Array> = v8::Local::new(scope, data);
 
     {
-      let next_load_id_str = v8::String::new(scope, "next_load_id").unwrap();
-      let next_load_id =
-        local_data.get(scope, next_load_id_str.into()).unwrap();
+      let next_load_id = local_data.get_index(scope, 0).unwrap();
       assert!(next_load_id.is_int32());
       let integer = next_load_id.to_integer(scope).unwrap();
       let val = integer.int32_value(scope).unwrap();
@@ -1042,14 +1037,12 @@ impl ModuleMap {
     }
 
     {
-      let info_str = v8::String::new(scope, "info").unwrap();
-      let info_val = local_data.get(scope, info_str.into()).unwrap();
+      let info_val = local_data.get_index(scope, 1).unwrap();
       self.info = serde_v8::from_v8(scope, info_val).unwrap();
     }
 
     {
-      let by_name_str = v8::String::new(scope, "by_name").unwrap();
-      let by_name_data = local_data.get(scope, by_name_str.into()).unwrap();
+      let by_name_data = local_data.get_index(scope, 2).unwrap();
       let by_name_deser: Vec<(String, AssertedModuleType, SymbolicModule)> =
         serde_v8::from_v8(scope, by_name_data).unwrap();
       self.by_name = by_name_deser
