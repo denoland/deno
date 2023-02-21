@@ -224,7 +224,6 @@ impl ProcState {
     let npm_resolver = NpmPackageResolver::new_with_maybe_lockfile(
       npm_cache.clone(),
       api,
-      cli_options.no_npm(),
       cli_options
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
@@ -249,6 +248,7 @@ impl ProcState {
     let resolver = Arc::new(CliGraphResolver::new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
+      cli_options.no_npm(),
       npm_resolver.api().clone(),
       npm_resolver.resolution().clone(),
       maybe_package_json_deps,
@@ -656,6 +656,7 @@ impl ProcState {
     let cli_resolver = CliGraphResolver::new(
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
+      self.options.no_npm(),
       self.npm_resolver.api().clone(),
       self.npm_resolver.resolution().clone(),
       // TODO(bartlomieju): this should use dependencies from `package.json`?

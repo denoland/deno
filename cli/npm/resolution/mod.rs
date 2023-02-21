@@ -269,8 +269,9 @@ impl NpmResolution {
     &self,
     package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
-    // only allow one thread in here at a time
     let inner = &self.0;
+
+    // only allow one thread in here at a time
     let _permit = inner.update_semaphore.acquire().await?;
     let snapshot = inner.snapshot.read().clone();
 

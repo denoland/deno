@@ -268,6 +268,7 @@ async fn build_test_graph(
     CliGraphResolver::new(
       None,
       Some(Arc::new(m)),
+      false,
       npm_registry_api,
       npm_resolution,
       None,

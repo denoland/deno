@@ -1,6 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
@@ -29,6 +31,7 @@ pub struct CliGraphResolver {
   maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
+  no_npm: bool,
   npm_registry_api: NpmRegistryApi,
   npm_resolution: NpmResolution,
   sync_download_semaphore: Option<Arc<tokio::sync::Semaphore>>,
@@ -44,6 +47,7 @@ impl Default for CliGraphResolver {
       maybe_import_map: Default::default(),
       maybe_default_jsx_import_source: Default::default(),
       maybe_jsx_import_source_module: Default::default(),
+      no_npm: false,
       npm_registry_api,
       npm_resolution,
       maybe_package_json_deps: Default::default(),
@@ -56,6 +60,7 @@ impl CliGraphResolver {
   pub fn new(
     maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
     maybe_import_map: Option<Arc<ImportMap>>,
+    no_npm: bool,
     npm_registry_api: NpmRegistryApi,
     npm_resolution: NpmResolution,
     maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
@@ -67,6 +72,7 @@ impl CliGraphResolver {
         .and_then(|c| c.default_specifier.clone()),
       maybe_jsx_import_source_module: maybe_jsx_import_source_config
         .map(|c| c.module),
+      no_npm,
       npm_registry_api,
       npm_resolution,
       maybe_package_json_deps,
@@ -122,6 +128,7 @@ impl Resolver for CliGraphResolver {
 
 impl NpmResolver for CliGraphResolver {
   fn supports_node_specifiers(&self) -> bool {
+    // don't use no-npm here—we'll error at the import site below
     true
   }
 
@@ -133,6 +140,10 @@ impl NpmResolver for CliGraphResolver {
     &self,
     package_name: &str,
   ) -> BoxFuture<'static, Result<(), String>> {
+    if self.no_npm {
+      // return it succeeded and error at the import site below
+      return Box::pin(future::ready(Ok(())));
+    }
     // this will internally cache the package information
     let package_name = package_name.to_string();
     let api = self.npm_registry_api.clone();
@@ -155,6 +166,9 @@ impl NpmResolver for CliGraphResolver {
     &self,
     package_req: &NpmPackageReq,
   ) -> Result<NpmPackageNv, AnyError> {
+    if self.no_npm {
+      bail!("npm specifiers were requested; but --no-npm is specified")
+    }
     self
       .npm_resolution
       .resolve_package_req_for_deno_graph(package_req)

@@ -7,7 +7,6 @@ mod local;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -45,7 +44,6 @@ pub struct NpmProcessState {
 
 #[derive(Clone)]
 pub struct NpmPackageResolver {
-  no_npm: bool,
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
   local_node_modules_path: Option<PathBuf>,
   api: NpmRegistryApi,
@@ -57,7 +55,6 @@ pub struct NpmPackageResolver {
 impl std::fmt::Debug for NpmPackageResolver {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("NpmPackageResolver")
-      .field("no_npm", &self.no_npm)
       .field("fs_resolver", &"<omitted>")
       .field("local_node_modules_path", &self.local_node_modules_path)
       .finish()
@@ -66,13 +63,12 @@ impl std::fmt::Debug for NpmPackageResolver {
 
 impl NpmPackageResolver {
   pub fn new(cache: NpmCache, api: NpmRegistryApi) -> Self {
-    Self::new_inner(cache, api, false, None, None, None)
+    Self::new_inner(cache, api, None, None, None)
   }
 
   pub async fn new_with_maybe_lockfile(
     cache: NpmCache,
     api: NpmRegistryApi,
-    no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
     initial_snapshot: Option<NpmResolutionSnapshot>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -99,7 +95,6 @@ impl NpmPackageResolver {
     Ok(Self::new_inner(
       cache,
       api,
-      no_npm,
       local_node_modules_path,
       initial_snapshot,
       maybe_lockfile,
@@ -109,7 +104,6 @@ impl NpmPackageResolver {
   fn new_inner(
     cache: NpmCache,
     api: NpmRegistryApi,
-    no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
     maybe_snapshot: Option<NpmResolutionSnapshot>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -131,7 +125,6 @@ impl NpmPackageResolver {
         )),
       };
     Self {
-      no_npm,
       fs_resolver,
       local_node_modules_path,
       api,
@@ -237,22 +230,6 @@ impl NpmPackageResolver {
       return Ok(());
     }
 
-    if self.no_npm {
-      let fmt_reqs = packages
-        .iter()
-        .collect::<HashSet<_>>() // prevent duplicates
-        .iter()
-        .map(|p| format!("\"{p}\""))
-        .collect::<Vec<_>>()
-        .join(", ");
-      return Err(custom_error(
-        "NoNpm",
-        format!(
-          "Following npm specifiers were requested: {fmt_reqs}; but --no-npm is specified."
-        ),
-      ));
-    }
-
     self.resolution.add_package_reqs(packages).await?;
     self.fs_resolver.cache_packages().await?;
 
@@ -292,7 +269,6 @@ impl NpmPackageResolver {
     Self::new_inner(
       self.cache.clone(),
       self.api.clone(),
-      self.no_npm,
       self.local_node_modules_path.clone(),
       Some(self.snapshot()),
       None,

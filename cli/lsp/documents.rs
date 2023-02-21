@@ -1178,6 +1178,7 @@ impl Documents {
     self.resolver = CliGraphResolver::new(
       maybe_jsx_config,
       maybe_import_map,
+      false,
       npm_registry_api,
       npm_resolution,
       None,
