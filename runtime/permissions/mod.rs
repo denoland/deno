@@ -123,7 +123,6 @@ impl PermissionState {
             (Ok(()), true, true)
           }
           PromptResponse::Deny => (Err(Self::error(name, info)), true, false),
-          PromptResponse::DenyAll => (Err(Self::error(name, info)), true, true),
         }
       }
       _ => (Err(Self::error(name, info)), false, false),
@@ -384,10 +383,6 @@ impl UnaryPermission<ReadDescriptor> {
             self.global_state = PermissionState::Granted;
             PermissionState::Granted
           }
-          PromptResponse::DenyAll => {
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
-          }
         }
       } else if state == PermissionState::Granted {
         self.granted_list.insert(ReadDescriptor(resolved_path));
@@ -457,9 +452,7 @@ impl UnaryPermission<ReadDescriptor> {
           self.granted_list.insert(ReadDescriptor(resolved_path));
         }
       } else {
-        if !is_for_all_perm_values {
-          self.denied_list.insert(ReadDescriptor(resolved_path));
-        }
+        self.denied_list.insert(ReadDescriptor(resolved_path));
         self.global_state = PermissionState::Denied;
       }
     }
@@ -585,10 +578,6 @@ impl UnaryPermission<WriteDescriptor> {
             self.global_state = PermissionState::Granted;
             PermissionState::Granted
           }
-          PromptResponse::DenyAll => {
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
-          }
         }
       } else if state == PermissionState::Granted {
         self.granted_list.insert(WriteDescriptor(resolved_path));
@@ -658,9 +647,7 @@ impl UnaryPermission<WriteDescriptor> {
           self.granted_list.insert(WriteDescriptor(resolved_path));
         }
       } else {
-        if !is_for_all_perm_values {
-          self.denied_list.insert(WriteDescriptor(resolved_path));
-        }
+        self.denied_list.insert(WriteDescriptor(resolved_path));
         self.global_state = PermissionState::Denied;
       }
     }
@@ -760,10 +747,6 @@ impl UnaryPermission<NetDescriptor> {
             self.global_state = PermissionState::Granted;
             PermissionState::Granted
           }
-          PromptResponse::DenyAll => {
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
-          }
         }
       } else if state == PermissionState::Granted {
         self.granted_list.insert(host);
@@ -839,9 +822,7 @@ impl UnaryPermission<NetDescriptor> {
           self.granted_list.insert(new_host);
         }
       } else {
-        if !is_for_all_perm_values {
-          self.denied_list.insert(new_host);
-        }
+        self.denied_list.insert(new_host);
         self.global_state = PermissionState::Denied;
       }
     }
@@ -959,10 +940,6 @@ impl UnaryPermission<EnvDescriptor> {
             self.granted_list.clear();
             self.global_state = PermissionState::Granted;
             PermissionState::Granted
-          }
-          PromptResponse::DenyAll => {
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
           }
         }
       } else if state == PermissionState::Granted {
@@ -1108,10 +1085,6 @@ impl UnaryPermission<SysDescriptor> {
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
         }
-        PromptResponse::DenyAll => {
-          self.global_state = PermissionState::Denied;
-          PermissionState::Denied
-        }
       }
     } else {
       if PromptResponse::Allow
@@ -1164,9 +1137,7 @@ impl UnaryPermission<SysDescriptor> {
           self.granted_list.insert(SysDescriptor(kind.to_string()));
         }
       } else {
-        if !is_for_all_perm_values {
-          self.denied_list.insert(SysDescriptor(kind.to_string()));
-        }
+        self.denied_list.insert(SysDescriptor(kind.to_string()));
         self.global_state = PermissionState::Denied;
       }
     }
@@ -1255,10 +1226,6 @@ impl UnaryPermission<RunDescriptor> {
             self.global_state = PermissionState::Granted;
             PermissionState::Granted
           }
-          PromptResponse::DenyAll => {
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
-          }
         }
       } else if state == PermissionState::Granted {
         self
@@ -1329,11 +1296,9 @@ impl UnaryPermission<RunDescriptor> {
             .insert(RunDescriptor::from_str(cmd).unwrap());
         }
       } else {
-        if !is_for_all_perm_values {
-          self
-            .denied_list
-            .insert(RunDescriptor::from_str(cmd).unwrap());
-        }
+        self
+          .denied_list
+          .insert(RunDescriptor::from_str(cmd).unwrap());
         self.global_state = PermissionState::Denied;
       }
     }
@@ -1422,10 +1387,6 @@ impl UnaryPermission<FfiDescriptor> {
             self.global_state = PermissionState::Granted;
             PermissionState::Granted
           }
-          PromptResponse::DenyAll => {
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
-          }
         }
       } else if state == PermissionState::Granted {
         self.granted_list.insert(FfiDescriptor(resolved_path));
@@ -1492,9 +1453,7 @@ impl UnaryPermission<FfiDescriptor> {
             self.granted_list.insert(FfiDescriptor(resolved_path));
           }
         } else {
-          if !is_for_all_perm_values {
-            self.denied_list.insert(FfiDescriptor(resolved_path));
-          }
+          self.denied_list.insert(FfiDescriptor(resolved_path));
           self.global_state = PermissionState::Denied;
         }
       }

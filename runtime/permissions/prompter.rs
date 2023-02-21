@@ -12,7 +12,6 @@ pub enum PromptResponse {
   Allow,
   Deny,
   AllowAll,
-  DenyAll,
 }
 
 static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
@@ -206,7 +205,7 @@ impl PermissionPrompter for TtyPrompter {
 
     // print to stderr so that if stdout is piped this is still displayed.
     let opts: &str = if is_unary {
-      "[y/n/a/d] (y = yes, allow; n = no, deny; a = yes to all, allow all; d = no to all, deny all)"
+      "[y/n/A] (y = yes, allow; n = no, deny; A = yes to all, allow all)"
     } else {
       "[y/n] (y = yes, allow; n = no, deny)"
     };
@@ -232,30 +231,24 @@ impl PermissionPrompter for TtyPrompter {
         None => break PromptResponse::Deny,
         Some(v) => v,
       };
-      match ch.to_ascii_lowercase() {
-        'y' => {
+      match ch {
+        'y' | 'Y' => {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
           let msg = format!("Granted {message}.");
           eprintln!("✅ {}", colors::bold(&msg));
           break PromptResponse::Allow;
         }
-        'n' => {
+        'n' | 'N' => {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
           let msg = format!("Denied {message}.");
           eprintln!("❌ {}", colors::bold(&msg));
           break PromptResponse::Deny;
         }
-        'a' if is_unary => {
+        'A' if is_unary => {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
           let msg = format!("Granted all {name} access.");
           eprintln!("✅ {}", colors::bold(&msg));
           break PromptResponse::AllowAll;
-        }
-        'd' if is_unary => {
-          clear_n_lines(if api_name.is_some() { 4 } else { 3 });
-          let msg = format!("Denied all {name} access.");
-          eprintln!("❌ {}", colors::bold(&msg));
-          break PromptResponse::DenyAll;
         }
         _ => {
           // If we don't get a recognized option try again.
