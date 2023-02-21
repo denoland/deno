@@ -31,6 +31,7 @@ pub struct CliGraphResolver {
   maybe_jsx_import_source_module: Option<String>,
   npm_registry_api: NpmRegistryApi,
   npm_resolution: NpmResolution,
+  sync_download_semaphore: Option<Arc<tokio::sync::Semaphore>>,
 }
 
 impl Default for CliGraphResolver {
@@ -46,6 +47,7 @@ impl Default for CliGraphResolver {
       npm_registry_api,
       npm_resolution,
       maybe_package_json_deps: Default::default(),
+      sync_download_semaphore: Self::create_sync_download_semaphore(),
     }
   }
 }
@@ -68,6 +70,15 @@ impl CliGraphResolver {
       npm_registry_api,
       npm_resolution,
       maybe_package_json_deps,
+      sync_download_semaphore: Self::create_sync_download_semaphore(),
+    }
+  }
+
+  fn create_sync_download_semaphore() -> Option<Arc<tokio::sync::Semaphore>> {
+    if crate::npm::should_sync_download() {
+      Some(Arc::new(tokio::sync::Semaphore::new(1)))
+    } else {
+      None
     }
   }
 
@@ -120,16 +131,22 @@ impl NpmResolver for CliGraphResolver {
 
   fn load_and_cache_npm_package_info(
     &self,
-    package_name: String,
+    package_name: &str,
   ) -> BoxFuture<'static, Result<(), String>> {
     // this will internally cache the package information
+    let package_name = package_name.to_string();
     let api = self.npm_registry_api.clone();
+    let mut maybe_sync_download_semaphore =
+      self.sync_download_semaphore.clone();
     async move {
-      api
-        .package_info(&package_name)
-        .await
-        .map(|_| ())
-        .map_err(|err| format!("{err:#}"))
+      let result = if let Some(semaphore) = maybe_sync_download_semaphore.take()
+      {
+        let _permit = semaphore.acquire().await.unwrap();
+        api.package_info(&package_name).await
+      } else {
+        api.package_info(&package_name).await
+      };
+      result.map(|_| ()).map_err(|err| format!("{err:#}"))
     }
     .boxed()
   }
@@ -140,6 +157,6 @@ impl NpmResolver for CliGraphResolver {
   ) -> Result<NpmPackageNv, AnyError> {
     self
       .npm_resolution
-      .resolve_deno_graph_package_req(package_req)
+      .resolve_package_req_for_deno_graph(package_req)
   }
 }

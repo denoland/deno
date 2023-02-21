@@ -79,6 +79,10 @@ impl std::fmt::Debug for NpmResolutionSnapshot {
         "packages",
         &self.packages.iter().collect::<BTreeMap<_, _>>(),
       )
+      .field(
+        "pending_unresolved_packages",
+        &self.pending_unresolved_packages,
+      )
       .finish()
   }
 }

@@ -6,6 +6,7 @@ mod resolution;
 mod resolvers;
 mod tarball;
 
+pub use cache::should_sync_download;
 pub use cache::NpmCache;
 #[cfg(test)]
 pub use registry::NpmPackageVersionDistInfo;

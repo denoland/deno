@@ -326,11 +326,11 @@ impl NpmResolution {
     Ok(())
   }
 
-  pub fn pkg_req_ref_to_pkg_id_ref(
+  pub fn pkg_req_ref_to_nv_ref(
     &self,
     req_ref: NpmPackageReqReference,
   ) -> Result<NpmPackageNvReference, AnyError> {
-    let node_id = self.resolve_pkg_resolved_id_from_pkg_req(&req_ref.req)?;
+    let node_id = self.resolve_pkg_id_from_pkg_req(&req_ref.req)?;
     Ok(NpmPackageNvReference {
       nv: node_id.nv,
       sub_path: req_ref.sub_path,
@@ -363,7 +363,7 @@ impl NpmResolution {
   }
 
   /// Resolve a node package from a deno module.
-  pub fn resolve_pkg_resolved_id_from_pkg_req(
+  pub fn resolve_pkg_id_from_pkg_req(
     &self,
     req: &NpmPackageReq,
   ) -> Result<NpmPackageId, AnyError> {
@@ -375,7 +375,7 @@ impl NpmResolution {
       .map(|pkg| pkg.pkg_id.clone())
   }
 
-  pub fn resolve_pkg_node_id_from_deno_module(
+  pub fn resolve_pkg_id_from_deno_module(
     &self,
     id: &NpmPackageNv,
   ) -> Result<NpmPackageId, AnyError> {
@@ -387,7 +387,9 @@ impl NpmResolution {
       .map(|pkg| pkg.pkg_id.clone())
   }
 
-  pub fn resolve_deno_graph_package_req(
+  /// Resolves a package requirement for deno graph. This should only be
+  /// called by deno_graph's NpmResolver.
+  pub fn resolve_package_req_for_deno_graph(
     &self,
     pkg_req: &NpmPackageReq,
   ) -> Result<NpmPackageNv, AnyError> {

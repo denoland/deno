@@ -1175,9 +1175,13 @@ impl Documents {
       maybe_jsx_config.as_ref(),
     );
     // TODO(bartlomieju): handle package.json dependencies here
-    self.resolver =
-      CliGraphResolver::new(maybe_jsx_config, maybe_import_map, npm_registry_api,
-      npm_resolution, None);
+    self.resolver = CliGraphResolver::new(
+      maybe_jsx_config,
+      maybe_import_map,
+      npm_registry_api,
+      npm_resolution,
+      None,
+    );
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1354,7 +1358,7 @@ fn node_resolve_npm_req_ref(
     NodeResolution::into_specifier_and_media_type(
       npm_resolver
         .resolution()
-        .pkg_req_ref_to_pkg_id_ref(npm_req_ref)
+        .pkg_req_ref_to_nv_ref(npm_req_ref)
         .ok()
         .and_then(|pkg_id_ref| {
           node_resolve_npm_reference(

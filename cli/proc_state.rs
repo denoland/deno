@@ -240,13 +240,12 @@ impl ProcState {
       cli_options.resolve_inspector_server().map(Arc::new);
 
     let maybe_package_json_deps = cli_options.maybe_package_json_deps()?;
-    let package_json_reqs = if let Some(deps) = &maybe_package_json_deps {
+    if let Some(deps) = &maybe_package_json_deps {
+      // resolve the package.json npm requirements ahead of time
       let mut package_reqs = deps.values().cloned().collect::<Vec<_>>();
       package_reqs.sort(); // deterministic resolution
-      package_reqs
-    } else {
-      Vec::new()
-    };
+      npm_resolver.add_package_reqs(package_reqs).await?;
+    }
     let resolver = Arc::new(CliGraphResolver::new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
@@ -269,31 +268,12 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
-    let registry_url = NpmRegistryApi::default_url();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let api = NpmRegistryApi::new(
-      registry_url.clone(),
-      npm_cache.clone(),
-      http_client.clone(),
-      progress_bar.clone(),
-    );
-    let npm_resolver = NpmPackageResolver::new_with_maybe_lockfile(
-      npm_cache.clone(),
-      api,
-      cli_options.no_npm(),
-      cli_options
-        .resolve_local_node_modules_folder()
-        .with_context(|| "Resolving local node_modules folder.")?,
-      cli_options.get_npm_resolution_snapshot(),
-      lockfile.as_ref().cloned(),
-    )
-    .await?;
-    npm_resolver.add_package_reqs(package_json_reqs).await?;
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
@@ -604,7 +584,7 @@ impl ProcState {
           let reference = self
             .npm_resolver
             .resolution()
-            .pkg_req_ref_to_pkg_id_ref(reference)?;
+            .pkg_req_ref_to_nv_ref(reference)?;
           return self
             .handle_node_resolve_result(node::node_resolve_npm_reference(
               &reference,

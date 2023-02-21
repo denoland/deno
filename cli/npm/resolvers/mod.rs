@@ -156,7 +156,7 @@ impl NpmPackageResolver {
   ) -> Result<PathBuf, AnyError> {
     let node_id = self
       .resolution
-      .resolve_pkg_node_id_from_deno_module(package_id)?;
+      .resolve_pkg_id_from_deno_module(package_id)?;
     self.resolve_pkg_folder_from_deno_module_at_node_id(&node_id)
   }
 

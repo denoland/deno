@@ -912,7 +912,7 @@ fn diagnose_resolution(
           // show diagnostics for npm package references that aren't cached
           if npm_resolver
             .resolution()
-            .resolve_pkg_resolved_id_from_pkg_req(&pkg_ref.req)
+            .resolve_pkg_id_from_pkg_req(&pkg_ref.req)
             .is_err()
           {
             diagnostics.push(
@@ -934,7 +934,7 @@ fn diagnose_resolution(
             NpmPackageReqReference::from_str("npm:@types/node").unwrap();
           if npm_resolver
             .resolution()
-            .resolve_pkg_resolved_id_from_pkg_req(&types_node_ref.req)
+            .resolve_pkg_id_from_pkg_req(&types_node_ref.req)
             .is_err()
           {
             diagnostics.push(
