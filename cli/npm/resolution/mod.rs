@@ -213,8 +213,7 @@ pub struct NpmResolutionPackage {
 
 impl std::fmt::Debug for NpmResolutionPackage {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    // custom implementation in order to have the dependencies
-    // output in the same order when debugging tests
+    // custom debug implementation for deterministic output in the tests
     f.debug_struct("NpmResolutionPackage")
       .field("pkg_id", &self.pkg_id)
       .field("copy_index", &self.copy_index)

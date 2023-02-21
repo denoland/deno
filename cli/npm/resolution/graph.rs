@@ -595,14 +595,14 @@ impl Graph {
         .nodes_by_package_name
         .into_iter()
         .map(|(name, ids)| {
-          (
-            name,
-            ids
-              .into_iter()
-              .filter(|id| traversed_node_ids.contains(id))
-              .map(|id| packages_to_resolved_id.get(&id).unwrap().clone())
-              .collect(),
-          )
+          let mut ids = ids
+            .into_iter()
+            .filter(|id| traversed_node_ids.contains(id))
+            .map(|id| packages_to_resolved_id.get(&id).unwrap().clone())
+            .collect::<Vec<_>>();
+          ids.sort();
+          ids.dedup();
+          (name, ids)
         })
         .collect(),
       packages,
@@ -3630,25 +3630,25 @@ mod test {
     let snapshot = graph.into_snapshot(&api).await.unwrap();
 
     {
-      // let new_snapshot = Graph::from_snapshot(snapshot.clone())
-      //   .unwrap()
-      //   .into_snapshot(&api)
-      //   .await
-      //   .unwrap();
-      // assert_eq!(
-      //   snapshot, new_snapshot,
-      //   "recreated snapshot should be the same"
-      // );
-      // // create one again from the new snapshot
-      // let new_snapshot2 = Graph::from_snapshot(new_snapshot.clone())
-      //   .unwrap()
-      //   .into_snapshot(&api)
-      //   .await
-      //   .unwrap();
-      // assert_eq!(
-      //   snapshot, new_snapshot2,
-      //   "second recreated snapshot should be the same"
-      // );
+      let new_snapshot = Graph::from_snapshot(snapshot.clone())
+        .unwrap()
+        .into_snapshot(&api)
+        .await
+        .unwrap();
+      assert_eq!(
+        snapshot, new_snapshot,
+        "recreated snapshot should be the same"
+      );
+      // create one again from the new snapshot
+      let new_snapshot2 = Graph::from_snapshot(new_snapshot.clone())
+        .unwrap()
+        .into_snapshot(&api)
+        .await
+        .unwrap();
+      assert_eq!(
+        snapshot, new_snapshot2,
+        "second recreated snapshot should be the same"
+      );
     }
 
     let mut packages = snapshot.all_packages();
