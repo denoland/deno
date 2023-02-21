@@ -540,7 +540,7 @@
       "test-process-exit-recursive.js",
       "test-process-exit.js",
       "test-process-kill-pid.js",
-      "TODO:test-process-uptime.js",
+      "test-process-uptime.js",
       "test-promise-unhandled-silent.js",
       "test-promise-unhandled-throw-handler.js",
       "TODO:test-punycode.js",

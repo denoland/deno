@@ -28,7 +28,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
-use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleKind;
 use deno_graph::ResolutionResolved;
@@ -654,7 +654,7 @@ fn op_resolve(
           if module.kind == ModuleKind::External {
             // handle npm:<package> urls
             if let Ok(npm_ref) =
-              NpmPackageReference::from_specifier(&module.specifier)
+              NpmPackageReqReference::from_specifier(&module.specifier)
             {
               if let Some(npm_resolver) = &state.maybe_npm_resolver {
                 Some(resolve_npm_package_reference_types(
@@ -689,7 +689,8 @@ fn op_resolve(
               .ok()
               .flatten(),
             ))
-          } else if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier)
+          } else if let Ok(npm_ref) =
+            NpmPackageReqReference::from_str(&specifier)
           {
             // this could occur when resolving npm:@types/node when it is
             // injected and not part of the graph
@@ -740,7 +741,7 @@ fn op_resolve(
 }
 
 pub fn resolve_npm_package_reference_types(
-  npm_ref: &NpmPackageReference,
+  npm_ref: &NpmPackageReqReference,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<(ModuleSpecifier, MediaType), AnyError> {
   let maybe_resolution = node_resolve_npm_reference(

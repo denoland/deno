@@ -15,7 +15,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReqReference;
 use log::Level;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -139,7 +139,7 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
     }
   }
 
-  if let Ok(npm_ref) = NpmPackageReference::from_specifier(&url) {
+  if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&url) {
     if let Some(sub_path) = npm_ref.sub_path {
       if !sub_path.contains('/') {
         return Some(sub_path);
@@ -430,7 +430,7 @@ async fn resolve_shim_data(
     executable_args.push("--no-lock".to_string());
   } else if flags.lock.is_some()
     // always use a lockfile for an npm entrypoint unless --no-lock
-    || NpmPackageReference::from_specifier(&module_url).is_ok()
+    || NpmPackageReqReference::from_specifier(&module_url).is_ok()
   {
     let copy_path = get_hidden_file_with_ext(&file_path, "lock.json");
     executable_args.push("--lock".to_string());
