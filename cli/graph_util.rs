@@ -150,9 +150,11 @@ pub async fn create_graph_and_maybe_check(
     PermissionsContainer::allow_all(),
   );
   let maybe_imports = ps.options.to_maybe_imports()?;
+  let maybe_package_json_deps = ps.options.maybe_package_json_deps()?;
   let cli_resolver = CliGraphResolver::new(
     ps.options.to_maybe_jsx_import_source_config(),
     ps.maybe_import_map.clone(),
+    maybe_package_json_deps,
   );
   let graph_resolver = cli_resolver.as_graph_resolver();
   let analyzer = ps.parsed_source_cache.as_analyzer();

@@ -1181,7 +1181,9 @@ impl Documents {
       maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
     );
-    self.resolver = CliGraphResolver::new(maybe_jsx_config, maybe_import_map);
+    // TODO(bartlomieju): handle package.json dependencies here
+    self.resolver =
+      CliGraphResolver::new(maybe_jsx_config, maybe_import_map, None);
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())

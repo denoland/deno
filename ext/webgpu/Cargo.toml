@@ -10,6 +10,9 @@ readme = "README.md"
 repository = "https://github.com/gfx-rs/wgpu"
 description = "WebGPU implementation for Deno"
 
+[lib]
+path = "lib.rs"
+
 [features]
 surface = ["wgpu-core/raw-window-handle", "dep:raw-window-handle"]
 

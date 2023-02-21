@@ -216,9 +216,18 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
+    let maybe_package_json_deps = cli_options.maybe_package_json_deps()?;
+    let package_json_reqs = if let Some(deps) = &maybe_package_json_deps {
+      let mut package_reqs = deps.values().cloned().collect::<Vec<_>>();
+      package_reqs.sort(); // deterministic resolution
+      package_reqs
+    } else {
+      Vec::new()
+    };
     let resolver = Arc::new(CliGraphResolver::new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
+      maybe_package_json_deps,
     ));
 
     let maybe_file_watcher_reporter =
@@ -255,9 +264,11 @@ impl ProcState {
       cli_options
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
+      cli_options.get_npm_resolution_snapshot(),
       lockfile.as_ref().cloned(),
     )
     .await?;
+    npm_resolver.add_package_reqs(package_json_reqs).await?;
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
@@ -637,6 +648,8 @@ impl ProcState {
     let cli_resolver = CliGraphResolver::new(
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
+      // TODO(bartlomieju): this should use dependencies from `package.json`?
+      None,
     );
     let graph_resolver = cli_resolver.as_graph_resolver();
     let analyzer = self.parsed_source_cache.as_analyzer();

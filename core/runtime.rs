@@ -872,7 +872,7 @@ impl JsRuntime {
           realm.execute_script(
             self.v8_isolate(),
             &file_source.specifier,
-            file_source.code,
+            &file_source.code.load()?,
           )?;
         }
       }

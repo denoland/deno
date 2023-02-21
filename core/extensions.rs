@@ -1,15 +1,44 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::OpState;
+use anyhow::Context as _;
 use anyhow::Error;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::task::Context;
 use v8::fast_api::FastFunction;
 
 #[derive(Clone, Debug)]
+pub enum ExtensionFileSourceCode {
+  /// Source code is included in the binary produced. Either by being defined
+  /// inline, or included using `include_str!()`. If you are snapshotting, this
+  /// will result in two copies of the source code being included - one in the
+  /// snapshot, the other the static string in the `Extension`.
+  IncludedInBinary(&'static str),
+
+  // Source code is loaded from a file on disk. It's meant to be used if the
+  // embedder is creating snapshots. Files will be loaded from the filesystem
+  // during the build time and they will only be present in the V8 snapshot.
+  LoadedFromFsDuringSnapshot(PathBuf),
+}
+
+impl ExtensionFileSourceCode {
+  pub fn load(&self) -> Result<String, Error> {
+    match self {
+      ExtensionFileSourceCode::IncludedInBinary(code) => Ok(code.to_string()),
+      ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
+        let msg = format!("Failed to read \"{}\"", path.display());
+        let code = std::fs::read_to_string(path).context(msg)?;
+        Ok(code)
+      }
+    }
+  }
+}
+
+#[derive(Clone, Debug)]
 pub struct ExtensionFileSource {
   pub specifier: String,
-  pub code: &'static str,
+  pub code: ExtensionFileSourceCode,
 }
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
@@ -180,6 +209,9 @@ impl ExtensionBuilder {
 
   pub fn js(&mut self, js_files: Vec<ExtensionFileSource>) -> &mut Self {
     let js_files =
+      // TODO(bartlomieju): if we're automatically remapping here, then we should
+      // use a different result struct that `ExtensionFileSource` as it's confusing
+      // when (and why) the remapping happens.
       js_files.into_iter().map(|file_source| ExtensionFileSource {
         specifier: format!("internal:{}/{}", self.name, file_source.specifier),
         code: file_source.code,
@@ -189,16 +221,15 @@ impl ExtensionBuilder {
   }
 
   pub fn esm(&mut self, esm_files: Vec<ExtensionFileSource>) -> &mut Self {
-    let esm_files =
-      esm_files
-        .into_iter()
-        .map(|file_source| ExtensionFileSource {
-          specifier: format!(
-            "internal:{}/{}",
-            self.name, file_source.specifier
-          ),
-          code: file_source.code,
-        });
+    let esm_files = esm_files
+      .into_iter()
+      // TODO(bartlomieju): if we're automatically remapping here, then we should
+      // use a different result struct that `ExtensionFileSource` as it's confusing
+      // when (and why) the remapping happens.
+      .map(|file_source| ExtensionFileSource {
+        specifier: format!("internal:{}/{}", self.name, file_source.specifier),
+        code: file_source.code,
+      });
     self.esm.extend(esm_files);
     self
   }
@@ -259,48 +290,80 @@ impl ExtensionBuilder {
 }
 
 /// Helps embed JS files in an extension. Returns a vector of
-/// `ExtensionFileSource`, that represent the filename and source code.
+/// `ExtensionFileSource`, that represent the filename and source code. All
+/// specified files are rewritten into "internal:<extension_name>/<file_name>".
 ///
-/// Example:
+/// An optional "dir" option can be specified to prefix all files with a
+/// directory name.
+///
+/// Example (for "my_extension"):
 /// ```ignore
 /// include_js_files!(
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
+/// // Produces following specifiers:
+/// - "internal:my_extension/01_hello.js"
+/// - "internal:my_extension/02_goodbye.js"
+///
+/// /// Example with "dir" option (for "my_extension"):
+/// ```ignore
+/// include_js_files!(
+///   dir "js",
+///   "01_hello.js",
+///   "02_goodbye.js",
+/// )
+/// // Produces following specifiers:
+/// - "internal:my_extension/js/01_hello.js"
+/// - "internal:my_extension/js/02_goodbye.js"
 /// ```
+#[cfg(not(feature = "include_js_files_for_snapshotting"))]
 #[macro_export]
 macro_rules! include_js_files {
+  (dir $dir:literal, $($file:literal,)+) => {
+    vec![
+      $($crate::ExtensionFileSource {
+        specifier: concat!($dir, "/", $file).to_string(),
+        code: $crate::ExtensionFileSourceCode::IncludedInBinary(
+          include_str!(concat!($dir, "/", $file)
+        )),
+      },)+
+    ]
+  };
+
   ($($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
         specifier: $file.to_string(),
-        code: include_str!($file),
+        code: $crate::ExtensionFileSourceCode::IncludedInBinary(
+          include_str!($file)
+        ),
       },)+
     ]
   };
 }
 
-/// Helps embed JS files in an extension. Returns a vector of
-/// `ExtensionFileSource`, that represent the filename and source code.
-/// Additional "dir" option is required, that specifies which directory in the
-/// crate root contains the listed files. "dir" option will be prepended to
-/// each file name.
-///
-/// Example:
-/// ```ignore
-/// include_js_files_dir!(
-///   dir "example",
-///   "01_hello.js",
-///   "02_goodbye.js",
-/// )
-/// ```
+#[cfg(feature = "include_js_files_for_snapshotting")]
 #[macro_export]
-macro_rules! include_js_files_dir {
+macro_rules! include_js_files {
   (dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!($dir, "/", $file).to_string(),
-        code: include_str!(concat!($dir, "/", $file)),
+        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
+        ),
+      },)+
+    ]
+  };
+
+  ($($file:literal,)+) => {
+    vec![
+      $($crate::ExtensionFileSource {
+        specifier: $file.to_string(),
+        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
+        ),
       },)+
     ]
   };
