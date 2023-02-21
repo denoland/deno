@@ -508,7 +508,7 @@ impl WebWorker {
         .unwrap()
         .try_into()
         .unwrap();
-      let main_runtime_str = v8::String::new(scope, "mainRuntime").unwrap();
+      let main_runtime_str = v8::String::new(scope, "workerRuntime").unwrap();
       let bootstrap_fn =
         bootstrap_ns.get(scope, main_runtime_str.into()).unwrap();
       let bootstrap_fn =
