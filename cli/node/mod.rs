@@ -993,7 +993,7 @@ mod tests {
     // should resolve the value with the same name when not specified
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageNv::from_str("test").unwrap(),
+        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
         None,
         &value
       )
