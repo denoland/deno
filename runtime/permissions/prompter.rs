@@ -204,10 +204,10 @@ impl PermissionPrompter for TtyPrompter {
     let _stderr_guard = std::io::stderr().lock();
 
     // print to stderr so that if stdout is piped this is still displayed.
-    let opts: &str = if is_unary {
-      "[y/n/A] (y = yes, allow; n = no, deny; A = yes to all, allow all)"
+    let opts: String = if is_unary {
+      format!("[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)")
     } else {
-      "[y/n] (y = yes, allow; n = no, deny)"
+      "[y/n] (y = yes, allow; n = no, deny)".to_string()
     };
     eprint!("┌ {PERMISSION_EMOJI}  ");
     eprint!("{}", colors::bold("Deno requests "));
