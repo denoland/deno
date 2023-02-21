@@ -767,7 +767,7 @@ internals.__bootstrapNodeProcess = function (
   );
 
   process.setStartTime(Date.now());
-  // @ts-ignore
+  // @ts-ignore Remove setStartTime and #startTime is not modifiable
   delete process.setStartTime;
   delete internals.__bootstrapNodeProcess;
 };
