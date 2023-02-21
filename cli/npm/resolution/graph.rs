@@ -49,11 +49,6 @@ enum NodeParent {
 /// A resolved package in the resolution graph.
 #[derive(Debug)]
 struct Node {
-  /// The node identifier. We only store this on the node for
-  /// debugging purposes as we can save a few bytes in release
-  /// by not storing this here.
-  #[cfg(debug_assertions)]
-  pub node_id: NodeId,
   /// The specifier to child relationship in the graph. The specifier is
   /// the key in an npm package's dependencies map. We use a BTreeMap for
   /// some determinism when creating the snapshot.
@@ -172,13 +167,6 @@ impl ResolvedNodeIds {
       .get(&resolved_id.current_state_hash())
       .copied()
   }
-
-  pub fn remove(&mut self, node_id: NodeId) -> ResolvedId {
-    let (resolved_id, resolved_id_hash) =
-      self.node_to_resolved_id.remove(&node_id).unwrap();
-    self.resolved_to_node_id.remove(&resolved_id_hash);
-    resolved_id
-  }
 }
 
 /// A pointer to a specific node in a graph path. The underlying node id
@@ -214,6 +202,8 @@ enum GraphPathNodeOrRoot {
 struct GraphPath {
   previous_node: Option<GraphPathNodeOrRoot>,
   node_id_ref: NodeIdRef,
+  // todo(dsherret): I think we might be able to get rid of specifier and
+  // node version here, but I added them for extra protection for the time being.
   specifier: String,
   nv: NpmPackageNv,
 }
@@ -226,19 +216,6 @@ impl GraphPath {
   ) -> Arc<Self> {
     Arc::new(Self {
       previous_node: Some(GraphPathNodeOrRoot::Root(nv.clone())),
-      node_id_ref: NodeIdRef::new(node_id),
-      specifier: specifier,
-      nv,
-    })
-  }
-
-  pub fn new(
-    node_id: NodeId,
-    specifier: String,
-    nv: NpmPackageNv,
-  ) -> Arc<Self> {
-    Arc::new(Self {
-      previous_node: None,
       node_id_ref: NodeIdRef::new(node_id),
       specifier,
       nv,
@@ -328,9 +305,6 @@ pub struct Graph {
   /// when creating the snapshot.
   root_packages: BTreeMap<NpmPackageNv, NodeId>,
   nodes_by_package_name: HashMap<String, Vec<NodeId>>,
-  /// The next node id. We can't derive this from nodes because
-  /// nodes will be deleted.
-  next_node_id: u32,
   nodes: HashMap<NodeId, Node>,
   resolved_node_ids: ResolvedNodeIds,
   // This will be set when creating from a snapshot, then
@@ -517,11 +491,8 @@ impl Graph {
   }
 
   fn create_node(&mut self, pkg_nv: &NpmPackageNv) -> NodeId {
-    let node_id = NodeId(self.next_node_id as u32);
-    self.next_node_id += 1;
+    let node_id = NodeId(self.nodes.len() as u32);
     let node = Node {
-      #[cfg(debug_assertions)]
-      node_id,
       children: Default::default(),
       no_peers: false,
     };
@@ -612,9 +583,9 @@ impl Graph {
               (
                 key.clone(),
                 packages_to_resolved_id
-                  .get(&value)
+                  .get(value)
                   .unwrap_or_else(|| {
-                    panic!("{:?} -- missing child: {:?}", node_id, value)
+                    panic!("{node_id:?} -- missing child: {value:?}")
                   })
                   .clone(),
               )
@@ -645,7 +616,7 @@ impl Graph {
             name,
             ids
               .into_iter()
-              .filter(|id| traversed_node_ids.contains(&id))
+              .filter(|id| traversed_node_ids.contains(id))
               .map(|id| packages_to_resolved_id.get(&id).unwrap().clone())
               .collect(),
           )
@@ -701,6 +672,7 @@ impl Graph {
   }
 
   #[cfg(debug_assertions)]
+  #[allow(unused)]
   pub fn output_nodes(&self) {
     eprintln!("~~~");
     let mut node_ids = self
@@ -1205,7 +1177,7 @@ impl<'a> GraphDependencyResolver<'a> {
         GraphPathNodeOrRoot::Node(path) => NodeParent::Node(path.node_id()),
         GraphPathNodeOrRoot::Root(pkg_id) => NodeParent::Root(pkg_id.clone()),
       };
-    let mut new_node_parent = top_node_parent.clone();
+    let mut new_node_parent = top_node_parent;
 
     let mut old_node_ids = Vec::with_capacity(path.len());
     let mut path_iterator = path.iter().rev().peekable();
@@ -1240,7 +1212,7 @@ impl<'a> GraphDependencyResolver<'a> {
         for (specifier, child_id) in &old_children {
           if specifier != next_specifier {
             self.graph.set_child_parent(
-              &specifier,
+              specifier,
               *child_id,
               &NodeParent::Node(new_node_id),
             );
@@ -1251,7 +1223,7 @@ impl<'a> GraphDependencyResolver<'a> {
       debug_assert_eq!(graph_path_node.node_id(), old_node_id);
       graph_path_node.change_id(new_node_id);
 
-      // update the parent to point to this new node
+      // update the previous parent to have this as its child
       match &new_node_parent {
         NodeParent::Root(pkg_id) => {
           self.graph.root_packages.insert(pkg_id.clone(), new_node_id);
@@ -1508,10 +1480,10 @@ mod test {
           "package-a@1.0".to_string(),
           "package-a@1.0.0_package-peer@1.0.0".to_string()
         ),
-        ((
+        (
           "package-peer@1.0".to_string(),
           "package-peer@1.0.0".to_string()
-        ))
+        )
       ]
     );
   }
