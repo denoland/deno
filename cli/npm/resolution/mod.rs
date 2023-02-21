@@ -9,6 +9,7 @@ use std::sync::Arc;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageNvReference;
@@ -242,6 +243,7 @@ struct NpmResolutionInner {
   api: NpmRegistryApi,
   snapshot: RwLock<NpmResolutionSnapshot>,
   update_semaphore: tokio::sync::Semaphore,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
 impl std::fmt::Debug for NpmResolution {
@@ -257,11 +259,13 @@ impl NpmResolution {
   pub fn new(
     api: NpmRegistryApi,
     initial_snapshot: Option<NpmResolutionSnapshot>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
     Self(Arc::new(NpmResolutionInner {
       api,
       snapshot: RwLock::new(initial_snapshot.unwrap_or_default()),
       update_semaphore: tokio::sync::Semaphore::new(1),
+      maybe_lockfile,
     }))
   }
 
@@ -275,8 +279,13 @@ impl NpmResolution {
     let _permit = inner.update_semaphore.acquire().await?;
     let snapshot = inner.snapshot.read().clone();
 
-    let snapshot =
-      add_package_reqs_to_snapshot(&inner.api, package_reqs, snapshot).await?;
+    let snapshot = add_package_reqs_to_snapshot(
+      &inner.api,
+      package_reqs,
+      snapshot,
+      self.0.maybe_lockfile.clone(),
+    )
+    .await?;
 
     *inner.snapshot.write() = snapshot;
     Ok(())
@@ -305,6 +314,7 @@ impl NpmResolution {
       &inner.api,
       package_reqs.into_iter().collect(),
       snapshot,
+      self.0.maybe_lockfile.clone(),
     )
     .await?;
 
@@ -319,8 +329,13 @@ impl NpmResolution {
     let _permit = inner.update_semaphore.acquire().await?;
     let snapshot = inner.snapshot.read().clone();
 
-    let snapshot =
-      add_package_reqs_to_snapshot(&inner.api, Vec::new(), snapshot).await?;
+    let snapshot = add_package_reqs_to_snapshot(
+      &inner.api,
+      Vec::new(),
+      snapshot,
+      self.0.maybe_lockfile.clone(),
+    )
+    .await?;
 
     *inner.snapshot.write() = snapshot;
 
@@ -476,6 +491,7 @@ async fn add_package_reqs_to_snapshot(
   api: &NpmRegistryApi,
   package_reqs: Vec<NpmPackageReq>,
   snapshot: NpmResolutionSnapshot,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 ) -> Result<NpmResolutionSnapshot, AnyError> {
   if snapshot.pending_unresolved_packages.is_empty()
     && package_reqs
@@ -525,7 +541,27 @@ async fn add_package_reqs_to_snapshot(
 
   let result = graph.into_snapshot(&api).await;
   api.clear_memory_cache();
-  result
+
+  if let Some(lockfile_mutex) = maybe_lockfile {
+    let mut lockfile = lockfile_mutex.lock();
+    match result {
+      Ok(snapshot) => {
+        for (package_req, nv) in snapshot.package_reqs.iter() {
+          lockfile.insert_npm_specifier(
+            package_req.to_string(),
+            snapshot.root_packages.get(nv).unwrap().as_serialized(),
+          );
+        }
+        for package in snapshot.all_packages() {
+          lockfile.check_or_insert_npm_package(package.into())?;
+        }
+        Ok(snapshot)
+      }
+      Err(err) => Err(err),
+    }
+  } else {
+    result
+  }
 }
 
 /// Cache the package information in parallel.

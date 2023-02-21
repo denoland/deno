@@ -109,7 +109,8 @@ impl NpmPackageResolver {
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
     let registry_url = api.base_url().to_owned();
-    let resolution = NpmResolution::new(api.clone(), maybe_snapshot);
+    let resolution =
+      NpmResolution::new(api.clone(), maybe_snapshot, maybe_lockfile.clone());
     let fs_resolver: Arc<dyn NpmPackageFsResolver> =
       match &local_node_modules_path {
         Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(

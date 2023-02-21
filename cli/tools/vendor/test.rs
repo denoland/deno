@@ -264,7 +264,8 @@ async fn build_test_graph(
 ) -> ModuleGraph {
   let resolver = original_import_map.map(|m| {
     let npm_registry_api = NpmRegistryApi::new_uninitialized();
-    let npm_resolution = NpmResolution::new(npm_registry_api.clone(), None);
+    let npm_resolution =
+      NpmResolution::new(npm_registry_api.clone(), None, None);
     CliGraphResolver::new(
       None,
       Some(Arc::new(m)),
