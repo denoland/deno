@@ -161,6 +161,7 @@ fn json_module_evaluation_steps<'a>(
 /// the module against an import assertion (if one is present
 /// in the import statement).
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[repr(u32)]
 pub enum ModuleType {
   JavaScript,
   Json,
@@ -903,6 +904,7 @@ impl Stream for RecursiveModuleLoad {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[repr(u32)]
 pub(crate) enum AssertedModuleType {
   JavaScriptOrWasm,
   Json,
@@ -1018,13 +1020,8 @@ impl ModuleMap {
         let specifier = v8::String::new(scope, &request.specifier).unwrap();
         requests_arr.set_index(scope, 2 * i as u32, specifier.into());
 
-        let asserted_module_type = v8::Integer::new(
-          scope,
-          match request.asserted_module_type {
-            AssertedModuleType::JavaScriptOrWasm => 0,
-            AssertedModuleType::Json => 1,
-          },
-        );
+        let asserted_module_type =
+          v8::Integer::new(scope, request.asserted_module_type as i32);
         requests_arr.set_index(
           scope,
           (2 * i) as u32 + 1,
@@ -1033,13 +1030,7 @@ impl ModuleMap {
       }
       module_info_arr.set_index(scope, 3, requests_arr.into());
 
-      let module_type = v8::Integer::new(
-        scope,
-        match info.module_type {
-          ModuleType::JavaScript => 0,
-          ModuleType::Json => 1,
-        },
-      );
+      let module_type = v8::Integer::new(scope, info.module_type as i32);
       module_info_arr.set_index(scope, 4, module_type.into());
 
       info_arr.set_index(scope, i as u32, module_info_arr.into());
@@ -1051,17 +1042,12 @@ impl ModuleMap {
       for (i, elem) in self.by_name.iter().enumerate() {
         let arr = v8::Array::new(scope, 3);
 
-        let (specifier, asserted_module_type) = &elem.0;
+        let (specifier, asserted_module_type) = elem.0;
         let specifier = v8::String::new(scope, specifier).unwrap();
         arr.set_index(scope, 0, specifier.into());
 
-        let asserted_module_type = v8::Integer::new(
-          scope,
-          match asserted_module_type {
-            AssertedModuleType::JavaScriptOrWasm => 0,
-            AssertedModuleType::Json => 1,
-          },
-        );
+        let asserted_module_type =
+          v8::Integer::new(scope, *asserted_module_type as i32);
         arr.set_index(scope, 1, asserted_module_type.into());
 
         let symbolic_module: v8::Local<v8::Value> = match &elem.1 {
