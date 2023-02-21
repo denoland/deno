@@ -747,6 +747,9 @@ fn resolve_specifier_types(
           _ => Some((module.specifier.clone(), module.media_type)),
         }
       }
+      Some(Module::Json(module)) => {
+        Some((module.specifier.clone(), module.media_type))
+      }
       Some(Module::Npm(module)) => {
         if let Some(npm_resolver) = &state.maybe_npm_resolver {
           Some(resolve_npm_package_reference_types(
@@ -757,7 +760,7 @@ fn resolve_specifier_types(
           None
         }
       }
-      Some(Module::Json(_) | Module::External(_)) | None => None,
+      Some(Module::External(_)) | None => None,
     })
   }
 
