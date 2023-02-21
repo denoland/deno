@@ -3644,7 +3644,7 @@ pub mod tests {
         main,
         name: specifier.to_string(),
         requests: vec![crate::modules::ModuleRequest {
-          specifier: crate::resolve_url(&format!("file:///{prev}.js")).unwrap(),
+          specifier: format!("file:///{prev}.js"),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }],
         module_type: ModuleType::JavaScript,
