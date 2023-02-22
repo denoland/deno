@@ -15,11 +15,11 @@ use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use deno_runtime::deno_node::is_builtin_node_module;
 use import_map::ImportMap;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::args::JsxImportSourceConfig;
 use crate::node::resolve_builtin_node_module;
-use crate::npm::NpmPackageResolver;
 use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
 
@@ -28,14 +28,11 @@ use crate::npm::NpmResolution;
 #[derive(Debug, Clone)]
 pub struct CliGraphResolver {
   maybe_import_map: Option<Arc<ImportMap>>,
-  // TODO(bartlomieju): actually use in `resolver`, once
-  // deno_graph refactors and upgrades land.
-  #[allow(dead_code)]
   maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
+  maybe_local_node_modules_path: Option<PathBuf>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   no_npm: bool,
-  npm_resolver: NpmPackageResolver,
   npm_registry_api: NpmRegistryApi,
   npm_resolution: NpmResolution,
   sync_download_semaphore: Option<Arc<tokio::sync::Semaphore>>,
@@ -45,7 +42,6 @@ impl Default for CliGraphResolver {
   fn default() -> Self {
     // This is not ideal, but necessary for the LSP. In the future, we should
     // refactor the LSP and force this to be initialized.
-    let npm_resolver = 0;
     let npm_registry_api = NpmRegistryApi::new_uninitialized();
     let npm_resolution =
       NpmResolution::new(npm_registry_api.clone(), None, None);
@@ -54,10 +50,10 @@ impl Default for CliGraphResolver {
       maybe_default_jsx_import_source: Default::default(),
       maybe_jsx_import_source_module: Default::default(),
       no_npm: false,
-      npm_resolver,
       npm_registry_api,
       npm_resolution,
       maybe_package_json_deps: Default::default(),
+      maybe_local_node_modules_path: None,
       sync_download_semaphore: Self::create_sync_download_semaphore(),
     }
   }
@@ -68,10 +64,10 @@ impl CliGraphResolver {
     maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
     maybe_import_map: Option<Arc<ImportMap>>,
     no_npm: bool,
-    npm_resolver: NpmPackageResolver,
     npm_registry_api: NpmRegistryApi,
     npm_resolution: NpmResolution,
     maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
+    maybe_local_node_modules_path: Option<PathBuf>,
   ) -> Self {
     Self {
       maybe_import_map,
@@ -81,7 +77,7 @@ impl CliGraphResolver {
       maybe_jsx_import_source_module: maybe_jsx_import_source_config
         .map(|c| c.module),
       no_npm,
-      npm_resolver,
+      maybe_local_node_modules_path,
       npm_registry_api,
       npm_resolution,
       maybe_package_json_deps,
@@ -152,15 +148,21 @@ impl Resolver for CliGraphResolver {
     {
       Ok(resolved) => Ok(resolved),
       Err(err) => {
-        // eprintln!("error in resolve import: {}", err);
-        // FIXME(bartlomieju): check using `npm_resolver.in_npm_package()`
-        if referrer.as_str().contains("node_modules") {
-          return Ok(
-            ModuleSpecifier::parse(&format!("npm:{specifier}")).unwrap(),
-          );
-        } else {
-          Err(err)
+        if !self.no_npm {
+          if let Some(local_node_modules_path) =
+            self.maybe_local_node_modules_path.as_ref()
+          {
+            if let Ok(referrer_path) = referrer.to_file_path() {
+              if referrer_path.starts_with(local_node_modules_path) {
+                return Ok(
+                  ModuleSpecifier::parse(&format!("npm:{specifier}")).unwrap(),
+                );
+              }
+            }
+          }
         }
+
+        Err(err)
       }
     }
   }

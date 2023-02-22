@@ -14,6 +14,7 @@ use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
@@ -159,10 +160,12 @@ pub async fn create_graph_and_maybe_check(
     ps.options.to_maybe_jsx_import_source_config(),
     ps.maybe_import_map.clone(),
     ps.options.no_npm(),
-    ps.npm_resolver.clone(),
     ps.npm_resolver.api().clone(),
     ps.npm_resolver.resolution().clone(),
     maybe_package_json_deps,
+    ps.options
+      .resolve_local_node_modules_folder()
+      .with_context(|| "Resolving local node_modules folder.")?,
   );
   let graph_resolver = cli_resolver.as_graph_resolver();
   let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();

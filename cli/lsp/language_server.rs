@@ -937,7 +937,6 @@ impl Inner {
     self.documents.update_config(
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
-      self.npm_resolver.clone(),
       self.npm_resolver.api().clone(),
       self.npm_resolver.resolution().clone(),
     );
@@ -1127,7 +1126,6 @@ impl Inner {
     self.documents.update_config(
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
-      self.npm_resolver.clone(),
       self.npm_resolver.api().clone(),
       self.npm_resolver.resolution().clone(),
     );
@@ -1176,7 +1174,6 @@ impl Inner {
       self.documents.update_config(
         self.maybe_import_map.clone(),
         self.maybe_config_file.as_ref(),
-        self.npm_resolver.clone(),
         self.npm_resolver.api().clone(),
         self.npm_resolver.resolution().clone(),
       );

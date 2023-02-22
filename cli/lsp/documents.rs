@@ -1150,7 +1150,6 @@ impl Documents {
     &mut self,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
-    npm_resolver: NpmPackageResolver,
     npm_registry_api: NpmRegistryApi,
     npm_resolution: NpmResolution,
   ) {
@@ -1180,9 +1179,9 @@ impl Documents {
       maybe_jsx_config,
       maybe_import_map,
       false,
-      npm_resolver,
       npm_registry_api,
       npm_resolution,
+      None,
       None,
     );
     self.imports = Arc::new(
@@ -1555,9 +1554,7 @@ console.log(b, "hello deno");
 
   #[test]
   fn test_documents_refresh_dependencies_config_change() {
-    let npm_cache;
     let npm_registry_api = NpmRegistryApi::new_uninitialized();
-    let npm_resolver = NpmResolver::new(npm_cache, npm_registry_api);
     let npm_resolution =
       NpmResolution::new(npm_registry_api.clone(), None, None);
 
@@ -1593,7 +1590,6 @@ console.log(b, "hello deno");
       documents.update_config(
         Some(Arc::new(import_map)),
         None,
-        npm_resolver.clone(),
         npm_registry_api.clone(),
         npm_resolution.clone(),
       );
@@ -1632,7 +1628,6 @@ console.log(b, "hello deno");
       documents.update_config(
         Some(Arc::new(import_map)),
         None,
-        npm_resolver,
         npm_registry_api,
         npm_resolution,
       );
