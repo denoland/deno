@@ -19,15 +19,15 @@ pub fn init(main_module: ModuleSpecifier) -> Extension {
 
 #[op]
 fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
-  let main = state.borrow::<ModuleSpecifier>().to_string();
-  let main_url = deno_core::resolve_url_or_path(&main)?;
+  let main_url = state.borrow::<ModuleSpecifier>();
+  let main_path = main_url.to_string();
   if main_url.scheme() == "file" {
     let main_path = main_url.to_file_path().unwrap();
     state
       .borrow_mut::<PermissionsContainer>()
       .check_read_blind(&main_path, "main_module", "Deno.mainModule")?;
   }
-  Ok(main)
+  Ok(main_path)
 }
 
 pub fn ppid() -> i64 {
