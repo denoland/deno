@@ -54,6 +54,9 @@ pub struct NpmResolutionSnapshot {
   pub(super) packages_by_name: HashMap<String, Vec<NpmPackageId>>,
   #[serde(with = "map_to_vec")]
   pub(super) packages: HashMap<NpmPackageId, NpmResolutionPackage>,
+  /// Ordered list based on resolution of packages whose dependencies
+  /// have not yet been resolved
+  pub(super) pending_unresolved_packages: Vec<NpmPackageNv>,
 }
 
 impl std::fmt::Debug for NpmResolutionSnapshot {
@@ -75,6 +78,10 @@ impl std::fmt::Debug for NpmResolutionSnapshot {
       .field(
         "packages",
         &self.packages.iter().collect::<BTreeMap<_, _>>(),
+      )
+      .field(
+        "pending_unresolved_packages",
+        &self.pending_unresolved_packages,
       )
       .finish()
   }
@@ -120,19 +127,25 @@ mod map_to_vec {
 }
 
 impl NpmResolutionSnapshot {
-  /// Resolve a node package from a deno module.
-  pub fn resolve_package_from_deno_module(
+  /// Resolve a package from a package requirement.
+  pub fn resolve_pkg_from_pkg_req(
     &self,
     req: &NpmPackageReq,
   ) -> Result<&NpmResolutionPackage, AnyError> {
-    match self
-      .package_reqs
-      .get(req)
-      .and_then(|nv| self.root_packages.get(nv))
-      .and_then(|id| self.packages.get(id))
-    {
-      Some(id) => Ok(id),
+    match self.package_reqs.get(req) {
+      Some(id) => self.resolve_package_from_deno_module(id),
       None => bail!("could not find npm package directory for '{}'", req),
+    }
+  }
+
+  /// Resolve a package from a deno module.
+  pub fn resolve_package_from_deno_module(
+    &self,
+    id: &NpmPackageNv,
+  ) -> Result<&NpmResolutionPackage, AnyError> {
+    match self.root_packages.get(id) {
+      Some(id) => Ok(self.packages.get(id).unwrap()),
+      None => bail!("could not find npm package directory for '{}'", id),
     }
   }
 
@@ -342,6 +355,7 @@ impl NpmResolutionSnapshot {
       root_packages,
       packages_by_name,
       packages,
+      pending_unresolved_packages: Default::default(),
     })
   }
 }

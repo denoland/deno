@@ -232,6 +232,13 @@ impl NpmRegistryApi {
     }))
   }
 
+  /// Creates an npm registry API that will be uninitialized
+  /// and error for every request. This is useful for tests
+  /// or for initializing the LSP.
+  pub fn new_uninitialized() -> Self {
+    Self(Arc::new(NullNpmRegistryApiInner))
+  }
+
   #[cfg(test)]
   pub fn new_for_test(api: TestNpmRegistryApiInner) -> NpmRegistryApi {
     Self(Arc::new(api))
@@ -292,6 +299,13 @@ impl NpmRegistryApi {
   /// Clears the internal memory cache.
   pub fn clear_memory_cache(&self) {
     self.0.clear_memory_cache();
+  }
+
+  pub fn get_cached_package_info(
+    &self,
+    name: &str,
+  ) -> Option<Arc<NpmPackageInfo>> {
+    self.0.get_cached_package_info(name)
   }
 
   pub fn base_url(&self) -> &Url {

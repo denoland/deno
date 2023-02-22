@@ -4,6 +4,7 @@
   ],
   "modules": [
     {
+      "kind": "esm",
       "dependencies": [
         {
           "specifier": "../../subdir/mod1.ts",
@@ -22,13 +23,13 @@
           }
         }
       ],
-      "kind": "esm",
       "local": "[WILDCARD]main.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
       "specifier": "file://[WILDCARD]/json_output/main.ts"
     },
     {
+      "kind": "esm",
       "dependencies": [
         {
           "specifier": "./subdir2/mod2.ts",
@@ -47,7 +48,6 @@
           }
         }
       ],
-      "kind": "esm",
       "local": "[WILDCARD]mod1.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
@@ -61,6 +61,7 @@
       "specifier": "file://[WILDCARD]/subdir/print_hello.ts"
     },
     {
+      "kind": "esm",
       "dependencies": [
         {
           "specifier": "../print_hello.ts",
@@ -79,7 +80,6 @@
           }
         }
       ],
-      "kind": "esm",
       "local": "[WILDCARD]mod2.ts",
       [WILDCARD]
       "mediaType": "TypeScript",

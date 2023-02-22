@@ -4,19 +4,26 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_graph::npm::NpmPackageNv;
+use deno_graph::npm::NpmPackageNvReference;
 use deno_graph::npm::NpmPackageReq;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::semver::Version;
+use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 
 use crate::args::Lockfile;
+use crate::npm::resolution::common::LATEST_VERSION_REQ;
 
+use self::common::resolve_best_package_version_and_info;
 use self::graph::GraphDependencyResolver;
 use self::snapshot::NpmPackagesPartitioned;
 
@@ -27,11 +34,9 @@ use super::registry::NpmRegistryApi;
 mod common;
 mod graph;
 mod snapshot;
-mod specifier;
 
 use graph::Graph;
 pub use snapshot::NpmResolutionSnapshot;
-pub use specifier::resolve_graph_npm_info;
 
 #[derive(Debug, Error)]
 #[error("Invalid npm package id '{text}'. {message}")]
@@ -230,15 +235,19 @@ impl NpmResolutionPackage {
   }
 }
 
-pub struct NpmResolution {
+#[derive(Clone)]
+pub struct NpmResolution(Arc<NpmResolutionInner>);
+
+struct NpmResolutionInner {
   api: NpmRegistryApi,
   snapshot: RwLock<NpmResolutionSnapshot>,
   update_semaphore: tokio::sync::Semaphore,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
 impl std::fmt::Debug for NpmResolution {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let snapshot = self.snapshot.read();
+    let snapshot = self.0.snapshot.read();
     f.debug_struct("NpmResolution")
       .field("snapshot", &snapshot)
       .finish()
@@ -249,26 +258,35 @@ impl NpmResolution {
   pub fn new(
     api: NpmRegistryApi,
     initial_snapshot: Option<NpmResolutionSnapshot>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
-    Self {
+    Self(Arc::new(NpmResolutionInner {
       api,
       snapshot: RwLock::new(initial_snapshot.unwrap_or_default()),
       update_semaphore: tokio::sync::Semaphore::new(1),
-    }
+      maybe_lockfile,
+    }))
   }
 
   pub async fn add_package_reqs(
     &self,
     package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
+    let inner = &self.0;
+
     // only allow one thread in here at a time
-    let _permit = self.update_semaphore.acquire().await?;
-    let snapshot = self.snapshot.read().clone();
+    let _permit = inner.update_semaphore.acquire().await?;
+    let snapshot = inner.snapshot.read().clone();
 
-    let snapshot =
-      add_package_reqs_to_snapshot(&self.api, package_reqs, snapshot).await?;
+    let snapshot = add_package_reqs_to_snapshot(
+      &inner.api,
+      package_reqs,
+      snapshot,
+      self.0.maybe_lockfile.clone(),
+    )
+    .await?;
 
-    *self.snapshot.write() = snapshot;
+    *inner.snapshot.write() = snapshot;
     Ok(())
   }
 
@@ -276,9 +294,10 @@ impl NpmResolution {
     &self,
     package_reqs: HashSet<NpmPackageReq>,
   ) -> Result<(), AnyError> {
+    let inner = &self.0;
     // only allow one thread in here at a time
-    let _permit = self.update_semaphore.acquire().await?;
-    let snapshot = self.snapshot.read().clone();
+    let _permit = inner.update_semaphore.acquire().await?;
+    let snapshot = inner.snapshot.read().clone();
 
     let has_removed_package = !snapshot
       .package_reqs
@@ -291,22 +310,46 @@ impl NpmResolution {
       snapshot
     };
     let snapshot = add_package_reqs_to_snapshot(
-      &self.api,
+      &inner.api,
       package_reqs.into_iter().collect(),
       snapshot,
+      self.0.maybe_lockfile.clone(),
     )
     .await?;
 
-    *self.snapshot.write() = snapshot;
+    *inner.snapshot.write() = snapshot;
 
     Ok(())
   }
 
-  pub fn resolve_package_from_id(
+  pub async fn resolve_pending(&self) -> Result<(), AnyError> {
+    let inner = &self.0;
+    // only allow one thread in here at a time
+    let _permit = inner.update_semaphore.acquire().await?;
+    let snapshot = inner.snapshot.read().clone();
+
+    let snapshot = add_package_reqs_to_snapshot(
+      &inner.api,
+      Vec::new(),
+      snapshot,
+      self.0.maybe_lockfile.clone(),
+    )
+    .await?;
+
+    *inner.snapshot.write() = snapshot;
+
+    Ok(())
+  }
+
+  pub fn pkg_req_ref_to_nv_ref(
     &self,
-    id: &NpmPackageId,
-  ) -> Option<NpmResolutionPackage> {
-    self.snapshot.read().package_from_id(id).cloned()
+    req_ref: NpmPackageReqReference,
+  ) -> Result<NpmPackageNvReference, AnyError> {
+    let node_id = self.resolve_pkg_id_from_pkg_req(&req_ref.req)?;
+    Ok(NpmPackageNvReference {
+      nv: node_id.nv,
+      sub_path: req_ref.sub_path,
+    })
   }
 
   pub fn resolve_package_cache_folder_id_from_id(
@@ -314,6 +357,7 @@ impl NpmResolution {
     id: &NpmPackageId,
   ) -> Option<NpmPackageCacheFolderId> {
     self
+      .0
       .snapshot
       .read()
       .package_from_id(id)
@@ -326,6 +370,7 @@ impl NpmResolution {
     referrer: &NpmPackageCacheFolderId,
   ) -> Result<NpmResolutionPackage, AnyError> {
     self
+      .0
       .snapshot
       .read()
       .resolve_package_from_package(name, referrer)
@@ -333,36 +378,100 @@ impl NpmResolution {
   }
 
   /// Resolve a node package from a deno module.
-  pub fn resolve_package_from_deno_module(
+  pub fn resolve_pkg_id_from_pkg_req(
     &self,
-    package: &NpmPackageReq,
-  ) -> Result<NpmResolutionPackage, AnyError> {
+    req: &NpmPackageReq,
+  ) -> Result<NpmPackageId, AnyError> {
     self
+      .0
       .snapshot
       .read()
-      .resolve_package_from_deno_module(package)
-      .cloned()
+      .resolve_pkg_from_pkg_req(req)
+      .map(|pkg| pkg.pkg_id.clone())
+  }
+
+  pub fn resolve_pkg_id_from_deno_module(
+    &self,
+    id: &NpmPackageNv,
+  ) -> Result<NpmPackageId, AnyError> {
+    self
+      .0
+      .snapshot
+      .read()
+      .resolve_package_from_deno_module(id)
+      .map(|pkg| pkg.pkg_id.clone())
+  }
+
+  /// Resolves a package requirement for deno graph. This should only be
+  /// called by deno_graph's NpmResolver.
+  pub fn resolve_package_req_for_deno_graph(
+    &self,
+    pkg_req: &NpmPackageReq,
+  ) -> Result<NpmPackageNv, AnyError> {
+    let inner = &self.0;
+    // we should always have this because it should have been cached before here
+    let package_info =
+      inner.api.get_cached_package_info(&pkg_req.name).unwrap();
+
+    let mut snapshot = inner.snapshot.write();
+    let version_req =
+      pkg_req.version_req.as_ref().unwrap_or(&*LATEST_VERSION_REQ);
+    let version_and_info =
+      match snapshot.packages_by_name.get(&package_info.name) {
+        Some(existing_versions) => resolve_best_package_version_and_info(
+          version_req,
+          &package_info,
+          existing_versions.iter().map(|p| &p.nv.version),
+        )?,
+        None => resolve_best_package_version_and_info(
+          version_req,
+          &package_info,
+          Vec::new().iter(),
+        )?,
+      };
+    let id = NpmPackageNv {
+      name: package_info.name.to_string(),
+      version: version_and_info.version,
+    };
+    debug!(
+      "Resolved {}@{} to {}",
+      pkg_req.name,
+      version_req.version_text(),
+      id.to_string(),
+    );
+    snapshot.package_reqs.insert(pkg_req.clone(), id.clone());
+    let packages_with_name = snapshot
+      .packages_by_name
+      .entry(package_info.name.clone())
+      .or_default();
+    if !packages_with_name.iter().any(|p| p.nv == id) {
+      packages_with_name.push(NpmPackageId {
+        nv: id.clone(),
+        peer_dependencies: Vec::new(),
+      });
+    }
+    snapshot.pending_unresolved_packages.push(id.clone());
+    Ok(id)
   }
 
   pub fn all_packages_partitioned(&self) -> NpmPackagesPartitioned {
-    self.snapshot.read().all_packages_partitioned()
+    self.0.snapshot.read().all_packages_partitioned()
   }
 
   pub fn has_packages(&self) -> bool {
-    !self.snapshot.read().packages.is_empty()
+    !self.0.snapshot.read().packages.is_empty()
   }
 
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
-    self.snapshot.read().clone()
+    self.0.snapshot.read().clone()
   }
 
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
-    let snapshot = self.snapshot.read();
+    let snapshot = self.0.snapshot.read();
     for (package_req, nv) in snapshot.package_reqs.iter() {
-      let package_id = snapshot.root_packages.get(nv).unwrap();
       lockfile.insert_npm_specifier(
         package_req.to_string(),
-        package_id.as_serialized(),
+        snapshot.root_packages.get(nv).unwrap().as_serialized(),
       );
     }
     for package in snapshot.all_packages() {
@@ -376,10 +485,12 @@ async fn add_package_reqs_to_snapshot(
   api: &NpmRegistryApi,
   package_reqs: Vec<NpmPackageReq>,
   snapshot: NpmResolutionSnapshot,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 ) -> Result<NpmResolutionSnapshot, AnyError> {
-  if package_reqs
-    .iter()
-    .all(|req| snapshot.package_reqs.contains_key(req))
+  if snapshot.pending_unresolved_packages.is_empty()
+    && package_reqs
+      .iter()
+      .all(|req| snapshot.package_reqs.contains_key(req))
   {
     return Ok(snapshot); // already up to date
   }
@@ -390,39 +501,72 @@ async fn add_package_reqs_to_snapshot(
       "Failed creating npm state. Try recreating your lockfile."
     )
   })?;
+  let pending_unresolved = graph.take_pending_unresolved();
 
   // avoid loading the info if this is already in the graph
   let package_reqs = package_reqs
     .into_iter()
     .filter(|r| !graph.has_package_req(r))
     .collect::<Vec<_>>();
+  let pending_unresolved = pending_unresolved
+    .into_iter()
+    .filter(|p| !graph.has_root_package(p))
+    .collect::<Vec<_>>();
 
-  // go over the top level package names first, then down the tree
-  // one level at a time through all the branches
+  // cache the packages in parallel
   api
     .cache_in_parallel(
       package_reqs
         .iter()
-        .map(|r| r.name.clone())
+        .map(|req| req.name.clone())
+        .chain(pending_unresolved.iter().map(|id| id.name.clone()))
+        .collect::<HashSet<_>>()
         .into_iter()
         .collect::<Vec<_>>(),
     )
     .await?;
 
+  // go over the top level package names first (npm package reqs and pending unresolved),
+  // then down the tree one level at a time through all the branches
   let mut resolver = GraphDependencyResolver::new(&mut graph, api);
 
-  // The package reqs should already be sorted
+  // The package reqs and ids should already be sorted
   // in the order they should be resolved in.
   for package_req in package_reqs {
     let info = api.package_info(&package_req.name).await?;
     resolver.add_package_req(&package_req, &info)?;
   }
 
+  for pkg_id in pending_unresolved {
+    let info = api.package_info(&pkg_id.name).await?;
+    resolver.add_root_package(&pkg_id, &info)?;
+  }
+
   resolver.resolve_pending().await?;
 
   let result = graph.into_snapshot(api).await;
   api.clear_memory_cache();
-  result
+
+  if let Some(lockfile_mutex) = maybe_lockfile {
+    let mut lockfile = lockfile_mutex.lock();
+    match result {
+      Ok(snapshot) => {
+        for (package_req, nv) in snapshot.package_reqs.iter() {
+          lockfile.insert_npm_specifier(
+            package_req.to_string(),
+            snapshot.root_packages.get(nv).unwrap().as_serialized(),
+          );
+        }
+        for package in snapshot.all_packages() {
+          lockfile.check_or_insert_npm_package(package.into())?;
+        }
+        Ok(snapshot)
+      }
+      Err(err) => Err(err),
+    }
+  } else {
+    result
+  }
 }
 
 #[cfg(test)]
