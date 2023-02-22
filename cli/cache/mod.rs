@@ -3,6 +3,7 @@
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 
+use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
@@ -44,6 +45,7 @@ pub struct FetchCacher {
   file_fetcher: Arc<FileFetcher>,
   root_permissions: PermissionsContainer,
   cache_info_enabled: bool,
+  maybe_local_node_modules_url: Option<ModuleSpecifier>,
 }
 
 impl FetchCacher {
@@ -52,6 +54,7 @@ impl FetchCacher {
     file_fetcher: Arc<FileFetcher>,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
+    maybe_local_node_modules_url: Option<ModuleSpecifier>,
   ) -> Self {
     Self {
       emit_cache,
@@ -59,6 +62,7 @@ impl FetchCacher {
       file_fetcher,
       root_permissions,
       cache_info_enabled: false,
+      maybe_local_node_modules_url,
     }
   }
 
@@ -96,6 +100,16 @@ impl Loader for FetchCacher {
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
   ) -> LoadFuture {
+    if let Some(node_modules_url) = self.maybe_local_node_modules_url.as_ref() {
+      if specifier.as_str().starts_with(node_modules_url.as_str()) {
+        return Box::pin(futures::future::ready(Ok(Some(
+          LoadResponse::External {
+            specifier: specifier.clone(),
+          },
+        ))));
+      }
+    }
+
     let permissions = if is_dynamic {
       self.dynamic_permissions.clone()
     } else {

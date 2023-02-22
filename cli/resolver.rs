@@ -26,9 +26,6 @@ use crate::npm::NpmResolution;
 #[derive(Debug, Clone)]
 pub struct CliGraphResolver {
   maybe_import_map: Option<Arc<ImportMap>>,
-  // TODO(bartlomieju): actually use in `resolver`, once
-  // deno_graph refactors and upgrades land.
-  #[allow(dead_code)]
   maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
@@ -116,15 +113,19 @@ impl Resolver for CliGraphResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    // TODO(bartlomieju): actually use `maybe_package_json_deps` here, once
-    // deno_graph refactors and upgrades land.
     if let Some(import_map) = &self.maybe_import_map {
-      import_map
+      return import_map
         .resolve(specifier, referrer)
-        .map_err(|err| err.into())
-    } else {
-      deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
+        .map_err(|err| err.into());
     }
+
+    if let Some(deps) = self.maybe_package_json_deps.as_ref() {
+      if let Some(req) = deps.get(specifier) {
+        return Ok(ModuleSpecifier::parse(&format!("npm:{req}")).unwrap());
+      }
+    }
+
+    deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
   }
 }
 
