@@ -438,7 +438,7 @@ impl JsRuntime {
     fn get_context_data(
       scope: &mut v8::HandleScope<()>,
       context: v8::Local<v8::Context>,
-    ) -> (Vec<v8::Global<v8::Module>>, v8::Global<v8::Object>) {
+    ) -> (Vec<v8::Global<v8::Module>>, v8::Global<v8::Array>) {
       fn data_error_to_panic(err: v8::DataError) -> ! {
         match err {
           v8::DataError::BadType { actual, expected } => {
@@ -457,15 +457,11 @@ impl JsRuntime {
       // The 0th element is the module map itself, followed by X number of module
       // handles. We need to deserialize the "next_module_id" field from the
       // map to see how many module handles we expect.
-      match scope.get_context_data_from_snapshot_once::<v8::Object>(0) {
+      match scope.get_context_data_from_snapshot_once::<v8::Array>(0) {
         Ok(val) => {
           let next_module_id = {
-            let info_str = v8::String::new(&mut scope, "info").unwrap();
-            let info_data: v8::Local<v8::Array> = val
-              .get(&mut scope, info_str.into())
-              .unwrap()
-              .try_into()
-              .unwrap();
+            let info_data: v8::Local<v8::Array> =
+              val.get_index(&mut scope, 1).unwrap().try_into().unwrap();
             info_data.length()
           };
 
@@ -989,11 +985,36 @@ impl JsRuntime {
   fn init_cbs(&mut self, realm: &JsRealm) {
     let (recv_cb, build_custom_error_cb) = {
       let scope = &mut realm.handle_scope(self.v8_isolate());
-      let recv_cb =
-        Self::eval::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
-      let build_custom_error_cb =
-        Self::eval::<v8::Function>(scope, "Deno.core.buildCustomError")
-          .expect("Deno.core.buildCustomError is undefined in the realm");
+      let context = realm.context();
+      let context_local = v8::Local::new(scope, context);
+      let global = context_local.global(scope);
+      let deno_str = v8::String::new(scope, "Deno").unwrap();
+      let core_str = v8::String::new(scope, "core").unwrap();
+      let opresolve_str = v8::String::new(scope, "opresolve").unwrap();
+      let build_custom_error_str =
+        v8::String::new(scope, "buildCustomError").unwrap();
+
+      let deno_obj: v8::Local<v8::Object> = global
+        .get(scope, deno_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+      let core_obj: v8::Local<v8::Object> = deno_obj
+        .get(scope, core_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+      let recv_cb: v8::Local<v8::Function> = core_obj
+        .get(scope, opresolve_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+      let build_custom_error_cb: v8::Local<v8::Function> = core_obj
+        .get(scope, build_custom_error_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
       (
         v8::Global::new(scope, recv_cb),
         v8::Global::new(scope, build_custom_error_cb),
@@ -3648,7 +3669,7 @@ pub mod tests {
         main,
         name: specifier.to_string(),
         requests: vec![crate::modules::ModuleRequest {
-          specifier: crate::resolve_url(&format!("file:///{prev}.js")).unwrap(),
+          specifier: format!("file:///{prev}.js"),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }],
         module_type: ModuleType::JavaScript,

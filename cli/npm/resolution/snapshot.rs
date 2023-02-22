@@ -87,6 +87,30 @@ impl std::fmt::Debug for NpmResolutionSnapshot {
   }
 }
 
+impl std::fmt::Debug for NpmResolutionSnapshot {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    // do a custom debug implementation that creates deterministic output for the tests
+    f.debug_struct("NpmResolutionSnapshot")
+      .field(
+        "package_reqs",
+        &self.package_reqs.iter().collect::<BTreeMap<_, _>>(),
+      )
+      .field(
+        "root_packages",
+        &self.root_packages.iter().collect::<BTreeMap<_, _>>(),
+      )
+      .field(
+        "packages_by_name",
+        &self.packages_by_name.iter().collect::<BTreeMap<_, _>>(),
+      )
+      .field(
+        "packages",
+        &self.packages.iter().collect::<BTreeMap<_, _>>(),
+      )
+      .finish()
+  }
+}
+
 // This is done so the maps with non-string keys get serialized and deserialized as vectors.
 // Adapted from: https://github.com/serde-rs/serde/issues/936#issuecomment-302281792
 mod map_to_vec {
