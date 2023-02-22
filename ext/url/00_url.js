@@ -304,6 +304,7 @@ class URLSearchParams {
   }
 
   get size() {
+    webidl.assertBranded(this, URLSearchParamsPrototype);
     return this[_list].length;
   }
 }
