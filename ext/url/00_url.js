@@ -304,7 +304,7 @@ class URLSearchParams {
   }
 
   get size() {
-    return this[_list].length
+    return this[_list].length;
   }
 }
 

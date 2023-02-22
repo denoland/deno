@@ -152,7 +152,7 @@ declare class URLSearchParams {
   toString(): string;
 
   /** Contains the number of search parameters
-   * 
+   *
    * ```ts
    * searchParams.size
    * ```
