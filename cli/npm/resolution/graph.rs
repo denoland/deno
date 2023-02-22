@@ -159,8 +159,8 @@ impl ResolvedNodeIds {
   }
 }
 
-// todo(dsherret): for some reason the lsp errors when using an Rc<RefCell<T>> here.
-// We should investigate and fix.
+// todo(dsherret): for some reason the lsp errors when using an Rc<RefCell<NodeId>> here
+// instead of an Arc<Mutex<NodeId>>. We should investigate and fix.
 
 /// A pointer to a specific node in a graph path. The underlying node id
 /// may change as peer dependencies are created.

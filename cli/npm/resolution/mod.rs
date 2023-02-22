@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -410,14 +409,9 @@ impl NpmResolution {
     pkg_req: &NpmPackageReq,
   ) -> Result<NpmPackageNv, AnyError> {
     let inner = &self.0;
-    let package_info = match inner.api.get_cached_package_info(&pkg_req.name) {
-      Some(package_info) => package_info,
-      // should never happen because we should have cached before
-      None => bail!(
-        "Deno bug. Please report: Could not find '{}' in npm package info cache.",
-        pkg_req.name
-      ),
-    };
+    // we should always have this because it should have been cached before here
+    let package_info =
+      inner.api.get_cached_package_info(&pkg_req.name).unwrap();
 
     let mut snapshot = inner.snapshot.write();
     let version_req =

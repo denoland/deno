@@ -38,7 +38,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -641,48 +640,9 @@ fn op_resolve(
 
     let maybe_result = match resolved_dep {
       Some(ResolutionResolved { specifier, .. }) => {
-        resolve_specifier_types(specifier, state)?
+        resolve_graph_specifier_types(specifier, state)?
       }
-      _ => {
-        if let Some(npm_resolver) = state.maybe_npm_resolver.as_ref() {
-          if npm_resolver.in_npm_package(&referrer) {
-            // we're in an npm package, so use node resolution
-            Some(NodeResolution::into_specifier_and_media_type(
-              node::node_resolve(
-                &specifier,
-                &referrer,
-                NodeResolutionMode::Types,
-                npm_resolver,
-                &mut PermissionsContainer::allow_all(),
-              )
-              .ok()
-              .flatten(),
-            ))
-          } else if let Ok(npm_ref) =
-            NpmPackageReqReference::from_str(&specifier)
-          {
-            // todo(dsherret): add support for injecting this in the graph so
-            // we don't need this special code here.
-            // This could occur when resolving npm:@types/node when it is
-            // injected and not part of the graph
-            let node_id = npm_resolver
-              .resolution()
-              .resolve_pkg_id_from_pkg_req(&npm_ref.req)?;
-            let npm_id_ref = NpmPackageNvReference {
-              nv: node_id.nv,
-              sub_path: npm_ref.sub_path,
-            };
-            Some(resolve_npm_package_reference_types(
-              &npm_id_ref,
-              npm_resolver,
-            )?)
-          } else {
-            None
-          }
-        } else {
-          None
-        }
-      }
+      _ => resolve_non_graph_specifier_types(&specifier, &referrer, state)?,
     };
     let result = match maybe_result {
       Some((specifier, media_type)) => {
@@ -721,51 +681,85 @@ fn op_resolve(
   Ok(resolved)
 }
 
-fn resolve_specifier_types(
+fn resolve_graph_specifier_types(
   specifier: &ModuleSpecifier,
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
-  fn inner(
-    specifier: &ModuleSpecifier,
-    state: &State,
-    seen: &mut HashSet<ModuleSpecifier>,
-  ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
-    let graph = &state.graph;
-    Ok(match graph.get(specifier) {
-      Some(Module::Esm(module)) => {
-        if !seen.insert(module.specifier.clone()) {
-          // infinite loop, return itself
-          return Ok(Some((module.specifier.clone(), module.media_type)));
-        }
-        let maybe_types_dep = module
-          .maybe_types_dependency
-          .as_ref()
-          .map(|d| &d.dependency);
-        match maybe_types_dep.and_then(|d| d.maybe_specifier()) {
-          // follow this specifier, which might be an npm package
-          Some(specifier) => inner(specifier, state, seen)?,
-          _ => Some((module.specifier.clone(), module.media_type)),
-        }
+  let graph = &state.graph;
+  let maybe_module = graph.get(specifier);
+  // follow the types reference directive, which may be pointing at an npm package
+  let maybe_module = match maybe_module {
+    Some(Module::Esm(module)) => {
+      let maybe_types_dep = module
+        .maybe_types_dependency
+        .as_ref()
+        .map(|d| &d.dependency);
+      match maybe_types_dep.and_then(|d| d.maybe_specifier()) {
+        Some(specifier) => graph.get(specifier),
+        _ => maybe_module,
       }
-      Some(Module::Json(module)) => {
-        Some((module.specifier.clone(), module.media_type))
-      }
-      Some(Module::Npm(module)) => {
-        if let Some(npm_resolver) = &state.maybe_npm_resolver {
-          Some(resolve_npm_package_reference_types(
-            &module.nv_reference,
-            npm_resolver,
-          )?)
-        } else {
-          None
-        }
-      }
-      Some(Module::External(_) | Module::Node(_)) | None => None,
-    })
-  }
+    }
+    maybe_module => maybe_module,
+  };
 
-  let mut seen = HashSet::new();
-  inner(specifier, state, &mut seen)
+  // now get the types from the resolved module
+  match maybe_module {
+    Some(Module::Esm(module)) => {
+      Ok(Some((module.specifier.clone(), module.media_type)))
+    }
+    Some(Module::Json(module)) => {
+      Ok(Some((module.specifier.clone(), module.media_type)))
+    }
+    Some(Module::Npm(module)) => {
+      if let Some(npm_resolver) = &state.maybe_npm_resolver {
+        resolve_npm_package_reference_types(&module.nv_reference, npm_resolver)
+          .map(Some)
+      } else {
+        Ok(None)
+      }
+    }
+    Some(Module::External(_) | Module::Node(_)) | None => Ok(None),
+  }
+}
+
+fn resolve_non_graph_specifier_types(
+  specifier: &str,
+  referrer: &ModuleSpecifier,
+  state: &State,
+) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
+  let npm_resolver = match state.maybe_npm_resolver.as_ref() {
+    Some(npm_resolver) => npm_resolver,
+    None => return Ok(None), // we only support non-graph types for npm packages
+  };
+  if npm_resolver.in_npm_package(referrer) {
+    // we're in an npm package, so use node resolution
+    Ok(Some(NodeResolution::into_specifier_and_media_type(
+      node::node_resolve(
+        specifier,
+        referrer,
+        NodeResolutionMode::Types,
+        npm_resolver,
+        &mut PermissionsContainer::allow_all(),
+      )
+      .ok()
+      .flatten(),
+    )))
+  } else if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
+    // todo(dsherret): add support for injecting this in the graph so
+    // we don't need this special code here.
+    // This could occur when resolving npm:@types/node when it is
+    // injected and not part of the graph
+    let node_id = npm_resolver
+      .resolution()
+      .resolve_pkg_id_from_pkg_req(&npm_ref.req)?;
+    let npm_id_ref = NpmPackageNvReference {
+      nv: node_id.nv,
+      sub_path: npm_ref.sub_path,
+    };
+    resolve_npm_package_reference_types(&npm_id_ref, npm_resolver).map(Some)
+  } else {
+    Ok(None)
+  }
 }
 
 pub fn resolve_npm_package_reference_types(
