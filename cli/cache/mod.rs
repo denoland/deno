@@ -3,6 +3,7 @@
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 
+use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
@@ -96,6 +97,13 @@ impl Loader for FetchCacher {
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
   ) -> LoadFuture {
+    if specifier.path().contains("/node_modules/") {
+      return Box::pin(futures::future::ready(Ok(Some(
+        LoadResponse::External {
+          specifier: specifier.clone(),
+        },
+      ))));
+    }
     let permissions = if is_dynamic {
       self.dynamic_permissions.clone()
     } else {
