@@ -803,23 +803,20 @@ impl ConfigFile {
     &self,
   ) -> Result<BTreeMap<String, String>, AnyError> {
     let maybe_tasks_config = self.to_tasks_config()?;
-    if let Some(tasks_config) = maybe_tasks_config {
-      for key in tasks_config.keys() {
-        if key.is_empty() {
-          bail!("Configuration file task names cannot be empty");
-        } else if !key
-          .chars()
-          .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':'))
-        {
-          bail!("Configuration file task names must only contain alpha-numeric characters, colons (:), underscores (_), or dashes (-). Task: {}", key);
-        } else if !key.chars().next().unwrap().is_ascii_alphabetic() {
-          bail!("Configuration file task names must start with an alphabetic character. Task: {}", key);
-        }
+    let tasks_config = maybe_tasks_config.unwrap_or_default();
+    for key in tasks_config.keys() {
+      if key.is_empty() {
+        bail!("Configuration file task names cannot be empty");
+      } else if !key
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':'))
+      {
+        bail!("Configuration file task names must only contain alpha-numeric characters, colons (:), underscores (_), or dashes (-). Task: {}", key);
+      } else if !key.chars().next().unwrap().is_ascii_alphabetic() {
+        bail!("Configuration file task names must start with an alphabetic character. Task: {}", key);
       }
-      Ok(tasks_config)
-    } else {
-      bail!("No tasks found in configuration file")
     }
+    Ok(tasks_config)
   }
 
   pub fn to_lock_config(&self) -> Result<Option<LockConfig>, AnyError> {
@@ -1229,11 +1226,6 @@ mod tests {
     let mut checked = HashSet::new();
     let err = ConfigFile::discover_from(&d, &mut checked).unwrap_err();
     assert!(err.to_string().contains("Unable to parse config file"));
-  }
-
-  #[test]
-  fn tasks_no_tasks() {
-    run_task_error_test(r#"{}"#, "No tasks found in configuration file");
   }
 
   #[test]

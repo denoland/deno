@@ -828,6 +828,8 @@ impl CliOptions {
   ) -> Result<BTreeMap<String, String>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
       config_file.resolve_tasks_config()
+    } else if self.maybe_package_json.is_some() {
+      Ok(Default::default())
     } else {
       bail!("No config file found")
     }

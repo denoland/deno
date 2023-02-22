@@ -35,6 +35,7 @@ pub struct PackageJson {
   pub types: Option<String>,
   pub dependencies: Option<HashMap<String, String>>,
   pub dev_dependencies: Option<HashMap<String, String>>,
+  pub scripts: Option<HashMap<String, String>>,
 }
 
 impl PackageJson {
@@ -53,6 +54,7 @@ impl PackageJson {
       types: None,
       dependencies: None,
       dev_dependencies: None,
+      scripts: None,
     }
   }
 
@@ -144,6 +146,10 @@ impl PackageJson {
       }
     });
 
+    let scripts: Option<HashMap<String, String>> = package_json
+      .get("scripts")
+      .and_then(|d| serde_json::from_value(d.to_owned()).ok());
+
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
       if let Some(t) = t.as_str() {
@@ -179,6 +185,7 @@ impl PackageJson {
       bin,
       dependencies,
       dev_dependencies,
+      scripts,
     };
 
     CACHE.with(|cache| {

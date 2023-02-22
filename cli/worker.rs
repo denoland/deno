@@ -457,7 +457,6 @@ async fn create_main_worker_internal(
       &pkg_nv,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
-      &mut PermissionsContainer::allow_all(),
     )?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));

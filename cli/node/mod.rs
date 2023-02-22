@@ -285,17 +285,41 @@ pub fn node_resolve_npm_reference(
   Ok(Some(resolve_response))
 }
 
+pub fn node_resolve_binary_commands(
+  pkg_req: &NpmPackageReq,
+  npm_resolver: &NpmPackageResolver,
+) -> Result<Vec<String>, AnyError> {
+  let package_folder =
+    npm_resolver.resolve_package_folder_from_deno_module(pkg_req)?;
+  let package_json_path = package_folder.join("package.json");
+  let package_json = PackageJson::load(
+    npm_resolver,
+    &mut PermissionsContainer::allow_all(),
+    package_json_path,
+  )?;
+
+  Ok(match package_json.bin {
+    Some(Value::String(_)) => vec![pkg_req.name.to_string()],
+    Some(Value::Object(o)) => {
+      o.into_iter().map(|(key, _)| key).collect::<Vec<_>>()
+    }
+    _ => Vec::new(),
+  })
+}
+
 pub fn node_resolve_binary_export(
   pkg_nv: &NpmPackageNv,
   bin_name: Option<&str>,
   npm_resolver: &NpmPackageResolver,
-  permissions: &mut dyn NodePermissions,
 ) -> Result<NodeResolution, AnyError> {
   let package_folder =
     npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
   let package_json_path = package_folder.join("package.json");
-  let package_json =
-    PackageJson::load(npm_resolver, permissions, package_json_path)?;
+  let package_json = PackageJson::load(
+    npm_resolver,
+    &mut PermissionsContainer::allow_all(),
+    package_json_path,
+  )?;
   let bin = match &package_json.bin {
     Some(bin) => bin,
     None => bail!(
