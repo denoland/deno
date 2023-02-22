@@ -662,7 +662,7 @@ mod test {
   #[test]
   fn deserializes_minimal_pkg_info() {
     let text = r#"{ "version": "1.0.0", "dist": { "tarball": "value", "shasum": "test" } }"#;
-    let info: NpmPackageVersionInfo = serde_json::from_str(&text).unwrap();
+    let info: NpmPackageVersionInfo = serde_json::from_str(text).unwrap();
     assert_eq!(
       info,
       NpmPackageVersionInfo {
@@ -684,7 +684,7 @@ mod test {
   fn deserializes_bin_entry() {
     // string
     let text = r#"{ "version": "1.0.0", "bin": "bin-value", "dist": { "tarball": "value", "shasum": "test" } }"#;
-    let info: NpmPackageVersionInfo = serde_json::from_str(&text).unwrap();
+    let info: NpmPackageVersionInfo = serde_json::from_str(text).unwrap();
     assert_eq!(
       info.bin,
       Some(NpmPackageVersionBinEntry::String("bin-value".to_string()))
@@ -692,7 +692,7 @@ mod test {
 
     // map
     let text = r#"{ "version": "1.0.0", "bin": { "a": "a-value", "b": "b-value" }, "dist": { "tarball": "value", "shasum": "test" } }"#;
-    let info: NpmPackageVersionInfo = serde_json::from_str(&text).unwrap();
+    let info: NpmPackageVersionInfo = serde_json::from_str(text).unwrap();
     assert_eq!(
       info.bin,
       Some(NpmPackageVersionBinEntry::Map(HashMap::from([
