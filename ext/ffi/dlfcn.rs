@@ -38,13 +38,13 @@ impl Resource for DynamicLibraryResource {
 }
 
 impl DynamicLibraryResource {
-  pub fn get_static(&self, symbol: String) -> Result<*const c_void, AnyError> {
+  pub fn get_static(&self, symbol: String) -> Result<*mut c_void, AnyError> {
     // By default, Err returned by this function does not tell
     // which symbol wasn't exported. So we'll modify the error
     // message to include the name of symbol.
     //
     // SAFETY: The obtained T symbol is the size of a pointer.
-    match unsafe { self.lib.symbol::<*const c_void>(&symbol) } {
+    match unsafe { self.lib.symbol::<*mut c_void>(&symbol) } {
       Ok(value) => Ok(Ok(value)),
       Err(err) => Err(generic_error(format!(
         "Failed to register symbol {symbol}: {err}"
@@ -56,13 +56,7 @@ impl DynamicLibraryResource {
 pub fn needs_unwrap(rv: &NativeType) -> bool {
   matches!(
     rv,
-    NativeType::Function
-      | NativeType::Pointer
-      | NativeType::Buffer
-      | NativeType::I64
-      | NativeType::ISize
-      | NativeType::U64
-      | NativeType::USize
+    NativeType::I64 | NativeType::ISize | NativeType::U64 | NativeType::USize
   )
 }
 
@@ -257,26 +251,20 @@ fn make_sync_fn<'s>(
           match needs_unwrap {
             Some(v) => {
               let view: v8::Local<v8::ArrayBufferView> = v.try_into().unwrap();
-              let backing_store =
-                view.buffer(scope).unwrap().get_backing_store();
+              let pointer =
+                view.buffer(scope).unwrap().data().unwrap().as_ptr() as *mut u8;
 
               if is_i64(&symbol.result_type) {
                 // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
                 // it points to a fixed continuous slice of bytes on the heap.
-                let bs = unsafe {
-                  &mut *(&backing_store[..] as *const _ as *mut [u8]
-                    as *mut i64)
-                };
+                let bs = unsafe { &mut *(pointer as *mut i64) };
                 // SAFETY: We already checked that type == I64
                 let value = unsafe { result.i64_value };
                 *bs = value;
               } else {
                 // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
                 // it points to a fixed continuous slice of bytes on the heap.
-                let bs = unsafe {
-                  &mut *(&backing_store[..] as *const _ as *mut [u8]
-                    as *mut u64)
-                };
+                let bs = unsafe { &mut *(pointer as *mut u64) };
                 // SAFETY: We checked that type == U64
                 let value = unsafe { result.u64_value };
                 *bs = value;
