@@ -16,19 +16,8 @@ import type {
   BinaryLike,
   Encoding,
 } from "internal:deno_node/polyfills/internal/crypto/types.ts";
-import {
-  privateDecrypt,
-  privateEncrypt,
-  publicDecrypt,
-  publicEncrypt,
-} from "internal:deno_node/polyfills/_crypto/crypto_browserify/public_encrypt/mod.js";
 
-export {
-  privateDecrypt,
-  privateEncrypt,
-  publicDecrypt,
-  publicEncrypt,
-} from "internal:deno_node/polyfills/_crypto/crypto_browserify/public_encrypt/mod.js";
+const { ops } = globalThis.__bootstrap.core;
 
 export type CipherCCMTypes =
   | "aes-128-ccm"
@@ -279,6 +268,34 @@ export function getCipherInfo(
   }
 
   notImplemented("crypto.getCipherInfo");
+}
+
+export function privateEncrypt(
+  privateKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView | string | KeyObject,
+): Buffer {
+  const padding = privateKey.padding || 1;
+  return ops.op_node_private_encrypt(privateKey, buffer, padding);
+}
+
+export function privateDecrypt(
+  privateKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView | string | KeyObject,
+): Buffer {
+  const padding = privateKey.padding || 1;
+  return ops.op_node_private_decrypt(privateKey, buffer, padding);
+}
+
+export function publicEncrypt(
+  publicKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView | string | KeyObject,
+): Buffer {
+  const padding = publicKey.padding || 1;
+  return ops.op_node_public_encrypt(publicKey, buffer, padding);
+}
+
+export function publicDecrypt() {
+  notImplemented("crypto.publicDecrypt");
 }
 
 export default {

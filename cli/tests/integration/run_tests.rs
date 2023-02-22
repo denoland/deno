@@ -2693,6 +2693,34 @@ itest!(config_not_auto_discovered_for_remote_script {
   http_server: true,
 });
 
+itest!(package_json_auto_discovered_for_local_script_log {
+  args: "run -L debug no_deno_json/main.ts",
+  output: "run/with_package_json/no_deno_json/main.out",
+  maybe_cwd: Some("run/with_package_json/"),
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+});
+
+// In this case we shouldn't discover `package.json` file, because it's in a
+// directory that is above the directory containing `deno.json` file.
+itest!(
+  package_json_auto_discovered_for_local_script_log_with_stop {
+    args: "run -L debug with_stop/some/nested/dir/main.ts",
+    output: "run/with_package_json/with_stop/main.out",
+    maybe_cwd: Some("run/with_package_json/"),
+    envs: env_vars_for_npm_tests_no_sync_download(),
+    http_server: true,
+  }
+);
+
+itest!(package_json_auto_discovered_for_npm_binary {
+  args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
+  output: "run/with_package_json/npm_binary/main.out",
+  maybe_cwd: Some("run/with_package_json/npm_binary/"),
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+});
+
 itest!(wasm_streaming_panic_test {
   args: "run run/wasm_streaming_panic_test.js",
   output: "run/wasm_streaming_panic_test.js.out",
@@ -2793,6 +2821,30 @@ itest!(unstable_ffi_14 {
 itest!(unstable_ffi_15 {
   args: "run run/ffi/unstable_ffi_15.js",
   output: "run/ffi/unstable_ffi_15.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_16 {
+  args: "run run/ffi/unstable_ffi_16.js",
+  output: "run/ffi/unstable_ffi_16.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_17 {
+  args: "run run/ffi/unstable_ffi_17.js",
+  output: "run/ffi/unstable_ffi_17.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_18 {
+  args: "run run/ffi/unstable_ffi_18.js",
+  output: "run/ffi/unstable_ffi_18.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_19 {
+  args: "run run/ffi/unstable_ffi_19.js",
+  output: "run/ffi/unstable_ffi_19.js.out",
   exit_code: 70,
 });
 

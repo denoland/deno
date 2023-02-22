@@ -10,7 +10,6 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageId;
 use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -19,6 +18,7 @@ use crate::args::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmResolutionPackage;
 
 pub trait InnerNpmPackageResolver: Send + Sync {
@@ -76,7 +76,7 @@ pub async fn cache_packages(
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
-    packages.sort_by(|a, b| a.id.cmp(&b.id));
+    packages.sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
   }
 
   let mut handles = Vec::with_capacity(packages.len());
@@ -87,7 +87,7 @@ pub async fn cache_packages(
     let handle = tokio::task::spawn(async move {
       cache
         .ensure_package(
-          (package.id.name.as_str(), &package.id.version),
+          (package.pkg_id.nv.name.as_str(), &package.pkg_id.nv.version),
           &package.dist,
           &registry_url,
         )

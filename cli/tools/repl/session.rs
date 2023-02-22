@@ -18,7 +18,7 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
-use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_node;
 use deno_runtime::worker::MainWorker;
@@ -454,7 +454,7 @@ impl ReplSession {
 
     let npm_imports = resolved_imports
       .iter()
-      .flat_map(|url| NpmPackageReference::from_specifier(url).ok())
+      .flat_map(|url| NpmPackageReqReference::from_specifier(url).ok())
       .map(|r| r.req)
       .collect::<Vec<_>>();
     let has_node_specifier =

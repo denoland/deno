@@ -260,8 +260,8 @@ async fn build_test_graph(
   mut loader: TestLoader,
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
-  let resolver =
-    original_import_map.map(|m| CliGraphResolver::new(None, Some(Arc::new(m))));
+  let resolver = original_import_map
+    .map(|m| CliGraphResolver::new(None, Some(Arc::new(m)), None));
   let mut graph = ModuleGraph::default();
   graph
     .build(

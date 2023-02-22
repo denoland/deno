@@ -112,13 +112,16 @@ sha2 = { version = "0.10.6", features = ["oid"] }
 smallvec = "1.8"
 socket2 = "0.4.7"
 tar = "=0.4.38"
-tokio = { version = "=1.24.2", features = ["full"] }
+tokio = { version = "=1.25.0", features = ["full"] }
 tokio-rustls = "0.23.3"
 tokio-tungstenite = "0.16.1"
 tokio-util = "=0.7.4"
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 uuid = { version = "=1.1.2", features = ["v4"] }
 zstd = "=0.11.2"
+
+# crypto
+rsa = { version = "0.7.0", default-features = false, features = ["std", "pem"] }
 
 # webgpu
 raw-window-handle = "0.5.0"

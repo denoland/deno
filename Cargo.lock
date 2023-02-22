@@ -794,6 +794,7 @@ checksum = "8d7439c3735f405729d52c3fbbe4de140eaf938a1fe47d227c27f8254d4302a5"
 name = "deno"
 version = "1.30.3"
 dependencies = [
+ "async-trait",
  "atty",
  "base32",
  "base64 0.13.1",
@@ -860,6 +861,7 @@ dependencies = [
  "test_util",
  "text-size",
  "text_lines",
+ "thiserror",
  "tokio",
  "tokio-util",
  "tower-lsp",
@@ -1091,9 +1093,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.43.2"
+version = "0.43.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c8c63d016d4bbc7fcd0cecfb3903b92591ace5ba61229e2c5cf61337b21d165"
+checksum = "3b654f093ae79ca93715d6df840f45890dc61fc93e7f63ab0a7442c2a494ecac"
 dependencies = [
  "anyhow",
  "data-url",
@@ -1136,9 +1138,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.38.0"
+version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85201db46e6a8b4aeea4b5d574fd28e95477590ad08e128f2f043ec60442d550"
+checksum = "663d65cb008cddda1d705cd397d5d80fd37716e708b4182ca076244e18132ace"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -1190,12 +1192,15 @@ version = "0.26.0"
 dependencies = [
  "deno_core",
  "digest 0.10.6",
+ "idna 0.3.0",
  "md-5",
  "md4",
  "once_cell",
  "path-clean",
+ "rand",
  "regex",
  "ripemd",
+ "rsa",
  "serde",
  "sha-1 0.10.0",
  "sha2",
@@ -4974,9 +4979,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.24.2"
+version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "597a12a59981d9e3c38d216785b0c37399f6e415e8d0712047620f189371b0bb"
+checksum = "c8e00990ebabbe4c14c08aca901caed183ecd5c09562a12c824bb53d3c3fd3af"
 dependencies = [
  "autocfg",
  "bytes",
