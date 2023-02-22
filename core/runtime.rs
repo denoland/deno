@@ -438,7 +438,7 @@ impl JsRuntime {
     fn get_context_data(
       scope: &mut v8::HandleScope<()>,
       context: v8::Local<v8::Context>,
-    ) -> (Vec<v8::Global<v8::Module>>, v8::Global<v8::Array>) {
+    ) -> (Vec<v8::Global<v8::Module>>, v8::Global<v8::Object>) {
       fn data_error_to_panic(err: v8::DataError) -> ! {
         match err {
           v8::DataError::BadType { actual, expected } => {
@@ -457,11 +457,15 @@ impl JsRuntime {
       // The 0th element is the module map itself, followed by X number of module
       // handles. We need to deserialize the "next_module_id" field from the
       // map to see how many module handles we expect.
-      match scope.get_context_data_from_snapshot_once::<v8::Array>(0) {
+      match scope.get_context_data_from_snapshot_once::<v8::Object>(0) {
         Ok(val) => {
           let next_module_id = {
-            let info_data: v8::Local<v8::Array> =
-              val.get_index(&mut scope, 1).unwrap().try_into().unwrap();
+            let info_str = v8::String::new(&mut scope, "info").unwrap();
+            let info_data: v8::Local<v8::Array> = val
+              .get(&mut scope, info_str.into())
+              .unwrap()
+              .try_into()
+              .unwrap();
             info_data.length()
           };
 
@@ -615,6 +619,16 @@ impl JsRuntime {
         .iter()
         .flat_map(|ext| ext.get_esm_sources().to_owned())
         .collect::<Vec<ExtensionFileSource>>();
+
+      #[cfg(feature = "include_js_files_for_snapshotting")]
+      for source in &esm_sources {
+        use crate::ExtensionFileSourceCode;
+        if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+          &source.code
+        {
+          println!("cargo:rerun-if-changed={}", path.display())
+        }
+      }
 
       Rc::new(crate::modules::InternalModuleLoader::new(
         options.module_loader,
@@ -3644,7 +3658,7 @@ pub mod tests {
         main,
         name: specifier.to_string(),
         requests: vec![crate::modules::ModuleRequest {
-          specifier: format!("file:///{prev}.js"),
+          specifier: crate::resolve_url(&format!("file:///{prev}.js")).unwrap(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }],
         module_type: ModuleType::JavaScript,
