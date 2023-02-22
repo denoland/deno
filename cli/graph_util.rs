@@ -159,6 +159,7 @@ pub async fn create_graph_and_maybe_check(
     ps.options.to_maybe_jsx_import_source_config(),
     ps.maybe_import_map.clone(),
     ps.options.no_npm(),
+    ps.npm_resolver.clone(),
     ps.npm_resolver.api().clone(),
     ps.npm_resolver.resolution().clone(),
     maybe_package_json_deps,

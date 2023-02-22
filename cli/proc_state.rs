@@ -249,6 +249,7 @@ impl ProcState {
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
       cli_options.no_npm(),
+      npm_resolver.clone(),
       npm_resolver.api().clone(),
       npm_resolver.resolution().clone(),
       maybe_package_json_deps,
@@ -655,6 +656,7 @@ impl ProcState {
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
       self.options.no_npm(),
+      self.npm_resolver.clone(),
       self.npm_resolver.api().clone(),
       self.npm_resolver.resolution().clone(),
       // TODO(bartlomieju): this should use dependencies from `package.json`?

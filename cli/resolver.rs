@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use crate::args::JsxImportSourceConfig;
 use crate::node::resolve_builtin_node_module;
+use crate::npm::NpmPackageResolver;
 use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
 
@@ -34,6 +35,7 @@ pub struct CliGraphResolver {
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   no_npm: bool,
+  npm_resolver: NpmPackageResolver,
   npm_registry_api: NpmRegistryApi,
   npm_resolution: NpmResolution,
   sync_download_semaphore: Option<Arc<tokio::sync::Semaphore>>,
@@ -43,6 +45,7 @@ impl Default for CliGraphResolver {
   fn default() -> Self {
     // This is not ideal, but necessary for the LSP. In the future, we should
     // refactor the LSP and force this to be initialized.
+    let npm_resolver = 0;
     let npm_registry_api = NpmRegistryApi::new_uninitialized();
     let npm_resolution =
       NpmResolution::new(npm_registry_api.clone(), None, None);
@@ -51,6 +54,7 @@ impl Default for CliGraphResolver {
       maybe_default_jsx_import_source: Default::default(),
       maybe_jsx_import_source_module: Default::default(),
       no_npm: false,
+      npm_resolver,
       npm_registry_api,
       npm_resolution,
       maybe_package_json_deps: Default::default(),
@@ -64,6 +68,7 @@ impl CliGraphResolver {
     maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
     maybe_import_map: Option<Arc<ImportMap>>,
     no_npm: bool,
+    npm_resolver: NpmPackageResolver,
     npm_registry_api: NpmRegistryApi,
     npm_resolution: NpmResolution,
     maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
@@ -76,6 +81,7 @@ impl CliGraphResolver {
       maybe_jsx_import_source_module: maybe_jsx_import_source_config
         .map(|c| c.module),
       no_npm,
+      npm_resolver,
       npm_registry_api,
       npm_resolution,
       maybe_package_json_deps,
@@ -123,14 +129,16 @@ impl Resolver for CliGraphResolver {
         .map_err(|err| err.into());
     }
 
-    if let Ok(_node_builtin_module) = resolve_builtin_node_module(specifier) {
-      return Ok(
-        ModuleSpecifier::parse(&format!(
-          "node:{}",
-          specifier.strip_prefix("node:").unwrap_or(specifier)
-        ))
-        .unwrap(),
-      );
+    if !self.no_npm {
+      if let Ok(_node_builtin_module) = resolve_builtin_node_module(specifier) {
+        return Ok(
+          ModuleSpecifier::parse(&format!(
+            "node:{}",
+            specifier.strip_prefix("node:").unwrap_or(specifier)
+          ))
+          .unwrap(),
+        );
+      }
     }
 
     if let Some(deps) = self.maybe_package_json_deps.as_ref() {
