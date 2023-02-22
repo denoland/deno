@@ -1924,9 +1924,9 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
   pub temp_cwd: bool,
-  /// Copies the files at the specified directory in the
-  /// "testdata" directory to the temp folder and runs
-  /// the test from there.
+  /// Copies the files at the specified directory in the "testdata" directory
+  /// to the temp folder and runs the test from there. This is useful when
+  /// the test creates files in the testdata directory (ex. a node_modules folder)
   pub copy_temp_dir: Option<&'a str>,
   /// Relative to "testdata" directory
   pub maybe_cwd: Option<&'a str>,
