@@ -749,7 +749,7 @@
       "TODO:test-util-types.js",
       "test-util.js",
       "test-vm-static-this.js",
-      "TODO:test-webcrypto-sign-verify.js",
+      "test-webcrypto-sign-verify.js",
       "test-whatwg-encoding-custom-api-basics.js",
       "test-whatwg-encoding-custom-fatal-streaming.js",
       "test-whatwg-encoding-custom-textdecoder-fatal.js",
