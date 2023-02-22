@@ -1182,7 +1182,6 @@ impl Documents {
       npm_registry_api,
       npm_resolution,
       None,
-      None,
     );
     self.imports = Arc::new(
       if let Some(Ok(imports)) =

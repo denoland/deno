@@ -244,7 +244,6 @@ pub async fn run(
           ps.npm_resolver.api().clone(),
           ps.npm_resolver.resolution().clone(),
           None,
-          None,
         )
       },
     ),

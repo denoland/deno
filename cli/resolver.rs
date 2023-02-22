@@ -15,7 +15,6 @@ use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use deno_runtime::deno_node::is_builtin_node_module;
 use import_map::ImportMap;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::args::JsxImportSourceConfig;
@@ -29,7 +28,6 @@ use crate::npm::NpmResolution;
 pub struct CliGraphResolver {
   maybe_import_map: Option<Arc<ImportMap>>,
   maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
-  maybe_local_node_modules_path: Option<PathBuf>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   no_npm: bool,
@@ -53,7 +51,6 @@ impl Default for CliGraphResolver {
       npm_registry_api,
       npm_resolution,
       maybe_package_json_deps: Default::default(),
-      maybe_local_node_modules_path: None,
       sync_download_semaphore: Self::create_sync_download_semaphore(),
     }
   }
@@ -67,7 +64,6 @@ impl CliGraphResolver {
     npm_registry_api: NpmRegistryApi,
     npm_resolution: NpmResolution,
     maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
-    maybe_local_node_modules_path: Option<PathBuf>,
   ) -> Self {
     Self {
       maybe_import_map,
@@ -77,7 +73,6 @@ impl CliGraphResolver {
       maybe_jsx_import_source_module: maybe_jsx_import_source_config
         .map(|c| c.module),
       no_npm,
-      maybe_local_node_modules_path,
       npm_registry_api,
       npm_resolution,
       maybe_package_json_deps,
@@ -119,7 +114,6 @@ impl Resolver for CliGraphResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    eprintln!("resolve {} {}", specifier, referrer.as_str());
     if let Some(import_map) = &self.maybe_import_map {
       return import_map
         .resolve(specifier, referrer)
@@ -144,28 +138,7 @@ impl Resolver for CliGraphResolver {
       }
     }
 
-    match deno_graph::resolve_import(specifier, referrer)
-      .map_err(|err| err.into())
-    {
-      Ok(resolved) => Ok(resolved),
-      Err(err) => {
-        if !self.no_npm {
-          if let Some(local_node_modules_path) =
-            self.maybe_local_node_modules_path.as_ref()
-          {
-            if let Ok(referrer_path) = referrer.to_file_path() {
-              if referrer_path.starts_with(local_node_modules_path) {
-                return Ok(
-                  ModuleSpecifier::parse(&format!("npm:{specifier}")).unwrap(),
-                );
-              }
-            }
-          }
-        }
-
-        Err(err)
-      }
-    }
+    deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
   }
 }
 

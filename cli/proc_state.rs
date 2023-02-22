@@ -252,9 +252,6 @@ impl ProcState {
       npm_resolver.api().clone(),
       npm_resolver.resolution().clone(),
       maybe_package_json_deps,
-      cli_options
-        .resolve_local_node_modules_folder()
-        .with_context(|| "Resolving local node_modules folder.")?,
     ));
 
     let maybe_file_watcher_reporter =
@@ -669,7 +666,6 @@ impl ProcState {
       self.npm_resolver.api().clone(),
       self.npm_resolver.resolution().clone(),
       // TODO(bartlomieju): this should use dependencies from `package.json`?
-      None,
       None,
     );
     let graph_resolver = cli_resolver.as_graph_resolver();

@@ -273,7 +273,6 @@ async fn build_test_graph(
       npm_registry_api,
       npm_resolution,
       None,
-      None,
     )
   });
   let mut graph = ModuleGraph::default();
