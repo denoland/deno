@@ -1,6 +1,9 @@
 import * as path from "../../../../../../../test_util/std/path/mod.ts";
 
-const parentDir = path.dirname(path.dirname(path.fromFileUrl(import.meta.url)));
+const nodeModulesDir = path.join(
+  path.dirname(path.dirname(path.fromFileUrl(import.meta.url))),
+  "node_modules",
+);
 
-console.log(parentDir);
-console.log(Deno.statSync(parentDir));
+console.log(nodeModulesDir);
+console.log(Deno.statSync(nodeModulesDir));

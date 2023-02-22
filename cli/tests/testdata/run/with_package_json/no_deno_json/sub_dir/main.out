@@ -1,4 +1,4 @@
-[WILDCARD]no_deno_json
+[WILDCARD]node_modules
 {
   [WILDCARD]
   isDirectory: true,
