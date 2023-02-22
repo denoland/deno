@@ -223,6 +223,8 @@ Deno.test({
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
   assert(adapter.features);
+  const resources = Object.keys(Deno.resources());
+  Deno.close(Number(resources[resources.length - 1]));
 });
 
 async function checkIsWsl() {
