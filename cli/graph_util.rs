@@ -153,6 +153,9 @@ pub async fn create_graph_and_maybe_check(
     ps.file_fetcher.clone(),
     PermissionsContainer::allow_all(),
     PermissionsContainer::allow_all(),
+    ps.options
+      .resolve_local_node_modules_folder()
+      .with_context(|| "Resolving local node_modules folder.")?,
   );
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_package_json_deps = ps.options.maybe_package_json_deps()?;

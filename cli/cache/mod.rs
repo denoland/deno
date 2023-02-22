@@ -11,6 +11,7 @@ use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::permissions::PermissionsContainer;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 mod check;
@@ -45,6 +46,7 @@ pub struct FetchCacher {
   file_fetcher: Arc<FileFetcher>,
   root_permissions: PermissionsContainer,
   cache_info_enabled: bool,
+  maybe_local_node_modules_path: Option<PathBuf>,
 }
 
 impl FetchCacher {
@@ -53,6 +55,7 @@ impl FetchCacher {
     file_fetcher: Arc<FileFetcher>,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
+    maybe_local_node_modules_path: Option<PathBuf>,
   ) -> Self {
     Self {
       emit_cache,
@@ -60,6 +63,7 @@ impl FetchCacher {
       file_fetcher,
       root_permissions,
       cache_info_enabled: false,
+      maybe_local_node_modules_path,
     }
   }
 
@@ -97,13 +101,19 @@ impl Loader for FetchCacher {
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
   ) -> LoadFuture {
-    if specifier.path().contains("/node_modules/") {
-      return Box::pin(futures::future::ready(Ok(Some(
-        LoadResponse::External {
-          specifier: specifier.clone(),
-        },
-      ))));
+    if let (Ok(specifier_path), Some(node_modules_path)) = (
+      specifier.to_file_path(),
+      self.maybe_local_node_modules_path.as_ref(),
+    ) {
+      if specifier_path.starts_with(node_modules_path) {
+        return Box::pin(futures::future::ready(Ok(Some(
+          LoadResponse::External {
+            specifier: specifier.clone(),
+          },
+        ))));
+      }
     }
+
     let permissions = if is_dynamic {
       self.dynamic_permissions.clone()
     } else {

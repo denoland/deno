@@ -332,6 +332,10 @@ impl ProcState {
       self.file_fetcher.clone(),
       root_permissions,
       dynamic_permissions,
+      self
+        .options
+        .resolve_local_node_modules_folder()
+        .with_context(|| "Resolving local node_modules folder.")?,
     );
     let maybe_imports = self.options.to_maybe_imports()?;
     let graph_resolver = self.resolver.as_graph_resolver();
@@ -630,20 +634,24 @@ impl ProcState {
   }
 
   /// Creates the default loader used for creating a graph.
-  pub fn create_graph_loader(&self) -> cache::FetchCacher {
-    cache::FetchCacher::new(
+  pub fn create_graph_loader(&self) -> Result<cache::FetchCacher, AnyError> {
+    Ok(cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
       PermissionsContainer::allow_all(),
       PermissionsContainer::allow_all(),
-    )
+      self
+        .options
+        .resolve_local_node_modules_folder()
+        .with_context(|| "Resolving local node_modules folder.")?,
+    ))
   }
 
   pub async fn create_graph(
     &self,
     roots: Vec<ModuleSpecifier>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = self.create_graph_loader();
+    let mut cache = self.create_graph_loader()?;
     self.create_graph_with_loader(roots, &mut cache).await
   }
 
