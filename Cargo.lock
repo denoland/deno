@@ -810,7 +810,7 @@ dependencies = [
  "deno_core",
  "deno_doc",
  "deno_emit",
- "deno_graph 0.44.0",
+ "deno_graph",
  "deno_lint",
  "deno_lockfile",
  "deno_runtime",
@@ -1015,7 +1015,7 @@ checksum = "717302b02dd63e4e16a5e7f6339a74708a981b2addc5cbc944b9a4c74857120c"
 dependencies = [
  "cfg-if",
  "deno_ast",
- "deno_graph 0.44.0",
+ "deno_graph",
  "futures",
  "import_map 0.13.0",
  "lazy_static",
@@ -1034,7 +1034,7 @@ dependencies = [
  "anyhow",
  "base64 0.13.1",
  "deno_ast",
- "deno_graph 0.44.0",
+ "deno_graph",
  "escape8259",
  "futures",
  "parking_lot 0.11.2",
@@ -1089,26 +1089,6 @@ dependencies = [
  "serde",
  "socket2",
  "tokio",
-]
-
-[[package]]
-name = "deno_graph"
-version = "0.43.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b654f093ae79ca93715d6df840f45890dc61fc93e7f63ab0a7442c2a494ecac"
-dependencies = [
- "anyhow",
- "data-url",
- "deno_ast",
- "futures",
- "monch",
- "once_cell",
- "parking_lot 0.12.1",
- "regex",
- "serde",
- "serde_json",
- "thiserror",
- "url",
 ]
 
 [[package]]
@@ -1731,14 +1711,14 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.36.0"
+version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e08cec330eb83f0cb7f77d0ca5b0ad9bca4ed7b1eef8475d5a798be85139815"
+checksum = "a1a9f2547787db6a0f5998a91dc54a3b5031190d11edcc62739473c0299bf36b"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
  "deno_ast",
- "deno_graph 0.43.3",
+ "deno_graph",
  "futures",
  "serde",
  "serde_json",

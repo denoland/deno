@@ -121,7 +121,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   }
 
   async fn cache_packages(&self) -> Result<(), AnyError> {
-    cache_packages_in_resolver(&self).await
+    cache_packages_in_resolver(self).await
   }
 
   fn ensure_read_permission(

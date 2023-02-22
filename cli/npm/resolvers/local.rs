@@ -194,7 +194,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   }
 
   async fn cache_packages(&self) -> Result<(), AnyError> {
-    sync_resolver_with_fs(&self).await?;
+    sync_resolver_with_fs(self).await?;
     Ok(())
   }
 

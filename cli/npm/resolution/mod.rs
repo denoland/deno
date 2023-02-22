@@ -437,7 +437,7 @@ impl NpmResolution {
       };
     let id = NpmPackageNv {
       name: package_info.name.to_string(),
-      version: version_and_info.version.clone(),
+      version: version_and_info.version,
     };
     debug!(
       "Resolved {}@{} to {}",
@@ -523,7 +523,7 @@ async fn add_package_reqs_to_snapshot(
   // then down the tree one level at a time through all the branches
   cache_package_infos_in_api(api, &package_reqs, &pending_unresolved).await?;
 
-  let mut resolver = GraphDependencyResolver::new(&mut graph, &api);
+  let mut resolver = GraphDependencyResolver::new(&mut graph, api);
 
   // The package reqs and ids should already be sorted
   // in the order they should be resolved in.
@@ -539,7 +539,7 @@ async fn add_package_reqs_to_snapshot(
 
   resolver.resolve_pending().await?;
 
-  let result = graph.into_snapshot(&api).await;
+  let result = graph.into_snapshot(api).await;
   api.clear_memory_cache();
 
   if let Some(lockfile_mutex) = maybe_lockfile {

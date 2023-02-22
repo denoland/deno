@@ -119,7 +119,7 @@ impl CliModuleLoader {
               &self.ps.parsed_source_cache,
               specifier,
               *media_type,
-              &source,
+              source,
               &self.ps.emit_options,
               self.ps.emit_options_hash,
             )?

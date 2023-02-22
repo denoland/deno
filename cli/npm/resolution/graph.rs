@@ -159,7 +159,7 @@ impl ResolvedNodeIds {
   }
 }
 
-// todo(dsherret): for some reason the lsp errors if I use a Rc<RefCell<T>> here.
+// todo(dsherret): for some reason the lsp errors when using an Rc<RefCell<T>> here.
 // We should investigate and fix.
 
 /// A pointer to a specific node in a graph path. The underlying node id

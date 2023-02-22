@@ -200,7 +200,7 @@ impl ReadonlyNpmCache {
   ) -> PathBuf {
     self
       .package_name_folder(&package.name, registry_url)
-      .join(&package.version.to_string())
+      .join(package.version.to_string())
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
@@ -370,7 +370,7 @@ impl NpmCache {
     self
       .ensure_package_inner(package, dist, registry_url)
       .await
-      .with_context(|| format!("Failed caching npm package '{}'.", package))
+      .with_context(|| format!("Failed caching npm package '{package}'."))
   }
 
   async fn ensure_package_inner(

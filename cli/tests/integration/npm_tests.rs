@@ -402,7 +402,6 @@ fn cached_only_after_first_run() {
   let output = deno.wait_with_output().unwrap();
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
-  eprintln!("{}", stderr);
   assert_contains!(stderr, "Download");
   assert_contains!(stdout, "createChalk: chalk");
   assert!(output.status.success());

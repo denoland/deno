@@ -93,7 +93,7 @@ pub fn build(
   let all_modules = graph.modules().collect::<Vec<_>>();
   let remote_modules = all_modules
     .iter()
-    .filter(|m| is_remote_specifier(&m.specifier()))
+    .filter(|m| is_remote_specifier(m.specifier()))
     .copied()
     .collect::<Vec<_>>();
   let mappings =

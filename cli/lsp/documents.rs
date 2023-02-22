@@ -1627,8 +1627,8 @@ console.log(b, "hello deno");
       documents.update_config(
         Some(Arc::new(import_map)),
         None,
-        npm_registry_api.clone(),
-        npm_resolution.clone(),
+        npm_registry_api,
+        npm_resolution,
       );
 
       // check the document's dependencies
