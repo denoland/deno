@@ -616,6 +616,16 @@ impl JsRuntime {
         .flat_map(|ext| ext.get_esm_sources().to_owned())
         .collect::<Vec<ExtensionFileSource>>();
 
+      #[cfg(feature = "include_js_files_for_snapshotting")]
+      for source in &esm_sources {
+        use crate::ExtensionFileSourceCode;
+        if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+          &source.code
+        {
+          println!("cargo:rerun-if-changed={}", path.display())
+        }
+      }
+
       Rc::new(crate::modules::InternalModuleLoader::new(
         options.module_loader,
         esm_sources,
