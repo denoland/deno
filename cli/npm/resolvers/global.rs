@@ -5,10 +5,9 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_core::futures::future::BoxFuture;
-use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -67,6 +66,7 @@ impl GlobalNpmPackageResolver {
   }
 }
 
+#[async_trait]
 impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn resolve_package_folder_from_deno_module(
     &self,
@@ -120,9 +120,8 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     Ok(crate::util::fs::dir_size(&package_folder)?)
   }
 
-  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>> {
-    let resolver = self.clone();
-    async move { cache_packages_in_resolver(&resolver).await }.boxed()
+  async fn cache_packages(&self) -> Result<(), AnyError> {
+    cache_packages_in_resolver(&self).await
   }
 
   fn ensure_read_permission(

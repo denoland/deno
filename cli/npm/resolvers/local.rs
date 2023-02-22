@@ -10,12 +10,11 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::util::fs::symlink_dir;
+use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::future::BoxFuture;
-use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_runtime::deno_core::futures;
 use deno_runtime::deno_node::NodePermissions;
@@ -125,6 +124,7 @@ impl LocalNpmPackageResolver {
   }
 }
 
+#[async_trait]
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn resolve_package_folder_from_deno_module(
     &self,
@@ -193,13 +193,9 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     Ok(crate::util::fs::dir_size(&package_folder_path)?)
   }
 
-  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>> {
-    let resolver = self.clone();
-    async move {
-      sync_resolver_with_fs(&resolver).await?;
-      Ok(())
-    }
-    .boxed()
+  async fn cache_packages(&self) -> Result<(), AnyError> {
+    sync_resolver_with_fs(&self).await?;
+    Ok(())
   }
 
   fn ensure_read_permission(

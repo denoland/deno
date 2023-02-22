@@ -4,10 +4,10 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
+use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures;
-use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -18,6 +18,7 @@ use crate::npm::NpmPackageId;
 use crate::npm::NpmResolutionPackage;
 
 /// Part of the resolution that interacts with the file system.
+#[async_trait]
 pub trait NpmPackageFsResolver: Send + Sync {
   fn resolve_package_folder_from_deno_module(
     &self,
@@ -38,7 +39,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
 
   fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError>;
 
-  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>>;
+  async fn cache_packages(&self) -> Result<(), AnyError>;
 
   fn ensure_read_permission(
     &self,
