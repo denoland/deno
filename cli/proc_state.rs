@@ -332,7 +332,8 @@ impl ProcState {
       self
         .options
         .resolve_local_node_modules_folder()
-        .with_context(|| "Resolving local node_modules folder.")?,
+        .with_context(|| "Resolving local node_modules folder.")?
+        .map(|path| ModuleSpecifier::from_file_path(path).unwrap()),
     );
     let maybe_imports = self.options.to_maybe_imports()?;
     let graph_resolver = self.resolver.as_graph_resolver();
@@ -640,7 +641,8 @@ impl ProcState {
       self
         .options
         .resolve_local_node_modules_folder()
-        .with_context(|| "Resolving local node_modules folder.")?,
+        .with_context(|| "Resolving local node_modules folder.")?
+        .map(|path| ModuleSpecifier::from_file_path(path).unwrap()),
     ))
   }
 
