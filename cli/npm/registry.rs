@@ -100,6 +100,8 @@ pub struct NpmPeerDependencyMeta {
 pub struct NpmPackageVersionInfo {
   pub version: String,
   pub dist: NpmPackageVersionDistInfo,
+  #[serde(default)]
+  pub bin: HashMap<String, String>,
   // Bare specifier to version (ex. `"typescript": "^3.0.1") or possibly
   // package and version (ex. `"typescript-3.0.1": "npm:typescript@3.0.1"`).
   #[serde(default)]
