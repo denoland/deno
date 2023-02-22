@@ -554,6 +554,14 @@ static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
   Some(state)
 });
 
+fn get_npm_process_state() -> Option<&'static NpmProcessState> {
+  if !*IS_NPM_MAIN {
+    return None;
+  }
+
+  (*NPM_PROCESS_STATE).as_ref()
+}
+
 /// Overrides for the options below that when set will
 /// use these values over the values derived from the
 /// CLI flags or config file.
@@ -568,6 +576,7 @@ pub struct CliOptions {
   // the source of the options is a detail the rest of the
   // application need not concern itself with, so keep these private
   flags: Flags,
+  maybe_node_modules_folder: Option<PathBuf>,
   maybe_config_file: Option<ConfigFile>,
   maybe_package_json: Option<PackageJson>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -577,10 +586,11 @@ pub struct CliOptions {
 impl CliOptions {
   pub fn new(
     flags: Flags,
+    initial_cwd: PathBuf,
     maybe_config_file: Option<ConfigFile>,
     maybe_lockfile: Option<Lockfile>,
     maybe_package_json: Option<PackageJson>,
-  ) -> Self {
+  ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
     {
@@ -596,18 +606,28 @@ impl CliOptions {
     }
 
     let maybe_lockfile = maybe_lockfile.map(|l| Arc::new(Mutex::new(l)));
+    let maybe_node_modules_folder = resolve_local_node_modules_folder(
+      &initial_cwd,
+      &flags,
+      maybe_config_file.as_ref(),
+      maybe_package_json.as_ref(),
+    )
+    .with_context(|| "Resolving node_modules folder.")?;
 
-    Self {
+    Ok(Self {
+      flags,
       maybe_config_file,
       maybe_lockfile,
       maybe_package_json,
-      flags,
+      maybe_node_modules_folder,
       overrides: Default::default(),
-    }
+    })
   }
 
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
-    let maybe_config_file = ConfigFile::discover(&flags)?;
+    let initial_cwd =
+      std::env::current_dir().with_context(|| "Failed getting cwd.")?;
+    let maybe_config_file = ConfigFile::discover(&flags, &initial_cwd)?;
 
     let mut maybe_package_json = None;
     if let Some(config_file) = &maybe_config_file {
@@ -626,12 +646,13 @@ impl CliOptions {
     }
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
-    Ok(Self::new(
+    Self::new(
       flags,
+      initial_cwd,
       maybe_config_file,
       maybe_lock_file,
       maybe_package_json,
-    ))
+    )
   }
 
   pub fn maybe_config_file_specifier(&self) -> Option<ModuleSpecifier> {
@@ -705,16 +726,8 @@ impl CliOptions {
     .map(Some)
   }
 
-  fn get_npm_process_state(&self) -> Option<&NpmProcessState> {
-    if !self.is_npm_main() {
-      return None;
-    }
-
-    (*NPM_PROCESS_STATE).as_ref()
-  }
-
   pub fn get_npm_resolution_snapshot(&self) -> Option<NpmResolutionSnapshot> {
-    if let Some(state) = self.get_npm_process_state() {
+    if let Some(state) = get_npm_process_state() {
       // TODO(bartlomieju): remove this clone
       return Some(state.snapshot.clone());
     }
@@ -735,36 +748,19 @@ impl CliOptions {
     self.overrides.import_map_specifier = Some(path);
   }
 
-  pub fn node_modules_dir(&self) -> bool {
-    if let Some(node_modules_dir) = self.flags.node_modules_dir {
-      return node_modules_dir;
-    }
-
-    if let Some(npm_process_state) = self.get_npm_process_state() {
-      return npm_process_state.local_node_modules_path.is_some();
-    }
-
-    self.maybe_package_json.is_some()
+  pub fn has_node_modules_dir(&self) -> bool {
+    self.maybe_node_modules_folder.is_some()
   }
 
-  /// Resolves the path to use for a local node_modules folder.
-  pub fn resolve_local_node_modules_folder(
-    &self,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    let path = if !self.node_modules_dir() {
-      return Ok(None);
-    } else if let Some(state) = self.get_npm_process_state() {
-      return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
-    } else if let Some(config_path) = self
-      .maybe_config_file
+  pub fn node_modules_dir_path(&self) -> Option<PathBuf> {
+    self.maybe_node_modules_folder.clone()
+  }
+
+  pub fn node_modules_dir_specifier(&self) -> Option<ModuleSpecifier> {
+    self
+      .maybe_node_modules_folder
       .as_ref()
-      .and_then(|c| c.specifier.to_file_path().ok())
-    {
-      config_path.parent().unwrap().join("node_modules")
-    } else {
-      std::env::current_dir()?.join("node_modules")
-    };
-    Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
+      .map(|path| ModuleSpecifier::from_directory_path(path).unwrap())
   }
 
   pub fn resolve_root_cert_store(&self) -> Result<RootCertStore, AnyError> {
@@ -1079,6 +1075,40 @@ impl CliOptions {
   pub fn watch_paths(&self) -> &Option<Vec<PathBuf>> {
     &self.flags.watch
   }
+}
+
+/// Resolves the path to use for a local node_modules folder.
+fn resolve_local_node_modules_folder(
+  cwd: &PathBuf,
+  flags: &Flags,
+  maybe_config_file: Option<&ConfigFile>,
+  maybe_package_json: Option<&PackageJson>,
+) -> Result<Option<PathBuf>, AnyError> {
+  if flags.node_modules_dir == Some(false) {
+    return Ok(None);
+  }
+
+  if let Some(state) = get_npm_process_state() {
+    if let Some(local_node_modules_path) = &state.local_node_modules_path {
+      return Ok(Some(PathBuf::from(local_node_modules_path)));
+    }
+  }
+
+  // always auto-discover the local_node_modules_folder when a package.json exists
+  let path =
+    if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
+      package_json_path.parent().unwrap().join("node_modules")
+    } else if flags.node_modules_dir == None {
+      return Ok(None);
+    } else if let Some(config_path) = maybe_config_file
+      .as_ref()
+      .and_then(|c| c.specifier.to_file_path().ok())
+    {
+      config_path.parent().unwrap().join("node_modules")
+    } else {
+      cwd.join("node_modules")
+    };
+  Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
 }
 
 fn resolve_import_map_specifier(

@@ -304,7 +304,7 @@ impl CliMainWorker {
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
     deno_node::initialize_runtime(
       &mut self.worker.js_runtime,
-      self.ps.options.node_modules_dir(),
+      self.ps.options.has_node_modules_dir(),
     )
     .await?;
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
@@ -631,7 +631,7 @@ fn create_web_worker_pre_execute_module_callback(
       if ps.npm_resolver.has_packages() {
         deno_node::initialize_runtime(
           &mut worker.js_runtime,
-          ps.options.node_modules_dir(),
+          ps.options.has_node_modules_dir(),
         )
         .await?;
       }
