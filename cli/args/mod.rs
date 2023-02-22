@@ -542,9 +542,6 @@ pub fn get_root_cert_store(
 const RESOLUTION_STATE_ENV_VAR_NAME: &str =
   "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
 
-static IS_NPM_MAIN: Lazy<bool> =
-  Lazy::new(|| std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).is_ok());
-
 static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
   let state = std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
   let state: NpmProcessState = serde_json::from_str(&state).ok()?;
@@ -553,14 +550,6 @@ static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
   std::env::remove_var(RESOLUTION_STATE_ENV_VAR_NAME);
   Some(state)
 });
-
-fn get_npm_process_state() -> Option<&'static NpmProcessState> {
-  if !*IS_NPM_MAIN {
-    return None;
-  }
-
-  (*NPM_PROCESS_STATE).as_ref()
-}
 
 /// Overrides for the options below that when set will
 /// use these values over the values derived from the
@@ -727,7 +716,7 @@ impl CliOptions {
   }
 
   pub fn get_npm_resolution_snapshot(&self) -> Option<NpmResolutionSnapshot> {
-    if let Some(state) = get_npm_process_state() {
+    if let Some(state) = &*NPM_PROCESS_STATE {
       // TODO(bartlomieju): remove this clone
       return Some(state.snapshot.clone());
     }
@@ -740,7 +729,7 @@ impl CliOptions {
   // for functionality like child_process.fork. Users should NOT depend
   // on this functionality.
   pub fn is_npm_main(&self) -> bool {
-    *IS_NPM_MAIN
+    NPM_PROCESS_STATE.is_some()
   }
 
   /// Overrides the import map specifier to use.
@@ -1084,30 +1073,28 @@ fn resolve_local_node_modules_folder(
   maybe_config_file: Option<&ConfigFile>,
   maybe_package_json: Option<&PackageJson>,
 ) -> Result<Option<PathBuf>, AnyError> {
-  if flags.node_modules_dir == Some(false) {
+  let path = if flags.node_modules_dir == Some(false) {
     return Ok(None);
-  }
-
-  if let Some(state) = get_npm_process_state() {
-    if let Some(local_node_modules_path) = &state.local_node_modules_path {
-      return Ok(Some(PathBuf::from(local_node_modules_path)));
-    }
-  }
-
-  // always auto-discover the local_node_modules_folder when a package.json exists
-  let path =
-    if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
-      package_json_path.parent().unwrap().join("node_modules")
-    } else if flags.node_modules_dir == None {
-      return Ok(None);
-    } else if let Some(config_path) = maybe_config_file
-      .as_ref()
-      .and_then(|c| c.specifier.to_file_path().ok())
-    {
-      config_path.parent().unwrap().join("node_modules")
-    } else {
-      cwd.join("node_modules")
-    };
+  } else if let Some(state) = &*NPM_PROCESS_STATE {
+    return Ok(
+      state
+        .local_node_modules_path
+        .as_ref()
+        .map(|path| PathBuf::from(path)),
+    );
+  } else if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
+    // always auto-discover the local_node_modules_folder when a package.json exists
+    package_json_path.parent().unwrap().join("node_modules")
+  } else if flags.node_modules_dir == None {
+    return Ok(None);
+  } else if let Some(config_path) = maybe_config_file
+    .as_ref()
+    .and_then(|c| c.specifier.to_file_path().ok())
+  {
+    config_path.parent().unwrap().join("node_modules")
+  } else {
+    cwd.join("node_modules")
+  };
   Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
 }
 

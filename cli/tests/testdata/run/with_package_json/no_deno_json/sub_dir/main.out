@@ -1,0 +1,6 @@
+[WILDCARD]no_deno_json
+{
+  [WILDCARD]
+  isDirectory: true,
+  [WILDCARD]
+}

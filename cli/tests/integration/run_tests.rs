@@ -2770,6 +2770,16 @@ itest!(
   }
 );
 
+itest!(
+  package_json_auto_discovered_node_modules_relative_package_json {
+    args: "run -A no_deno_json/sub_dir/main.js",
+    output: "run/with_package_json/no_deno_json/sub_dir/main.out",
+    maybe_cwd: Some("run/with_package_json/"),
+    envs: env_vars_for_npm_tests_no_sync_download(),
+    http_server: true,
+  }
+);
+
 itest!(package_json_auto_discovered_for_npm_binary {
   args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
   output: "run/with_package_json/npm_binary/main.out",
