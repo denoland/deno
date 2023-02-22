@@ -23,9 +23,7 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
   let main = state.borrow::<ModuleSpecifier>().to_string();
   let main_url = deno_core::resolve_url_or_path(&main)?;
   if main_url.scheme() == "file" {
-    let main_path = std::env::current_dir()
-      .context("Failed to get current working directory")?
-      .join(main_url.to_string());
+    let main_path = main_url.to_file_path().unwrap();
     state
       .borrow_mut::<PermissionsContainer>()
       .check_read_blind(&main_path, "main_module", "Deno.mainModule")?;
