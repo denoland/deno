@@ -810,7 +810,7 @@ dependencies = [
  "deno_core",
  "deno_doc",
  "deno_emit",
- "deno_graph",
+ "deno_graph 0.44.0",
  "deno_lint",
  "deno_lockfile",
  "deno_runtime",
@@ -1009,11 +1009,13 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.55.0"
+version = "0.57.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "717302b02dd63e4e16a5e7f6339a74708a981b2addc5cbc944b9a4c74857120c"
 dependencies = [
  "cfg-if",
  "deno_ast",
- "deno_graph",
+ "deno_graph 0.44.0",
  "futures",
  "import_map 0.13.0",
  "lazy_static",
@@ -1025,12 +1027,14 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.15.0"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "068712ed5abcae4c109c4e08d7b8f959fc974726c922a6c3c71aabb613249c92"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
  "deno_ast",
- "deno_graph",
+ "deno_graph 0.44.0",
  "escape8259",
  "futures",
  "parking_lot 0.11.2",
@@ -1090,6 +1094,28 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.43.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b654f093ae79ca93715d6df840f45890dc61fc93e7f63ab0a7442c2a494ecac"
+dependencies = [
+ "anyhow",
+ "data-url",
+ "deno_ast",
+ "futures",
+ "monch",
+ "once_cell",
+ "parking_lot 0.12.1",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "url",
+]
+
+[[package]]
+name = "deno_graph"
+version = "0.44.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f03c7b4d4990cc1f09c09c6ae94ee0dc039c9fcf66a97f8e5954ee102ba0eedf"
 dependencies = [
  "anyhow",
  "data-url",
@@ -1706,11 +1732,13 @@ dependencies = [
 [[package]]
 name = "eszip"
 version = "0.36.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e08cec330eb83f0cb7f77d0ca5b0ad9bca4ed7b1eef8475d5a798be85139815"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
  "deno_ast",
- "deno_graph",
+ "deno_graph 0.43.3",
  "futures",
  "serde",
  "serde_json",
@@ -5716,7 +5744,7 @@ dependencies = [
  "fxhash",
  "log",
  "naga",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -5755,7 +5783,7 @@ dependencies = [
  "metal",
  "naga",
  "objc",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "range-alloc",
  "raw-window-handle",
