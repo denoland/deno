@@ -531,11 +531,12 @@ impl ProcState {
                   format!("Could not resolve '{}'.", module.nv_reference)
                 })
             }
-            Some(Module::External(module)) => {
-              assert_eq!(module.specifier.scheme(), "node");
-              node::resolve_builtin_node_module(module.specifier.path())
+            Some(Module::Node(module)) => {
+              node::resolve_builtin_node_module(&module.module_name)
             }
-            Some(module) => Ok(module.specifier().clone()),
+            Some(Module::Esm(module)) => Ok(module.specifier.clone()),
+            Some(Module::External(module)) => Ok(module.specifier.clone()),
+            Some(Module::Json(module)) => Ok(module.specifier.clone()),
             None => Ok(specifier.clone()),
           };
         }

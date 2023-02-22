@@ -203,7 +203,10 @@ fn get_check_hash(
         hasher.write_str(module.specifier.as_str());
         hasher.write_str(&module.source);
       }
-      Module::Json(_) | Module::External(_) | Module::Npm(_) => {
+      Module::Json(_)
+      | Module::External(_)
+      | Module::Node(_)
+      | Module::Npm(_) => {
         // ignore
       }
     }
@@ -258,7 +261,10 @@ fn get_tsc_roots(
       | MediaType::SourceMap
       | MediaType::Unknown => None,
     },
-    Module::External(_) | Module::Npm(_) | Module::Json(_) => None,
+    Module::External(_)
+    | Module::Node(_)
+    | Module::Npm(_)
+    | Module::Json(_) => None,
   }));
   result
 }

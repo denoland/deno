@@ -557,7 +557,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
           media_type = MediaType::Json;
           Some(Cow::Borrowed(&*module.source))
         }
-        Module::External(_) | Module::Npm(_) => None,
+        Module::External(_) | Module::Npm(_) | Module::Node(_) => None,
       }
     } else if state
       .maybe_npm_resolver
@@ -760,7 +760,7 @@ fn resolve_specifier_types(
           None
         }
       }
-      Some(Module::External(_)) | None => None,
+      Some(Module::External(_) | Module::Node(_)) | None => None,
     })
   }
 

@@ -125,7 +125,7 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
     let source = match module {
       Module::Esm(module) => &module.source,
       Module::Json(module) => &module.source,
-      Module::Npm(_) | Module::External(_) => continue,
+      Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
     };
     if !lockfile.check_or_insert_remote(module.specifier().as_str(), source) {
       let err = format!(
@@ -253,8 +253,8 @@ pub fn error_for_any_npm_specifier(
       Module::Npm(module) => {
         bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
       }
-      Module::External(module) if module.specifier.scheme() == "node" => {
-        bail!("Node specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
+      Module::Node(module) => {
+        bail!("Node specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: node:{}", module.module_name)
       }
       Module::Esm(_) | Module::Json(_) | Module::External(_) => {}
     }

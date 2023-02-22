@@ -104,7 +104,7 @@ pub fn build(
     let source = match module {
       Module::Esm(module) => &module.source,
       Module::Json(module) => &module.source,
-      Module::Npm(_) | Module::External(_) => continue,
+      Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
     };
     let specifier = module.specifier();
     let local_path = mappings

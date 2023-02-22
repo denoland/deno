@@ -53,7 +53,7 @@ pub async fn bundle(
             Module::Esm(m) => m.specifier.to_file_path().ok(),
             Module::Json(m) => m.specifier.to_file_path().ok(),
             // nothing to watch
-            Module::Npm(_) | Module::External(_) => None,
+            Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
           })
         })
         .collect();

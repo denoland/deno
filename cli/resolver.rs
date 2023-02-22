@@ -10,6 +10,7 @@ use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
+use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use deno_runtime::deno_node::is_builtin_node_module;
 use import_map::ImportMap;
@@ -128,13 +129,20 @@ impl Resolver for CliGraphResolver {
 }
 
 impl NpmResolver for CliGraphResolver {
-  fn supports_node_specifiers(&self) -> bool {
-    // don't use no-npm here—we'll error at the import site below
-    true
-  }
+  fn resolve_builtin_node_module(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Option<String>, UnknownBuiltInNodeModuleError> {
+    if specifier.scheme() != "node" {
+      return Ok(None);
+    }
 
-  fn is_builtin_node_module(&self, module_name: &str) -> bool {
-    is_builtin_node_module(module_name)
+    let module_name = specifier.path().to_string();
+    if is_builtin_node_module(&module_name) {
+      Ok(Some(module_name))
+    } else {
+      Err(UnknownBuiltInNodeModuleError { module_name })
+    }
   }
 
   fn load_and_cache_npm_package_info(

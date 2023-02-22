@@ -207,7 +207,10 @@ fn visit_modules(
     let module = match module {
       Module::Esm(module) => module,
       // skip visiting Json modules as they are leaves
-      Module::Json(_) | Module::Npm(_) | Module::External(_) => continue,
+      Module::Json(_)
+      | Module::Npm(_)
+      | Module::Node(_)
+      | Module::External(_) => continue,
     };
 
     let parsed_source =

@@ -401,7 +401,7 @@ impl<'a> GraphDisplayContext<'a> {
         let maybe_cache_info = match root {
           Module::Esm(module) => module.maybe_cache_info.as_ref(),
           Module::Json(module) => module.maybe_cache_info.as_ref(),
-          Module::Npm(_) | Module::External(_) => None,
+          Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         };
         if let Some(cache_info) = maybe_cache_info {
           if let Some(local) = &cache_info.local {
@@ -439,7 +439,7 @@ impl<'a> GraphDisplayContext<'a> {
             let size = match m {
               Module::Esm(module) => module.size(),
               Module::Json(module) => module.size(),
-              Module::Npm(_) | Module::External(_) => 0,
+              Module::Node(_) | Module::Npm(_) | Module::External(_) => 0,
             };
             size as f64
           })
@@ -546,7 +546,7 @@ impl<'a> GraphDisplayContext<'a> {
         Specifier(_) => match module {
           Module::Esm(module) => Some(module.size() as u64),
           Module::Json(module) => Some(module.size() as u64),
-          Module::Npm(_) | Module::External(_) => None,
+          Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         },
       };
       format!("{} {}", header_text, maybe_size_to_text(maybe_size))

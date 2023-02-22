@@ -57,7 +57,7 @@ impl Mappings {
         let media_type = match module {
           Module::Esm(module) => module.media_type,
           Module::Json(_) => MediaType::Json,
-          Module::Npm(_) | Module::External(_) => continue,
+          Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
         };
         let sub_path = sanitize_filepath(&make_url_relative(&root, &{
           let mut specifier = specifier.clone();
