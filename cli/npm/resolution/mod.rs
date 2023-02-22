@@ -519,10 +519,21 @@ async fn add_package_reqs_to_snapshot(
     .filter(|p| !graph.has_root_package(p))
     .collect::<Vec<_>>();
 
+  // cache the packages in parallel
+  api
+    .cache_in_parallel(
+      package_reqs
+        .iter()
+        .map(|req| req.name.clone())
+        .chain(pending_unresolved.iter().map(|id| id.name.clone()))
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>(),
+    )
+    .await?;
+
   // go over the top level package names first (npm package reqs and pending unresolved),
   // then down the tree one level at a time through all the branches
-  cache_package_infos_in_api(api, &package_reqs, &pending_unresolved).await?;
-
   let mut resolver = GraphDependencyResolver::new(&mut graph, api);
 
   // The package reqs and ids should already be sorted
@@ -562,25 +573,6 @@ async fn add_package_reqs_to_snapshot(
   } else {
     result
   }
-}
-
-/// Cache the package information in parallel.
-async fn cache_package_infos_in_api(
-  api: &NpmRegistryApi,
-  package_reqs: &Vec<NpmPackageReq>,
-  pending_unresolved: &Vec<NpmPackageNv>,
-) -> Result<(), AnyError> {
-  // go over the top level package names first (pending unresolved and npm package reqs),
-  // then down the tree one level at a time through all the branches
-  let mut package_names =
-    HashSet::with_capacity(package_reqs.len() + pending_unresolved.len());
-
-  package_names.extend(package_reqs.iter().map(|req| req.name.clone()));
-  package_names.extend(pending_unresolved.iter().map(|id| id.name.clone()));
-
-  api
-    .cache_in_parallel(package_names.into_iter().collect::<Vec<_>>())
-    .await
 }
 
 #[cfg(test)]
@@ -636,7 +628,7 @@ mod test {
       ],
     };
 
-    // this shouldn't change because it's used in the CLI's lockfile
+    // this shouldn't change because it's used in the lockfile
     let serialized = id.as_serialized();
     assert_eq!(serialized, "pkg-a@1.2.3_pkg-b@3.2.1__pkg-c@1.3.2__pkg-d@2.3.4_pkg-e@2.3.1__pkg-f@2.3.1");
     assert_eq!(NpmPackageId::from_serialized(&serialized).unwrap(), id);

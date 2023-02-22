@@ -57,6 +57,10 @@ impl std::fmt::Debug for NpmPackageResolver {
     f.debug_struct("NpmPackageResolver")
       .field("fs_resolver", &"<omitted>")
       .field("local_node_modules_path", &self.local_node_modules_path)
+      .field("api", &"<omitted>")
+      .field("resolution", &"<omitted>")
+      .field("cache", &"<omitted>")
+      .field("maybe_lockfile", &"<omitted>")
       .finish()
   }
 }
