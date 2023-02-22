@@ -18,6 +18,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -533,6 +534,14 @@ impl ConfigFile {
   ) -> Result<Option<ConfigFile>, AnyError> {
     /// Filenames that Deno will recognize when discovering config.
     const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
+
+    // todo(dsherret): in the future, we should enforce all callers
+    // to provide a resolved path
+    let start = if start.is_absolute() {
+      Cow::Borrowed(start)
+    } else {
+      Cow::Owned(std::env::current_dir()?.join(start))
+    };
 
     for ancestor in start.ancestors() {
       if checked.insert(ancestor.to_path_buf()) {
