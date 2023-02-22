@@ -111,7 +111,7 @@ pub fn resolve_builtin_node_module(module_name: &str) -> Result<Url, AnyError> {
   }
 
   Err(generic_error(format!(
-    "Unknown built-in \"node:\" module: {specifier}"
+    "Unknown built-in \"node:\" module: {module_name}"
   )))
 }
 
