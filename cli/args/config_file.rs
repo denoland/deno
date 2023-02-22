@@ -535,7 +535,7 @@ impl ConfigFile {
     /// Filenames that Deno will recognize when discovering config.
     const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
 
-    // todo(dsherret): in the future, we should enforce all callers
+    // todo(dsherret): in the future, we should force all callers
     // to provide a resolved path
     let start = if start.is_absolute() {
       Cow::Borrowed(start)
