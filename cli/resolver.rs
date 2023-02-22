@@ -18,7 +18,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::args::JsxImportSourceConfig;
-use crate::node::resolve_builtin_node_module;
 use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
 
@@ -118,18 +117,6 @@ impl Resolver for CliGraphResolver {
       return import_map
         .resolve(specifier, referrer)
         .map_err(|err| err.into());
-    }
-
-    if !self.no_npm {
-      if let Ok(_node_builtin_module) = resolve_builtin_node_module(specifier) {
-        return Ok(
-          ModuleSpecifier::parse(&format!(
-            "node:{}",
-            specifier.strip_prefix("node:").unwrap_or(specifier)
-          ))
-          .unwrap(),
-        );
-      }
     }
 
     if let Some(deps) = self.maybe_package_json_deps.as_ref() {
