@@ -2694,7 +2694,7 @@ itest!(config_not_auto_discovered_for_remote_script {
 });
 
 itest!(package_json_auto_discovered_for_local_script_log {
-  args: "run -L debug no_deno_json/main.ts",
+  args: "run -L debug -A no_deno_json/main.ts",
   output: "run/with_package_json/no_deno_json/main.out",
   maybe_cwd: Some("run/with_package_json/"),
   envs: env_vars_for_npm_tests_no_sync_download(),
@@ -2710,6 +2710,7 @@ itest!(
     maybe_cwd: Some("run/with_package_json/"),
     envs: env_vars_for_npm_tests_no_sync_download(),
     http_server: true,
+    exit_code: 1,
   }
 );
 
