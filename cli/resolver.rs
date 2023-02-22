@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::args::JsxImportSourceConfig;
+use crate::node::resolve_builtin_node_module;
 use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
 
@@ -116,14 +117,43 @@ impl Resolver for CliGraphResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    // TODO(bartlomieju): actually use `maybe_package_json_deps` here, once
-    // deno_graph refactors and upgrades land.
     if let Some(import_map) = &self.maybe_import_map {
-      import_map
+      return import_map
         .resolve(specifier, referrer)
-        .map_err(|err| err.into())
-    } else {
-      deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
+        .map_err(|err| err.into());
+    }
+
+    if let Ok(_node_builtin_module) = resolve_builtin_node_module(specifier) {
+      return Ok(
+        ModuleSpecifier::parse(&format!(
+          "node:{}",
+          specifier.strip_prefix("node:").unwrap_or(specifier)
+        ))
+        .unwrap(),
+      );
+    }
+
+    if let Some(deps) = self.maybe_package_json_deps.as_ref() {
+      if let Some(req) = deps.get(specifier) {
+        return Ok(ModuleSpecifier::parse(&format!("npm:{req}")).unwrap());
+      }
+    }
+
+    match deno_graph::resolve_import(specifier, referrer)
+      .map_err(|err| err.into())
+    {
+      Ok(resolved) => Ok(resolved),
+      Err(err) => {
+        // eprintln!("error in resolve import: {}", err);
+        // FIXME(bartlomieju): check using `npm_resolver.in_npm_package()`
+        if referrer.as_str().contains("node_modules") {
+          return Ok(
+            ModuleSpecifier::parse(&format!("npm:{specifier}")).unwrap(),
+          );
+        } else {
+          Err(err)
+        }
+      }
     }
   }
 }
