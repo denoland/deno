@@ -2753,6 +2753,8 @@ itest!(package_json_auto_discovered_for_local_script_log {
   args: "run -L debug -A no_deno_json/main.ts",
   output: "run/with_package_json/no_deno_json/main.out",
   maybe_cwd: Some("run/with_package_json/"),
+  // prevent creating a node_modules dir in the code directory
+  copy_temp_dir: Some("run/with_package_json/"),
   envs: env_vars_for_npm_tests_no_sync_download(),
   http_server: true,
 });
@@ -2764,6 +2766,7 @@ itest!(
     args: "run -L debug with_stop/some/nested/dir/main.ts",
     output: "run/with_package_json/with_stop/main.out",
     maybe_cwd: Some("run/with_package_json/"),
+    copy_temp_dir: Some("run/with_package_json/"),
     envs: env_vars_for_npm_tests_no_sync_download(),
     http_server: true,
     exit_code: 1,
@@ -2772,9 +2775,10 @@ itest!(
 
 itest!(
   package_json_auto_discovered_node_modules_relative_package_json {
-    args: "run -A no_deno_json/sub_dir/main.js",
+    args: "run -A main.js",
     output: "run/with_package_json/no_deno_json/sub_dir/main.out",
-    maybe_cwd: Some("run/with_package_json/"),
+    maybe_cwd: Some("run/with_package_json/no_deno_json/sub_dir"),
+    copy_temp_dir: Some("run/with_package_json/"),
     envs: env_vars_for_npm_tests_no_sync_download(),
     http_server: true,
   }
@@ -2784,6 +2788,7 @@ itest!(package_json_auto_discovered_for_npm_binary {
   args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
   output: "run/with_package_json/npm_binary/main.out",
   maybe_cwd: Some("run/with_package_json/npm_binary/"),
+  copy_temp_dir: Some("run/with_package_json/"),
   envs: env_vars_for_npm_tests_no_sync_download(),
   http_server: true,
 });

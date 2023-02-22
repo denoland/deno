@@ -520,7 +520,7 @@ impl ConfigFile {
             }
           };
           // From CWD walk up to root looking for deno.json or deno.jsonc
-          Self::discover_from(&cwd, &mut checked)
+          Self::discover_from(cwd, &mut checked)
         } else {
           Ok(None)
         }
@@ -592,7 +592,7 @@ impl ConfigFile {
       );
     }
 
-    let config_path = canonicalize_path(&config_path).map_err(|_| {
+    let config_path = canonicalize_path(config_path).map_err(|_| {
       std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
         format!(

@@ -1,4 +1,5 @@
-[WILDCARD]node_modules
+Download http://localhost:4545/npm/registry/chalk
+[WILDCARD]sub_dir
 {
   [WILDCARD]
   isDirectory: true,
