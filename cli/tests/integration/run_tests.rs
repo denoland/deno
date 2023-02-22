@@ -2880,6 +2880,30 @@ itest!(unstable_ffi_15 {
   exit_code: 70,
 });
 
+itest!(unstable_ffi_16 {
+  args: "run run/ffi/unstable_ffi_16.js",
+  output: "run/ffi/unstable_ffi_16.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_17 {
+  args: "run run/ffi/unstable_ffi_17.js",
+  output: "run/ffi/unstable_ffi_17.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_18 {
+  args: "run run/ffi/unstable_ffi_18.js",
+  output: "run/ffi/unstable_ffi_18.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_19 {
+  args: "run run/ffi/unstable_ffi_19.js",
+  output: "run/ffi/unstable_ffi_19.js.out",
+  exit_code: 70,
+});
+
 itest!(future_check2 {
   args: "run --check run/future_check.ts",
   output: "run/future_check2.out",

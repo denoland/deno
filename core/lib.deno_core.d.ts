@@ -19,7 +19,7 @@ declare namespace Deno {
 
     /** Mark following promise as "unref", ie. event loop will exit
      * if there are only "unref" promises left. */
-    function unrefOps(promiseId: number): void;
+    function unrefOp(promiseId: number): void;
 
     /**
      * List of all registered ops, in the form of a map that maps op
