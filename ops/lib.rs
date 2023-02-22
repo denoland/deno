@@ -474,6 +474,13 @@ fn codegen_arg(
       let #ident = #blk;
     };
   }
+  // Fast path for `*const c_void` and `*mut c_void`
+  if is_ptr_cvoid(&**ty) {
+    let blk = codegen_cvoid_ptr(core, idx);
+    return quote! {
+      let #ident = #blk;
+    };
+  }
   // Otherwise deserialize it via serde_v8
   quote! {
     let #ident = args.get(#idx as i32);
@@ -560,6 +567,19 @@ fn codegen_u8_ptr(core: &TokenStream2, idx: usize) -> TokenStream2 {
   }}
 }
 
+fn codegen_cvoid_ptr(core: &TokenStream2, idx: usize) -> TokenStream2 {
+  quote! {{
+    let value = args.get(#idx as i32);
+    if value.is_null() {
+      std::ptr::null_mut()
+    } else if let Ok(b) = #core::v8::Local::<#core::v8::External>::try_from(value) {
+      b.value()
+    } else {
+      return #core::_ops::throw_type_error(scope, format!("Expected External at position {}", #idx));
+    }
+  }}
+}
+
 fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
   quote! {
     if let Ok(view) = #core::v8::Local::<#core::v8::Uint32Array>::try_from(args.get(#idx as i32)) {
@@ -625,6 +645,15 @@ fn codegen_sync_ret(
   } else if is_u32_rv_result(output) {
     quote! {
       rv.set_uint32(result as u32);
+    }
+  } else if is_ptr_cvoid(output) || is_ptr_cvoid_rv(output) {
+    quote! {
+      if result.is_null() {
+        // External canot contain a null pointer, null pointers are instead represented as null.
+        rv.set_null();
+      } else {
+        rv.set(v8::External::new(scope, result as *mut ::std::ffi::c_void).into());
+      }
     }
   } else {
     quote! {
@@ -721,6 +750,15 @@ fn is_f64_slice_mut(ty: impl ToTokens) -> bool {
 
 fn is_ptr_u8(ty: impl ToTokens) -> bool {
   tokens(ty) == "* const u8"
+}
+
+fn is_ptr_cvoid(ty: impl ToTokens) -> bool {
+  tokens(&ty) == "* const c_void" || tokens(&ty) == "* mut c_void"
+}
+
+fn is_ptr_cvoid_rv(ty: impl ToTokens) -> bool {
+  tokens(&ty).contains("Result < * const c_void")
+    || tokens(&ty).contains("Result < * mut c_void")
 }
 
 fn is_optional_fast_callback_option(ty: impl ToTokens) -> bool {

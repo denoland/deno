@@ -130,10 +130,10 @@ declare namespace Deno {
    */
   type ToNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBigIntType, number | bigint>
     & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue | null>
-    & Record<NativeFunctionType, PointerValue | null>
+    & Record<NativePointerType, PointerValue>
+    & Record<NativeFunctionType, PointerValue>
     & Record<NativeBufferType, BufferSource | null>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -190,7 +190,7 @@ declare namespace Deno {
    */
   type FromNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBigIntType, number | bigint>
     & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue>
     & Record<NativeBufferType, PointerValue>
@@ -339,6 +339,9 @@ declare namespace Deno {
     [K in keyof T]: StaticForeignSymbol<T[K]>;
   };
 
+  const brand: unique symbol;
+  type PointerObject = { [brand]: unknown };
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Pointer type depends on the architecture and actual pointer value.
@@ -349,7 +352,7 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type PointerValue = number | bigint;
+  export type PointerValue = null | PointerObject;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -359,8 +362,16 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointer {
+    /** Create a pointer from a numeric value. This is one is <i>really</i> dangerous! */
+    static create(value: number | bigint): PointerValue;
+    /** Returns `true` if the two pointers point to the same address. */
+    static equals(a: PointerValue, b: PointerValue): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
     static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
+    /** Return a new pointer offset from the original by `offset` bytes. */
+    static offset(value: NonNullable<PointerValue>, offset: number): PointerValue
+    /** Get the numeric value of a pointer */
+    static value(value: PointerValue): number | bigint;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -373,9 +384,9 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: PointerValue);
+    constructor(pointer: NonNullable<PointerValue>);
 
-    pointer: PointerValue;
+    pointer: NonNullable<PointerValue>;
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
@@ -399,29 +410,31 @@ declare namespace Deno {
     getInt32(offset?: number): number;
     /** Gets an unsigned 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigUint64(offset?: number): PointerValue;
+    getBigUint64(offset?: number): number | bigint;
     /** Gets a signed 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigInt64(offset?: number): PointerValue;
+    getBigInt64(offset?: number): number | bigint;
     /** Gets a signed 32-bit float at the specified byte offset from the
      * pointer. */
     getFloat32(offset?: number): number;
     /** Gets a signed 64-bit float at the specified byte offset from the
      * pointer. */
     getFloat64(offset?: number): number;
+    /** Gets a pointer at the specified byte offset from the pointer */
+    getPointer(offset?: number): PointerValue;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the pointer. */
     getCString(offset?: number): string;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the specified pointer. */
-    static getCString(pointer: PointerValue, offset?: number): string;
+    static getCString(pointer: NonNullable<PointerValue>, offset?: number): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the pointer. */
     getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the specified pointer. */
     static getArrayBuffer(
-      pointer: PointerValue,
+      pointer: NonNullable<PointerValue>,
       byteLength: number,
       offset?: number,
     ): ArrayBuffer;
@@ -437,7 +450,7 @@ declare namespace Deno {
      *
      * Also takes optional byte offset from the pointer. */
     static copyInto(
-      pointer: PointerValue,
+      pointer: NonNullable<PointerValue>,
       destination: BufferSource,
       offset?: number,
     ): void;
@@ -452,11 +465,11 @@ declare namespace Deno {
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
     /** The pointer to the function. */
-    pointer: PointerValue;
+    pointer: NonNullable<PointerValue>;
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerValue, definition: Const<Fn>);
+    constructor(pointer: NonNullable<PointerValue>, definition: Const<Fn>);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -526,7 +539,7 @@ declare namespace Deno {
     );
 
     /** The pointer to the unsafe callback. */
-    readonly pointer: PointerValue;
+    readonly pointer: NonNullable<PointerValue>;
     /** The definition of the unsafe callback. */
     readonly definition: Definition;
     /** The callback function. */

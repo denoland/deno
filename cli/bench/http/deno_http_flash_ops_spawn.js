@@ -10,7 +10,6 @@ const path = new URL("./deno_http_flash_ops.js", import.meta.url).pathname;
 const cpus = navigator.hardwareConcurrency / 2;
 const processes = new Array(cpus);
 for (let i = 0; i < cpus; i++) {
-  // deno-lint-ignore no-deprecated-deno-api
   const proc = Deno.run({
     cmd: [executable, "run", "-A", "--unstable", path, Deno.args[0]],
   });

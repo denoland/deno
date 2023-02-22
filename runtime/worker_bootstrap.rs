@@ -58,8 +58,8 @@ impl Default for BootstrapOptions {
 }
 
 impl BootstrapOptions {
-  pub fn as_json(&self) -> String {
-    let payload = json!({
+  pub fn as_json(&self) -> serde_json::Value {
+    json!({
       // Shared bootstrap args
       "args": self.args,
       "cpuCount": self.cpu_count,
@@ -80,7 +80,6 @@ impl BootstrapOptions {
       "v8Version": deno_core::v8_version(),
       "userAgent": self.user_agent,
       "inspectFlag": self.inspect,
-    });
-    serde_json::to_string_pretty(&payload).unwrap()
+    })
   }
 }
