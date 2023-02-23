@@ -1,6 +1,4 @@
-// TODO(bartlomieju): currently we don't support actual bare specifier
-// imports; this will be done in a follow up PR.
-// import express from "express";
+import chalk from "chalk";
 
-// console.log(express);
 console.log("ok");
+console.log(chalk);

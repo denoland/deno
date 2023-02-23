@@ -17,6 +17,8 @@ use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
 use crate::npm::NpmPackageResolver;
+use crate::npm::NpmRegistryApi;
+use crate::npm::NpmResolution;
 use crate::resolver::CliGraphResolver;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -36,8 +38,8 @@ use deno_graph::GraphImport;
 use deno_graph::Resolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
+use indexmap::IndexMap;
 use once_cell::sync::Lazy;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -242,7 +244,7 @@ impl AssetOrDocument {
 
 #[derive(Debug, Default)]
 struct DocumentDependencies {
-  deps: BTreeMap<String, deno_graph::Dependency>,
+  deps: IndexMap<String, deno_graph::Dependency>,
   maybe_types_dependency: Option<deno_graph::TypesDependency>,
 }
 
@@ -255,7 +257,7 @@ impl DocumentDependencies {
     }
   }
 
-  pub fn from_module(module: &deno_graph::Module) -> Self {
+  pub fn from_module(module: &deno_graph::EsmModule) -> Self {
     Self {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
@@ -263,7 +265,7 @@ impl DocumentDependencies {
   }
 }
 
-type ModuleResult = Result<deno_graph::Module, deno_graph::ModuleGraphError>;
+type ModuleResult = Result<deno_graph::EsmModule, deno_graph::ModuleGraphError>;
 type ParsedSourceResult = Result<ParsedSource, deno_ast::Diagnostic>;
 
 #[derive(Debug)]
@@ -542,9 +544,7 @@ impl Document {
     self.0.maybe_lsp_version
   }
 
-  fn maybe_module(
-    &self,
-  ) -> Option<&Result<deno_graph::Module, deno_graph::ModuleGraphError>> {
+  fn maybe_esm_module(&self) -> Option<&ModuleResult> {
     self.0.maybe_module.as_ref()
   }
 
@@ -572,7 +572,7 @@ impl Document {
     }
   }
 
-  pub fn dependencies(&self) -> &BTreeMap<String, deno_graph::Dependency> {
+  pub fn dependencies(&self) -> &IndexMap<String, deno_graph::Dependency> {
     &self.0.dependencies.deps
   }
 
@@ -583,7 +583,7 @@ impl Document {
     &self,
     position: &lsp::Position,
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
-    let module = self.maybe_module()?.as_ref().ok()?;
+    let module = self.maybe_esm_module()?.as_ref().ok()?;
     let position = deno_graph::Position {
       line: position.line as usize,
       character: position.character as usize,
@@ -1103,19 +1103,10 @@ impl Documents {
         .and_then(|r| r.maybe_specifier())
       {
         results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
-      } else if let Ok(npm_ref) = NpmPackageReqReference::from_str(&specifier) {
-        results.push(maybe_npm_resolver.map(|npm_resolver| {
-          NodeResolution::into_specifier_and_media_type(
-            node_resolve_npm_reference(
-              &npm_ref,
-              NodeResolutionMode::Types,
-              npm_resolver,
-              &mut PermissionsContainer::allow_all(),
-            )
-            .ok()
-            .flatten(),
-          )
-        }));
+      } else if let Ok(npm_req_ref) =
+        NpmPackageReqReference::from_str(&specifier)
+      {
+        results.push(node_resolve_npm_req_ref(npm_req_ref, maybe_npm_resolver));
       } else {
         results.push(None);
       }
@@ -1159,6 +1150,8 @@ impl Documents {
     &mut self,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
+    npm_registry_api: NpmRegistryApi,
+    npm_resolution: NpmResolution,
   ) {
     fn calculate_resolver_config_hash(
       maybe_import_map: Option<&import_map::ImportMap>,
@@ -1182,8 +1175,14 @@ impl Documents {
       maybe_jsx_config.as_ref(),
     );
     // TODO(bartlomieju): handle package.json dependencies here
-    self.resolver =
-      CliGraphResolver::new(maybe_jsx_config, maybe_import_map, None);
+    self.resolver = CliGraphResolver::new(
+      maybe_jsx_config,
+      maybe_import_map,
+      false,
+      npm_registry_api,
+      npm_resolution,
+      None,
+    );
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1322,21 +1321,10 @@ impl Documents {
     maybe_npm_resolver: Option<&NpmPackageResolver>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return maybe_npm_resolver.map(|npm_resolver| {
-        NodeResolution::into_specifier_and_media_type(
-          node_resolve_npm_reference(
-            &npm_ref,
-            NodeResolutionMode::Types,
-            npm_resolver,
-            &mut PermissionsContainer::allow_all(),
-          )
-          .ok()
-          .flatten(),
-        )
-      });
+      return node_resolve_npm_req_ref(npm_ref, maybe_npm_resolver);
     }
     let doc = self.get(specifier)?;
-    let maybe_module = doc.maybe_module().and_then(|r| r.as_ref().ok());
+    let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
     let maybe_types_dependency = maybe_module
       .and_then(|m| m.maybe_types_dependency.as_ref().map(|d| &d.dependency));
     if let Some(specifier) =
@@ -1361,6 +1349,30 @@ impl Documents {
     }
     None
   }
+}
+
+fn node_resolve_npm_req_ref(
+  npm_req_ref: NpmPackageReqReference,
+  maybe_npm_resolver: Option<&NpmPackageResolver>,
+) -> Option<(ModuleSpecifier, MediaType)> {
+  maybe_npm_resolver.map(|npm_resolver| {
+    NodeResolution::into_specifier_and_media_type(
+      npm_resolver
+        .resolution()
+        .pkg_req_ref_to_nv_ref(npm_req_ref)
+        .ok()
+        .and_then(|pkg_id_ref| {
+          node_resolve_npm_reference(
+            &pkg_id_ref,
+            NodeResolutionMode::Types,
+            npm_resolver,
+            &mut PermissionsContainer::allow_all(),
+          )
+          .ok()
+          .flatten()
+        }),
+    )
+  })
 }
 
 /// Loader that will look at the open documents.
@@ -1426,7 +1438,6 @@ fn analyze_module(
   match parsed_source_result {
     Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
       specifier,
-      deno_graph::ModuleKind::Esm,
       maybe_headers,
       parsed_source,
       Some(resolver),
@@ -1440,6 +1451,8 @@ fn analyze_module(
 
 #[cfg(test)]
 mod tests {
+  use crate::npm::NpmResolution;
+
   use super::*;
   use import_map::ImportMap;
   use test_util::TempDir;
@@ -1540,6 +1553,10 @@ console.log(b, "hello deno");
 
   #[test]
   fn test_documents_refresh_dependencies_config_change() {
+    let npm_registry_api = NpmRegistryApi::new_uninitialized();
+    let npm_resolution =
+      NpmResolution::new(npm_registry_api.clone(), None, None);
+
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
     let temp_dir = TempDir::new();
@@ -1569,7 +1586,12 @@ console.log(b, "hello deno");
         .append("test".to_string(), "./file2.ts".to_string())
         .unwrap();
 
-      documents.update_config(Some(Arc::new(import_map)), None);
+      documents.update_config(
+        Some(Arc::new(import_map)),
+        None,
+        npm_registry_api.clone(),
+        npm_resolution.clone(),
+      );
 
       // open the document
       let document = documents.open(
@@ -1602,7 +1624,12 @@ console.log(b, "hello deno");
         .append("test".to_string(), "./file3.ts".to_string())
         .unwrap();
 
-      documents.update_config(Some(Arc::new(import_map)), None);
+      documents.update_config(
+        Some(Arc::new(import_map)),
+        None,
+        npm_registry_api,
+        npm_resolution,
+      );
 
       // check the document's dependencies
       let document = documents.get(&file1_specifier).unwrap();

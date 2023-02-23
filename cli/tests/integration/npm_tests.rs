@@ -581,7 +581,7 @@ fn no_npm_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(
     stderr,
-    "Following npm specifiers were requested: \"chalk@5\"; but --no-npm is specified."
+    "error: npm specifiers were requested; but --no-npm is specified\n    at file:///"
   );
   assert!(stdout.is_empty());
   assert!(!output.status.success());
@@ -623,7 +623,7 @@ fn no_npm_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(
     stderr,
-    "Following npm specifiers were requested: \"chalk@5\"; but --no-npm is specified."
+    "error: npm specifiers were requested; but --no-npm is specified\n    at file:///"
   );
   assert!(stdout.is_empty());
   assert!(!output.status.success());
@@ -820,7 +820,7 @@ fn ensure_registry_files_local() {
 
 itest!(compile_errors {
     args: "compile -A --quiet npm/cached_only/main.ts",
-    output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
+    output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5.0.1\n"),
     exit_code: 1,
     envs: env_vars_for_npm_tests(),
     http_server: true,
@@ -828,7 +828,7 @@ itest!(compile_errors {
 
 itest!(bundle_errors {
     args: "bundle --quiet npm/esm/main.js",
-    output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
+    output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5.0.1\n"),
     exit_code: 1,
     envs: env_vars_for_npm_tests(),
     http_server: true,

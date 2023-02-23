@@ -159,6 +159,9 @@ impl ResolvedNodeIds {
   }
 }
 
+// todo(dsherret): for some reason the lsp errors when using an Rc<RefCell<NodeId>> here
+// instead of an Arc<Mutex<NodeId>>. We should investigate and fix.
+
 /// A pointer to a specific node in a graph path. The underlying node id
 /// may change as peer dependencies are created.
 #[derive(Clone, Debug)]
@@ -297,6 +300,8 @@ pub struct Graph {
   // This will be set when creating from a snapshot, then
   // inform the final snapshot creation.
   packages_to_copy_index: HashMap<NpmPackageId, usize>,
+  /// Packages that the resolver should resolve first.
+  pending_unresolved_packages: Vec<NpmPackageNv>,
 }
 
 impl Graph {
@@ -359,6 +364,7 @@ impl Graph {
         .map(|(id, p)| (id.clone(), p.copy_index))
         .collect(),
       package_reqs: snapshot.package_reqs,
+      pending_unresolved_packages: snapshot.pending_unresolved_packages,
       ..Default::default()
     };
     let mut created_package_ids =
@@ -375,8 +381,16 @@ impl Graph {
     Ok(graph)
   }
 
+  pub fn take_pending_unresolved(&mut self) -> Vec<NpmPackageNv> {
+    std::mem::take(&mut self.pending_unresolved_packages)
+  }
+
   pub fn has_package_req(&self, req: &NpmPackageReq) -> bool {
     self.package_reqs.contains_key(req)
+  }
+
+  pub fn has_root_package(&self, id: &NpmPackageNv) -> bool {
+    self.root_packages.contains_key(id)
   }
 
   fn get_npm_pkg_id(&self, node_id: NodeId) -> NpmPackageId {
@@ -596,6 +610,7 @@ impl Graph {
         .collect(),
       packages,
       package_reqs: self.package_reqs,
+      pending_unresolved_packages: self.pending_unresolved_packages,
     })
   }
 
@@ -714,11 +729,43 @@ impl<'a> GraphDependencyResolver<'a> {
     }
   }
 
+  pub fn add_root_package(
+    &mut self,
+    package_nv: &NpmPackageNv,
+    package_info: &NpmPackageInfo,
+  ) -> Result<(), AnyError> {
+    if self.graph.root_packages.contains_key(package_nv) {
+      return Ok(()); // already added
+    }
+
+    // todo(dsherret): using a version requirement here is a temporary hack
+    // to reuse code in a large refactor. We should resolve the node directly
+    // from the package name and version
+    let version_req =
+      VersionReq::parse_from_specifier(&format!("{}", package_nv.version))
+        .unwrap();
+    let (pkg_id, node_id) = self.resolve_node_from_info(
+      &package_nv.name,
+      &version_req,
+      package_info,
+      None,
+    )?;
+    self.graph.root_packages.insert(pkg_id.clone(), node_id);
+    self
+      .pending_unresolved_nodes
+      .push_back(GraphPath::for_root(node_id, pkg_id));
+    Ok(())
+  }
+
   pub fn add_package_req(
     &mut self,
     package_req: &NpmPackageReq,
     package_info: &NpmPackageInfo,
   ) -> Result<(), AnyError> {
+    if self.graph.package_reqs.contains_key(package_req) {
+      return Ok(()); // already added
+    }
+
     let (pkg_id, node_id) = self.resolve_node_from_info(
       &package_req.name,
       package_req
