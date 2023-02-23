@@ -49,7 +49,7 @@ use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -799,7 +799,7 @@ impl CliOptions {
 
   pub fn maybe_package_json_deps(
     &self,
-  ) -> Result<Option<HashMap<String, NpmPackageReq>>, AnyError> {
+  ) -> Result<Option<BTreeMap<String, NpmPackageReq>>, AnyError> {
     if matches!(
       self.flags.subcommand,
       DenoSubcommand::Task(TaskFlags { task: None, .. })

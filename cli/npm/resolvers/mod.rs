@@ -19,7 +19,7 @@ use deno_runtime::deno_node::RequireNpmResolver;
 use global::GlobalNpmPackageResolver;
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -227,7 +227,7 @@ impl NpmPackageResolver {
   /// Adds the package reqs from a package.json if they exist.
   pub async fn add_package_json_deps(
     &self,
-    maybe_package_json_deps: Option<&HashMap<String, NpmPackageReq>>,
+    maybe_package_json_deps: Option<&BTreeMap<String, NpmPackageReq>>,
   ) -> Result<(), AnyError> {
     if let Some(deps) = maybe_package_json_deps {
       let mut package_reqs = deps.values().cloned().collect::<Vec<_>>();
