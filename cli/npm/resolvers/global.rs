@@ -69,7 +69,7 @@ impl GlobalNpmPackageResolver {
 #[async_trait]
 impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn root_dir_url(&self) -> &Url {
-    &self.cache.root_dir_url()
+    self.cache.root_dir_url()
   }
 
   fn resolve_package_folder_from_deno_module(
