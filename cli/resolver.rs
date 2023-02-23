@@ -113,22 +113,30 @@ impl Resolver for CliGraphResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Some(import_map) = &self.maybe_import_map {
-      return import_map
-        .resolve(specifier, referrer)
-        .map_err(|err| err.into());
-    }
+    // attempt to resolve with the import map first
+    let maybe_import_map_err = match self
+      .maybe_import_map
+      .as_ref()
+      .map(|import_map| import_map.resolve(specifier, referrer))
+    {
+      Some(Ok(value)) => return Ok(value),
+      Some(Err(err)) => Some(err),
+      None => None,
+    };
 
+    // then with package.json
     if let Some(deps) = self.maybe_package_json_deps.as_ref() {
       if let Some(specifier) = resolve_package_json_dep(specifier, deps)? {
         return Ok(specifier);
       }
-      if let Some(req) = deps.get(specifier) {
-        return Ok(ModuleSpecifier::parse(&format!("npm:{req}")).unwrap());
-      }
     }
 
-    deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
+    // otherwise, surface the import map error or try resolving when has no import map
+    if let Some(err) = maybe_import_map_err {
+      Err(err.into())
+    } else {
+      deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
+    }
   }
 }
 
