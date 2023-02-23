@@ -5,9 +5,13 @@ mod flags;
 mod flags_allow_net;
 mod import_map;
 mod lockfile;
+pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
 use ::import_map::ImportMap;
+use indexmap::IndexMap;
+
+use crate::npm::NpmResolutionSnapshot;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
@@ -32,8 +36,11 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
+use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_graph::npm::NpmPackageReq;
 use deno_runtime::colors;
+use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
@@ -41,17 +48,20 @@ use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
+use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
+use crate::npm::NpmProcessState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
@@ -375,6 +385,25 @@ fn resolve_lint_rules_options(
   }
 }
 
+/// Discover `package.json` file. If `maybe_stop_at` is provided, we will stop
+/// crawling up the directory tree at that path.
+fn discover_package_json(
+  flags: &Flags,
+  maybe_stop_at: Option<PathBuf>,
+) -> Result<Option<PackageJson>, AnyError> {
+  // TODO(bartlomieju): discover for all subcommands, but print warnings that
+  // `package.json` is ignored in bundle/compile/etc.
+
+  if let Some(package_json_dir) = flags.package_json_search_dir() {
+    let package_json_dir =
+      canonicalize_path_maybe_not_exists(&package_json_dir)?;
+    return package_json::discover_from(&package_json_dir, maybe_stop_at);
+  }
+
+  log::debug!("No package.json file found");
+  Ok(None)
+}
+
 /// Create and populate a root cert store based on the passed options and
 /// environment.
 pub fn get_root_cert_store(
@@ -459,6 +488,18 @@ pub fn get_root_cert_store(
   Ok(root_cert_store)
 }
 
+const RESOLUTION_STATE_ENV_VAR_NAME: &str =
+  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
+
+static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
+  let state = std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
+  let state: NpmProcessState = serde_json::from_str(&state).ok()?;
+  // remove the environment variable so that sub processes
+  // that are spawned do not also use this.
+  std::env::remove_var(RESOLUTION_STATE_ENV_VAR_NAME);
+  Some(state)
+});
+
 /// Overrides for the options below that when set will
 /// use these values over the values derived from the
 /// CLI flags or config file.
@@ -473,7 +514,9 @@ pub struct CliOptions {
   // the source of the options is a detail the rest of the
   // application need not concern itself with, so keep these private
   flags: Flags,
+  maybe_node_modules_folder: Option<PathBuf>,
   maybe_config_file: Option<ConfigFile>,
+  maybe_package_json: Option<PackageJson>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
 }
@@ -481,9 +524,11 @@ pub struct CliOptions {
 impl CliOptions {
   pub fn new(
     flags: Flags,
+    initial_cwd: PathBuf,
     maybe_config_file: Option<ConfigFile>,
     maybe_lockfile: Option<Lockfile>,
-  ) -> Self {
+    maybe_package_json: Option<PackageJson>,
+  ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
     {
@@ -499,20 +544,53 @@ impl CliOptions {
     }
 
     let maybe_lockfile = maybe_lockfile.map(|l| Arc::new(Mutex::new(l)));
+    let maybe_node_modules_folder = resolve_local_node_modules_folder(
+      &initial_cwd,
+      &flags,
+      maybe_config_file.as_ref(),
+      maybe_package_json.as_ref(),
+    )
+    .with_context(|| "Resolving node_modules folder.")?;
 
-    Self {
+    Ok(Self {
+      flags,
       maybe_config_file,
       maybe_lockfile,
-      flags,
+      maybe_package_json,
+      maybe_node_modules_folder,
       overrides: Default::default(),
-    }
+    })
   }
 
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
-    let maybe_config_file = ConfigFile::discover(&flags)?;
+    let initial_cwd =
+      std::env::current_dir().with_context(|| "Failed getting cwd.")?;
+    let maybe_config_file = ConfigFile::discover(&flags, &initial_cwd)?;
+
+    let mut maybe_package_json = None;
+    if let Some(config_file) = &maybe_config_file {
+      let specifier = config_file.specifier.clone();
+      if specifier.scheme() == "file" {
+        let maybe_stop_at = specifier
+          .to_file_path()
+          .unwrap()
+          .parent()
+          .map(|p| p.to_path_buf());
+
+        maybe_package_json = discover_package_json(&flags, maybe_stop_at)?;
+      }
+    } else {
+      maybe_package_json = discover_package_json(&flags, None)?;
+    }
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
-    Ok(Self::new(flags, maybe_config_file, maybe_lock_file))
+    Self::new(
+      flags,
+      initial_cwd,
+      maybe_config_file,
+      maybe_lock_file,
+      maybe_package_json,
+    )
   }
 
   pub fn maybe_config_file_specifier(&self) -> Option<ModuleSpecifier> {
@@ -576,7 +654,7 @@ impl CliOptions {
     };
     resolve_import_map_from_specifier(
       &import_map_specifier,
-      self.get_maybe_config_file().as_ref(),
+      self.maybe_config_file().as_ref(),
       file_fetcher,
     )
     .await
@@ -586,31 +664,41 @@ impl CliOptions {
     .map(Some)
   }
 
+  pub fn get_npm_resolution_snapshot(&self) -> Option<NpmResolutionSnapshot> {
+    if let Some(state) = &*NPM_PROCESS_STATE {
+      // TODO(bartlomieju): remove this clone
+      return Some(state.snapshot.clone());
+    }
+
+    None
+  }
+
+  // If the main module should be treated as being in an npm package.
+  // This is triggered via a secret environment variable which is used
+  // for functionality like child_process.fork. Users should NOT depend
+  // on this functionality.
+  pub fn is_npm_main(&self) -> bool {
+    NPM_PROCESS_STATE.is_some()
+  }
+
   /// Overrides the import map specifier to use.
   pub fn set_import_map_specifier(&mut self, path: Option<ModuleSpecifier>) {
     self.overrides.import_map_specifier = Some(path);
   }
 
-  pub fn node_modules_dir(&self) -> bool {
-    self.flags.node_modules_dir
+  pub fn has_node_modules_dir(&self) -> bool {
+    self.maybe_node_modules_folder.is_some()
   }
 
-  /// Resolves the path to use for a local node_modules folder.
-  pub fn resolve_local_node_modules_folder(
-    &self,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    let path = if !self.flags.node_modules_dir {
-      return Ok(None);
-    } else if let Some(config_path) = self
-      .maybe_config_file
+  pub fn node_modules_dir_path(&self) -> Option<PathBuf> {
+    self.maybe_node_modules_folder.clone()
+  }
+
+  pub fn node_modules_dir_specifier(&self) -> Option<ModuleSpecifier> {
+    self
+      .maybe_node_modules_folder
       .as_ref()
-      .and_then(|c| c.specifier.to_file_path().ok())
-    {
-      config_path.parent().unwrap().join("node_modules")
-    } else {
-      std::env::current_dir()?.join("node_modules")
-    };
-    Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
+      .map(|path| ModuleSpecifier::from_directory_path(path).unwrap())
   }
 
   pub fn resolve_root_cert_store(&self) -> Result<RootCertStore, AnyError> {
@@ -671,9 +759,11 @@ impl CliOptions {
 
   pub fn resolve_tasks_config(
     &self,
-  ) -> Result<BTreeMap<String, String>, AnyError> {
+  ) -> Result<IndexMap<String, String>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
       config_file.resolve_tasks_config()
+    } else if self.maybe_package_json.is_some() {
+      Ok(Default::default())
     } else {
       bail!("No config file found")
     }
@@ -699,8 +789,28 @@ impl CliOptions {
     }
   }
 
-  pub fn get_maybe_config_file(&self) -> &Option<ConfigFile> {
+  pub fn maybe_config_file(&self) -> &Option<ConfigFile> {
     &self.maybe_config_file
+  }
+
+  pub fn maybe_package_json(&self) -> &Option<PackageJson> {
+    &self.maybe_package_json
+  }
+
+  pub fn maybe_package_json_deps(
+    &self,
+  ) -> Result<Option<BTreeMap<String, NpmPackageReq>>, AnyError> {
+    if matches!(
+      self.flags.subcommand,
+      DenoSubcommand::Task(TaskFlags { task: None, .. })
+    ) {
+      // don't have any package json dependencies for deno task with no args
+      Ok(None)
+    } else if let Some(package_json) = self.maybe_package_json() {
+      package_json::get_local_package_json_version_reqs(package_json).map(Some)
+    } else {
+      Ok(None)
+    }
   }
 
   pub fn resolve_fmt_options(
@@ -911,6 +1021,33 @@ impl CliOptions {
   pub fn watch_paths(&self) -> &Option<Vec<PathBuf>> {
     &self.flags.watch
   }
+}
+
+/// Resolves the path to use for a local node_modules folder.
+fn resolve_local_node_modules_folder(
+  cwd: &Path,
+  flags: &Flags,
+  maybe_config_file: Option<&ConfigFile>,
+  maybe_package_json: Option<&PackageJson>,
+) -> Result<Option<PathBuf>, AnyError> {
+  let path = if flags.node_modules_dir == Some(false) {
+    return Ok(None);
+  } else if let Some(state) = &*NPM_PROCESS_STATE {
+    return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
+  } else if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
+    // always auto-discover the local_node_modules_folder when a package.json exists
+    package_json_path.parent().unwrap().join("node_modules")
+  } else if flags.node_modules_dir.is_none() {
+    return Ok(None);
+  } else if let Some(config_path) = maybe_config_file
+    .as_ref()
+    .and_then(|c| c.specifier.to_file_path().ok())
+  {
+    config_path.parent().unwrap().join("node_modules")
+  } else {
+    cwd.join("node_modules")
+  };
+  Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
 }
 
 fn resolve_import_map_specifier(

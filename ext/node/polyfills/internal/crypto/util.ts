@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { getCiphers } from "internal:deno_node/polyfills/_crypto/crypto_browserify/browserify_aes/mod.js";
 import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
 import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
 import {
@@ -46,6 +45,28 @@ const digestAlgorithms = [
   "md5",
   "sha1",
 ];
+
+// deno-fmt-ignore
+const supportedCiphers = [
+  "aes-128-ecb",  "aes-192-ecb",
+  "aes-256-ecb",  "aes-128-cbc",
+  "aes-192-cbc",  "aes-256-cbc",
+  "aes128",       "aes192",
+  "aes256",       "aes-128-cfb",
+  "aes-192-cfb",  "aes-256-cfb",
+  "aes-128-cfb8", "aes-192-cfb8",
+  "aes-256-cfb8", "aes-128-cfb1",
+  "aes-192-cfb1", "aes-256-cfb1",
+  "aes-128-ofb",  "aes-192-ofb",
+  "aes-256-ofb",  "aes-128-ctr",
+  "aes-192-ctr",  "aes-256-ctr",
+  "aes-128-gcm",  "aes-192-gcm",
+  "aes-256-gcm"
+];
+
+export function getCiphers(): string[] {
+  return supportedCiphers;
+}
 
 let defaultEncoding = "buffer";
 
@@ -112,7 +133,7 @@ export function setEngine(_engine: string, _flags: typeof constants) {
   notImplemented("crypto.setEngine");
 }
 
-export { getCiphers, kHandle, kKeyObject };
+export { kHandle, kKeyObject };
 
 export default {
   getDefaultEncoding,

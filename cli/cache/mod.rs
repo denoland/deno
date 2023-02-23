@@ -2,6 +2,7 @@
 
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
+use crate::util::fs::canonicalize_path;
 
 use deno_core::futures;
 use deno_core::futures::FutureExt;
@@ -45,6 +46,7 @@ pub struct FetchCacher {
   file_fetcher: Arc<FileFetcher>,
   root_permissions: PermissionsContainer,
   cache_info_enabled: bool,
+  maybe_local_node_modules_url: Option<ModuleSpecifier>,
 }
 
 impl FetchCacher {
@@ -53,6 +55,7 @@ impl FetchCacher {
     file_fetcher: Arc<FileFetcher>,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
+    maybe_local_node_modules_url: Option<ModuleSpecifier>,
   ) -> Self {
     Self {
       emit_cache,
@@ -60,6 +63,7 @@ impl FetchCacher {
       file_fetcher,
       root_permissions,
       cache_info_enabled: false,
+      maybe_local_node_modules_url,
     }
   }
 
@@ -73,10 +77,6 @@ impl FetchCacher {
 impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
     if !self.cache_info_enabled {
-      return None;
-    }
-
-    if matches!(specifier.scheme(), "npm" | "node") {
       return None;
     }
 
@@ -101,32 +101,26 @@ impl Loader for FetchCacher {
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
   ) -> LoadFuture {
-    if specifier.scheme() == "npm" {
-      return Box::pin(futures::future::ready(
-        match deno_graph::npm::NpmPackageReference::from_specifier(specifier) {
-          Ok(_) => Ok(Some(deno_graph::source::LoadResponse::External {
-            specifier: specifier.clone(),
-          })),
-          Err(err) => Err(err.into()),
-        },
-      ));
-    }
-
-    let specifier =
-      if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
-        // Built-in Node modules are embedded in the Deno binary (in V8 snapshot)
-        // so we don't want them to be loaded by the "deno graph".
-        match crate::node::resolve_builtin_node_module(module_name) {
-          Ok(specifier) => {
-            return Box::pin(futures::future::ready(Ok(Some(
-              deno_graph::source::LoadResponse::External { specifier },
-            ))))
-          }
-          Err(err) => return Box::pin(futures::future::ready(Err(err))),
+    if let Some(node_modules_url) = self.maybe_local_node_modules_url.as_ref() {
+      // The specifier might be in a completely different symlinked tree than
+      // what the resolved node_modules_url is in (ex. `/my-project-1/node_modules`
+      // symlinked to `/my-project-2/node_modules`), so first check if the path
+      // is in a node_modules dir to avoid needlessly canonicalizing, then compare
+      // against the canonicalized specifier.
+      if specifier.path().contains("/node_modules/") {
+        let specifier = specifier
+          .to_file_path()
+          .ok()
+          .and_then(|path| canonicalize_path(&path).ok())
+          .and_then(|path| ModuleSpecifier::from_file_path(path).ok())
+          .unwrap_or_else(|| specifier.clone());
+        if specifier.as_str().starts_with(node_modules_url.as_str()) {
+          return Box::pin(futures::future::ready(Ok(Some(
+            LoadResponse::External { specifier },
+          ))));
         }
-      } else {
-        specifier.clone()
-      };
+      }
+    }
 
     let permissions = if is_dynamic {
       self.dynamic_permissions.clone()
@@ -134,6 +128,7 @@ impl Loader for FetchCacher {
       self.root_permissions.clone()
     };
     let file_fetcher = self.file_fetcher.clone();
+    let specifier = specifier.clone();
 
     async move {
       file_fetcher

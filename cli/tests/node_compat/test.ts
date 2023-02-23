@@ -39,9 +39,10 @@ for await (const path of testPaths) {
   ) {
     continue;
   }
+  const isTodo = path.includes("TODO");
   const ignore =
     (Deno.build.os === "windows" && windowsIgnorePaths.has(path)) ||
-    (Deno.build.os === "darwin" && darwinIgnorePaths.has(path));
+    (Deno.build.os === "darwin" && darwinIgnorePaths.has(path)) || isTodo;
   Deno.test({
     name: `Node.js compatibility "${path}"`,
     ignore,
@@ -60,7 +61,7 @@ for await (const path of testPaths) {
         "-A",
         "--quiet",
         "--unstable",
-        "--unsafely-ignore-certificate-errors",
+        //"--unsafely-ignore-certificate-errors",
         "--v8-flags=" + v8Flags.join(),
         testCase.endsWith(".mjs") ? "--import-map=" + importMap : "runner.ts",
         testCase,
@@ -94,7 +95,8 @@ for await (const path of testPaths) {
 }
 
 function checkConfigTestFilesOrder(testFileLists: Array<string[]>) {
-  for (const testFileList of testFileLists) {
+  for (let testFileList of testFileLists) {
+    testFileList = testFileList.filter((name) => !name.startsWith("TODO:"));
     const sortedTestList = JSON.parse(JSON.stringify(testFileList));
     sortedTestList.sort();
     if (JSON.stringify(testFileList) !== JSON.stringify(sortedTestList)) {

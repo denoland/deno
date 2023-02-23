@@ -87,6 +87,7 @@ flate2 = "=1.0.24"
 futures = "0.3.21"
 http = "=0.2.8"
 hyper = "0.14.18"
+indexmap = "1.9.2"
 libc = "0.2.126"
 log = "=0.4.17"
 lzzzz = "1.0"
@@ -119,6 +120,9 @@ tokio-util = "=0.7.4"
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 uuid = { version = "=1.1.2", features = ["v4"] }
 zstd = "=0.11.2"
+
+# crypto
+rsa = { version = "0.7.0", default-features = false, features = ["std", "pem"] }
 
 # webgpu
 raw-window-handle = "0.5.0"

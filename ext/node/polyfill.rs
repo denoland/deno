@@ -1,15 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub fn find_builtin_node_module(
-  specifier: &str,
+  module_name: &str,
 ) -> Option<&NodeModulePolyfill> {
   SUPPORTED_BUILTIN_NODE_MODULES
     .iter()
-    .find(|m| m.name == specifier)
+    .find(|m| m.name == module_name)
 }
 
-pub fn is_builtin_node_module(specifier: &str) -> bool {
-  find_builtin_node_module(specifier).is_some()
+pub fn is_builtin_node_module(module_name: &str) -> bool {
+  find_builtin_node_module(module_name).is_some()
 }
 
 pub struct NodeModulePolyfill {

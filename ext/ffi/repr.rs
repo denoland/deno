@@ -14,15 +14,89 @@ use std::ffi::CStr;
 use std::ptr;
 
 #[op(fast)]
+fn op_ffi_ptr_create<FP>(
+  state: &mut deno_core::OpState,
+  ptr_number: usize,
+) -> Result<*mut c_void, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointer#create");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  Ok(ptr_number as *mut c_void)
+}
+
+#[op(fast)]
+pub fn op_ffi_ptr_equals<FP>(
+  state: &mut deno_core::OpState,
+  a: *const c_void,
+  b: *const c_void,
+) -> Result<bool, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointer#equals");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  Ok(a == b)
+}
+
+#[op(fast)]
 pub fn op_ffi_ptr_of<FP>(
   state: &mut deno_core::OpState,
   buf: *const u8,
+) -> Result<*mut c_void, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointer#of");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  Ok(buf as *mut c_void)
+}
+
+#[op(fast)]
+fn op_ffi_ptr_offset<FP>(
+  state: &mut deno_core::OpState,
+  ptr: *mut c_void,
+  offset: isize,
+) -> Result<*mut c_void, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointer#offset");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid pointer to offset, pointer is null"));
+  }
+
+  // SAFETY: Pointer and offset are user provided.
+  Ok(unsafe { ptr.offset(offset) })
+}
+
+unsafe extern "C" fn noop_deleter_callback(
+  _data: *mut c_void,
+  _byte_length: usize,
+  _deleter_data: *mut c_void,
+) {
+}
+
+#[op(fast)]
+fn op_ffi_ptr_value<FP>(
+  state: &mut deno_core::OpState,
+  ptr: *mut c_void,
   out: &mut [u32],
 ) -> Result<(), AnyError>
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointer#of");
+  check_unstable(state, "Deno.UnsafePointer#value");
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
@@ -35,47 +109,35 @@ where
 
   // SAFETY: Out buffer was asserted to be at least large enough to hold a usize, and properly aligned.
   let out = unsafe { &mut *outptr };
-  *out = buf as usize;
+  *out = ptr as usize;
 
   Ok(())
-}
-
-unsafe extern "C" fn noop_deleter_callback(
-  _data: *mut c_void,
-  _byte_length: usize,
-  _deleter_data: *mut c_void,
-) {
 }
 
 #[op(v8)]
 pub fn op_ffi_get_buf<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
   len: usize,
 ) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#arrayBuffer");
+  check_unstable(state, "Deno.UnsafePointerView#getArrayBuffer");
 
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *mut c_void;
-
   if ptr.is_null() {
-    return Err(type_error("Invalid FFI pointer value, got nullptr"));
+    return Err(type_error("Invalid ArrayBuffer pointer, pointer is null"));
   }
 
-  // SAFETY: Offset is user defined.
-  let ptr = unsafe { ptr.add(offset) };
-
-  // SAFETY: Trust the user to have provided a real pointer, and a valid matching size to it. Since this is a foreign pointer, we should not do any deletion.
+  // SAFETY: Trust the user to have provided a real pointer, offset, and a valid matching size to it. Since this is a foreign pointer, we should not do any deletion.
   let backing_store = unsafe {
     v8::ArrayBuffer::new_backing_store_from_ptr(
-      ptr,
+      ptr.offset(offset),
       len,
       noop_deleter_callback,
       std::ptr::null_mut(),
@@ -90,8 +152,8 @@ where
 #[op(fast)]
 pub fn op_ffi_buf_copy_into<FP>(
   state: &mut deno_core::OpState,
-  src: usize,
-  offset: usize,
+  src: *mut c_void,
+  offset: isize,
   dst: &mut [u8],
   len: usize,
 ) -> Result<(), AnyError>
@@ -103,19 +165,20 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  if dst.len() < len {
+  if src.is_null() {
+    Err(type_error("Invalid ArrayBuffer pointer, pointer is null"))
+  } else if dst.len() < len {
     Err(range_error(
       "Destination length is smaller than source length",
     ))
   } else {
     let src = src as *const c_void;
 
-    // SAFETY: Offset is user defined.
-    let src = unsafe { src.add(offset) as *const u8 };
-
-    // SAFETY: src is user defined.
+    // SAFETY: src and offset are user defined.
     // dest is properly aligned and is valid for writes of len * size_of::<T>() bytes.
-    unsafe { ptr::copy::<u8>(src, dst.as_mut_ptr(), len) };
+    unsafe {
+      ptr::copy::<u8>(src.offset(offset) as *const u8, dst.as_mut_ptr(), len)
+    };
     Ok(())
   }
 }
@@ -124,8 +187,8 @@ where
 pub fn op_ffi_cstr_read<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
 ) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -135,17 +198,13 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_void;
-
   if ptr.is_null() {
     return Err(type_error("Invalid CString pointer, pointer is null"));
   }
 
-  // SAFETY: Offset is user defined.
-  let ptr = unsafe { ptr.add(offset) };
-
-  // SAFETY: Pointer is user provided.
-  let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) }.to_bytes();
+  let cstr =
+  // SAFETY: Pointer and offset are user provided.
+    unsafe { CStr::from_ptr(ptr.offset(offset) as *const c_char) }.to_bytes();
   let value: v8::Local<v8::Value> =
     v8::String::new_from_utf8(scope, cstr, v8::NewStringType::Normal)
       .ok_or_else(|| {
@@ -158,8 +217,8 @@ where
 #[op(fast)]
 pub fn op_ffi_read_bool<FP>(
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
 ) -> Result<bool, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -169,21 +228,19 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_void;
-
   if ptr.is_null() {
     return Err(type_error("Invalid bool pointer, pointer is null"));
   }
 
   // SAFETY: ptr and offset are user provided.
-  Ok(unsafe { ptr::read_unaligned::<bool>(ptr.add(offset) as *const bool) })
+  Ok(unsafe { ptr::read_unaligned::<bool>(ptr.offset(offset) as *const bool) })
 }
 
 #[op(fast)]
 pub fn op_ffi_read_u8<FP>(
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
 ) -> Result<u32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -193,21 +250,21 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_void;
-
   if ptr.is_null() {
     return Err(type_error("Invalid u8 pointer, pointer is null"));
   }
 
   // SAFETY: ptr and offset are user provided.
-  Ok(unsafe { ptr::read_unaligned::<u8>(ptr.add(offset) as *const u8) as u32 })
+  Ok(unsafe {
+    ptr::read_unaligned::<u8>(ptr.offset(offset) as *const u8) as u32
+  })
 }
 
 #[op(fast)]
 pub fn op_ffi_read_i8<FP>(
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
 ) -> Result<i32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -217,21 +274,21 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_void;
-
   if ptr.is_null() {
     return Err(type_error("Invalid i8 pointer, pointer is null"));
   }
 
   // SAFETY: ptr and offset are user provided.
-  Ok(unsafe { ptr::read_unaligned::<i8>(ptr.add(offset) as *const i8) as i32 })
+  Ok(unsafe {
+    ptr::read_unaligned::<i8>(ptr.offset(offset) as *const i8) as i32
+  })
 }
 
 #[op(fast)]
 pub fn op_ffi_read_u16<FP>(
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
 ) -> Result<u32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -241,23 +298,21 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_void;
-
   if ptr.is_null() {
     return Err(type_error("Invalid u16 pointer, pointer is null"));
   }
 
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
-    ptr::read_unaligned::<u16>(ptr.add(offset) as *const u16) as u32
+    ptr::read_unaligned::<u16>(ptr.offset(offset) as *const u16) as u32
   })
 }
 
 #[op(fast)]
 pub fn op_ffi_read_i16<FP>(
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
 ) -> Result<i32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -267,23 +322,21 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_void;
-
   if ptr.is_null() {
     return Err(type_error("Invalid i16 pointer, pointer is null"));
   }
 
   // SAFETY: ptr and offset are user provided.
   Ok(unsafe {
-    ptr::read_unaligned::<i16>(ptr.add(offset) as *const i16) as i32
+    ptr::read_unaligned::<i16>(ptr.offset(offset) as *const i16) as i32
   })
 }
 
 #[op(fast)]
 pub fn op_ffi_read_u32<FP>(
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
 ) -> Result<u32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -293,21 +346,19 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_void;
-
   if ptr.is_null() {
     return Err(type_error("Invalid u32 pointer, pointer is null"));
   }
 
   // SAFETY: ptr and offset are user provided.
-  Ok(unsafe { ptr::read_unaligned::<u32>(ptr.add(offset) as *const u32) })
+  Ok(unsafe { ptr::read_unaligned::<u32>(ptr.offset(offset) as *const u32) })
 }
 
 #[op(fast)]
 pub fn op_ffi_read_i32<FP>(
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
 ) -> Result<i32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -317,21 +368,19 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_void;
-
   if ptr.is_null() {
     return Err(type_error("Invalid i32 pointer, pointer is null"));
   }
 
   // SAFETY: ptr and offset are user provided.
-  Ok(unsafe { ptr::read_unaligned::<i32>(ptr.add(offset) as *const i32) })
+  Ok(unsafe { ptr::read_unaligned::<i32>(ptr.offset(offset) as *const i32) })
 }
 
 #[op]
 pub fn op_ffi_read_u64<FP>(
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
   out: &mut [u32],
 ) -> Result<(), AnyError>
 where
@@ -349,15 +398,13 @@ where
   );
   assert_eq!((outptr as usize % std::mem::size_of::<u64>()), 0);
 
-  let ptr = ptr as *const c_void;
-
   if ptr.is_null() {
     return Err(type_error("Invalid u64 pointer, pointer is null"));
   }
 
   let value =
   // SAFETY: ptr and offset are user provided.
-    unsafe { ptr::read_unaligned::<u64>(ptr.add(offset) as *const u64) };
+    unsafe { ptr::read_unaligned::<u64>(ptr.offset(offset) as *const u64) };
 
   // SAFETY: Length and alignment of out slice were asserted to be correct.
   unsafe { *outptr = value };
@@ -367,8 +414,8 @@ where
 #[op(fast)]
 pub fn op_ffi_read_i64<FP>(
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
   out: &mut [u32],
 ) -> Result<(), AnyError>
 where
@@ -386,15 +433,13 @@ where
   );
   assert_eq!((outptr as usize % std::mem::size_of::<i64>()), 0);
 
-  let ptr = ptr as *const c_void;
-
   if ptr.is_null() {
     return Err(type_error("Invalid i64 pointer, pointer is null"));
   }
 
   let value =
   // SAFETY: ptr and offset are user provided.
-    unsafe { ptr::read_unaligned::<i64>(ptr.add(offset) as *const i64) };
+    unsafe { ptr::read_unaligned::<i64>(ptr.offset(offset) as *const i64) };
   // SAFETY: Length and alignment of out slice were asserted to be correct.
   unsafe { *outptr = value };
   Ok(())
@@ -403,8 +448,8 @@ where
 #[op(fast)]
 pub fn op_ffi_read_f32<FP>(
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
 ) -> Result<f32, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -414,21 +459,19 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_void;
-
   if ptr.is_null() {
     return Err(type_error("Invalid f32 pointer, pointer is null"));
   }
 
   // SAFETY: ptr and offset are user provided.
-  Ok(unsafe { ptr::read_unaligned::<f32>(ptr.add(offset) as *const f32) })
+  Ok(unsafe { ptr::read_unaligned::<f32>(ptr.offset(offset) as *const f32) })
 }
 
 #[op(fast)]
 pub fn op_ffi_read_f64<FP>(
   state: &mut deno_core::OpState,
-  ptr: usize,
-  offset: usize,
+  ptr: *mut c_void,
+  offset: isize,
 ) -> Result<f64, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -438,12 +481,34 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_void;
-
   if ptr.is_null() {
     return Err(type_error("Invalid f64 pointer, pointer is null"));
   }
 
   // SAFETY: ptr and offset are user provided.
-  Ok(unsafe { ptr::read_unaligned::<f64>(ptr.add(offset) as *const f64) })
+  Ok(unsafe { ptr::read_unaligned::<f64>(ptr.offset(offset) as *const f64) })
+}
+
+#[op(fast)]
+pub fn op_ffi_read_ptr<FP>(
+  state: &mut deno_core::OpState,
+  ptr: *mut c_void,
+  offset: isize,
+) -> Result<*mut c_void, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointerView#getPointer");
+
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  if ptr.is_null() {
+    return Err(type_error("Invalid pointer pointer, pointer is null"));
+  }
+
+  // SAFETY: ptr and offset are user provided.
+  Ok(unsafe {
+    ptr::read_unaligned::<*mut c_void>(ptr.offset(offset) as *const *mut c_void)
+  })
 }
