@@ -251,3 +251,13 @@ itest!(package_json_fail_check {
   copy_temp_dir: Some("package_json/basic"),
   exit_code: 1,
 });
+
+itest!(package_json_with_deno_json {
+  args: "check --quiet main.ts",
+  output: "package_json/deno_json/main.check.out",
+  cwd: Some("package_json/deno_json/"),
+  copy_temp_dir: Some("package_json/deno_json/"),
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+  exit_code: 1,
+});
