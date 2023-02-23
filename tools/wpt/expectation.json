@@ -1087,8 +1087,8 @@
       "EventTarget-constructible.any.html": true,
       "EventTarget-constructible.any.worker.html": true,
       "Event-constructors.any.html": [
-        "Untitled 3",
-        "Untitled 4"
+        "Event constructors 3",
+        "Event constructors 4"
       ],
       "Event-constructors.any.worker.html": [
         "Event constructors 3",

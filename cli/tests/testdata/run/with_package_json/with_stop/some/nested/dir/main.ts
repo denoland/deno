@@ -1,6 +1,6 @@
-// TODO(bartlomieju): currently we don't support actual bare specifier
-// imports; this will be done in a follow up PR.
-// import express from "express";
+// This import should fail, because `package.json` is not discovered, as we're
+// stopping the discovery when encountering `deno.json`.
+import chalk from "chalk";
 
-// console.log(express);
 console.log("ok");
+console.log(chalk);
