@@ -25,7 +25,10 @@ const {
   MathCeil,
   SafeMap,
   SafeArrayIterator,
+  SymbolFor,
 } = primordials;
+
+const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
 const U32_BUFFER = new Uint32Array(2);
 const U64_BUFFER = new BigUint64Array(U32_BUFFER.buffer);
@@ -118,6 +121,13 @@ class UnsafePointerView {
     );
   }
 
+  getPointer(offset = 0) {
+    return ops.op_ffi_read_ptr(
+      this.pointer,
+      offset,
+    );
+  }
+
   getCString(offset = 0) {
     return ops.op_ffi_cstr_read(
       this.pointer,
@@ -170,11 +180,33 @@ class UnsafePointerView {
 const OUT_BUFFER = new Uint32Array(2);
 const OUT_BUFFER_64 = new BigInt64Array(OUT_BUFFER.buffer);
 class UnsafePointer {
+  static create(value) {
+    return ops.op_ffi_ptr_create(value);
+  }
+
+  static equals(a, b) {
+    if (a === null || b === null) {
+      return a === b;
+    }
+    return ops.op_ffi_ptr_equals(a, b);
+  }
+
   static of(value) {
     if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
       return value.pointer;
     }
-    ops.op_ffi_ptr_of(value, OUT_BUFFER);
+    return ops.op_ffi_ptr_of(value);
+  }
+
+  static offset(value, offset) {
+    return ops.op_ffi_ptr_offset(value, offset);
+  }
+
+  static value(value) {
+    if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
+      value = value.pointer;
+    }
+    ops.op_ffi_ptr_value(value, OUT_BUFFER);
     const result = OUT_BUFFER[0] + 2 ** 32 * OUT_BUFFER[1];
     if (NumberIsSafeInteger(result)) {
       return result;
@@ -240,8 +272,7 @@ class UnsafeFnPointer {
 }
 
 function isReturnedAsBigInt(type) {
-  return type === "buffer" || type === "pointer" || type === "function" ||
-    type === "u64" || type === "i64" ||
+  return type === "u64" || type === "i64" ||
     type === "usize" || type === "isize";
 }
 
@@ -332,12 +363,23 @@ class UnsafeCallback {
     this.callback = callback;
   }
 
+  static threadSafe(definition, callback) {
+    const unsafeCallback = new UnsafeCallback(definition, callback);
+    unsafeCallback.ref();
+    return unsafeCallback;
+  }
+
   ref() {
     if (this.#refcount++ === 0) {
-      this.#refpromise = core.opAsync(
-        "op_ffi_unsafe_callback_ref",
-        this.#rid,
-      );
+      if (this.#refpromise) {
+        // Re-refing
+        core.refOp(this.#refpromise[promiseIdSymbol]);
+      } else {
+        this.#refpromise = core.opAsync(
+          "op_ffi_unsafe_callback_ref",
+          this.#rid,
+        );
+      }
     }
     return this.#refcount;
   }
@@ -346,7 +388,7 @@ class UnsafeCallback {
     // Only decrement refcount if it is positive, and only
     // unref the callback if refcount reaches zero.
     if (this.#refcount > 0 && --this.#refcount === 0) {
-      ops.op_ffi_unsafe_callback_unref(this.#rid);
+      core.unrefOp(this.#refpromise[promiseIdSymbol]);
     }
     return this.#refcount;
   }

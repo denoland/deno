@@ -40,7 +40,10 @@ pub struct PtrSymbol {
 }
 
 impl PtrSymbol {
-  pub fn new(fn_ptr: usize, def: &ForeignFunction) -> Result<Self, AnyError> {
+  pub fn new(
+    fn_ptr: *mut c_void,
+    def: &ForeignFunction,
+  ) -> Result<Self, AnyError> {
     let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
     let cif = libffi::middle::Cif::new(
       def
@@ -236,11 +239,11 @@ unsafe fn do_ffi_callback(
         }
       }
       NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
-        let result = *((*val) as *const usize);
-        if result > MAX_SAFE_INTEGER as usize {
-          v8::BigInt::new_from_u64(scope, result as u64).into()
+        let result = *((*val) as *const *mut c_void);
+        if result.is_null() {
+          v8::null(scope).into()
         } else {
-          v8::Number::new(scope, result as f64).into()
+          v8::External::new(scope, result).into()
         }
       }
       NativeType::Struct(_) => {
@@ -353,34 +356,43 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut f64) = value;
     }
-    NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
-      let pointer = if let Ok(value) =
+    NativeType::Buffer => {
+      let pointer: *mut u8 = if let Ok(value) =
         v8::Local::<v8::ArrayBufferView>::try_from(value)
       {
         let byte_offset = value.byte_offset();
-        let backing_store = value
+        let pointer = value
           .buffer(scope)
           .expect("Unable to deserialize result parameter.")
-          .get_backing_store();
-        &backing_store[byte_offset..] as *const _ as *const u8
-      } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-        value.u64_value().0 as usize as *const u8
+          .data();
+        if let Some(non_null) = pointer {
+          // SAFETY: Pointer is non-null, and V8 guarantees that the byte_offset
+          // is within the buffer backing store.
+          unsafe { non_null.as_ptr().add(byte_offset) as *mut u8 }
+        } else {
+          ptr::null_mut()
+        }
       } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
-        let backing_store = value.get_backing_store();
-        &backing_store[..] as *const _ as *const u8
-      } else if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
-        value.value() as usize as *const u8
-      } else if value.is_null() {
-        ptr::null()
+        let pointer = value.data();
+        if let Some(non_null) = pointer {
+          non_null.as_ptr() as *mut u8
+        } else {
+          ptr::null_mut()
+        }
       } else {
-        // Fallthrough: Probably someone returned a number but this could
-        // also be eg. a string. This is essentially UB.
-        value
-          .integer_value(scope)
-          .expect("Unable to deserialize result parameter.") as usize
-          as *const u8
+        ptr::null_mut()
       };
-      *(result as *mut *const u8) = pointer;
+      *(result as *mut *mut u8) = pointer;
+    }
+    NativeType::Pointer | NativeType::Function => {
+      let pointer: *mut c_void =
+        if let Ok(external) = v8::Local::<v8::External>::try_from(value) {
+          external.value()
+        } else {
+          // TODO(@aapoalas): Start throwing errors into JS about invalid callback return values.
+          ptr::null_mut()
+        };
+      *(result as *mut *mut c_void) = pointer;
     }
     NativeType::I8 => {
       let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
@@ -520,19 +532,6 @@ pub fn op_ffi_unsafe_callback_ref(
   })
 }
 
-#[op(fast)]
-pub fn op_ffi_unsafe_callback_unref(
-  state: &mut deno_core::OpState,
-  rid: u32,
-) -> Result<(), AnyError> {
-  state
-    .resource_table
-    .get::<UnsafeCallbackResource>(rid)?
-    .cancel
-    .cancel();
-  Ok(())
-}
-
 #[derive(Deserialize)]
 pub struct RegisterCallbackArgs {
   parameters: Vec<NativeType>,
@@ -591,7 +590,7 @@ where
   let closure = libffi::middle::Closure::new(cif, deno_ffi_callback, unsafe {
     info.as_ref().unwrap()
   });
-  let ptr = *closure.code_ptr() as usize;
+  let ptr = *closure.code_ptr() as *mut c_void;
   let resource = UnsafeCallbackResource {
     cancel: CancelHandle::new_rc(),
     closure,
@@ -600,11 +599,7 @@ where
   let rid = state.resource_table.add(resource);
 
   let rid_local = v8::Integer::new_from_unsigned(scope, rid);
-  let ptr_local: v8::Local<v8::Value> = if ptr > MAX_SAFE_INTEGER as usize {
-    v8::BigInt::new_from_u64(scope, ptr as u64).into()
-  } else {
-    v8::Number::new(scope, ptr as f64).into()
-  };
+  let ptr_local: v8::Local<v8::Value> = v8::External::new(scope, ptr).into();
   let array = v8::Array::new(scope, 2);
   array.set_index(scope, 0, rid_local.into());
   array.set_index(scope, 1, ptr_local);

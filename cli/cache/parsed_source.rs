@@ -75,19 +75,15 @@ impl ParsedSourceCache {
     }
   }
 
-  pub fn get_parsed_source_from_module(
+  pub fn get_parsed_source_from_esm_module(
     &self,
-    module: &deno_graph::Module,
-  ) -> Result<Option<ParsedSource>, AnyError> {
-    if let Some(source) = &module.maybe_source {
-      Ok(Some(self.get_or_parse_module(
-        &module.specifier,
-        source.clone(),
-        module.media_type,
-      )?))
-    } else {
-      Ok(None)
-    }
+    module: &deno_graph::EsmModule,
+  ) -> Result<ParsedSource, deno_ast::Diagnostic> {
+    self.get_or_parse_module(
+      &module.specifier,
+      module.source.clone(),
+      module.media_type,
+    )
   }
 
   /// Gets the matching `ParsedSource` from the cache

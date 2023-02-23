@@ -161,6 +161,7 @@ fn json_module_evaluation_steps<'a>(
 /// the module against an import assertion (if one is present
 /// in the import statement).
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[repr(u32)]
 pub enum ModuleType {
   JavaScript,
   Json,
@@ -774,7 +775,7 @@ impl RecursiveModuleLoad {
     self.visited.insert(module_request.clone());
     while let Some((module_id, module_request)) = already_registered.pop_front()
     {
-      let referrer = module_request.specifier.clone();
+      let referrer = ModuleSpecifier::parse(&module_request.specifier).unwrap();
       let imports = self
         .module_map_rc
         .borrow()
@@ -789,17 +790,15 @@ impl RecursiveModuleLoad {
           ) {
             already_registered.push_back((module_id, module_request.clone()));
           } else {
-            let referrer = referrer.clone();
             let request = module_request.clone();
+            let specifier =
+              ModuleSpecifier::parse(&module_request.specifier).unwrap();
+            let referrer = referrer.clone();
             let loader = self.loader.clone();
             let is_dynamic_import = self.is_dynamic_import();
             let fut = async move {
               let load_result = loader
-                .load(
-                  &request.specifier,
-                  Some(referrer.clone()),
-                  is_dynamic_import,
-                )
+                .load(&specifier, Some(referrer.clone()), is_dynamic_import)
                 .await;
               load_result.map(|s| (request, s))
             };
@@ -851,7 +850,7 @@ impl Stream for RecursiveModuleLoad {
           let asserted_module_type = inner.root_asserted_module_type.unwrap();
           let module_type = inner.root_module_type.unwrap();
           let module_request = ModuleRequest {
-            specifier: module_specifier.clone(),
+            specifier: module_specifier.to_string(),
             asserted_module_type,
           };
           let module_source = ModuleSource {
@@ -875,7 +874,7 @@ impl Stream for RecursiveModuleLoad {
             _ => AssertedModuleType::JavaScriptOrWasm,
           };
           let module_request = ModuleRequest {
-            specifier: module_specifier.clone(),
+            specifier: module_specifier.to_string(),
             asserted_module_type,
           };
           let loader = inner.loader.clone();
@@ -905,6 +904,7 @@ impl Stream for RecursiveModuleLoad {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[repr(u32)]
 pub(crate) enum AssertedModuleType {
   JavaScriptOrWasm,
   Json,
@@ -934,7 +934,7 @@ impl std::fmt::Display for AssertedModuleType {
 /// which case this will have a `AssertedModuleType::Json`.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ModuleRequest {
-  pub specifier: ModuleSpecifier,
+  pub specifier: String,
   pub asserted_module_type: AssertedModuleType,
 }
 
@@ -995,46 +995,94 @@ impl ModuleMap {
   pub fn serialize_for_snapshotting(
     &self,
     scope: &mut v8::HandleScope,
-  ) -> (v8::Global<v8::Object>, Vec<v8::Global<v8::Module>>) {
-    let obj = v8::Object::new(scope);
+  ) -> (v8::Global<v8::Array>, Vec<v8::Global<v8::Module>>) {
+    let array = v8::Array::new(scope, 3);
 
-    let next_load_id_str = v8::String::new(scope, "next_load_id").unwrap();
     let next_load_id = v8::Integer::new(scope, self.next_load_id);
-    obj.set(scope, next_load_id_str.into(), next_load_id.into());
+    array.set_index(scope, 0, next_load_id.into());
 
-    let info_val = serde_v8::to_v8(scope, self.info.clone()).unwrap();
-    let info_str = v8::String::new(scope, "info").unwrap();
-    obj.set(scope, info_str.into(), info_val);
+    let info_arr = v8::Array::new(scope, self.info.len() as i32);
+    for (i, info) in self.info.iter().enumerate() {
+      let module_info_arr = v8::Array::new(scope, 5);
 
-    let by_name_triples: Vec<(String, AssertedModuleType, SymbolicModule)> =
-      self
-        .by_name
-        .clone()
-        .into_iter()
-        .map(|el| (el.0 .0, el.0 .1, el.1))
-        .collect();
-    let by_name_array = serde_v8::to_v8(scope, by_name_triples).unwrap();
-    let by_name_str = v8::String::new(scope, "by_name").unwrap();
-    obj.set(scope, by_name_str.into(), by_name_array);
+      let id = v8::Integer::new(scope, info.id as i32);
+      module_info_arr.set_index(scope, 0, id.into());
 
-    let obj_global = v8::Global::new(scope, obj);
+      let main = v8::Boolean::new(scope, info.main);
+      module_info_arr.set_index(scope, 1, main.into());
+
+      let name = v8::String::new(scope, &info.name).unwrap();
+      module_info_arr.set_index(scope, 2, name.into());
+
+      let array_len = 2 * info.requests.len() as i32;
+      let requests_arr = v8::Array::new(scope, array_len);
+      for (i, request) in info.requests.iter().enumerate() {
+        let specifier = v8::String::new(scope, &request.specifier).unwrap();
+        requests_arr.set_index(scope, 2 * i as u32, specifier.into());
+
+        let asserted_module_type =
+          v8::Integer::new(scope, request.asserted_module_type as i32);
+        requests_arr.set_index(
+          scope,
+          (2 * i) as u32 + 1,
+          asserted_module_type.into(),
+        );
+      }
+      module_info_arr.set_index(scope, 3, requests_arr.into());
+
+      let module_type = v8::Integer::new(scope, info.module_type as i32);
+      module_info_arr.set_index(scope, 4, module_type.into());
+
+      info_arr.set_index(scope, i as u32, module_info_arr.into());
+    }
+    array.set_index(scope, 1, info_arr.into());
+
+    let by_name_array = v8::Array::new(scope, self.by_name.len() as i32);
+    {
+      for (i, elem) in self.by_name.iter().enumerate() {
+        let arr = v8::Array::new(scope, 3);
+
+        let (specifier, asserted_module_type) = elem.0;
+        let specifier = v8::String::new(scope, specifier).unwrap();
+        arr.set_index(scope, 0, specifier.into());
+
+        let asserted_module_type =
+          v8::Integer::new(scope, *asserted_module_type as i32);
+        arr.set_index(scope, 1, asserted_module_type.into());
+
+        let symbolic_module: v8::Local<v8::Value> = match &elem.1 {
+          SymbolicModule::Alias(alias) => {
+            let alias = v8::String::new(scope, alias).unwrap();
+            alias.into()
+          }
+          SymbolicModule::Mod(id) => {
+            let id = v8::Integer::new(scope, *id as i32);
+            id.into()
+          }
+        };
+        arr.set_index(scope, 2, symbolic_module);
+
+        by_name_array.set_index(scope, i as u32, arr.into());
+      }
+    }
+    array.set_index(scope, 2, by_name_array.into());
+
+    let array_global = v8::Global::new(scope, array);
 
     let handles = self.handles.clone();
-    (obj_global, handles)
+    (array_global, handles)
   }
 
   pub fn update_with_snapshot_data(
     &mut self,
     scope: &mut v8::HandleScope,
-    data: v8::Global<v8::Object>,
+    data: v8::Global<v8::Array>,
     module_handles: Vec<v8::Global<v8::Module>>,
   ) {
-    let local_data: v8::Local<v8::Object> = v8::Local::new(scope, data);
+    let local_data: v8::Local<v8::Array> = v8::Local::new(scope, data);
 
     {
-      let next_load_id_str = v8::String::new(scope, "next_load_id").unwrap();
-      let next_load_id =
-        local_data.get(scope, next_load_id_str.into()).unwrap();
+      let next_load_id = local_data.get_index(scope, 0).unwrap();
       assert!(next_load_id.is_int32());
       let integer = next_load_id.to_integer(scope).unwrap();
       let val = integer.int32_value(scope).unwrap();
@@ -1042,22 +1090,136 @@ impl ModuleMap {
     }
 
     {
-      let info_str = v8::String::new(scope, "info").unwrap();
-      let info_val = local_data.get(scope, info_str.into()).unwrap();
-      self.info = serde_v8::from_v8(scope, info_val).unwrap();
+      let info_val = local_data.get_index(scope, 1).unwrap();
+
+      let info_arr: v8::Local<v8::Array> = info_val.try_into().unwrap();
+      let len = info_arr.length() as usize;
+      let mut info = Vec::with_capacity(len);
+
+      for i in 0..len {
+        let module_info_arr: v8::Local<v8::Array> = info_arr
+          .get_index(scope, i as u32)
+          .unwrap()
+          .try_into()
+          .unwrap();
+        let id = module_info_arr
+          .get_index(scope, 0)
+          .unwrap()
+          .to_integer(scope)
+          .unwrap()
+          .value() as ModuleId;
+
+        let main = module_info_arr
+          .get_index(scope, 1)
+          .unwrap()
+          .to_boolean(scope)
+          .is_true();
+
+        let name = module_info_arr
+          .get_index(scope, 2)
+          .unwrap()
+          .to_rust_string_lossy(scope);
+
+        let requests_arr: v8::Local<v8::Array> = module_info_arr
+          .get_index(scope, 3)
+          .unwrap()
+          .try_into()
+          .unwrap();
+        let len = (requests_arr.length() as usize) / 2;
+        let mut requests = Vec::with_capacity(len);
+        for i in 0..len {
+          let specifier = requests_arr
+            .get_index(scope, (2 * i) as u32)
+            .unwrap()
+            .to_rust_string_lossy(scope);
+          let asserted_module_type_no = requests_arr
+            .get_index(scope, (2 * i + 1) as u32)
+            .unwrap()
+            .to_integer(scope)
+            .unwrap()
+            .value();
+          let asserted_module_type = match asserted_module_type_no {
+            0 => AssertedModuleType::JavaScriptOrWasm,
+            1 => AssertedModuleType::Json,
+            _ => unreachable!(),
+          };
+          requests.push(ModuleRequest {
+            specifier,
+            asserted_module_type,
+          });
+        }
+
+        let module_type_no = module_info_arr
+          .get_index(scope, 4)
+          .unwrap()
+          .to_integer(scope)
+          .unwrap()
+          .value();
+        let module_type = match module_type_no {
+          0 => ModuleType::JavaScript,
+          1 => ModuleType::Json,
+          _ => unreachable!(),
+        };
+
+        let module_info = ModuleInfo {
+          id,
+          main,
+          name,
+          requests,
+          module_type,
+        };
+        info.push(module_info);
+      }
+
+      self.info = info;
     }
 
     {
-      let by_name_str = v8::String::new(scope, "by_name").unwrap();
-      let by_name_data = local_data.get(scope, by_name_str.into()).unwrap();
-      let by_name_deser: Vec<(String, AssertedModuleType, SymbolicModule)> =
-        serde_v8::from_v8(scope, by_name_data).unwrap();
-      self.by_name = by_name_deser
-        .into_iter()
-        .map(|(name, module_type, symbolic_module)| {
-          ((name, module_type), symbolic_module)
-        })
-        .collect();
+      let by_name_arr: v8::Local<v8::Array> =
+        local_data.get_index(scope, 2).unwrap().try_into().unwrap();
+      let len = by_name_arr.length() as usize;
+      let mut by_name = HashMap::with_capacity(len);
+
+      for i in 0..len {
+        let arr: v8::Local<v8::Array> = by_name_arr
+          .get_index(scope, i as u32)
+          .unwrap()
+          .try_into()
+          .unwrap();
+
+        let specifier =
+          arr.get_index(scope, 0).unwrap().to_rust_string_lossy(scope);
+        let asserted_module_type = match arr
+          .get_index(scope, 1)
+          .unwrap()
+          .to_integer(scope)
+          .unwrap()
+          .value()
+        {
+          0 => AssertedModuleType::JavaScriptOrWasm,
+          1 => AssertedModuleType::Json,
+          _ => unreachable!(),
+        };
+        let key = (specifier, asserted_module_type);
+
+        let symbolic_module_val = arr.get_index(scope, 2).unwrap();
+        let val = if symbolic_module_val.is_number() {
+          SymbolicModule::Mod(
+            symbolic_module_val
+              .to_integer(scope)
+              .unwrap()
+              .value()
+              .try_into()
+              .unwrap(),
+          )
+        } else {
+          SymbolicModule::Alias(symbolic_module_val.to_rust_string_lossy(scope))
+        };
+
+        by_name.insert(key, val);
+      }
+
+      self.by_name = by_name;
     }
 
     self.handles = module_handles;
@@ -1223,7 +1385,7 @@ impl ModuleMap {
       let asserted_module_type =
         get_asserted_module_type_from_assertions(&assertions);
       let request = ModuleRequest {
-        specifier: module_specifier,
+        specifier: module_specifier.to_string(),
         asserted_module_type,
       };
       requests.push(request);
@@ -1719,11 +1881,11 @@ import "/a.js";
       modules.get_requested_modules(a_id),
       Some(&vec![
         ModuleRequest {
-          specifier: resolve_url("file:///b.js").unwrap(),
+          specifier: "file:///b.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },
         ModuleRequest {
-          specifier: resolve_url("file:///c.js").unwrap(),
+          specifier: "file:///c.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },
       ])
@@ -1731,14 +1893,14 @@ import "/a.js";
     assert_eq!(
       modules.get_requested_modules(b_id),
       Some(&vec![ModuleRequest {
-        specifier: resolve_url("file:///c.js").unwrap(),
+        specifier: "file:///c.js".to_string(),
         asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       },])
     );
     assert_eq!(
       modules.get_requested_modules(c_id),
       Some(&vec![ModuleRequest {
-        specifier: resolve_url("file:///d.js").unwrap(),
+        specifier: "file:///d.js".to_string(),
         asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       },])
     );
@@ -1839,7 +2001,7 @@ import "/a.js";
       assert_eq!(
         imports,
         Some(&vec![ModuleRequest {
-          specifier: resolve_url("file:///b.js").unwrap(),
+          specifier: "file:///b.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },])
       );
@@ -1947,7 +2109,7 @@ import "/a.js";
       assert_eq!(
         imports,
         Some(&vec![ModuleRequest {
-          specifier: resolve_url("file:///b.json").unwrap(),
+          specifier: "file:///b.json".to_string(),
           asserted_module_type: AssertedModuleType::Json,
         },])
       );
@@ -2275,7 +2437,7 @@ import "/a.js";
       assert_eq!(
         modules.get_requested_modules(circular1_id),
         Some(&vec![ModuleRequest {
-          specifier: resolve_url("file:///circular2.js").unwrap(),
+          specifier: "file:///circular2.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }])
       );
@@ -2283,7 +2445,7 @@ import "/a.js";
       assert_eq!(
         modules.get_requested_modules(circular2_id),
         Some(&vec![ModuleRequest {
-          specifier: resolve_url("file:///circular3.js").unwrap(),
+          specifier: "file:///circular3.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }])
       );
@@ -2298,11 +2460,11 @@ import "/a.js";
         modules.get_requested_modules(circular3_id),
         Some(&vec![
           ModuleRequest {
-            specifier: resolve_url("file:///circular1.js").unwrap(),
+            specifier: "file:///circular1.js".to_string(),
             asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
           },
           ModuleRequest {
-            specifier: resolve_url("file:///circular2.js").unwrap(),
+            specifier: "file:///circular2.js".to_string(),
             asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
           }
         ])
@@ -2522,11 +2684,11 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       modules.get_requested_modules(main_id),
       Some(&vec![
         ModuleRequest {
-          specifier: resolve_url("file:///b.js").unwrap(),
+          specifier: "file:///b.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },
         ModuleRequest {
-          specifier: resolve_url("file:///c.js").unwrap(),
+          specifier: "file:///c.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }
       ])
@@ -2534,14 +2696,14 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
     assert_eq!(
       modules.get_requested_modules(b_id),
       Some(&vec![ModuleRequest {
-        specifier: resolve_url("file:///c.js").unwrap(),
+        specifier: "file:///c.js".to_string(),
         asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       }])
     );
     assert_eq!(
       modules.get_requested_modules(c_id),
       Some(&vec![ModuleRequest {
-        specifier: resolve_url("file:///d.js").unwrap(),
+        specifier: "file:///d.js".to_string(),
         asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       }])
     );

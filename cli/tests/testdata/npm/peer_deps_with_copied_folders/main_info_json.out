@@ -4,6 +4,7 @@
   ],
   "modules": [
     {
+      "kind": "esm",
       "dependencies": [
         {
           "specifier": "npm:@denotest/peer-dep-test-child@1",
@@ -40,7 +41,6 @@
           "npmPackage": "@denotest/peer-dep-test-child@2.0.0_@denotest+peer-dep-test-peer@2.0.0"
         }
       ],
-      "kind": "esm",
       "local": "[WILDCARD]main.ts",
       "emit": null,
       "map": null,
@@ -49,7 +49,10 @@
       "specifier": "file://[WILDCARD]/main.ts"
     }
   ],
-  "redirects": {},
+  "redirects": {
+    "npm:@denotest/peer-dep-test-child@1": "npm:@denotest/peer-dep-test-child@1.0.0",
+    "npm:@denotest/peer-dep-test-child@2": "npm:@denotest/peer-dep-test-child@2.0.0"
+  },
   "npmPackages": {
     "@denotest/peer-dep-test-child@1.0.0_@denotest+peer-dep-test-peer@1.0.0": {
       "name": "@denotest/peer-dep-test-child",
