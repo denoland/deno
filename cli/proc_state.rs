@@ -497,39 +497,27 @@ impl ProcState {
       let graph_data = self.graph_data.read();
       let graph = &graph_data.graph;
       let maybe_resolved = match graph.get(&referrer) {
-        Some(Module::Esm(module)) => module
-          .dependencies
-          .get(specifier)
-          .map(|d| (&module.specifier, &d.maybe_code)),
+        Some(Module::Esm(module)) => {
+          module.dependencies.get(specifier).map(|d| &d.maybe_code)
+        }
         _ => None,
       };
 
       match maybe_resolved {
-        Some((found_referrer, Resolution::Ok(resolved))) => {
+        Some(Resolution::Ok(resolved)) => {
           let specifier = &resolved.specifier;
 
           return match graph.get(specifier) {
-            Some(Module::Npm(module)) => {
-              if !self.options.unstable()
-                && matches!(found_referrer.scheme(), "http" | "https")
-              {
-                return Err(custom_error(
-                "NotSupported",
-                format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {found_referrer})"),
-              ));
-              }
-
-              self
-                .handle_node_resolve_result(node::node_resolve_npm_reference(
-                  &module.nv_reference,
-                  NodeResolutionMode::Execution,
-                  &self.npm_resolver,
-                  permissions,
-                ))
-                .with_context(|| {
-                  format!("Could not resolve '{}'.", module.nv_reference)
-                })
-            }
+            Some(Module::Npm(module)) => self
+              .handle_node_resolve_result(node::node_resolve_npm_reference(
+                &module.nv_reference,
+                NodeResolutionMode::Execution,
+                &self.npm_resolver,
+                permissions,
+              ))
+              .with_context(|| {
+                format!("Could not resolve '{}'.", module.nv_reference)
+              }),
             Some(Module::Node(module)) => {
               node::resolve_builtin_node_module(&module.module_name)
             }
@@ -539,13 +527,13 @@ impl ProcState {
             None => Ok(specifier.clone()),
           };
         }
-        Some((_, Resolution::Err(err))) => {
+        Some(Resolution::Err(err)) => {
           return Err(custom_error(
             "TypeError",
             format!("{}\n", err.to_string_with_range()),
           ))
         }
-        Some((_, Resolution::None)) | None => {}
+        Some(Resolution::None) | None => {}
       }
     }
 
