@@ -43,6 +43,7 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -1180,6 +1181,7 @@ impl Documents {
         hasher.write_hashable(&jsx_config);
       }
       if let Some(deps) = maybe_package_json_deps {
+        let deps = deps.iter().collect::<BTreeMap<_, _>>();
         hasher.write_hashable(&deps);
       }
       hasher.finish()
@@ -1190,6 +1192,7 @@ impl Documents {
         Ok(deps) => Some(deps),
         Err(err) => {
           lsp_log!("Error parsing package.json deps: {err:#}");
+          None
         }
       }
     });
@@ -1201,7 +1204,7 @@ impl Documents {
       maybe_package_json_deps.as_ref(),
     );
     self.npm_package_json_reqs = Arc::new({
-      match maybe_package_json_deps {
+      match &maybe_package_json_deps {
         Some(deps) => {
           let mut reqs = deps.values().cloned().collect::<Vec<_>>();
           reqs.sort();
@@ -1574,9 +1577,12 @@ console.log(b, "hello deno");
     fs::write(&file_path, "").unwrap();
 
     // open the document
-    documents
-      .open(file_specifier.clone(), 1, LanguageId::TypeScript, "".into())
-      .await;
+    documents.open(
+      file_specifier.clone(),
+      1,
+      LanguageId::TypeScript,
+      "".into(),
+    );
 
     // make a clone of the document store and close the document in that one
     let mut documents2 = documents.clone();
@@ -1587,7 +1593,7 @@ console.log(b, "hello deno");
     assert_eq!(documents.documents(false, false).len(), 1);
   }
 
-  #[tokio::test]
+  #[test]
   fn test_documents_refresh_dependencies_config_change() {
     let npm_registry_api = NpmRegistryApi::new_uninitialized();
     let npm_resolution =

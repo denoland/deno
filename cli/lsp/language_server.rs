@@ -986,16 +986,13 @@ impl Inner {
     if let Err(err) = self.update_registries().await {
       self.client.show_message(MessageType::WARNING, err).await;
     }
-    self
-      .documents
-      .update_config(
-        self.maybe_import_map.clone(),
-        self.maybe_config_file.as_ref(),
-        self.maybe_package_json.as_ref(),
-        self.npm_resolver.api().clone(),
-        self.npm_resolver.resolution().clone(),
-      )
-      .await;
+    self.documents.update_config(
+      self.maybe_import_map.clone(),
+      self.maybe_config_file.as_ref(),
+      self.maybe_package_json.as_ref(),
+      self.npm_resolver.api().clone(),
+      self.npm_resolver.resolution().clone(),
+    );
 
     self.assets.intitialize(self.snapshot()).await;
 
@@ -1182,16 +1179,13 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err).await;
     }
 
-    self
-      .documents
-      .update_config(
-        self.maybe_import_map.clone(),
-        self.maybe_config_file.as_ref(),
-        self.maybe_package_json.as_ref(),
-        self.npm_resolver.api().clone(),
-        self.npm_resolver.resolution().clone(),
-      )
-      .await;
+    self.documents.update_config(
+      self.maybe_import_map.clone(),
+      self.maybe_config_file.as_ref(),
+      self.maybe_package_json.as_ref(),
+      self.npm_resolver.api().clone(),
+      self.npm_resolver.resolution().clone(),
+    );
 
     self.send_diagnostics_update();
     self.send_testing_update();

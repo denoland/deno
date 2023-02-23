@@ -208,7 +208,7 @@ impl PackageJson {
   }
 
   pub fn specifier(&self) -> ModuleSpecifier {
-    ModuleSpecifier::from_file_url(&self.path).unwrap()
+    ModuleSpecifier::from_file_path(&self.path).unwrap()
   }
 }
 

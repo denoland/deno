@@ -20,7 +20,6 @@ use global::GlobalNpmPackageResolver;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -264,7 +263,7 @@ impl NpmPackageResolver {
   /// This will retrieve and resolve package information, but not cache any package files.
   pub async fn set_package_reqs(
     &self,
-    packages: HashSet<NpmPackageReq>,
+    packages: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     self.resolution.set_package_reqs(packages).await
   }
