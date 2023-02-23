@@ -75,8 +75,11 @@ export async function runSingleTest(
   _options: ManifestTestOptions,
   reporter: (result: TestCaseResult) => void,
   inspectBrk: boolean,
+  timeouts: { long: number; default: number },
 ): Promise<TestResult> {
-  const timeout = (_options.timeout === "long" ? 4 : 2) * 60 * 1000;
+  const timeout = _options.timeout === "long"
+    ? timeouts.long
+    : timeouts.default;
   const { title } = Object.fromEntries(_options.script_metadata || []);
   const bundle = await generateBundle(url);
   const tempFile = await Deno.makeTempFile({
