@@ -8,35 +8,38 @@ https://github.com/denoland/deno_install
 
 ### 1.31.0 / 2023.02.23
 
--  refactor: remove prefix from include_js_files & use extension name (#17683)
-- Revert "feat: Deprecate Deno.run API in favor of Deno.Command (#17630)" (#17875)
-- Revert "test(wpt): implement process timeout (#17872)" (#17886)
 - feat(bench): Add JSON reporter for "deno bench" subcommand (#17595)
 - feat(bench): change --json output format (#17888)
 - feat(core): allow to specify entry point for snapshotted ES modules (#17771)
 - feat(ext/ffi): Replace pointer integers with v8::External objects (#16889)
+- feat(ext/http): add 2nd param to handler to get remote address (#17633)
 - feat(ext/node): embed std/node into the snapshot (#17724)
 - feat(ext/node): implement `node:v8` (#17806)
-- feat(flash): add 2nd param to handler to get remote address (#17633)
 - feat(install): follow redirects for urls with no path (#17449)
 - feat(node): stabilize Node-API (#17553)
-- feat(npm): support bare specifiers from package.json in more subcommands and language server (#17891)
-- feat(npm): support npm specifiers in remote modules without `--unstable` (#17889)
-- feat(permissions): grant all permission for a group in permission prompt (#17140)
+- feat(npm): support bare specifiers from package.json in more subcommands and
+  language server (#17891)
+- feat(npm): support npm specifiers in remote modules without `--unstable`
+  (#17889)
+- feat(permissions): grant all permission for a group in permission prompt
+  (#17140)
 - feat(task): add warning about package.json scripts support (#17900)
 - feat(task): adjust warning (#17904)
 - feat(task): support scripts in package.json (#17887)
 - feat: Deprecate 'deno bundle' subcommand (#17695)
-- feat: Deprecate Deno.run API in favor of Deno.Command (#17630)
 - feat: Stabilize Deno.Command API (#17628)
 - feat: add more variants to Deno.build.os (#17340)
 - feat: add signal option to Deno.resolveDns (#17384)
 - feat: auto-discover package.json for npm dependencies (#17272)
 - feat: stabilize Deno.osUptime() (#17554)
-- feat: start caching npm package version's "bin" entry from npm registry (#17881)
+- feat: start caching npm package version's "bin" entry from npm registry
+  (#17881)
 - feat: support bare specifier resolution with package.json (#17864)
 - feat: wire up ext/node to the Node compatibility layer (#17785)
-- fix(cli/graph_util): don't append referrer info for root module errors (#17730)
+- fix(cli): Add better error message when powershell is missing during upgrade
+  (#17759)
+- fix(cli/graph_util): don't append referrer info for root module errors
+  (#17730)
 - fix(cli/napi): correct name handling in napi property descriptor (#17716)
 - fix(cli/napi): handle all property variants in napi_define_properties (#17680)
 - fix(core): don't allow to import internal code is snapshot is loaded (#17694)
@@ -46,11 +49,13 @@ https://github.com/denoland/deno_install
 - fix(ext/console): Only right-align integers in console.table() (#17389)
 - fix(ext/ffi): Fix re-ref'ing UnsafeCallback (#17704)
 - fix(ext/ffi): improve error messages in FFI module (#17786)
-- fix(ext/flash): Always send correct number of bytes when handling HEAD requests (#17740)
+- fix(ext/flash): Always send correct number of bytes when handling HEAD
+  requests (#17740)
 - fix(ext/flash): wrong order of arguments passed to `http1Response` (#17893)
 - fix(ext/node): add support for BYOB streams (#17803)
 - fix(ext/node): fix node stream (#17874)
-- fix(ext/node): fix npm module resolution when --node-modules-dir specified (#17896)
+- fix(ext/node): fix npm module resolution when --node-modules-dir specified
+  (#17896)
 - fix(ext/node): fix process.uptime (#17839)
 - fix(ext/node): fix webcrypto export (#17838)
 - fix(ext/websocket): extra ws pongs sent (#17762)
@@ -59,10 +64,13 @@ https://github.com/denoland/deno_install
 - fix(npm): allow resolving from package.json when an import map exists (#17905)
 - fix(npm): filter out duplicate packages names in resolution (#17857)
 - fix(npm): improve peer dependency resolution (#17835)
-- fix(npm): resolve node_modules dir relative to package.json instead of cwd (#17885)
+- fix(npm): resolve node_modules dir relative to package.json instead of cwd
+  (#17885)
 - fix(npm): support bare specifiers in package.json having a path (#17903)
 - fix(ops): Always close cancel handles for read_async/write_async (#17736)
-- fix(webgpu): don't default to 0 for setVertexBuffer.size & properly use webidl.setlike (#17800)
+- fix(webgpu): don't default to 0 for setVertexBuffer.size & properly use
+  webidl.setlike (#17800)
+- fix(runtime): Refactor fs error mapping to use unified format (#17719)
 - fix(webgpu): use correct op for GPUDevice.createSampler (#17729)
 - fix: add WouldBlock error (#17339)
 - fix: loading built-in Node modules embedded in the binary (#17777)
@@ -71,13 +79,12 @@ https://github.com/denoland/deno_install
 - perf(core, runtime): Further improve startup time (#17860)
 - perf(ext/ffi): Revert UTF-8 validity check from getCString (#17741)
 - perf(ext/node): move winerror binding to rust (#17792)
-- perf(http): remove allocations checking upgrade and connection header values (#17727)
+- perf(http): remove allocations checking upgrade and connection header values
+  (#17727)
 - perf: disable fetching graph cache info except for `deno info` (#17698)
 - perf: module info cache - avoid MediaType.to_string() allocation (#17699)
 - perf: remove `current_dir()` call in `Deno.mainModule` (#17883)
 - perf: use ops for node:crypto ciphers (#17819)
-- ref(cli): Add better error message when powershell is missing during upgrade (#17759)
-- ref(core): Refactor core:fs error mapping to use unified format (#17719)
 
 ### 1.30.3 / 2023.02.07
 
