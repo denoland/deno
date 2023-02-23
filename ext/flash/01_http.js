@@ -32,11 +32,11 @@ const {
   PromisePrototypeThen,
   SafePromiseAll,
   TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSubarray,
   TypeError,
   Uint8Array,
-  Uint8ArrayPrototype,
 } = primordials;
 
 const statusCodes = {
@@ -193,7 +193,11 @@ function http1Response(
       TypedArrayPrototypeGetByteLength(head) + bodyLen,
     );
     TypedArrayPrototypeSet(response, head, 0);
-    TypedArrayPrototypeSet(response, body, TypedArrayPrototypeGetByteLength(head));
+    TypedArrayPrototypeSet(
+      response,
+      body,
+      TypedArrayPrototypeGetByteLength(head),
+    );
     return response;
   }
 
@@ -307,7 +311,7 @@ async function handleResponse(
       }
       isStreamingResponseBody = !(
         typeof respBody === "string" ||
-        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
+        TypedArrayPrototypeGetSymbolToStringTag(respBody) === "Uint8Array"
       );
     } else {
       if (innerResp.body.streamOrStatic.consumed === true) {
@@ -322,9 +326,9 @@ async function handleResponse(
 
   const ws = resp[_ws];
   if (isStreamingResponseBody === false) {
-    // TODO(petamoriken): use primordials
-    // deno-lint-ignore prefer-primordials
-    const length = respBody.byteLength || core.byteLength(respBody);
+    const length = typeof respBody === "string"
+      ? core.byteLength(respBody)
+      : TypedArrayPrototypeGetByteLength(respBody);
     const responseStr = http1Response(
       method,
       innerResp.status ?? 200,
@@ -400,11 +404,9 @@ async function handleResponse(
             innerResp.status ?? 200,
             innerResp.headerList,
             null,
-            // TODO(petamoriken): use primordials
             // deno-lint-ignore prefer-primordials
             respBody.byteLength,
           ),
-          // TODO(petamoriken): use primordials
           // deno-lint-ignore prefer-primordials
           respBody.byteLength,
           false,
