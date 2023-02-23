@@ -217,11 +217,11 @@ itest!(sub_paths {
 });
 
 itest!(remote_npm_specifier {
-  args: "run --quiet npm/remote_npm_specifier/main.ts",
+  args: "run --quiet -A npm/remote_npm_specifier/main.ts",
   output: "npm/remote_npm_specifier/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
-  exit_code: 1,
+  exit_code: 0,
 });
 
 itest!(tarball_with_global_header {
