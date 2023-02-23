@@ -214,9 +214,9 @@ impl NpmPackageResolver {
 
   /// Gets if the provided specifier is in an npm package.
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    self
-      .resolve_package_folder_from_specifier(specifier)
-      .is_ok()
+    let root_dir_url = self.fs_resolver.root_dir_url();
+    debug_assert!(root_dir_url.as_str().ends_with("/"));
+    specifier.as_ref().starts_with(root_dir_url.as_str())
   }
 
   /// If the resolver has resolved any npm packages.

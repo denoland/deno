@@ -179,6 +179,10 @@ impl ReadonlyNpmCache {
     Self::new(dir.npm_folder_path())
   }
 
+  pub fn root_dir_url(&self) -> &Url {
+    &self.root_dir_url
+  }
+
   pub fn package_folder_for_id(
     &self,
     folder_id: &NpmPackageCacheFolderId,
@@ -343,6 +347,10 @@ impl NpmCache {
 
   pub fn cache_setting(&self) -> &CacheSetting {
     &self.cache_setting
+  }
+
+  pub fn root_dir_url(&self) -> &Url {
+    self.readonly.root_dir_url()
   }
 
   /// Checks if the cache should be used for the provided name and version.

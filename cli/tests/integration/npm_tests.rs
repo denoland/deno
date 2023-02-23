@@ -1558,3 +1558,23 @@ itest!(create_require {
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
+
+itest!(node_modules_import_run {
+  args: "run --quiet main.ts",
+  output: "npm/node_modules_import/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  cwd: Some("npm/node_modules_import/"),
+  copy_temp_dir: Some("npm/node_modules_import/"),
+  exit_code: 0,
+});
+
+itest!(node_modules_import_check {
+  args: "check --quiet main.ts",
+  output: "npm/node_modules_import/main_check.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  cwd: Some("npm/node_modules_import/"),
+  copy_temp_dir: Some("npm/node_modules_import/"),
+  exit_code: 1,
+});

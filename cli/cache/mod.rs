@@ -2,6 +2,7 @@
 
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
+use crate::util::fs::canonicalize_path;
 
 use deno_core::futures;
 use deno_core::futures::FutureExt;
@@ -102,10 +103,15 @@ impl Loader for FetchCacher {
   ) -> LoadFuture {
     if let Some(node_modules_url) = self.maybe_local_node_modules_url.as_ref() {
       if specifier.as_str().starts_with(node_modules_url.as_str()) {
+        // follow to the fully resolved specifier in the node_modules folder
+        let specifier = specifier
+          .to_file_path()
+          .ok()
+          .and_then(|path| canonicalize_path(&path).ok())
+          .and_then(|path| ModuleSpecifier::from_file_path(path).ok())
+          .unwrap_or_else(|| specifier.clone());
         return Box::pin(futures::future::ready(Ok(Some(
-          LoadResponse::External {
-            specifier: specifier.clone(),
-          },
+          LoadResponse::External { specifier },
         ))));
       }
     }
