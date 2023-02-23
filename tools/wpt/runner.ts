@@ -80,6 +80,10 @@ export async function runSingleTest(
   const timeout = _options.timeout === "long"
     ? timeouts.long
     : timeouts.default;
+  const filename = url.pathname.substring(
+    url.pathname.lastIndexOf("/") + 1,
+    url.pathname.indexOf("."),
+  );
   const { title } = Object.fromEntries(_options.script_metadata || []);
   const bundle = await generateBundle(url);
   const tempFile = await Deno.makeTempFile({
@@ -141,8 +145,8 @@ export async function runSingleTest(
       if (line.startsWith("{")) {
         const data = JSON.parse(line);
         const result = { ...data, passed: data.status == 0 };
-        if (title && /^Untitled( \d+)?$/.test(result.name)) {
-          result.name = `${title}${result.name.slice(8)}`;
+        if (/^Untitled( \d+)?$/.test(result.name)) {
+          result.name = `${title || filename}${result.name.slice(8)}`;
         }
         cases.push(result);
         reporter(result);
