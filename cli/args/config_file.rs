@@ -18,6 +18,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use indexmap::IndexMap;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -760,9 +761,9 @@ impl ConfigFile {
 
   pub fn to_tasks_config(
     &self,
-  ) -> Result<Option<BTreeMap<String, String>>, AnyError> {
+  ) -> Result<Option<IndexMap<String, String>>, AnyError> {
     if let Some(config) = self.json.tasks.clone() {
-      let tasks_config: BTreeMap<String, String> =
+      let tasks_config: IndexMap<String, String> =
         serde_json::from_value(config)
           .context("Failed to parse \"tasks\" configuration")?;
       Ok(Some(tasks_config))
@@ -815,7 +816,7 @@ impl ConfigFile {
 
   pub fn resolve_tasks_config(
     &self,
-  ) -> Result<BTreeMap<String, String>, AnyError> {
+  ) -> Result<IndexMap<String, String>, AnyError> {
     let maybe_tasks_config = self.to_tasks_config()?;
     let tasks_config = maybe_tasks_config.unwrap_or_default();
     for key in tasks_config.keys() {

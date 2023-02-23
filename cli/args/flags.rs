@@ -508,26 +508,35 @@ impl Flags {
   /// from the `path` dir.
   /// If it returns None, the `package.json` file shouldn't be discovered at
   /// all.
-  pub fn package_json_arg(&self) -> Option<PathBuf> {
+  pub fn package_json_search_dir(&self) -> Option<PathBuf> {
     use DenoSubcommand::*;
 
-    if let Run(RunFlags { script }) = &self.subcommand {
-      if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
+    match &self.subcommand {
+      Run(RunFlags { script }) => {
+        let module_specifier = deno_core::resolve_url_or_path(script).ok()?;
         if module_specifier.scheme() == "file" {
           let p = module_specifier
             .to_file_path()
             .unwrap()
             .parent()?
             .to_owned();
-          return Some(p);
+          Some(p)
         } else if module_specifier.scheme() == "npm" {
           let p = std::env::current_dir().unwrap();
-          return Some(p);
+          Some(p)
+        } else {
+          None
         }
       }
+      Task(TaskFlags { cwd: Some(cwd), .. }) => {
+        deno_core::resolve_url_or_path(cwd)
+          .ok()?
+          .to_file_path()
+          .ok()
+      }
+      Task(TaskFlags { cwd: None, .. }) => std::env::current_dir().ok(),
+      _ => None,
     }
-
-    None
   }
 
   pub fn has_permission(&self) -> bool {

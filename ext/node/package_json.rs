@@ -4,12 +4,14 @@ use crate::NodeModuleKind;
 use crate::NodePermissions;
 
 use super::RequireNpmResolver;
+
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
+use indexmap::IndexMap;
 use serde::Serialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -35,7 +37,7 @@ pub struct PackageJson {
   pub types: Option<String>,
   pub dependencies: Option<HashMap<String, String>>,
   pub dev_dependencies: Option<HashMap<String, String>>,
-  pub scripts: Option<HashMap<String, String>>,
+  pub scripts: Option<IndexMap<String, String>>,
 }
 
 impl PackageJson {
@@ -146,7 +148,7 @@ impl PackageJson {
       }
     });
 
-    let scripts: Option<HashMap<String, String>> = package_json
+    let scripts: Option<IndexMap<String, String>> = package_json
       .get("scripts")
       .and_then(|d| serde_json::from_value(d.to_owned()).ok());
 

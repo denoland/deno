@@ -12,7 +12,7 @@ use deno_core::futures::future::LocalBoxFuture;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
-use std::collections::BTreeMap;
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -121,8 +121,9 @@ fn collect_env_vars() -> HashMap<String, String> {
 }
 
 fn print_available_tasks(
-  tasks_config: &BTreeMap<String, String>,
-  package_json_scripts: &BTreeMap<String, String>,
+  // order can be important, so these use an index map
+  tasks_config: &IndexMap<String, String>,
+  package_json_scripts: &IndexMap<String, String>,
 ) {
   eprintln!("{}", colors::green("Available tasks:"));
 
@@ -133,7 +134,7 @@ fn print_available_tasks(
       .filter(|(key, _)| !tasks_config.contains_key(*key)),
   ) {
     eprintln!("- {}", colors::cyan(key));
-    eprintln!("    {}", value);
+    eprintln!("    {value}");
     had_task = true;
   }
   if !had_task {
@@ -191,20 +192,16 @@ fn resolve_npm_commands(
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
   let snapshot = ps.npm_resolver.snapshot();
-  let mut package_reqs_with_id =
-    snapshot.package_reqs_to_id().iter().collect::<Vec<_>>();
-  package_reqs_with_id.sort_by(|a, b| a.1.cmp(&b.1));
-  for (package_req, id) in package_reqs_with_id {
-    let bin_commands = crate::node::node_resolve_binary_commands(
-      &package_req,
-      &ps.npm_resolver,
-    )?;
+  let top_level_packages = snapshot.top_level_packages();
+  for id in top_level_packages {
+    let bin_commands =
+      crate::node::node_resolve_binary_commands(&id.nv, &ps.npm_resolver)?;
     for bin_command in bin_commands {
       result.insert(
         bin_command.to_string(),
         Rc::new(NpmPackageBinCommand {
           name: bin_command,
-          npm_package: format!("{}@{}", id.name, id.version),
+          npm_package: id.nv.to_string(),
         }) as Rc<dyn ShellCommand>,
       );
     }

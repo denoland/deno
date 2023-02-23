@@ -286,11 +286,11 @@ pub fn node_resolve_npm_reference(
 }
 
 pub fn node_resolve_binary_commands(
-  pkg_req: &NpmPackageReq,
+  pkg_nv: &NpmPackageNv,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<Vec<String>, AnyError> {
   let package_folder =
-    npm_resolver.resolve_package_folder_from_deno_module(pkg_req)?;
+    npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
   let package_json_path = package_folder.join("package.json");
   let package_json = PackageJson::load(
     npm_resolver,
@@ -299,7 +299,7 @@ pub fn node_resolve_binary_commands(
   )?;
 
   Ok(match package_json.bin {
-    Some(Value::String(_)) => vec![pkg_req.name.to_string()],
+    Some(Value::String(_)) => vec![pkg_nv.name.to_string()],
     Some(Value::Object(o)) => {
       o.into_iter().map(|(key, _)| key).collect::<Vec<_>>()
     }

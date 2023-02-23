@@ -9,9 +9,9 @@ pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
 use ::import_map::ImportMap;
+use indexmap::IndexMap;
 
 use crate::npm::NpmResolutionSnapshot;
-use crate::util::fs::canonicalize_path;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
@@ -49,7 +49,6 @@ use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use once_cell::sync::Lazy;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -430,17 +429,13 @@ fn discover_package_json(
   // TODO(bartlomieju): discover for all subcommands, but print warnings that
   // `package.json` is ignored in bundle/compile/etc.
 
-  if let crate::args::DenoSubcommand::Task(TaskFlags {
-    cwd: Some(path), ..
-  }) = &flags.subcommand
-  {
-    // attempt to resolve the config file from the task subcommand's
-    // `--cwd` when specified
-    let task_cwd = canonicalize_path(&PathBuf::from(path))?;
-    return discover_from(&task_cwd, None);
-  } else if let Some(package_json_arg) = flags.package_json_arg() {
-    let package_json_arg = canonicalize_path(&package_json_arg)?;
-    return discover_from(&package_json_arg, maybe_stop_at);
+  if let Some(package_json_dir) = flags.package_json_search_dir() {
+    let package_json_dir =
+      canonicalize_path_maybe_not_exists(&package_json_dir)?;
+    return discover_from(
+      &package_json_dir.join("package.json"),
+      maybe_stop_at,
+    );
   }
 
   log::debug!("No package.json file found");
@@ -802,7 +797,7 @@ impl CliOptions {
 
   pub fn resolve_tasks_config(
     &self,
-  ) -> Result<BTreeMap<String, String>, AnyError> {
+  ) -> Result<IndexMap<String, String>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
       config_file.resolve_tasks_config()
     } else if self.maybe_package_json.is_some() {
