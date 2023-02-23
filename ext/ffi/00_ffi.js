@@ -25,7 +25,10 @@ const {
   MathCeil,
   SafeMap,
   SafeArrayIterator,
+  SymbolFor,
 } = primordials;
+
+const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
 const U32_BUFFER = new Uint32Array(2);
 const U64_BUFFER = new BigUint64Array(U32_BUFFER.buffer);
@@ -360,12 +363,23 @@ class UnsafeCallback {
     this.callback = callback;
   }
 
+  static threadSafe(definition, callback) {
+    const unsafeCallback = new UnsafeCallback(definition, callback);
+    unsafeCallback.ref();
+    return unsafeCallback;
+  }
+
   ref() {
     if (this.#refcount++ === 0) {
-      this.#refpromise = core.opAsync(
-        "op_ffi_unsafe_callback_ref",
-        this.#rid,
-      );
+      if (this.#refpromise) {
+        // Re-refing
+        core.refOp(this.#refpromise[promiseIdSymbol]);
+      } else {
+        this.#refpromise = core.opAsync(
+          "op_ffi_unsafe_callback_ref",
+          this.#rid,
+        );
+      }
     }
     return this.#refcount;
   }
@@ -374,7 +388,7 @@ class UnsafeCallback {
     // Only decrement refcount if it is positive, and only
     // unref the callback if refcount reaches zero.
     if (this.#refcount > 0 && --this.#refcount === 0) {
-      ops.op_ffi_unsafe_callback_unref(this.#rid);
+      core.unrefOp(this.#refpromise[promiseIdSymbol]);
     }
     return this.#refcount;
   }

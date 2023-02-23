@@ -29,7 +29,6 @@ use call::op_ffi_call_ptr;
 use call::op_ffi_call_ptr_nonblocking;
 use callback::op_ffi_unsafe_callback_create;
 use callback::op_ffi_unsafe_callback_ref;
-use callback::op_ffi_unsafe_callback_unref;
 use dlfcn::op_ffi_load;
 use dlfcn::ForeignFunction;
 use r#static::op_ffi_get_static;
@@ -113,7 +112,6 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_read_ptr::decl::<P>(),
       op_ffi_unsafe_callback_create::decl::<P>(),
       op_ffi_unsafe_callback_ref::decl(),
-      op_ffi_unsafe_callback_unref::decl(),
     ])
     .event_loop_middleware(|op_state_rc, _cx| {
       // FFI callbacks coming in from other threads will call in and get queued.

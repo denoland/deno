@@ -304,7 +304,7 @@ impl CliMainWorker {
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
     deno_node::initialize_runtime(
       &mut self.worker.js_runtime,
-      self.ps.options.node_modules_dir(),
+      self.ps.options.has_node_modules_dir(),
     )
     .await?;
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
@@ -448,11 +448,15 @@ async fn create_main_worker_internal(
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
+    let pkg_nv = ps
+      .npm_resolver
+      .resolution()
+      .resolve_pkg_id_from_pkg_req(&package_ref.req)?
+      .nv;
     let node_resolution = node::node_resolve_binary_export(
-      &package_ref.req,
+      &pkg_nv,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
-      &mut PermissionsContainer::allow_all(),
     )?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
@@ -626,7 +630,7 @@ fn create_web_worker_pre_execute_module_callback(
       if ps.npm_resolver.has_packages() {
         deno_node::initialize_runtime(
           &mut worker.js_runtime,
-          ps.options.node_modules_dir(),
+          ps.options.has_node_modules_dir(),
         )
         .await?;
       }

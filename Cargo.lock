@@ -1009,9 +1009,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.55.0"
+version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d51f565fc87d1b8754482a49acf48254c9413392696a109d0f7464fb68da17d4"
+checksum = "717302b02dd63e4e16a5e7f6339a74708a981b2addc5cbc944b9a4c74857120c"
 dependencies = [
  "cfg-if",
  "deno_ast",
@@ -1027,9 +1027,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.15.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1462b4d37e1d301512505231729b39993d601ffc3c5c8121cd3a829952bd99ad"
+checksum = "068712ed5abcae4c109c4e08d7b8f959fc974726c922a6c3c71aabb613249c92"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -1093,14 +1093,15 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.43.3"
+version = "0.44.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b654f093ae79ca93715d6df840f45890dc61fc93e7f63ab0a7442c2a494ecac"
+checksum = "f03c7b4d4990cc1f09c09c6ae94ee0dc039c9fcf66a97f8e5954ee102ba0eedf"
 dependencies = [
  "anyhow",
  "data-url",
  "deno_ast",
  "futures",
+ "indexmap",
  "monch",
  "once_cell",
  "parking_lot 0.12.1",
@@ -1193,6 +1194,7 @@ dependencies = [
  "deno_core",
  "digest 0.10.6",
  "idna 0.3.0",
+ "indexmap",
  "md-5",
  "md4",
  "once_cell",
@@ -1278,9 +1280,9 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.8.2"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "532b383a071a05144c712614d62f08a2f9fad48dd62d6d457ed3884b049357da"
+checksum = "a7068bd49521a7b22dc6df8937097a7ac285ea320cbd78582b4155d31f0d5049"
 dependencies = [
  "anyhow",
  "futures",
@@ -1710,9 +1712,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.35.0"
+version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bbe59a9f33f0b4c2ac2b630e1769225fc1d7419bef195e27084be24b996afd9"
+checksum = "a1a9f2547787db6a0f5998a91dc54a3b5031190d11edcc62739473c0299bf36b"
 dependencies = [
  "anyhow",
  "base64 0.13.1",

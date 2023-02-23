@@ -89,17 +89,25 @@ impl Ord for NpmDependencyEntry {
   }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct NpmPeerDependencyMeta {
   #[serde(default)]
   optional: bool,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum NpmPackageVersionBinEntry {
+  String(String),
+  Map(HashMap<String, String>),
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct NpmPackageVersionInfo {
   pub version: String,
   pub dist: NpmPackageVersionDistInfo,
+  pub bin: Option<NpmPackageVersionBinEntry>,
   // Bare specifier to version (ex. `"typescript": "^3.0.1") or possibly
   // package and version (ex. `"typescript-3.0.1": "npm:typescript@3.0.1"`).
   #[serde(default)]
@@ -224,6 +232,13 @@ impl NpmRegistryApi {
     }))
   }
 
+  /// Creates an npm registry API that will be uninitialized
+  /// and error for every request. This is useful for tests
+  /// or for initializing the LSP.
+  pub fn new_uninitialized() -> Self {
+    Self(Arc::new(NullNpmRegistryApiInner))
+  }
+
   #[cfg(test)]
   pub fn new_for_test(api: TestNpmRegistryApiInner) -> NpmRegistryApi {
     Self(Arc::new(api))
@@ -284,6 +299,13 @@ impl NpmRegistryApi {
   /// Clears the internal memory cache.
   pub fn clear_memory_cache(&self) {
     self.0.clear_memory_cache();
+  }
+
+  pub fn get_cached_package_info(
+    &self,
+    name: &str,
+  ) -> Option<Arc<NpmPackageInfo>> {
+    self.0.get_cached_package_info(name)
   }
 
   pub fn base_url(&self) -> &Url {
@@ -637,5 +659,60 @@ impl NpmRegistryApiInner for TestNpmRegistryApiInner {
 
   fn base_url(&self) -> &Url {
     NpmRegistryApi::default_url()
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::collections::HashMap;
+
+  use deno_core::serde_json;
+
+  use crate::npm::registry::NpmPackageVersionBinEntry;
+  use crate::npm::NpmPackageVersionDistInfo;
+
+  use super::NpmPackageVersionInfo;
+
+  #[test]
+  fn deserializes_minimal_pkg_info() {
+    let text = r#"{ "version": "1.0.0", "dist": { "tarball": "value", "shasum": "test" } }"#;
+    let info: NpmPackageVersionInfo = serde_json::from_str(text).unwrap();
+    assert_eq!(
+      info,
+      NpmPackageVersionInfo {
+        version: "1.0.0".to_string(),
+        dist: NpmPackageVersionDistInfo {
+          tarball: "value".to_string(),
+          shasum: "test".to_string(),
+          integrity: None,
+        },
+        bin: None,
+        dependencies: Default::default(),
+        peer_dependencies: Default::default(),
+        peer_dependencies_meta: Default::default()
+      }
+    );
+  }
+
+  #[test]
+  fn deserializes_bin_entry() {
+    // string
+    let text = r#"{ "version": "1.0.0", "bin": "bin-value", "dist": { "tarball": "value", "shasum": "test" } }"#;
+    let info: NpmPackageVersionInfo = serde_json::from_str(text).unwrap();
+    assert_eq!(
+      info.bin,
+      Some(NpmPackageVersionBinEntry::String("bin-value".to_string()))
+    );
+
+    // map
+    let text = r#"{ "version": "1.0.0", "bin": { "a": "a-value", "b": "b-value" }, "dist": { "tarball": "value", "shasum": "test" } }"#;
+    let info: NpmPackageVersionInfo = serde_json::from_str(text).unwrap();
+    assert_eq!(
+      info.bin,
+      Some(NpmPackageVersionBinEntry::Map(HashMap::from([
+        ("a".to_string(), "a-value".to_string()),
+        ("b".to_string(), "b-value".to_string()),
+      ])))
+    );
   }
 }

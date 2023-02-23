@@ -97,7 +97,6 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native struct type for interfacing with foreign functions.
-   *
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
@@ -512,46 +511,80 @@ declare namespace Deno {
    *
    * The function pointer remains valid until the `close()` method is called.
    *
-   * The callback can be explicitly referenced via `ref()` and dereferenced via
-   * `deref()` to stop Deno's process from exiting.
+   * All `UnsafeCallback` are always thread safe in that they can be called from
+   * foreign threads without crashing. However, they do not wake up the Deno event
+   * loop by default.
+   * 
+   * If a callback is to be called from foreign threads, use the `threadSafe()`
+   * static constructor or explicitly call `ref()` to have the callback wake up
+   * the Deno event loop when called from foreign threads. This also stops
+   * Deno's process from exiting while the callback still exists and is not
+   * unref'ed.
+   *
+   * Use `deref()` to then allow Deno's process to exit. Calling `deref()` on
+   * a ref'ed callback does not stop it from waking up the Deno event loop when
+   * called from foreign threads.
    *
    * @category FFI
    */
   export class UnsafeCallback<
-    Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
+    Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition
   > {
     constructor(
       definition: Const<Definition>,
       callback: UnsafeCallbackFunction<
         Definition["parameters"],
         Definition["result"]
-      >,
+      >
     );
 
     /** The pointer to the unsafe callback. */
-    pointer: NonNullable<PointerValue>;
+    readonly pointer: NonNullable<PointerValue>;
     /** The definition of the unsafe callback. */
-    definition: Definition;
+    readonly definition: Definition;
     /** The callback function. */
-    callback: UnsafeCallbackFunction<
+    readonly callback: UnsafeCallbackFunction<
       Definition["parameters"],
       Definition["result"]
     >;
 
     /**
-     * Adds one to this callback's reference counting and returns the new
+     * Creates an {@linkcode UnsafeCallback} and calls `ref()` once to allow it to
+     * wake up the Deno event loop when called from foreign threads.
+     *
+     * This also stops Deno's process from exiting while the callback still
+     * exists and is not unref'ed.
+     */
+    static threadSafe<
+      Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition
+    >(
+      definition: Const<Definition>,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >
+    ): UnsafeCallback<Definition>;
+
+    /**
+     * Increments the callback's reference counting and returns the new
      * reference count.
      *
-     * If the callback's reference count is non-zero, it will keep Deno's
+     * After `ref()` has been called, the callback always wakes up the
+     * Deno event loop when called from foreign threads.
+     *
+     * If the callback's reference count is non-zero, it keeps Deno's
      * process from exiting.
      */
     ref(): number;
 
     /**
-     * Removes one from this callback's reference counting and returns the new
+     * Decrements the callback's reference counting and returns the new
      * reference count.
+     * 
+     * Calling `unref()` does not stop a callback from waking up the Deno
+     * event loop when called from foreign threads.
      *
-     * If the callback's reference counter is zero, it will no longer keep
+     * If the callback's reference counter is zero, it no longer keeps
      * Deno's process from exiting.
      */
     unref(): number;
@@ -559,11 +592,12 @@ declare namespace Deno {
     /**
      * Removes the C function pointer associated with this instance.
      *
-     * Continuing to use the instance after calling this object will lead to
-     * errors and crashes.
+     * Continuing to use the instance or the C function pointer after closing
+     * the `UnsafeCallback` will lead to errors and crashes.
      *
-     * Calling this method will also immediately set the callback's reference
-     * counting to zero and it will no longer keep Deno's process from exiting.
+     * Calling this method sets the callback's reference counting to zero,
+     * stops the callback from waking up the Deno event loop when called from
+     * foreign threads and no longer keeps Deno's process from exiting.
      */
     close(): void;
   }

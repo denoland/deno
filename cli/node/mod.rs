@@ -15,8 +15,8 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageReq;
-use deno_graph::npm::NpmPackageReqReference;
+use deno_graph::npm::NpmPackageNv;
+use deno_graph::npm::NpmPackageNvReference;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::errors;
 use deno_runtime::deno_node::find_builtin_node_module;
@@ -105,13 +105,13 @@ impl NodeResolution {
 }
 
 // TODO(bartlomieju): seems super wasteful to parse specified each time
-pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
-  if let Some(module) = find_builtin_node_module(specifier) {
+pub fn resolve_builtin_node_module(module_name: &str) -> Result<Url, AnyError> {
+  if let Some(module) = find_builtin_node_module(module_name) {
     return Ok(ModuleSpecifier::parse(module.specifier).unwrap());
   }
 
   Err(generic_error(format!(
-    "Unknown built-in \"node:\" module: {specifier}"
+    "Unknown built-in \"node:\" module: {module_name}"
   )))
 }
 
@@ -241,13 +241,13 @@ pub fn node_resolve(
 }
 
 pub fn node_resolve_npm_reference(
-  reference: &NpmPackageReqReference,
+  reference: &NpmPackageNvReference,
   mode: NodeResolutionMode,
   npm_resolver: &NpmPackageResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<Option<NodeResolution>, AnyError> {
   let package_folder =
-    npm_resolver.resolve_package_folder_from_deno_module(&reference.req)?;
+    npm_resolver.resolve_package_folder_from_deno_module(&reference.nv)?;
   let node_module_kind = NodeModuleKind::Esm;
   let maybe_resolved_path = package_config_resolve(
     &reference
@@ -285,25 +285,49 @@ pub fn node_resolve_npm_reference(
   Ok(Some(resolve_response))
 }
 
+pub fn node_resolve_binary_commands(
+  pkg_nv: &NpmPackageNv,
+  npm_resolver: &NpmPackageResolver,
+) -> Result<Vec<String>, AnyError> {
+  let package_folder =
+    npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
+  let package_json_path = package_folder.join("package.json");
+  let package_json = PackageJson::load(
+    npm_resolver,
+    &mut PermissionsContainer::allow_all(),
+    package_json_path,
+  )?;
+
+  Ok(match package_json.bin {
+    Some(Value::String(_)) => vec![pkg_nv.name.to_string()],
+    Some(Value::Object(o)) => {
+      o.into_iter().map(|(key, _)| key).collect::<Vec<_>>()
+    }
+    _ => Vec::new(),
+  })
+}
+
 pub fn node_resolve_binary_export(
-  pkg_req: &NpmPackageReq,
+  pkg_nv: &NpmPackageNv,
   bin_name: Option<&str>,
   npm_resolver: &NpmPackageResolver,
-  permissions: &mut dyn NodePermissions,
 ) -> Result<NodeResolution, AnyError> {
   let package_folder =
-    npm_resolver.resolve_package_folder_from_deno_module(pkg_req)?;
+    npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
   let package_json_path = package_folder.join("package.json");
-  let package_json =
-    PackageJson::load(npm_resolver, permissions, package_json_path)?;
+  let package_json = PackageJson::load(
+    npm_resolver,
+    &mut PermissionsContainer::allow_all(),
+    package_json_path,
+  )?;
   let bin = match &package_json.bin {
     Some(bin) => bin,
     None => bail!(
       "package '{}' did not have a bin property in its package.json",
-      &pkg_req.name,
+      &pkg_nv.name,
     ),
   };
-  let bin_entry = resolve_bin_entry_value(pkg_req, bin_name, bin)?;
+  let bin_entry = resolve_bin_entry_value(pkg_nv, bin_name, bin)?;
   let url =
     ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
 
@@ -314,13 +338,13 @@ pub fn node_resolve_binary_export(
 }
 
 fn resolve_bin_entry_value<'a>(
-  pkg_req: &NpmPackageReq,
+  pkg_nv: &NpmPackageNv,
   bin_name: Option<&str>,
   bin: &'a Value,
 ) -> Result<&'a str, AnyError> {
   let bin_entry = match bin {
     Value::String(_) => {
-      if bin_name.is_some() && bin_name.unwrap() != pkg_req.name {
+      if bin_name.is_some() && bin_name.unwrap() != pkg_nv.name {
         None
       } else {
         Some(bin)
@@ -332,10 +356,10 @@ fn resolve_bin_entry_value<'a>(
       } else if o.len() == 1 || o.len() > 1 && o.values().all(|v| v == o.values().next().unwrap()) {
         o.values().next()
       } else {
-        o.get(&pkg_req.name)
+        o.get(&pkg_nv.name)
       }
     },
-    _ => bail!("package '{}' did not have a bin property with a string or object value in its package.json", pkg_req.name),
+    _ => bail!("package '{}' did not have a bin property with a string or object value in its package.json", pkg_nv),
   };
   let bin_entry = match bin_entry {
     Some(e) => e,
@@ -345,14 +369,14 @@ fn resolve_bin_entry_value<'a>(
         .map(|o| {
           o.keys()
             .into_iter()
-            .map(|k| format!(" * npm:{pkg_req}/{k}"))
+            .map(|k| format!(" * npm:{pkg_nv}/{k}"))
             .collect::<Vec<_>>()
         })
         .unwrap_or_default();
       bail!(
         "package '{}' did not have a bin entry for '{}' in its package.json{}",
-        pkg_req.name,
-        bin_name.unwrap_or(&pkg_req.name),
+        pkg_nv,
+        bin_name.unwrap_or(&pkg_nv.name),
         if keys.is_empty() {
           "".to_string()
         } else {
@@ -365,7 +389,7 @@ fn resolve_bin_entry_value<'a>(
     Value::String(s) => Ok(s),
     _ => bail!(
       "package '{}' had a non-string sub property of bin in its package.json",
-      pkg_req.name,
+      pkg_nv,
     ),
   }
 }
@@ -982,7 +1006,7 @@ mod tests {
     });
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageReq::from_str("test").unwrap(),
+        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
         Some("bin1"),
         &value
       )
@@ -993,7 +1017,7 @@ mod tests {
     // should resolve the value with the same name when not specified
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageReq::from_str("test").unwrap(),
+        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
         None,
         &value
       )
@@ -1004,7 +1028,7 @@ mod tests {
     // should not resolve when specified value does not exist
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageReq::from_str("test").unwrap(),
+        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
         Some("other"),
         &value
       )
@@ -1012,19 +1036,19 @@ mod tests {
       .unwrap()
       .to_string(),
       concat!(
-        "package 'test' did not have a bin entry for 'other' in its package.json\n",
+        "package 'test@1.1.1' did not have a bin entry for 'other' in its package.json\n",
         "\n",
         "Possibilities:\n",
-        " * npm:test/bin1\n",
-        " * npm:test/bin2\n",
-        " * npm:test/test"
+        " * npm:test@1.1.1/bin1\n",
+        " * npm:test@1.1.1/bin2\n",
+        " * npm:test@1.1.1/test"
       )
     );
 
     // should not resolve when default value can't be determined
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageReq::from_str("asdf@1.2").unwrap(),
+        &NpmPackageNv::from_str("asdf@1.2.3").unwrap(),
         None,
         &value
       )
@@ -1032,12 +1056,12 @@ mod tests {
       .unwrap()
       .to_string(),
       concat!(
-        "package 'asdf' did not have a bin entry for 'asdf' in its package.json\n",
+        "package 'asdf@1.2.3' did not have a bin entry for 'asdf' in its package.json\n",
         "\n",
         "Possibilities:\n",
-        " * npm:asdf@1.2/bin1\n",
-        " * npm:asdf@1.2/bin2\n",
-        " * npm:asdf@1.2/test"
+        " * npm:asdf@1.2.3/bin1\n",
+        " * npm:asdf@1.2.3/bin2\n",
+        " * npm:asdf@1.2.3/test"
       )
     );
 
@@ -1048,7 +1072,7 @@ mod tests {
     });
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageReq::from_str("test").unwrap(),
+        &NpmPackageNv::from_str("test@1.2.3").unwrap(),
         None,
         &value
       )
@@ -1060,14 +1084,14 @@ mod tests {
     let value = json!("./value");
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageReq::from_str("test").unwrap(),
+        &NpmPackageNv::from_str("test@1.2.3").unwrap(),
         Some("path"),
         &value
       )
       .err()
       .unwrap()
       .to_string(),
-      "package 'test' did not have a bin entry for 'path' in its package.json"
+      "package 'test@1.2.3' did not have a bin entry for 'path' in its package.json"
     );
   }
 }

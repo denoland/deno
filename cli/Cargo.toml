@@ -44,13 +44,13 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = "0.55.0"
-deno_emit = "0.15.0"
-deno_graph = "0.43.3"
+deno_doc = "0.57.0"
+deno_emit = "0.16.0"
+deno_graph = "0.44.0"
 deno_lint = { version = "0.40.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
-deno_task_shell = "0.8.1"
+deno_task_shell = "0.10.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -70,12 +70,12 @@ dprint-plugin-markdown = "=0.15.2"
 dprint-plugin-typescript = "=0.83.0"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
-eszip = "=0.35.0"
+eszip = "=0.37.0"
 fancy-regex = "=0.10.0"
 flate2.workspace = true
 http.workspace = true
 import_map = "=0.15.0"
-indexmap = "=1.9.2"
+indexmap.workspace = true
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
