@@ -14,7 +14,7 @@ use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use deno_runtime::deno_node::is_builtin_node_module;
 use import_map::ImportMap;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::args::JsxImportSourceConfig;
@@ -26,7 +26,7 @@ use crate::npm::NpmResolution;
 #[derive(Debug, Clone)]
 pub struct CliGraphResolver {
   maybe_import_map: Option<Arc<ImportMap>>,
-  maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
+  maybe_package_json_deps: Option<BTreeMap<String, NpmPackageReq>>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   no_npm: bool,
@@ -62,7 +62,7 @@ impl CliGraphResolver {
     no_npm: bool,
     npm_registry_api: NpmRegistryApi,
     npm_resolution: NpmResolution,
-    maybe_package_json_deps: Option<HashMap<String, NpmPackageReq>>,
+    maybe_package_json_deps: Option<BTreeMap<String, NpmPackageReq>>,
   ) -> Self {
     Self {
       maybe_import_map,
@@ -120,6 +120,9 @@ impl Resolver for CliGraphResolver {
     }
 
     if let Some(deps) = self.maybe_package_json_deps.as_ref() {
+      if let Some(specifier) = resolve_package_json_dep(specifier, deps)? {
+        return Ok(specifier);
+      }
       if let Some(req) = deps.get(specifier) {
         return Ok(ModuleSpecifier::parse(&format!("npm:{req}")).unwrap());
       }
@@ -127,6 +130,25 @@ impl Resolver for CliGraphResolver {
 
     deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
   }
+}
+
+fn resolve_package_json_dep(
+  specifier: &str,
+  deps: &BTreeMap<String, NpmPackageReq>,
+) -> Result<Option<ModuleSpecifier>, deno_core::url::ParseError> {
+  for (bare_specifier, req) in deps {
+    if specifier.starts_with(bare_specifier) {
+      if specifier.len() == bare_specifier.len() {
+        return ModuleSpecifier::parse(&format!("npm:{req}")).map(Some);
+      }
+      let path = &specifier[bare_specifier.len()..];
+      if path.starts_with('/') {
+        return ModuleSpecifier::parse(&format!("npm:/{req}{path}")).map(Some);
+      }
+    }
+  }
+
+  Ok(None)
 }
 
 impl NpmResolver for CliGraphResolver {
@@ -182,5 +204,66 @@ impl NpmResolver for CliGraphResolver {
     self
       .npm_resolution
       .resolve_package_req_for_deno_graph(package_req)
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_resolve_package_json_dep() {
+    fn resolve(
+      specifier: &str,
+      deps: &BTreeMap<String, NpmPackageReq>,
+    ) -> Result<Option<String>, String> {
+      resolve_package_json_dep(specifier, deps)
+        .map(|s| s.map(|s| s.to_string()))
+        .map_err(|err| err.to_string())
+    }
+
+    let deps = BTreeMap::from([
+      (
+        "package".to_string(),
+        NpmPackageReq::from_str("package@1.0").unwrap(),
+      ),
+      (
+        "package-alias".to_string(),
+        NpmPackageReq::from_str("package@^1.2").unwrap(),
+      ),
+      (
+        "@deno/test".to_string(),
+        NpmPackageReq::from_str("@deno/test@~0.2").unwrap(),
+      ),
+    ]);
+
+    assert_eq!(
+      resolve("package", &deps).unwrap(),
+      Some("npm:package@1.0".to_string()),
+    );
+    assert_eq!(
+      resolve("package/some_path.ts", &deps).unwrap(),
+      Some("npm:/package@1.0/some_path.ts".to_string()),
+    );
+
+    assert_eq!(
+      resolve("@deno/test", &deps).unwrap(),
+      Some("npm:@deno/test@~0.2".to_string()),
+    );
+    assert_eq!(
+      resolve("@deno/test/some_path.ts", &deps).unwrap(),
+      Some("npm:/@deno/test@~0.2/some_path.ts".to_string()),
+    );
+    // matches the start, but doesn't have the same length or a path
+    assert_eq!(resolve("@deno/testing", &deps).unwrap(), None,);
+
+    // alias
+    assert_eq!(
+      resolve("package-alias", &deps).unwrap(),
+      Some("npm:package@^1.2".to_string()),
+    );
+
+    // non-existent bare specifier
+    assert_eq!(resolve("non-existent", &deps).unwrap(), None);
   }
 }

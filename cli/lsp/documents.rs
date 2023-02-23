@@ -1170,7 +1170,7 @@ impl Documents {
     fn calculate_resolver_config_hash(
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
-      maybe_package_json_deps: Option<&HashMap<String, NpmPackageReq>>,
+      maybe_package_json_deps: Option<&BTreeMap<String, NpmPackageReq>>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
       if let Some(import_map) = maybe_import_map {
@@ -1181,7 +1181,6 @@ impl Documents {
         hasher.write_hashable(&jsx_config);
       }
       if let Some(deps) = maybe_package_json_deps {
-        let deps = deps.iter().collect::<BTreeMap<_, _>>();
         hasher.write_hashable(&deps);
       }
       hasher.finish()
