@@ -1443,7 +1443,7 @@ class SubtleCrypto {
 
       switch (normalizedAlgorithm.name) {
         case "AES-KW": {
-          const cipherText = await core.opAsync("op_crypto_wrap_key", {
+          const cipherText = await ops.op_crypto_wrap_key({
             key: keyData,
             algorithm: normalizedAlgorithm.name,
           }, bytes);
@@ -1579,7 +1579,7 @@ class SubtleCrypto {
 
       switch (normalizedAlgorithm.name) {
         case "AES-KW": {
-          const plainText = await core.opAsync("op_crypto_unwrap_key", {
+          const plainText = await ops.op_crypto_unwrap_key({
             key: keyData,
             algorithm: normalizedAlgorithm.name,
           }, wrappedKey);
