@@ -133,41 +133,37 @@ pub trait BenchReporter {
 }
 
 #[derive(Debug, Serialize)]
-struct JsonReporterResult {
+struct JsonReporterOutput {
   runtime: String,
   cpu: String,
-  origin: String,
-  group: Option<String>,
-  name: String,
-  baseline: bool,
-  result: BenchResult,
+  benches: Vec<JsonReporterBench>,
 }
 
-impl JsonReporterResult {
-  fn new(
-    origin: String,
-    group: Option<String>,
-    name: String,
-    baseline: bool,
-    result: BenchResult,
-  ) -> Self {
+impl Default for JsonReporterOutput {
+  fn default() -> Self {
     Self {
       runtime: format!("{} {}", get_user_agent(), env!("TARGET")),
       cpu: mitata::cpu::name(),
-      origin,
-      group,
-      name,
-      baseline,
-      result,
+      benches: vec![],
     }
   }
 }
 
 #[derive(Debug, Serialize)]
-struct JsonReporter(Vec<JsonReporterResult>);
+struct JsonReporterBench {
+  origin: String,
+  group: Option<String>,
+  name: String,
+  baseline: bool,
+  results: Vec<BenchResult>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonReporter(JsonReporterOutput);
+
 impl JsonReporter {
   fn new() -> Self {
-    Self(vec![])
+    Self(Default::default())
   }
 }
 
@@ -190,13 +186,24 @@ impl BenchReporter for JsonReporter {
   fn report_output(&mut self, _output: &str) {}
 
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
-    self.0.push(JsonReporterResult::new(
-      desc.origin.clone(),
-      desc.group.clone(),
-      desc.name.clone(),
-      desc.baseline,
-      result.clone(),
-    ));
+    let maybe_bench = self.0.benches.iter_mut().find(|bench| {
+      bench.origin == desc.origin
+        && bench.group == desc.group
+        && bench.name == desc.name
+        && bench.baseline == desc.baseline
+    });
+
+    if let Some(bench) = maybe_bench {
+      bench.results.push(result.clone());
+    } else {
+      self.0.benches.push(JsonReporterBench {
+        origin: desc.origin.clone(),
+        group: desc.group.clone(),
+        name: desc.name.clone(),
+        baseline: desc.baseline,
+        results: vec![result.clone()],
+      });
+    }
   }
 }
 
