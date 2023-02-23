@@ -545,8 +545,8 @@ impl Flags {
           .to_file_path()
           .ok()
       }
-      Task(_) | Check(_) | Cache(_) | Info(_) | Eval(_) | Test(_)
-      | Bench(_) => std::env::current_dir().ok(),
+      Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
+      | Test(_) | Bench(_) => std::env::current_dir().ok(),
       _ => None,
     }
   }

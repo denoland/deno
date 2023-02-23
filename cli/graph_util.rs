@@ -156,6 +156,9 @@ pub async fn create_graph_and_maybe_check(
   );
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_package_json_deps = ps.options.maybe_package_json_deps()?;
+  ps.npm_resolver
+    .add_package_json_deps(maybe_package_json_deps.as_ref())
+    .await?;
   let cli_resolver = CliGraphResolver::new(
     ps.options.to_maybe_jsx_import_source_config(),
     ps.maybe_import_map.clone(),
