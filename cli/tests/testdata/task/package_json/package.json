@@ -1,9 +1,10 @@
 {
   "scripts": {
-    "dev": "deno eval 'console.log(1)'",
-    "cowsay": "cowsay hi"
+    "echo": "deno eval 'console.log(1)'",
+    "bin": "@denotest/bin hi && cli-esm testing this out && npx cli-cjs test"
   },
   "dependencies": {
-    "cowsay": "*"
+    "@denotest/bin": "0.5",
+    "other": "npm:@denotest/bin@1.0"
   }
 }

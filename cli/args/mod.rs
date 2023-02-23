@@ -836,7 +836,13 @@ impl CliOptions {
   pub fn maybe_package_json_deps(
     &self,
   ) -> Result<Option<HashMap<String, NpmPackageReq>>, AnyError> {
-    if let Some(package_json) = self.maybe_package_json() {
+    if matches!(
+      self.flags.subcommand,
+      DenoSubcommand::Task(TaskFlags { task: None, .. })
+    ) {
+      // don't have any package json dependencies for deno task with no args
+      Ok(None)
+    } else if let Some(package_json) = self.maybe_package_json() {
       package_json::get_local_package_json_version_reqs(package_json).map(Some)
     } else {
       Ok(None)

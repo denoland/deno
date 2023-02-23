@@ -3,6 +3,8 @@
 // Most of the tests for this are in deno_task_shell.
 // These tests are intended to only test integration.
 
+use test_util::env_vars_for_npm_tests;
+
 itest!(task_no_args {
   args: "task -q --config task/deno_json/deno.json",
   output: "task/deno_json/task_no_args.out",
@@ -146,5 +148,64 @@ itest!(task_package_json_no_arg {
   cwd: Some("task/package_json/"),
   output: "task/package_json/no_args.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  exit_code: 1,
+});
+
+itest!(task_package_json_echo {
+  args: "task --quiet echo",
+  cwd: Some("task/package_json/"),
+  output: "task/package_json/echo.out",
+  // use a temp dir because the node_modules folder will be created
+  copy_temp_dir: Some("task/package_json/"),
+  envs: env_vars_for_npm_tests(),
   exit_code: 0,
+  http_server: true,
+});
+
+itest!(task_package_json_npm_bin {
+  args: "task bin extra",
+  cwd: Some("task/package_json/"),
+  output: "task/package_json/bin.out",
+  copy_temp_dir: Some("task/package_json/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+itest!(task_both_no_arg {
+  args: "task",
+  cwd: Some("task/both/"),
+  output: "task/both/no_args.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  exit_code: 1,
+});
+
+itest!(task_both_deno_json_selected {
+  args: "task other",
+  cwd: Some("task/both/"),
+  output: "task/both/deno_selected.out",
+  copy_temp_dir: Some("task/both/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+itest!(task_both_package_json_selected {
+  args: "task bin asdf",
+  cwd: Some("task/both/"),
+  output: "task/both/package_json_selected.out",
+  copy_temp_dir: Some("task/both/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+itest!(task_both_prefers_deno {
+  args: "task output some text",
+  cwd: Some("task/both/"),
+  output: "task/both/prefers_deno.out",
+  copy_temp_dir: Some("task/both/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
 });

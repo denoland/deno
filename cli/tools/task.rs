@@ -9,6 +9,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
+use deno_graph::npm::NpmPackageNv;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
@@ -29,14 +30,15 @@ pub async fn execute_script(
     .and_then(|p| p.scripts.clone())
     .unwrap_or_default();
 
-  if task_flags.task.is_empty() {
-    print_available_tasks(&tasks_config, &package_json_scripts);
-    return Ok(1);
-  }
+  let task_name = match &task_flags.task {
+    Some(task) => task,
+    None => {
+      print_available_tasks(&tasks_config, &package_json_scripts);
+      return Ok(1);
+    }
+  };
 
-  let task_name = task_flags.task;
-
-  if let Some(script) = tasks_config.get(&task_name) {
+  if let Some(script) = tasks_config.get(task_name) {
     let config_file_url = ps.options.maybe_config_file_specifier().unwrap();
     let config_file_path = if config_file_url.scheme() == "file" {
       config_file_url.to_file_path().unwrap()
@@ -48,7 +50,7 @@ pub async fn execute_script(
       None => config_file_path.parent().unwrap().to_owned(),
     };
     let script = get_script_with_args(script, &ps);
-    output_task(&task_name, &script);
+    output_task(task_name, &script);
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{task_name}'."))?;
     let env_vars = collect_env_vars();
@@ -56,7 +58,7 @@ pub async fn execute_script(
       deno_task_shell::execute(seq_list, env_vars, &cwd, Default::default())
         .await;
     Ok(exit_code)
-  } else if let Some(script) = package_json_scripts.get(&task_name) {
+  } else if let Some(script) = package_json_scripts.get(task_name) {
     let cwd = match task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
       None => maybe_package_json
@@ -68,7 +70,7 @@ pub async fn execute_script(
         .to_owned(),
     };
     let script = get_script_with_args(script, &ps);
-    output_task(&task_name, &script);
+    output_task(task_name, &script);
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{task_name}'."))?;
     let npx_commands = resolve_npm_commands(&ps)?;
@@ -128,12 +130,21 @@ fn print_available_tasks(
   eprintln!("{}", colors::green("Available tasks:"));
 
   let mut had_task = false;
-  for (key, value) in tasks_config.iter().chain(
+  for (is_deno, (key, value)) in tasks_config.iter().map(|e| (true, e)).chain(
     package_json_scripts
       .iter()
-      .filter(|(key, _)| !tasks_config.contains_key(*key)),
+      .filter(|(key, _)| !tasks_config.contains_key(*key))
+      .map(|e| (false, e)),
   ) {
-    eprintln!("- {}", colors::cyan(key));
+    eprintln!(
+      "- {}{}",
+      colors::cyan(key),
+      if is_deno {
+        "".to_string()
+      } else {
+        format!(" {}", colors::italic_gray("(package.json)"))
+      }
+    );
     eprintln!("    {value}");
     had_task = true;
   }
@@ -167,7 +178,7 @@ impl ShellCommand for NpxCommand {
 #[derive(Clone)]
 struct NpmPackageBinCommand {
   name: String,
-  npm_package: String,
+  npm_package: NpmPackageNv,
 }
 
 impl ShellCommand for NpmPackageBinCommand {
@@ -178,7 +189,11 @@ impl ShellCommand for NpmPackageBinCommand {
     let mut args = vec![
       "run".to_string(),
       "-A".to_string(),
-      format!("npm:{}/{}", self.npm_package, self.name),
+      if self.npm_package.name == self.name {
+        format!("npm:{}", self.npm_package)
+      } else {
+        format!("npm:{}/{}", self.npm_package, self.name)
+      },
     ];
     args.extend(context.args);
     let executable_command =
@@ -200,7 +215,7 @@ fn resolve_npm_commands(
         bin_command.to_string(),
         Rc::new(NpmPackageBinCommand {
           name: bin_command,
-          npm_package: id.nv.to_string(),
+          npm_package: id.nv.clone(),
         }) as Rc<dyn ShellCommand>,
       );
     }
