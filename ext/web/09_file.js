@@ -13,6 +13,7 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "internal:deno_webidl/00_webidl.js";
+import { ReadableStream } from "internal:deno_web/06_streams.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
@@ -106,7 +107,6 @@ function convertLineEndingsToNative(s) {
 /** @param {(BlobReference | Blob)[]} parts */
 async function* toIterator(parts) {
   for (let i = 0; i < parts.length; ++i) {
-    // TODO(petamoriken): use primordials
     // deno-lint-ignore prefer-primordials
     yield* parts[i].stream();
   }

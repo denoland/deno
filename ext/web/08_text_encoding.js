@@ -111,15 +111,27 @@ class TextDecoder {
     }
 
     try {
+      /** @type {ArrayBufferLike} */
+      let buffer = input;
+      if (ArrayBufferIsView(input)) {
+        if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
+          // TypedArray
+          buffer = TypedArrayPrototypeGetBuffer(
+            /** @type {Uint8Array} */ (input),
+          );
+        } else {
+          // DataView
+          buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (input));
+        }
+      }
+
       // Note from spec: implementations are strongly encouraged to use an implementation strategy that avoids this copy.
       // When doing so they will have to make sure that changes to input do not affect future calls to decode().
       if (
         ObjectPrototypeIsPrototypeOf(
           // deno-lint-ignore prefer-primordials
           SharedArrayBuffer.prototype,
-          // TODO(petamoriken): use premordials
-          // deno-lint-ignore prefer-primordials
-          input || input.buffer,
+          buffer,
         )
       ) {
         // We clone the data into a non-shared ArrayBuffer so we can pass it
@@ -130,7 +142,7 @@ class TextDecoder {
           if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
             // TypedArray
             input = new Uint8Array(
-              TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (input)),
+              buffer,
               TypedArrayPrototypeGetByteOffset(
                 /** @type {Uint8Array} */ (input),
               ),
@@ -141,13 +153,13 @@ class TextDecoder {
           } else {
             // DataView
             input = new Uint8Array(
-              DataViewPrototypeGetBuffer(/** @type {DataView} */ (input)),
+              buffer,
               DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
               DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
             );
           }
         } else {
-          input = new Uint8Array(input);
+          input = new Uint8Array(buffer);
         }
       }
 
