@@ -26,6 +26,7 @@ const dylib = Deno.dlopen(
   } as const,
 );
 
+let retry = false;
 const tripleLogCallback = () => {
   console.log("Sync");
   Promise.resolve().then(() => {
@@ -35,10 +36,18 @@ const tripleLogCallback = () => {
   setTimeout(() => {
     console.log("Timeout");
     callback.unref();
+
+    if (retry) {
+      // Re-ref and retry the call to make sure re-refing works.
+      console.log("RETRY THREAD SAFE");
+      retry = false;
+      callback.ref();
+      dylib.symbols.call_stored_function_thread_safe_and_log();
+    }
   }, 10);
 };
 
-const callback = new Deno.UnsafeCallback(
+const callback = Deno.UnsafeCallback.threadSafe(
   {
     parameters: [],
     result: "void",
@@ -57,10 +66,11 @@ console.log("STORED_FUNCTION called");
 // Wait to make sure synch logging and async logging
 await new Promise((res) => setTimeout(res, 100));
 
-// Ref twice to make sure both `Promise.resolve().then()` and `setTimeout()`
-// must resolve before isolate exists.
-callback.ref();
+// Ref once to make sure both `Promise.resolve().then()` and `setTimeout()`
+// must resolve and unref before isolate exists.
+// One ref'ing has been done by `threadSafe` constructor.
 callback.ref();
 
 console.log("THREAD SAFE");
+retry = true;
 dylib.symbols.call_stored_function_thread_safe_and_log();

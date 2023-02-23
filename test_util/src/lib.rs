@@ -31,6 +31,7 @@ use std::mem::replace;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Child;
@@ -1923,12 +1924,17 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
   pub temp_cwd: bool,
-  // Relative to "testdata" directory
-  pub maybe_cwd: Option<&'a str>,
+  /// Copies the files at the specified directory in the "testdata" directory
+  /// to the temp folder and runs the test from there. This is useful when
+  /// the test creates files in the testdata directory (ex. a node_modules folder)
+  pub copy_temp_dir: Option<&'a str>,
+  /// Relative to "testdata" directory
+  pub cwd: Option<&'a str>,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
   pub fn run(&self) {
+    let deno_dir = new_deno_dir(); // keep this alive for the test
     let args = if self.args_vec.is_empty() {
       std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())
     } else {
@@ -1938,7 +1944,15 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       );
       std::borrow::Cow::Borrowed(&self.args_vec)
     };
-    let testdata_dir = testdata_path();
+    let testdata_dir = if let Some(temp_copy_dir) = &self.copy_temp_dir {
+      let test_data_path = testdata_path().join(temp_copy_dir);
+      let temp_copy_dir = deno_dir.path().join(temp_copy_dir);
+      std::fs::create_dir_all(&temp_copy_dir).unwrap();
+      copy_dir_recursive(&test_data_path, &temp_copy_dir).unwrap();
+      deno_dir.path().to_owned()
+    } else {
+      testdata_path()
+    };
     let args = args
       .iter()
       .map(|arg| arg.replace("$TESTDATA", &testdata_dir.to_string_lossy()))
@@ -1953,11 +1967,10 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     };
 
     let (mut reader, writer) = pipe().unwrap();
-    let deno_dir = new_deno_dir(); // keep this alive for the test
     let mut command = deno_cmd_with_deno_dir(&deno_dir);
     let cwd = if self.temp_cwd {
       deno_dir.path().to_owned()
-    } else if let Some(cwd_) = &self.maybe_cwd {
+    } else if let Some(cwd_) = &self.cwd {
       testdata_dir.join(cwd_)
     } else {
       testdata_dir.clone()
@@ -2326,6 +2339,37 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
   }
 
   None
+}
+
+/// Copies a directory to another directory.
+///
+/// Note: Does not handle symlinks.
+pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), anyhow::Error> {
+  use anyhow::Context;
+
+  std::fs::create_dir_all(to)
+    .with_context(|| format!("Creating {}", to.display()))?;
+  let read_dir = std::fs::read_dir(from)
+    .with_context(|| format!("Reading {}", from.display()))?;
+
+  for entry in read_dir {
+    let entry = entry?;
+    let file_type = entry.file_type()?;
+    let new_from = from.join(entry.file_name());
+    let new_to = to.join(entry.file_name());
+
+    if file_type.is_dir() {
+      copy_dir_recursive(&new_from, &new_to).with_context(|| {
+        format!("Dir {} to {}", new_from.display(), new_to.display())
+      })?;
+    } else if file_type.is_file() {
+      std::fs::copy(&new_from, &new_to).with_context(|| {
+        format!("Copying {} to {}", new_from.display(), new_to.display())
+      })?;
+    }
+  }
+
+  Ok(())
 }
 
 #[cfg(test)]

@@ -418,13 +418,14 @@ pub(crate) fn generate(
 fn q_fast_ty(v: &FastValue) -> Quote {
   match v {
     FastValue::Void => q!({ () }),
+    FastValue::Bool => q!({ bool }),
     FastValue::U32 => q!({ u32 }),
     FastValue::I32 => q!({ i32 }),
     FastValue::U64 => q!({ u64 }),
     FastValue::I64 => q!({ i64 }),
     FastValue::F32 => q!({ f32 }),
     FastValue::F64 => q!({ f64 }),
-    FastValue::Bool => q!({ bool }),
+    FastValue::Pointer => q!({ *mut ::std::ffi::c_void }),
     FastValue::V8Value => q!({ v8::Local<v8::Value> }),
     FastValue::Uint8Array
     | FastValue::Uint32Array
@@ -436,13 +437,14 @@ fn q_fast_ty(v: &FastValue) -> Quote {
 fn q_fast_ty_variant(v: &FastValue) -> Quote {
   match v {
     FastValue::Void => q!({ Void }),
+    FastValue::Bool => q!({ Bool }),
     FastValue::U32 => q!({ Uint32 }),
     FastValue::I32 => q!({ Int32 }),
     FastValue::U64 => q!({ Uint64 }),
     FastValue::I64 => q!({ Int64 }),
     FastValue::F32 => q!({ Float32 }),
     FastValue::F64 => q!({ Float64 }),
-    FastValue::Bool => q!({ Bool }),
+    FastValue::Pointer => q!({ Pointer }),
     FastValue::V8Value => q!({ V8Value }),
     FastValue::Uint8Array => q!({ TypedArray(CType::Uint8) }),
     FastValue::Uint32Array => q!({ TypedArray(CType::Uint32) }),

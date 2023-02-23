@@ -193,7 +193,7 @@ impl RunFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TaskFlags {
   pub cwd: Option<String>,
-  pub task: String,
+  pub task: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -508,26 +508,34 @@ impl Flags {
   /// from the `path` dir.
   /// If it returns None, the `package.json` file shouldn't be discovered at
   /// all.
-  pub fn package_json_arg(&self) -> Option<PathBuf> {
+  pub fn package_json_search_dir(&self) -> Option<PathBuf> {
     use DenoSubcommand::*;
 
-    if let Run(RunFlags { script }) = &self.subcommand {
-      if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
+    match &self.subcommand {
+      Run(RunFlags { script }) => {
+        let module_specifier = deno_core::resolve_url_or_path(script).ok()?;
         if module_specifier.scheme() == "file" {
           let p = module_specifier
             .to_file_path()
             .unwrap()
             .parent()?
             .to_owned();
-          return Some(p);
+          Some(p)
         } else if module_specifier.scheme() == "npm" {
-          let p = std::env::current_dir().unwrap();
-          return Some(p);
+          Some(std::env::current_dir().unwrap())
+        } else {
+          None
         }
       }
+      Task(TaskFlags { cwd: Some(cwd), .. }) => {
+        deno_core::resolve_url_or_path(cwd)
+          .ok()?
+          .to_file_path()
+          .ok()
+      }
+      Task(TaskFlags { cwd: None, .. }) => std::env::current_dir().ok(),
+      _ => None,
     }
-
-    None
   }
 
   pub fn has_permission(&self) -> bool {
@@ -2795,7 +2803,7 @@ fn task_parse(
 
   let mut task_flags = TaskFlags {
     cwd: None,
-    task: String::new(),
+    task: None,
   };
 
   if let Some(cwd) = matches.value_of("cwd") {
@@ -2830,7 +2838,7 @@ fn task_parse(
     }
 
     if index < raw_args.len() {
-      task_flags.task = raw_args[index].to_string();
+      task_flags.task = Some(raw_args[index].to_string());
       index += 1;
 
       if index < raw_args.len() {
@@ -6394,7 +6402,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         argv: svec!["hello", "world"],
         ..Flags::default()
@@ -6407,7 +6415,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         ..Flags::default()
       }
@@ -6419,7 +6427,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: Some("foo".to_string()),
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         ..Flags::default()
       }
@@ -6443,7 +6451,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         argv: svec!["--", "hello", "world"],
         config_flag: ConfigFlag::Path("deno.json".to_owned()),
@@ -6459,7 +6467,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: Some("foo".to_string()),
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         argv: svec!["--", "hello", "world"],
         ..Flags::default()
@@ -6476,7 +6484,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         argv: svec!["--"],
         ..Flags::default()
@@ -6492,7 +6500,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         argv: svec!["-1", "--test"],
         ..Flags::default()
@@ -6508,7 +6516,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         argv: svec!["--test"],
         ..Flags::default()
@@ -6526,7 +6534,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "build".to_string(),
+          task: Some("build".to_string()),
         }),
         unstable: true,
         log_level: Some(log::Level::Error),
@@ -6543,7 +6551,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "".to_string(),
+          task: None,
         }),
         ..Flags::default()
       }
@@ -6558,7 +6566,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "".to_string(),
+          task: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
@@ -6574,7 +6582,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
           cwd: None,
-          task: "".to_string(),
+          task: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()

@@ -13,6 +13,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_graph::npm::NpmPackageNv;
 use deno_graph::semver::Version;
 
 use crate::args::CacheSetting;
@@ -35,7 +36,7 @@ pub fn should_sync_download() -> bool {
 const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
 pub fn with_folder_sync_lock(
-  package: (&str, &Version),
+  package: &NpmPackageNv,
   output_folder: &Path,
   action: impl FnOnce() -> Result<(), AnyError>,
 ) -> Result<(), AnyError> {
@@ -87,14 +88,13 @@ pub fn with_folder_sync_lock(
         if remove_err.kind() != std::io::ErrorKind::NotFound {
           bail!(
             concat!(
-              "Failed setting up package cache directory for {}@{}, then ",
+              "Failed setting up package cache directory for {}, then ",
               "failed cleaning it up.\n\nOriginal error:\n\n{}\n\n",
               "Remove error:\n\n{}\n\nPlease manually ",
               "delete this folder or you will run into issues using this ",
               "package in the future:\n\n{}"
             ),
-            package.0,
-            package.1,
+            package,
             err,
             remove_err,
             output_folder.display(),
@@ -107,8 +107,7 @@ pub fn with_folder_sync_lock(
 }
 
 pub struct NpmPackageCacheFolderId {
-  pub name: String,
-  pub version: Version,
+  pub nv: NpmPackageNv,
   /// Peer dependency resolution may require us to have duplicate copies
   /// of the same package.
   pub copy_index: usize,
@@ -117,8 +116,7 @@ pub struct NpmPackageCacheFolderId {
 impl NpmPackageCacheFolderId {
   pub fn with_no_count(&self) -> Self {
     Self {
-      name: self.name.clone(),
-      version: self.version.clone(),
+      nv: self.nv.clone(),
       copy_index: 0,
     }
   }
@@ -126,7 +124,7 @@ impl NpmPackageCacheFolderId {
 
 impl std::fmt::Display for NpmPackageCacheFolderId {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}@{}", self.name, self.version)?;
+    write!(f, "{}", self.nv)?;
     if self.copy_index > 0 {
       write!(f, "_{}", self.copy_index)?;
     }
@@ -183,31 +181,26 @@ impl ReadonlyNpmCache {
 
   pub fn package_folder_for_id(
     &self,
-    id: &NpmPackageCacheFolderId,
+    folder_id: &NpmPackageCacheFolderId,
     registry_url: &Url,
   ) -> PathBuf {
-    if id.copy_index == 0 {
-      self.package_folder_for_name_and_version(
-        &id.name,
-        &id.version,
-        registry_url,
-      )
+    if folder_id.copy_index == 0 {
+      self.package_folder_for_name_and_version(&folder_id.nv, registry_url)
     } else {
       self
-        .package_name_folder(&id.name, registry_url)
-        .join(format!("{}_{}", id.version, id.copy_index))
+        .package_name_folder(&folder_id.nv.name, registry_url)
+        .join(format!("{}_{}", folder_id.nv.version, folder_id.copy_index))
     }
   }
 
   pub fn package_folder_for_name_and_version(
     &self,
-    name: &str,
-    version: &Version,
+    package: &NpmPackageNv,
     registry_url: &Url,
   ) -> PathBuf {
     self
-      .package_name_folder(name, registry_url)
-      .join(version.to_string())
+      .package_name_folder(&package.name, registry_url)
+      .join(package.version.to_string())
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
@@ -304,8 +297,10 @@ impl ReadonlyNpmCache {
         (version_part, 0)
       };
     Some(NpmPackageCacheFolderId {
-      name,
-      version: Version::parse_from_npm(version).ok()?,
+      nv: NpmPackageNv {
+        name,
+        version: Version::parse_from_npm(version).ok()?,
+      },
       copy_index,
     })
   }
@@ -323,7 +318,7 @@ pub struct NpmCache {
   http_client: HttpClient,
   progress_bar: ProgressBar,
   /// ensures a package is only downloaded once per run
-  previously_reloaded_packages: Arc<Mutex<HashSet<String>>>,
+  previously_reloaded_packages: Arc<Mutex<HashSet<NpmPackageNv>>>,
 }
 
 impl NpmCache {
@@ -357,40 +352,36 @@ impl NpmCache {
   /// and imports a dynamic import that imports the same package again for example.
   fn should_use_global_cache_for_package(
     &self,
-    package: (&str, &Version),
+    package: &NpmPackageNv,
   ) -> bool {
-    self.cache_setting.should_use_for_npm_package(package.0)
+    self.cache_setting.should_use_for_npm_package(&package.name)
       || !self
         .previously_reloaded_packages
         .lock()
-        .insert(format!("{}@{}", package.0, package.1))
+        .insert(package.clone())
   }
 
   pub async fn ensure_package(
     &self,
-    package: (&str, &Version),
+    package: &NpmPackageNv,
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
     self
       .ensure_package_inner(package, dist, registry_url)
       .await
-      .with_context(|| {
-        format!("Failed caching npm package '{}@{}'.", package.0, package.1)
-      })
+      .with_context(|| format!("Failed caching npm package '{package}'."))
   }
 
   async fn ensure_package_inner(
     &self,
-    package: (&str, &Version),
+    package: &NpmPackageNv,
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
-    let package_folder = self.readonly.package_folder_for_name_and_version(
-      package.0,
-      package.1,
-      registry_url,
-    );
+    let package_folder = self
+      .readonly
+      .package_folder_for_name_and_version(package, registry_url);
     if self.should_use_global_cache_for_package(package)
       && package_folder.exists()
       // if this file exists, then the package didn't successfully extract
@@ -403,7 +394,7 @@ impl NpmCache {
         "NotCached",
         format!(
           "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
-          &package.0
+          &package.name
         )
       )
       );
@@ -430,29 +421,28 @@ impl NpmCache {
   /// from exists before this is called.
   pub fn ensure_copy_package(
     &self,
-    id: &NpmPackageCacheFolderId,
+    folder_id: &NpmPackageCacheFolderId,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
-    assert_ne!(id.copy_index, 0);
-    let package_folder = self.readonly.package_folder_for_id(id, registry_url);
+    assert_ne!(folder_id.copy_index, 0);
+    let package_folder =
+      self.readonly.package_folder_for_id(folder_id, registry_url);
 
     if package_folder.exists()
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
-      && self.cache_setting.should_use_for_npm_package(&id.name)
+      && self.cache_setting.should_use_for_npm_package(&folder_id.nv.name)
     {
       return Ok(());
     }
 
     let original_package_folder = self
       .readonly
-      .package_folder_for_name_and_version(&id.name, &id.version, registry_url);
-    with_folder_sync_lock(
-      (id.name.as_str(), &id.version),
-      &package_folder,
-      || hard_link_dir_recursive(&original_package_folder, &package_folder),
-    )?;
+      .package_folder_for_name_and_version(&folder_id.nv, registry_url);
+    with_folder_sync_lock(&folder_id.nv, &package_folder, || {
+      hard_link_dir_recursive(&original_package_folder, &package_folder)
+    })?;
     Ok(())
   }
 
@@ -466,15 +456,12 @@ impl NpmCache {
 
   pub fn package_folder_for_name_and_version(
     &self,
-    name: &str,
-    version: &Version,
+    package: &NpmPackageNv,
     registry_url: &Url,
   ) -> PathBuf {
-    self.readonly.package_folder_for_name_and_version(
-      name,
-      version,
-      registry_url,
-    )
+    self
+      .readonly
+      .package_folder_for_name_and_version(package, registry_url)
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
@@ -514,6 +501,7 @@ pub fn mixed_case_package_name_decode(name: &str) -> Option<String> {
 #[cfg(test)]
 mod test {
   use deno_core::url::Url;
+  use deno_graph::npm::NpmPackageNv;
   use deno_graph::semver::Version;
 
   use super::ReadonlyNpmCache;
@@ -529,8 +517,10 @@ mod test {
     assert_eq!(
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
-          name: "json".to_string(),
-          version: Version::parse_from_npm("1.2.5").unwrap(),
+          nv: NpmPackageNv {
+            name: "json".to_string(),
+            version: Version::parse_from_npm("1.2.5").unwrap(),
+          },
           copy_index: 0,
         },
         &registry_url,
@@ -544,8 +534,10 @@ mod test {
     assert_eq!(
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
-          name: "json".to_string(),
-          version: Version::parse_from_npm("1.2.5").unwrap(),
+          nv: NpmPackageNv {
+            name: "json".to_string(),
+            version: Version::parse_from_npm("1.2.5").unwrap(),
+          },
           copy_index: 1,
         },
         &registry_url,
@@ -559,8 +551,10 @@ mod test {
     assert_eq!(
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
-          name: "JSON".to_string(),
-          version: Version::parse_from_npm("2.1.5").unwrap(),
+          nv: NpmPackageNv {
+            name: "JSON".to_string(),
+            version: Version::parse_from_npm("2.1.5").unwrap(),
+          },
           copy_index: 0,
         },
         &registry_url,
@@ -574,8 +568,10 @@ mod test {
     assert_eq!(
       cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
-          name: "@types/JSON".to_string(),
-          version: Version::parse_from_npm("2.1.5").unwrap(),
+          nv: NpmPackageNv {
+            name: "@types/JSON".to_string(),
+            version: Version::parse_from_npm("2.1.5").unwrap(),
+          },
           copy_index: 0,
         },
         &registry_url,

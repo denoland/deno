@@ -97,7 +97,6 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native struct type for interfacing with foreign functions.
-   *
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
@@ -131,10 +130,10 @@ declare namespace Deno {
    */
   type ToNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBigIntType, number | bigint>
     & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue | null>
-    & Record<NativeFunctionType, PointerValue | null>
+    & Record<NativePointerType, PointerValue>
+    & Record<NativeFunctionType, PointerValue>
     & Record<NativeBufferType, BufferSource | null>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -191,7 +190,7 @@ declare namespace Deno {
    */
   type FromNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBigIntType, number | bigint>
     & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue>
     & Record<NativeBufferType, PointerValue>
@@ -340,6 +339,9 @@ declare namespace Deno {
     [K in keyof T]: StaticForeignSymbol<T[K]>;
   };
 
+  const brand: unique symbol;
+  type PointerObject = { [brand]: unknown };
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Pointer type depends on the architecture and actual pointer value.
@@ -350,7 +352,7 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type PointerValue = number | bigint;
+  export type PointerValue = null | PointerObject;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -360,8 +362,16 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointer {
+    /** Create a pointer from a numeric value. This is one is <i>really</i> dangerous! */
+    static create(value: number | bigint): PointerValue;
+    /** Returns `true` if the two pointers point to the same address. */
+    static equals(a: PointerValue, b: PointerValue): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
     static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
+    /** Return a new pointer offset from the original by `offset` bytes. */
+    static offset(value: NonNullable<PointerValue>, offset: number): PointerValue
+    /** Get the numeric value of a pointer */
+    static value(value: PointerValue): number | bigint;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -374,9 +384,9 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: PointerValue);
+    constructor(pointer: NonNullable<PointerValue>);
 
-    pointer: PointerValue;
+    pointer: NonNullable<PointerValue>;
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
@@ -400,29 +410,31 @@ declare namespace Deno {
     getInt32(offset?: number): number;
     /** Gets an unsigned 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigUint64(offset?: number): PointerValue;
+    getBigUint64(offset?: number): number | bigint;
     /** Gets a signed 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigInt64(offset?: number): PointerValue;
+    getBigInt64(offset?: number): number | bigint;
     /** Gets a signed 32-bit float at the specified byte offset from the
      * pointer. */
     getFloat32(offset?: number): number;
     /** Gets a signed 64-bit float at the specified byte offset from the
      * pointer. */
     getFloat64(offset?: number): number;
+    /** Gets a pointer at the specified byte offset from the pointer */
+    getPointer(offset?: number): PointerValue;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the pointer. */
     getCString(offset?: number): string;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the specified pointer. */
-    static getCString(pointer: PointerValue, offset?: number): string;
+    static getCString(pointer: NonNullable<PointerValue>, offset?: number): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the pointer. */
     getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the specified pointer. */
     static getArrayBuffer(
-      pointer: PointerValue,
+      pointer: NonNullable<PointerValue>,
       byteLength: number,
       offset?: number,
     ): ArrayBuffer;
@@ -438,7 +450,7 @@ declare namespace Deno {
      *
      * Also takes optional byte offset from the pointer. */
     static copyInto(
-      pointer: PointerValue,
+      pointer: NonNullable<PointerValue>,
       destination: BufferSource,
       offset?: number,
     ): void;
@@ -453,11 +465,11 @@ declare namespace Deno {
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
     /** The pointer to the function. */
-    pointer: PointerValue;
+    pointer: NonNullable<PointerValue>;
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerValue, definition: Const<Fn>);
+    constructor(pointer: NonNullable<PointerValue>, definition: Const<Fn>);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -499,46 +511,80 @@ declare namespace Deno {
    *
    * The function pointer remains valid until the `close()` method is called.
    *
-   * The callback can be explicitly referenced via `ref()` and dereferenced via
-   * `deref()` to stop Deno's process from exiting.
+   * All `UnsafeCallback` are always thread safe in that they can be called from
+   * foreign threads without crashing. However, they do not wake up the Deno event
+   * loop by default.
+   * 
+   * If a callback is to be called from foreign threads, use the `threadSafe()`
+   * static constructor or explicitly call `ref()` to have the callback wake up
+   * the Deno event loop when called from foreign threads. This also stops
+   * Deno's process from exiting while the callback still exists and is not
+   * unref'ed.
+   *
+   * Use `deref()` to then allow Deno's process to exit. Calling `deref()` on
+   * a ref'ed callback does not stop it from waking up the Deno event loop when
+   * called from foreign threads.
    *
    * @category FFI
    */
   export class UnsafeCallback<
-    Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
+    Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition
   > {
     constructor(
       definition: Const<Definition>,
       callback: UnsafeCallbackFunction<
         Definition["parameters"],
         Definition["result"]
-      >,
+      >
     );
 
     /** The pointer to the unsafe callback. */
-    pointer: PointerValue;
+    readonly pointer: NonNullable<PointerValue>;
     /** The definition of the unsafe callback. */
-    definition: Definition;
+    readonly definition: Definition;
     /** The callback function. */
-    callback: UnsafeCallbackFunction<
+    readonly callback: UnsafeCallbackFunction<
       Definition["parameters"],
       Definition["result"]
     >;
 
     /**
-     * Adds one to this callback's reference counting and returns the new
+     * Creates an {@linkcode UnsafeCallback} and calls `ref()` once to allow it to
+     * wake up the Deno event loop when called from foreign threads.
+     *
+     * This also stops Deno's process from exiting while the callback still
+     * exists and is not unref'ed.
+     */
+    static threadSafe<
+      Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition
+    >(
+      definition: Const<Definition>,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >
+    ): UnsafeCallback<Definition>;
+
+    /**
+     * Increments the callback's reference counting and returns the new
      * reference count.
      *
-     * If the callback's reference count is non-zero, it will keep Deno's
+     * After `ref()` has been called, the callback always wakes up the
+     * Deno event loop when called from foreign threads.
+     *
+     * If the callback's reference count is non-zero, it keeps Deno's
      * process from exiting.
      */
     ref(): number;
 
     /**
-     * Removes one from this callback's reference counting and returns the new
+     * Decrements the callback's reference counting and returns the new
      * reference count.
+     * 
+     * Calling `unref()` does not stop a callback from waking up the Deno
+     * event loop when called from foreign threads.
      *
-     * If the callback's reference counter is zero, it will no longer keep
+     * If the callback's reference counter is zero, it no longer keeps
      * Deno's process from exiting.
      */
     unref(): number;
@@ -546,11 +592,12 @@ declare namespace Deno {
     /**
      * Removes the C function pointer associated with this instance.
      *
-     * Continuing to use the instance after calling this object will lead to
-     * errors and crashes.
+     * Continuing to use the instance or the C function pointer after closing
+     * the `UnsafeCallback` will lead to errors and crashes.
      *
-     * Calling this method will also immediately set the callback's reference
-     * counting to zero and it will no longer keep Deno's process from exiting.
+     * Calling this method sets the callback's reference counting to zero,
+     * stops the callback from waking up the Deno event loop when called from
+     * foreign threads and no longer keeps Deno's process from exiting.
      */
     close(): void;
   }

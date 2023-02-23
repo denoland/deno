@@ -166,8 +166,8 @@ import type {
   TransformOptions,
   WritableOptions,
 } from "internal:deno_node/polyfills/_stream.d.ts";
+import { crypto as webcrypto } from "internal:deno_crypto/00_crypto.js";
 
-const webcrypto = globalThis.crypto;
 const fipsForced = getOptionValue("--force-fips");
 
 function createCipheriv(
