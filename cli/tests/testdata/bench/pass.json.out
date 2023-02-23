@@ -1,0 +1,207 @@
+Check file:///[WILDCARD]testdata/bench/pass.ts
+{
+  "runtime": "Deno/[WILDCARD]",
+  "cpu": "[WILDCARD]",
+  "benches": [
+    {
+      "origin": "file:///[WILDCARD]testdata/bench/pass.ts",
+      "group": null,
+      "name": "bench0",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": [WILDCARD],
+            "min": [WILDCARD],
+            "max": [WILDCARD],
+            "avg": [WILDCARD],
+            "p75": [WILDCARD],
+            "p99": [WILDCARD],
+            "p995": [WILDCARD],
+            "p999": [WILDCARD]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///[WILDCARD]testdata/bench/pass.ts",
+      "group": null,
+      "name": "bench1",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": [WILDCARD],
+            "min": [WILDCARD],
+            "max": [WILDCARD],
+            "avg": [WILDCARD],
+            "p75": [WILDCARD],
+            "p99": [WILDCARD],
+            "p995": [WILDCARD],
+            "p999": [WILDCARD]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///[WILDCARD]testdata/bench/pass.ts",
+      "group": null,
+      "name": "bench2",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": [WILDCARD],
+            "min": [WILDCARD],
+            "max": [WILDCARD],
+            "avg": [WILDCARD],
+            "p75": [WILDCARD],
+            "p99": [WILDCARD],
+            "p995": [WILDCARD],
+            "p999": [WILDCARD]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///[WILDCARD]testdata/bench/pass.ts",
+      "group": null,
+      "name": "bench3",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": [WILDCARD],
+            "min": [WILDCARD],
+            "max": [WILDCARD],
+            "avg": [WILDCARD],
+            "p75": [WILDCARD],
+            "p99": [WILDCARD],
+            "p995": [WILDCARD],
+            "p999": [WILDCARD]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///[WILDCARD]testdata/bench/pass.ts",
+      "group": null,
+      "name": "bench4",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": [WILDCARD],
+            "min": [WILDCARD],
+            "max": [WILDCARD],
+            "avg": [WILDCARD],
+            "p75": [WILDCARD],
+            "p99": [WILDCARD],
+            "p995": [WILDCARD],
+            "p999": [WILDCARD]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///[WILDCARD]testdata/bench/pass.ts",
+      "group": null,
+      "name": "bench5",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": [WILDCARD],
+            "min": [WILDCARD],
+            "max": [WILDCARD],
+            "avg": [WILDCARD],
+            "p75": [WILDCARD],
+            "p99": [WILDCARD],
+            "p995": [WILDCARD],
+            "p999": [WILDCARD]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///[WILDCARD]testdata/bench/pass.ts",
+      "group": null,
+      "name": "bench6",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": [WILDCARD],
+            "min": [WILDCARD],
+            "max": [WILDCARD],
+            "avg": [WILDCARD],
+            "p75": [WILDCARD],
+            "p99": [WILDCARD],
+            "p995": [WILDCARD],
+            "p999": 3[WILDCARD]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///[WILDCARD]testdata/bench/pass.ts",
+      "group": null,
+      "name": "bench7",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": [WILDCARD],
+            "min": [WILDCARD],
+            "max": [WILDCARD],
+            "avg": [WILDCARD],
+            "p75": [WILDCARD],
+            "p99": [WILDCARD],
+            "p995": [WILDCARD],
+            "p999": [WILDCARD]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///[WILDCARD]testdata/bench/pass.ts",
+      "group": null,
+      "name": "bench8",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": [WILDCARD],
+            "min": [WILDCARD],
+            "max": [WILDCARD],
+            "avg": [WILDCARD],
+            "p75": [WILDCARD],
+            "p99": [WILDCARD],
+            "p995": [WILDCARD],
+            "p999": [WILDCARD]
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///[WILDCARD]testdata/bench/pass.ts",
+      "group": null,
+      "name": "bench9",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": [WILDCARD],
+            "min": [WILDCARD],
+            "max": [WILDCARD],
+            "avg": [WILDCARD],
+            "p75": [WILDCARD],
+            "p99": [WILDCARD],
+            "p995": [WILDCARD],
+            "p999": [WILDCARD]
+          }
+        }
+      ]
+    }
+  ]
+}
