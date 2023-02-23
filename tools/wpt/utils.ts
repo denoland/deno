@@ -13,10 +13,11 @@ export const {
   ["--"]: rest,
   ["auto-config"]: autoConfig,
   ["inspect-brk"]: inspectBrk,
+  ["no-ignore"]: noIgnore,
   binary,
 } = parse(Deno.args, {
   "--": true,
-  boolean: ["quiet", "release", "no-interactive", "inspect-brk"],
+  boolean: ["quiet", "release", "no-interactive", "inspect-brk", "no-ignore"],
   string: ["json", "wptreport", "binary"],
 });
 

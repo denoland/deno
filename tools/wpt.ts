@@ -25,6 +25,7 @@ import {
   ManifestFolder,
   ManifestTestOptions,
   ManifestTestVariation,
+  noIgnore,
   quiet,
   rest,
   runPy,
@@ -703,7 +704,7 @@ function discoverTestsToRun(
                 typeof expectation.ignore === "boolean",
                 "test entry's `ignore` key must be a boolean",
               );
-              if (expectation.ignore === true) continue;
+              if (expectation.ignore === true && !noIgnore) continue;
             }
           }
 
