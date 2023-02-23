@@ -51,7 +51,6 @@ use deno_runtime::permissions::PermissionsOptions;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -393,38 +392,35 @@ fn discover_package_json(
   flags: &Flags,
   maybe_stop_at: Option<PathBuf>,
 ) -> Result<Option<PackageJson>, AnyError> {
-  pub fn discover_from(
+  fn discover_from(
     start: &Path,
-    checked: &mut HashSet<PathBuf>,
     maybe_stop_at: Option<PathBuf>,
   ) -> Result<Option<PackageJson>, AnyError> {
     const PACKAGE_JSON_NAME: &str = "package.json";
 
     for ancestor in start.ancestors() {
-      if checked.insert(ancestor.to_path_buf()) {
-        let path = ancestor.join(PACKAGE_JSON_NAME);
+      let path = ancestor.join(PACKAGE_JSON_NAME);
 
-        let source = match std::fs::read_to_string(&path) {
-          Ok(source) => source,
-          Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            if let Some(stop_at) = maybe_stop_at.as_ref() {
-              if ancestor == stop_at {
-                break;
-              }
+      let source = match std::fs::read_to_string(&path) {
+        Ok(source) => source,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+          if let Some(stop_at) = maybe_stop_at.as_ref() {
+            if ancestor == stop_at {
+              break;
             }
-            continue;
           }
-          Err(err) => bail!(
-            "Error loading package.json at {}. {:#}",
-            path.display(),
-            err
-          ),
-        };
+          continue;
+        }
+        Err(err) => bail!(
+          "Error loading package.json at {}. {:#}",
+          path.display(),
+          err
+        ),
+      };
 
-        let package_json = PackageJson::load_from_string(path.clone(), source)?;
-        log::debug!("package.json file found at '{}'", path.display());
-        return Ok(Some(package_json));
-      }
+      let package_json = PackageJson::load_from_string(path.clone(), source)?;
+      log::debug!("package.json file found at '{}'", path.display());
+      return Ok(Some(package_json));
     }
     // No config file found.
     log::debug!("No package.json file found");
@@ -434,21 +430,17 @@ fn discover_package_json(
   // TODO(bartlomieju): discover for all subcommands, but print warnings that
   // `package.json` is ignored in bundle/compile/etc.
 
-  if let Some(package_json_arg) = flags.package_json_arg() {
-    return discover_from(
-      &package_json_arg,
-      &mut HashSet::new(),
-      maybe_stop_at,
-    );
-  } else if let crate::args::DenoSubcommand::Task(TaskFlags {
-    cwd: Some(path),
-    ..
+  if let crate::args::DenoSubcommand::Task(TaskFlags {
+    cwd: Some(path), ..
   }) = &flags.subcommand
   {
     // attempt to resolve the config file from the task subcommand's
     // `--cwd` when specified
     let task_cwd = canonicalize_path(&PathBuf::from(path))?;
-    return discover_from(&task_cwd, &mut HashSet::new(), None);
+    return discover_from(&task_cwd, None);
+  } else if let Some(package_json_arg) = flags.package_json_arg() {
+    let package_json_arg = canonicalize_path(&package_json_arg)?;
+    return discover_from(&package_json_arg, maybe_stop_at);
   }
 
   log::debug!("No package.json file found");

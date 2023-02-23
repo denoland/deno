@@ -1,4 +1,4 @@
-Download http://localhost:4545/npm/registry/chalk
+Download http://[WILDCARD]
 [WILDCARD]sub_dir
 {
   [WILDCARD]
