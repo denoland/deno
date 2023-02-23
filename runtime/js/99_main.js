@@ -393,7 +393,6 @@ function bootstrapMainRuntime(runtimeOptions) {
     throw new Error("Worker runtime already bootstrapped");
   }
 
-  core.initializeAsyncOps();
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
@@ -526,7 +525,6 @@ function bootstrapWorkerRuntime(
     throw new Error("Worker runtime already bootstrapped");
   }
 
-  core.initializeAsyncOps();
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
