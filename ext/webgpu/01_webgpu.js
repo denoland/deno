@@ -21,6 +21,7 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypePop,
   ArrayPrototypePush,
+  DataViewPrototypeGetBuffer,
   Error,
   MathMax,
   ObjectDefineProperty,
@@ -36,6 +37,8 @@ const {
   SetPrototypeHas,
   Symbol,
   SymbolFor,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint32Array,
   Uint32ArrayPrototype,
@@ -179,6 +182,25 @@ function normalizeGPUColor(data) {
     };
   } else {
     return data;
+  }
+}
+
+/**
+ * @param {BufferSource} source
+ * @returns {ArrayBufferLike}
+ */
+function getBufferSourceBuffer(source) {
+  if (ArrayBufferIsView(source)) {
+    if (TypedArrayPrototypeGetSymbolToStringTag(source) !== undefined) {
+      // TypedArray
+      return TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (source));
+    } else {
+      // DataView
+      return DataViewPrototypeGetBuffer(/** @type {DataView} */ (source));
+    }
+  } else {
+    // ArrayBuffer
+    return source;
   }
 }
 
@@ -1632,9 +1654,7 @@ class GPUQueue {
       bufferOffset,
       dataOffset,
       size,
-      // TODO(petamoriken): use primordials
-      // deno-lint-ignore prefer-primordials
-      new Uint8Array(ArrayBufferIsView(data) ? data.buffer : data),
+      new Uint8Array(getBufferSourceBuffer(data)),
     );
     device.pushError(err);
   }
@@ -1687,9 +1707,7 @@ class GPUQueue {
       },
       dataLayout,
       normalizeGPUExtent3D(size),
-      // TODO(petamoriken): use primordials
-      // deno-lint-ignore prefer-primordials
-      new Uint8Array(ArrayBufferIsView(data) ? data.buffer : data),
+      new Uint8Array(getBufferSourceBuffer(data)),
     );
     device.pushError(err);
   }
