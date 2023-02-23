@@ -209,3 +209,23 @@ itest!(task_both_prefers_deno {
   exit_code: 0,
   http_server: true,
 });
+
+itest!(task_npx_non_existent {
+  args: "task non-existent",
+  cwd: Some("task/npx/"),
+  output: "task/npx/non_existent.out",
+  copy_temp_dir: Some("task/npx/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(task_npx_on_own {
+  args: "task on-own",
+  cwd: Some("task/npx/"),
+  output: "task/npx/on_own.out",
+  copy_temp_dir: Some("task/npx/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});

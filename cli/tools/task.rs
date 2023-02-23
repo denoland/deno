@@ -8,6 +8,7 @@ use crate::util::fs::canonicalize_path;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_graph::npm::NpmPackageNv;
 use deno_task_shell::ExecuteResult;
@@ -158,7 +159,7 @@ struct NpxCommand;
 impl ShellCommand for NpxCommand {
   fn execute(
     &self,
-    context: ShellCommandContext,
+    mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     if let Some(first_arg) = context.args.get(0).cloned() {
       if let Some(command) = context.state.resolve_command(&first_arg) {
@@ -166,12 +167,17 @@ impl ShellCommand for NpxCommand {
           args: context.args.iter().skip(1).cloned().collect::<Vec<_>>(),
           ..context
         };
-        return command.execute(context);
+        command.execute(context)
+      } else {
+        let _ = context
+          .stderr
+          .write_line(&format!("npx: could not resolve command '{first_arg}'"));
+        Box::pin(futures::future::ready(ExecuteResult::from_exit_code(1)))
       }
+    } else {
+      let _ = context.stderr.write_line("npx: missing command");
+      Box::pin(futures::future::ready(ExecuteResult::from_exit_code(1)))
     }
-    let executable_command =
-      deno_task_shell::ExecutableCommand::new("npx".to_string());
-    executable_command.execute(context)
   }
 }
 
