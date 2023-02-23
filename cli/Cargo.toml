@@ -50,7 +50,7 @@ deno_graph = "0.44.0"
 deno_lint = { version = "0.40.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
-deno_task_shell = "0.8.1"
+deno_task_shell = "0.10.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -75,7 +75,7 @@ fancy-regex = "=0.10.0"
 flate2.workspace = true
 http.workspace = true
 import_map = "=0.15.0"
-indexmap = "=1.9.2"
+indexmap.workspace = true
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }

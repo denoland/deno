@@ -1194,6 +1194,7 @@ dependencies = [
  "deno_core",
  "digest 0.10.6",
  "idna 0.3.0",
+ "indexmap",
  "md-5",
  "md4",
  "once_cell",
@@ -1279,9 +1280,9 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.8.2"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "532b383a071a05144c712614d62f08a2f9fad48dd62d6d457ed3884b049357da"
+checksum = "a7068bd49521a7b22dc6df8937097a7ac285ea320cbd78582b4155d31f0d5049"
 dependencies = [
  "anyhow",
  "futures",

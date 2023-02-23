@@ -150,25 +150,23 @@ impl NpmPackageResolver {
   /// Resolves an npm package folder path from a Deno module.
   pub fn resolve_package_folder_from_deno_module(
     &self,
-    package_id: &NpmPackageNv,
+    pkg_nv: &NpmPackageNv,
   ) -> Result<PathBuf, AnyError> {
-    let node_id = self
-      .resolution
-      .resolve_pkg_id_from_deno_module(package_id)?;
-    self.resolve_pkg_folder_from_deno_module_at_node_id(&node_id)
+    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(pkg_nv)?;
+    self.resolve_pkg_folder_from_deno_module_at_pkg_id(&pkg_id)
   }
 
-  fn resolve_pkg_folder_from_deno_module_at_node_id(
+  fn resolve_pkg_folder_from_deno_module_at_pkg_id(
     &self,
-    package_id: &NpmPackageId,
+    pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
     let path = self
       .fs_resolver
-      .resolve_package_folder_from_deno_module(package_id)?;
+      .resolve_package_folder_from_deno_module(pkg_id)?;
     let path = canonicalize_path_maybe_not_exists(&path)?;
     log::debug!(
       "Resolved package folder of {} to {}",
-      package_id.as_serialized(),
+      pkg_id.as_serialized(),
       path.display()
     );
     Ok(path)

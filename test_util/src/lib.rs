@@ -1929,7 +1929,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   /// the test creates files in the testdata directory (ex. a node_modules folder)
   pub copy_temp_dir: Option<&'a str>,
   /// Relative to "testdata" directory
-  pub maybe_cwd: Option<&'a str>,
+  pub cwd: Option<&'a str>,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
@@ -1970,7 +1970,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     let mut command = deno_cmd_with_deno_dir(&deno_dir);
     let cwd = if self.temp_cwd {
       deno_dir.path().to_owned()
-    } else if let Some(cwd_) = &self.maybe_cwd {
+    } else if let Some(cwd_) = &self.cwd {
       testdata_dir.join(cwd_)
     } else {
       testdata_dir.clone()
