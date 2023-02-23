@@ -115,7 +115,6 @@ const methods = {
 let dateInterval;
 let date;
 
-//
 /**
  * Construct an HTTP response message.
  * All HTTP/1.1 messages consist of a start-line followed by a sequence
