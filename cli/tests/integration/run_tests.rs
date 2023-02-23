@@ -2793,6 +2793,15 @@ itest!(package_json_auto_discovered_for_npm_binary {
   http_server: true,
 });
 
+itest!(package_json_with_deno_json {
+  args: "run --quiet -A main.ts",
+  output: "package_json/deno_json/main.out",
+  cwd: Some("package_json/deno_json/"),
+  copy_temp_dir: Some("package_json/deno_json/"),
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+});
+
 itest!(wasm_streaming_panic_test {
   args: "run run/wasm_streaming_panic_test.js",
   output: "run/wasm_streaming_panic_test.js.out",

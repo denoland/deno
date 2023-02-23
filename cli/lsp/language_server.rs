@@ -811,7 +811,6 @@ impl Inner {
 
   fn update_config_file(&mut self) -> Result<(), AnyError> {
     self.maybe_config_file = None;
-    self.maybe_package_json = None;
     self.fmt_options = Default::default();
     self.lint_options = Default::default();
 
@@ -1205,7 +1204,7 @@ impl Inner {
       .map(|f| self.url_map.normalize_url(&f.uri))
       .collect();
 
-    // if the current tsconfig has changed, we need to reload it
+    // if the current deno.json has changed, we need to reload it
     if let Some(config_file) = &self.maybe_config_file {
       if changes.contains(&config_file.specifier) {
         if let Err(err) = self.update_config_file() {
@@ -1218,17 +1217,18 @@ impl Inner {
       }
     }
     if let Some(package_json) = &self.maybe_package_json {
-      if changes.contains(&package_json.specifier()) {
+      // always update the package json if the deno config changes
+      if touched || changes.contains(&package_json.specifier()) {
         if let Err(err) = self.update_package_json() {
           self.client.show_message(MessageType::WARNING, err).await;
         }
         touched = true;
       }
     }
-    // if the current import map, or config file has changed, we need to reload
+    // if the current import map, or config file has changed, we need to
     // reload the import map
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
-      if changes.contains(import_map_uri) || touched {
+      if touched || changes.contains(import_map_uri) {
         if let Err(err) = self.update_import_map().await {
           self.client.show_message(MessageType::WARNING, err).await;
         }
