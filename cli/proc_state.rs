@@ -224,9 +224,7 @@ impl ProcState {
     let npm_resolver = NpmPackageResolver::new_with_maybe_lockfile(
       npm_cache.clone(),
       api,
-      cli_options
-        .resolve_local_node_modules_folder()
-        .with_context(|| "Resolving local node_modules folder.")?,
+      cli_options.node_modules_dir_path(),
       cli_options.get_npm_resolution_snapshot(),
       lockfile.as_ref().cloned(),
     )
@@ -329,11 +327,7 @@ impl ProcState {
       self.file_fetcher.clone(),
       root_permissions,
       dynamic_permissions,
-      self
-        .options
-        .resolve_local_node_modules_folder()
-        .with_context(|| "Resolving local node_modules folder.")?
-        .map(|path| ModuleSpecifier::from_file_path(path).unwrap()),
+      self.options.node_modules_dir_specifier(),
     );
     let maybe_imports = self.options.to_maybe_imports()?;
     let graph_resolver = self.resolver.as_graph_resolver();
@@ -632,25 +626,21 @@ impl ProcState {
   }
 
   /// Creates the default loader used for creating a graph.
-  pub fn create_graph_loader(&self) -> Result<cache::FetchCacher, AnyError> {
-    Ok(cache::FetchCacher::new(
+  pub fn create_graph_loader(&self) -> cache::FetchCacher {
+    cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
       PermissionsContainer::allow_all(),
       PermissionsContainer::allow_all(),
-      self
-        .options
-        .resolve_local_node_modules_folder()
-        .with_context(|| "Resolving local node_modules folder.")?
-        .map(|path| ModuleSpecifier::from_file_path(path).unwrap()),
-    ))
+      self.options.node_modules_dir_specifier(),
+    )
   }
 
   pub async fn create_graph(
     &self,
     roots: Vec<ModuleSpecifier>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = self.create_graph_loader()?;
+    let mut cache = self.create_graph_loader();
     self.create_graph_with_loader(roots, &mut cache).await
   }
 

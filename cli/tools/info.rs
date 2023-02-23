@@ -34,7 +34,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
-    let mut loader = ps.create_graph_loader()?;
+    let mut loader = ps.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = ps
       .create_graph_with_loader(vec![specifier], &mut loader)
