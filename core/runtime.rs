@@ -2888,8 +2888,8 @@ pub mod tests {
         r#"
         
         var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        var p1 = Deno.core.ops.op_test(42);
-        var p2 = Deno.core.ops.op_test(42);
+        var p1 = Deno.core.opAsync("op_test", 42);
+        var p2 = Deno.core.opAsync("op_test", 42);
         "#,
       )
       .unwrap();
@@ -4020,7 +4020,10 @@ assertEquals(1, notify_return_value);
     });
 
     runtime
-      .execute_script("op_async_borrow.js", " Deno.core.ops.op_async_borrow()")
+      .execute_script(
+        "op_async_borrow.js",
+        "Deno.core.opAsync(\"op_async_borrow\")",
+      )
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
   }
@@ -4094,7 +4097,7 @@ Deno.core.ops.op_sync_serialize_object_with_numbers_as_keys({
         "op_async_serialize_object_with_numbers_as_keys.js",
         r#"
 
-Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
+Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
   lines: {
     100: {
       unit: "m"
@@ -4405,7 +4408,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
               Deno.core.setPromiseRejectCallback((_type, _promise, reason) => {{
                 globalThis.rejectValue = `{realm_name}/${{reason}}`;
               }});
-              Deno.core.ops.op_void_async().then(() => Promise.reject({number}));
+              Deno.core.opAsync("op_void_async").then(() => Promise.reject({number}));
             "#
           ),
         )
@@ -4838,10 +4841,10 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           r#"
             
             (async function () {
-              const buf = await Deno.core.ops.op_test(false);
+              const buf = await Deno.core.opAsync("op_test", false);
               let err;
               try {
-                await Deno.core.ops.op_test(true);
+                await Deno.core.opAsync("op_test", true);
               } catch(e) {
                 err = e;
               }
@@ -4891,7 +4894,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           "",
           r#"
             
-            var promise = Deno.core.ops.op_pending();
+            var promise = Deno.core.opAsync("op_pending");
           "#,
         )
         .unwrap();
@@ -4901,7 +4904,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           "",
           r#"
             
-            var promise = Deno.core.ops.op_pending();
+            var promise = Deno.core.opAsync("op_pending");
           "#,
         )
         .unwrap();
