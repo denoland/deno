@@ -115,7 +115,7 @@ pub fn discover_from(
     };
 
     let package_json = PackageJson::load_from_string(path.clone(), source)?;
-    log::debug!("package.json found file at '{}'", path.display());
+    log::debug!("package.json file found at '{}'", path.display());
     return Ok(Some(package_json));
   }
 
