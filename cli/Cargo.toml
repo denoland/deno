@@ -75,7 +75,7 @@ fancy-regex = "=0.10.0"
 flate2.workspace = true
 http.workspace = true
 import_map = "=0.15.0"
-indexmap = { workspace = true, features = ["serde"] }
+indexmap.workspace = true
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
