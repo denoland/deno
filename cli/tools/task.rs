@@ -192,8 +192,7 @@ fn resolve_npm_commands(
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
   let snapshot = ps.npm_resolver.snapshot();
-  let top_level_packages = snapshot.top_level_packages();
-  for id in top_level_packages {
+  for id in snapshot.top_level_packages() {
     let bin_commands =
       crate::node::node_resolve_binary_commands(&id.nv, &ps.npm_resolver)?;
     for bin_command in bin_commands {

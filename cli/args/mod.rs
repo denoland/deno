@@ -397,6 +397,7 @@ fn discover_package_json(
   ) -> Result<Option<PackageJson>, AnyError> {
     const PACKAGE_JSON_NAME: &str = "package.json";
 
+    // note: ancestors() includes the `start` path
     for ancestor in start.ancestors() {
       let path = ancestor.join(PACKAGE_JSON_NAME);
 
@@ -432,10 +433,7 @@ fn discover_package_json(
   if let Some(package_json_dir) = flags.package_json_search_dir() {
     let package_json_dir =
       canonicalize_path_maybe_not_exists(&package_json_dir)?;
-    return discover_from(
-      &package_json_dir.join("package.json"),
-      maybe_stop_at,
-    );
+    return discover_from(&package_json_dir, maybe_stop_at);
   }
 
   log::debug!("No package.json file found");

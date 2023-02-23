@@ -522,8 +522,7 @@ impl Flags {
             .to_owned();
           Some(p)
         } else if module_specifier.scheme() == "npm" {
-          let p = std::env::current_dir().unwrap();
-          Some(p)
+          Some(std::env::current_dir().unwrap())
         } else {
           None
         }

@@ -150,9 +150,7 @@ impl NpmResolutionSnapshot {
   }
 
   pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
-    let mut result = self.root_packages.values().cloned().collect::<Vec<_>>();
-    result.sort(); // be deterministic
-    result
+    self.root_packages.values().cloned().collect::<Vec<_>>()
   }
 
   pub fn package_from_id(
