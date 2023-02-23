@@ -2,7 +2,6 @@
 
 use crate::args::ConfigFlag;
 use crate::args::Flags;
-use crate::args::TaskFlags;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::specifier_parent;
 use crate::util::path::specifier_to_file_path;
@@ -508,18 +507,6 @@ impl ConfigFile {
               return Ok(Some(cf));
             }
           }
-          // attempt to resolve the config file from the task subcommand's
-          // `--cwd` when specified
-          if let crate::args::DenoSubcommand::Task(TaskFlags {
-            cwd: Some(path),
-            ..
-          }) = &flags.subcommand
-          {
-            let task_cwd = canonicalize_path(&PathBuf::from(path))?;
-            if let Some(path) = Self::discover_from(&task_cwd, &mut checked)? {
-              return Ok(Some(path));
-            }
-          };
           // From CWD walk up to root looking for deno.json or deno.jsonc
           Self::discover_from(cwd, &mut checked)
         } else {

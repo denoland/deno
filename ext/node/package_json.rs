@@ -11,6 +11,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
+use deno_core::ModuleSpecifier;
 use indexmap::IndexMap;
 use serde::Serialize;
 use std::cell::RefCell;
@@ -204,6 +205,10 @@ impl PackageJson {
     } else {
       self.main.as_ref()
     }
+  }
+
+  pub fn specifier(&self) -> ModuleSpecifier {
+    ModuleSpecifier::from_file_path(&self.path).unwrap()
   }
 }
 

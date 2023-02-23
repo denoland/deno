@@ -391,49 +391,13 @@ fn discover_package_json(
   flags: &Flags,
   maybe_stop_at: Option<PathBuf>,
 ) -> Result<Option<PackageJson>, AnyError> {
-  fn discover_from(
-    start: &Path,
-    maybe_stop_at: Option<PathBuf>,
-  ) -> Result<Option<PackageJson>, AnyError> {
-    const PACKAGE_JSON_NAME: &str = "package.json";
-
-    // note: ancestors() includes the `start` path
-    for ancestor in start.ancestors() {
-      let path = ancestor.join(PACKAGE_JSON_NAME);
-
-      let source = match std::fs::read_to_string(&path) {
-        Ok(source) => source,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-          if let Some(stop_at) = maybe_stop_at.as_ref() {
-            if ancestor == stop_at {
-              break;
-            }
-          }
-          continue;
-        }
-        Err(err) => bail!(
-          "Error loading package.json at {}. {:#}",
-          path.display(),
-          err
-        ),
-      };
-
-      let package_json = PackageJson::load_from_string(path.clone(), source)?;
-      log::debug!("package.json file found at '{}'", path.display());
-      return Ok(Some(package_json));
-    }
-    // No config file found.
-    log::debug!("No package.json file found");
-    Ok(None)
-  }
-
   // TODO(bartlomieju): discover for all subcommands, but print warnings that
   // `package.json` is ignored in bundle/compile/etc.
 
   if let Some(package_json_dir) = flags.package_json_search_dir() {
     let package_json_dir =
       canonicalize_path_maybe_not_exists(&package_json_dir)?;
-    return discover_from(&package_json_dir, maybe_stop_at);
+    return package_json::discover_from(&package_json_dir, maybe_stop_at);
   }
 
   log::debug!("No package.json file found");

@@ -2,6 +2,7 @@
 
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
+use crate::util::fs::canonicalize_path;
 
 use deno_core::futures;
 use deno_core::futures::FutureExt;
@@ -101,12 +102,23 @@ impl Loader for FetchCacher {
     is_dynamic: bool,
   ) -> LoadFuture {
     if let Some(node_modules_url) = self.maybe_local_node_modules_url.as_ref() {
-      if specifier.as_str().starts_with(node_modules_url.as_str()) {
-        return Box::pin(futures::future::ready(Ok(Some(
-          LoadResponse::External {
-            specifier: specifier.clone(),
-          },
-        ))));
+      // The specifier might be in a completely different symlinked tree than
+      // what the resolved node_modules_url is in (ex. `/my-project-1/node_modules`
+      // symlinked to `/my-project-2/node_modules`), so first check if the path
+      // is in a node_modules dir to avoid needlessly canonicalizing, then compare
+      // against the canonicalized specifier.
+      if specifier.path().contains("/node_modules/") {
+        let specifier = specifier
+          .to_file_path()
+          .ok()
+          .and_then(|path| canonicalize_path(&path).ok())
+          .and_then(|path| ModuleSpecifier::from_file_path(path).ok())
+          .unwrap_or_else(|| specifier.clone());
+        if specifier.as_str().starts_with(node_modules_url.as_str()) {
+          return Box::pin(futures::future::ready(Ok(Some(
+            LoadResponse::External { specifier },
+          ))));
+        }
       }
     }
 

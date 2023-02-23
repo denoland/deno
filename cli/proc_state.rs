@@ -237,12 +237,10 @@ impl ProcState {
       cli_options.resolve_inspector_server().map(Arc::new);
 
     let maybe_package_json_deps = cli_options.maybe_package_json_deps()?;
-    if let Some(deps) = &maybe_package_json_deps {
-      // resolve the package.json npm requirements ahead of time
-      let mut package_reqs = deps.values().cloned().collect::<Vec<_>>();
-      package_reqs.sort(); // deterministic resolution
-      npm_resolver.add_package_reqs(package_reqs).await?;
-    }
+    // resolve the package.json npm requirements ahead of time
+    npm_resolver
+      .add_package_json_deps(maybe_package_json_deps.as_ref())
+      .await?;
     let resolver = Arc::new(CliGraphResolver::new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
@@ -639,14 +637,18 @@ impl ProcState {
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
 
+    let maybe_package_json_deps = self.options.maybe_package_json_deps()?;
+    self
+      .npm_resolver
+      .add_package_json_deps(maybe_package_json_deps.as_ref())
+      .await?;
     let cli_resolver = CliGraphResolver::new(
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
       self.options.no_npm(),
       self.npm_resolver.api().clone(),
       self.npm_resolver.resolution().clone(),
-      // TODO(bartlomieju): this should use dependencies from `package.json`?
-      None,
+      maybe_package_json_deps,
     );
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();

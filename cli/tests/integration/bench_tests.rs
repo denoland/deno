@@ -2,6 +2,7 @@
 
 use deno_core::url::Url;
 use test_util as util;
+use util::env_vars_for_npm_tests;
 
 itest!(overloads {
   args: "bench bench/overloads.ts",
@@ -216,3 +217,13 @@ fn file_protocol() {
   })
   .run();
 }
+
+itest!(package_json_basic {
+  args: "bench",
+  output: "package_json/basic/main.bench.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  cwd: Some("package_json/basic"),
+  copy_temp_dir: Some("package_json/basic"),
+  exit_code: 0,
+});

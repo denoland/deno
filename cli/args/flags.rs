@@ -19,6 +19,8 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use crate::util::fs::canonicalize_path;
+
 use super::flags_allow_net;
 
 static LONG_VERSION: Lazy<String> = Lazy::new(|| {
@@ -499,6 +501,16 @@ impl Flags {
           Some(vec![])
         }
       }
+      Task(TaskFlags {
+        cwd: Some(path), ..
+      }) => {
+        // attempt to resolve the config file from the task subcommand's
+        // `--cwd` when specified
+        match canonicalize_path(&PathBuf::from(path)) {
+          Ok(path) => Some(vec![path]),
+          Err(_) => Some(vec![]),
+        }
+      }
       _ => Some(vec![]),
     }
   }
@@ -533,7 +545,8 @@ impl Flags {
           .to_file_path()
           .ok()
       }
-      Task(TaskFlags { cwd: None, .. }) => std::env::current_dir().ok(),
+      Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
+      | Test(_) | Bench(_) => std::env::current_dir().ok(),
       _ => None,
     }
   }
