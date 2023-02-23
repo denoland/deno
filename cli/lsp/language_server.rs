@@ -2,6 +2,7 @@
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde_json;
@@ -168,7 +169,7 @@ impl LanguageServer {
         .map(|d| (d.specifier().clone(), d))
         .collect::<HashMap<_, _>>();
       let ps = ProcState::from_options(Arc::new(cli_options)).await?;
-      let mut inner_loader = ps.create_graph_loader()?;
+      let mut inner_loader = ps.create_graph_loader();
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
@@ -191,11 +192,23 @@ impl LanguageServer {
     match params.map(serde_json::from_value) {
       Some(Ok(params)) => {
         // do as much as possible in a read, then do a write outside
-        let result = {
+        let maybe_cache_result = {
           let inner = self.0.read().await; // ensure dropped
-          inner.prepare_cache(params)?
+          match inner.prepare_cache(params) {
+            Ok(maybe_cache_result) => maybe_cache_result,
+            Err(err) => {
+              self
+                .0
+                .read()
+                .await
+                .client
+                .show_message(MessageType::WARNING, err)
+                .await;
+              return Err(LspError::internal_error());
+            }
+          }
         };
-        if let Some(result) = result {
+        if let Some(result) = maybe_cache_result {
           let cli_options = result.cli_options;
           let roots = result.roots;
           let open_docs = result.open_docs;
@@ -2993,7 +3006,7 @@ impl Inner {
   fn prepare_cache(
     &self,
     params: lsp_custom::CacheParams,
-  ) -> LspResult<Option<PrepareCacheResult>> {
+  ) -> Result<Option<PrepareCacheResult>, AnyError> {
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !self.is_diagnosable(&referrer) {
       return Ok(None);
@@ -3021,12 +3034,13 @@ impl Inner {
         unstable: true,
         ..Default::default()
       },
+      std::env::current_dir().with_context(|| "Failed getting cwd.")?,
       self.maybe_config_file.clone(),
       // TODO(#16510): add support for lockfile
       None,
       // TODO(bartlomieju): handle package.json dependencies here
       None,
-    );
+    )?;
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 
     let open_docs = self.documents.documents(true, true);
