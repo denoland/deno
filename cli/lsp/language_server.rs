@@ -1225,7 +1225,7 @@ impl Inner {
         touched = true;
       }
     }
-    // if the current import map, or config file has changed, we need to reload
+    // if the current import map, or config file has changed, we need to
     // reload the import map
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
       if touched || changes.contains(import_map_uri) {
