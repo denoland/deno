@@ -195,7 +195,7 @@ impl NpmResolver for CliGraphResolver {
     async move {
       // trigger an npm install if it hasn't be done
       deps_installer
-        .ensure_install()
+        .ensure_top_level_install()
         .await
         .map_err(|err| format!("{err:#}"))?;
 
@@ -220,7 +220,7 @@ impl NpmResolver for CliGraphResolver {
     }
     self
       .npm_resolution
-      .resolve_package_req_for_deno_graph(package_req)
+      .resolve_package_req_as_pending(package_req)
   }
 }
 

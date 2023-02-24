@@ -1948,17 +1948,60 @@ pub struct CheckOutputIntegrationTest<'a> {
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
-  pub fn run(&self) {
+  pub fn run(self) {
+    CheckOutputIntegrationTestSteps {
+      temp_cwd: self.temp_cwd,
+      copy_temp_dir: self.copy_temp_dir,
+      http_server: self.http_server,
+      cwd: None,
+      envs: Default::default(),
+      steps: vec![CheckOutputIntegrationTestCommandStep {
+        args: self.args,
+        args_vec: self.args_vec,
+        cwd: self.cwd,
+        env_clear: self.env_clear,
+        envs: self.envs,
+        exit_code: self.exit_code,
+        input: self.input,
+        output: self.output,
+        output_str: self.output_str,
+        skip_output_check: false,
+      }],
+    }
+    .run()
+  }
+}
+
+#[derive(Debug, Default)]
+pub struct CheckOutputIntegrationTestCommandStep<'a> {
+  pub args: &'a str,
+  pub args_vec: Vec<&'a str>,
+  pub skip_output_check: bool,
+  pub output: &'a str,
+  pub input: Option<&'a str>,
+  pub output_str: Option<&'a str>,
+  pub exit_code: i32,
+  pub envs: Vec<(String, String)>,
+  pub env_clear: bool,
+  pub cwd: Option<&'a str>,
+}
+
+#[derive(Debug, Default)]
+pub struct CheckOutputIntegrationTestSteps<'a> {
+  pub http_server: bool,
+  pub temp_cwd: bool,
+  /// Copies the files at the specified directory in the "testdata" directory
+  /// to the temp folder and runs the test from there. This is useful when
+  /// the test creates files in the testdata directory (ex. a node_modules folder)
+  pub copy_temp_dir: Option<&'a str>,
+  pub cwd: Option<&'a str>,
+  pub envs: Vec<(String, String)>,
+  pub steps: Vec<CheckOutputIntegrationTestCommandStep<'a>>,
+}
+
+impl<'a> CheckOutputIntegrationTestSteps<'a> {
+  pub fn run(self) {
     let deno_dir = new_deno_dir(); // keep this alive for the test
-    let args = if self.args_vec.is_empty() {
-      std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())
-    } else {
-      assert!(
-        self.args.is_empty(),
-        "Do not provide args when providing args_vec."
-      );
-      std::borrow::Cow::Borrowed(&self.args_vec)
-    };
     let testdata_dir = if let Some(temp_copy_dir) = &self.copy_temp_dir {
       let test_data_path = testdata_path().join(temp_copy_dir);
       let temp_copy_dir = deno_dir.path().join(temp_copy_dir);
@@ -1968,10 +2011,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     } else {
       testdata_path()
     };
-    let args = args
-      .iter()
-      .map(|arg| arg.replace("$TESTDATA", &testdata_dir.to_string_lossy()))
-      .collect::<Vec<_>>();
+
     let deno_exe = deno_exe_path();
     println!("deno_exe path {}", deno_exe.display());
 
@@ -1980,23 +2020,69 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     } else {
       None
     };
-
-    let (mut reader, writer) = pipe().unwrap();
-    let mut command = deno_cmd_with_deno_dir(&deno_dir);
-    let cwd = if self.temp_cwd {
-      deno_dir.path().to_owned()
-    } else if let Some(cwd_) = &self.cwd {
-      testdata_dir.join(cwd_)
-    } else {
-      testdata_dir.clone()
+    let step_runner = StepRunner {
+      deno_dir,
+      has_temp_cwd: self.temp_cwd,
+      testdata_dir,
     };
+    for step in self.steps {
+      let mut envs = self.envs.clone();
+      for entry in step.envs.clone() {
+        if let Some(index) = envs.iter().position(|(key, _)| key == &entry.0) {
+          envs.remove(index);
+        }
+        envs.push(entry);
+      }
+      step_runner.run_command_step(CheckOutputIntegrationTestCommandStep {
+        cwd: self.cwd.or_else(|| step.cwd),
+        envs,
+        ..step
+      });
+    }
+  }
+}
+
+struct StepRunner {
+  testdata_dir: PathBuf,
+  deno_dir: TempDir,
+  has_temp_cwd: bool,
+}
+
+impl StepRunner {
+  fn run_command_step<'a>(
+    &self,
+    step: CheckOutputIntegrationTestCommandStep<'a>,
+  ) {
+    let cwd = if self.has_temp_cwd {
+      assert!(step.cwd.is_none());
+      self.deno_dir.path().to_owned()
+    } else if let Some(cwd_) = &step.cwd {
+      self.testdata_dir.join(cwd_)
+    } else {
+      self.testdata_dir.clone()
+    };
+    let args = if step.args_vec.is_empty() {
+      std::borrow::Cow::Owned(step.args.split_whitespace().collect::<Vec<_>>())
+    } else {
+      assert!(
+        step.args.is_empty(),
+        "Do not provide args when providing args_vec."
+      );
+      std::borrow::Cow::Borrowed(&step.args_vec)
+    }
+    .iter()
+    .map(|arg| arg.replace("$TESTDATA", &self.testdata_dir.to_string_lossy()))
+    .collect::<Vec<_>>();
+    let (mut reader, writer) = pipe().unwrap();
+    let mut command = deno_cmd_with_deno_dir(&self.deno_dir);
+
     println!("deno_exe args {}", args.join(" "));
     println!("deno_exe cwd {:?}", &cwd);
     command.args(args.iter());
-    if self.env_clear {
+    if step.env_clear {
       command.env_clear();
     }
-    command.envs(self.envs.clone());
+    command.envs(step.envs.clone());
     command.current_dir(cwd);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();
@@ -2005,7 +2091,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
 
     let mut process = command.spawn().expect("failed to execute process");
 
-    if let Some(input) = self.input {
+    if let Some(input) = step.input {
       let mut p_stdin = process.stdin.take().unwrap();
       write!(p_stdin, "{input}").unwrap();
     }
@@ -2022,11 +2108,11 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     let status = process.wait().expect("failed to finish process");
 
     if let Some(exit_code) = status.code() {
-      if self.exit_code != exit_code {
+      if step.exit_code != exit_code {
         println!("OUTPUT\n{actual}\nOUTPUT");
         panic!(
           "bad exit code, expected: {:?}, actual: {:?}",
-          self.exit_code, exit_code
+          step.exit_code, exit_code
         );
       }
     } else {
@@ -2036,14 +2122,14 @@ impl<'a> CheckOutputIntegrationTest<'a> {
         let signal = status.signal().unwrap();
         println!("OUTPUT\n{actual}\nOUTPUT");
         panic!(
-          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
-          self.exit_code, signal,
-        );
+        "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
+        step.exit_code, signal,
+      );
       }
       #[cfg(not(unix))]
       {
         println!("OUTPUT\n{actual}\nOUTPUT");
-        panic!("process terminated without status code on non unix platform, expected exit code: {:?}", self.exit_code);
+        panic!("process terminated without status code on non unix platform, expected exit code: {:?}", step.exit_code);
       }
     }
 
@@ -2056,22 +2142,27 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       actual = actual.replace('\u{200B}', "");
     }
 
-    let expected = if let Some(s) = self.output_str {
-      s.to_owned()
-    } else if self.output.is_empty() {
-      String::new()
+    if step.skip_output_check {
+      assert_eq!(step.output, "");
+      assert_eq!(step.output_str, None);
     } else {
-      let output_path = testdata_dir.join(self.output);
-      println!("output path {}", output_path.display());
-      std::fs::read_to_string(output_path).expect("cannot read output")
-    };
+      let expected = if let Some(s) = step.output_str {
+        s.to_owned()
+      } else if step.output.is_empty() {
+        String::new()
+      } else {
+        let output_path = self.testdata_dir.join(step.output);
+        println!("output path {}", output_path.display());
+        std::fs::read_to_string(output_path).expect("cannot read output")
+      };
 
-    if !expected.contains("[WILDCARD]") {
-      assert_eq!(actual, expected)
-    } else if !wildcard_match(&expected, &actual) {
-      println!("OUTPUT\n{actual}\nOUTPUT");
-      println!("EXPECTED\n{expected}\nEXPECTED");
-      panic!("pattern match failed");
+      if !expected.contains("[WILDCARD]") {
+        assert_eq!(actual, expected)
+      } else if !wildcard_match(&expected, &actual) {
+        println!("OUTPUT\n{actual}\nOUTPUT");
+        println!("EXPECTED\n{expected}\nEXPECTED");
+        panic!("pattern match failed");
+      }
     }
   }
 }
