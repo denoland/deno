@@ -572,7 +572,7 @@ function createServe(opFn) {
             let remoteAddr;
             try {
               resp = handler(req, {
-                remoteAddr() {
+                get remoteAddr() {
                   if (!remoteAddr) {
                     const { 0: hostname, 1: port } = core.ops.op_flash_addr(
                       serverId,
