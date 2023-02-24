@@ -545,6 +545,12 @@ itest!(dynamic_import_already_rejected {
   output: "run/dynamic_import_already_rejected/main.out",
 });
 
+itest!(dynamic_import_concurrent_non_statically_analyzable {
+  args: "run --allow-read --allow-net --quiet run/dynamic_import_concurrent_non_statically_analyzable/main.ts",
+  output: "run/dynamic_import_concurrent_non_statically_analyzable/main.out",
+  http_server: true,
+});
+
 itest!(no_check_imports_not_used_as_values {
     args: "run --config run/no_check_imports_not_used_as_values/preserve_imports.tsconfig.json --no-check run/no_check_imports_not_used_as_values/main.ts",
     output: "run/no_check_imports_not_used_as_values/main.out",

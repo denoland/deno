@@ -1058,6 +1058,13 @@ async fn main_server(
             return Ok(file_resp);
           }
         }
+      } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
+        let mut file_path = std_path();
+        file_path.push(suffix);
+        if let Ok(file) = tokio::fs::read(&file_path).await {
+          let file_resp = custom_headers(req.uri().path(), file);
+          return Ok(file_resp);
+        }
       }
 
       Response::builder()
