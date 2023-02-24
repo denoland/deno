@@ -1,10 +1,16 @@
-const pathUrl = "http://localhost:4545/deno_std/path/mod.ts";
-const fsUrl = "http://localhost:4545/deno_std/fs/mod.ts";
-const [path, fs] = await Promise.all([
-  await import(pathUrl),
-  await import(fsUrl),
-]);
+import * as path from "http://localhost:4545/deno_std/path/mod.ts";
 
-const currentFilePath = path.fromFileUrl(import.meta.url);
-console.log(currentFilePath);
-console.log(fs.existsSync(currentFilePath));
+const currentDir = path.dirname(path.fromFileUrl(import.meta.url));
+const url = path.toFileUrl(path.join(currentDir, "./mod.ts"));
+const urls = [];
+
+// this is  hard to reproduce, but doing this will help
+for (let i = 0; i < 100; i++) {
+  urls.push(url.toString() + "#" + i);
+}
+
+const results = await Promise.all(urls.map((url) => import(url)));
+
+for (const result of results) {
+  result.outputValue();
+}
