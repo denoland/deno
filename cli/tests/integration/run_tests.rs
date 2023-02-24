@@ -2793,6 +2793,16 @@ itest!(package_json_auto_discovered_for_npm_binary {
   http_server: true,
 });
 
+itest!(package_json_auto_discover_lockfile {
+  args: "run -A main.ts",
+  output: "run/with_package_json/lockfile/main.out",
+  cwd: Some("run/with_package_json/lockfile"),
+  copy_temp_dir: Some("run/with_package_json/lockfile/"),
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+  exit_code: 10,
+});
+
 itest!(package_json_with_deno_json {
   args: "run --quiet -A main.ts",
   output: "package_json/deno_json/main.out",

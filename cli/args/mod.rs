@@ -582,8 +582,11 @@ impl CliOptions {
     } else {
       maybe_package_json = discover_package_json(&flags, None)?;
     }
-    let maybe_lock_file =
-      lockfile::discover(&flags, maybe_config_file.as_ref())?;
+    let maybe_lock_file = lockfile::discover(
+      &flags,
+      maybe_config_file.as_ref(),
+      maybe_package_json.as_ref(),
+    )?;
     Self::new(
       flags,
       initial_cwd,

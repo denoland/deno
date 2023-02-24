@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
+use deno_runtime::deno_node::PackageJson;
 use std::path::PathBuf;
 
 use crate::args::config_file::LockConfig;
@@ -17,6 +18,7 @@ use deno_lockfile::NpmPackageLockfileInfo;
 pub fn discover(
   flags: &Flags,
   maybe_config_file: Option<&ConfigFile>,
+  maybe_package_json: Option<&PackageJson>,
 ) -> Result<Option<Lockfile>, AnyError> {
   if flags.no_lock
     || matches!(
@@ -53,7 +55,11 @@ pub fn discover(
           return Ok(None);
         }
       }
-      None => return Ok(None),
+      // resolve from the package.json when there's no deno.json
+      None => match maybe_package_json {
+        Some(package_json) => package_json.path.with_file_name("deno.lock"),
+        None => return Ok(None),
+      },
     },
   };
 

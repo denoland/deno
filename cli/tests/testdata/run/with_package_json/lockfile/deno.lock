@@ -1,0 +1,15 @@
+{
+  "version": "2",
+  "remote": {},
+  "npm": {
+    "specifiers": {
+      "@denotest/cjs-default-export@1.0.0": "@denotest/cjs-default-export@1.0.0"
+    },
+    "packages": {
+      "@denotest/cjs-default-export@1.0.0": {
+        "integrity": "sha512-incorrect",
+        "dependencies": {}
+      }
+    }
+  }
+}
