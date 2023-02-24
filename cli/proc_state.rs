@@ -20,6 +20,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::graph_util::build_graph_with_npm_resolution;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
@@ -38,7 +39,6 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
@@ -58,7 +58,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
 use log::warn;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -78,7 +77,7 @@ pub struct Inner {
   pub emit_cache: EmitCache,
   pub emit_options: deno_ast::EmitOptions,
   pub emit_options_hash: u64,
-  graph_data: Arc<RwLock<GraphData>>,
+  graph_container: ModuleGraphContainer,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -139,7 +138,7 @@ impl ProcState {
       emit_options: self.emit_options.clone(),
       file_fetcher: self.file_fetcher.clone(),
       http_client: self.http_client.clone(),
-      graph_data: Default::default(),
+      graph_container: Default::default(),
       lockfile: self.lockfile.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_inspector_server: self.maybe_inspector_server.clone(),
@@ -284,7 +283,7 @@ impl ProcState {
       emit_options,
       file_fetcher: Arc::new(file_fetcher),
       http_client,
-      graph_data: Default::default(),
+      graph_container: Default::default(),
       lockfile,
       maybe_import_map,
       maybe_inspector_server,
@@ -340,7 +339,9 @@ impl ProcState {
     let analyzer = self.parsed_source_cache.as_analyzer();
 
     log::debug!("Creating module graph.");
-    let mut graph = self.graph_data.read().graph_inner_clone();
+    let mut graph_update_permit =
+      self.graph_container.acquire_update_permit().await;
+    let graph = graph_update_permit.graph_mut();
 
     // Determine any modules that have already been emitted this session and
     // should be skipped.
@@ -348,7 +349,7 @@ impl ProcState {
       graph.specifiers().map(|(s, _)| s.clone()).collect();
 
     build_graph_with_npm_resolution(
-      &mut graph,
+      graph,
       &self.npm_resolver,
       roots.clone(),
       &mut cache,
@@ -365,15 +366,12 @@ impl ProcState {
 
     // If there is a lockfile, validate the integrity of all the modules.
     if let Some(lockfile) = &self.lockfile {
-      graph_lock_or_exit(&graph, &mut lockfile.lock());
+      graph_lock_or_exit(graph, &mut lockfile.lock());
     }
 
-    let graph = {
-      graph_valid_with_cli_options(&graph, &roots, &self.options)?;
-      let mut graph_data = self.graph_data.write();
-      graph_data.update_graph(Arc::new(graph));
-      graph_data.graph.clone()
-    };
+    graph_valid_with_cli_options(graph, &roots, &self.options)?;
+    // save the graph and get a reference to the new graph
+    let graph = graph_update_permit.commit();
 
     if graph.has_node_specifier
       && self.options.type_check_mode() != TypeCheckMode::None
@@ -388,14 +386,11 @@ impl ProcState {
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None
-      && !self.graph_data.read().is_type_checked(&roots, lib)
+      && !self.graph_container.is_type_checked(&roots, lib)
     {
       log::debug!("Type checking.");
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
-      let graph = {
-        let graph_data = self.graph_data.read();
-        Arc::new(graph_data.graph.segment(&roots))
-      };
+      let graph = Arc::new(graph.segment(&roots));
       let options = check::CheckOptions {
         type_check_mode: self.options.type_check_mode(),
         debug: self.options.log_level() == Some(log::Level::Debug),
@@ -412,7 +407,7 @@ impl ProcState {
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
       let check_result =
         check::check(graph, &check_cache, &self.npm_resolver, options)?;
-      self.graph_data.write().set_type_checked(&roots, lib);
+      self.graph_container.set_type_checked(&roots, lib);
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));
       }
@@ -492,8 +487,7 @@ impl ProcState {
           });
       }
 
-      let graph_data = self.graph_data.read();
-      let graph = &graph_data.graph;
+      let graph = self.graph_container.graph();
       let maybe_resolved = match graph.get(&referrer) {
         Some(Module::Esm(module)) => {
           module.dependencies.get(specifier).map(|d| &d.maybe_code)
@@ -684,11 +678,7 @@ impl ProcState {
   }
 
   pub fn graph(&self) -> Arc<ModuleGraph> {
-    self.graph_data.read().graph.clone()
-  }
-
-  pub fn has_node_builtin_specifier(&self) -> bool {
-    self.graph_data.read().graph.has_node_specifier
+    self.graph_container.graph()
   }
 }
 
@@ -712,60 +702,6 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
 
     if modules_done == modules_total {
       self.sender.send(file_paths.drain(..).collect()).unwrap();
-    }
-  }
-}
-
-#[derive(Debug, Default)]
-struct GraphData {
-  graph: Arc<ModuleGraph>,
-  checked_libs: HashMap<TsTypeLib, HashSet<ModuleSpecifier>>,
-}
-
-impl GraphData {
-  /// Store data from `graph` into `self`.
-  pub fn update_graph(&mut self, graph: Arc<ModuleGraph>) {
-    self.graph = graph;
-  }
-
-  // todo(dsherret): remove the need for cloning this (maybe if we used an AsyncRefCell)
-  pub fn graph_inner_clone(&self) -> ModuleGraph {
-    (*self.graph).clone()
-  }
-
-  /// Mark `roots` and all of their dependencies as type checked under `lib`.
-  /// Assumes that all of those modules are known.
-  pub fn set_type_checked(
-    &mut self,
-    roots: &[ModuleSpecifier],
-    lib: TsTypeLib,
-  ) {
-    let entries = self.graph.walk(
-      roots,
-      deno_graph::WalkOptions {
-        check_js: true,
-        follow_dynamic: true,
-        follow_type_only: true,
-      },
-    );
-    let checked_lib_set = self.checked_libs.entry(lib).or_default();
-    for (specifier, _) in entries {
-      checked_lib_set.insert(specifier.clone());
-    }
-  }
-
-  /// Check if `roots` are all marked as type checked under `lib`.
-  pub fn is_type_checked(
-    &self,
-    roots: &[ModuleSpecifier],
-    lib: TsTypeLib,
-  ) -> bool {
-    match self.checked_libs.get(&lib) {
-      Some(checked_lib_set) => roots.iter().all(|r| {
-        let found = self.graph.resolve(r);
-        checked_lib_set.contains(&found)
-      }),
-      None => false,
     }
   }
 }
