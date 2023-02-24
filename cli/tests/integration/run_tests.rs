@@ -2819,6 +2819,14 @@ itest!(package_json_auto_discovered_for_npm_binary {
   http_server: true,
 });
 
+itest!(package_json_auto_discovered_no_package_json_imports {
+  // this should not use --quiet because we should ensure no package.json install occurs
+  args: "run -A no_package_json_imports.ts",
+  output: "run/with_package_json/no_deno_json/no_package_json_imports.out",
+  cwd: Some("run/with_package_json/no_deno_json"),
+  copy_temp_dir: Some("run/with_package_json/no_deno_json"),
+});
+
 itest!(package_json_with_deno_json {
   args: "run --quiet -A main.ts",
   output: "package_json/deno_json/main.out",
