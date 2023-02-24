@@ -2034,7 +2034,7 @@ impl<'a> CheckOutputIntegrationTestSteps<'a> {
         envs.push(entry);
       }
       step_runner.run_command_step(CheckOutputIntegrationTestCommandStep {
-        cwd: self.cwd.or_else(|| step.cwd),
+        cwd: self.cwd.or(step.cwd),
         envs,
         ..step
       });
@@ -2049,10 +2049,7 @@ struct StepRunner {
 }
 
 impl StepRunner {
-  fn run_command_step<'a>(
-    &self,
-    step: CheckOutputIntegrationTestCommandStep<'a>,
-  ) {
+  fn run_command_step(&self, step: CheckOutputIntegrationTestCommandStep) {
     let cwd = if self.has_temp_cwd {
       assert!(step.cwd.is_none());
       self.deno_dir.path().to_owned()
