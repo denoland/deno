@@ -405,10 +405,13 @@ pub struct ModuleGraphUpdatePermit<'a> {
 }
 
 impl<'a> ModuleGraphUpdatePermit<'a> {
+  /// Gets the module graph for mutation.
   pub fn graph_mut(&mut self) -> &mut ModuleGraph {
     &mut self.graph
   }
 
+  /// Saves the mutated module graph in the container
+  /// and returns an Arc to the new module graph.
   pub fn commit(self) -> Arc<ModuleGraph> {
     let graph = Arc::new(self.graph);
     self.graph_data.write().graph = graph.clone();
