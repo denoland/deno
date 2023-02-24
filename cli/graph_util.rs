@@ -4,6 +4,7 @@ use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsConfigType;
 use crate::args::TypeCheckMode;
+use crate::cache;
 use crate::cache::TypeCheckCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
@@ -146,9 +147,13 @@ pub async fn create_graph_and_maybe_check(
   root: ModuleSpecifier,
   ps: &ProcState,
 ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
-  let mut cache = ps.create_graph_loader(
+  let mut cache = cache::FetchCacher::new(
+    ps.emit_cache.clone(),
+    ps.file_fetcher.clone(),
+    ps.options.resolve_file_header_overrides(),
     PermissionsContainer::allow_all(),
     PermissionsContainer::allow_all(),
+    ps.options.node_modules_dir_specifier(),
   );
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_package_json_deps = ps.options.maybe_package_json_deps()?;

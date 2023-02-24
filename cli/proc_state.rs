@@ -11,7 +11,6 @@ use crate::cache;
 use crate::cache::DenoDir;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
-use crate::cache::FetchCacher;
 use crate::cache::HttpCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
@@ -74,7 +73,6 @@ pub struct ProcState(Arc<Inner>);
 pub struct Inner {
   pub dir: DenoDir,
   pub file_fetcher: Arc<FileFetcher>,
-  file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   pub http_client: HttpClient,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
@@ -111,44 +109,21 @@ impl ProcState {
     Self::from_options(Arc::new(CliOptions::from_flags(flags)?)).await
   }
 
-  pub async fn build_with_main(
-    flags: Flags,
-    main_specifier: ModuleSpecifier,
-  ) -> Result<Self, AnyError> {
-    Self::build_with_sender(
-      Arc::new(CliOptions::from_flags(flags)?),
-      Some(main_specifier),
-      None,
-    )
-    .await
-  }
-
   pub async fn from_options(
     options: Arc<CliOptions>,
   ) -> Result<Self, AnyError> {
-    Self::build_with_sender(options, None, None).await
-  }
-
-  pub async fn from_options_with_main(
-    options: Arc<CliOptions>,
-    main_specifier: ModuleSpecifier,
-  ) -> Result<Self, AnyError> {
-    Self::build_with_sender(options, Some(main_specifier), None).await
+    Self::build_with_sender(options, None).await
   }
 
   pub async fn build_for_file_watcher(
     flags: Flags,
-    main_specifier: ModuleSpecifier,
     files_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
   ) -> Result<Self, AnyError> {
     // resolve the config each time
     let cli_options = Arc::new(CliOptions::from_flags(flags)?);
-    let ps = Self::build_with_sender(
-      cli_options,
-      Some(main_specifier),
-      Some(files_to_watch_sender.clone()),
-    )
-    .await?;
+    let ps =
+      Self::build_with_sender(cli_options, Some(files_to_watch_sender.clone()))
+        .await?;
     ps.init_watcher();
     Ok(ps)
   }
@@ -163,7 +138,6 @@ impl ProcState {
       emit_options_hash: self.emit_options_hash,
       emit_options: self.emit_options.clone(),
       file_fetcher: self.file_fetcher.clone(),
-      file_header_overrides: self.file_header_overrides.clone(),
       http_client: self.http_client.clone(),
       graph_data: Default::default(),
       lockfile: self.lockfile.clone(),
@@ -207,7 +181,6 @@ impl ProcState {
 
   async fn build_with_sender(
     cli_options: Arc<CliOptions>,
-    maybe_main_specifier: Option<ModuleSpecifier>,
     maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
   ) -> Result<Self, AnyError> {
     let blob_store = BlobStore::default();
@@ -232,18 +205,6 @@ impl ProcState {
       blob_store.clone(),
       Some(progress_bar.clone()),
     );
-
-    let file_header_overrides =
-      if let (Some(main_specifier), Some(content_type)) =
-        (maybe_main_specifier, cli_options.content_type())
-      {
-        HashMap::from([(
-          main_specifier,
-          HashMap::from([("content-type".to_string(), content_type)]),
-        )])
-      } else {
-        HashMap::default()
-      };
 
     let lockfile = cli_options.maybe_lock_file();
 
@@ -322,7 +283,6 @@ impl ProcState {
         .finish(),
       emit_options,
       file_fetcher: Arc::new(file_fetcher),
-      file_header_overrides,
       http_client,
       graph_data: Default::default(),
       lockfile,
@@ -360,8 +320,14 @@ impl ProcState {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
-    let mut cache =
-      self.create_graph_loader(root_permissions, dynamic_permissions);
+    let mut cache = cache::FetchCacher::new(
+      self.emit_cache.clone(),
+      self.file_fetcher.clone(),
+      self.options.resolve_file_header_overrides(),
+      root_permissions,
+      dynamic_permissions,
+      self.options.node_modules_dir_specifier(),
+    );
     let maybe_imports = self.options.to_maybe_imports()?;
     let graph_resolver = self.resolver.as_graph_resolver();
     let graph_npm_resolver = self.resolver.as_graph_npm_resolver();
@@ -647,17 +613,13 @@ impl ProcState {
   }
 
   /// Creates the default loader used for creating a graph.
-  pub fn create_graph_loader(
-    &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
-  ) -> FetchCacher {
+  pub fn create_graph_loader(&self) -> cache::FetchCacher {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
-      self.file_header_overrides.clone(),
-      root_permissions,
-      dynamic_permissions,
+      self.options.resolve_file_header_overrides(),
+      PermissionsContainer::allow_all(),
+      PermissionsContainer::allow_all(),
       self.options.node_modules_dir_specifier(),
     )
   }
@@ -666,10 +628,7 @@ impl ProcState {
     &self,
     roots: Vec<ModuleSpecifier>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = self.create_graph_loader(
-      PermissionsContainer::allow_all(),
-      PermissionsContainer::allow_all(),
-    );
+    let mut cache = self.create_graph_loader();
     self.create_graph_with_loader(roots, &mut cache).await
   }
 

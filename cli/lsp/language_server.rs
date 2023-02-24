@@ -11,7 +11,6 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
@@ -175,10 +174,7 @@ impl LanguageServer {
         .map(|d| (d.specifier().clone(), d))
         .collect::<HashMap<_, _>>();
       let ps = ProcState::from_options(Arc::new(cli_options)).await?;
-      let mut inner_loader = ps.create_graph_loader(
-        PermissionsContainer::allow_all(),
-        PermissionsContainer::allow_all(),
-      );
+      let mut inner_loader = ps.create_graph_loader();
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,

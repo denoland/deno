@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::resolve_url_or_path;
 use deno_graph::Module;
 use deno_runtime::colors;
 
@@ -39,14 +38,10 @@ pub async fn bundle(
     let cli_options = cli_options.clone();
     let source_file = &bundle_flags.source_file;
     async move {
-      let module_specifier = cli_options.resolve_main_module()?;
+      let module_specifier = cli_options.resolve_main_module().unwrap()?;
 
       log::debug!(">>>>> bundle START");
-      let ps = ProcState::from_options_with_main(
-        cli_options,
-        module_specifier.clone(),
-      )
-      .await?;
+      let ps = ProcState::from_options(cli_options).await?;
       let graph = create_graph_and_maybe_check(module_specifier, &ps).await?;
 
       let mut paths_to_watch: Vec<PathBuf> = graph

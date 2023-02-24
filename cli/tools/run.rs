@@ -6,24 +6,18 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 
 use crate::args::CliOptions;
 use crate::args::EvalFlags;
 use crate::args::Flags;
-use crate::args::RunFlags;
 use crate::file_fetcher::File;
 use crate::proc_state::ProcState;
 use crate::util;
 use crate::worker::create_main_worker;
 
-pub async fn run_script(
-  flags: Flags,
-  run_flags: RunFlags,
-) -> Result<i32, AnyError> {
+pub async fn run_script(flags: Flags) -> Result<i32, AnyError> {
   if !flags.has_permission() && flags.has_permission_in_argv() {
     log::warn!(
       "{}",
@@ -36,7 +30,7 @@ To grant permissions, set them before the script argument. For example:
   }
 
   let cli_options = CliOptions::from_flags(flags.clone())?;
-  let main_module = cli_options.resolve_main_module()?;
+  let main_module = cli_options.resolve_main_module().unwrap()?;
 
   if flags.watch.is_some() {
     return run_with_watch(flags, main_module).await;
@@ -45,7 +39,7 @@ To grant permissions, set them before the script argument. For example:
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead
-  let ps = ProcState::build_with_main(flags, main_module.clone()).await?;
+  let ps = ProcState::build(flags).await?;
 
   // Run a background task that checks for available upgrades. If an earlier
   // run of this background task found a new version of Deno.
@@ -65,7 +59,7 @@ To grant permissions, set them before the script argument. For example:
 
 pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
-  let main_module = ps.options.resolve_main_module().unwrap();
+  let main_module = ps.options.resolve_main_module().unwrap().unwrap();
 
   let mut worker = create_main_worker(
     &ps,
@@ -103,12 +97,8 @@ async fn run_with_watch(
 ) -> Result<i32, AnyError> {
   let flags = Arc::new(flags);
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-  let mut ps = ProcState::build_for_file_watcher(
-    (*flags).clone(),
-    main_module.clone(),
-    sender.clone(),
-  )
-  .await?;
+  let mut ps =
+    ProcState::build_for_file_watcher((*flags).clone(), sender.clone()).await?;
 
   let operation = |main_module: ModuleSpecifier| {
     ps.reset_for_file_watcher();
@@ -142,10 +132,8 @@ pub async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
-  // TOOD: remove from_flags(), use ps.options
-  let main_module =
-    CliOptions::from_flags(flags.clone())?.resolve_main_module()?;
-  let ps = ProcState::build_with_main(flags, main_module.clone()).await?;
+  let ps = ProcState::build(flags).await?;
+  let main_module = ps.options.resolve_main_module().unwrap()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
   )?);

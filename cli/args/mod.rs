@@ -52,6 +52,7 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -683,28 +684,49 @@ impl CliOptions {
     .map(Some)
   }
 
-  pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
+  /// Returns None for subcommands without a main module
+  pub fn resolve_main_module(
+    &self,
+  ) -> Option<Result<ModuleSpecifier, AnyError>> {
     // TOOD: Can I do this without Ok(x?)
     match &self.flags.subcommand {
-      DenoSubcommand::Bundle(bundle_flags) => {
-        Ok(resolve_url_or_path(&bundle_flags.source_file)?)
+      DenoSubcommand::Bundle(bundle_flags) => Some(
+        resolve_url_or_path(&bundle_flags.source_file).map_err(AnyError::from),
+      ),
+      DenoSubcommand::Eval(_) => {
+        Some(resolve_url_or_path("./$deno$eval").map_err(AnyError::from))
       }
-      DenoSubcommand::Eval(_) => Ok(resolve_url_or_path("./$deno$eval")?),
-      DenoSubcommand::Repl(_) => Ok(resolve_url_or_path("./$deno$repl.ts")?),
-      DenoSubcommand::Run(run_flags) => Ok(if run_flags.is_stdin() {
-        resolve_url_or_path("./$deno$stdin.ts")?
+      DenoSubcommand::Repl(_) => {
+        Some(resolve_url_or_path("./$deno$repl.ts").map_err(AnyError::from))
+      }
+      DenoSubcommand::Run(run_flags) => Some(if run_flags.is_stdin() {
+        resolve_url_or_path("./$deno$stdin").map_err(AnyError::from)
+      } else if self.flags.watch.is_some() {
+        resolve_url_or_path(&run_flags.script).map_err(AnyError::from)
+      } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
+        ModuleSpecifier::parse(&run_flags.script).map_err(AnyError::from)
       } else {
-        if self.flags.watch.is_some() {
-          resolve_url_or_path(&run_flags.script)?
-        } else {
-          if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
-            ModuleSpecifier::parse(&run_flags.script)?
-          } else {
-            resolve_url_or_path(&run_flags.script)?
-          }
-        }
+        resolve_url_or_path(&run_flags.script).map_err(AnyError::from)
       }),
-      _ => panic!("Invoked resolve_main_module() on a subcommand which does not have a main module")
+      _ => None,
+    }
+  }
+
+  pub fn resolve_file_header_overrides(
+    &self,
+  ) -> HashMap<ModuleSpecifier, HashMap<String, String>> {
+    let maybe_main_specifier =
+      self.resolve_main_module().and_then(|el| el.ok());
+
+    if let (Some(main_specifier), Some(content_type)) =
+      (maybe_main_specifier, self.content_type())
+    {
+      HashMap::from([(
+        main_specifier,
+        HashMap::from([("content-type".to_string(), content_type)]),
+      )])
+    } else {
+      HashMap::default()
     }
   }
 

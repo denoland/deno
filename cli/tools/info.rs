@@ -19,7 +19,6 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
 use deno_runtime::colors;
-use deno_runtime::permissions::PermissionsContainer;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
@@ -35,10 +34,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
-    let mut loader = ps.create_graph_loader(
-      PermissionsContainer::allow_all(),
-      PermissionsContainer::allow_all(),
-    );
+    let mut loader = ps.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = ps
       .create_graph_with_loader(vec![specifier], &mut loader)
