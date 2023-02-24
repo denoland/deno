@@ -54,7 +54,7 @@ pub async fn format(
     return format_stdin(
       fmt_options,
       flags.ext.expect(
-        "--ext should use clap's default value when no file was specified",
+        "--ext should use clap's default value when no file was specified, but it didn't",
       ),
     );
   }
@@ -465,10 +465,7 @@ fn format_ensure_stable(
 /// Format stdin and write result to stdout.
 /// Treats input as set by `--ext` flag.
 /// Compatible with `--check` flag.
-pub fn format_stdin(
-  fmt_options: FmtOptions,
-  ext: String,
-) -> Result<(), AnyError> {
+fn format_stdin(fmt_options: FmtOptions, ext: String) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     bail!("Failed to read from stdin");

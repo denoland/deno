@@ -688,10 +688,12 @@ impl CliOptions {
   pub fn resolve_main_module(
     &self,
   ) -> Option<Result<ModuleSpecifier, AnyError>> {
-    // TOOD: Can I do this without Ok(x?)
     match &self.flags.subcommand {
       DenoSubcommand::Bundle(bundle_flags) => Some(
         resolve_url_or_path(&bundle_flags.source_file).map_err(AnyError::from),
+      ),
+      DenoSubcommand::Compile(compile_flags) => Some(
+        resolve_url_or_path(&compile_flags.source_file).map_err(AnyError::from),
       ),
       DenoSubcommand::Eval(_) => {
         Some(resolve_url_or_path("./$deno$eval").map_err(AnyError::from))

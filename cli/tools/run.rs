@@ -58,7 +58,7 @@ To grant permissions, set them before the script argument. For example:
 }
 
 pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags.clone()).await?;
+  let ps = ProcState::build(flags).await?;
   let main_module = ps.options.resolve_main_module().unwrap().unwrap();
 
   let mut worker = create_main_worker(

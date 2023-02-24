@@ -38,8 +38,8 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   let ps = ProcState::build(flags).await?;
+  let module_specifier = ps.options.resolve_main_module().unwrap()?;
   let deno_dir = &ps.dir;
 
   let output_path =
