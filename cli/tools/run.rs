@@ -11,6 +11,7 @@ use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 
+use crate::args::CliOptions;
 use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
@@ -34,16 +35,12 @@ To grant permissions, set them before the script argument. For example:
     );
   }
 
-  if flags.watch.is_some() {
-    return run_with_watch(flags, run_flags.script).await;
-  }
+  let cli_options = CliOptions::from_flags(flags.clone())?;
+  let main_module = cli_options.resolve_main_module()?;
 
-  let main_module =
-    if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
-      ModuleSpecifier::parse(&run_flags.script)?
-    } else {
-      resolve_url_or_path(&run_flags.script)?
-    };
+  if flags.watch.is_some() {
+    return run_with_watch(flags, main_module).await;
+  }
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line - this should
@@ -67,8 +64,9 @@ To grant permissions, set them before the script argument. For example:
 }
 
 pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags).await?;
-  let main_module = resolve_url_or_path("./$deno$stdin.ts").unwrap();
+  let ps = ProcState::build(flags.clone()).await?;
+  let main_module = ps.options.resolve_main_module().unwrap();
+
   let mut worker = create_main_worker(
     &ps,
     main_module.clone(),
@@ -99,9 +97,11 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
-async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
+async fn run_with_watch(
+  flags: Flags,
+  main_module: ModuleSpecifier,
+) -> Result<i32, AnyError> {
   let flags = Arc::new(flags);
-  let main_module = resolve_url_or_path(&script)?;
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
   let mut ps = ProcState::build_for_file_watcher(
     (*flags).clone(),
@@ -142,7 +142,9 @@ pub async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
-  let main_module = resolve_url_or_path("./$deno$eval")?;
+  // TOOD: remove from_flags(), use ps.options
+  let main_module =
+    CliOptions::from_flags(flags.clone())?.resolve_main_module()?;
   let ps = ProcState::build_with_main(flags, main_module.clone()).await?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),

@@ -37,10 +37,9 @@ pub async fn bundle(
 
   let resolver = |_| {
     let cli_options = cli_options.clone();
-    let source_file1 = &bundle_flags.source_file;
-    let source_file2 = &bundle_flags.source_file;
+    let source_file = &bundle_flags.source_file;
     async move {
-      let module_specifier = resolve_url_or_path(source_file1)?;
+      let module_specifier = cli_options.resolve_main_module()?;
 
       log::debug!(">>>>> bundle START");
       let ps = ProcState::from_options_with_main(
@@ -78,7 +77,7 @@ pub async fn bundle(
         result: Ok((ps, graph)),
       },
       Err(e) => ResolutionResult::Restart {
-        paths_to_watch: vec![PathBuf::from(source_file2)],
+        paths_to_watch: vec![PathBuf::from(source_file)],
         result: Err(e),
       },
     })

@@ -9,6 +9,8 @@ pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
 use ::import_map::ImportMap;
+use deno_core::resolve_url_or_path;
+use deno_graph::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
 use crate::npm::NpmResolutionSnapshot;
@@ -679,6 +681,31 @@ impl CliOptions {
       "Unable to load '{import_map_specifier}' import map"
     ))
     .map(Some)
+  }
+
+  pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
+    // TOOD: Can I do this without Ok(x?)
+    match &self.flags.subcommand {
+      DenoSubcommand::Bundle(bundle_flags) => {
+        Ok(resolve_url_or_path(&bundle_flags.source_file)?)
+      }
+      DenoSubcommand::Eval(_) => Ok(resolve_url_or_path("./$deno$eval")?),
+      DenoSubcommand::Repl(_) => Ok(resolve_url_or_path("./$deno$repl.ts")?),
+      DenoSubcommand::Run(run_flags) => Ok(if run_flags.is_stdin() {
+        resolve_url_or_path("./$deno$stdin.ts")?
+      } else {
+        if self.flags.watch.is_some() {
+          resolve_url_or_path(&run_flags.script)?
+        } else {
+          if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
+            ModuleSpecifier::parse(&run_flags.script)?
+          } else {
+            resolve_url_or_path(&run_flags.script)?
+          }
+        }
+      }),
+      _ => panic!("Invoked resolve_main_module() on a subcommand which does not have a main module")
+    }
   }
 
   pub fn get_npm_resolution_snapshot(&self) -> Option<NpmResolutionSnapshot> {

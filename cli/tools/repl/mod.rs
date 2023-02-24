@@ -80,8 +80,8 @@ async fn read_eval_file(
 }
 
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
-  let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let ps = ProcState::build(flags).await?;
+  let main_module = ps.options.resolve_main_module().unwrap();
   let mut worker = create_main_worker(
     &ps,
     main_module,
