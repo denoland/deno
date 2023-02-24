@@ -514,7 +514,7 @@ declare namespace Deno {
    * All `UnsafeCallback` are always thread safe in that they can be called from
    * foreign threads without crashing. However, they do not wake up the Deno event
    * loop by default.
-   * 
+   *
    * If a callback is to be called from foreign threads, use the `threadSafe()`
    * static constructor or explicitly call `ref()` to have the callback wake up
    * the Deno event loop when called from foreign threads. This also stops
@@ -580,7 +580,7 @@ declare namespace Deno {
     /**
      * Decrements the callback's reference counting and returns the new
      * reference count.
-     * 
+     *
      * Calling `unref()` does not stop a callback from waking up the Deno
      * event loop when called from foreign threads.
      *
@@ -1165,6 +1165,18 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Information for a HTTP request.
+   *
+   * @category HTTP Server
+  */
+   export interface ServeHandlerInfo {
+     /** The remote address of the connection. */
+    remoteAddr: Deno.NetAddr;
+  }
+
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A handler for HTTP requests. Consumes a request and returns a response.
    *
    * If a handler throws, the server calling the handler will assume the impact
@@ -1173,7 +1185,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export type ServeHandler = (request: Request, getRemoteAddr: () => Deno.NetAddr) => Response | Promise<Response>;
+  export type ServeHandler = (request: Request, info: ServeHandlerInfo) => Response | Promise<Response>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *

@@ -569,16 +569,19 @@ function createServe(opFn) {
             );
 
             let resp;
+            let remoteAddr;
             try {
-              resp = handler(req, () => {
-                const { 0: hostname, 1: port } = core.ops.op_flash_addr(
-                  serverId,
-                  i,
-                );
-                return {
-                  hostname,
-                  port,
-                };
+              resp = handler(req, {
+                remoteAddr() {
+                  if (!remoteAddr) {
+                    const { 0: hostname, 1: port } = core.ops.op_flash_addr(
+                      serverId,
+                      i,
+                    );
+                    remoteAddr = { hostname, port };
+                  }
+                  return remoteAddr;
+                },
               });
               if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
                 PromisePrototypeCatch(
