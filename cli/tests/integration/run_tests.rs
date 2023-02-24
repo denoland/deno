@@ -2749,9 +2749,10 @@ itest!(config_not_auto_discovered_for_remote_script {
   http_server: true,
 });
 
-itest!(package_json_auto_discovered_for_local_script_log {
+itest!(package_json_auto_discovered_for_local_script_arg {
   args: "run -L debug -A no_deno_json/main.ts",
   output: "run/with_package_json/no_deno_json/main.out",
+  // notice this is not in no_deno_json
   cwd: Some("run/with_package_json/"),
   // prevent creating a node_modules dir in the code directory
   copy_temp_dir: Some("run/with_package_json/"),
@@ -2762,7 +2763,7 @@ itest!(package_json_auto_discovered_for_local_script_log {
 // In this case we shouldn't discover `package.json` file, because it's in a
 // directory that is above the directory containing `deno.json` file.
 itest!(
-  package_json_auto_discovered_for_local_script_log_with_stop {
+  package_json_auto_discovered_for_local_script_arg_with_stop {
     args: "run -L debug with_stop/some/nested/dir/main.ts",
     output: "run/with_package_json/with_stop/main.out",
     cwd: Some("run/with_package_json/"),
@@ -2772,6 +2773,12 @@ itest!(
     exit_code: 1,
   }
 );
+
+itest!(package_json_not_auto_discovered_no_config {
+  args: "run -L debug -A --no-config noconfig.ts",
+  output: "run/with_package_json/no_deno_json/noconfig.out",
+  cwd: Some("run/with_package_json/no_deno_json/"),
+});
 
 itest!(
   package_json_auto_discovered_node_modules_relative_package_json {

@@ -568,7 +568,9 @@ impl CliOptions {
     let maybe_config_file = ConfigFile::discover(&flags, &initial_cwd)?;
 
     let mut maybe_package_json = None;
-    if let Some(config_file) = &maybe_config_file {
+    if flags.config_flag == ConfigFlag::Disabled {
+      log::debug!("package.json auto-discovery is disabled")
+    } else if let Some(config_file) = &maybe_config_file {
       let specifier = config_file.specifier.clone();
       if specifier.scheme() == "file" {
         let maybe_stop_at = specifier
@@ -582,6 +584,7 @@ impl CliOptions {
     } else {
       maybe_package_json = discover_package_json(&flags, None)?;
     }
+
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
     Self::new(
