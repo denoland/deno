@@ -44,7 +44,7 @@ pub struct LocalNpmPackageResolver {
   resolution: NpmResolution,
   registry_url: Url,
   root_node_modules_path: PathBuf,
-  root_node_modules_specifier: ModuleSpecifier,
+  root_node_modules_url: Url,
 }
 
 impl LocalNpmPackageResolver {
@@ -58,10 +58,8 @@ impl LocalNpmPackageResolver {
       cache,
       resolution,
       registry_url,
-      root_node_modules_specifier: ModuleSpecifier::from_directory_path(
-        &node_modules_folder,
-      )
-      .unwrap(),
+      root_node_modules_url: Url::from_directory_path(&node_modules_folder)
+        .unwrap(),
       root_node_modules_path: node_modules_folder,
     }
   }
@@ -92,8 +90,7 @@ impl LocalNpmPackageResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<PathBuf> {
-    let relative_url =
-      self.root_node_modules_specifier.make_relative(specifier)?;
+    let relative_url = self.root_node_modules_url.make_relative(specifier)?;
     if relative_url.starts_with("../") {
       return None;
     }
@@ -126,6 +123,10 @@ impl LocalNpmPackageResolver {
 
 #[async_trait]
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
+  fn root_dir_url(&self) -> &Url {
+    &self.root_node_modules_url
+  }
+
   fn resolve_package_folder_from_deno_module(
     &self,
     node_id: &NpmPackageId,

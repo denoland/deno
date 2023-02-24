@@ -224,9 +224,7 @@ impl ProcState {
     let npm_resolver = NpmPackageResolver::new_with_maybe_lockfile(
       npm_cache.clone(),
       api,
-      cli_options
-        .resolve_local_node_modules_folder()
-        .with_context(|| "Resolving local node_modules folder.")?,
+      cli_options.node_modules_dir_path(),
       cli_options.get_npm_resolution_snapshot(),
       lockfile.as_ref().cloned(),
     )
@@ -239,12 +237,10 @@ impl ProcState {
       cli_options.resolve_inspector_server().map(Arc::new);
 
     let maybe_package_json_deps = cli_options.maybe_package_json_deps()?;
-    if let Some(deps) = &maybe_package_json_deps {
-      // resolve the package.json npm requirements ahead of time
-      let mut package_reqs = deps.values().cloned().collect::<Vec<_>>();
-      package_reqs.sort(); // deterministic resolution
-      npm_resolver.add_package_reqs(package_reqs).await?;
-    }
+    // resolve the package.json npm requirements ahead of time
+    npm_resolver
+      .add_package_json_deps(maybe_package_json_deps.as_ref())
+      .await?;
     let resolver = Arc::new(CliGraphResolver::new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
@@ -329,6 +325,7 @@ impl ProcState {
       self.file_fetcher.clone(),
       root_permissions,
       dynamic_permissions,
+      self.options.node_modules_dir_specifier(),
     );
     let maybe_imports = self.options.to_maybe_imports()?;
     let graph_resolver = self.resolver.as_graph_resolver();
@@ -498,39 +495,27 @@ impl ProcState {
       let graph_data = self.graph_data.read();
       let graph = &graph_data.graph;
       let maybe_resolved = match graph.get(&referrer) {
-        Some(Module::Esm(module)) => module
-          .dependencies
-          .get(specifier)
-          .map(|d| (&module.specifier, &d.maybe_code)),
+        Some(Module::Esm(module)) => {
+          module.dependencies.get(specifier).map(|d| &d.maybe_code)
+        }
         _ => None,
       };
 
       match maybe_resolved {
-        Some((found_referrer, Resolution::Ok(resolved))) => {
+        Some(Resolution::Ok(resolved)) => {
           let specifier = &resolved.specifier;
 
           return match graph.get(specifier) {
-            Some(Module::Npm(module)) => {
-              if !self.options.unstable()
-                && matches!(found_referrer.scheme(), "http" | "https")
-              {
-                return Err(custom_error(
-                "NotSupported",
-                format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {found_referrer})"),
-              ));
-              }
-
-              self
-                .handle_node_resolve_result(node::node_resolve_npm_reference(
-                  &module.nv_reference,
-                  NodeResolutionMode::Execution,
-                  &self.npm_resolver,
-                  permissions,
-                ))
-                .with_context(|| {
-                  format!("Could not resolve '{}'.", module.nv_reference)
-                })
-            }
+            Some(Module::Npm(module)) => self
+              .handle_node_resolve_result(node::node_resolve_npm_reference(
+                &module.nv_reference,
+                NodeResolutionMode::Execution,
+                &self.npm_resolver,
+                permissions,
+              ))
+              .with_context(|| {
+                format!("Could not resolve '{}'.", module.nv_reference)
+              }),
             Some(Module::Node(module)) => {
               node::resolve_builtin_node_module(&module.module_name)
             }
@@ -540,13 +525,13 @@ impl ProcState {
             None => Ok(specifier.clone()),
           };
         }
-        Some((_, Resolution::Err(err))) => {
+        Some(Resolution::Err(err)) => {
           return Err(custom_error(
             "TypeError",
             format!("{}\n", err.to_string_with_range()),
           ))
         }
-        Some((_, Resolution::None)) | None => {}
+        Some(Resolution::None) | None => {}
       }
     }
 
@@ -633,6 +618,7 @@ impl ProcState {
       self.file_fetcher.clone(),
       PermissionsContainer::allow_all(),
       PermissionsContainer::allow_all(),
+      self.options.node_modules_dir_specifier(),
     )
   }
 
@@ -651,14 +637,18 @@ impl ProcState {
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
 
+    let maybe_package_json_deps = self.options.maybe_package_json_deps()?;
+    self
+      .npm_resolver
+      .add_package_json_deps(maybe_package_json_deps.as_ref())
+      .await?;
     let cli_resolver = CliGraphResolver::new(
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
       self.options.no_npm(),
       self.npm_resolver.api().clone(),
       self.npm_resolver.resolution().clone(),
-      // TODO(bartlomieju): this should use dependencies from `package.json`?
-      None,
+      maybe_package_json_deps,
     );
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();

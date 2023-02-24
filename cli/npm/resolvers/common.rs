@@ -20,6 +20,9 @@ use crate::npm::NpmResolutionPackage;
 /// Part of the resolution that interacts with the file system.
 #[async_trait]
 pub trait NpmPackageFsResolver: Send + Sync {
+  /// Specifier for the root directory.
+  fn root_dir_url(&self) -> &Url;
+
   fn resolve_package_folder_from_deno_module(
     &self,
     id: &NpmPackageId,

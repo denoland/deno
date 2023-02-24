@@ -19,7 +19,7 @@ use deno_runtime::deno_node::RequireNpmResolver;
 use global::GlobalNpmPackageResolver;
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -150,25 +150,23 @@ impl NpmPackageResolver {
   /// Resolves an npm package folder path from a Deno module.
   pub fn resolve_package_folder_from_deno_module(
     &self,
-    package_id: &NpmPackageNv,
+    pkg_nv: &NpmPackageNv,
   ) -> Result<PathBuf, AnyError> {
-    let node_id = self
-      .resolution
-      .resolve_pkg_id_from_deno_module(package_id)?;
-    self.resolve_pkg_folder_from_deno_module_at_node_id(&node_id)
+    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(pkg_nv)?;
+    self.resolve_pkg_folder_from_deno_module_at_pkg_id(&pkg_id)
   }
 
-  fn resolve_pkg_folder_from_deno_module_at_node_id(
+  fn resolve_pkg_folder_from_deno_module_at_pkg_id(
     &self,
-    package_id: &NpmPackageId,
+    pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
     let path = self
       .fs_resolver
-      .resolve_package_folder_from_deno_module(package_id)?;
+      .resolve_package_folder_from_deno_module(pkg_id)?;
     let path = canonicalize_path_maybe_not_exists(&path)?;
     log::debug!(
       "Resolved package folder of {} to {}",
-      package_id.as_serialized(),
+      pkg_id.as_serialized(),
       path.display()
     );
     Ok(path)
@@ -216,14 +214,27 @@ impl NpmPackageResolver {
 
   /// Gets if the provided specifier is in an npm package.
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    self
-      .resolve_package_folder_from_specifier(specifier)
-      .is_ok()
+    let root_dir_url = self.fs_resolver.root_dir_url();
+    debug_assert!(root_dir_url.as_str().ends_with('/'));
+    specifier.as_ref().starts_with(root_dir_url.as_str())
   }
 
   /// If the resolver has resolved any npm packages.
   pub fn has_packages(&self) -> bool {
     self.resolution.has_packages()
+  }
+
+  /// Adds the package reqs from a package.json if they exist.
+  pub async fn add_package_json_deps(
+    &self,
+    maybe_package_json_deps: Option<&BTreeMap<String, NpmPackageReq>>,
+  ) -> Result<(), AnyError> {
+    if let Some(deps) = maybe_package_json_deps {
+      let mut package_reqs = deps.values().cloned().collect::<Vec<_>>();
+      package_reqs.sort(); // deterministic resolution
+      self.add_package_reqs(package_reqs).await?;
+    }
+    Ok(())
   }
 
   /// Adds package requirements to the resolver and ensures everything is setup.
@@ -252,7 +263,7 @@ impl NpmPackageResolver {
   /// This will retrieve and resolve package information, but not cache any package files.
   pub async fn set_package_reqs(
     &self,
-    packages: HashSet<NpmPackageReq>,
+    packages: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     self.resolution.set_package_reqs(packages).await
   }
