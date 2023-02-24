@@ -569,6 +569,7 @@ impl CliOptions {
 
     let mut maybe_package_json = None;
     if flags.config_flag == ConfigFlag::Disabled
+      || flags.no_npm
       || has_flag_env_var("DENO_NO_PACKAGE_JSON")
     {
       log::debug!("package.json auto-discovery is disabled")
