@@ -30,33 +30,6 @@ macro_rules! itest_flaky(
 }
 );
 
-#[macro_export]
-macro_rules! itest_steps(
-($name:ident {$( $key:ident: $value:expr,)*})  => {
-  #[test]
-  fn $name() {
-    (test_util::CheckOutputIntegrationTestSteps {
-      $(
-        $key: $value,
-       )*
-      .. Default::default()
-    }).run()
-  }
-}
-);
-
-#[macro_export]
-macro_rules! command_step(
-({$( $key:ident: $value:expr,)*})  => {
-  test_util::CheckOutputIntegrationTestCommandStep {
-    $(
-      $key: $value,
-      )*
-    .. Default::default()
-  }
-}
-);
-
 // These files have `_tests.rs` suffix to make it easier to tell which file is
 // the test (ex. `lint_tests.rs`) and which is the implementation (ex. `lint.rs`)
 // when both are open, especially for two tabs in VS Code
