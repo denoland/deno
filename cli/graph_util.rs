@@ -161,17 +161,13 @@ pub async fn create_graph_and_maybe_check(
     ps.options.node_modules_dir_specifier(),
   );
   let maybe_imports = ps.options.to_maybe_imports()?;
-  let maybe_package_json_deps = ps.options.maybe_package_json_deps()?;
-  ps.npm_resolver
-    .add_package_json_deps(maybe_package_json_deps.as_ref())
-    .await?;
   let cli_resolver = CliGraphResolver::new(
     ps.options.to_maybe_jsx_import_source_config(),
     ps.maybe_import_map.clone(),
     ps.options.no_npm(),
     ps.npm_resolver.api().clone(),
     ps.npm_resolver.resolution().clone(),
-    maybe_package_json_deps,
+    ps.package_json_deps_installer.clone(),
   );
   let graph_resolver = cli_resolver.as_graph_resolver();
   let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
