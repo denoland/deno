@@ -190,11 +190,22 @@ impl NpmResolver for CliGraphResolver {
     let package_name = package_name.to_string();
     let api = self.npm_registry_api.clone();
     let deps_installer = self.package_json_deps_installer.clone();
-    let mut maybe_sync_download_semaphore =
-      self.sync_download_semaphore.clone();
+    let maybe_sync_download_semaphore = self.sync_download_semaphore.clone();
     async move {
+      let permit = if let Some(semaphore) = &maybe_sync_download_semaphore {
+        Some(semaphore.acquire().await.unwrap())
+      } else {
+        None
+      };
+
       // trigger an npm install if the package name matches
       // a package in the package.json
+      //
+      // todo(dsherret): ideally this would only download if a bare
+      // specifiy matched in the package.json, but deno_graph only
+      // calls this once per package name and we might resolve an
+      // npm specifier first which calls this, then a bare specifier
+      // second and that would cause this not to occur.
       if deps_installer.has_package_name(&package_name) {
         deps_installer
           .ensure_top_level_install()
@@ -202,14 +213,13 @@ impl NpmResolver for CliGraphResolver {
           .map_err(|err| format!("{err:#}"))?;
       }
 
-      let result = if let Some(semaphore) = maybe_sync_download_semaphore.take()
-      {
-        let _permit = semaphore.acquire().await.unwrap();
-        api.package_info(&package_name).await
-      } else {
-        api.package_info(&package_name).await
-      };
-      result.map(|_| ()).map_err(|err| format!("{err:#}"))
+      let result = api
+        .package_info(&package_name)
+        .await
+        .map(|_| ())
+        .map_err(|err| format!("{err:#}"));
+      drop(permit);
+      result
     }
     .boxed()
   }
