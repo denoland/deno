@@ -193,17 +193,13 @@ impl NpmResolver for CliGraphResolver {
     let mut maybe_sync_download_semaphore =
       self.sync_download_semaphore.clone();
     async move {
-      // trigger an npm install if it hasn't be done
-      if let Some(package_deps) = deps_installer.package_deps() {
-        // Only trigger the install when this matches a package name
-        // in the package.json. Ensure this looks at the package name
-        // and not the bare specifiers (do not look at the keys!)
-        if package_deps.values().any(|v| v.name == package_name) {
-          deps_installer
-            .ensure_top_level_install()
-            .await
-            .map_err(|err| format!("{err:#}"))?;
-        }
+      // trigger an npm install if the package name matches
+      // a package in the package.json
+      if deps_installer.has_package_name(&package_name) {
+        deps_installer
+          .ensure_top_level_install()
+          .await
+          .map_err(|err| format!("{err:#}"))?;
       }
 
       let result = if let Some(semaphore) = maybe_sync_download_semaphore.take()

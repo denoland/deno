@@ -39,9 +39,17 @@ impl PackageJsonDepsInstaller {
   }
 
   pub fn package_deps(&self) -> Option<&BTreeMap<String, NpmPackageReq>> {
-    match &self.0 {
-      Some(inner) => Some(&inner.package_deps),
-      None => None,
+    self.0.as_ref().map(|inner| &inner.package_deps)
+  }
+
+  /// Gets if the package.json has the specified package name.
+  pub fn has_package_name(&self, name: &str) -> bool {
+    if let Some(package_deps) = self.package_deps() {
+      // ensure this looks at the package name and not the
+      // bare specifiers (do not look at the keys!)
+      package_deps.values().any(|v| v.name == name)
+    } else {
+      false
     }
   }
 
