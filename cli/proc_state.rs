@@ -518,8 +518,10 @@ impl ProcState {
               node::resolve_builtin_node_module(&module.module_name)
             }
             Some(Module::Esm(module)) => Ok(module.specifier.clone()),
-            Some(Module::External(module)) => Ok(module.specifier.clone()),
             Some(Module::Json(module)) => Ok(module.specifier.clone()),
+            Some(Module::External(module)) => {
+              Ok(node::resolve_specifier_into_node_modules(&module.specifier))
+            }
             None => Ok(specifier.clone()),
           };
         }

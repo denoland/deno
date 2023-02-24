@@ -1566,23 +1566,14 @@ itest!(create_require {
   http_server: true,
 });
 
-itest_steps!(node_modules_import_run {
+itest!(node_modules_import_run {
+  args: "run --quiet main.ts",
+  output: "npm/node_modules_import/main.out",
   http_server: true,
   copy_temp_dir: Some("npm/node_modules_import/"),
   cwd: Some("npm/node_modules_import/"),
   envs: env_vars_for_npm_tests(),
-  steps: vec![
-    command_step!({
-      args: "cache --quiet main.ts",
-      skip_output_check: true,
-      exit_code: 0,
-    }),
-    command_step!({
-      args: "run --quiet main.ts",
-      output: "npm/node_modules_import/main.out",
-      exit_code: 0,
-    }),
-  ],
+  exit_code: 0,
 });
 
 itest!(node_modules_import_check {
