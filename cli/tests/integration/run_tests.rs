@@ -2786,6 +2786,13 @@ itest!(package_json_not_auto_discovered_no_npm {
   cwd: Some("run/with_package_json/no_deno_json/"),
 });
 
+itest!(package_json_not_auto_discovered_env_var {
+  args: "run -L debug -A noconfig.ts",
+  output: "run/with_package_json/no_deno_json/noconfig.out",
+  cwd: Some("run/with_package_json/no_deno_json/"),
+  envs: vec![("DENO_NO_PACKAGE_JSON".to_string(), "1".to_string())],
+});
+
 itest!(
   package_json_auto_discovered_node_modules_relative_package_json {
     args: "run -A main.js",
