@@ -8,6 +8,7 @@ import { config, getPathsFromTestSuites } from "./common.ts";
 // deno test -A cli/tests/node_compat/test.ts -- <test-names>
 // Use the test-names as filters
 const filters = Deno.args;
+const hasFilters = filters.length > 0;
 
 /**
  * This script will run the test files specified in the configuration file
@@ -78,7 +79,7 @@ for await (const path of testPaths) {
       });
       const { code, stdout, stderr } = await command.output();
 
-      if (stdout.length) console.log(decoder.decode(stdout));
+      if (stdout.length && hasFilters) console.log(decoder.decode(stdout));
 
       if (code !== 0) {
         console.log(`Error: "${path}" failed`);
@@ -107,7 +108,7 @@ function checkConfigTestFilesOrder(testFileLists: Array<string[]>) {
   }
 }
 
-if (filters.length === 0) {
+if (!hasFilters) {
   Deno.test("checkConfigTestFilesOrder", function () {
     checkConfigTestFilesOrder([
       ...Object.keys(config.ignore).map((suite) => config.ignore[suite]),
