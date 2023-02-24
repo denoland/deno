@@ -43,7 +43,9 @@ enum TransformKind {
   V8Value,
   SliceU32(bool),
   SliceU8(bool),
+  SliceF64(bool),
   PtrU8,
+  PtrVoid,
   WasmMemory,
 }
 
@@ -69,6 +71,13 @@ impl Transform {
     }
   }
 
+  fn slice_f64(index: usize, is_mut: bool) -> Self {
+    Transform {
+      kind: TransformKind::SliceF64(is_mut),
+      index,
+    }
+  }
+
   fn wasm_memory(index: usize) -> Self {
     Transform {
       kind: TransformKind::WasmMemory,
@@ -79,6 +88,13 @@ impl Transform {
   fn u8_ptr(index: usize) -> Self {
     Transform {
       kind: TransformKind::PtrU8,
+      index,
+    }
+  }
+
+  fn void_ptr(index: usize) -> Self {
+    Transform {
+      kind: TransformKind::PtrVoid,
       index,
     }
   }
@@ -150,6 +166,20 @@ impl Transform {
             unsafe { (&*var).get_storage_if_aligned().unwrap_unchecked() };
         })
       }
+      TransformKind::SliceF64(_) => {
+        *ty =
+          parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<f64> };
+
+        q!(Vars { var: &ident }, {
+          let var = match unsafe { &*var }.get_storage_if_aligned() {
+            Some(v) => v,
+            None => {
+              unsafe { &mut *fast_api_callback_options }.fallback = true;
+              return Default::default();
+            }
+          };
+        })
+      }
       TransformKind::WasmMemory => {
         // Note: `ty` is correctly set to __opts by the fast call tier.
         // U8 slice is always byte-aligned.
@@ -173,19 +203,25 @@ impl Transform {
               .as_ptr();
         })
       }
+      TransformKind::PtrVoid => {
+        *ty = parse_quote! { *mut ::std::ffi::c_void };
+
+        q!(Vars {}, {})
+      }
     }
   }
 }
 
 fn get_fast_scalar(s: &str) -> Option<FastValue> {
   match s {
+    "bool" => Some(FastValue::Bool),
     "u32" => Some(FastValue::U32),
     "i32" => Some(FastValue::I32),
     "u64" => Some(FastValue::U64),
     "i64" => Some(FastValue::I64),
     "f32" => Some(FastValue::F32),
     "f64" => Some(FastValue::F64),
-    "bool" => Some(FastValue::Bool),
+    "* const c_void" | "* mut c_void" => Some(FastValue::Pointer),
     "ResourceId" => Some(FastValue::U32),
     _ => None,
   }
@@ -204,16 +240,18 @@ fn can_return_fast(v: &FastValue) -> bool {
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum FastValue {
   Void,
+  Bool,
   U32,
   I32,
   U64,
   I64,
   F32,
   F64,
-  Bool,
+  Pointer,
   V8Value,
   Uint8Array,
   Uint32Array,
+  Float64Array,
 }
 
 impl Default for FastValue {
@@ -391,6 +429,31 @@ impl Optimizer {
                 {
                   self.fast_result = Some(FastValue::Void);
                 }
+                Some(GenericArgument::Type(Type::Ptr(TypePtr {
+                  mutability: Some(_),
+                  elem,
+                  ..
+                }))) => {
+                  match &**elem {
+                    Type::Path(TypePath {
+                      path: Path { segments, .. },
+                      ..
+                    }) => {
+                      // Is `T` a c_void?
+                      let segment = single_segment(segments)?;
+                      match segment {
+                        PathSegment { ident, .. } if ident == "c_void" => {
+                          self.fast_result = Some(FastValue::Pointer);
+                          return Ok(());
+                        }
+                        _ => {
+                          return Err(BailoutReason::FastUnsupportedParamType)
+                        }
+                      }
+                    }
+                    _ => return Err(BailoutReason::FastUnsupportedParamType),
+                  }
+                }
                 _ => return Err(BailoutReason::FastUnsupportedParamType),
               }
             }
@@ -406,6 +469,29 @@ impl Optimizer {
             return Err(BailoutReason::FastUnsupportedParamType);
           }
         };
+      }
+      Type::Ptr(TypePtr {
+        mutability: Some(_),
+        elem,
+        ..
+      }) => {
+        match &**elem {
+          Type::Path(TypePath {
+            path: Path { segments, .. },
+            ..
+          }) => {
+            // Is `T` a c_void?
+            let segment = single_segment(segments)?;
+            match segment {
+              PathSegment { ident, .. } if ident == "c_void" => {
+                self.fast_result = Some(FastValue::Pointer);
+                return Ok(());
+              }
+              _ => return Err(BailoutReason::FastUnsupportedParamType),
+            }
+          }
+          _ => return Err(BailoutReason::FastUnsupportedParamType),
+        }
       }
       _ => return Err(BailoutReason::FastUnsupportedParamType),
     };
@@ -620,6 +706,15 @@ impl Optimizer {
                     .insert(index, Transform::slice_u32(index, is_mut_ref))
                     .is_none());
                 }
+                // Is `T` a f64?
+                PathSegment { ident, .. } if ident == "f64" => {
+                  self.needs_fast_callback_option = true;
+                  self.fast_parameters.push(FastValue::Float64Array);
+                  assert!(self
+                    .transforms
+                    .insert(index, Transform::slice_f64(index, is_mut_ref))
+                    .is_none());
+                }
                 _ => return Err(BailoutReason::FastUnsupportedParamType),
               }
             }
@@ -645,6 +740,31 @@ impl Optimizer {
                 assert!(self
                   .transforms
                   .insert(index, Transform::u8_ptr(index))
+                  .is_none());
+              }
+              _ => return Err(BailoutReason::FastUnsupportedParamType),
+            }
+          }
+          _ => return Err(BailoutReason::FastUnsupportedParamType),
+        },
+        // *const T
+        Type::Ptr(TypePtr {
+          elem,
+          mutability: Some(_),
+          ..
+        }) => match &**elem {
+          Type::Path(TypePath {
+            path: Path { segments, .. },
+            ..
+          }) => {
+            let segment = single_segment(segments)?;
+            match segment {
+              // Is `T` a c_void?
+              PathSegment { ident, .. } if ident == "c_void" => {
+                self.fast_parameters.push(FastValue::Pointer);
+                assert!(self
+                  .transforms
+                  .insert(index, Transform::void_ptr(index))
                   .is_none());
               }
               _ => return Err(BailoutReason::FastUnsupportedParamType),

@@ -591,6 +591,62 @@ fn _090_run_permissions_request_sync() {
   ]);
 }
 
+#[test]
+fn permissions_prompt_allow_all() {
+  let args = "run --quiet run/permissions_prompt_allow_all.ts";
+  use util::PtyData::*;
+  util::test_pty2(args, vec![
+    // "run" permissions
+    Output("┌ ⚠️  Deno requests run access to \"FOO\".\r\n├ Requested by `Deno.permissions.query()` API\r\n ├ Run again with --allow-run to bypass this prompt.\r\n└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions) >"),
+    Input("a\n"),
+    Output("✅ Granted all run access.\r\n"),
+    // "read" permissions
+    Output("┌ ⚠️  Deno requests read access to \"FOO\".\r\n├ Requested by `Deno.permissions.query()` API\r\n ├ Run again with --allow-read to bypass this prompt.\r\n└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) >"),
+    Input("a\n"),
+    Output("✅ Granted all read access.\r\n"),
+    // "write" permissions
+    Output("┌ ⚠️  Deno requests write access to \"FOO\".\r\n├ Requested by `Deno.permissions.query()` API\r\n ├ Run again with --allow-write to bypass this prompt.\r\n└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions) >"),
+    Input("a\n"),
+    Output("✅ Granted all write access.\r\n"),
+    // "net" permissions
+    Output("┌ ⚠️  Deno requests net access to \"FOO\".\r\n├ Requested by `Deno.permissions.query()` API\r\n ├ Run again with --allow-net to bypass this prompt.\r\n└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions) >"),
+    Input("a\n"),
+    Output("✅ Granted all net access.\r\n"),
+    // "env" permissions
+    Output("┌ ⚠️  Deno requests env access to \"FOO\".\r\n├ Requested by `Deno.permissions.query()` API\r\n ├ Run again with --allow-env to bypass this prompt.\r\n└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions) >"),
+    Input("a\n"),
+    Output("✅ Granted all env access.\r\n"),
+    // "sys" permissions
+    Output("┌ ⚠️  Deno requests sys access to \"loadavg\".\r\n├ Requested by `Deno.permissions.query()` API\r\n ├ Run again with --allow-sys to bypass this prompt.\r\n└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions) >"),
+    Input("a\n"),
+    Output("✅ Granted all sys access.\r\n"),
+    // "ffi" permissions
+    Output("┌ ⚠️  Deno requests ffi access to \"FOO\".\r\n├ Requested by `Deno.permissions.query()` API\r\n ├ Run again with --allow-ffi to bypass this prompt.\r\n└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all ffi permissions) >"),
+    Input("a\n"),
+    Output("✅ Granted all ffi access.\r\n")
+  ]);
+}
+
+#[test]
+fn permissions_prompt_allow_all_2() {
+  let args = "run --quiet run/permissions_prompt_allow_all_2.ts";
+  use util::PtyData::*;
+  util::test_pty2(args, vec![
+    // "env" permissions
+    Output("┌ ⚠️  Deno requests env access to \"FOO\".\r\n├ Run again with --allow-env to bypass this prompt.\r\n└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions) >"),
+    Input("d\n"),
+    Output("✅ Granted all env access.\r\n"),
+    // "sys" permissions
+    Output("┌ ⚠️  Deno requests sys access to \"FOO\".\r\n├ Run again with --allow-sys to bypass this prompt.\r\n└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions) >"),
+    Input("d\n"),
+    Output("✅ Granted all sys access.\r\n"),
+    // "read" permissions
+    Output("┌ ⚠️  Deno requests read access to \"FOO\".\r\n├ Run again with --allow-read to bypass this prompt.\r\n└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) >"),
+    Input("d\n"),
+    Output("✅ Granted all read access.\r\n"),
+  ]);
+}
+
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",
@@ -2693,6 +2749,59 @@ itest!(config_not_auto_discovered_for_remote_script {
   http_server: true,
 });
 
+itest!(package_json_auto_discovered_for_local_script_log {
+  args: "run -L debug -A no_deno_json/main.ts",
+  output: "run/with_package_json/no_deno_json/main.out",
+  cwd: Some("run/with_package_json/"),
+  // prevent creating a node_modules dir in the code directory
+  copy_temp_dir: Some("run/with_package_json/"),
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+});
+
+// In this case we shouldn't discover `package.json` file, because it's in a
+// directory that is above the directory containing `deno.json` file.
+itest!(
+  package_json_auto_discovered_for_local_script_log_with_stop {
+    args: "run -L debug with_stop/some/nested/dir/main.ts",
+    output: "run/with_package_json/with_stop/main.out",
+    cwd: Some("run/with_package_json/"),
+    copy_temp_dir: Some("run/with_package_json/"),
+    envs: env_vars_for_npm_tests_no_sync_download(),
+    http_server: true,
+    exit_code: 1,
+  }
+);
+
+itest!(
+  package_json_auto_discovered_node_modules_relative_package_json {
+    args: "run -A main.js",
+    output: "run/with_package_json/no_deno_json/sub_dir/main.out",
+    cwd: Some("run/with_package_json/no_deno_json/sub_dir"),
+    copy_temp_dir: Some("run/with_package_json/"),
+    envs: env_vars_for_npm_tests_no_sync_download(),
+    http_server: true,
+  }
+);
+
+itest!(package_json_auto_discovered_for_npm_binary {
+  args: "run -L debug -A npm:@denotest/bin/cli-esm this is a test",
+  output: "run/with_package_json/npm_binary/main.out",
+  cwd: Some("run/with_package_json/npm_binary/"),
+  copy_temp_dir: Some("run/with_package_json/"),
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+});
+
+itest!(package_json_with_deno_json {
+  args: "run --quiet -A main.ts",
+  output: "package_json/deno_json/main.out",
+  cwd: Some("package_json/deno_json/"),
+  copy_temp_dir: Some("package_json/deno_json/"),
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+});
+
 itest!(wasm_streaming_panic_test {
   args: "run run/wasm_streaming_panic_test.js",
   output: "run/wasm_streaming_panic_test.js.out",
@@ -2793,6 +2902,30 @@ itest!(unstable_ffi_14 {
 itest!(unstable_ffi_15 {
   args: "run run/ffi/unstable_ffi_15.js",
   output: "run/ffi/unstable_ffi_15.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_16 {
+  args: "run run/ffi/unstable_ffi_16.js",
+  output: "run/ffi/unstable_ffi_16.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_17 {
+  args: "run run/ffi/unstable_ffi_17.js",
+  output: "run/ffi/unstable_ffi_17.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_18 {
+  args: "run run/ffi/unstable_ffi_18.js",
+  output: "run/ffi/unstable_ffi_18.js.out",
+  exit_code: 70,
+});
+
+itest!(unstable_ffi_19 {
+  args: "run run/ffi/unstable_ffi_19.js",
+  output: "run/ffi/unstable_ffi_19.js.out",
   exit_code: 70,
 });
 
@@ -3379,6 +3512,9 @@ async fn test_resolve_dns() {
       .unwrap();
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success() {
+      eprintln!("stderr: {err}");
+    }
     assert!(output.status.success());
     assert!(err.starts_with("Check file"));
 
@@ -3851,14 +3987,14 @@ fn stdio_streams_are_locked_in_permission_prompt() {
 }
 
 itest!(node_builtin_modules_ts {
-  args: "run --quiet run/node_builtin_modules/mod.ts",
+  args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
   output: "run/node_builtin_modules/mod.ts.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
   exit_code: 0,
 });
 
 itest!(node_builtin_modules_js {
-  args: "run --quiet run/node_builtin_modules/mod.js",
+  args: "run --quiet --allow-read run/node_builtin_modules/mod.js hello there",
   output: "run/node_builtin_modules/mod.js.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
   exit_code: 0,

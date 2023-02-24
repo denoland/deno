@@ -322,12 +322,6 @@ impl SnapshotOptions {
       SnapshotOptions::Load | SnapshotOptions::CreateFromExisting
     )
   }
-  pub fn will_snapshot(&self) -> bool {
-    matches!(
-      self,
-      SnapshotOptions::Create | SnapshotOptions::CreateFromExisting
-    )
-  }
 
   fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
     match (snapshot_loaded, will_snapshot) {
@@ -438,7 +432,7 @@ impl JsRuntime {
     fn get_context_data(
       scope: &mut v8::HandleScope<()>,
       context: v8::Local<v8::Context>,
-    ) -> (Vec<v8::Global<v8::Module>>, v8::Global<v8::Object>) {
+    ) -> (Vec<v8::Global<v8::Module>>, v8::Global<v8::Array>) {
       fn data_error_to_panic(err: v8::DataError) -> ! {
         match err {
           v8::DataError::BadType { actual, expected } => {
@@ -457,15 +451,11 @@ impl JsRuntime {
       // The 0th element is the module map itself, followed by X number of module
       // handles. We need to deserialize the "next_module_id" field from the
       // map to see how many module handles we expect.
-      match scope.get_context_data_from_snapshot_once::<v8::Object>(0) {
+      match scope.get_context_data_from_snapshot_once::<v8::Array>(0) {
         Ok(val) => {
           let next_module_id = {
-            let info_str = v8::String::new(&mut scope, "info").unwrap();
-            let info_data: v8::Local<v8::Array> = val
-              .get(&mut scope, info_str.into())
-              .unwrap()
-              .try_into()
-              .unwrap();
+            let info_data: v8::Local<v8::Array> =
+              val.get_index(&mut scope, 1).unwrap().try_into().unwrap();
             info_data.length()
           };
 
@@ -619,6 +609,16 @@ impl JsRuntime {
         .iter()
         .flat_map(|ext| ext.get_esm_sources().to_owned())
         .collect::<Vec<ExtensionFileSource>>();
+
+      #[cfg(feature = "include_js_files_for_snapshotting")]
+      for source in &esm_sources {
+        use crate::ExtensionFileSourceCode;
+        if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+          &source.code
+        {
+          println!("cargo:rerun-if-changed={}", path.display())
+        }
+      }
 
       Rc::new(crate::modules::InternalModuleLoader::new(
         options.module_loader,
@@ -829,26 +829,39 @@ impl JsRuntime {
 
   /// Initializes JS of provided Extensions in the given realm
   fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
+    fn load_and_evaluate_module(
+      runtime: &mut JsRuntime,
+      file_source: &ExtensionFileSource,
+    ) -> Result<(), Error> {
+      futures::executor::block_on(async {
+        let id = runtime
+          .load_side_module(
+            &ModuleSpecifier::parse(&file_source.specifier)?,
+            None,
+          )
+          .await?;
+        let receiver = runtime.mod_evaluate(id);
+        runtime.run_event_loop(false).await?;
+        receiver.await?
+      })
+      .with_context(|| format!("Couldn't execute '{}'", file_source.specifier))
+    }
+
     // Take extensions to avoid double-borrow
     let extensions = std::mem::take(&mut self.extensions_with_js);
     for ext in &extensions {
       {
         let esm_files = ext.get_esm_sources();
-        for file_source in esm_files {
-          futures::executor::block_on(async {
-            let id = self
-              .load_side_module(
-                &ModuleSpecifier::parse(&file_source.specifier)?,
-                None,
-              )
-              .await?;
-            let receiver = self.mod_evaluate(id);
-            self.run_event_loop(false).await?;
-            receiver.await?
-          })
-          .with_context(|| {
-            format!("Couldn't execute '{}'", file_source.specifier)
-          })?;
+        if let Some(entry_point) = ext.get_esm_entry_point() {
+          let file_source = esm_files
+            .iter()
+            .find(|file| file.specifier == entry_point)
+            .unwrap();
+          load_and_evaluate_module(self, file_source)?;
+        } else {
+          for file_source in esm_files {
+            load_and_evaluate_module(self, file_source)?;
+          }
         }
       }
 
@@ -859,7 +872,7 @@ impl JsRuntime {
           realm.execute_script(
             self.v8_isolate(),
             &file_source.specifier,
-            file_source.code,
+            &file_source.code.load()?,
           )?;
         }
       }
@@ -976,11 +989,36 @@ impl JsRuntime {
   fn init_cbs(&mut self, realm: &JsRealm) {
     let (recv_cb, build_custom_error_cb) = {
       let scope = &mut realm.handle_scope(self.v8_isolate());
-      let recv_cb =
-        Self::eval::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
-      let build_custom_error_cb =
-        Self::eval::<v8::Function>(scope, "Deno.core.buildCustomError")
-          .expect("Deno.core.buildCustomError is undefined in the realm");
+      let context = realm.context();
+      let context_local = v8::Local::new(scope, context);
+      let global = context_local.global(scope);
+      let deno_str = v8::String::new(scope, "Deno").unwrap();
+      let core_str = v8::String::new(scope, "core").unwrap();
+      let opresolve_str = v8::String::new(scope, "opresolve").unwrap();
+      let build_custom_error_str =
+        v8::String::new(scope, "buildCustomError").unwrap();
+
+      let deno_obj: v8::Local<v8::Object> = global
+        .get(scope, deno_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+      let core_obj: v8::Local<v8::Object> = deno_obj
+        .get(scope, core_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+      let recv_cb: v8::Local<v8::Function> = core_obj
+        .get(scope, opresolve_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+      let build_custom_error_cb: v8::Local<v8::Function> = core_obj
+        .get(scope, build_custom_error_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
       (
         v8::Global::new(scope, recv_cb),
         v8::Global::new(scope, build_custom_error_cb),
@@ -1770,7 +1808,11 @@ impl JsRuntime {
       .map(|handle| v8::Local::new(tc_scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
-    assert_eq!(status, v8::ModuleStatus::Instantiated);
+    assert_eq!(
+      status,
+      v8::ModuleStatus::Instantiated,
+      "Module not instantiated {id}"
+    );
 
     let (sender, receiver) = oneshot::channel();
 
@@ -2515,7 +2557,6 @@ impl JsRuntime {
       let tc_scope = &mut v8::TryCatch::new(scope);
       let this = v8::undefined(tc_scope).into();
       js_nexttick_cb.call(tc_scope, this, &[]);
-
       if let Some(exception) = tc_scope.exception() {
         return exception_to_err_result(tc_scope, exception, false);
       }
@@ -2876,10 +2917,10 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        var p1 = Deno.core.ops.op_test(42);
-        var p2 = Deno.core.ops.op_test(42);
+        var p1 = Deno.core.opAsync("op_test", 42);
+        var p2 = Deno.core.opAsync("op_test", 42);
         "#,
       )
       .unwrap();
@@ -2932,7 +2973,7 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
-        Deno.core.initializeAsyncOps();
+        
         Deno.core.opAsync("op_test", control);
         async function main() {
           Deno.core.opAsync("op_test", control);
@@ -2951,7 +2992,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         const p = Deno.core.opAsync("op_test", 42);
         if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
           throw new Error("missing id on returned promise");
@@ -2968,7 +3009,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         Deno.core.opAsync("op_test");
         "#,
       )
@@ -2983,7 +3024,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         let zero_copy_a = new Uint8Array([0]);
         Deno.core.opAsync("op_test", null, zero_copy_a);
         "#,
@@ -3632,7 +3673,7 @@ pub mod tests {
         main,
         name: specifier.to_string(),
         requests: vec![crate::modules::ModuleRequest {
-          specifier: crate::resolve_url(&format!("file:///{prev}.js")).unwrap(),
+          specifier: format!("file:///{prev}.js"),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }],
         module_type: ModuleType::JavaScript,
@@ -3857,7 +3898,7 @@ if (errMessage !== "higher-level sync error: original sync error") {
         .execute_script(
           "test_error_context_async.js",
           r#"
-Deno.core.initializeAsyncOps();
+
 (async () => {
   let errMessage;
   try {
@@ -4012,7 +4053,7 @@ assertEquals(1, notify_return_value);
     runtime
       .execute_script(
         "op_async_borrow.js",
-        "Deno.core.initializeAsyncOps(); Deno.core.ops.op_async_borrow()",
+        "Deno.core.opAsync(\"op_async_borrow\")",
       )
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
@@ -4086,8 +4127,8 @@ Deno.core.ops.op_sync_serialize_object_with_numbers_as_keys({
       .execute_script(
         "op_async_serialize_object_with_numbers_as_keys.js",
         r#"
-Deno.core.initializeAsyncOps();
-Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
+
+Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
   lines: {
     100: {
       unit: "m"
@@ -4125,7 +4166,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       .execute_script(
         "macrotasks_and_nextticks.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         (async function () {
           const results = [];
           Deno.core.ops.op_set_macrotask_callback(() => {
@@ -4393,12 +4434,12 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           "",
           &format!(
             r#"
-              Deno.core.initializeAsyncOps();
+              
               globalThis.rejectValue = undefined;
               Deno.core.setPromiseRejectCallback((_type, _promise, reason) => {{
                 globalThis.rejectValue = `{realm_name}/${{reason}}`;
               }});
-              Deno.core.ops.op_void_async().then(() => Promise.reject({number}));
+              Deno.core.opAsync("op_void_async").then(() => Promise.reject({number}));
             "#
           ),
         )
@@ -4829,12 +4870,12 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           runtime.v8_isolate(),
           "",
           r#"
-            Deno.core.initializeAsyncOps();
+            
             (async function () {
-              const buf = await Deno.core.ops.op_test(false);
+              const buf = await Deno.core.opAsync("op_test", false);
               let err;
               try {
-                await Deno.core.ops.op_test(true);
+                await Deno.core.opAsync("op_test", true);
               } catch(e) {
                 err = e;
               }
@@ -4883,8 +4924,8 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           runtime.v8_isolate(),
           "",
           r#"
-            Deno.core.initializeAsyncOps();
-            var promise = Deno.core.ops.op_pending();
+            
+            var promise = Deno.core.opAsync("op_pending");
           "#,
         )
         .unwrap();
@@ -4893,8 +4934,8 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           runtime.v8_isolate(),
           "",
           r#"
-            Deno.core.initializeAsyncOps();
-            var promise = Deno.core.ops.op_pending();
+            
+            var promise = Deno.core.opAsync("op_pending");
           "#,
         )
         .unwrap();
@@ -4974,7 +5015,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         let source = r#"
-        // This module doesn't really exist, just verifying that we'll get 
+        // This module doesn't really exist, just verifying that we'll get
         // an error when specifier starts with "internal:".
         import { core } from "internal:core.js";
         "#;

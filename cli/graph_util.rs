@@ -7,15 +7,16 @@ use crate::args::TypeCheckMode;
 use crate::cache::TypeCheckCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
-use crate::npm::resolve_graph_npm_info;
+use crate::npm::NpmPackageResolver;
 use crate::proc_state::ProcState;
-use crate::resolver::CliResolver;
+use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
@@ -23,6 +24,13 @@ use deno_graph::SpecifierError;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMapError;
 use std::sync::Arc;
+
+#[derive(Clone, Copy)]
+pub struct GraphValidOptions {
+  pub check_js: bool,
+  pub follow_type_only: bool,
+  pub is_vendoring: bool,
+}
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
 /// so. Returns `Err(_)` if there is a known module graph or resolution
@@ -35,8 +43,8 @@ pub fn graph_valid_with_cli_options(
   graph_valid(
     graph,
     roots,
-    deno_graph::WalkOptions {
-      follow_dynamic: false,
+    GraphValidOptions {
+      is_vendoring: false,
       follow_type_only: options.type_check_mode() != TypeCheckMode::None,
       check_js: options.check_js(),
     },
@@ -53,46 +61,83 @@ pub fn graph_valid_with_cli_options(
 pub fn graph_valid(
   graph: &ModuleGraph,
   roots: &[ModuleSpecifier],
-  walk_options: deno_graph::WalkOptions,
+  options: GraphValidOptions,
 ) -> Result<(), AnyError> {
-  graph.walk(roots, walk_options).validate().map_err(|error| {
-    let is_root = match &error {
-      ModuleGraphError::ResolutionError(_) => false,
-      _ => roots.contains(error.specifier()),
-    };
-    let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
-      enhanced_resolution_error_message(err)
-    } else {
-      format!("{error}")
-    };
+  let mut errors = graph
+    .walk(
+      roots,
+      deno_graph::WalkOptions {
+        check_js: options.check_js,
+        follow_type_only: options.follow_type_only,
+        follow_dynamic: options.is_vendoring,
+      },
+    )
+    .errors()
+    .flat_map(|error| {
+      let is_root = match &error {
+        ModuleGraphError::ResolutionError(_) => false,
+        _ => roots.contains(error.specifier()),
+      };
+      let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
+        enhanced_resolution_error_message(err)
+      } else {
+        format!("{error}")
+      };
 
-    if let Some(range) = error.maybe_range() {
-      if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
-        message.push_str(&format!("\n    at {range}"));
+      if let Some(range) = error.maybe_range() {
+        if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
+          message.push_str(&format!("\n    at {range}"));
+        }
       }
-    }
 
-    custom_error(get_error_class_name(&error.into()), message)
-  })
+      if options.is_vendoring {
+        // warn about failing dynamic imports when vendoring, but don't fail completely
+        if matches!(error, ModuleGraphError::MissingDynamic(_, _)) {
+          log::warn!("Ignoring: {:#}", message);
+          return None;
+        }
+
+        // ignore invalid downgrades and invalid local imports when vendoring
+        if let ModuleGraphError::ResolutionError(err) = &error {
+          if matches!(
+            err,
+            ResolutionError::InvalidDowngrade { .. }
+              | ResolutionError::InvalidLocalImport { .. }
+          ) {
+            return None;
+          }
+        }
+      }
+
+      Some(custom_error(get_error_class_name(&error.into()), message))
+    });
+  if let Some(error) = errors.next() {
+    Err(error)
+  } else {
+    Ok(())
+  }
 }
 
 /// Checks the lockfile against the graph and and exits on errors.
 pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   for module in graph.modules() {
-    if let Some(source) = &module.maybe_source {
-      if !lockfile.check_or_insert_remote(module.specifier.as_str(), source) {
-        let err = format!(
-          concat!(
-            "The source code is invalid, as it does not match the expected hash in the lock file.\n",
-            "  Specifier: {}\n",
-            "  Lock file: {}",
-          ),
-          module.specifier,
-          lockfile.filename.display(),
-        );
-        log::error!("{} {}", colors::red("error:"), err);
-        std::process::exit(10);
-      }
+    let source = match module {
+      Module::Esm(module) => &module.source,
+      Module::Json(module) => &module.source,
+      Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
+    };
+    if !lockfile.check_or_insert_remote(module.specifier().as_str(), source) {
+      let err = format!(
+        concat!(
+          "The source code is invalid, as it does not match the expected hash in the lock file.\n",
+          "  Specifier: {}\n",
+          "  Lock file: {}",
+        ),
+        module.specifier(),
+        lockfile.filename.display(),
+      );
+      log::error!("{} {}", colors::red("error:"), err);
+      std::process::exit(10);
     }
   }
 }
@@ -106,33 +151,40 @@ pub async fn create_graph_and_maybe_check(
     PermissionsContainer::allow_all(),
   );
   let maybe_imports = ps.options.to_maybe_imports()?;
-  let maybe_cli_resolver = CliResolver::maybe_new(
+  let maybe_package_json_deps = ps.options.maybe_package_json_deps()?;
+  ps.npm_resolver
+    .add_package_json_deps(maybe_package_json_deps.as_ref())
+    .await?;
+  let cli_resolver = CliGraphResolver::new(
     ps.options.to_maybe_jsx_import_source_config(),
     ps.maybe_import_map.clone(),
+    ps.options.no_npm(),
+    ps.npm_resolver.api().clone(),
+    ps.npm_resolver.resolution().clone(),
+    maybe_package_json_deps,
   );
-  let maybe_graph_resolver =
-    maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
+  let graph_resolver = cli_resolver.as_graph_resolver();
+  let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
   let analyzer = ps.parsed_source_cache.as_analyzer();
   let mut graph = ModuleGraph::default();
-  graph
-    .build(
-      vec![root],
-      &mut cache,
-      deno_graph::BuildOptions {
-        is_dynamic: false,
-        imports: maybe_imports,
-        resolver: maybe_graph_resolver,
-        module_analyzer: Some(&*analyzer),
-        reporter: None,
-      },
-    )
-    .await;
+  build_graph_with_npm_resolution(
+    &mut graph,
+    &ps.npm_resolver,
+    vec![root],
+    &mut cache,
+    deno_graph::BuildOptions {
+      is_dynamic: false,
+      imports: maybe_imports,
+      resolver: Some(graph_resolver),
+      npm_resolver: Some(graph_npm_resolver),
+      module_analyzer: Some(&*analyzer),
+      reporter: None,
+    },
+  )
+  .await?;
+
   graph_valid_with_cli_options(&graph, &graph.roots, &ps.options)?;
   let graph = Arc::new(graph);
-  let npm_graph_info = resolve_graph_npm_info(&graph);
-  ps.npm_resolver
-    .add_package_reqs(npm_graph_info.package_reqs)
-    .await?;
   if let Some(lockfile) = &ps.lockfile {
     graph_lock_or_exit(&graph, &mut lockfile.lock());
   }
@@ -140,7 +192,7 @@ pub async fn create_graph_and_maybe_check(
   if ps.options.type_check_mode() != TypeCheckMode::None {
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now after the lockfile has been written
-    if npm_graph_info.has_node_builtin_specifier {
+    if graph.has_node_specifier {
       ps.npm_resolver
         .inject_synthetic_types_node_package()
         .await?;
@@ -166,7 +218,6 @@ pub async fn create_graph_and_maybe_check(
         ts_config: ts_config_result.ts_config,
         log_checks: true,
         reload: ps.options.reload_flag(),
-        has_node_builtin_specifier: npm_graph_info.has_node_builtin_specifier,
       },
     )?;
     log::debug!("{}", check_result.stats);
@@ -178,23 +229,37 @@ pub async fn create_graph_and_maybe_check(
   Ok(graph)
 }
 
-pub fn error_for_any_npm_specifier(
-  graph: &deno_graph::ModuleGraph,
+pub async fn build_graph_with_npm_resolution<'a>(
+  graph: &mut ModuleGraph,
+  npm_resolver: &NpmPackageResolver,
+  roots: Vec<ModuleSpecifier>,
+  loader: &mut dyn deno_graph::source::Loader,
+  options: deno_graph::BuildOptions<'a>,
 ) -> Result<(), AnyError> {
-  let first_npm_specifier = graph
-    .specifiers()
-    .filter_map(|(_, r)| match r {
-      Ok(module) if module.kind == deno_graph::ModuleKind::External => {
-        Some(&module.specifier)
+  graph.build(roots, loader, options).await;
+
+  // resolve the dependencies of any pending dependencies
+  // that were inserted by building the graph
+  npm_resolver.resolve_pending().await?;
+
+  Ok(())
+}
+
+pub fn error_for_any_npm_specifier(
+  graph: &ModuleGraph,
+) -> Result<(), AnyError> {
+  for module in graph.modules() {
+    match module {
+      Module::Npm(module) => {
+        bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
       }
-      _ => None,
-    })
-    .next();
-  if let Some(npm_specifier) = first_npm_specifier {
-    bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", npm_specifier)
-  } else {
-    Ok(())
+      Module::Node(module) => {
+        bail!("Node specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: node:{}", module.module_name)
+      }
+      Module::Esm(_) | Module::Json(_) | Module::External(_) => {}
+    }
   }
+  Ok(())
 }
 
 /// Adds more explanatory information to a resolution error.

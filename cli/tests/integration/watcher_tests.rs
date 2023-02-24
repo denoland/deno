@@ -420,6 +420,8 @@ fn bundle_js_watch() {
 
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
+  assert_contains!(stderr_lines.next().unwrap(), "Warning");
+  assert_contains!(stderr_lines.next().unwrap(), "deno_emit");
   assert_contains!(stderr_lines.next().unwrap(), "Check");
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, "Bundle started");
@@ -473,8 +475,9 @@ fn bundle_watch_not_exit() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
-  let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, "Bundle started");
+  assert_contains!(stderr_lines.next().unwrap(), "Warning");
+  assert_contains!(stderr_lines.next().unwrap(), "deno_emit");
+  assert_contains!(stderr_lines.next().unwrap(), "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   assert_eq!(stderr_lines.next().unwrap(), "");
   assert_eq!(stderr_lines.next().unwrap(), "  syntax error ^^");
@@ -1201,7 +1204,7 @@ fn run_watch_dynamic_imports() {
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
-
+  assert_contains!(stderr_lines.next().unwrap(), "No package.json file found");
   assert_contains!(stderr_lines.next().unwrap(), "Process started");
 
   wait_contains(

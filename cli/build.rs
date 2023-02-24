@@ -4,10 +4,11 @@ use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::include_js_files_dir;
+use deno_core::include_js_files;
 use deno_core::snapshot_util::*;
 use deno_core::Extension;
 use deno_core::ExtensionFileSource;
+use deno_core::ExtensionFileSourceCode;
 use deno_runtime::deno_cache::SqliteBackedCache;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::*;
@@ -17,7 +18,6 @@ mod ts {
   use crate::deno_webgpu_get_declaration;
   use deno_core::error::custom_error;
   use deno_core::error::AnyError;
-  use deno_core::include_js_files_dir;
   use deno_core::op;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
@@ -260,7 +260,7 @@ mod ts {
         op_load::decl(),
         op_script_version::decl(),
       ])
-      .js(include_js_files_dir! {
+      .js(include_js_files! {
         dir "tsc",
         "00_typescript.js",
         "99_main_compiler.js",
@@ -280,7 +280,17 @@ mod ts {
       startup_snapshot: None,
       extensions: vec![],
       extensions_with_js: vec![tsc_extension],
+
+      // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
+      // ~45s on M1 MacBook Pro; without compression it took ~1s.
+      // Thus we're not not using compressed snapshot, trading off
+      // a lot of build time for some startup time in debug build.
+      #[cfg(debug_assertions)]
+      compression_cb: None,
+
+      #[cfg(not(debug_assertions))]
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
+        eprintln!("Compressing TSC snapshot...");
         vec.extend_from_slice(
           &zstd::bulk::compress(snapshot_slice, 22)
             .expect("snapshot compression failed"),
@@ -333,26 +343,34 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       false, // No --unstable.
     ),
     deno_node::init::<PermissionsContainer>(None), // No --unstable.
+    deno_node::init_polyfill(),
     deno_ffi::init::<PermissionsContainer>(false),
     deno_net::init::<PermissionsContainer>(
       None, false, // No --unstable.
       None,
     ),
-    deno_napi::init::<PermissionsContainer>(false),
+    deno_napi::init::<PermissionsContainer>(),
     deno_http::init(),
     deno_flash::init::<PermissionsContainer>(false), // No --unstable
   ];
 
-  let mut esm_files = include_js_files_dir!(
+  let mut esm_files = include_js_files!(
     dir "js",
     "40_testing.js",
   );
   esm_files.push(ExtensionFileSource {
     specifier: "runtime/js/99_main.js".to_string(),
-    code: deno_runtime::js::SOURCE_CODE_FOR_99_MAIN_JS,
+    code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+      std::path::PathBuf::from(deno_runtime::js::PATH_FOR_99_MAIN_JS),
+    ),
   });
-  let extensions_with_js =
-    vec![Extension::builder("cli").esm(esm_files).build()];
+  let extensions_with_js = vec![Extension::builder("cli")
+    // FIXME(bartlomieju): information about which extensions were
+    // already snapshotted is not preserved in the snapshot. This should be
+    // fixed, so we can reliably depend on that information.
+    // .dependencies(vec!["runtime"])
+    .esm(esm_files)
+    .build()];
 
   create_snapshot(CreateSnapshotOptions {
     cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),

@@ -31,10 +31,8 @@ pub fn init() -> Extension {
   Extension::builder("deno_spawn")
     .ops(vec![
       op_spawn_child::decl(),
-      op_node_unstable_spawn_child::decl(),
       op_spawn_wait::decl(),
       op_spawn_sync::decl(),
-      op_node_unstable_spawn_sync::decl(),
     ])
     .build()
 }
@@ -125,75 +123,11 @@ pub struct SpawnOutput {
   stderr: Option<ZeroCopyBuf>,
 }
 
-fn node_unstable_create_command(
-  state: &mut OpState,
-  args: SpawnArgs,
-  api_name: &str,
-) -> Result<std::process::Command, AnyError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_run(&args.cmd, api_name)?;
-
-  let mut command = std::process::Command::new(args.cmd);
-
-  #[cfg(windows)]
-  if args.windows_raw_arguments {
-    for arg in args.args.iter() {
-      command.raw_arg(arg);
-    }
-  } else {
-    command.args(args.args);
-  }
-
-  #[cfg(not(windows))]
-  command.args(args.args);
-
-  if let Some(cwd) = args.cwd {
-    command.current_dir(cwd);
-  }
-
-  if args.clear_env {
-    command.env_clear();
-  }
-  command.envs(args.env);
-
-  #[cfg(unix)]
-  if let Some(gid) = args.gid {
-    command.gid(gid);
-  }
-  #[cfg(unix)]
-  if let Some(uid) = args.uid {
-    command.uid(uid);
-  }
-  #[cfg(unix)]
-  // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe {
-    command.pre_exec(|| {
-      libc::setgroups(0, std::ptr::null());
-      Ok(())
-    });
-  }
-
-  command.stdin(args.stdio.stdin.as_stdio());
-  command.stdout(match args.stdio.stdout {
-    Stdio::Inherit => StdioOrRid::Rid(1).as_stdio(state)?,
-    value => value.as_stdio(),
-  });
-  command.stderr(match args.stdio.stderr {
-    Stdio::Inherit => StdioOrRid::Rid(2).as_stdio(state)?,
-    value => value.as_stdio(),
-  });
-
-  Ok(command)
-}
-
 fn create_command(
   state: &mut OpState,
   args: SpawnArgs,
   api_name: &str,
 ) -> Result<std::process::Command, AnyError> {
-  super::check_unstable(state, "Deno.Command");
   state
     .borrow_mut::<PermissionsContainer>()
     .check_run(&args.cmd, api_name)?;
@@ -223,12 +157,10 @@ fn create_command(
 
   #[cfg(unix)]
   if let Some(gid) = args.gid {
-    super::check_unstable(state, "Deno.CommandOptions.gid");
     command.gid(gid);
   }
   #[cfg(unix)]
   if let Some(uid) = args.uid {
-    super::check_unstable(state, "Deno.CommandOptions.uid");
     command.uid(uid);
   }
   #[cfg(unix)]
@@ -314,16 +246,6 @@ fn op_spawn_child(
 }
 
 #[op]
-fn op_node_unstable_spawn_child(
-  state: &mut OpState,
-  args: SpawnArgs,
-  api_name: String,
-) -> Result<Child, AnyError> {
-  let command = node_unstable_create_command(state, args, &api_name)?;
-  spawn_child(state, command)
-}
-
-#[op]
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -350,32 +272,6 @@ fn op_spawn_sync(
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
   let output =
     create_command(state, args, "Deno.Command().outputSync()")?.output()?;
-
-  Ok(SpawnOutput {
-    status: output.status.try_into()?,
-    stdout: if stdout {
-      Some(output.stdout.into())
-    } else {
-      None
-    },
-    stderr: if stderr {
-      Some(output.stderr.into())
-    } else {
-      None
-    },
-  })
-}
-
-#[op]
-fn op_node_unstable_spawn_sync(
-  state: &mut OpState,
-  args: SpawnArgs,
-) -> Result<SpawnOutput, AnyError> {
-  let stdout = matches!(args.stdio.stdout, Stdio::Piped);
-  let stderr = matches!(args.stdio.stderr, Stdio::Piped);
-  let output =
-    node_unstable_create_command(state, args, "Deno.Command().outputSync()")?
-      .output()?;
 
   Ok(SpawnOutput {
     status: output.status.try_into()?,

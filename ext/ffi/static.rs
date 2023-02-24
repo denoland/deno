@@ -10,6 +10,7 @@ use deno_core::op;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::ResourceId;
+use std::ffi::c_void;
 use std::ptr;
 
 #[op(v8)]
@@ -134,13 +135,9 @@ pub fn op_ffi_get_static<'scope>(
       number.into()
     }
     NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
-      let result = data_ptr as u64;
-      let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as u64 {
-        v8::BigInt::new_from_u64(scope, result).into()
-      } else {
-        v8::Number::new(scope, result as f64).into()
-      };
-      integer.into()
+      let external: v8::Local<v8::Value> =
+        v8::External::new(scope, data_ptr as *mut c_void).into();
+      external.into()
     }
     NativeType::Struct(_) => {
       return Err(type_error("Invalid FFI static type 'struct'"));

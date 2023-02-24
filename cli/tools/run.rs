@@ -7,6 +7,7 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 
@@ -14,7 +15,6 @@ use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
 use crate::file_fetcher::File;
-use crate::npm::NpmPackageReference;
 use crate::proc_state::ProcState;
 use crate::util;
 use crate::worker::create_main_worker;
@@ -38,12 +38,12 @@ To grant permissions, set them before the script argument. For example:
     return run_with_watch(flags, run_flags.script).await;
   }
 
-  let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
-  {
-    ModuleSpecifier::parse(&run_flags.script)?
-  } else {
-    resolve_url_or_path(&run_flags.script)?
-  };
+  let main_module =
+    if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
+      ModuleSpecifier::parse(&run_flags.script)?
+    } else {
+      resolve_url_or_path(&run_flags.script)?
+    };
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line - this should

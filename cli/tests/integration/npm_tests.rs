@@ -217,11 +217,11 @@ itest!(sub_paths {
 });
 
 itest!(remote_npm_specifier {
-  args: "run --quiet npm/remote_npm_specifier/main.ts",
+  args: "run --quiet -A npm/remote_npm_specifier/main.ts",
   output: "npm/remote_npm_specifier/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
-  exit_code: 1,
+  exit_code: 0,
 });
 
 itest!(tarball_with_global_header {
@@ -581,7 +581,7 @@ fn no_npm_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(
     stderr,
-    "Following npm specifiers were requested: \"chalk@5\"; but --no-npm is specified."
+    "error: npm specifiers were requested; but --no-npm is specified\n    at file:///"
   );
   assert!(stdout.is_empty());
   assert!(!output.status.success());
@@ -623,7 +623,7 @@ fn no_npm_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(
     stderr,
-    "Following npm specifiers were requested: \"chalk@5\"; but --no-npm is specified."
+    "error: npm specifiers were requested; but --no-npm is specified\n    at file:///"
   );
   assert!(stdout.is_empty());
   assert!(!output.status.success());
@@ -655,6 +655,13 @@ fn deno_run_cjs_module() {
 
 itest!(deno_run_cowsay {
   args: "run -A --quiet npm:cowsay@1.5.0 Hello",
+  output: "npm/deno_run_cowsay.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+});
+
+itest!(deno_run_cowsay_with_node_modules_dir {
+  args: "run -A --quiet --node-modules-dir npm:cowsay@1.5.0 Hello",
   output: "npm/deno_run_cowsay.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
   http_server: true,
@@ -820,7 +827,7 @@ fn ensure_registry_files_local() {
 
 itest!(compile_errors {
     args: "compile -A --quiet npm/cached_only/main.ts",
-    output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
+    output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5.0.1\n"),
     exit_code: 1,
     envs: env_vars_for_npm_tests(),
     http_server: true,
@@ -828,7 +835,7 @@ itest!(compile_errors {
 
 itest!(bundle_errors {
     args: "bundle --quiet npm/esm/main.js",
-    output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
+    output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5.0.1\n"),
     exit_code: 1,
     envs: env_vars_for_npm_tests(),
     http_server: true,
@@ -1557,4 +1564,24 @@ itest!(create_require {
   exit_code: 0,
   envs: env_vars_for_npm_tests(),
   http_server: true,
+});
+
+itest!(node_modules_import_run {
+  args: "run --quiet main.ts",
+  output: "npm/node_modules_import/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  cwd: Some("npm/node_modules_import/"),
+  copy_temp_dir: Some("npm/node_modules_import/"),
+  exit_code: 0,
+});
+
+itest!(node_modules_import_check {
+  args: "check --quiet main.ts",
+  output: "npm/node_modules_import/main_check.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  cwd: Some("npm/node_modules_import/"),
+  copy_temp_dir: Some("npm/node_modules_import/"),
+  exit_code: 1,
 });

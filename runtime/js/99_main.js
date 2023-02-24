@@ -62,7 +62,6 @@ import { errors } from "internal:runtime/js/01_errors.js";
 import * as webidl from "internal:deno_webidl/00_webidl.js";
 import DOMException from "internal:deno_web/01_dom_exception.js";
 import * as flash from "internal:deno_flash/01_http.js";
-import * as spawn from "internal:runtime/js/40_spawn.js";
 import {
   mainRuntimeGlobalProperties,
   setLanguage,
@@ -232,6 +231,69 @@ function formatException(error) {
   }
 }
 
+core.registerErrorClass("NotFound", errors.NotFound);
+core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
+core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
+core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
+core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
+core.registerErrorClass("NotConnected", errors.NotConnected);
+core.registerErrorClass("AddrInUse", errors.AddrInUse);
+core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
+core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
+core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
+core.registerErrorClass("InvalidData", errors.InvalidData);
+core.registerErrorClass("TimedOut", errors.TimedOut);
+core.registerErrorClass("Interrupted", errors.Interrupted);
+core.registerErrorClass("WouldBlock", errors.WouldBlock);
+core.registerErrorClass("WriteZero", errors.WriteZero);
+core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
+core.registerErrorClass("BadResource", errors.BadResource);
+core.registerErrorClass("Http", errors.Http);
+core.registerErrorClass("Busy", errors.Busy);
+core.registerErrorClass("NotSupported", errors.NotSupported);
+core.registerErrorBuilder(
+  "DOMExceptionOperationError",
+  function DOMExceptionOperationError(msg) {
+    return new DOMException(msg, "OperationError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionQuotaExceededError",
+  function DOMExceptionQuotaExceededError(msg) {
+    return new DOMException(msg, "QuotaExceededError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionNotSupportedError",
+  function DOMExceptionNotSupportedError(msg) {
+    return new DOMException(msg, "NotSupported");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionNetworkError",
+  function DOMExceptionNetworkError(msg) {
+    return new DOMException(msg, "NetworkError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionAbortError",
+  function DOMExceptionAbortError(msg) {
+    return new DOMException(msg, "AbortError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionInvalidCharacterError",
+  function DOMExceptionInvalidCharacterError(msg) {
+    return new DOMException(msg, "InvalidCharacterError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionDataError",
+  function DOMExceptionDataError(msg) {
+    return new DOMException(msg, "DataError");
+  },
+);
+
 function runtimeStart(runtimeOptions, source) {
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
@@ -248,71 +310,6 @@ function runtimeStart(runtimeOptions, source) {
   colors.setNoColor(runtimeOptions.noColor || !runtimeOptions.isTty);
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = core.prepareStackTrace;
-  registerErrors();
-}
-
-function registerErrors() {
-  core.registerErrorClass("NotFound", errors.NotFound);
-  core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
-  core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
-  core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
-  core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
-  core.registerErrorClass("NotConnected", errors.NotConnected);
-  core.registerErrorClass("AddrInUse", errors.AddrInUse);
-  core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
-  core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
-  core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
-  core.registerErrorClass("InvalidData", errors.InvalidData);
-  core.registerErrorClass("TimedOut", errors.TimedOut);
-  core.registerErrorClass("Interrupted", errors.Interrupted);
-  core.registerErrorClass("WriteZero", errors.WriteZero);
-  core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
-  core.registerErrorClass("BadResource", errors.BadResource);
-  core.registerErrorClass("Http", errors.Http);
-  core.registerErrorClass("Busy", errors.Busy);
-  core.registerErrorClass("NotSupported", errors.NotSupported);
-  core.registerErrorBuilder(
-    "DOMExceptionOperationError",
-    function DOMExceptionOperationError(msg) {
-      return new DOMException(msg, "OperationError");
-    },
-  );
-  core.registerErrorBuilder(
-    "DOMExceptionQuotaExceededError",
-    function DOMExceptionQuotaExceededError(msg) {
-      return new DOMException(msg, "QuotaExceededError");
-    },
-  );
-  core.registerErrorBuilder(
-    "DOMExceptionNotSupportedError",
-    function DOMExceptionNotSupportedError(msg) {
-      return new DOMException(msg, "NotSupported");
-    },
-  );
-  core.registerErrorBuilder(
-    "DOMExceptionNetworkError",
-    function DOMExceptionNetworkError(msg) {
-      return new DOMException(msg, "NetworkError");
-    },
-  );
-  core.registerErrorBuilder(
-    "DOMExceptionAbortError",
-    function DOMExceptionAbortError(msg) {
-      return new DOMException(msg, "AbortError");
-    },
-  );
-  core.registerErrorBuilder(
-    "DOMExceptionInvalidCharacterError",
-    function DOMExceptionInvalidCharacterError(msg) {
-      return new DOMException(msg, "InvalidCharacterError");
-    },
-  );
-  core.registerErrorBuilder(
-    "DOMExceptionDataError",
-    function DOMExceptionDataError(msg) {
-      return new DOMException(msg, "DataError");
-    },
-  );
 }
 
 const pendingRejections = [];
@@ -393,7 +390,6 @@ function bootstrapMainRuntime(runtimeOptions) {
     throw new Error("Worker runtime already bootstrapped");
   }
 
-  core.initializeAsyncOps();
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
@@ -465,22 +461,12 @@ function bootstrapMainRuntime(runtimeOptions) {
   // a snapshot
   ObjectAssign(internals, {
     nodeUnstable: {
-      Command: spawn.createCommand(
-        spawn.createSpawn(ops.op_node_unstable_spawn_child),
-        spawn.createSpawnSync(
-          ops.op_node_unstable_spawn_sync,
-        ),
-        spawn.createSpawnChild(
-          ops.op_node_unstable_spawn_child,
-        ),
-      ),
       serve: flash.createServe(ops.op_node_unstable_flash_serve),
       upgradeHttpRaw: flash.upgradeHttpRaw,
       listenDatagram: net.createListenDatagram(
         ops.op_node_unstable_net_listen_udp,
         ops.op_node_unstable_net_listen_unixpacket,
       ),
-      osUptime: os.createOsUptime(ops.op_node_unstable_os_uptime),
     },
   });
 
@@ -512,17 +498,11 @@ function bootstrapMainRuntime(runtimeOptions) {
     // the op function that needs to be passed will be invalidated by creating
     // a snapshot
     ObjectAssign(finalDenoNs, {
-      Command: spawn.createCommand(
-        spawn.createSpawn(ops.op_spawn_child),
-        spawn.createSpawnSync(ops.op_spawn_sync),
-        spawn.createSpawnChild(ops.op_spawn_child),
-      ),
       serve: flash.createServe(ops.op_flash_serve),
       listenDatagram: net.createListenDatagram(
         ops.op_net_listen_udp,
         ops.op_net_listen_unixpacket,
       ),
-      osUptime: os.createOsUptime(ops.op_os_uptime),
     });
   }
 
@@ -542,7 +522,6 @@ function bootstrapWorkerRuntime(
     throw new Error("Worker runtime already bootstrapped");
   }
 
-  core.initializeAsyncOps();
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
@@ -610,22 +589,12 @@ function bootstrapWorkerRuntime(
   // a snapshot
   ObjectAssign(internals, {
     nodeUnstable: {
-      Command: spawn.createCommand(
-        spawn.createSpawn(ops.op_node_unstable_spawn_child),
-        spawn.createSpawnSync(
-          ops.op_node_unstable_spawn_sync,
-        ),
-        spawn.createSpawnChild(
-          ops.op_node_unstable_spawn_child,
-        ),
-      ),
       serve: flash.createServe(ops.op_node_unstable_flash_serve),
       upgradeHttpRaw: flash.upgradeHttpRaw,
       listenDatagram: net.createListenDatagram(
         ops.op_node_unstable_net_listen_udp,
         ops.op_node_unstable_net_listen_unixpacket,
       ),
-      osUptime: os.createOsUptime(ops.op_node_unstable_os_uptime),
     },
   });
 
@@ -649,17 +618,11 @@ function bootstrapWorkerRuntime(
     // the op function that needs to be passed will be invalidated by creating
     // a snapshot
     ObjectAssign(finalDenoNs, {
-      Command: spawn.createCommand(
-        spawn.createSpawn(ops.op_spawn_child),
-        spawn.createSpawnSync(ops.op_spawn_sync),
-        spawn.createSpawnChild(ops.op_spawn_child),
-      ),
       serve: flash.createServe(ops.op_flash_serve),
       listenDatagram: net.createListenDatagram(
         ops.op_net_listen_udp,
         ops.op_net_listen_unixpacket,
       ),
-      osUptime: os.createOsUptime(ops.op_os_uptime),
     });
   }
   ObjectDefineProperties(finalDenoNs, {

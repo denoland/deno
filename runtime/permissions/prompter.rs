@@ -11,6 +11,7 @@ pub const PERMISSION_EMOJI: &str = "⚠️";
 pub enum PromptResponse {
   Allow,
   Deny,
+  AllowAll,
 }
 
 static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
@@ -26,11 +27,14 @@ pub fn permission_prompt(
   message: &str,
   flag: &str,
   api_name: Option<&str>,
+  is_unary: bool,
 ) -> PromptResponse {
   if let Some(before_callback) = MAYBE_BEFORE_PROMPT_CALLBACK.lock().as_mut() {
     before_callback();
   }
-  let r = PERMISSION_PROMPTER.lock().prompt(message, flag, api_name);
+  let r = PERMISSION_PROMPTER
+    .lock()
+    .prompt(message, flag, api_name, is_unary);
   if let Some(after_callback) = MAYBE_AFTER_PROMPT_CALLBACK.lock().as_mut() {
     after_callback();
   }
@@ -53,6 +57,7 @@ pub trait PermissionPrompter: Send + Sync {
     message: &str,
     name: &str,
     api_name: Option<&str>,
+    is_unary: bool,
   ) -> PromptResponse;
 }
 
@@ -64,6 +69,7 @@ impl PermissionPrompter for TtyPrompter {
     message: &str,
     name: &str,
     api_name: Option<&str>,
+    is_unary: bool,
   ) -> PromptResponse {
     if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
       return PromptResponse::Deny;
@@ -198,7 +204,11 @@ impl PermissionPrompter for TtyPrompter {
     let _stderr_guard = std::io::stderr().lock();
 
     // print to stderr so that if stdout is piped this is still displayed.
-    const OPTS: &str = "[y/n] (y = yes, allow; n = no, deny)";
+    let opts: String = if is_unary {
+      format!("[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)")
+    } else {
+      "[y/n] (y = yes, allow; n = no, deny)".to_string()
+    };
     eprint!("┌ {PERMISSION_EMOJI}  ");
     eprint!("{}", colors::bold("Deno requests "));
     eprint!("{}", colors::bold(message));
@@ -209,7 +219,7 @@ impl PermissionPrompter for TtyPrompter {
     let msg = format!("Run again with --allow-{name} to bypass this prompt.");
     eprintln!("├ {}", colors::italic(&msg));
     eprint!("└ {}", colors::bold("Allow?"));
-    eprint!(" {OPTS} > ");
+    eprint!(" {opts} > ");
     let value = loop {
       let mut input = String::new();
       let stdin = std::io::stdin();
@@ -221,24 +231,30 @@ impl PermissionPrompter for TtyPrompter {
         None => break PromptResponse::Deny,
         Some(v) => v,
       };
-      match ch.to_ascii_lowercase() {
-        'y' => {
+      match ch {
+        'y' | 'Y' => {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
           let msg = format!("Granted {message}.");
           eprintln!("✅ {}", colors::bold(&msg));
           break PromptResponse::Allow;
         }
-        'n' => {
+        'n' | 'N' => {
           clear_n_lines(if api_name.is_some() { 4 } else { 3 });
           let msg = format!("Denied {message}.");
           eprintln!("❌ {}", colors::bold(&msg));
           break PromptResponse::Deny;
         }
+        'A' if is_unary => {
+          clear_n_lines(if api_name.is_some() { 4 } else { 3 });
+          let msg = format!("Granted all {name} access.");
+          eprintln!("✅ {}", colors::bold(&msg));
+          break PromptResponse::AllowAll;
+        }
         _ => {
           // If we don't get a recognized option try again.
           clear_n_lines(1);
           eprint!("└ {}", colors::bold("Unrecognized option. Allow?"));
-          eprint!(" {OPTS} > ");
+          eprint!(" {opts} > ");
         }
       };
     };
@@ -264,6 +280,7 @@ pub mod tests {
       _message: &str,
       _name: &str,
       _api_name: Option<&str>,
+      _is_unary: bool,
     ) -> PromptResponse {
       if STUB_PROMPT_VALUE.load(Ordering::SeqCst) {
         PromptResponse::Allow

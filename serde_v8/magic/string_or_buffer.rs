@@ -24,6 +24,16 @@ impl Deref for StringOrBuffer {
   }
 }
 
+impl<'a> TryFrom<&'a StringOrBuffer> for &'a str {
+  type Error = std::str::Utf8Error;
+  fn try_from(value: &'a StringOrBuffer) -> Result<Self, Self::Error> {
+    match value {
+      StringOrBuffer::String(s) => Ok(s.as_str()),
+      StringOrBuffer::Buffer(b) => std::str::from_utf8(b.as_ref()),
+    }
+  }
+}
+
 impl ToV8 for StringOrBuffer {
   fn to_v8<'a>(
     &mut self,

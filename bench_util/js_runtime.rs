@@ -104,9 +104,6 @@ pub fn bench_js_async_with(
   };
   let looped = loop_code(inner_iters, src);
   let src = looped.as_ref();
-  runtime
-    .execute_script("init", "Deno.core.initializeAsyncOps();")
-    .unwrap();
   if is_profiling() {
     for _ in 0..opts.profiling_outer {
       tokio_runtime.block_on(inner_async(src, &mut runtime));
