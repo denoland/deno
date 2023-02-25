@@ -1569,10 +1569,10 @@ itest!(create_require {
 itest!(node_modules_import_run {
   args: "run --quiet main.ts",
   output: "npm/node_modules_import/main.out",
-  envs: env_vars_for_npm_tests(),
   http_server: true,
-  cwd: Some("npm/node_modules_import/"),
   copy_temp_dir: Some("npm/node_modules_import/"),
+  cwd: Some("npm/node_modules_import/"),
+  envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
