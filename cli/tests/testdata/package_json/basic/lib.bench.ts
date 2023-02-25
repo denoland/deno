@@ -1,4 +1,4 @@
-import { add } from "./main.ts";
+import { add } from "./lib.ts";
 
 Deno.bench("should add", () => {
   if (add(1, 2) !== 3) {

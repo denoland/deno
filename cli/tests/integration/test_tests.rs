@@ -456,7 +456,7 @@ itest!(parallel_output {
 
 itest!(package_json_basic {
   args: "test",
-  output: "package_json/basic/main.test.out",
+  output: "package_json/basic/lib.test.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
   cwd: Some("package_json/basic"),
