@@ -6,6 +6,20 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.31.1 / 2023.02.25
+
+- feat: add `DENO_NO_PACKAGE_JSON` env var (#17926)
+- fix(npm): lazily install package.json dependencies only when necessary
+  (#17931)
+- fix(npm): package.json auto-discovery should respect `--no-config` and
+  `--no-npm` (#17924)
+- fix: ensure concurrent non-statically analyzable dynamic imports do not
+  sometimes fail (#17923)
+- fix: ignore workspace, git, file, http, https specifiers in package.json
+  (#17934, #17938)
+- fix: regression remapping remote specifier to local file (#17935)
+- fix: remote modules should be allowed to import data urls (#17920)
+
 ### 1.31.0 / 2023.02.23
 
 - feat(bench): Add JSON reporter for "deno bench" subcommand (#17595)
