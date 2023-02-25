@@ -3,6 +3,8 @@
 use std::process::Command;
 use std::process::Stdio;
 use test_util as util;
+use util::env_vars_for_npm_tests;
+use util::env_vars_for_npm_tests_no_sync_download;
 use util::TempDir;
 
 itest!(_095_check_with_bare_import {
@@ -229,3 +231,33 @@ fn ts_no_recheck_on_redirect() {
 
   assert!(std::str::from_utf8(&output.stderr).unwrap().is_empty());
 }
+
+itest!(package_json_basic {
+  args: "check main.ts",
+  output: "package_json/basic/main.check.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  cwd: Some("package_json/basic"),
+  copy_temp_dir: Some("package_json/basic"),
+  exit_code: 0,
+});
+
+itest!(package_json_fail_check {
+  args: "check --quiet fail_check.ts",
+  output: "package_json/basic/fail_check.check.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+  cwd: Some("package_json/basic"),
+  copy_temp_dir: Some("package_json/basic"),
+  exit_code: 1,
+});
+
+itest!(package_json_with_deno_json {
+  args: "check --quiet main.ts",
+  output: "package_json/deno_json/main.check.out",
+  cwd: Some("package_json/deno_json/"),
+  copy_temp_dir: Some("package_json/deno_json/"),
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+  exit_code: 1,
+});

@@ -292,17 +292,18 @@ impl NpmResolution {
 
   pub async fn set_package_reqs(
     &self,
-    package_reqs: HashSet<NpmPackageReq>,
+    package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     let inner = &self.0;
     // only allow one thread in here at a time
     let _permit = inner.update_semaphore.acquire().await?;
     let snapshot = inner.snapshot.read().clone();
 
+    let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
     let has_removed_package = !snapshot
       .package_reqs
       .keys()
-      .all(|req| package_reqs.contains(req));
+      .all(|req| reqs_set.contains(req));
     // if any packages were removed, we need to completely recreate the npm resolution snapshot
     let snapshot = if has_removed_package {
       NpmResolutionSnapshot::default()
@@ -311,7 +312,7 @@ impl NpmResolution {
     };
     let snapshot = add_package_reqs_to_snapshot(
       &inner.api,
-      package_reqs.into_iter().collect(),
+      package_reqs,
       snapshot,
       self.0.maybe_lockfile.clone(),
     )
@@ -403,8 +404,9 @@ impl NpmResolution {
   }
 
   /// Resolves a package requirement for deno graph. This should only be
-  /// called by deno_graph's NpmResolver.
-  pub fn resolve_package_req_for_deno_graph(
+  /// called by deno_graph's NpmResolver or for resolving packages in
+  /// a package.json
+  pub fn resolve_package_req_as_pending(
     &self,
     pkg_req: &NpmPackageReq,
   ) -> Result<NpmPackageNv, AnyError> {

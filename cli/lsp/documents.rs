@@ -5,6 +5,7 @@ use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
 
+use crate::args::package_json;
 use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
 use crate::cache::CachedUrlMetadata;
@@ -13,12 +14,14 @@ use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
+use crate::lsp::logging::lsp_log;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
+use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -37,9 +40,11 @@ use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -818,8 +823,10 @@ pub struct Documents {
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: CliGraphResolver,
-  /// The npm package requirements.
-  npm_reqs: Arc<HashSet<NpmPackageReq>>,
+  /// The npm package requirements found in a package.json file.
+  npm_package_json_reqs: Arc<Vec<NpmPackageReq>>,
+  /// The npm package requirements found in npm specifiers.
+  npm_specifier_reqs: Arc<Vec<NpmPackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
   /// should be injected.
   has_injected_types_node_package: bool,
@@ -838,7 +845,8 @@ impl Documents {
       resolver_config_hash: 0,
       imports: Default::default(),
       resolver: CliGraphResolver::default(),
-      npm_reqs: Default::default(),
+      npm_package_json_reqs: Default::default(),
+      npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
     }
@@ -970,9 +978,15 @@ impl Documents {
   }
 
   /// Returns a collection of npm package requirements.
-  pub fn npm_package_reqs(&mut self) -> HashSet<NpmPackageReq> {
+  pub fn npm_package_reqs(&mut self) -> Vec<NpmPackageReq> {
     self.calculate_dependents_if_dirty();
-    (*self.npm_reqs).clone()
+    let mut reqs = Vec::with_capacity(
+      self.npm_package_json_reqs.len() + self.npm_specifier_reqs.len(),
+    );
+    // resolve the package.json reqs first, then the npm specifiers
+    reqs.extend(self.npm_package_json_reqs.iter().cloned());
+    reqs.extend(self.npm_specifier_reqs.iter().cloned());
+    reqs
   }
 
   /// Returns if a @types/node package was injected into the npm
@@ -1150,12 +1164,14 @@ impl Documents {
     &mut self,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
+    maybe_package_json: Option<&PackageJson>,
     npm_registry_api: NpmRegistryApi,
     npm_resolution: NpmResolution,
   ) {
     fn calculate_resolver_config_hash(
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
+      maybe_package_json_deps: Option<&BTreeMap<String, NpmPackageReq>>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
       if let Some(import_map) = maybe_import_map {
@@ -1165,23 +1181,50 @@ impl Documents {
       if let Some(jsx_config) = maybe_jsx_config {
         hasher.write_hashable(&jsx_config);
       }
+      if let Some(deps) = maybe_package_json_deps {
+        hasher.write_hashable(&deps);
+      }
       hasher.finish()
     }
 
+    let maybe_package_json_deps = maybe_package_json.and_then(|package_json| {
+      match package_json::get_local_package_json_version_reqs(package_json) {
+        Ok(deps) => Some(deps),
+        Err(err) => {
+          lsp_log!("Error parsing package.json deps: {err:#}");
+          None
+        }
+      }
+    });
     let maybe_jsx_config =
       maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
     let new_resolver_config_hash = calculate_resolver_config_hash(
       maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
+      maybe_package_json_deps.as_ref(),
     );
-    // TODO(bartlomieju): handle package.json dependencies here
+    self.npm_package_json_reqs = Arc::new({
+      match &maybe_package_json_deps {
+        Some(deps) => {
+          let mut reqs = deps.values().cloned().collect::<Vec<_>>();
+          reqs.sort();
+          reqs
+        }
+        None => Vec::new(),
+      }
+    });
+    let deps_installer = PackageJsonDepsInstaller::new(
+      npm_registry_api.clone(),
+      npm_resolution.clone(),
+      maybe_package_json_deps,
+    );
     self.resolver = CliGraphResolver::new(
       maybe_jsx_config,
       maybe_import_map,
       false,
       npm_registry_api,
       npm_resolution,
-      None,
+      deps_installer,
     );
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
@@ -1306,7 +1349,11 @@ impl Documents {
     }
 
     self.dependents_map = Arc::new(doc_analyzer.dependents_map);
-    self.npm_reqs = Arc::new(npm_reqs);
+    self.npm_specifier_reqs = Arc::new({
+      let mut reqs = npm_reqs.into_iter().collect::<Vec<_>>();
+      reqs.sort();
+      reqs
+    });
     self.dirty = false;
     file_system_docs.dirty = false;
   }
@@ -1589,6 +1636,7 @@ console.log(b, "hello deno");
       documents.update_config(
         Some(Arc::new(import_map)),
         None,
+        None,
         npm_registry_api.clone(),
         npm_resolution.clone(),
       );
@@ -1626,6 +1674,7 @@ console.log(b, "hello deno");
 
       documents.update_config(
         Some(Arc::new(import_map)),
+        None,
         None,
         npm_registry_api,
         npm_resolution,

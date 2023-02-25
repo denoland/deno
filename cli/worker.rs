@@ -293,8 +293,7 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages()
-      || self.ps.has_node_builtin_specifier()
+    if self.ps.npm_resolver.has_packages() || self.ps.graph().has_node_specifier
     {
       self.initialize_main_module_for_node().await?;
     }
@@ -457,7 +456,6 @@ async fn create_main_worker_internal(
       &pkg_nv,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
-      &mut PermissionsContainer::allow_all(),
     )?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));

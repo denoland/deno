@@ -217,11 +217,11 @@ itest!(sub_paths {
 });
 
 itest!(remote_npm_specifier {
-  args: "run --quiet npm/remote_npm_specifier/main.ts",
+  args: "run --quiet -A npm/remote_npm_specifier/main.ts",
   output: "npm/remote_npm_specifier/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
-  exit_code: 1,
+  exit_code: 0,
 });
 
 itest!(tarball_with_global_header {
@@ -655,6 +655,13 @@ fn deno_run_cjs_module() {
 
 itest!(deno_run_cowsay {
   args: "run -A --quiet npm:cowsay@1.5.0 Hello",
+  output: "npm/deno_run_cowsay.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+});
+
+itest!(deno_run_cowsay_with_node_modules_dir {
+  args: "run -A --quiet --node-modules-dir npm:cowsay@1.5.0 Hello",
   output: "npm/deno_run_cowsay.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
   http_server: true,
@@ -1557,4 +1564,24 @@ itest!(create_require {
   exit_code: 0,
   envs: env_vars_for_npm_tests(),
   http_server: true,
+});
+
+itest!(node_modules_import_run {
+  args: "run --quiet main.ts",
+  output: "npm/node_modules_import/main.out",
+  http_server: true,
+  copy_temp_dir: Some("npm/node_modules_import/"),
+  cwd: Some("npm/node_modules_import/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+});
+
+itest!(node_modules_import_check {
+  args: "check --quiet main.ts",
+  output: "npm/node_modules_import/main_check.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  cwd: Some("npm/node_modules_import/"),
+  copy_temp_dir: Some("npm/node_modules_import/"),
+  exit_code: 1,
 });

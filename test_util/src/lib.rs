@@ -44,6 +44,7 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -1058,6 +1059,20 @@ async fn main_server(
             return Ok(file_resp);
           }
         }
+      } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
+        let mut file_path = std_path();
+        file_path.push(suffix);
+        if let Ok(file) = tokio::fs::read(&file_path).await {
+          let file_resp = custom_headers(req.uri().path(), file);
+          return Ok(file_resp);
+        }
+      } else if let Some(suffix) = req.uri().path().strip_prefix("/sleep/") {
+        let duration = suffix.parse::<u64>().unwrap();
+        tokio::time::sleep(Duration::from_millis(duration)).await;
+        return Response::builder()
+          .status(StatusCode::OK)
+          .header("content-type", "application/typescript")
+          .body(Body::empty());
       }
 
       Response::builder()
@@ -1929,7 +1944,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   /// the test creates files in the testdata directory (ex. a node_modules folder)
   pub copy_temp_dir: Option<&'a str>,
   /// Relative to "testdata" directory
-  pub maybe_cwd: Option<&'a str>,
+  pub cwd: Option<&'a str>,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
@@ -1970,7 +1985,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     let mut command = deno_cmd_with_deno_dir(&deno_dir);
     let cwd = if self.temp_cwd {
       deno_dir.path().to_owned()
-    } else if let Some(cwd_) = &self.maybe_cwd {
+    } else if let Some(cwd_) = &self.cwd {
       testdata_dir.join(cwd_)
     } else {
       testdata_dir.clone()

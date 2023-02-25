@@ -243,7 +243,7 @@ pub async fn run(
           false,
           ps.npm_resolver.api().clone(),
           ps.npm_resolver.resolution().clone(),
-          None,
+          ps.package_json_deps_installer.clone(),
         )
       },
     ),
