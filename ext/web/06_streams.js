@@ -210,6 +210,10 @@ function uponPromise(promise, onFulfilled, onRejected) {
  * @returns {boolean}
  */
 function isDetachedBuffer(O) {
+  // deno-lint-ignore prefer-primordials
+  if (ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O)) {
+    return false;
+  }
   return ArrayBufferPrototypeGetByteLength(O) === 0 &&
     ops.op_arraybuffer_was_detached(O);
 }
