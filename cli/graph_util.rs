@@ -442,6 +442,7 @@ mod test {
         specifier: input.to_string(),
         range: Range {
           specifier,
+          text: "".to_string(),
           start: Position::zeroed(),
           end: Position::zeroed(),
         },
@@ -458,6 +459,7 @@ mod test {
       let err = ResolutionError::InvalidSpecifier {
         range: Range {
           specifier,
+          text: "".to_string(),
           start: Position::zeroed(),
           end: Position::zeroed(),
         },
