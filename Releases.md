@@ -15,7 +15,8 @@ https://github.com/denoland/deno_install
   `--no-npm` (#17924)
 - fix: ensure concurrent non-statically analyzable dynamic imports do not
   sometimes fail (#17923)
-- fix: ignore workspace specifiers in package.json (#17934)
+- fix: ignore workspace, git, file, http, https specifiers in package.json
+  (#17934, #17938)
 - fix: regression remapping remote specifier to local file (#17935)
 - fix: remote modules should be allowed to import data urls (#17920)
 
