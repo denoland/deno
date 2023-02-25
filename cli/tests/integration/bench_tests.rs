@@ -220,7 +220,7 @@ fn file_protocol() {
 
 itest!(package_json_basic {
   args: "bench",
-  output: "package_json/basic/main.bench.out",
+  output: "package_json/basic/lib.bench.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
   cwd: Some("package_json/basic"),
